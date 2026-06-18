@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "Polycheck",
+    "slug": "polycheck",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "scheme": "polycheck",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "edu.pup.polycheck",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Camera is used to scan QR codes for attendance check-in.",
+        "NSLocationWhenInUseUsageDescription": "Location is used to verify you are inside the classroom."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#7B1113",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png"
+      },
+      "package": "edu.pup.polycheck",
+      "permissions": ["android.permission.CAMERA", "android.permission.ACCESS_FINE_LOCATION"]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Camera is used to scan QR codes for attendance check-in."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Location is used to verify you are inside the classroom."
+        }
+      ]
+    ]
+  }
+}
