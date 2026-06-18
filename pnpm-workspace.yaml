@@ -1,0 +1,11 @@
+packages:
+  - "shared"
+  - "frontend"
+  - "android"
+  - "backend"
+allowBuilds:
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
+overrides:
+  lightningcss: 1.30.1

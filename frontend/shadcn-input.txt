@@ -1,0 +1,7 @@
+y
+Radix
+Default
+yes
+yes
+@/components/ui
+@/lib/utils

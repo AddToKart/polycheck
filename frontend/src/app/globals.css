@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@font-face {
+  font-family: 'Lora';
+  src: url('/fonts/Lora_400Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme inline {
+  --color-maroon: #7B1113;
+  --color-maroon-dark: #4A0A0B;
+  --color-golden: #F5A800;
+  --color-pup-white: #FFFFFF;
+  --color-pup-black: #0A0A0A;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-body);
+  --font-heading: 'Lora', serif;
+  --font-mono: 'DM Mono', 'SF Mono', ui-monospace, monospace;
+  --leading-relaxed: 1.6;
+  --tracking-tight: -0.02em;
+}
+
+:root {
+  --background: #FFFFFF;
+  --foreground: #000000;
+}
+
+.dark {
+  --background: #0D0D0D;
+  --foreground: #F4F4F4;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body);
+}
