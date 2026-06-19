@@ -75,7 +75,7 @@ export default function FacultyAttendanceScreen() {
         <Text style={[styles.sectionTitle, isDark && styles.textGolden]}>By Subject</Text>
 
         {summaries.map((s) => (
-          <View key={s.subjectId} style={[styles.subjectCard, isDark && styles.cardDark]}>
+          <View key={s.sectionId} style={[styles.subjectCard, isDark && styles.cardDark]}>
             <Text style={[styles.subjectName, isDark && styles.textWhite]}>{s.subjectName}</Text>
             <Text style={[styles.subjectSessions, isDark && styles.textWhite50]}>
               Total sessions: {s.totalSessions}

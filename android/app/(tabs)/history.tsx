@@ -15,7 +15,7 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
   { key: 'absent', label: 'Absent' },
 ]
 
-const subjectsMap = new Map(api.getSubjects().map((s) => [s.id, s]))
+const sectionsMap = new Map(api.getSections().map((s) => [s.id, s]))
 
 export default function HistoryScreen() {
   const { isDark, toggle } = useTheme()
@@ -88,7 +88,8 @@ export default function HistoryScreen() {
           </View>
         ) : (
           filteredRecords.map((record) => {
-            const subject = subjectsMap.get(record.subjectId)
+            const section = sectionsMap.get(record.sectionId)
+            const subject = section ? api.getSubject(section.subjectId) : undefined
             const statusIcon = record.status === 'present' ? 'check-circle' : record.status === 'late' ? 'warning' : record.status === 'absent' ? 'cancel' : 'help'
             const iconColor = record.status === 'present' ? '#F5A800' : record.status === 'late' ? (isDark ? '#F5A800' : '#7B1113') : (isDark ? '#EF4444' : '#4A0A0B')
             return (
@@ -98,7 +99,7 @@ export default function HistoryScreen() {
                 </View>
                 <View style={styles.recordInfo}>
                   <Text style={[styles.recordSubject, isDark && styles.textWhite]}>
-                    {subject?.name ?? record.subjectId}
+                    {subject?.name ?? record.sectionId}
                   </Text>
                   <View style={styles.recordMeta}>
                     <Text style={[styles.recordDate, isDark && styles.textWhite50]}>

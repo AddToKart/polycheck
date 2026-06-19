@@ -34,7 +34,10 @@ export default function FacultyReportsScreen() {
   if (!currentUser) return null
 
   const filteredSummaries = summaries.filter((s) => {
-    if (selectedSubject && s.subjectId !== selectedSubject) return false
+    if (selectedSubject) {
+      const sectionIds = api.getSections(selectedSubject).map(sec => sec.id)
+      if (!sectionIds.includes(s.sectionId)) return false
+    }
     return true
   })
 
@@ -140,7 +143,7 @@ export default function FacultyReportsScreen() {
         <Text style={[styles.sectionTitle, isDark && styles.textGolden]}>Summary by Subject</Text>
 
         {filteredSummaries.map((s) => (
-          <View key={s.subjectId} style={[styles.subjectSummaryCard, isDark && styles.cardDark]}>
+          <View key={s.sectionId} style={[styles.subjectSummaryCard, isDark && styles.cardDark]}>
             <Text style={[styles.subjectName, isDark && styles.textWhite]}>{s.subjectName}</Text>
             <View style={styles.summaryGrid}>
               <View style={styles.gridCell}>

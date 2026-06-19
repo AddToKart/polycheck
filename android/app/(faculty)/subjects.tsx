@@ -17,7 +17,7 @@ export default function FacultySubjectsScreen() {
     const cu = api.getCurrentUser()
     if (cu) {
       setUser(cu)
-      setSubjects(api.getSubjects(cu.id))
+      setSubjects(api.getSubjects())
     }
   }, [])
 
@@ -46,7 +46,9 @@ export default function FacultySubjectsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {subjects.map((subject) => (
+        {subjects.map((subject) => {
+          const sectionCount = api.getSections().filter((s) => s.subjectId === subject.id).length
+          return (
           <Pressable
             key={subject.id}
             onPress={() => router.push(`/(faculty)/subjects/${subject.id}`)}
@@ -58,39 +60,32 @@ export default function FacultySubjectsScreen() {
               <View style={[styles.cardAccent, isDark && styles.cardAccentDark]} />
               <View style={styles.cardBody}>
                 <Text style={[styles.subjectName, isDark && styles.textWhite]}>{subject.name}</Text>
-                <Text style={[styles.subjectMeta, isDark && styles.textWhite50]}>
-                  {subject.code} · Section {subject.section}
-                </Text>
+                <Text style={[styles.subjectMeta, isDark && styles.textWhite50]}>{subject.code}</Text>
+                {subject.description ? (
+                  <Text style={[styles.description, isDark && styles.textWhite50]}>{subject.description}</Text>
+                ) : null}
                 <View style={styles.subjectDetails}>
                   <View style={styles.detailRow}>
-                    <MaterialIcons name="room" size={14} color="#888" />
-                    <Text style={[styles.detailText, isDark && styles.textWhite50]}>Room: {subject.room}</Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <MaterialIcons name="calendar-today" size={14} color="#888" />
-                    <Text style={[styles.detailText, isDark && styles.textWhite50]}>
-                      {subject.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')}
-                    </Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <MaterialIcons name="person" size={14} color="#888" />
-                    <Text style={[styles.detailText, isDark && styles.textWhite50]}>Teacher: {subject.teacherName}</Text>
-                  </View>
-                  <View style={styles.detailRow}>
                     <MaterialIcons name="people" size={14} color="#888" />
-                    <Text style={[styles.detailText, isDark && styles.textWhite50]}>Students: {subject.studentCount} enrolled</Text>
+                    <Text style={[styles.detailText, isDark && styles.textWhite50]}>{sectionCount} section{sectionCount !== 1 ? 's' : ''}</Text>
                   </View>
-                  <View style={styles.detailRow}>
-                    <MaterialIcons name="vpn-key" size={14} color="#888" />
-                    <Text style={[styles.detailText, isDark && styles.textWhite50]}>
-                      Code: <Text style={[styles.enrollmentCode, isDark && styles.textGolden]}>{subject.enrollmentCode}</Text>
-                    </Text>
-                  </View>
+                </View>
+                <View style={[styles.cardActions, { borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : '#F0F0F0' }]}>
+                  <TouchableOpacity
+                    style={[styles.viewBtn, isDark && styles.viewBtnDark]}
+                    onPress={() => router.push(`/(faculty)/subjects/${subject.id}`)}
+                    accessibilityRole="button"
+                    accessibilityLabel="View sections"
+                  >
+                    <MaterialIcons name="list" size={16} color={isDark ? '#4A0A0B' : '#FFF'} />
+                    <Text style={[styles.viewBtnText, isDark && styles.viewBtnTextDark]}>View Sections</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
           </Pressable>
-        ))}
+          )
+        })}
         {subjects.length === 0 && (
           <Text style={[styles.empty, isDark && styles.textWhite50]}>No subjects yet.</Text>
         )}
@@ -119,9 +114,14 @@ const styles = StyleSheet.create({
   cardBody: { padding: 20, paddingLeft: 24 },
   subjectName: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#333' },
   subjectMeta: { fontSize: 13, fontFamily: fonts.body, color: '#888', marginTop: 2 },
+  description: { fontSize: 13, fontFamily: fonts.body, color: '#888', marginTop: 4, lineHeight: 18 },
   subjectDetails: { marginTop: 12, gap: 8 },
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   detailText: { fontSize: 13, fontFamily: fonts.body, color: '#888', flex: 1 },
-  enrollmentCode: { fontFamily: fonts.mono, fontWeight: '700', color: '#7B1113' },
+  cardActions: { flexDirection: 'row', gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
+  viewBtn: { backgroundColor: '#7B1113', paddingHorizontal: 14, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'center' },
+  viewBtnDark: { backgroundColor: '#F5A800' },
+  viewBtnText: { color: '#FFF', fontSize: 12, fontWeight: '600', fontFamily: fonts.bodySemiBold },
+  viewBtnTextDark: { color: '#4A0A0B' },
   empty: { textAlign: 'center', fontFamily: fonts.body, paddingVertical: 60, color: '#BBB' },
 })

@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { api } from '@/lib/mock-api'
-import type { Student, Subject, AttendanceRecord } from '@polycheck/shared'
+import type { Student, Section, AttendanceRecord } from '@polycheck/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import StatusBadge from '@/components/StatusBadge'
@@ -37,7 +38,7 @@ const statCards = [
 export default function StudentDashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<Student | null>(null)
-  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [sections, setSections] = useState<Section[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard')
   const [isIdModalOpen, setIsIdModalOpen] = useState(false)
@@ -51,7 +52,7 @@ export default function StudentDashboardPage() {
     }
     setUser(cu as Student)
     if (cu.studentId) {
-      setSubjects(api.getStudentSubjects(cu.studentId))
+      setSections(api.getStudentSections(cu.id))
       setRecords(api.getAttendanceForStudent(cu.id))
     }
   }, [router])
@@ -59,6 +60,13 @@ export default function StudentDashboardPage() {
   const handleLogout = () => {
     api.logout()
     router.push('/')
+  }
+
+  const sectionSubjectName = (sectionId: string) => {
+    const sec = sections.find((s) => s.id === sectionId)
+    if (!sec) return sectionId
+    const subj = api.getSubject(sec.subjectId)
+    return subj?.name ?? sectionId
   }
 
   if (!user) return null
@@ -351,7 +359,7 @@ export default function StudentDashboardPage() {
                               >
                                 <td className="px-6 py-4">
                                   <span className="font-bold text-foreground">
-                                    {subjects.find((s) => s.id === r.subjectId)?.name ?? r.subjectId}
+                    {sectionSubjectName(r.sectionId)}
                                   </span>
                                 </td>
                                 <td className="px-6 py-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">
@@ -382,44 +390,49 @@ export default function StudentDashboardPage() {
           {/* My Subjects Tab */}
           {activeTab === 'subjects' && (
             <div className="grid gap-6 sm:grid-cols-2">
-              {subjects.map((subject) => (
-                <Card key={subject.id} className="rounded-none border-zinc-300 dark:border-zinc-800 shadow-none hover:border-maroon dark:hover:border-golden transition-colors group bg-zinc-50 dark:bg-zinc-900/50">
-                  <div className="border-l-4 border-maroon dark:border-golden h-full flex flex-col">
-                    <CardHeader className="pb-4 pt-6 px-6">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">
-                          {subject.code}
-                        </span>
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-                          Sec {subject.section}
-                        </span>
-                      </div>
-                      <CardTitle className="text-xl font-heading font-bold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors line-clamp-2 leading-tight">
-                        {subject.name}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="px-6 pb-6 flex-1 flex flex-col">
-                      <div className="space-y-3 text-xs font-medium text-zinc-600 dark:text-zinc-400 flex-1 uppercase tracking-wider">
-                        <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
-                          <span className="text-zinc-400">Instructor</span>
-                          <span className="text-foreground text-right">{subject.teacherName}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
-                          <span className="text-zinc-400">Room</span>
-                          <span className="text-foreground text-right">{subject.room}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
-                          <span className="text-zinc-400">Schedule</span>
-                          <span className="text-foreground text-right">
-                            {subject.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')}
+              {sections.map((section) => {
+                const subj = api.getSubject(section.subjectId)
+                return (
+                <Link key={section.id} href={`/student/subjects/${section.id}`} className="block group">
+                  <Card className="rounded-none border-zinc-300 dark:border-zinc-800 shadow-none hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50 cursor-pointer">
+                    <div className="border-l-4 border-maroon dark:border-golden h-full flex flex-col">
+                      <CardHeader className="pb-4 pt-6 px-6">
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">
+                            {subj?.code}
+                          </span>
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                            Sec {section.section}
                           </span>
                         </div>
-                      </div>
-                    </CardContent>
-                  </div>
-                </Card>
-              ))}
-              {subjects.length === 0 && (
+                        <CardTitle className="text-xl font-heading font-bold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors line-clamp-2 leading-tight">
+                          {subj?.name}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-6 pb-6 flex-1 flex flex-col">
+                        <div className="space-y-3 text-xs font-medium text-zinc-600 dark:text-zinc-400 flex-1 uppercase tracking-wider">
+                          <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
+                            <span className="text-zinc-400">Instructor</span>
+                            <span className="text-foreground text-right">{section.teacherName}</span>
+                          </div>
+                          <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
+                            <span className="text-zinc-400">Room</span>
+                            <span className="text-foreground text-right">{section.room}</span>
+                          </div>
+                          <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
+                            <span className="text-zinc-400">Schedule</span>
+                            <span className="text-foreground text-right">
+                              {section.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')}
+                            </span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </div>
+                  </Card>
+                </Link>
+                )
+              })}
+              {sections.length === 0 && (
                 <div className="col-span-full border border-dashed border-zinc-300 dark:border-zinc-700 p-16 text-center bg-zinc-50 dark:bg-zinc-900/20">
                   <p className="text-xl font-heading font-bold text-zinc-400 mb-2">NO ENROLLMENTS</p>
                   <p className="text-xs uppercase tracking-widest text-zinc-500">Contact your instructor for the subject enrollment code.</p>
@@ -454,7 +467,7 @@ export default function StudentDashboardPage() {
                           className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                         >
                           <td className="px-6 py-4 font-bold text-foreground">
-                            {subjects.find((s) => s.id === r.subjectId)?.name ?? r.subjectId}
+                            {sectionSubjectName(r.sectionId)}
                           </td>
                           <td className="px-6 py-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">
                              {new Date(r.timestamp).toLocaleDateString()} &mdash; {new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

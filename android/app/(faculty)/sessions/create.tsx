@@ -7,12 +7,12 @@ import { api } from '../../../services/mock-api'
 import { fonts } from '../../../theme/typography'
 import { useTheme } from '../../../theme/ThemeContext'
 import MapView from '../../../components/MapView'
-import type { User, Subject } from '@polycheck/shared'
+import type { User, Section } from '@polycheck/shared'
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const MINUTES = [0, 15, 30, 45]
 const GRACE_OPTIONS = [0, 5, 10, 15, 20, 25, 30]
-const TOKEN_OPTIONS = [60, 120, 180, 240, 300, 420, 600]
+const VALIDITY_OPTIONS = [5, 10, 15, 20, 25, 30, 45, 60]
 
 function pad(n: number) { return n.toString().padStart(2, '0') }
 
@@ -96,18 +96,18 @@ export default function CreateSessionScreen() {
   const { isDark } = useTheme()
   const [user, setUser] = useState<User | null>(null)
   const [mapFocus, setMapFocus] = useState(false)
-  const [subjects, setSubjects] = useState<Subject[]>([])
-  const [subjectId, setSubjectId] = useState('')
+  const [sections, setSections] = useState<Section[]>([])
+  const [sectionId, setSectionId] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')
   const [room, setRoom] = useState('')
   const [gracePeriod, setGracePeriod] = useState(15)
-  const [tokenWindow, setTokenWindow] = useState(180)
+  const [qrValidity, setQrValidity] = useState(20)
   const [latitude, setLatitude] = useState(14.5863)
   const [longitude, setLongitude] = useState(120.9777)
   const [radius, setRadius] = useState(40)
-  const [showSubjectPicker, setShowSubjectPicker] = useState(false)
+  const [showSectionPicker, setShowSectionPicker] = useState(false)
   const [showStartTime, setShowStartTime] = useState(false)
   const [showEndTime, setShowEndTime] = useState(false)
 
@@ -115,25 +115,26 @@ export default function CreateSessionScreen() {
     const cu = api.getCurrentUser()
     if (cu) {
       setUser(cu)
-      setSubjects(api.getSubjects(cu.id))
+      setSections(api.getSections().filter((s) => s.teacherId === cu.id))
     }
   }, [])
 
   if (!user) return null
 
-  const selectedSubject = subjects.find((s) => s.id === subjectId)
+  const selectedSection = sections.find((s) => s.id === sectionId)
+  const selectedParentSubject = selectedSection ? api.getSubject(selectedSection.subjectId) : undefined
 
   const handleCreate = () => {
-    if (!subjectId || !selectedSubject) return
+    if (!sectionId || !selectedSection) return
     api.createSession({
-      subjectId,
-      subjectName: selectedSubject.name,
+      sectionId,
+      subjectName: selectedParentSubject?.name ?? '',
       date,
       startTime,
       endTime,
       room: room || undefined,
+      qrValidityMinutes: qrValidity,
       gracePeriodMinutes: gracePeriod,
-      tokenWindowSeconds: tokenWindow,
       geofence: { latitude, longitude, radiusMeters: radius },
       teacherId: user.id,
     })
@@ -152,41 +153,44 @@ export default function CreateSessionScreen() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" scrollEnabled={!mapFocus}>
         {/* Subject */}
         <Text style={[styles.label, isDark && styles.labelDark]}>Subject</Text>
-        <TouchableOpacity
-          style={[styles.picker, isDark && styles.pickerDark]}
-          onPress={() => setShowSubjectPicker(!showSubjectPicker)}
-        >
-          <Text style={[styles.pickerText, isDark && styles.textWhite, !selectedSubject && styles.pickerPlaceholder]}>
-            {selectedSubject ? `${selectedSubject.name} (${selectedSubject.code})` : 'Select a subject'}
-          </Text>
-          <MaterialIcons name={showSubjectPicker ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color={isDark ? '#F5A800' : '#888'} />
-        </TouchableOpacity>
-
-        <Modal visible={showSubjectPicker} transparent animationType="fade" onRequestClose={() => setShowSubjectPicker(false)}>
-          <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowSubjectPicker(false)}>
-            <View style={[styles.sheet, isDark && styles.sheetDark]} onStartShouldSetResponder={() => true}>
-              <Text style={[styles.sheetTitle, isDark && styles.sheetTitleDark]}>Select Subject</Text>
-              <ScrollView>
-                {subjects.map((s) => (
-                  <TouchableOpacity
-                    key={s.id}
-                    style={[
-                      styles.sheetOption,
-                      isDark && styles.sheetOptionDarkBorder,
-                      s.id === subjectId && (isDark ? styles.sheetOptionSelectedDark : styles.sheetOptionSelected)
-                    ]}
-                    onPress={() => { setSubjectId(s.id); setShowSubjectPicker(false) }}
-                  >
-                    <Text style={[styles.sheetOptionText, isDark && styles.sheetOptionTextDark, s.id === subjectId && (isDark ? styles.sheetOptionTextActiveDark : styles.sheetOptionTextActive)]}>
-                      {s.name} ({s.code})
-                    </Text>
-                    {s.id === subjectId && <MaterialIcons name="check" size={18} color={isDark ? '#F5A800' : '#7B1113'} />}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
+          <TouchableOpacity
+            style={[styles.picker, isDark && styles.pickerDark]}
+            onPress={() => setShowSectionPicker(!showSectionPicker)}
+          >
+            <Text style={[styles.pickerText, isDark && styles.textWhite, !selectedSection && styles.pickerPlaceholder]}>
+              {selectedSection && selectedParentSubject ? `${selectedParentSubject.name} (${selectedParentSubject.code}) - Sec ${selectedSection.section}` : 'Select a section'}
+            </Text>
+            <MaterialIcons name={showSectionPicker ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color={isDark ? '#F5A800' : '#888'} />
           </TouchableOpacity>
-        </Modal>
+
+          <Modal visible={showSectionPicker} transparent animationType="fade" onRequestClose={() => setShowSectionPicker(false)}>
+            <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowSectionPicker(false)}>
+              <View style={[styles.sheet, isDark && styles.sheetDark]} onStartShouldSetResponder={() => true}>
+                <Text style={[styles.sheetTitle, isDark && styles.sheetTitleDark]}>Select Section</Text>
+                <ScrollView>
+                  {sections.map((s) => {
+                    const parent = api.getSubject(s.subjectId)
+                    return (
+                      <TouchableOpacity
+                        key={s.id}
+                        style={[
+                          styles.sheetOption,
+                          isDark && styles.sheetOptionDarkBorder,
+                          s.id === sectionId && (isDark ? styles.sheetOptionSelectedDark : styles.sheetOptionSelected)
+                        ]}
+                        onPress={() => { setSectionId(s.id); setShowSectionPicker(false) }}
+                      >
+                        <Text style={[styles.sheetOptionText, isDark && styles.sheetOptionTextDark, s.id === sectionId && (isDark ? styles.sheetOptionTextActiveDark : styles.sheetOptionTextActive)]}>
+                          {parent?.name ?? ''} ({parent?.code ?? ''}) - Sec {s.section}
+                        </Text>
+                        {s.id === sectionId && <MaterialIcons name="check" size={18} color={isDark ? '#F5A800' : '#7B1113'} />}
+                      </TouchableOpacity>
+                    )
+                  })}
+                </ScrollView>
+              </View>
+            </TouchableOpacity>
+          </Modal>
 
         {/* Date */}
         <Text style={[styles.label, isDark && styles.labelDark]}>Date</Text>
@@ -231,7 +235,7 @@ export default function CreateSessionScreen() {
           />
         </View>
 
-        {/* Grace Period + Token Window as selector rows */}
+        {/* Grace Period + QR Validity as selector rows */}
         <View style={styles.row}>
           <View style={styles.half}>
             <Text style={[styles.label, isDark && styles.labelDark]}>Grace Period</Text>
@@ -260,10 +264,10 @@ export default function CreateSessionScreen() {
             </ScrollView>
           </View>
           <View style={styles.half}>
-            <Text style={[styles.label, isDark && styles.labelDark]}>Token Window</Text>
+            <Text style={[styles.label, isDark && styles.labelDark]}>QR Validity (default)</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionRow}>
-              {TOKEN_OPTIONS.map((t) => {
-                const isActive = tokenWindow === t
+              {VALIDITY_OPTIONS.map((t) => {
+                const isActive = qrValidity === t
                 return (
                   <TouchableOpacity
                     key={t}
@@ -273,13 +277,13 @@ export default function CreateSessionScreen() {
                       isActive && styles.optChipActive,
                       isActive && isDark && styles.optChipActiveDark
                     ]}
-                    onPress={() => setTokenWindow(t)}
+                    onPress={() => setQrValidity(t)}
                   >
                     <Text style={[
                       styles.optChipText,
                       isDark && styles.optChipTextDark,
                       isActive && styles.optChipTextActive
-                    ]}>{t < 120 ? `${t}s` : `${Math.floor(t / 60)}m`}</Text>
+                    ]}>{t} min</Text>
                   </TouchableOpacity>
                 )
               })}
@@ -307,9 +311,9 @@ export default function CreateSessionScreen() {
 
         {/* Create button */}
         <TouchableOpacity
-          style={[styles.createBtn, isDark && styles.createBtnDark, !subjectId && styles.createBtnDisabled]}
+          style={[styles.createBtn, isDark && styles.createBtnDark, !sectionId && styles.createBtnDisabled]}
           onPress={handleCreate}
-          disabled={!subjectId}
+          disabled={!sectionId}
           accessibilityRole="button"
           accessibilityLabel="Create session"
         >

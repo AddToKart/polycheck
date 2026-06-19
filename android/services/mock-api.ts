@@ -1,6 +1,7 @@
 import {
   mockUsers,
   mockSubjects,
+  mockSections,
   mockSessions,
   mockAttendanceRecords,
   mockStudents,
@@ -8,12 +9,13 @@ import {
   mockTeachers,
   mockAttendanceSummaries,
 } from '@polycheck/shared/mock'
-import { isWithinGeofence } from '@polycheck/shared/utils'
+import { isWithinGeofence, isTokenInValidityWindow, createQRTokenData, decodeTokenPayload } from '@polycheck/shared/utils'
 import type {
   User,
   Student,
   Teacher,
   Subject,
+  Section,
   Session,
   AttendanceRecord,
   AttendanceSummary,
@@ -54,53 +56,67 @@ export const api = {
     return currentUser
   },
 
-  getSubjects(teacherId?: string): Subject[] {
-    if (teacherId) return mockSubjects.filter((s) => s.teacherId === teacherId)
-    return mockSubjects
-  },
-
-  createSubject(data: {
-    name: string
-    code: string
-    section: string
-    room: string
-    schedule: { day: string; startTime: string; endTime: string; room?: string }[]
-    semester: string
-    enrollmentCode: string
-    teacherId: string
-    teacherName: string
-  }): Subject {
-    const now = new Date().toISOString()
-    const expiry = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
-    const subject: Subject = {
-      id: `subj-${Date.now()}`,
-      ...data,
-      schedule: data.schedule.map((s) => ({ day: s.day as Subject['schedule'][0]['day'], startTime: s.startTime, endTime: s.endTime, room: s.room })),
-      enrollmentCodeExpiry: expiry,
-      studentCount: 0,
-      createdAt: now,
-      updatedAt: now,
-    }
-    mockSubjects.push(subject)
-    return subject
+  getSubjects(): Subject[] {
+    return [...mockSubjects]
   },
 
   getSubject(id: string): Subject | undefined {
     return mockSubjects.find((s) => s.id === id)
   },
 
-  getSubjectStudents(subjectId: string): (Student & { attendance: { present: number; late: number; absent: number } })[] {
+  createSubject(data: { name: string; code: string; description?: string }): Subject {
+    const now = new Date().toISOString()
+    const subject: Subject = { id: `subj-${Date.now()}`, ...data, createdAt: now, updatedAt: now }
+    mockSubjects.push(subject)
+    return subject
+  },
+
+  getSections(subjectId?: string): Section[] {
+    if (subjectId) return mockSections.filter((s) => s.subjectId === subjectId)
+    return [...mockSections]
+  },
+
+  getSection(id: string): Section | undefined {
+    return mockSections.find((s) => s.id === id)
+  },
+
+  createSection(data: {
+    subjectId: string
+    section: string
+    room: string
+    schedule: { day: string; startTime: string; endTime: string; room?: string }[]
+    semester: string
+    teacherId: string
+    teacherName: string
+  }): Section {
+    const now = new Date().toISOString()
+    const expiry = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+    const section: Section = {
+      id: `sec-${Date.now()}`,
+      ...data,
+      schedule: data.schedule.map((s) => ({ day: s.day as Section['schedule'][0]['day'], startTime: s.startTime, endTime: s.endTime, room: s.room })),
+      enrollmentCode: '',
+      enrollmentCodeExpiry: expiry,
+      studentCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    }
+    mockSections.push(section)
+    return section
+  },
+
+  getSectionStudents(sectionId: string): (Student & { attendance: { present: number; late: number; absent: number } })[] {
     const enrolledIds = mockEnrollments
-      .filter((e) => e.subjectId === subjectId)
+      .filter((e) => e.sectionId === sectionId)
       .map((e) => e.studentId)
-    const subjectSessionIds = mockSessions
-      .filter((s) => s.subjectId === subjectId)
+    const sectionSessionIds = mockSessions
+      .filter((s) => s.sectionId === sectionId)
       .map((s) => s.id)
     return mockStudents
       .filter((s) => enrolledIds.includes(s.id))
       .map((student) => {
         const records = mockAttendanceRecords.filter(
-          (r) => r.studentId === student.id && subjectSessionIds.includes(r.sessionId)
+          (r) => r.studentId === student.id && sectionSessionIds.includes(r.sessionId)
         )
         return {
           ...student,
@@ -113,22 +129,22 @@ export const api = {
       })
   },
 
-  resetEnrollmentCode(subjectId: string): string {
-    const subject = mockSubjects.find((s) => s.id === subjectId)
-    if (!subject) return ''
-    const prefix = subject.name.split(' ').filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 4)
+  resetEnrollmentCode(sectionId: string): string {
+    const section = mockSections.find((s) => s.id === sectionId)
+    if (!section) return ''
+    const prefix = mockSubjects.find((s) => s.id === section.subjectId)?.name.split(' ').filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 4) ?? 'CODE'
     const suffix = Math.random().toString(36).substring(2, 5).toUpperCase()
     const newCode = `${prefix}${suffix}`
-    subject.enrollmentCode = newCode
-    subject.enrollmentCodeExpiry = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+    section.enrollmentCode = newCode
+    section.enrollmentCodeExpiry = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
     return newCode
   },
 
-  disableEnrollmentCode(subjectId: string): void {
-    const subject = mockSubjects.find((s) => s.id === subjectId)
-    if (subject) {
-      subject.enrollmentCode = ''
-      subject.enrollmentCodeExpiry = new Date(0).toISOString()
+  disableEnrollmentCode(sectionId: string): void {
+    const section = mockSections.find((s) => s.id === sectionId)
+    if (section) {
+      section.enrollmentCode = ''
+      section.enrollmentCodeExpiry = new Date(0).toISOString()
     }
   },
 
@@ -141,14 +157,14 @@ export const api = {
   },
 
   createSession(data: {
-    subjectId: string
+    sectionId: string
     subjectName: string
     date: string
     startTime: string
     endTime: string
     room?: string
+    qrValidityMinutes: number
     gracePeriodMinutes: number
-    tokenWindowSeconds: number
     geofence: { latitude: number; longitude: number; radiusMeters: number }
     teacherId: string
   }): Session {
@@ -163,8 +179,25 @@ export const api = {
     return session
   },
 
-  activateSession(_sessionId: string): void {
-    // Mock: session is activated
+  generateQrCode(sessionId: string, validityMinutes: number): Session | undefined {
+    const session = mockSessions.find((s) => s.id === sessionId)
+    if (!session) return undefined
+    const now = Date.now()
+    const expiresAt = new Date(now + validityMinutes * 60 * 1000).toISOString()
+    const user = currentUser
+    const qrToken = createQRTokenData(
+      sessionId, session.sectionId,
+      user?.id ?? session.teacherId,
+      user && 'fullName' in user ? (user as User).fullName : session.subjectName,
+      validityMinutes,
+      session.gracePeriodMinutes,
+    )
+    session.qrToken = qrToken
+    session.qrTokenExpiresAt = expiresAt
+    session.qrGeneratedAt = new Date(now).toISOString()
+    session.isActive = true
+    session.qrValidityMinutes = validityMinutes
+    return session
   },
 
   getStudents(): Student[] {
@@ -180,10 +213,20 @@ export const api = {
   },
 
   getMySubjects(studentId: string): Subject[] {
-    const enrolledIds = mockEnrollments
+    const enrolledSectionIds = mockEnrollments
       .filter((e) => e.studentId === studentId)
-      .map((e) => e.subjectId)
-    return mockSubjects.filter((s) => enrolledIds.includes(s.id))
+      .map((e) => e.sectionId)
+    const subjectIds = mockSections
+      .filter((s) => enrolledSectionIds.includes(s.id))
+      .map((s) => s.subjectId)
+    return mockSubjects.filter((s) => subjectIds.includes(s.id))
+  },
+
+  getStudentSections(studentId: string): Section[] {
+    const enrolledSectionIds = mockEnrollments
+      .filter((e) => e.studentId === studentId)
+      .map((e) => e.sectionId)
+    return mockSections.filter((s) => enrolledSectionIds.includes(s.id))
   },
 
   getAttendanceRecords(sessionId?: string): AttendanceRecord[] {
@@ -195,10 +238,10 @@ export const api = {
 
   getAttendanceSummaries(teacherId?: string): AttendanceSummary[] {
     if (teacherId) {
-      const teacherSubjects = mockSubjects
+      const teacherSectionIds = mockSections
         .filter((s) => s.teacherId === teacherId)
         .map((s) => s.id)
-      return mockAttendanceSummaries.filter((s) => teacherSubjects.includes(s.subjectId))
+      return mockAttendanceSummaries.filter((s) => teacherSectionIds.includes(s.sectionId))
     }
     return [...mockAttendanceSummaries]
   },
@@ -212,16 +255,16 @@ export const api = {
     return mockStudents.find((s) => s.id === studentId)
   },
 
-  getSubjectSessions(subjectId: string): Session[] {
-    return mockSessions.filter((s) => s.subjectId === subjectId)
+  getSectionSessions(sectionId: string): Session[] {
+    return mockSessions.filter((s) => s.sectionId === sectionId)
   },
 
-  getStudentAttendanceForSubject(studentId: string, subjectId: string): AttendanceRecord[] {
-    const subjectSessionIds = mockSessions
-      .filter((s) => s.subjectId === subjectId)
+  getStudentAttendanceForSection(studentId: string, sectionId: string): AttendanceRecord[] {
+    const sectionSessionIds = mockSessions
+      .filter((s) => s.sectionId === sectionId)
       .map((s) => s.id)
     return mockAttendanceRecords.filter(
-      (r) => r.studentId === studentId && subjectSessionIds.includes(r.sessionId)
+      (r) => r.studentId === studentId && sectionSessionIds.includes(r.sessionId)
     )
   },
 
@@ -234,14 +277,14 @@ export const api = {
     return record
   },
 
-  removeStudentFromSubject(subjectId: string, studentId: string): boolean {
+  removeStudentFromSection(sectionId: string, studentId: string): boolean {
     const idx = mockEnrollments.findIndex(
-      (e) => e.subjectId === subjectId && e.studentId === studentId
+      (e) => e.sectionId === sectionId && e.studentId === studentId
     )
     if (idx === -1) return false
     mockEnrollments.splice(idx, 1)
-    const subject = mockSubjects.find((s) => s.id === subjectId)
-    if (subject) subject.studentCount = Math.max(0, subject.studentCount - 1)
+    const section = mockSections.find((s) => s.id === sectionId)
+    if (section) section.studentCount = Math.max(0, section.studentCount - 1)
     return true
   },
 
@@ -254,6 +297,8 @@ export const api = {
     const session = mockSessions.find((s) => s.id === sessionId)
     if (!session)
       return { success: false, status: 'absent', message: 'Session not found' }
+    if (!session.isActive)
+      return { success: false, status: 'absent', message: 'Session is not active' }
 
     const inRange = isWithinGeofence(
       lat,
@@ -269,6 +314,102 @@ export const api = {
         message: `You are outside the ${session.geofence.radiusMeters}m geofence`,
       }
 
-    return { success: true, status: 'present', message: 'Check-in successful!' }
+    if (!session.qrTokenExpiresAt) {
+      return { success: true, status: 'present', message: 'Check-in successful!' }
+    }
+
+    const qrExpiry = new Date(session.qrTokenExpiresAt).getTime()
+    const now = Date.now()
+    if (now <= qrExpiry) {
+      return { success: true, status: 'present', message: 'Check-in successful!' }
+    }
+
+    const graceEnd = qrExpiry + session.gracePeriodMinutes * 60 * 1000
+    if (now <= graceEnd) {
+      return { success: true, status: 'late', message: 'You are late but within grace period.' }
+    }
+
+    return { success: false, status: 'absent', message: 'QR token expired and grace period has passed.' }
+  },
+
+  submitScan(
+    sessionId: string,
+    studentId: string,
+    studentName: string,
+    lat: number,
+    lon: number,
+    deviceId: string,
+  ): AttendanceRecord | { error: string } {
+    const session = mockSessions.find((s) => s.id === sessionId)
+    if (!session) return { error: 'Session not found' }
+
+    const check = this.checkAttendance(sessionId, studentId, lat, lon)
+    if (!check.success) return { error: check.message ?? 'Check-in rejected' }
+
+    const existing = mockAttendanceRecords.find(
+      (r) => r.sessionId === sessionId && r.studentId === studentId
+    )
+    if (existing) {
+      existing.status = check.status
+      existing.timestamp = new Date().toISOString()
+      existing.coordinates = { latitude: lat, longitude: lon }
+      return existing
+    }
+
+    const record: AttendanceRecord = {
+      id: `a-${Date.now()}`,
+      sessionId,
+      sectionId: session.sectionId,
+      studentId,
+      studentName,
+      timestamp: new Date().toISOString(),
+      status: check.status,
+      coordinates: { latitude: lat, longitude: lon },
+      deviceId,
+      isSynced: true,
+      syncedAt: new Date().toISOString(),
+    }
+    mockAttendanceRecords.push(record)
+    return record
+  },
+
+  endSession(sessionId: string): Session | undefined {
+    const session = mockSessions.find((s) => s.id === sessionId)
+    if (!session) return undefined
+    session.isActive = false
+    const sessionRecords = mockAttendanceRecords.filter(
+      (r) => r.sessionId === sessionId && r.status === 'pending'
+    )
+    for (const record of sessionRecords) {
+      record.status = 'absent'
+    }
+    return session
+  },
+
+  getDisputedRecords(sessionId?: string): AttendanceRecord[] {
+    const disputed = mockAttendanceRecords.filter((r) => r.status === 'disputed')
+    if (sessionId) return disputed.filter((r) => r.sessionId === sessionId)
+    return disputed
+  },
+
+  resolveDispute(recordId: string, resolution: 'accept' | 'reject' | 'override', newStatus?: AttendanceStatus): AttendanceRecord | undefined {
+    const record = mockAttendanceRecords.find((r) => r.id === recordId)
+    if (!record || record.status !== 'disputed') return undefined
+
+    if (resolution === 'accept') {
+      record.status = 'present'
+      record.disputeReason = undefined
+      record.notes = record.notes ? `${record.notes}; Dispute accepted` : 'Dispute accepted'
+    } else if (resolution === 'reject') {
+      record.status = 'absent'
+      record.disputeReason = undefined
+      record.notes = record.notes ? `${record.notes}; Dispute rejected` : 'Dispute rejected'
+    } else if (resolution === 'override' && newStatus) {
+      record.status = newStatus
+      record.disputeReason = undefined
+      record.manuallySet = true
+      record.notes = record.notes ? `${record.notes}; Dispute overridden to ${newStatus}` : `Dispute overridden to ${newStatus}`
+    }
+    return record
   },
 }

@@ -1,4 +1,4 @@
-export type AttendanceStatus = 'present' | 'late' | 'absent' | 'pending'
+export type AttendanceStatus = 'present' | 'late' | 'absent' | 'pending' | 'disputed'
 
 export type DisputeReason =
   | 'outside_geofence'
@@ -11,7 +11,7 @@ export type DisputeReason =
 export interface AttendanceRecord {
   id: string
   sessionId: string
-  subjectId: string
+  sectionId: string
   studentId: string
   studentName: string
   studentProgram?: string
@@ -25,14 +25,16 @@ export interface AttendanceRecord {
   isSynced: boolean
   syncedAt?: string
   disputeReason?: DisputeReason
+  manuallySet?: boolean
   notes?: string
 }
 
 export interface AttendanceSummary {
-  subjectId: string
+  sectionId: string
   subjectName: string
   totalSessions: number
   present: number
   late: number
   absent: number
+  disputed: number
 }

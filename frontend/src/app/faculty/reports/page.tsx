@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Download, Filter } from 'lucide-react'
 import { api } from '@/lib/mock-api'
-import type { User, Subject, Teacher, AttendanceSummary } from '@polycheck/shared'
+import type { User, Subject, Section, Teacher } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -14,8 +14,8 @@ export default function ReportsPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
+  const [sections, setSections] = useState<Section[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
-  const [summaries, setSummaries] = useState<AttendanceSummary[]>([])
   const [selectedSubject, setSelectedSubject] = useState('')
   const [selectedTeacher, setSelectedTeacher] = useState('')
   const [dateFrom, setDateFrom] = useState('')
@@ -29,16 +29,83 @@ export default function ReportsPage() {
     }
     setUser(cu)
     setSubjects(api.getSubjects())
+    setSections(api.getSections())
     setTeachers(api.getTeachers())
-    setSummaries(api.getAttendanceSummaries())
   }, [router])
 
   if (!user) return null
 
-  const filteredSummaries = summaries.filter((s) => {
-    if (selectedSubject && s.subjectId !== selectedSubject) return false
-    return true
-  })
+  const subjectSectionIds = useMemo(() => {
+    if (!selectedSubject) return null
+    return new Set(sections.filter((s) => s.subjectId === selectedSubject).map((s) => s.id))
+  }, [selectedSubject, sections])
+
+  const teacherSectionIds = useMemo(() => {
+    if (!selectedTeacher) return null
+    return new Set(sections.filter((s) => s.teacherId === selectedTeacher).map((s) => s.id))
+  }, [selectedTeacher, sections])
+
+  const allRecords = useMemo(() => api.getAttendanceRecords(), [])
+
+  const filteredRecords = useMemo(() => {
+    return allRecords.filter((r) => {
+      if (subjectSectionIds && !subjectSectionIds.has(r.sectionId)) return false
+      if (teacherSectionIds && !teacherSectionIds.has(r.sectionId)) return false
+      if (dateFrom && r.timestamp < new Date(dateFrom).toISOString()) return false
+      if (dateTo) {
+        const toEnd = new Date(dateTo)
+        toEnd.setHours(23, 59, 59, 999)
+        if (r.timestamp > toEnd.toISOString()) return false
+      }
+      return true
+    })
+  }, [allRecords, subjectSectionIds, teacherSectionIds, dateFrom, dateTo])
+
+  const subjectMap = useMemo(() => {
+    const map = new Map<string, Subject>()
+    for (const s of subjects) map.set(s.id, s)
+    return map
+  }, [subjects])
+
+  const sectionSubjectMap = useMemo(() => {
+    const map = new Map<string, Subject>()
+    for (const sec of sections) {
+      const subj = subjectMap.get(sec.subjectId)
+      if (subj) map.set(sec.id, subj)
+    }
+    return map
+  }, [sections, subjectMap])
+
+  const sessionIdsBySection = useMemo(() => {
+    const map = new Map<string, Set<string>>()
+    const sessions = api.getSessions()
+    for (const s of sessions) {
+      if (!map.has(s.sectionId)) map.set(s.sectionId, new Set())
+      map.get(s.sectionId)!.add(s.id)
+    }
+    return map
+  }, [])
+
+  const filteredSummaries = useMemo(() => {
+    const grouped = new Map<string, { present: number; late: number; absent: number }>()
+    for (const r of filteredRecords) {
+      if (!grouped.has(r.sectionId)) grouped.set(r.sectionId, { present: 0, late: 0, absent: 0 })
+      const g = grouped.get(r.sectionId)!
+      if (r.status === 'present') g.present++
+      else if (r.status === 'late') g.late++
+      else if (r.status === 'absent') g.absent++
+    }
+    return Array.from(grouped.entries()).map(([sectionId, counts]) => {
+      const subj = sectionSubjectMap.get(sectionId)
+      const sessionIds = sessionIdsBySection.get(sectionId)
+      return {
+        sectionId,
+        subjectName: subj?.name ?? sectionId,
+        totalSessions: sessionIds?.size ?? 0,
+        ...counts,
+      }
+    })
+  }, [filteredRecords, sectionSubjectMap, sessionIdsBySection])
 
   const total = filteredSummaries.reduce(
     (acc, s) => ({
@@ -165,7 +232,7 @@ export default function ReportsPage() {
                   </thead>
                   <tbody>
                     {filteredSummaries.map((s) => (
-                      <tr key={s.subjectId} className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                      <tr key={s.sectionId} className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
                         <td className="px-6 py-3 text-zinc-900 dark:text-zinc-100 font-medium">{s.subjectName}</td>
                         <td className="px-4 py-3 text-center text-zinc-600 dark:text-zinc-400">{s.totalSessions}</td>
                         <td className="px-4 py-3 text-center">

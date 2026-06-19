@@ -24,7 +24,7 @@ export interface Student extends User {
   studentId: string
   program: string
   yearLevel: number
-  enrolledSubjectIds: string[]
+  enrolledSectionIds: string[]
 }
 
 export interface SuperAdmin extends User {

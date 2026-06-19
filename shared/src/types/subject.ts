@@ -1,3 +1,12 @@
+export interface Subject {
+  id: string
+  name: string
+  code: string
+  description?: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ScheduleDay {
   day: DayOfWeek
   startTime: string
@@ -7,10 +16,9 @@ export interface ScheduleDay {
 
 export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun'
 
-export interface Subject {
+export interface Section {
   id: string
-  name: string
-  code: string
+  subjectId: string
   section: string
   room: string
   schedule: ScheduleDay[]
@@ -27,6 +35,6 @@ export interface Subject {
 export interface Enrollment {
   id: string
   studentId: string
-  subjectId: string
+  sectionId: string
   enrolledAt: string
 }

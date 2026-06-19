@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { CalendarCheck, MapPin } from 'lucide-react'
 import { api } from '@/lib/mock-api'
-import type { User, Subject } from '@polycheck/shared'
+import type { User, Section } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import MapPicker from '@/components/MapPicker'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -17,15 +17,15 @@ import { Badge } from '@/components/ui/badge'
 export default function CreateSessionPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
-  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [sections, setSections] = useState<Section[]>([])
 
-  const [subjectId, setSubjectId] = useState('')
+  const [sectionId, setSectionId] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')
   const [room, setRoom] = useState('')
   const [gracePeriod, setGracePeriod] = useState(15)
-  const [tokenWindow, setTokenWindow] = useState(180)
+  const [qrValidity, setQrValidity] = useState(20)
   const [latitude, setLatitude] = useState(14.5863)
   const [longitude, setLongitude] = useState(120.9777)
   const [radius, setRadius] = useState(40)
@@ -37,29 +37,30 @@ export default function CreateSessionPage() {
       return
     }
     setUser(cu)
-    setSubjects(api.getSubjects(cu.id))
+    setSections(api.getSections().filter((s) => s.teacherId === cu.id))
   }, [router])
 
   if (!user) return null
 
-  const selectedSubject = subjects.find((s) => s.id === subjectId)
+  const selectedSection = sections.find((s) => s.id === sectionId)
+  const selectedSubject = selectedSection ? api.getSubject(selectedSection.subjectId) : null
 
-  const handleSubjectChange = (id: string) => {
-    setSubjectId(id)
+  const handleSectionChange = (id: string) => {
+    setSectionId(id)
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedSubject) return
+    if (!selectedSection) return
     api.createSession({
-      subjectId: selectedSubject.id,
-      subjectName: selectedSubject.name,
+      sectionId: selectedSection.id,
+      subjectName: selectedSubject?.name ?? '',
       date,
       startTime,
       endTime,
       room: room || undefined,
+      qrValidityMinutes: qrValidity,
       gracePeriodMinutes: gracePeriod,
-      tokenWindowSeconds: tokenWindow,
       geofence: {
         latitude,
         longitude,
@@ -93,20 +94,23 @@ export default function CreateSessionPage() {
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="space-y-2">
-                  <Label htmlFor="subject">Subject</Label>
+                  <Label htmlFor="subject">Subject / Section</Label>
                   <select
                     id="subject"
-                    value={subjectId}
-                    onChange={(e) => handleSubjectChange(e.target.value)}
+                    value={sectionId}
+                    onChange={(e) => handleSectionChange(e.target.value)}
                     className="flex h-10 w-full rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon/30 focus-visible:border-maroon disabled:cursor-not-allowed disabled:opacity-50"
                     required
                   >
-                    <option value="">Select a subject...</option>
-                    {subjects.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.code}) - Section {s.section}
-                      </option>
-                    ))}
+                    <option value="">Select a section...</option>
+                    {sections.map((s) => {
+                      const subj = api.getSubject(s.subjectId)
+                      return (
+                        <option key={s.id} value={s.id}>
+                          {subj?.name} ({subj?.code}) - Section {s.section}
+                        </option>
+                      )
+                    })}
                   </select>
                 </div>
 
@@ -154,23 +158,24 @@ export default function CreateSessionPage() {
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <Label htmlFor="tokenWindow">Token Window</Label>
-                      <Badge variant="default">{tokenWindow}s</Badge>
+                      <Label htmlFor="qrValidity">QR Validity (default)</Label>
+                      <Badge variant="default">{qrValidity} min</Badge>
                     </div>
                     <input
-                      id="tokenWindow"
+                      id="qrValidity"
                       type="range"
-                      min={60}
-                      max={600}
-                      step={30}
-                      value={tokenWindow}
-                      onChange={(e) => setTokenWindow(Number(e.target.value))}
+                      min={5}
+                      max={60}
+                      step={5}
+                      value={qrValidity}
+                      onChange={(e) => setQrValidity(Number(e.target.value))}
                       className="w-full accent-maroon"
                     />
                     <div className="flex justify-between text-xs text-zinc-400">
-                      <span>60s</span>
-                      <span>600s</span>
+                      <span>5 min</span>
+                      <span>60 min</span>
                     </div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Students scanned within this window are Present. After expiry, scans are Late.</p>
                   </div>
                 </div>
               </CardContent>
@@ -201,7 +206,7 @@ export default function CreateSessionPage() {
             </Card>
 
             <div className="flex items-center gap-3">
-              <Button type="submit" disabled={!selectedSubject}>
+              <Button type="submit" disabled={!selectedSection}>
                 Create Session
               </Button>
               <Button variant="ghost" asChild>

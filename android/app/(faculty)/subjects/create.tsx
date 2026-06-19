@@ -109,14 +109,13 @@ export default function CreateSubjectScreen() {
 
   const handleCreate = () => {
     if (!user || !name || !code || !room) return
-    api.createSubject({
-      name,
-      code,
+    const subject = api.createSubject({ name, code })
+    api.createSection({
+      subjectId: subject.id,
       section,
       room,
       schedule,
       semester,
-      enrollmentCode,
       teacherId: user.id,
       teacherName: user.fullName,
     })

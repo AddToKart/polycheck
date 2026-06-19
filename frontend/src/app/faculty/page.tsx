@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/mock-api'
-import type { User, Subject, AttendanceRecord } from '@polycheck/shared'
+import type { User, Section, Session, AttendanceRecord } from '@polycheck/shared'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -28,24 +28,24 @@ import {
 // ============================================================================
 
 function TeacherDashboard({ user }: { user: User }) {
-  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [sections, setSections] = useState<Section[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
 
   useEffect(() => {
-    setSubjects(api.getSubjects(user.id))
-    // For a teacher, get attendance records for their subjects only
-    const teacherSubjects = api.getSubjects(user.id).map(s => s.id)
-    setRecords(api.getAttendanceRecords().filter(r => teacherSubjects.includes(r.subjectId)))
+    const teacherSections = api.getSections().filter((s) => s.teacherId === user.id)
+    setSections(teacherSections)
+    const sectionIds = teacherSections.map((s) => s.id)
+    setRecords(api.getAttendanceRecords().filter((r) => sectionIds.includes(r.sectionId)))
   }, [user.id])
 
   const sessionsToday = api.getSessions().filter((s) => s.date === new Date().toISOString().slice(0, 10)).length
-  const studentsInSubjects = new Set(api.getEnrollments().filter(e => subjects.map(s => s.id).includes(e.subjectId)).map(e => e.studentId)).size
+  const studentsInSubjects = new Set(api.getEnrollments().filter(e => sections.map(s => s.id).includes(e.sectionId)).map(e => e.studentId)).size
   
   const statCards = [
-    { label: 'My Subjects', value: subjects.length, icon: BookOpen },
+    { label: 'My Subjects', value: sections.length, icon: BookOpen },
     { label: 'My Students', value: studentsInSubjects, icon: Users },
     { label: 'Sessions Today', value: sessionsToday, icon: CalendarCheck },
-    { label: 'Disputes', value: 0, icon: ClipboardList },
+    { label: 'Disputes', value: api.getDisputedRecords().length, icon: ClipboardList },
   ]
 
   return (
@@ -101,19 +101,22 @@ function TeacherDashboard({ user }: { user: User }) {
             </Link>
           </CardHeader>
           <CardContent className="p-0">
-            {subjects.slice(0, 5).map((s, i) => (
-              <Link key={s.id} href={`/faculty/subjects/${s.id}`} className={`flex items-center justify-between p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group ${i !== 0 ? 'border-t border-zinc-100 dark:border-zinc-800' : ''}`}>
+            {sections.slice(0, 5).map((sec, i) => {
+              const subj = api.getSubject(sec.subjectId)
+              return (
+              <Link key={sec.id} href={`/faculty/sections/${sec.id}`} className={`flex items-center justify-between p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group ${i !== 0 ? 'border-t border-zinc-100 dark:border-zinc-800' : ''}`}>
                 <div className="min-w-0 flex-1">
-                  <p className="text-base font-bold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors truncate">{s.name}</p>
-                  <p className="text-xs text-zinc-500 uppercase tracking-wider mt-1"><span className="text-maroon dark:text-golden font-medium">{s.code}</span> \ Section {s.section}</p>
+                  <p className="text-base font-bold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors truncate">{subj?.name}</p>
+                  <p className="text-xs text-zinc-500 uppercase tracking-wider mt-1"><span className="text-maroon dark:text-golden font-medium">{subj?.code}</span> \ Section {sec.section}</p>
                 </div>
                 <div className="text-right ml-4">
-                  <span className="block text-xl font-heading font-bold text-foreground">{s.studentCount}</span>
+                  <span className="block text-xl font-heading font-bold text-foreground">{sec.studentCount}</span>
                   <span className="text-[10px] text-zinc-400 uppercase tracking-widest">Students</span>
                 </div>
               </Link>
-            ))}
-            {subjects.length === 0 && <div className="p-12 text-center"><p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">No subjects assigned</p></div>}
+              )
+            })}
+            {sections.length === 0 && <div className="p-12 text-center"><p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">No subjects assigned</p></div>}
           </CardContent>
         </Card>
 
@@ -136,7 +139,7 @@ function TeacherDashboard({ user }: { user: User }) {
               <tbody>
                 {records.slice(0, 10).map((r) => (<tr key={r.id} className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
                   <td className="px-6 py-4"><p className="font-bold text-foreground">{r.studentName}</p><p className="text-xs text-zinc-500">{new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p></td>
-                  <td className="px-6 py-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">{r.subjectId}</td>
+                  <td className="px-6 py-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">{(() => { const sess = api.getSession(r.sessionId); if (!sess) return r.sectionId; const sec = api.getSection(sess.sectionId); if (!sec) return r.sectionId; const subj = api.getSubject(sec.subjectId); return subj?.name ?? r.sectionId; })()}</td>
                   <td className="px-6 py-4 text-right"><StatusBadge status={r.status} /></td>
                 </tr>))}
                 {records.length === 0 && <tr><td colSpan={3} className="p-12 text-center text-sm font-bold text-zinc-400 uppercase tracking-widest">No recent activity</td></tr>}
@@ -157,7 +160,7 @@ function TeacherDashboard({ user }: { user: User }) {
 function SuperAdminDashboard({ user }: { user: User }) {
   const totalFaculty = api.getTeachers().length
   const totalStudents = api.getStudents().length
-  const totalSubjects = api.getSubjects('all').length
+  const totalSubjects = api.getSubjects().length
   
   const statCards = [
     { label: 'Total Faculty', value: totalFaculty, icon: Users },

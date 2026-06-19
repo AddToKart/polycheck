@@ -14,6 +14,7 @@ const statusLabel: Record<AttendanceStatus, string> = {
   late: 'Late',
   absent: 'Absent',
   pending: 'Pending',
+  disputed: 'Disputed',
 }
 
 const SESSION_PAGE_SIZE = 5
@@ -34,8 +35,8 @@ export default function StudentDetailScreen() {
     const s = api.getStudent(studentId)
     if (!s) { router.back(); return }
     setStudent(s)
-    setSessions(api.getSubjectSessions(subjectId))
-    setRecords(api.getStudentAttendanceForSubject(studentId, subjectId))
+    setSessions(api.getSectionSessions(subjectId))
+    setRecords(api.getStudentAttendanceForSection(studentId, subjectId))
     setLoading(false)
   }, [studentId, subjectId])
 
@@ -64,7 +65,7 @@ export default function StudentDetailScreen() {
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
-            api.removeStudentFromSubject(subjectId, studentId)
+            api.removeStudentFromSection(subjectId, studentId)
             router.back()
           },
         },
@@ -87,7 +88,7 @@ export default function StudentDetailScreen() {
     const newRecord: AttendanceRecord = {
       id: `a-manual-${Date.now()}`,
       sessionId: session.id,
-      subjectId: subjectId!,
+      sectionId: subjectId!,
       studentId: studentId!,
       studentName: student?.fullName ?? '',
       studentProgram: student?.program,

@@ -55,17 +55,13 @@ export default function CreateSubjectPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (schedule.length === 0) return
-    const prefix = name.split(' ').filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 4)
-    const suffix = Math.random().toString(36).substring(2, 5).toUpperCase()
-    const enrollmentCode = `${prefix}${suffix}`
-    api.createSubject({
-      name,
-      code,
+    const subj = api.createSubject({ name, code })
+    api.createSection({
+      subjectId: subj.id,
       section,
       room,
       schedule,
       semester,
-      enrollmentCode,
       teacherId: user.id,
       teacherName: user.fullName,
     })

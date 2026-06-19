@@ -1,13 +1,17 @@
 import type { QRTokenPayload } from '../types'
 
-export function isTokenExpired(
+export function isTokenInValidityWindow(
   payload: QRTokenPayload,
   _serverTimeMs?: number
-): boolean {
+): { valid: boolean; inGrace: boolean } {
   const issuedAt = payload.issuedAt
-  const expiresAt = issuedAt + payload.windowDurationSeconds * 1000
+  const validityEnd = issuedAt + payload.validityMinutes * 60 * 1000
+  const graceEnd = validityEnd + payload.gracePeriodMinutes * 60 * 1000
   const now = _serverTimeMs ?? Date.now()
-  return now > expiresAt
+
+  if (now <= validityEnd) return { valid: true, inGrace: false }
+  if (now <= graceEnd) return { valid: true, inGrace: true }
+  return { valid: false, inGrace: false }
 }
 
 export function encodeTokenPayload(payload: QRTokenPayload): string {
@@ -25,16 +29,18 @@ export function decodeTokenPayload(encoded: string): QRTokenPayload | null {
 
 export function createQRTokenData(
   sessionId: string,
-  subjectId: string,
+  sectionId: string,
   teacherId: string,
   teacherName: string,
-  windowDurationSeconds: number
+  validityMinutes: number,
+  gracePeriodMinutes: number
 ): string {
   const payload: QRTokenPayload = {
     sessionId,
-    subjectId,
+    sectionId,
     issuedAt: Date.now(),
-    windowDurationSeconds,
+    validityMinutes,
+    gracePeriodMinutes,
     teacherId,
     teacherName,
   }

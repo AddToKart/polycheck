@@ -130,15 +130,12 @@ export default function AttendanceOverviewPage() {
                       <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">
                         <span className="text-maroon-dark">Absent</span>
                       </th>
-                      <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">
-                        <span className="text-maroon-dark">Absent</span>
-                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {summaries.map((s) => (
                       <tr
-                        key={s.subjectId}
+                        key={s.sectionId}
                         className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                       >
                         <td className="px-6 py-3 text-zinc-900 dark:text-zinc-100 font-medium">
@@ -156,15 +153,12 @@ export default function AttendanceOverviewPage() {
                         <td className="px-4 py-3 text-center">
                           <Badge variant="absent">{s.absent}</Badge>
                         </td>
-                        <td className="px-4 py-3 text-center">
-                          <Badge variant="absent">{s.absent}</Badge>
-                        </td>
                       </tr>
                     ))}
                     {summaries.length === 0 && (
                       <tr>
                         <td
-                          colSpan={6}
+                          colSpan={5}
                           className="px-6 py-8 text-center text-zinc-400 dark:text-zinc-500"
                         >
                           <span className="inline-flex items-center gap-2">

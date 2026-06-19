@@ -6,19 +6,19 @@ import { router } from 'expo-router'
 import { api } from '../../services/mock-api'
 import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
-import type { User, Subject, AttendanceRecord } from '@polycheck/shared'
+import type { User, Section, AttendanceRecord } from '@polycheck/shared'
 
 export default function FacultyDashboardScreen() {
   const { isDark, toggle } = useTheme()
   const [user, setUser] = useState<User | null>(null)
-  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [sections, setSections] = useState<Section[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
     if (cu) {
       setUser(cu)
-      setSubjects(api.getSubjects(cu.id))
+      setSections(api.getSections().filter((s) => s.teacherId === cu.id))
       setRecords(api.getAttendanceRecords())
     }
   }, [])
@@ -66,7 +66,7 @@ export default function FacultyDashboardScreen() {
         <View style={styles.statsRow}>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
             <MaterialIcons name="menu-book" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
-            <Text style={[styles.statNumber, isDark && styles.textGolden]}>{subjects.length}</Text>
+            <Text style={[styles.statNumber, isDark && styles.textGolden]}>{sections.length}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Subjects</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
@@ -104,22 +104,25 @@ export default function FacultyDashboardScreen() {
         </View>
 
         <Text style={[styles.sectionTitle, isDark && styles.textGolden]}>My Subjects</Text>
-        {subjects.map((s) => (
+        {sections.map((s) => {
+          const parent = api.getSubject(s.subjectId)
+          return (
           <TouchableOpacity
             key={s.id}
             style={[styles.subjectCard, isDark && styles.cardDark]}
-            onPress={() => router.push('/(faculty)/sessions')}
+            onPress={() => router.push(`/(faculty)/sections/${s.id}`)}
           >
             <View style={styles.subjectLeft}>
-              <Text style={[styles.subjectName, isDark && styles.textWhite]}>{s.name}</Text>
+              <Text style={[styles.subjectName, isDark && styles.textWhite]}>{parent?.name ?? s.id}</Text>
               <Text style={[styles.subjectMeta, isDark && styles.textWhite50]}>
-                {s.code} · Section {s.section}
+                {parent?.code ?? ''} · Section {s.section}
               </Text>
             </View>
             <Text style={[styles.subjectCount, isDark && styles.textWhite70]}>{s.studentCount} students</Text>
           </TouchableOpacity>
-        ))}
-        {subjects.length === 0 && (
+          )
+        })}
+        {sections.length === 0 && (
           <Text style={[styles.empty, isDark && styles.textWhite50]}>No subjects yet.</Text>
         )}
       </ScrollView>

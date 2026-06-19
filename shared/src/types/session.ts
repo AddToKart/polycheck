@@ -6,27 +6,29 @@ export interface GeofenceConfig {
 
 export interface Session {
   id: string
-  subjectId: string
+  sectionId: string
   subjectName: string
   date: string
   startTime: string
   endTime: string
   room?: string
+  qrValidityMinutes: number
   gracePeriodMinutes: number
-  tokenWindowSeconds: number
   geofence: GeofenceConfig
   isActive: boolean
   qrToken?: string
   qrTokenExpiresAt?: string
+  qrGeneratedAt?: string
   teacherId: string
   createdAt: string
 }
 
 export interface QRTokenPayload {
   sessionId: string
-  subjectId: string
+  sectionId: string
   issuedAt: number
-  windowDurationSeconds: number
+  validityMinutes: number
+  gracePeriodMinutes: number
   teacherId: string
   teacherName: string
 }

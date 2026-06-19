@@ -28,7 +28,7 @@ function SessionsContent() {
     setUser(cu)
     let allSessions = api.getSessions()
     if (subjectFilter) {
-      allSessions = allSessions.filter((s) => s.subjectId === subjectFilter)
+      allSessions = allSessions.filter((s) => s.sectionId === subjectFilter)
     }
     setSessions(allSessions)
   }, [router, subjectFilter])
@@ -43,12 +43,7 @@ function SessionsContent() {
   }, {})
 
   const handleActivate = (sessionId: string) => {
-    setActivating(sessionId)
-    api.activateSession(sessionId)
-    setSessions((prev) =>
-      prev.map((s) => (s.id === sessionId ? { ...s, isActive: true } : s))
-    )
-    setTimeout(() => setActivating(''), 500)
+    router.push(`/faculty/sessions/${sessionId}`)
   }
 
   const handleLogout = () => {

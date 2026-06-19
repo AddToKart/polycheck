@@ -18,6 +18,7 @@ const statusConfig: Record<AttendanceStatus, { label: string; bg: string; text: 
   late: { label: 'Late', bg: 'bg-red-50 dark:bg-red-950', text: 'text-red-700' },
   absent: { label: 'Absent', bg: 'bg-zinc-100 dark:bg-zinc-800', text: 'text-zinc-600' },
   pending: { label: 'Pending', bg: 'bg-white dark:bg-zinc-900', text: 'text-maroon' },
+  disputed: { label: 'Disputed', bg: 'bg-zinc-900 dark:bg-black', text: 'text-amber-400' },
 }
 
 const SESSION_PAGE_SIZE = 5
@@ -27,13 +28,14 @@ export default function StudentDetailPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const studentId = params.id as string
-  const subjectId = searchParams.get('subjectId') || ''
+  const sectionId = searchParams.get('subjectId') || ''
   const [user, setUser] = useState<User | null>(null)
   const [student, setStudent] = useState<Student | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [ready, setReady] = useState(false)
   const [sessionPage, setSessionPage] = useState(0)
+  const [flipped, setFlipped] = useState(false)
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -45,14 +47,14 @@ export default function StudentDetailPage() {
   }, [router])
 
   useEffect(() => {
-    if (!studentId || !subjectId) return
+    if (!studentId || !sectionId) return
     const s = api.getStudent(studentId)
     if (!s) { router.push('/faculty/subjects'); return }
     setStudent(s)
-    setSessions(api.getSubjectSessions(subjectId))
-    setRecords(api.getStudentAttendanceForSubject(studentId, subjectId))
+    setSessions(api.getSectionSessions(sectionId))
+    setRecords(api.getStudentAttendanceForSection(studentId, sectionId))
     setReady(true)
-  }, [studentId, subjectId, router])
+  }, [studentId, sectionId, router])
 
   const handleLogout = () => {
     api.logout()
@@ -60,10 +62,10 @@ export default function StudentDetailPage() {
   }
 
   const handleRemove = () => {
-    if (!subjectId || !studentId) return
+    if (!sectionId || !studentId) return
     if (window.confirm(`Remove ${student?.fullName} from this subject? This cannot be undone.`)) {
-      api.removeStudentFromSubject(subjectId, studentId)
-      router.push(`/faculty/subjects/${subjectId}`)
+      api.removeStudentFromSection(sectionId, studentId)
+      router.push(`/faculty/sections/${sectionId}`)
     }
   }
 
@@ -82,7 +84,7 @@ export default function StudentDetailPage() {
     const newRecord: AttendanceRecord = {
       id: `a-manual-${Date.now()}`,
       sessionId: session.id,
-      subjectId,
+      sectionId,
       studentId,
       studentName: student?.fullName ?? '',
       studentProgram: student?.program,
@@ -114,66 +116,107 @@ export default function StudentDetailPage() {
       <Sidebar
         user={user}
         onLogout={handleLogout}
-        backHref={`/faculty/subjects/${subjectId}`}
+        backHref={`/faculty/sections/${sectionId}`}
         backLabel="Back to Subject"
       />
 
       <main className="flex-1 overflow-y-auto">
         <div className="p-8 max-w-4xl mx-auto">
           <div className="flex items-center gap-4 mb-8">
-            <Link href={`/faculty/subjects/${subjectId}`} className="text-maroon dark:text-golden hover:underline text-sm flex items-center gap-1">
+            <Link href={`/faculty/sections/${sectionId}`} className="text-maroon dark:text-golden hover:underline text-sm flex items-center gap-1">
               <ArrowLeft className="w-4 h-4" /> Subject
             </Link>
             <h1 className="text-2xl font-heading font-bold text-maroon-dark dark:text-white">{student.fullName}</h1>
           </div>
 
-          {/* Virtual ID Card */}
-          <Card className="mb-6 overflow-hidden border-2 border-maroon dark:border-golden">
-            {/* PUP Header */}
-            <div className="bg-maroon px-5 py-3 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-golden tracking-wider">POLYTECHNIC UNIVERSITY</p>
-                <p className="text-[10px] font-medium text-white/80 tracking-[3px] mt-0.5">OF THE PHILIPPINES</p>
-              </div>
-              <div className="w-9 h-9 bg-white/15 rounded-full flex items-center justify-center">
-                <School className="w-5 h-5 text-white" />
-              </div>
-            </div>
-
-            <CardContent className="p-6 flex gap-6">
-              {/* Photo placeholder */}
-              <div className="w-24 h-32 bg-maroon dark:bg-golden flex items-center justify-center shrink-0">
-                <span className="text-2xl font-heading font-bold text-white dark:text-maroon-dark">
-                  {student.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-                </span>
-              </div>
-
-              {/* Details */}
-              <div className="flex-1 flex flex-col justify-center">
-                <h2 className="text-lg font-heading font-bold text-zinc-800 dark:text-white">{student.fullName}</h2>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">{student.studentId}</p>
-                <hr className="my-3 border-zinc-200 dark:border-zinc-700" />
-                <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+          {/* Flippable Virtual ID Card */}
+          <div className="mb-6">
+            <button
+              onClick={() => setFlipped(!flipped)}
+              className="w-full text-left cursor-pointer"
+              type="button"
+            >
+              <Card className={`overflow-hidden border-2 transition-all duration-300 ${flipped ? 'border-maroon-dark/60 dark:border-golden/40' : 'border-maroon dark:border-golden'}`}>
+                {/* PUP Header */}
+                <div className="bg-maroon px-5 py-3 flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Program</p>
-                    <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">{student.program}</p>
+                    <p className="text-xs font-bold text-golden tracking-wider">POLYTECHNIC UNIVERSITY</p>
+                    <p className="text-[10px] font-medium text-white/80 tracking-[3px] mt-0.5">OF THE PHILIPPINES</p>
                   </div>
-                  <div>
-                    <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Year Level</p>
-                    <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">{student.yearLevel}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Student No.</p>
-                    <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">{student.studentId}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Validity</p>
-                    <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">2026-2027</p>
+                  <div className="w-9 h-9 bg-white/15 rounded-full flex items-center justify-center">
+                    <School className="w-5 h-5 text-white" />
                   </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+
+                {!flipped ? (
+                  /* FRONT FACE */
+                  <CardContent className="p-6 flex gap-6">
+                    <div className="w-24 h-32 bg-maroon dark:bg-golden flex items-center justify-center shrink-0">
+                      <span className="text-2xl font-heading font-bold text-white dark:text-maroon-dark">
+                        {student.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex-1 flex flex-col justify-center">
+                      <h2 className="text-lg font-heading font-bold text-zinc-800 dark:text-white">{student.fullName}</h2>
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">{student.studentId}</p>
+                      <hr className="my-3 border-zinc-200 dark:border-zinc-700" />
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                        <div>
+                          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Program</p>
+                          <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">{student.program}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Year Level</p>
+                          <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">{student.yearLevel}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Student No.</p>
+                          <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">{student.studentId}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Validity</p>
+                          <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">2026-2027</p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                ) : (
+                  /* BACK FACE */
+                  <CardContent className="p-6 space-y-5">
+                    {/* Magnetic Stripe */}
+                    <div className="h-8 bg-zinc-800 dark:bg-black rounded" />
+
+                    {/* Conditions of Use */}
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider">Conditions of Use</p>
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                        This ID is the property of the Polytechnic University of the Philippines. It is non-transferable and must be surrendered to the OSA upon request. Lost IDs must be reported immediately. Present this ID upon entry to university premises and when accessing university services.
+                      </p>
+                    </div>
+
+                    {/* Emergency Contact */}
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider">In case of emergency, contact:</p>
+                      <div className="h-5 border-b border-dashed border-zinc-300 dark:border-zinc-600" />
+                      <div className="h-5 border-b border-dashed border-zinc-300 dark:border-zinc-600" />
+                    </div>
+
+                    {/* QR Code Placeholder */}
+                    <div className="flex justify-center">
+                      <div className="w-20 h-20 border-2 border-dashed border-zinc-300 dark:border-zinc-600 flex items-center justify-center">
+                        <QrCode className="w-8 h-8 text-zinc-300 dark:text-zinc-600" />
+                      </div>
+                    </div>
+                  </CardContent>
+                )}
+
+                {/* Flip hint */}
+                <div className="px-6 pb-3 text-center">
+                  <span className="text-[10px] text-zinc-400 dark:text-zinc-500">Tap card to flip</span>
+                </div>
+              </Card>
+            </button>
+          </div>
 
           {/* Remove from Subject */}
           <div className="flex justify-center mb-8">

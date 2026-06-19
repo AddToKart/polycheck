@@ -13,7 +13,7 @@ export default function DashboardScreen() {
   const student = user && 'studentId' in user
     ? (user as typeof user & { studentId: string; program: string; yearLevel: number })
     : null
-  const mySubjects = student ? api.getMySubjects(student.studentId) : []
+  const mySections = student ? api.getStudentSections(student.studentId) : []
   const myAttendance = student ? api.getMyAttendance(student.studentId) : []
 
   const present = myAttendance.filter((r) => r.status === 'present').length
@@ -24,8 +24,8 @@ export default function DashboardScreen() {
   const todaySchedule = useMemo(() => {
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     const todayName = dayNames[new Date().getDay()]
-    return mySubjects.filter((s) => s.schedule.some((sd) => sd.day === todayName))
-  }, [mySubjects])
+    return mySections.filter((s) => s.schedule.some((sd) => sd.day === todayName))
+  }, [mySections])
 
   const onRefresh = useCallback(() => {
     setRefreshing(true)
@@ -42,6 +42,10 @@ export default function DashboardScreen() {
   const handleLogout = () => {
     api.logout()
     router.replace('/')
+  }
+
+  const handleSubjectTap = (sectionId: string) => {
+    router.push(`/(tabs)/subject-info/${sectionId}`)
   }
 
   return (
@@ -84,7 +88,7 @@ export default function DashboardScreen() {
         <View style={styles.statsRow}>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
             <MaterialIcons name="book" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
-            <Text style={[styles.statNum, isDark && styles.textGolden]}>{mySubjects.length}</Text>
+            <Text style={[styles.statNum, isDark && styles.textGolden]}>{mySections.length}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Subjects</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
@@ -119,28 +123,90 @@ export default function DashboardScreen() {
             <Text style={[styles.emptyText, isDark && styles.textWhite50]}>No classes today</Text>
           </View>
         ) : (
-          todaySchedule.map((subject) => {
-            const todayScheduleDay = subject.schedule.find(
+          todaySchedule.map((section) => {
+            const parent = api.getSubject(section.subjectId)
+            const todaySD = section.schedule.find(
               (sd) => sd.day === ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date().getDay()],
             )
-            const status = myAttendance.find((r) => r.subjectId === subject.id)?.status ?? 'pending'
+            const status = myAttendance.find((r) => r.sectionId === section.id)?.status ?? 'pending'
             return (
-              <View key={subject.id} style={[styles.schedCard, isDark && styles.cardDark]}>
+              <TouchableOpacity
+                key={section.id}
+                style={[styles.schedCard, isDark && styles.cardDark]}
+                onPress={() => handleSubjectTap(section.id)}
+                activeOpacity={0.7}
+              >
                 <View style={styles.schedLeft}>
                   <Text style={[styles.schedTime, isDark && styles.textGolden]}>
-                    {todayScheduleDay?.startTime} - {todayScheduleDay?.endTime}
+                    {todaySD?.startTime} - {todaySD?.endTime}
                   </Text>
-                  <Text style={[styles.schedName, isDark && styles.textWhite]}>{subject.name}</Text>
-                  <Text style={[styles.schedRoom, isDark && styles.textWhite50]}>{subject.room}</Text>
+                  <Text style={[styles.schedName, isDark && styles.textWhite]}>{parent?.name ?? ''}</Text>
+                  <Text style={[styles.schedRoom, isDark && styles.textWhite50]}>{section.room}</Text>
                 </View>
                 <View style={[styles.schedRight, isDark && styles.schedRightDark]}>
                   <View style={styles.schedMeta}>
-                    <Text style={[styles.schedCode, isDark && styles.textWhite50]}>{subject.code}</Text>
-                    <Text style={[styles.schedSection, isDark && styles.textWhite50]}>Sec {subject.section}</Text>
+                    <Text style={[styles.schedCode, isDark && styles.textWhite50]}>{parent?.code ?? ''}</Text>
+                    <Text style={[styles.schedSection, isDark && styles.textWhite50]}>Sec {section.section}</Text>
                   </View>
                   <StatusBadge status={status} />
                 </View>
-              </View>
+              </TouchableOpacity>
+            )
+          })
+        )}
+
+        {/* My Subjects (all enrolled) */}
+        <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginTop: 24 }]}>My Subjects</Text>
+        {mySections.length === 0 ? (
+          <View style={[styles.emptyCard, isDark && styles.cardDark]}>
+            <MaterialIcons name="book" size={32} color="#CCC" />
+            <Text style={[styles.emptyText, isDark && styles.textWhite50]}>No enrollments yet</Text>
+          </View>
+        ) : (
+          mySections.map((section) => {
+            const parent = api.getSubject(section.subjectId)
+            const presentCount = myAttendance.filter((r) => r.sectionId === section.id && r.status === 'present').length
+            return (
+              <TouchableOpacity
+                key={section.id}
+                style={[styles.allSubjCard, isDark && styles.cardDark]}
+                onPress={() => handleSubjectTap(section.id)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.allSubjAccent, isDark && styles.allSubjAccentDark]} />
+                <View style={styles.allSubjBody}>
+                  <Text style={[styles.allSubjName, isDark && styles.textWhite]}>{parent?.name ?? ''}</Text>
+                  <Text style={[styles.allSubjMeta, isDark && styles.textWhite50]}>
+                    {parent?.code ?? ''} · Sec {section.section}
+                  </Text>
+                  <View style={styles.allSubjDetails}>
+                    <View style={styles.allSubjDetailRow}>
+                      <MaterialIcons name="person" size={12} color="#888" />
+                      <Text style={[styles.allSubjDetailText, isDark && styles.textWhite50]}>{section.teacherName}</Text>
+                    </View>
+                    <View style={styles.allSubjDetailRow}>
+                      <MaterialIcons name="room" size={12} color="#888" />
+                      <Text style={[styles.allSubjDetailText, isDark && styles.textWhite50]}>{section.room}</Text>
+                    </View>
+                    <View style={styles.allSubjDetailRow}>
+                      <MaterialIcons name="calendar-today" size={12} color="#888" />
+                      <Text style={[styles.allSubjDetailText, isDark && styles.textWhite50]}>
+                        {section.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.allSubjFooter}>
+                    <View style={[styles.allSubjRateBg, isDark && styles.allSubjRateBgDark]}>
+                      <View style={[styles.allSubjRateFill, { width: `${myAttendance.filter((r) => r.sectionId === section.id).length > 0 ? Math.round((presentCount / myAttendance.filter((r) => r.sectionId === section.id).length) * 100) : 0}%` }]} />
+                    </View>
+                    <Text style={[styles.allSubjRateText, isDark && styles.textWhite50]}>
+                      {myAttendance.filter((r) => r.sectionId === section.id).length > 0
+                        ? `${Math.round((presentCount / myAttendance.filter((r) => r.sectionId === section.id).length) * 100)}%`
+                        : '—'}
+                    </Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
             )
           })
         )}
@@ -250,4 +316,19 @@ const styles = StyleSheet.create({
   textWhite: { color: '#FFFFFF' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
   textGolden: { color: '#F5A800' },
+
+  allSubjCard: { backgroundColor: '#FFFFFF', borderRadius: 0, marginBottom: 12, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2, flexDirection: 'row' },
+  allSubjAccent: { width: 4, backgroundColor: '#7B1113' },
+  allSubjAccentDark: { backgroundColor: '#F5A800' },
+  allSubjBody: { padding: 14, flex: 1 },
+  allSubjName: { fontSize: 15, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#333' },
+  allSubjMeta: { fontSize: 11, color: '#888', marginTop: 2 },
+  allSubjDetails: { marginTop: 8, gap: 4 },
+  allSubjDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  allSubjDetailText: { fontSize: 11, color: '#888', flex: 1 },
+  allSubjFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
+  allSubjRateBg: { flex: 1, height: 4, backgroundColor: '#EEE', borderRadius: 2 },
+  allSubjRateBgDark: { backgroundColor: '#333' },
+  allSubjRateFill: { height: 4, backgroundColor: '#F5A800', borderRadius: 2 },
+  allSubjRateText: { fontSize: 10, fontWeight: '700', color: '#888', minWidth: 30, textAlign: 'right' },
 })

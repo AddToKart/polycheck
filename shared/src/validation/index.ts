@@ -18,6 +18,11 @@ export const GeofenceConfigSchema = z.object({
 export const SubjectCreateSchema = z.object({
   name: z.string().min(1, 'Subject name is required'),
   code: z.string().min(1, 'Subject code is required'),
+  description: z.string().optional(),
+})
+
+export const SectionCreateSchema = z.object({
+  subjectId: z.string().min(1, 'Subject is required'),
   section: z.string().min(1, 'Section is required'),
   room: z.string().min(1, 'Room is required'),
   schedule: z.array(ScheduleDaySchema).min(1, 'At least one schedule day required'),
@@ -28,16 +33,18 @@ export const SubjectCreateSchema = z.object({
 })
 
 export const SessionCreateSchema = z.object({
-  subjectId: z.string().min(1),
+  sectionId: z.string().min(1),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD format'),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Must be HH:mm format'),
-  gracePeriodMinutes: z.number().min(0).max(60).default(15),
-  tokenWindowSeconds: z.number().min(60).max(600).default(180),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Must be HH:mm format').optional(),
+  room: z.string().optional(),
+  qrValidityMinutes: z.number().min(1).max(180).default(20),
+  gracePeriodMinutes: z.number().min(0).max(120).default(15),
 })
 
 export const AttendanceRecordSchema = z.object({
   sessionId: z.string().min(1),
-  subjectId: z.string().min(1),
+  sectionId: z.string().min(1),
   studentId: z.string().min(1),
   timestamp: z.string().datetime(),
   coordinates: z.object({

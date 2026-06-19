@@ -31,8 +31,7 @@ export default function FacultySessionsScreen() {
   }, {})
 
   const handleActivate = (sessionId: string) => {
-    api.activateSession(sessionId)
-    setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, isActive: true } : s)))
+    router.push(`/(faculty)/sessions/${sessionId}`)
   }
 
   const handleLogout = () => {
