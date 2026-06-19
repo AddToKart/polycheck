@@ -88,6 +88,7 @@ function SessionsContent() {
                     <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
                       <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Date</th>
                       <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Time</th>
+                      <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Room</th>
                       <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Status</th>
                       <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Students</th>
                       <th className="text-right px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Actions</th>
@@ -110,6 +111,9 @@ function SessionsContent() {
                         </td>
                         <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400">
                           {session.startTime} - {session.endTime}
+                        </td>
+                        <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400 text-xs">
+                          {session.room || '\u2014'}
                         </td>
                         <td className="px-6 py-3">
                           <Badge variant={session.isActive ? 'active' : 'inactive'}>

@@ -71,6 +71,11 @@ export default function FacultySessionsScreen() {
                   <Text style={[styles.sessionTime, isDark && styles.textWhite70]}>
                     <MaterialIcons name="access-time" size={12} color={isDark ? 'rgba(255,255,255,0.5)' : '#888'} /> {session.startTime} - {session.endTime}
                   </Text>
+                  {session.room ? (
+                    <Text style={[styles.sessionRoom, isDark && styles.textWhite50]}>
+                      <MaterialIcons name="room" size={12} color={isDark ? 'rgba(255,255,255,0.5)' : '#888'} /> {session.room}
+                    </Text>
+                  ) : null}
                 </View>
                 <View style={styles.sessionRight}>
                   <View style={[styles.badge, session.isActive ? styles.badgeActive : (isDark ? styles.badgeInactiveDark : styles.badgeInactive)]}>
@@ -122,6 +127,7 @@ const styles = StyleSheet.create({
   sessionLeft: { flex: 1 },
   sessionDate: { fontSize: 15, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#333' },
   sessionTime: { fontSize: 12, fontFamily: fonts.body, color: '#888', marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  sessionRoom: { fontSize: 11, fontFamily: fonts.body, color: '#999', marginTop: 2, flexDirection: 'row', alignItems: 'center', gap: 4 },
   sessionRight: { alignItems: 'flex-end', gap: 8 },
   badge: { borderRadius: 0, paddingHorizontal: 10, paddingVertical: 4 },
   badgeActive: { backgroundColor: '#4CAF50' },

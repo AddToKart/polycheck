@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { BookOpen, MapPin, CalendarDays } from 'lucide-react'
+import { BookOpen, MapPin, CalendarDays, Plus, X, ArrowRight } from 'lucide-react'
 import { api } from '@/lib/mock-api'
 import type { User } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
-const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as const
+const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
 
 export default function CreateSubjectPage() {
   const router = useRouter()
@@ -24,9 +24,11 @@ export default function CreateSubjectPage() {
   const [section, setSection] = useState('')
   const [room, setRoom] = useState('')
   const [semester, setSemester] = useState('2nd Semester AY 2025-2026')
-  const [selectedDays, setSelectedDays] = useState<Set<string>>(new Set())
-  const [startTime, setStartTime] = useState('09:00')
-  const [endTime, setEndTime] = useState('10:30')
+  const [schedule, setSchedule] = useState<{ day: string; startTime: string; endTime: string; room: string }[]>([])
+  const [tempDay, setTempDay] = useState('Mon')
+  const [tempStartTime, setTempStartTime] = useState('09:00')
+  const [tempEndTime, setTempEndTime] = useState('10:30')
+  const [tempRoom, setTempRoom] = useState('')
   const [latitude, setLatitude] = useState(14.5863)
   const [longitude, setLongitude] = useState(120.9777)
   const [radius, setRadius] = useState(40)
@@ -42,15 +44,31 @@ export default function CreateSubjectPage() {
 
   if (!user) return null
 
-  const toggleDay = (day: string) => {
-    const next = new Set(selectedDays)
-    if (next.has(day)) next.delete(day)
-    else next.add(day)
-    setSelectedDays(next)
+  const addScheduleEntry = () => {
+    setSchedule([...schedule, { day: tempDay, startTime: tempStartTime, endTime: tempEndTime, room: tempRoom }])
+  }
+
+  const removeScheduleEntry = (idx: number) => {
+    setSchedule(schedule.filter((_, i) => i !== idx))
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (schedule.length === 0) return
+    const prefix = name.split(' ').filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 4)
+    const suffix = Math.random().toString(36).substring(2, 5).toUpperCase()
+    const enrollmentCode = `${prefix}${suffix}`
+    api.createSubject({
+      name,
+      code,
+      section,
+      room,
+      schedule,
+      semester,
+      enrollmentCode,
+      teacherId: user.id,
+      teacherName: user.fullName,
+    })
     router.push('/faculty/subjects')
   }
 
@@ -143,47 +161,79 @@ export default function CreateSubjectPage() {
                   Schedule
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-5">
-                <div className="space-y-2">
-                  <Label>Days</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {daysOfWeek.map((day) => (
-                      <button
-                        key={day}
-                        type="button"
-                        onClick={() => toggleDay(day)}
-                        className={`px-4 py-2 rounded-none text-sm font-medium transition-colors ${
-                          selectedDays.has(day)
-                            ? 'bg-maroon text-white dark:bg-maroon dark:text-white'
-                            : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
-                        }`}
-                      >
-                        {day}
-                      </button>
-                    ))}
+              <CardContent className="space-y-4">
+                {schedule.map((entry, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-3 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-2.5"
+                  >
+                    <span className="px-2.5 py-1 bg-maroon dark:bg-golden text-white dark:text-maroon text-xs font-bold leading-none uppercase">
+                      {entry.day}
+                    </span>
+                    <span className="text-sm font-mono text-zinc-700 dark:text-zinc-300">
+                      {entry.startTime} — {entry.endTime}
+                    </span>
+                    {entry.room && (
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400 ml-1">{entry.room}</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeScheduleEntry(idx)}
+                      className="ml-auto p-1 text-zinc-400 hover:text-red-500 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                </div>
+                ))}
 
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="startTime">Start Time</Label>
-                    <Input
-                      id="startTime"
-                      type="time"
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="endTime">End Time</Label>
-                    <Input
-                      id="endTime"
-                      type="time"
-                      value={endTime}
-                      onChange={(e) => setEndTime(e.target.value)}
-                      required
-                    />
+                <div className="border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/50 p-4 space-y-3">
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-zinc-500">Day</Label>
+                      <select
+                        value={tempDay}
+                        onChange={(e) => setTempDay(e.target.value)}
+                        className="h-9 rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none"
+                      >
+                        {daysOfWeek.map((d) => (
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-zinc-500">Start</Label>
+                      <Input
+                        type="time"
+                        value={tempStartTime}
+                        onChange={(e) => setTempStartTime(e.target.value)}
+                        className="h-9 w-32"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-zinc-500">End</Label>
+                      <Input
+                        type="time"
+                        value={tempEndTime}
+                        onChange={(e) => setTempEndTime(e.target.value)}
+                        className="h-9 w-32"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-zinc-500">Room</Label>
+                      <Input
+                        value={tempRoom}
+                        onChange={(e) => setTempRoom(e.target.value)}
+                        placeholder="e.g. Room 205"
+                        className="h-9 w-28"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addScheduleEntry}
+                      className="h-9 px-3 bg-maroon dark:bg-golden text-white dark:text-maroon text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add
+                    </button>
                   </div>
                 </div>
               </CardContent>

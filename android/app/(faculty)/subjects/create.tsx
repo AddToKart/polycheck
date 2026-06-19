@@ -8,7 +8,7 @@ import { fonts } from '../../../theme/typography'
 import { useTheme } from '../../../theme/ThemeContext'
 import type { User } from '@polycheck/shared'
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
 const SEMESTERS = ['1st Semester AY 2025-2026', '2nd Semester AY 2025-2026', 'Summer AY 2025-2026']
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const MINUTES = [0, 15, 30, 45]
@@ -88,7 +88,7 @@ export default function CreateSubjectScreen() {
   const [room, setRoom] = useState('')
   const [semester, setSemester] = useState(SEMESTERS[1])
   const [enrollmentCode, setEnrollmentCode] = useState('')
-  const [schedule, setSchedule] = useState<{ day: string; startTime: string; endTime: string }[]>([])
+  const [schedule, setSchedule] = useState<{ day: string; startTime: string; endTime: string; room: string }[]>([])
   const [showSemesterPicker, setShowSemesterPicker] = useState(false)
   const [showDayPicker, setShowDayPicker] = useState(false)
   const [showStartTime, setShowStartTime] = useState(false)
@@ -96,6 +96,7 @@ export default function CreateSubjectScreen() {
   const [tempDay, setTempDay] = useState<string>('Mon')
   const [tempStart, setTempStart] = useState('09:00')
   const [tempEnd, setTempEnd] = useState('10:30')
+  const [tempRoom, setTempRoom] = useState('')
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -123,7 +124,7 @@ export default function CreateSubjectScreen() {
   }
 
   const addScheduleEntry = () => {
-    setSchedule([...schedule, { day: tempDay, startTime: tempStart, endTime: tempEnd }])
+    setSchedule([...schedule, { day: tempDay, startTime: tempStart, endTime: tempEnd, room: tempRoom }])
   }
 
   const removeScheduleEntry = (idx: number) => {
@@ -236,6 +237,9 @@ export default function CreateSubjectScreen() {
               <Text style={[styles.schedTime, isDark && styles.textWhite]}>
                 {entry.startTime} - {entry.endTime}
               </Text>
+              {entry.room ? (
+                <Text style={[styles.schedRoom, isDark && styles.textWhite]}>{entry.room}</Text>
+              ) : null}
             </View>
             <TouchableOpacity onPress={() => removeScheduleEntry(idx)} style={styles.removeBtn} accessibilityLabel="Remove schedule">
               <MaterialIcons name="close" size={18} color="#EF4444" />
@@ -269,6 +273,14 @@ export default function CreateSubjectScreen() {
               <MaterialIcons name="access-time" size={14} color="#888" />
               <Text style={[styles.timeBoxText, isDark && styles.textWhite]}>{tempEnd}</Text>
             </TouchableOpacity>
+
+            <TextInput
+              style={[styles.roomInput, isDark && styles.roomInputDark]}
+              value={tempRoom}
+              onChangeText={setTempRoom}
+              placeholder="Room"
+              placeholderTextColor="#888"
+            />
 
             <TouchableOpacity style={[styles.addSchedBtn, isDark && styles.addSchedBtnDark]} onPress={addScheduleEntry} accessibilityLabel="Add schedule">
               <MaterialIcons name="add" size={18} color="#FFF" />
@@ -359,6 +371,7 @@ const styles = StyleSheet.create({
   dayBadgeTextDark: { color: '#4A0A0B' },
   schedTime: { fontSize: 13, fontFamily: fonts.body, color: '#555' },
   removeBtn: { padding: 4 },
+  schedRoom: { fontSize: 11, fontFamily: fonts.body, color: '#999', marginLeft: 'auto', paddingLeft: 8 },
   schedAdder: { borderWidth: 1, borderColor: '#DDD', borderStyle: 'dashed', backgroundColor: '#FAFAFA', padding: 12, marginBottom: 8 },
   schedAdderDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#0D0D10' },
   schedAdderRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -368,6 +381,8 @@ const styles = StyleSheet.create({
   timeBox: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: '#DDD', paddingHorizontal: 8, paddingVertical: 6, backgroundColor: '#FFFFFF', flex: 1 },
   timeBoxDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215' },
   timeBoxText: { fontSize: 12, fontFamily: fonts.mono, color: '#555' },
+  roomInput: { borderWidth: 1, borderColor: '#DDD', paddingHorizontal: 8, paddingVertical: 6, fontSize: 12, fontFamily: fonts.body, color: '#333', backgroundColor: '#FFFFFF', width: 80 },
+  roomInputDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215', color: '#FFF' },
   addSchedBtn: { backgroundColor: '#7B1113', width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   addSchedBtnDark: { backgroundColor: '#F5A800' },
   dayOptions: { flexDirection: 'row', gap: 4, marginTop: 8, flexWrap: 'wrap' },

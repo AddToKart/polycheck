@@ -23,6 +23,7 @@ export default function CreateSessionPage() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')
+  const [room, setRoom] = useState('')
   const [gracePeriod, setGracePeriod] = useState(15)
   const [tokenWindow, setTokenWindow] = useState(180)
   const [latitude, setLatitude] = useState(14.5863)
@@ -56,6 +57,7 @@ export default function CreateSessionPage() {
       date,
       startTime,
       endTime,
+      room: room || undefined,
       gracePeriodMinutes: gracePeriod,
       tokenWindowSeconds: tokenWindow,
       geofence: {
@@ -122,6 +124,11 @@ export default function CreateSessionPage() {
                     <Label htmlFor="endTime">End Time</Label>
                     <Input id="endTime" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} required />
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="room">Room</Label>
+                  <Input id="room" value={room} onChange={(e) => setRoom(e.target.value)} placeholder="e.g. CCIS Lab 3" />
                 </div>
 
                 <div className="grid sm:grid-cols-2 gap-4">

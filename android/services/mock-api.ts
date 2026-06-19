@@ -64,7 +64,7 @@ export const api = {
     code: string
     section: string
     room: string
-    schedule: { day: string; startTime: string; endTime: string }[]
+    schedule: { day: string; startTime: string; endTime: string; room?: string }[]
     semester: string
     enrollmentCode: string
     teacherId: string
@@ -75,7 +75,7 @@ export const api = {
     const subject: Subject = {
       id: `subj-${Date.now()}`,
       ...data,
-      schedule: data.schedule.map((s) => ({ day: s.day as Subject['schedule'][0]['day'], startTime: s.startTime, endTime: s.endTime })),
+      schedule: data.schedule.map((s) => ({ day: s.day as Subject['schedule'][0]['day'], startTime: s.startTime, endTime: s.endTime, room: s.room })),
       enrollmentCodeExpiry: expiry,
       studentCount: 0,
       createdAt: now,
@@ -146,6 +146,7 @@ export const api = {
     date: string
     startTime: string
     endTime: string
+    room?: string
     gracePeriodMinutes: number
     tokenWindowSeconds: number
     geofence: { latitude: number; longitude: number; radiusMeters: number }

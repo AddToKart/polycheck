@@ -19,6 +19,7 @@ import type {
   AttendanceRecord,
   AttendanceSummary,
   AttendanceStatus,
+  Enrollment,
 } from '@polycheck/shared'
 
 import { isWithinGeofence } from '@polycheck/shared/utils'
@@ -76,6 +77,32 @@ export const api = {
     return [...mockTeachers]
   },
 
+  createSubject(data: {
+    name: string
+    code: string
+    section: string
+    room: string
+    schedule: { day: string; startTime: string; endTime: string; room?: string }[]
+    semester: string
+    enrollmentCode: string
+    teacherId: string
+    teacherName: string
+  }): Subject {
+    const now = new Date().toISOString()
+    const expiry = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+    const subject: Subject = {
+      id: `subj-${Date.now()}`,
+      ...data,
+      schedule: data.schedule.map((s) => ({ day: s.day as Subject['schedule'][0]['day'], startTime: s.startTime, endTime: s.endTime, room: s.room })),
+      enrollmentCodeExpiry: expiry,
+      studentCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    }
+    mockSubjects.push(subject)
+    return subject
+  },
+
   getSubjects(teacherId?: string): Subject[] {
     if (teacherId) {
       return mockSubjects.filter((s) => s.teacherId === teacherId)
@@ -118,6 +145,7 @@ export const api = {
     date: string
     startTime: string
     endTime: string
+    room?: string
     gracePeriodMinutes: number
     tokenWindowSeconds: number
     geofence: { latitude: number; longitude: number; radiusMeters: number }
@@ -168,6 +196,91 @@ export const api = {
       .filter((e) => e.studentId === studentId)
       .map((e) => e.subjectId)
     return mockSubjects.filter((s) => enrolledIds.includes(s.id))
+  },
+
+  getSubjectStudents(subjectId: string): (Student & { attendance: { present: number; late: number; absent: number } })[] {
+    const enrolledIds = mockEnrollments
+      .filter((e) => e.subjectId === subjectId)
+      .map((e) => e.studentId)
+    const subjectSessionIds = mockSessions
+      .filter((s) => s.subjectId === subjectId)
+      .map((s) => s.id)
+    return mockStudents
+      .filter((s) => enrolledIds.includes(s.id))
+      .map((student) => {
+        const records = mockAttendanceRecords.filter(
+          (r) => r.studentId === student.id && subjectSessionIds.includes(r.sessionId)
+        )
+        return {
+          ...student,
+          attendance: {
+            present: records.filter((r) => r.status === 'present').length,
+            late: records.filter((r) => r.status === 'late').length,
+            absent: records.filter((r) => r.status === 'absent').length,
+          },
+        }
+      })
+  },
+
+  getStudent(studentId: string): Student | undefined {
+    return mockStudents.find((s) => s.id === studentId)
+  },
+
+  getSubjectSessions(subjectId: string): Session[] {
+    return mockSessions.filter((s) => s.subjectId === subjectId)
+  },
+
+  getStudentAttendanceForSubject(studentId: string, subjectId: string): AttendanceRecord[] {
+    const subjectSessionIds = mockSessions
+      .filter((s) => s.subjectId === subjectId)
+      .map((s) => s.id)
+    return mockAttendanceRecords.filter(
+      (r) => r.studentId === studentId && subjectSessionIds.includes(r.sessionId)
+    )
+  },
+
+  updateAttendanceStatus(recordId: string, status: AttendanceStatus): AttendanceRecord | undefined {
+    const record = mockAttendanceRecords.find((r) => r.id === recordId)
+    if (record) {
+      record.status = status
+      record.timestamp = new Date().toISOString()
+    }
+    return record
+  },
+
+  addAttendanceRecord(record: AttendanceRecord): AttendanceRecord {
+    mockAttendanceRecords.push(record)
+    return record
+  },
+
+  removeStudentFromSubject(subjectId: string, studentId: string): boolean {
+    const idx = mockEnrollments.findIndex(
+      (e) => e.subjectId === subjectId && e.studentId === studentId
+    )
+    if (idx === -1) return false
+    mockEnrollments.splice(idx, 1)
+    const subject = mockSubjects.find((s) => s.id === subjectId)
+    if (subject) subject.studentCount = Math.max(0, subject.studentCount - 1)
+    return true
+  },
+
+  resetEnrollmentCode(subjectId: string): string {
+    const subject = mockSubjects.find((s) => s.id === subjectId)
+    if (!subject) return ''
+    const prefix = subject.name.split(' ').filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 4)
+    const suffix = Math.random().toString(36).substring(2, 5).toUpperCase()
+    const newCode = `${prefix}${suffix}`
+    subject.enrollmentCode = newCode
+    subject.enrollmentCodeExpiry = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+    return newCode
+  },
+
+  disableEnrollmentCode(subjectId: string): void {
+    const subject = mockSubjects.find((s) => s.id === subjectId)
+    if (subject) {
+      subject.enrollmentCode = ''
+      subject.enrollmentCodeExpiry = new Date(0).toISOString()
+    }
   },
 
   submitAttendance(

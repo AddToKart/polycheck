@@ -117,6 +117,7 @@ export default function SubjectDetailScreen() {
               <View key={i} className="flex-row items-center gap-1 px-2 py-1 border" style={{ backgroundColor: chipBg, borderColor: chipBorder }}>
                 <Text className="text-[10px] font-sans-semibold" style={{ color: isDark ? '#F5A800' : '#7B1113' }}>{sd.day}</Text>
                 <Text className="text-[10px]" style={{ color: textSecondary }}>{sd.startTime}-{sd.endTime}</Text>
+                {sd.room ? <Text className="text-[9px]" style={{ color: textTertiary }}>{sd.room}</Text> : null}
               </View>
             ))}
           </View>

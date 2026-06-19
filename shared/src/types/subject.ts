@@ -2,9 +2,10 @@ export interface ScheduleDay {
   day: DayOfWeek
   startTime: string
   endTime: string
+  room?: string
 }
 
-export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat'
+export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun'
 
 export interface Subject {
   id: string

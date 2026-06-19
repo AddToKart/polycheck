@@ -11,6 +11,7 @@ export interface Session {
   date: string
   startTime: string
   endTime: string
+  room?: string
   gracePeriodMinutes: number
   tokenWindowSeconds: number
   geofence: GeofenceConfig

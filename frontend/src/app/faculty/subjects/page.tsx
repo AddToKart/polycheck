@@ -81,66 +81,74 @@ export default function SubjectsPage() {
           {/* Subjects Grid */}
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {subjects.map((subject) => (
-              <Card key={subject.id} className="rounded-none border-zinc-200 dark:border-zinc-800 shadow-none hover:border-maroon dark:hover:border-golden transition-colors group bg-zinc-50 dark:bg-zinc-900/50">
-                <div className="border-l-4 border-maroon dark:border-golden h-full flex flex-col">
-                  <CardHeader className="pb-4 pt-6 px-6">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">
-                        {subject.code}
-                      </span>
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-                        Sec {subject.section}
-                      </span>
-                    </div>
-                    <CardTitle className="text-xl font-heading font-bold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors line-clamp-2 leading-tight">
-                      {subject.name}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-6 pb-6 flex-1 flex flex-col">
-                    <div className="space-y-3 text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-6 flex-1 uppercase tracking-wider">
-                      <div className="flex justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
-                        <span className="text-zinc-400">Instructor</span>
-                        <span className="text-foreground text-right">{subject.teacherName}</span>
-                      </div>
-                      <div className="flex justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
-                        <span className="text-zinc-400">Room</span>
-                        <span className="text-foreground text-right">{subject.room}</span>
-                      </div>
-                      <div className="flex justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
-                        <span className="text-zinc-400">Schedule</span>
-                        <span className="text-foreground text-right">
-                          {subject.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')}
+              <div
+                key={subject.id}
+                onClick={() => router.push(`/faculty/subjects/${subject.id}`)}
+                className="block group cursor-pointer"
+              >
+                <Card className="rounded-none border-zinc-200 dark:border-zinc-800 shadow-none hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50">
+                  <div className="border-l-4 border-maroon dark:border-golden h-full flex flex-col">
+                    <CardHeader className="pb-4 pt-6 px-6">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">
+                          {subject.code}
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                          Sec {subject.section}
                         </span>
                       </div>
-                      <div className="flex justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
-                        <span className="text-zinc-400">Enrolled</span>
-                        <span className="text-foreground text-right">{subject.studentCount}</span>
-                      </div>
-                      <div className="flex justify-between items-center pt-2">
-                        <span className="text-zinc-400">Join Code</span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono bg-zinc-200 dark:bg-zinc-800 px-2 py-1 text-foreground">{subject.enrollmentCode}</span>
-                          <button 
-                            onClick={() => handleCopy(subject.enrollmentCode, subject.id)}
-                            className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-500 transition-colors"
-                            title="Copy Code"
-                          >
-                            {copiedId === subject.id ? <span className="text-[10px] text-maroon dark:text-golden font-bold">COPIED</span> : <Copy className="w-3.5 h-3.5" />}
-                          </button>
+                      <CardTitle className="text-xl font-heading font-bold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors line-clamp-2 leading-tight">
+                        {subject.name}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-6 pb-6 flex-1 flex flex-col">
+                      <div className="space-y-3 text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-6 flex-1 uppercase tracking-wider">
+                        <div className="flex justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
+                          <span className="text-zinc-400">Instructor</span>
+                          <span className="text-foreground text-right">{subject.teacherName}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
+                          <span className="text-zinc-400">Room</span>
+                          <span className="text-foreground text-right">{subject.room}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
+                          <span className="text-zinc-400">Schedule</span>
+                          <span className="text-foreground text-right">
+                            {subject.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}${s.room ? ` (${s.room})` : ''}`).join(', ')}
+                          </span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
+                          <span className="text-zinc-400">Enrolled</span>
+                          <span className="text-foreground text-right">{subject.studentCount}</span>
+                        </div>
+                        <div className="flex justify-between items-center pt-2">
+                          <span className="text-zinc-400">Join Code</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono bg-zinc-200 dark:bg-zinc-800 px-2 py-1 text-foreground">{subject.enrollmentCode}</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleCopy(subject.enrollmentCode, subject.id) }}
+                              className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-500 transition-colors"
+                              title="Copy Code"
+                            >
+                              {copiedId === subject.id ? <span className="text-[10px] text-maroon dark:text-golden font-bold">COPIED</span> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    
-                    <div className="mt-auto">
-                      <Button asChild variant="outline" className="w-full rounded-none border-zinc-300 dark:border-zinc-700 font-bold uppercase tracking-widest text-xs h-10 group-hover:bg-maroon group-hover:text-white group-hover:border-maroon dark:group-hover:bg-golden dark:group-hover:text-maroon dark:group-hover:border-golden transition-all">
-                        <Link href={`/faculty/sessions?subjectId=${subject.id}`}>
-                          View Sessions <ArrowRight className="w-3 h-3 ml-2" />
+
+                      <div className="mt-auto">
+                        <Link
+                          href={`/faculty/sessions?subjectId=${subject.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full h-10 text-xs font-bold uppercase tracking-widest border border-zinc-300 dark:border-zinc-700 group-hover:bg-maroon group-hover:text-white group-hover:border-maroon dark:group-hover:bg-golden dark:group-hover:text-maroon dark:group-hover:border-golden transition-all flex items-center justify-center gap-2 rounded-none"
+                        >
+                          View Sessions <ArrowRight className="w-3 h-3" />
                         </Link>
-                      </Button>
-                    </div>
-                  </CardContent>
-                </div>
-              </Card>
+                      </div>
+                    </CardContent>
+                  </div>
+                </Card>
+              </div>
             ))}
             
             {subjects.length === 0 && (

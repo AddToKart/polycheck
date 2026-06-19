@@ -8,8 +8,8 @@ export const mockSubjects: Subject[] = [
     section: 'A',
     room: 'CCIS Lab 3',
     schedule: [
-      { day: 'Mon', startTime: '09:00', endTime: '10:30' },
-      { day: 'Wed', startTime: '09:00', endTime: '10:30' },
+      { day: 'Mon', startTime: '09:00', endTime: '10:30', room: 'CCIS Lab 3' },
+      { day: 'Wed', startTime: '09:00', endTime: '10:30', room: 'CCIS Lab 3' },
     ],
     semester: '2nd Semester AY 2025-2026',
     teacherId: 't-001',
@@ -27,8 +27,8 @@ export const mockSubjects: Subject[] = [
     section: 'A',
     room: 'CCIS Lecture 2',
     schedule: [
-      { day: 'Tue', startTime: '13:00', endTime: '14:30' },
-      { day: 'Thu', startTime: '13:00', endTime: '14:30' },
+      { day: 'Tue', startTime: '13:00', endTime: '14:30', room: 'CCIS Lecture 2' },
+      { day: 'Thu', startTime: '13:00', endTime: '14:30', room: 'CCIS Lecture 2' },
     ],
     semester: '2nd Semester AY 2025-2026',
     teacherId: 't-001',
@@ -46,8 +46,8 @@ export const mockSubjects: Subject[] = [
     section: 'A',
     room: 'CCIS Lab 1',
     schedule: [
-      { day: 'Mon', startTime: '13:00', endTime: '15:00' },
-      { day: 'Fri', startTime: '10:00', endTime: '12:00' },
+      { day: 'Mon', startTime: '13:00', endTime: '15:00', room: 'AVR' },
+      { day: 'Fri', startTime: '10:00', endTime: '12:00', room: 'CCIS Lab 1' },
     ],
     semester: '2nd Semester AY 2025-2026',
     teacherId: 't-002',
@@ -65,8 +65,8 @@ export const mockSubjects: Subject[] = [
     section: 'A',
     room: 'CCIS Lecture 1',
     schedule: [
-      { day: 'Wed', startTime: '13:00', endTime: '14:30' },
-      { day: 'Fri', startTime: '13:00', endTime: '14:30' },
+      { day: 'Wed', startTime: '13:00', endTime: '14:30', room: 'COM LAB 1' },
+      { day: 'Fri', startTime: '13:00', endTime: '14:30', room: 'Room 205' },
     ],
     semester: '2nd Semester AY 2025-2026',
     teacherId: 't-002',

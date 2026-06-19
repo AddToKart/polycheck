@@ -1,11 +1,12 @@
 import { z } from 'zod'
 
-export const DayOfWeekEnum = z.enum(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'])
+export const DayOfWeekEnum = z.enum(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
 
 export const ScheduleDaySchema = z.object({
   day: DayOfWeekEnum,
   startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Must be HH:mm format'),
   endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Must be HH:mm format'),
+  room: z.string().optional(),
 })
 
 export const GeofenceConfigSchema = z.object({

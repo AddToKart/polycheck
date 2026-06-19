@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native'
+import { Modal, View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -101,6 +101,7 @@ export default function CreateSessionScreen() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')
+  const [room, setRoom] = useState('')
   const [gracePeriod, setGracePeriod] = useState(15)
   const [tokenWindow, setTokenWindow] = useState(180)
   const [latitude, setLatitude] = useState(14.5863)
@@ -130,6 +131,7 @@ export default function CreateSessionScreen() {
       date,
       startTime,
       endTime,
+      room: room || undefined,
       gracePeriodMinutes: gracePeriod,
       tokenWindowSeconds: tokenWindow,
       geofence: { latitude, longitude, radiusMeters: radius },
@@ -216,6 +218,18 @@ export default function CreateSessionScreen() {
 
         {showStartTime && <TimePickerModal value={startTime} onChange={setStartTime} onClose={() => setShowStartTime(false)} />}
         {showEndTime && <TimePickerModal value={endTime} onChange={setEndTime} onClose={() => setShowEndTime(false)} />}
+
+        {/* Room */}
+        <Text style={[styles.label, isDark && styles.labelDark]}>Room</Text>
+        <View style={[styles.picker, isDark && styles.pickerDark]}>
+          <TextInput
+            style={[styles.pickerText, isDark && styles.textWhite]}
+            value={room}
+            onChangeText={setRoom}
+            placeholder="e.g. CCIS Lab 3"
+            placeholderTextColor="#AAA"
+          />
+        </View>
 
         {/* Grace Period + Token Window as selector rows */}
         <View style={styles.row}>
