@@ -197,15 +197,60 @@ export const mockAttendanceRecords: AttendanceRecord[] = [
     isSynced: true,
     syncedAt: '2026-06-18T14:15:00Z',
   },
+  // subj-001 sess-007 (June 23)
+  { id: 'a-015', sessionId: 'sess-007', subjectId: 'subj-001', studentId: 's-001', studentName: 'Angela Marie Cruz', studentProgram: 'BS Computer Science', timestamp: '2026-06-23T09:02:00Z', status: 'present', coordinates: { latitude: 14.5864, longitude: 120.9778 }, deviceId: 'dev-f8e2a1', isSynced: true, syncedAt: '2026-06-23T09:05:00Z' },
+  { id: 'a-016', sessionId: 'sess-007', subjectId: 'subj-001', studentId: 's-002', studentName: 'Carlos Miguel Dimagiba', studentProgram: 'BS Computer Science', timestamp: '2026-06-23T09:01:00Z', status: 'present', coordinates: { latitude: 14.5863, longitude: 120.9776 }, deviceId: 'dev-a3b2c4', isSynced: true, syncedAt: '2026-06-23T09:04:00Z' },
+  { id: 'a-017', sessionId: 'sess-007', subjectId: 'subj-001', studentId: 's-003', studentName: 'Bianca Ysabel Fernandez', studentProgram: 'BS Computer Science', timestamp: '2026-06-23T09:30:00Z', status: 'late', coordinates: { latitude: 14.5865, longitude: 120.9779 }, deviceId: 'dev-d5e6f7', isSynced: true, syncedAt: '2026-06-23T09:35:00Z' },
+  { id: 'a-018', sessionId: 'sess-007', subjectId: 'subj-001', studentId: 's-004', studentName: 'Dante Villanueva', studentProgram: 'BS Computer Science', timestamp: '2026-06-23T09:03:00Z', status: 'present', coordinates: { latitude: 14.5862, longitude: 120.9775 }, deviceId: 'dev-g8h9i0', isSynced: true, syncedAt: '2026-06-23T09:06:00Z' },
+  { id: 'a-019', sessionId: 'sess-007', subjectId: 'subj-001', studentId: 's-005', studentName: 'Erika Mae Gonzales', studentProgram: 'BS Computer Science', timestamp: '2026-06-23T09:00:00Z', status: 'present', coordinates: { latitude: 14.5863, longitude: 120.9777 }, deviceId: 'dev-j1k2l3', isSynced: true, syncedAt: '2026-06-23T09:03:00Z' },
+  // subj-001 sess-008 (June 25)
+  { id: 'a-020', sessionId: 'sess-008', subjectId: 'subj-001', studentId: 's-001', studentName: 'Angela Marie Cruz', studentProgram: 'BS Computer Science', timestamp: '2026-06-25T09:02:00Z', status: 'present', coordinates: { latitude: 14.5864, longitude: 120.9778 }, deviceId: 'dev-f8e2a1', isSynced: true, syncedAt: '2026-06-25T09:05:00Z' },
+  { id: 'a-021', sessionId: 'sess-008', subjectId: 'subj-001', studentId: 's-002', studentName: 'Carlos Miguel Dimagiba', studentProgram: 'BS Computer Science', timestamp: '2026-06-25T09:00:00Z', status: 'present', coordinates: { latitude: 14.5863, longitude: 120.9776 }, deviceId: 'dev-a3b2c4', isSynced: true, syncedAt: '2026-06-25T09:03:00Z' },
+  { id: 'a-022', sessionId: 'sess-008', subjectId: 'subj-001', studentId: 's-004', studentName: 'Dante Villanueva', studentProgram: 'BS Computer Science', timestamp: '2026-06-25T09:05:00Z', status: 'present', coordinates: { latitude: 14.5862, longitude: 120.9775 }, deviceId: 'dev-g8h9i0', isSynced: true, syncedAt: '2026-06-25T09:08:00Z' },
+  { id: 'a-023', sessionId: 'sess-008', subjectId: 'subj-001', studentId: 's-007', studentName: 'Gabrielle Ann Lim', studentProgram: 'BS Computer Science', timestamp: '2026-06-25T09:40:00Z', status: 'late', coordinates: { latitude: 14.5866, longitude: 120.9780 }, deviceId: 'dev-m4n5o6', isSynced: true, syncedAt: '2026-06-25T09:45:00Z' },
+  { id: 'a-024', sessionId: 'sess-008', subjectId: 'subj-001', studentId: 's-008', studentName: 'Hanz Christian Mercado', studentProgram: 'BS Computer Science', timestamp: '2026-06-25T09:01:00Z', status: 'present', coordinates: { latitude: 14.5864, longitude: 120.9778 }, deviceId: 'dev-p7q8r9', isSynced: true, syncedAt: '2026-06-25T09:04:00Z' },
+  // subj-001 sess-009 (June 30)
+  { id: 'a-025', sessionId: 'sess-009', subjectId: 'subj-001', studentId: 's-001', studentName: 'Angela Marie Cruz', studentProgram: 'BS Computer Science', timestamp: '2026-06-30T09:01:00Z', status: 'present', coordinates: { latitude: 14.5864, longitude: 120.9778 }, deviceId: 'dev-f8e2a1', isSynced: true, syncedAt: '2026-06-30T09:04:00Z' },
+  { id: 'a-026', sessionId: 'sess-009', subjectId: 'subj-001', studentId: 's-003', studentName: 'Bianca Ysabel Fernandez', studentProgram: 'BS Computer Science', timestamp: '2026-06-30T09:00:00Z', status: 'present', coordinates: { latitude: 14.5865, longitude: 120.9779 }, deviceId: 'dev-d5e6f7', isSynced: true, syncedAt: '2026-06-30T09:03:00Z' },
+  { id: 'a-027', sessionId: 'sess-009', subjectId: 'subj-001', studentId: 's-005', studentName: 'Erika Mae Gonzales', studentProgram: 'BS Computer Science', timestamp: '2026-06-30T09:02:00Z', status: 'present', coordinates: { latitude: 14.5863, longitude: 120.9777 }, deviceId: 'dev-j1k2l3', isSynced: true, syncedAt: '2026-06-30T09:05:00Z' },
+  { id: 'a-028', sessionId: 'sess-009', subjectId: 'subj-001', studentId: 's-007', studentName: 'Gabrielle Ann Lim', studentProgram: 'BS Computer Science', timestamp: '2026-06-30T09:35:00Z', status: 'late', coordinates: { latitude: 14.5866, longitude: 120.9780 }, deviceId: 'dev-m4n5o6', isSynced: true, syncedAt: '2026-06-30T09:40:00Z' },
+  { id: 'a-029', sessionId: 'sess-009', subjectId: 'subj-001', studentId: 's-008', studentName: 'Hanz Christian Mercado', studentProgram: 'BS Computer Science', timestamp: '2026-06-30T09:00:00Z', status: 'present', coordinates: { latitude: 14.5864, longitude: 120.9778 }, deviceId: 'dev-p7q8r9', isSynced: true, syncedAt: '2026-06-30T09:03:00Z' },
+  // subj-001 sess-010 (July 2)
+  { id: 'a-030', sessionId: 'sess-010', subjectId: 'subj-001', studentId: 's-001', studentName: 'Angela Marie Cruz', studentProgram: 'BS Computer Science', timestamp: '2026-07-02T09:02:00Z', status: 'present', coordinates: { latitude: 14.5864, longitude: 120.9778 }, deviceId: 'dev-f8e2a1', isSynced: true, syncedAt: '2026-07-02T09:05:00Z' },
+  { id: 'a-031', sessionId: 'sess-010', subjectId: 'subj-001', studentId: 's-002', studentName: 'Carlos Miguel Dimagiba', studentProgram: 'BS Computer Science', timestamp: '2026-07-02T09:01:00Z', status: 'present', coordinates: { latitude: 14.5863, longitude: 120.9776 }, deviceId: 'dev-a3b2c4', isSynced: true, syncedAt: '2026-07-02T09:04:00Z' },
+  { id: 'a-032', sessionId: 'sess-010', subjectId: 'subj-001', studentId: 's-004', studentName: 'Dante Villanueva', studentProgram: 'BS Computer Science', timestamp: '2026-07-02T09:25:00Z', status: 'late', coordinates: { latitude: 14.5862, longitude: 120.9775 }, deviceId: 'dev-g8h9i0', isSynced: true, syncedAt: '2026-07-02T09:30:00Z' },
+  { id: 'a-033', sessionId: 'sess-010', subjectId: 'subj-001', studentId: 's-005', studentName: 'Erika Mae Gonzales', studentProgram: 'BS Computer Science', timestamp: '2026-07-02T09:00:00Z', status: 'present', coordinates: { latitude: 14.5863, longitude: 120.9777 }, deviceId: 'dev-j1k2l3', isSynced: true, syncedAt: '2026-07-02T09:03:00Z' },
+  { id: 'a-034', sessionId: 'sess-010', subjectId: 'subj-001', studentId: 's-008', studentName: 'Hanz Christian Mercado', studentProgram: 'BS Computer Science', timestamp: '2026-07-02T09:00:00Z', status: 'present', coordinates: { latitude: 14.5864, longitude: 120.9778 }, deviceId: 'dev-p7q8r9', isSynced: true, syncedAt: '2026-07-02T09:03:00Z' },
+  // subj-003 sess-011 (June 23)
+  { id: 'a-035', sessionId: 'sess-011', subjectId: 'subj-003', studentId: 's-001', studentName: 'Angela Marie Cruz', studentProgram: 'BS Computer Science', timestamp: '2026-06-23T13:02:00Z', status: 'present', coordinates: { latitude: 14.5864, longitude: 120.9778 }, deviceId: 'dev-f8e2a1', isSynced: true, syncedAt: '2026-06-23T13:05:00Z' },
+  { id: 'a-036', sessionId: 'sess-011', subjectId: 'subj-003', studentId: 's-003', studentName: 'Bianca Ysabel Fernandez', studentProgram: 'BS Computer Science', timestamp: '2026-06-23T13:01:00Z', status: 'present', coordinates: { latitude: 14.5865, longitude: 120.9779 }, deviceId: 'dev-d5e6f7', isSynced: true, syncedAt: '2026-06-23T13:04:00Z' },
+  { id: 'a-037', sessionId: 'sess-011', subjectId: 'subj-003', studentId: 's-004', studentName: 'Dante Villanueva', studentProgram: 'BS Computer Science', timestamp: '2026-06-23T13:00:00Z', status: 'present', coordinates: { latitude: 14.5862, longitude: 120.9775 }, deviceId: 'dev-g8h9i0', isSynced: true, syncedAt: '2026-06-23T13:03:00Z' },
+  { id: 'a-038', sessionId: 'sess-011', subjectId: 'subj-003', studentId: 's-005', studentName: 'Erika Mae Gonzales', studentProgram: 'BS Computer Science', timestamp: '2026-06-23T13:02:00Z', status: 'present', coordinates: { latitude: 14.5863, longitude: 120.9777 }, deviceId: 'dev-j1k2l3', isSynced: true, syncedAt: '2026-06-23T13:05:00Z' },
+  { id: 'a-039', sessionId: 'sess-011', subjectId: 'subj-003', studentId: 's-007', studentName: 'Gabrielle Ann Lim', studentProgram: 'BS Computer Science', timestamp: '2026-06-23T13:40:00Z', status: 'late', coordinates: { latitude: 14.5866, longitude: 120.9780 }, deviceId: 'dev-m4n5o6', isSynced: true, syncedAt: '2026-06-23T13:45:00Z' },
+  // subj-003 sess-012 (June 26)
+  { id: 'a-040', sessionId: 'sess-012', subjectId: 'subj-003', studentId: 's-001', studentName: 'Angela Marie Cruz', studentProgram: 'BS Computer Science', timestamp: '2026-06-26T10:02:00Z', status: 'present', coordinates: { latitude: 14.5864, longitude: 120.9778 }, deviceId: 'dev-f8e2a1', isSynced: true, syncedAt: '2026-06-26T10:05:00Z' },
+  { id: 'a-041', sessionId: 'sess-012', subjectId: 'subj-003', studentId: 's-003', studentName: 'Bianca Ysabel Fernandez', studentProgram: 'BS Computer Science', timestamp: '2026-06-26T10:01:00Z', status: 'present', coordinates: { latitude: 14.5865, longitude: 120.9779 }, deviceId: 'dev-d5e6f7', isSynced: true, syncedAt: '2026-06-26T10:04:00Z' },
+  { id: 'a-042', sessionId: 'sess-012', subjectId: 'subj-003', studentId: 's-004', studentName: 'Dante Villanueva', studentProgram: 'BS Computer Science', timestamp: '2026-06-26T10:30:00Z', status: 'late', coordinates: { latitude: 14.5862, longitude: 120.9775 }, deviceId: 'dev-g8h9i0', isSynced: true, syncedAt: '2026-06-26T10:35:00Z' },
+  { id: 'a-043', sessionId: 'sess-012', subjectId: 'subj-003', studentId: 's-007', studentName: 'Gabrielle Ann Lim', studentProgram: 'BS Computer Science', timestamp: '2026-06-26T10:00:00Z', status: 'present', coordinates: { latitude: 14.5866, longitude: 120.9780 }, deviceId: 'dev-m4n5o6', isSynced: true, syncedAt: '2026-06-26T10:03:00Z' },
+  // subj-003 sess-013 (June 30)
+  { id: 'a-044', sessionId: 'sess-013', subjectId: 'subj-003', studentId: 's-001', studentName: 'Angela Marie Cruz', studentProgram: 'BS Computer Science', timestamp: '2026-06-30T13:01:00Z', status: 'present', coordinates: { latitude: 14.5864, longitude: 120.9778 }, deviceId: 'dev-f8e2a1', isSynced: true, syncedAt: '2026-06-30T13:04:00Z' },
+  { id: 'a-045', sessionId: 'sess-013', subjectId: 'subj-003', studentId: 's-003', studentName: 'Bianca Ysabel Fernandez', studentProgram: 'BS Computer Science', timestamp: '2026-06-30T13:00:00Z', status: 'present', coordinates: { latitude: 14.5865, longitude: 120.9779 }, deviceId: 'dev-d5e6f7', isSynced: true, syncedAt: '2026-06-30T13:03:00Z' },
+  { id: 'a-046', sessionId: 'sess-013', subjectId: 'subj-003', studentId: 's-005', studentName: 'Erika Mae Gonzales', studentProgram: 'BS Computer Science', timestamp: '2026-06-30T13:02:00Z', status: 'present', coordinates: { latitude: 14.5863, longitude: 120.9777 }, deviceId: 'dev-j1k2l3', isSynced: true, syncedAt: '2026-06-30T13:05:00Z' },
+  { id: 'a-047', sessionId: 'sess-013', subjectId: 'subj-003', studentId: 's-006', studentName: 'Francis Dominic Santos', studentProgram: 'BS Computer Science', timestamp: '2026-06-30T14:00:00Z', status: 'absent', coordinates: { latitude: 0, longitude: 0 }, deviceId: 'dev-s1t2u3', isSynced: true, syncedAt: '2026-06-30T14:05:00Z' },
+  // subj-003 sess-014 (July 3)
+  { id: 'a-048', sessionId: 'sess-014', subjectId: 'subj-003', studentId: 's-001', studentName: 'Angela Marie Cruz', studentProgram: 'BS Computer Science', timestamp: '2026-07-03T10:02:00Z', status: 'present', coordinates: { latitude: 14.5864, longitude: 120.9778 }, deviceId: 'dev-f8e2a1', isSynced: true, syncedAt: '2026-07-03T10:05:00Z' },
+  { id: 'a-049', sessionId: 'sess-014', subjectId: 'subj-003', studentId: 's-004', studentName: 'Dante Villanueva', studentProgram: 'BS Computer Science', timestamp: '2026-07-03T10:01:00Z', status: 'present', coordinates: { latitude: 14.5862, longitude: 120.9775 }, deviceId: 'dev-g8h9i0', isSynced: true, syncedAt: '2026-07-03T10:04:00Z' },
+  { id: 'a-050', sessionId: 'sess-014', subjectId: 'subj-003', studentId: 's-006', studentName: 'Francis Dominic Santos', studentProgram: 'BS Computer Science', timestamp: '2026-07-03T10:00:00Z', status: 'present', coordinates: { latitude: 14.5863, longitude: 120.9777 }, deviceId: 'dev-s1t2u3', isSynced: true, syncedAt: '2026-07-03T10:03:00Z' },
+  { id: 'a-051', sessionId: 'sess-014', subjectId: 'subj-003', studentId: 's-007', studentName: 'Gabrielle Ann Lim', studentProgram: 'BS Computer Science', timestamp: '2026-07-03T10:00:00Z', status: 'present', coordinates: { latitude: 14.5866, longitude: 120.9780 }, deviceId: 'dev-m4n5o6', isSynced: true, syncedAt: '2026-07-03T10:03:00Z' },
 ]
 
 export const mockAttendanceSummaries: AttendanceSummary[] = [
   {
     subjectId: 'subj-001',
     subjectName: 'Software Engineering',
-    totalSessions: 4,
-    present: 18,
-    late: 4,
+    totalSessions: 6,
+    present: 24,
+    late: 6,
     absent: 2,
   },
   {
@@ -219,10 +264,10 @@ export const mockAttendanceSummaries: AttendanceSummary[] = [
   {
     subjectId: 'subj-003',
     subjectName: 'Human-Computer Interaction',
-    totalSessions: 3,
-    present: 8,
-    late: 2,
-    absent: 1,
+    totalSessions: 6,
+    present: 16,
+    late: 4,
+    absent: 2,
   },
   {
     subjectId: 'subj-004',

@@ -209,6 +209,13 @@ Any failure → marked as `disputed`, surfaced to teacher
 - `pnpm build` — build all packages
 - `pnpm lint` — lint all packages
 
+### Mobile styling
+- **Use NativeWind classNames for all new mobile UI** (e.g. `className="flex-1 bg-white dark:bg-black"`)
+- Use `StyleSheet.create()` only when NativeWind cannot express the style (dynamic values, complex transforms)
+- Color tokens are defined in Tailwind config; reference them by name (`text-maroon`, `bg-golden`, etc.)
+- Never mix `className` and `style` props on the same element
+- Prefer `gap` over margin/padding for spacing between siblings
+
 ### Shared package imports
 ```typescript
 import { User, Subject, Session } from '@polycheck/shared'

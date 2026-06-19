@@ -49,8 +49,8 @@ export default function FacultyDashboardScreen() {
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <View style={[styles.header, isDark && styles.headerDark]}>
         <View>
-          <Text style={[styles.greeting, isDark && styles.textWhite]}>Welcome back</Text>
-          <Text style={[styles.name, isDark && styles.textWhite70]}>{user.fullName}</Text>
+          <Text style={[styles.greeting, isDark && styles.textGolden]}>Welcome back</Text>
+          <Text style={[styles.name, isDark && styles.textWhite]}>{user.fullName}</Text>
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
@@ -65,23 +65,23 @@ export default function FacultyDashboardScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.statsRow}>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="menu-book" size={20} color="#7B1113" />
-            <Text style={styles.statNumber}>{subjects.length}</Text>
+            <MaterialIcons name="menu-book" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+            <Text style={[styles.statNumber, isDark && styles.textGolden]}>{subjects.length}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Subjects</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="people" size={20} color="#7B1113" />
-            <Text style={styles.statNumber}>{totalStudents}</Text>
+            <MaterialIcons name="people" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+            <Text style={[styles.statNumber, isDark && styles.textGolden]}>{totalStudents}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Students</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="today" size={20} color="#7B1113" />
-            <Text style={styles.statNumber}>{sessionsToday}</Text>
+            <MaterialIcons name="today" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+            <Text style={[styles.statNumber, isDark && styles.textGolden]}>{sessionsToday}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Today</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="report" size={20} color="#4A0A0B" />
-            <Text style={[styles.statNumber, { color: '#4A0A0B' }]}>{absentCount}</Text>
+            <MaterialIcons name="report" size={20} color={isDark ? '#EF4444' : '#4A0A0B'} />
+            <Text style={[styles.statNumber, { color: isDark ? '#EF4444' : '#4A0A0B' }]}>{absentCount}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Absent</Text>
           </View>
         </View>
@@ -95,15 +95,15 @@ export default function FacultyDashboardScreen() {
               accessibilityRole="button"
             >
               <View style={styles.navItemLeft}>
-                <MaterialIcons name={item.icon} size={20} color="#7B1113" />
+                <MaterialIcons name={item.icon} size={20} color={isDark ? '#F5A800' : '#7B1113'} />
                 <Text style={[styles.navLabel, isDark && styles.textWhite]}>{item.label}</Text>
               </View>
-              <MaterialIcons name="chevron-right" size={20} color="#7B1113" />
+              <MaterialIcons name="chevron-right" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
             </TouchableOpacity>
           ))}
         </View>
 
-        <Text style={[styles.sectionTitle, isDark && styles.textWhite]}>My Subjects</Text>
+        <Text style={[styles.sectionTitle, isDark && styles.textGolden]}>My Subjects</Text>
         {subjects.map((s) => (
           <TouchableOpacity
             key={s.id}
@@ -129,9 +129,9 @@ export default function FacultyDashboardScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F5F5' },
-  containerDark: { backgroundColor: '#0A0A0A' },
+  containerDark: { backgroundColor: '#0A0A0C' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-  headerDark: { backgroundColor: '#1A1A1A', borderBottomColor: '#222' },
+  headerDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
   greeting: { fontSize: 14, fontFamily: fonts.body, color: '#7B1113' },
   name: { fontSize: 20, fontWeight: '700', fontFamily: fonts.heading, color: '#4A0A0B', marginTop: 2 },
   headerRight: { flexDirection: 'row', gap: 8 },
@@ -139,15 +139,16 @@ const styles = StyleSheet.create({
   textWhite: { color: '#FFFFFF' },
   textWhite70: { color: 'rgba(255,255,255,0.7)' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
+  textGolden: { color: '#F5A800' },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   statsRow: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
   statCard: { backgroundColor: '#FFFFFF', borderRadius: 0, padding: 14, alignItems: 'center', gap: 4, minWidth: '22%', flex: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
-  cardDark: { backgroundColor: '#1A1A1A' },
+  cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
   statNumber: { fontSize: 22, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#7B1113' },
   statLabel: { fontSize: 10, fontFamily: fonts.body, color: '#AAA', marginTop: 2 },
   navCard: { backgroundColor: '#FFFFFF', borderRadius: 0, overflow: 'hidden', marginBottom: 20 },
   navItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
-  navItemDark: { borderBottomColor: '#222' },
+  navItemDark: { borderBottomColor: '#1C1C21' },
   navItemLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   navLabel: { fontSize: 16, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#333' },
   sectionTitle: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#4A0A0B', marginBottom: 12 },

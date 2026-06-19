@@ -37,7 +37,7 @@ export default function IdCardScreen() {
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       {/* Header */}
       <View style={[styles.header, isDark && styles.headerDark]}>
-        <Text style={[styles.headerTitle, isDark && styles.textWhite]}>ID Card</Text>
+        <Text style={[styles.headerTitle, isDark && styles.textGolden]}>ID Card</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
             <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={24} color={isDark ? '#F5A800' : '#7B1113'} />
@@ -56,7 +56,7 @@ export default function IdCardScreen() {
           >
             {/* Card Header */}
             <View style={styles.cardHeader}>
-              <Image source={require('../../assets/icon.png')} style={styles.cardLogo} />
+              <Image source={require('../../assets/pup-logo.png')} style={styles.cardLogo} />
               <View>
                 <Text style={styles.cardHeaderSub}>Republic of the Philippines</Text>
                 <Text style={styles.cardHeaderTitle}>Polytechnic University of the Philippines</Text>
@@ -71,8 +71,8 @@ export default function IdCardScreen() {
                   <MaterialIcons name="person" size={48} color={isDark ? '#555' : '#CCC'} />
                 </View>
                 <View style={styles.signatureArea}>
-                  <View style={styles.signatureLine}>
-                    <Text style={styles.signatureLabel}>SIGNATURE</Text>
+                  <View style={[styles.signatureLine, isDark && styles.signatureLineDark]}>
+                    <Text style={[styles.signatureLabel, isDark && styles.textWhite50]}>SIGNATURE</Text>
                   </View>
                 </View>
               </View>
@@ -116,11 +116,11 @@ export default function IdCardScreen() {
                 </View>
                 <View style={styles.emergencyArea}>
                   <Text style={styles.emergencyLabel}>In case of emergency, contact:</Text>
-                  <View style={styles.emergencyLine} />
-                  <View style={[styles.emergencyLine, { marginTop: 4 }]} />
+                  <View style={[styles.emergencyLine, isDark && styles.emergencyLineDark]} />
+                  <View style={[styles.emergencyLine, isDark && styles.emergencyLineDark, { marginTop: 4 }]} />
                 </View>
               </View>
-              <View style={styles.backRight}>
+              <View style={[styles.backRight, isDark && styles.backRightDark]}>
                 <View style={styles.qrBox}>
                   <MaterialIcons name="qr-code" size={48} color="#000" />
                 </View>
@@ -138,13 +138,13 @@ export default function IdCardScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
-  containerDark: { backgroundColor: '#0A0A0A' },
+  containerDark: { backgroundColor: '#0A0A0C' },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 16,
     backgroundColor: '#FFFFFF', borderBottomWidth: 2, borderBottomColor: '#D4D4D8',
   },
-  headerDark: { backgroundColor: '#0A0A0A', borderBottomColor: '#27272A' },
+  headerDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
   headerTitle: { fontSize: 24, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#7B1113' },
   headerRight: { flexDirection: 'row', gap: 8 },
   iconBtn: { padding: 8 },
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
   cardFace: { width: '100%', height: '100%', borderWidth: 2, borderColor: '#D4D4D8', flexDirection: 'column', overflow: 'hidden' },
   cardFront: { backgroundColor: '#FFFFFF' },
   cardBack: { backgroundColor: '#FFFFFF' },
-  cardDark: { borderColor: '#3F3F46' },
+  cardDark: { borderColor: 'rgba(245, 168, 0, 0.25)', backgroundColor: '#121215' },
 
   cardHeader: { backgroundColor: '#7B1113', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardLogo: { width: 32, height: 32 },
@@ -162,15 +162,16 @@ const styles = StyleSheet.create({
   cardHeaderTitle: { fontSize: 10, fontWeight: '700', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 1, lineHeight: 12 },
 
   cardBody: { flex: 1, flexDirection: 'row', backgroundColor: '#FDFBF7' },
-  cardBodyDark: { backgroundColor: '#1A1A1A' },
+  cardBodyDark: { backgroundColor: '#121215' },
 
   photoCol: { width: '33%', borderRightWidth: 2, borderRightColor: '#D4D4D8', padding: 12, flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
-  photoColDark: { borderRightColor: '#3F3F46' },
+  photoColDark: { borderRightColor: 'rgba(245, 168, 0, 0.2)' },
   photoBox: { width: '100%', aspectRatio: 3 / 4, backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#D4D4D8', marginBottom: 12, alignItems: 'center', justifyContent: 'center' },
-  photoBoxDark: { backgroundColor: '#27272A', borderColor: '#3F3F46' },
+  photoBoxDark: { backgroundColor: '#1C1C21', borderColor: 'rgba(245, 168, 0, 0.2)' },
 
   signatureArea: { width: '100%', marginTop: 'auto' },
   signatureLine: { borderBottomWidth: 2, borderBottomColor: '#27272A', height: 20, justifyContent: 'flex-end', alignItems: 'center' },
+  signatureLineDark: { borderBottomColor: 'rgba(255, 255, 255, 0.2)' },
   signatureLabel: { fontSize: 7, fontFamily: 'DMSans_400Regular', color: 'rgba(0,0,0,0.5)' },
 
   detailsCol: { flex: 1, padding: 16, justifyContent: 'center' },
@@ -190,7 +191,9 @@ const styles = StyleSheet.create({
   emergencyArea: { marginTop: 'auto' },
   emergencyLabel: { fontSize: 7, textTransform: 'uppercase', letterSpacing: 1, color: '#71717A', fontWeight: '700', marginBottom: 4 },
   emergencyLine: { borderBottomWidth: 1, borderBottomColor: '#A1A1AA', height: 20 },
+  emergencyLineDark: { borderBottomColor: 'rgba(255, 255, 255, 0.2)' },
   backRight: { flex: 1, alignItems: 'center', justifyContent: 'center', borderLeftWidth: 2, borderLeftColor: '#D4D4D8', borderStyle: 'dashed', paddingLeft: 16 },
+  backRightDark: { borderLeftColor: 'rgba(245, 168, 0, 0.2)' },
   qrBox: { width: '100%', aspectRatio: 1, backgroundColor: '#F4F4F5', borderWidth: 2, borderColor: '#D4D4D8', alignItems: 'center', justifyContent: 'center', padding: 4 },
   qrLabel: { fontSize: 6, fontFamily: 'DMSans_400Regular', marginTop: 8, color: '#71717A', textAlign: 'center', letterSpacing: 2 },
 

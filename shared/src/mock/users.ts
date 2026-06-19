@@ -44,6 +44,20 @@ export const mockTeachers: Teacher[] = [
   },
 ]
 
+function studentTemplate(id: string, studentId: string, fullName: string, program: string, yearLevel: number, subjects: string[]): Student {
+  return {
+    id, studentId, fullName,
+    email: `${id.replace('-', '')}@iskolarngbayan.pup.edu.ph`,
+    role: 'student',
+    program, yearLevel,
+    photoUrl: '',
+    enrolledSubjectIds: subjects,
+    isActive: true,
+    createdAt: '2025-08-15T00:00:00Z',
+    updatedAt: '2026-01-20T00:00:00Z',
+  }
+}
+
 export const mockStudents: Student[] = [
   {
     id: 's-001',
@@ -157,6 +171,11 @@ export const mockStudents: Student[] = [
     createdAt: '2025-08-15T00:00:00Z',
     updatedAt: '2026-01-20T00:00:00Z',
   },
+  studentTemplate('s-009', '2024-00567-MN-0', 'Isabella Marie Torres', 'BS Computer Science', 2, ['subj-001']),
+  studentTemplate('s-010', '2024-00890-MN-0', 'Jaime Luis Mendoza', 'BS Computer Science', 2, ['subj-001']),
+  studentTemplate('s-011', '2024-00134-MN-0', 'Kyla Andrea Navarro', 'BS Computer Science', 2, ['subj-001']),
+  studentTemplate('s-012', '2024-00467-MN-0', 'Lorenzo Miguel Ong', 'BS Computer Science', 2, ['subj-001']),
+  studentTemplate('s-013', '2024-00790-MN-0', 'Patricia Anne Ramirez', 'BS Computer Science', 2, ['subj-001']),
 ]
 
 export const mockUsers: User[] = [

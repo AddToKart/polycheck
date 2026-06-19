@@ -28,7 +28,7 @@ function RootLayoutInner() {
   if (!fontsLoaded) return null
 
   return (
-    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+    <View className={`flex-1 ${isDark ? 'dark' : ''}`} onLayout={onLayoutRootView}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false }} />
     </View>

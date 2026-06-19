@@ -50,7 +50,7 @@ export default function DashboardScreen() {
       <View style={[styles.header, isDark && styles.headerDark]}>
         <View>
           <Text style={[styles.greeting, isDark && styles.textWhite50]}>{greeting()}</Text>
-          <Text style={[styles.name, isDark && styles.textWhite]}>{student?.fullName.split(' ')[0] ?? 'Student'}</Text>
+          <Text style={[styles.name, isDark && styles.textGolden]}>{student?.fullName.split(' ')[0] ?? 'Student'}</Text>
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
@@ -65,7 +65,7 @@ export default function DashboardScreen() {
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#7B1113" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={isDark ? '#F5A800' : '#7B1113'} />}
       >
         {/* Student info card */}
         <View style={[styles.card, isDark && styles.cardDark]}>
@@ -83,12 +83,12 @@ export default function DashboardScreen() {
         {/* Stats row */}
         <View style={styles.statsRow}>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="book" size={20} color="#7B1113" />
+            <MaterialIcons name="book" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
             <Text style={[styles.statNum, isDark && styles.textGolden]}>{mySubjects.length}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Subjects</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="trending-up" size={20} color="#7B1113" />
+            <MaterialIcons name="trending-up" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
             <Text style={[styles.statNum, isDark && styles.textGolden]}>{attendanceRate}%</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Rate</Text>
           </View>
@@ -101,17 +101,17 @@ export default function DashboardScreen() {
             <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Present</Text>
           </View>
           <View style={styles.attendanceItem}>
-            <Text style={[styles.attendanceNum, { color: '#7B1113' }]}>{late}</Text>
+            <Text style={[styles.attendanceNum, { color: isDark ? '#F5A800' : '#7B1113' }]}>{late}</Text>
             <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Late</Text>
           </View>
           <View style={styles.attendanceItem}>
-            <Text style={[styles.attendanceNum, { color: '#4A0A0B' }]}>{absent}</Text>
+            <Text style={[styles.attendanceNum, { color: isDark ? '#EF4444' : '#4A0A0B' }]}>{absent}</Text>
             <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Absent</Text>
           </View>
         </View>
 
         {/* Today's schedule */}
-        <Text style={[styles.sectionTitle, isDark && styles.textWhite]}>Today's Schedule</Text>
+        <Text style={[styles.sectionTitle, isDark && styles.textGolden]}>Today's Schedule</Text>
 
         {todaySchedule.length === 0 ? (
           <View style={[styles.emptyCard, isDark && styles.cardDark]}>
@@ -150,15 +150,22 @@ export default function DashboardScreen() {
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const { isDark } = useTheme()
   const configs: Record<string, { bg: string; text: string }> = {
     present: { bg: '#F5A800', text: '#4A0A0B' },
-    late: { bg: '#7B1113', text: '#FFFFFF' },
-    absent: { bg: '#4A0A0B', text: '#F5A800' },
-    pending: { bg: 'transparent', text: '#7B1113' },
+    late: { bg: isDark ? 'rgba(245, 168, 0, 0.15)' : '#7B1113', text: isDark ? '#F5A800' : '#FFFFFF' },
+    absent: { bg: isDark ? 'rgba(239, 68, 68, 0.15)' : '#4A0A0B', text: isDark ? '#EF4444' : '#F5A800' },
+    pending: { bg: 'transparent', text: isDark ? '#F5A800' : '#7B1113' },
   }
   const c = configs[status] || configs.pending
   return (
-    <View style={[styles.badge, { backgroundColor: c.bg }, status === 'pending' && styles.badgeBorder]}>
+    <View style={[
+      styles.badge,
+      { backgroundColor: c.bg },
+      status === 'pending' && (isDark ? styles.badgeBorderGolden : styles.badgeBorder),
+      status === 'late' && isDark && { borderWidth: 1, borderColor: '#F5A800' },
+      status === 'absent' && isDark && { borderWidth: 1, borderColor: '#EF4444' }
+    ]}>
       <Text style={[styles.badgeText, { color: c.text }]}>{status}</Text>
     </View>
   )
@@ -166,25 +173,25 @@ function StatusBadge({ status }: { status: string }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F5F5' },
-  containerDark: { backgroundColor: '#0A0A0A' },
+  containerDark: { backgroundColor: '#0A0A0C' },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 16,
     backgroundColor: '#FFFFFF', borderBottomWidth: 2, borderBottomColor: '#D4D4D8',
   },
-  headerDark: { backgroundColor: '#0A0A0A', borderBottomColor: '#27272A' },
+  headerDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
   greeting: { fontSize: 10, fontWeight: '700', color: '#A1A1AA', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 4 },
   name: { fontSize: 24, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#7B1113' },
   headerRight: { flexDirection: 'row', gap: 8 },
   iconBtn: { padding: 8 },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 100 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 120 },
 
   card: {
     borderWidth: 2, borderColor: '#D4D4D8', backgroundColor: '#FFFFFF',
     padding: 20, marginBottom: 16,
   },
-  cardDark: { borderColor: '#27272A', backgroundColor: '#18181B' },
+  cardDark: { borderColor: 'rgba(245, 168, 0, 0.2)', backgroundColor: '#121215' },
   programText: { fontSize: 20, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#7B1113', marginBottom: 16 },
 
   cardRow: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#E4E4E7', paddingBottom: 8, marginBottom: 8 },
@@ -237,6 +244,7 @@ const styles = StyleSheet.create({
 
   badge: { paddingHorizontal: 8, paddingVertical: 4 },
   badgeBorder: { borderWidth: 2, borderColor: '#7B1113' },
+  badgeBorderGolden: { borderWidth: 2, borderColor: '#F5A800' },
   badgeText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
 
   textWhite: { color: '#FFFFFF' },

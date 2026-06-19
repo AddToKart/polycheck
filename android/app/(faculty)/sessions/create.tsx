@@ -23,47 +23,68 @@ function formatTime(h: number, m: number) {
 }
 
 function TimePickerModal({ value, onChange, onClose }: { value: string; onChange: (t: string) => void; onClose: () => void }) {
+  const { isDark } = useTheme()
   const [h, setH] = useState(parseInt(value.split(':')[0], 10))
   const [m, setM] = useState(parseInt(value.split(':')[1], 10))
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={styles.timeSheet} onStartShouldSetResponder={() => true}>
-          <Text style={styles.timeSheetTitle}>Select Time</Text>
+        <View style={[styles.timeSheet, isDark && styles.timeSheetDark]} onStartShouldSetResponder={() => true}>
+          <Text style={[styles.timeSheetTitle, isDark && styles.timeSheetTitleDark]}>Select Time</Text>
           <View style={styles.timeColumns}>
-            <ScrollView style={styles.timeColumn} showsVerticalScrollIndicator={false}>
-              {HOURS.map((hour) => (
-                <TouchableOpacity
-                  key={hour}
-                  style={[styles.timeItem, h === hour && styles.timeItemActive]}
-                  onPress={() => setH(hour)}
-                >
-                  <Text style={[styles.timeItemText, h === hour && styles.timeItemTextActive]}>
-                    {formatTime(hour, 0)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <ScrollView style={[styles.timeColumn, isDark && styles.timeColumnDark]} showsVerticalScrollIndicator={false}>
+              {HOURS.map((hour) => {
+                const isActive = h === hour
+                return (
+                  <TouchableOpacity
+                    key={hour}
+                    style={[
+                      styles.timeItem,
+                      isActive && (isDark ? styles.timeItemActiveDark : styles.timeItemActive)
+                    ]}
+                    onPress={() => setH(hour)}
+                  >
+                    <Text style={[
+                      styles.timeItemText,
+                      isDark && styles.textWhite,
+                      isActive && (isDark ? styles.timeItemTextActiveDark : styles.timeItemTextActive)
+                    ]}>
+                      {formatTime(hour, 0)}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
             </ScrollView>
-            <ScrollView style={styles.timeColumn} showsVerticalScrollIndicator={false}>
-              {MINUTES.map((min) => (
-                <TouchableOpacity
-                  key={min}
-                  style={[styles.timeItem, m === min && styles.timeItemActive]}
-                  onPress={() => setM(min)}
-                >
-                  <Text style={[styles.timeItemText, m === min && styles.timeItemTextActive]}>
-                    :{pad(min)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <ScrollView style={[styles.timeColumn, isDark && styles.timeColumnDark, { borderRightWidth: 0 }]} showsVerticalScrollIndicator={false}>
+              {MINUTES.map((min) => {
+                const isActive = m === min
+                return (
+                  <TouchableOpacity
+                    key={min}
+                    style={[
+                      styles.timeItem,
+                      isActive && (isDark ? styles.timeItemActiveDark : styles.timeItemActive)
+                    ]}
+                    onPress={() => setM(min)}
+                  >
+                    <Text style={[
+                      styles.timeItemText,
+                      isDark && styles.textWhite,
+                      isActive && (isDark ? styles.timeItemTextActiveDark : styles.timeItemTextActive)
+                    ]}>
+                      :{pad(min)}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
             </ScrollView>
           </View>
           <TouchableOpacity
-            style={styles.timeOkBtn}
+            style={[styles.timeOkBtn, isDark && styles.timeOkBtnDark]}
             onPress={() => { onChange(`${pad(h)}:${pad(m)}`); onClose() }}
           >
-            <Text style={styles.timeOkBtnText}>OK</Text>
+            <Text style={[styles.timeOkBtnText, isDark && styles.timeOkBtnTextDark]}>OK</Text>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -74,6 +95,7 @@ function TimePickerModal({ value, onChange, onClose }: { value: string; onChange
 export default function CreateSessionScreen() {
   const { isDark } = useTheme()
   const [user, setUser] = useState<User | null>(null)
+  const [mapFocus, setMapFocus] = useState(false)
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [subjectId, setSubjectId] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
@@ -125,7 +147,7 @@ export default function CreateSessionScreen() {
         <Text style={[styles.heading, isDark && styles.headingDark]}>Create Session</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" scrollEnabled={!mapFocus}>
         {/* Subject */}
         <Text style={[styles.label, isDark && styles.labelDark]}>Subject</Text>
         <TouchableOpacity
@@ -135,7 +157,7 @@ export default function CreateSessionScreen() {
           <Text style={[styles.pickerText, isDark && styles.textWhite, !selectedSubject && styles.pickerPlaceholder]}>
             {selectedSubject ? `${selectedSubject.name} (${selectedSubject.code})` : 'Select a subject'}
           </Text>
-          <MaterialIcons name={showSubjectPicker ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color="#888" />
+          <MaterialIcons name={showSubjectPicker ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color={isDark ? '#F5A800' : '#888'} />
         </TouchableOpacity>
 
         <Modal visible={showSubjectPicker} transparent animationType="fade" onRequestClose={() => setShowSubjectPicker(false)}>
@@ -146,13 +168,17 @@ export default function CreateSessionScreen() {
                 {subjects.map((s) => (
                   <TouchableOpacity
                     key={s.id}
-                    style={[styles.sheetOption, s.id === subjectId && styles.sheetOptionSelected]}
+                    style={[
+                      styles.sheetOption,
+                      isDark && styles.sheetOptionDarkBorder,
+                      s.id === subjectId && (isDark ? styles.sheetOptionSelectedDark : styles.sheetOptionSelected)
+                    ]}
                     onPress={() => { setSubjectId(s.id); setShowSubjectPicker(false) }}
                   >
-                    <Text style={[styles.sheetOptionText, isDark && styles.sheetOptionTextDark, s.id === subjectId && styles.sheetOptionTextActive]}>
+                    <Text style={[styles.sheetOptionText, isDark && styles.sheetOptionTextDark, s.id === subjectId && (isDark ? styles.sheetOptionTextActiveDark : styles.sheetOptionTextActive)]}>
                       {s.name} ({s.code})
                     </Text>
-                    {s.id === subjectId && <MaterialIcons name="check" size={18} color="#7B1113" />}
+                    {s.id === subjectId && <MaterialIcons name="check" size={18} color={isDark ? '#F5A800' : '#7B1113'} />}
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -167,7 +193,7 @@ export default function CreateSessionScreen() {
           onPress={() => {}}
         >
           <Text style={[styles.pickerText, isDark && styles.textWhite]}>{date}</Text>
-          <MaterialIcons name="calendar-today" size={18} color="#888" />
+          <MaterialIcons name="calendar-today" size={18} color={isDark ? '#F5A800' : '#888'} />
         </TouchableOpacity>
 
         {/* Time row */}
@@ -176,14 +202,14 @@ export default function CreateSessionScreen() {
             <Text style={[styles.label, isDark && styles.labelDark]}>Start Time</Text>
             <TouchableOpacity style={[styles.picker, isDark && styles.pickerDark]} onPress={() => setShowStartTime(true)}>
               <Text style={[styles.pickerText, isDark && styles.textWhite]}>{formatTime(parseInt(startTime.split(':')[0], 10), parseInt(startTime.split(':')[1], 10))}</Text>
-              <MaterialIcons name="access-time" size={18} color="#888" />
+              <MaterialIcons name="access-time" size={18} color={isDark ? '#F5A800' : '#888'} />
             </TouchableOpacity>
           </View>
           <View style={styles.half}>
             <Text style={[styles.label, isDark && styles.labelDark]}>End Time</Text>
             <TouchableOpacity style={[styles.picker, isDark && styles.pickerDark]} onPress={() => setShowEndTime(true)}>
               <Text style={[styles.pickerText, isDark && styles.textWhite]}>{formatTime(parseInt(endTime.split(':')[0], 10), parseInt(endTime.split(':')[1], 10))}</Text>
-              <MaterialIcons name="access-time" size={18} color="#888" />
+              <MaterialIcons name="access-time" size={18} color={isDark ? '#F5A800' : '#888'} />
             </TouchableOpacity>
           </View>
         </View>
@@ -196,29 +222,53 @@ export default function CreateSessionScreen() {
           <View style={styles.half}>
             <Text style={[styles.label, isDark && styles.labelDark]}>Grace Period</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionRow}>
-              {GRACE_OPTIONS.map((g) => (
-                <TouchableOpacity
-                  key={g}
-                  style={[styles.optChip, gracePeriod === g && styles.optChipActive, isDark && styles.optChipDark, gracePeriod === g && isDark && styles.optChipActiveDark]}
-                  onPress={() => setGracePeriod(g)}
-                >
-                  <Text style={[styles.optChipText, gracePeriod === g && styles.optChipTextActive]}>{g} min</Text>
-                </TouchableOpacity>
-              ))}
+              {GRACE_OPTIONS.map((g) => {
+                const isActive = gracePeriod === g
+                return (
+                  <TouchableOpacity
+                    key={g}
+                    style={[
+                      styles.optChip,
+                      isDark && styles.optChipDark,
+                      isActive && styles.optChipActive,
+                      isActive && isDark && styles.optChipActiveDark
+                    ]}
+                    onPress={() => setGracePeriod(g)}
+                  >
+                    <Text style={[
+                      styles.optChipText,
+                      isDark && styles.optChipTextDark,
+                      isActive && styles.optChipTextActive
+                    ]}>{g} min</Text>
+                  </TouchableOpacity>
+                )
+              })}
             </ScrollView>
           </View>
           <View style={styles.half}>
             <Text style={[styles.label, isDark && styles.labelDark]}>Token Window</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionRow}>
-              {TOKEN_OPTIONS.map((t) => (
-                <TouchableOpacity
-                  key={t}
-                  style={[styles.optChip, tokenWindow === t && styles.optChipActive, isDark && styles.optChipDark, tokenWindow === t && isDark && styles.optChipActiveDark]}
-                  onPress={() => setTokenWindow(t)}
-                >
-                  <Text style={[styles.optChipText, tokenWindow === t && styles.optChipTextActive]}>{t < 120 ? `${t}s` : `${Math.floor(t / 60)}m`}</Text>
-                </TouchableOpacity>
-              ))}
+              {TOKEN_OPTIONS.map((t) => {
+                const isActive = tokenWindow === t
+                return (
+                  <TouchableOpacity
+                    key={t}
+                    style={[
+                      styles.optChip,
+                      isDark && styles.optChipDark,
+                      isActive && styles.optChipActive,
+                      isActive && isDark && styles.optChipActiveDark
+                    ]}
+                    onPress={() => setTokenWindow(t)}
+                  >
+                    <Text style={[
+                      styles.optChipText,
+                      isDark && styles.optChipTextDark,
+                      isActive && styles.optChipTextActive
+                    ]}>{t < 120 ? `${t}s` : `${Math.floor(t / 60)}m`}</Text>
+                  </TouchableOpacity>
+                )
+              })}
             </ScrollView>
           </View>
         </View>
@@ -226,25 +276,31 @@ export default function CreateSessionScreen() {
         {/* Geofence */}
         <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>Geofence</Text>
         <Text style={[styles.hint, isDark && styles.hintDark]}>Pan and zoom the map. Drag the pin or tap anywhere to set the attendance location.</Text>
-        <MapView
-          latitude={latitude}
-          longitude={longitude}
-          radius={radius}
-          interactive
-          onLocationChange={(lat, lng) => { setLatitude(lat); setLongitude(lng) }}
-          onRadiusChange={setRadius}
-        />
+        <View
+          onTouchStart={() => setMapFocus(true)}
+          onTouchEnd={() => setMapFocus(false)}
+          onTouchCancel={() => setMapFocus(false)}
+        >
+          <MapView
+            latitude={latitude}
+            longitude={longitude}
+            radius={radius}
+            interactive
+            onLocationChange={(lat, lng) => { setLatitude(lat); setLongitude(lng) }}
+            onRadiusChange={setRadius}
+          />
+        </View>
 
         {/* Create button */}
         <TouchableOpacity
-          style={[styles.createBtn, !subjectId && styles.createBtnDisabled]}
+          style={[styles.createBtn, isDark && styles.createBtnDark, !subjectId && styles.createBtnDisabled]}
           onPress={handleCreate}
           disabled={!subjectId}
           accessibilityRole="button"
           accessibilityLabel="Create session"
         >
-          <MaterialIcons name="add" size={20} color="#FFFFFF" />
-          <Text style={styles.createBtnText}>Create Session</Text>
+          <MaterialIcons name="add" size={20} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
+          <Text style={[styles.createBtnText, isDark && styles.createBtnTextDark]}>Create Session</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -253,12 +309,12 @@ export default function CreateSessionScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F5F5' },
-  containerDark: { backgroundColor: '#0A0A0A' },
+  containerDark: { backgroundColor: '#0A0A0C' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-  headerDark: { backgroundColor: '#1A1A1A', borderBottomColor: '#222' },
+  headerDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
   backBtn: { padding: 4, marginRight: 12 },
   heading: { flex: 1, fontSize: 22, fontWeight: '700', fontFamily: fonts.heading, color: '#1A1A1A' },
-  headingDark: { color: '#FFFFFF' },
+  headingDark: { color: '#F5A800' },
   textWhite: { color: '#FFFFFF' },
   content: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 100 },
   label: { fontSize: 12, fontFamily: fonts.bodyMedium, color: '#888', marginBottom: 6, marginTop: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -270,37 +326,50 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 12 },
   half: { flex: 1 },
   picker: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#DDD', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FFFFFF' },
-  pickerDark: { borderColor: '#333', backgroundColor: '#1A1A1A' },
+  pickerDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215' },
   pickerText: { fontSize: 15, fontFamily: fonts.body, color: '#333', flex: 1 },
   pickerPlaceholder: { color: '#AAA' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: '#FFFFFF', paddingTop: 20, paddingBottom: 40, maxHeight: '70%' },
-  sheetDark: { backgroundColor: '#1A1A1A' },
+  sheetDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
   sheetTitle: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#1A1A1A', paddingHorizontal: 20, marginBottom: 12 },
   sheetTitleDark: { color: '#FFFFFF' },
   sheetOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  sheetOptionDarkBorder: { borderBottomColor: 'rgba(255,255,255,0.05)' },
   sheetOptionSelected: { backgroundColor: 'rgba(123,17,19,0.04)' },
+  sheetOptionSelectedDark: { backgroundColor: 'rgba(245, 168, 0, 0.1)' },
   sheetOptionText: { fontSize: 15, fontFamily: fonts.body, color: '#333', flex: 1 },
   sheetOptionTextDark: { color: '#FFF' },
   sheetOptionTextActive: { fontFamily: fonts.bodySemiBold, color: '#7B1113' },
+  sheetOptionTextActiveDark: { fontFamily: fonts.bodySemiBold, color: '#F5A800' },
   optionRow: { flexDirection: 'row', gap: 0, marginTop: 2 },
   optChip: { paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#DDD', backgroundColor: '#FFFFFF', marginRight: 6 },
   optChipActive: { borderColor: '#7B1113', backgroundColor: '#7B1113' },
-  optChipDark: { borderColor: '#444', backgroundColor: '#1A1A1A' },
+  optChipDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215' },
   optChipActiveDark: { borderColor: '#F5A800', backgroundColor: '#F5A800' },
   optChipText: { fontSize: 12, fontFamily: fonts.bodyMedium, color: '#666' },
+  optChipTextDark: { color: 'rgba(255,255,255,0.7)' },
   optChipTextActive: { color: '#FFFFFF' },
   createBtn: { backgroundColor: '#7B1113', paddingVertical: 14, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 32 },
+  createBtnDark: { backgroundColor: '#F5A800' },
   createBtnDisabled: { opacity: 0.5 },
   createBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600', fontFamily: fonts.bodySemiBold },
+  createBtnTextDark: { color: '#4A0A0B' },
   timeSheet: { backgroundColor: '#FFFFFF', paddingTop: 20, paddingBottom: 24 },
+  timeSheetDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
   timeSheetTitle: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#1A1A1A', textAlign: 'center', marginBottom: 16 },
+  timeSheetTitleDark: { color: '#FFFFFF' },
   timeColumns: { flexDirection: 'row', maxHeight: 240 },
   timeColumn: { flex: 1, borderRightWidth: 1, borderRightColor: '#F0F0F0' },
+  timeColumnDark: { borderRightColor: 'rgba(255,255,255,0.05)' },
   timeItem: { paddingVertical: 10, alignItems: 'center' },
   timeItemActive: { backgroundColor: 'rgba(123,17,19,0.08)' },
+  timeItemActiveDark: { backgroundColor: 'rgba(245, 168, 0, 0.1)' },
   timeItemText: { fontSize: 15, fontFamily: fonts.body, color: '#333' },
   timeItemTextActive: { fontFamily: fonts.bodySemiBold, color: '#7B1113' },
+  timeItemTextActiveDark: { fontFamily: fonts.bodySemiBold, color: '#F5A800' },
   timeOkBtn: { backgroundColor: '#7B1113', marginHorizontal: 20, marginTop: 16, paddingVertical: 12, alignItems: 'center' },
+  timeOkBtnDark: { backgroundColor: '#F5A800' },
   timeOkBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600', fontFamily: fonts.bodySemiBold },
+  timeOkBtnTextDark: { color: '#4A0A0B' },
 })

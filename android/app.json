@@ -4,7 +4,7 @@
     "slug": "polycheck",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/pup-logo.png",
     "userInterfaceStyle": "automatic",
     "scheme": "polycheck",
     "ios": {

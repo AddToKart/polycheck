@@ -41,7 +41,7 @@ export default function FacultyAttendanceScreen() {
   return (
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <View style={[styles.header, isDark && styles.headerDark]}>
-        <Text style={[styles.heading, isDark && styles.textWhite]}>Attendance</Text>
+        <Text style={[styles.heading, isDark && styles.textGolden]}>Attendance</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
             <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#F5A800' : '#7B1113'} />
@@ -55,7 +55,7 @@ export default function FacultyAttendanceScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.statsRow}>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <Text style={[styles.statNumber, { color: '#7B1113' }]}>{totals.totalSessions}</Text>
+            <Text style={[styles.statNumber, { color: isDark ? '#FFFFFF' : '#7B1113' }]}>{totals.totalSessions}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Sessions</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
@@ -63,16 +63,16 @@ export default function FacultyAttendanceScreen() {
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Present</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <Text style={[styles.statNumber, { color: '#7B1113' }]}>{totals.late}</Text>
+            <Text style={[styles.statNumber, { color: isDark ? '#FF6B6B' : '#7B1113' }]}>{totals.late}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Late</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <Text style={[styles.statNumber, { color: '#4A0A0B' }]}>{totals.absent}</Text>
+            <Text style={[styles.statNumber, { color: isDark ? '#FF4F5A' : '#4A0A0B' }]}>{totals.absent}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Absent</Text>
           </View>
         </View>
 
-        <Text style={[styles.sectionTitle, isDark && styles.textWhite]}>By Subject</Text>
+        <Text style={[styles.sectionTitle, isDark && styles.textGolden]}>By Subject</Text>
 
         {summaries.map((s) => (
           <View key={s.subjectId} style={[styles.subjectCard, isDark && styles.cardDark]}>
@@ -91,9 +91,6 @@ export default function FacultyAttendanceScreen() {
               <View style={[styles.badge, styles.badgeAbsent]}>
                 <Text style={styles.badgeTextAbsent}>{s.absent} Abs</Text>
               </View>
-              <View style={[styles.badge, styles.badgeAbsent]}>
-                <Text style={styles.badgeTextAbsent}>{s.absent} Abs</Text>
-              </View>
             </View>
           </View>
         ))}
@@ -108,18 +105,19 @@ export default function FacultyAttendanceScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F5F5' },
-  containerDark: { backgroundColor: '#0A0A0A' },
+  containerDark: { backgroundColor: '#0A0A0C' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-  headerDark: { backgroundColor: '#1A1A1A', borderBottomColor: '#222' },
+  headerDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
   iconBtn: { padding: 6 },
   heading: { flex: 1, fontSize: 22, fontWeight: '700', fontFamily: fonts.heading, color: '#4A0A0B' },
   headerRight: { flexDirection: 'row', gap: 8 },
   textWhite: { color: '#FFFFFF' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
+  textGolden: { color: '#F5A800' },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   statsRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
   statCard: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 0, padding: 14, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
-  cardDark: { backgroundColor: '#1A1A1A' },
+  cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
   statNumber: { fontSize: 22, fontWeight: '700', fontFamily: fonts.bodyBold },
   statLabel: { fontSize: 10, fontFamily: fonts.body, color: '#AAA', marginTop: 2 },
   sectionTitle: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#4A0A0B', marginBottom: 12 },

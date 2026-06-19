@@ -3,6 +3,8 @@
 
 @import "nativewind/theme";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-maroon: #7B1113;
   --color-maroon-dark: #4A0A0B;
@@ -12,6 +14,9 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: 'DMSans_400Regular';
+  --font-sans-medium: 'DMSans_500Medium';
+  --font-sans-semibold: 'DMSans_600SemiBold';
+  --font-sans-bold: 'DMSans_700Bold';
   --font-heading: 'Lora_400Regular';
 }
 
@@ -21,6 +26,6 @@
 }
 
 .dark {
-  --background: #0D0D0D;
+  --background: #0A0A0C;
   --foreground: #F4F4F4;
 }

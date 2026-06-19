@@ -70,7 +70,7 @@ export default function SessionDetailScreen() {
           <MaterialIcons name="arrow-back" size={22} color={isDark ? '#F5A800' : '#7B1113'} />
         </TouchableOpacity>
         <View style={styles.headerTitle}>
-          <Text style={[styles.heading, isDark && styles.textWhite]} numberOfLines={1}>{session.subjectName}</Text>
+          <Text style={[styles.heading, isDark && styles.textGolden]} numberOfLines={1}>{session.subjectName}</Text>
           <Text style={[styles.headerSub, isDark && styles.textWhite50]}>
             {new Date(session.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
             {' · '}{session.startTime}-{session.endTime}
@@ -85,25 +85,25 @@ export default function SessionDetailScreen() {
         {/* QR Code Card */}
         <View style={[styles.card, isDark && styles.cardDark]}>
           <View style={styles.cardHeader}>
-            <MaterialIcons name="qr-code" size={18} color="#7B1113" />
+            <MaterialIcons name="qr-code" size={18} color={isDark ? '#F5A800' : '#7B1113'} />
             <Text style={[styles.cardTitle, isDark && styles.textWhite]}>QR Code</Text>
           </View>
           <View style={styles.qrContainer}>
             <View style={[styles.qrBox, isDark && styles.qrBoxDark]}>
-              <MaterialIcons name="qr-code" size={64} color="#999" />
-              <Text style={styles.qrToken}>TOKEN:{session.id}</Text>
+              <MaterialIcons name="qr-code" size={64} color={isDark ? 'rgba(245, 168, 0, 0.4)' : '#999'} />
+              <Text style={[styles.qrToken, isDark && styles.textWhite50]}>TOKEN:{session.id}</Text>
             </View>
             {session.isActive && countdown ? (
-              <Text style={styles.countdown}>
-                Expires in: <Text style={[styles.countdownValue, countdown === 'Expired' && { color: '#EF4444' }]}>{countdown}</Text>
+              <Text style={[styles.countdown, isDark && styles.textWhite70]}>
+                Expires in: <Text style={[styles.countdownValue, isDark && styles.textGolden, countdown === 'Expired' && { color: '#EF4444' }]}>{countdown}</Text>
               </Text>
             ) : (
-              <Text style={styles.qrHint}>Activate session to generate QR</Text>
+              <Text style={[styles.qrHint, isDark && styles.textWhite50]}>Activate session to generate QR</Text>
             )}
             {!session.isActive && (
-              <TouchableOpacity style={styles.activateBtn} onPress={handleActivate} accessibilityRole="button">
-                <MaterialIcons name="play-arrow" size={18} color="#FFFFFF" />
-                <Text style={styles.activateText}>Activate Session</Text>
+              <TouchableOpacity style={[styles.activateBtn, isDark && styles.activateBtnDark]} onPress={handleActivate} accessibilityRole="button">
+                <MaterialIcons name="play-arrow" size={18} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
+                <Text style={[styles.activateText, isDark && styles.activateTextDark]}>Activate Session</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -112,14 +112,14 @@ export default function SessionDetailScreen() {
         {/* Session Info */}
         <View style={[styles.card, isDark && styles.cardDark]}>
           <View style={styles.cardHeader}>
-            <MaterialIcons name="info" size={18} color="#7B1113" />
+            <MaterialIcons name="info" size={18} color={isDark ? '#F5A800' : '#7B1113'} />
             <Text style={[styles.cardTitle, isDark && styles.textWhite]}>Session Info</Text>
           </View>
           <View style={styles.infoGrid}>
             <View>
               <Text style={[styles.infoLabel, isDark && styles.textWhite50]}>Status</Text>
-              <View style={[styles.statusBadge, session.isActive ? styles.statusActive : styles.statusInactive]}>
-                <Text style={session.isActive ? styles.statusActiveText : styles.statusInactiveText}>
+              <View style={[styles.statusBadge, session.isActive ? styles.statusActive : (isDark ? styles.statusInactiveDark : styles.statusInactive)]}>
+                <Text style={session.isActive ? styles.statusActiveText : (isDark ? styles.statusInactiveTextDark : styles.statusInactiveText)}>
                   {session.isActive ? 'Active' : 'Inactive'}
                 </Text>
               </View>
@@ -138,7 +138,7 @@ export default function SessionDetailScreen() {
         {/* Geofence Card */}
         <View style={[styles.card, isDark && styles.cardDark]}>
           <View style={styles.cardHeader}>
-            <MaterialIcons name="location-on" size={18} color="#7B1113" />
+            <MaterialIcons name="location-on" size={18} color={isDark ? '#F5A800' : '#7B1113'} />
             <Text style={[styles.cardTitle, isDark && styles.textWhite]}>Geofence</Text>
           </View>
           <MapView
@@ -165,7 +165,7 @@ export default function SessionDetailScreen() {
         {/* Attendance Records */}
         <View style={[styles.card, isDark && styles.cardDark]}>
           <View style={styles.cardHeader}>
-            <MaterialIcons name="assignment" size={18} color="#7B1113" />
+            <MaterialIcons name="assignment" size={18} color={isDark ? '#F5A800' : '#7B1113'} />
             <Text style={[styles.cardTitle, isDark && styles.textWhite]}>Attendance</Text>
           </View>
           <View style={styles.summaryRow}>
@@ -174,11 +174,11 @@ export default function SessionDetailScreen() {
               <Text style={[styles.summaryLabel, isDark && styles.textWhite50]}>Present</Text>
             </View>
             <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, { color: '#7B1113' }]}>{lateCount}</Text>
+              <Text style={[styles.summaryValue, { color: isDark ? '#FF6B6B' : '#7B1113' }]}>{lateCount}</Text>
               <Text style={[styles.summaryLabel, isDark && styles.textWhite50]}>Late</Text>
             </View>
             <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, { color: '#4A0A0B' }]}>{absentCount}</Text>
+              <Text style={[styles.summaryValue, { color: isDark ? '#FF4F5A' : '#4A0A0B' }]}>{absentCount}</Text>
               <Text style={[styles.summaryLabel, isDark && styles.textWhite50]}>Absent</Text>
             </View>
           </View>
@@ -188,10 +188,19 @@ export default function SessionDetailScreen() {
             {statusFilters.map((f) => (
               <TouchableOpacity
                 key={f}
-                style={[styles.filterTab, filter === f && styles.filterTabActive, isDark && styles.filterTabDark, filter === f && isDark && styles.filterTabActiveDark]}
+                style={[
+                  styles.filterTab,
+                  filter === f && styles.filterTabActive,
+                  isDark && styles.filterTabDark,
+                  filter === f && isDark && styles.filterTabActiveDark
+                ]}
                 onPress={() => setFilter(f)}
               >
-                <Text style={[styles.filterTabText, filter === f && styles.filterTabTextActive]}>
+                <Text style={[
+                  styles.filterTabText,
+                  filter === f && styles.filterTabTextActive,
+                  isDark && filter === f && styles.filterTabTextActiveDark
+                ]}>
                   {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
                 </Text>
               </TouchableOpacity>
@@ -220,14 +229,15 @@ export default function SessionDetailScreen() {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, { bg: string; text: string }> = {
+  const { isDark } = useTheme()
+  const colors: Record<string, { bg: string; text: string; border?: string }> = {
     present: { bg: '#F5A800', text: '#4A0A0B' },
     late: { bg: '#7B1113', text: '#FFFFFF' },
-    absent: { bg: '#4A0A0B', text: '#F5A800' },
+    absent: { bg: '#4A0A0B', text: '#F5A800', border: '#F5A800' },
   }
   const c = colors[status] || { bg: '#E0E0E0', text: '#666' }
   return (
-    <View style={[sBadge.badge, { backgroundColor: c.bg }]}>
+    <View style={[sBadge.badge, { backgroundColor: c.bg, borderWidth: c.border ? 1 : 0, borderColor: c.border }]}>
       <Text style={[sBadge.text, { color: c.text }]}>{status.charAt(0).toUpperCase() + status.slice(1)}</Text>
     </View>
   )
@@ -240,38 +250,44 @@ const sBadge = StyleSheet.create({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F5F5' },
-  containerDark: { backgroundColor: '#0A0A0A' },
+  containerDark: { backgroundColor: '#0A0A0C' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-  headerDark: { backgroundColor: '#1A1A1A', borderBottomColor: '#222' },
+  headerDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
   backBtn: { padding: 4, marginRight: 8 },
   headerTitle: { flex: 1 },
   heading: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#4A0A0B' },
   headerSub: { fontSize: 12, fontFamily: fonts.body, color: '#888', marginTop: 1 },
   iconBtn: { padding: 6 },
   textWhite: { color: '#FFFFFF' },
+  textWhite70: { color: 'rgba(255,255,255,0.7)' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
+  textGolden: { color: '#F5A800' },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   card: { backgroundColor: '#FFFFFF', borderRadius: 0, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE' },
-  cardDark: { backgroundColor: '#1A1A1A', borderColor: '#222' },
+  cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   cardTitle: { fontSize: 16, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#333' },
   qrContainer: { alignItems: 'center', paddingVertical: 8 },
   qrBox: { width: 160, height: 160, backgroundColor: '#F5F5F5', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderStyle: 'dashed', borderColor: '#CCC', marginBottom: 12 },
-  qrBoxDark: { backgroundColor: '#0A0A0A', borderColor: '#444' },
+  qrBoxDark: { backgroundColor: '#0A0A0C', borderColor: 'rgba(245, 168, 0, 0.2)' },
   qrToken: { fontSize: 10, fontFamily: fonts.mono, color: '#999', marginTop: 6, paddingHorizontal: 8, textAlign: 'center' },
   countdown: { fontSize: 13, fontFamily: fonts.body, color: '#888', marginBottom: 8 },
   countdownValue: { fontFamily: fonts.bodyBold, color: '#7B1113' },
   qrHint: { fontSize: 13, fontFamily: fonts.body, color: '#AAA', marginBottom: 12 },
   activateBtn: { backgroundColor: '#7B1113', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 10 },
+  activateBtnDark: { backgroundColor: '#F5A800' },
   activateText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600', fontFamily: fonts.bodySemiBold },
+  activateTextDark: { color: '#4A0A0B' },
   infoGrid: { flexDirection: 'row', gap: 24 },
   infoLabel: { fontSize: 10, fontFamily: fonts.bodyMedium, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
   infoValue: { fontSize: 14, fontFamily: fonts.bodyBold, color: '#333' },
   statusBadge: { borderRadius: 0, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' },
   statusActive: { backgroundColor: '#4CAF50' },
   statusInactive: { backgroundColor: '#E0E0E0' },
+  statusInactiveDark: { backgroundColor: 'rgba(255,255,255,0.1)' },
   statusActiveText: { fontSize: 12, fontWeight: '600', color: '#FFFFFF' },
   statusInactiveText: { fontSize: 12, fontWeight: '600', color: '#666' },
+  statusInactiveTextDark: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.5)' },
   coordRow: { flexDirection: 'row', gap: 16, marginTop: 12 },
   coord: { flex: 1 },
   coordLabel: { fontSize: 10, fontFamily: fonts.bodyMedium, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -283,10 +299,11 @@ const styles = StyleSheet.create({
   filterRow: { marginBottom: 12, flexDirection: 'row' },
   filterTab: { paddingHorizontal: 14, paddingVertical: 6, backgroundColor: '#F5F5F5', borderWidth: 1, borderColor: '#DDD', marginRight: 8 },
   filterTabActive: { backgroundColor: '#7B1113', borderColor: '#7B1113' },
-  filterTabDark: { borderColor: '#333', backgroundColor: '#1A1A1A' },
-  filterTabActiveDark: { backgroundColor: '#7B1113', borderColor: '#7B1113' },
+  filterTabDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215' },
+  filterTabActiveDark: { backgroundColor: '#F5A800', borderColor: '#F5A800' },
   filterTabText: { fontSize: 12, fontFamily: fonts.bodyMedium, color: '#888' },
   filterTabTextActive: { color: '#FFFFFF' },
+  filterTabTextActiveDark: { color: '#4A0A0B' },
   empty: { textAlign: 'center', fontFamily: fonts.body, paddingVertical: 24, color: '#AAA' },
   recordRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
   recordRowDark: { borderBottomColor: '#222' },

@@ -98,7 +98,7 @@ export default function ScanScreen() {
       </View>
 
       {result && (
-        <View style={[styles.resultOverlay, result.status === 'present' ? styles.resultSuccess : styles.resultFail]}>
+        <View style={[styles.resultOverlay, result.status === 'present' ? (isDark ? styles.resultSuccessDark : styles.resultSuccess) : styles.resultFail]}>
           <MaterialIcons
             name={result.status === 'present' ? 'check-circle' : 'cancel'}
             size={36}
@@ -115,7 +115,7 @@ export default function ScanScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0A0A0A' },
+  container: { flex: 1, backgroundColor: '#0A0A0C' },
   scanArea: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   corner: { position: 'absolute', width: 24, height: 24, borderColor: '#F5A800' },
   cornerTL: { top: 0, left: 0, borderTopWidth: 4, borderLeftWidth: 4 },
@@ -125,16 +125,16 @@ const styles = StyleSheet.create({
   scanHint: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2, marginTop: 16 },
 
   bottomPanel: { backgroundColor: '#FFFFFF', borderTopWidth: 4, borderTopColor: '#7B1113', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 100 },
-  bottomPanelDark: { backgroundColor: '#0A0A0A', borderTopColor: '#F5A800' },
+  bottomPanelDark: { backgroundColor: '#0A0A0C', borderTopColor: '#F5A800' },
 
   sessionInfo: { marginBottom: 16 },
   sessionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   sessionText: { fontSize: 10, fontWeight: '700', color: '#7B1113', textTransform: 'uppercase', letterSpacing: 2 },
   mapBorder: { borderWidth: 2, borderColor: '#D4D4D8' },
-  mapBorderDark: { borderColor: '#3F3F46' },
+  mapBorderDark: { borderColor: 'rgba(245, 168, 0, 0.2)' },
 
   checkInBtn: { backgroundColor: '#7B1113', borderWidth: 2, borderColor: '#7B1113', paddingVertical: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginBottom: 16 },
-  checkInBtnDark: { backgroundColor: '#FFFFFF', borderColor: '#FFFFFF' },
+  checkInBtnDark: { backgroundColor: '#F5A800', borderColor: '#F5A800' },
   checkInText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2 },
   checkInTextDark: { color: '#4A0A0B' },
 
@@ -144,7 +144,9 @@ const styles = StyleSheet.create({
 
   resultOverlay: { position: 'absolute', bottom: 128, left: 32, right: 32, padding: 20, alignItems: 'center', gap: 8, borderWidth: 2 },
   resultSuccess: { backgroundColor: '#7B1113', borderColor: '#F5A800' },
+  resultSuccessDark: { backgroundColor: '#1E0405', borderColor: '#F5A800' },
   resultFail: { backgroundColor: '#18181B', borderColor: '#EF4444' },
   resultTitle: { fontSize: 20, fontWeight: '700', fontFamily: 'Lora_400Regular', textTransform: 'uppercase', letterSpacing: 2, marginTop: 8 },
   resultMessage: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, color: '#FFFFFF', textAlign: 'center' },
+  textGolden: { color: '#F5A800' },
 })

@@ -18,7 +18,7 @@ export default function LandingScreen() {
       </TouchableOpacity>
 
       <View style={styles.center}>
-        <Image source={require('../assets/icon.png')} style={styles.logo} />
+        <Image source={require('../assets/pup-logo.png')} style={styles.logo} />
         <Text style={[styles.subtitle, isDark && styles.textWhite50]}>PUP Attendance Management System</Text>
         <Text style={[styles.title, isDark && styles.titleDark]}>Polycheck.</Text>
 
@@ -68,23 +68,23 @@ export default function LandingScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
-  containerDark: { backgroundColor: '#0A0A0A' },
+  containerDark: { backgroundColor: '#0A0A0C' },
   themeBtn: {
     position: 'absolute', top: 16, right: 20, zIndex: 10,
     padding: 8, borderWidth: 2, borderColor: '#D4D4D8', backgroundColor: '#FFFFFF',
   },
-  themeBtnDark: { borderColor: '#3F3F46', backgroundColor: '#18181B' },
+  themeBtnDark: { borderColor: 'rgba(245, 168, 0, 0.25)', backgroundColor: '#121215' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   logo: { width: 64, height: 64, marginBottom: 16 },
   subtitle: { fontSize: 10, fontWeight: '700', color: '#A1A1AA', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 8, textAlign: 'center' },
   title: { fontSize: 48, fontWeight: '800', fontFamily: 'Lora_400Regular', color: '#7B1113', marginBottom: 48, letterSpacing: -1, textAlign: 'center' },
-  titleDark: { color: '#FFFFFF' },
+  titleDark: { color: '#F5A800' },
   cards: { width: '100%', maxWidth: 384, gap: 16 },
   card: {
     borderWidth: 2, borderColor: '#D4D4D8', backgroundColor: '#FAFAFA',
     padding: 24, flexDirection: 'row', alignItems: 'center', gap: 16,
   },
-  cardDark: { borderColor: '#3F3F46', backgroundColor: '#111113' },
+  cardDark: { borderColor: 'rgba(245, 168, 0, 0.2)', backgroundColor: '#121215' },
   iconBox: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
   iconBoxMaroon: { backgroundColor: '#7B1113', borderColor: '#7B1113' },
   iconBoxGolden: { backgroundColor: '#F5A800', borderColor: '#F5A800' },
@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 18, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#000000', textTransform: 'uppercase', letterSpacing: 2 },
   cardSub: { fontSize: 10, fontWeight: '700', fontFamily: 'DMSans_400Regular', color: '#71717A', marginTop: 4, textTransform: 'uppercase', letterSpacing: 1.5 },
   footer: { padding: 24, borderTopWidth: 2, borderTopColor: '#D4D4D8', backgroundColor: '#FAFAFA', alignItems: 'center' },
-  footerDark: { borderTopColor: '#3F3F46', backgroundColor: '#111113' },
+  footerDark: { borderTopColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215' },
   footerText: { fontSize: 10, fontWeight: '700', fontFamily: 'DMSans_400Regular', color: '#71717A', textTransform: 'uppercase', letterSpacing: 2 },
   textWhite: { color: '#FFFFFF' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },

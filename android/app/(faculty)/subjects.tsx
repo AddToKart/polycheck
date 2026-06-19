@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, Pressable, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -31,8 +31,11 @@ export default function FacultySubjectsScreen() {
   return (
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <View style={[styles.header, isDark && styles.headerDark]}>
-        <Text style={[styles.heading, isDark && styles.textWhite]}>My Subjects</Text>
+        <Text style={[styles.heading, isDark && styles.textGolden]}>My Subjects</Text>
         <View style={styles.headerRight}>
+          <TouchableOpacity onPress={() => router.push('/(faculty)/subjects/create')} style={styles.iconBtn} accessibilityLabel="Create subject">
+            <MaterialIcons name="add" size={24} color={isDark ? '#F5A800' : '#7B1113'} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
             <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#F5A800' : '#7B1113'} />
           </TouchableOpacity>
@@ -44,41 +47,49 @@ export default function FacultySubjectsScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         {subjects.map((subject) => (
-          <View key={subject.id} style={[styles.card, isDark && styles.cardDark]}>
-            <View style={[styles.cardAccent, isDark && styles.cardAccentDark]} />
-            <View style={styles.cardBody}>
-              <Text style={[styles.subjectName, isDark && styles.textWhite]}>{subject.name}</Text>
-              <Text style={[styles.subjectMeta, isDark && styles.textWhite50]}>
-                {subject.code} · Section {subject.section}
-              </Text>
-              <View style={styles.subjectDetails}>
-                <View style={styles.detailRow}>
-                  <MaterialIcons name="room" size={14} color="#888" />
-                  <Text style={[styles.detailText, isDark && styles.textWhite50]}>Room: {subject.room}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <MaterialIcons name="calendar-today" size={14} color="#888" />
-                  <Text style={[styles.detailText, isDark && styles.textWhite50]}>
-                    {subject.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')}
-                  </Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <MaterialIcons name="person" size={14} color="#888" />
-                  <Text style={[styles.detailText, isDark && styles.textWhite50]}>Teacher: {subject.teacherName}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <MaterialIcons name="people" size={14} color="#888" />
-                  <Text style={[styles.detailText, isDark && styles.textWhite50]}>Students: {subject.studentCount} enrolled</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <MaterialIcons name="vpn-key" size={14} color="#888" />
-                  <Text style={[styles.detailText, isDark && styles.textWhite50]}>
-                    Code: <Text style={[styles.enrollmentCode, isDark && styles.textGolden]}>{subject.enrollmentCode}</Text>
-                  </Text>
+          <Pressable
+            key={subject.id}
+            onPress={() => router.push(`/(faculty)/subjects/${subject.id}`)}
+            style={({ pressed }) => [
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <View style={[styles.card, isDark && styles.cardDark]}>
+              <View style={[styles.cardAccent, isDark && styles.cardAccentDark]} />
+              <View style={styles.cardBody}>
+                <Text style={[styles.subjectName, isDark && styles.textWhite]}>{subject.name}</Text>
+                <Text style={[styles.subjectMeta, isDark && styles.textWhite50]}>
+                  {subject.code} · Section {subject.section}
+                </Text>
+                <View style={styles.subjectDetails}>
+                  <View style={styles.detailRow}>
+                    <MaterialIcons name="room" size={14} color="#888" />
+                    <Text style={[styles.detailText, isDark && styles.textWhite50]}>Room: {subject.room}</Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <MaterialIcons name="calendar-today" size={14} color="#888" />
+                    <Text style={[styles.detailText, isDark && styles.textWhite50]}>
+                      {subject.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')}
+                    </Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <MaterialIcons name="person" size={14} color="#888" />
+                    <Text style={[styles.detailText, isDark && styles.textWhite50]}>Teacher: {subject.teacherName}</Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <MaterialIcons name="people" size={14} color="#888" />
+                    <Text style={[styles.detailText, isDark && styles.textWhite50]}>Students: {subject.studentCount} enrolled</Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <MaterialIcons name="vpn-key" size={14} color="#888" />
+                    <Text style={[styles.detailText, isDark && styles.textWhite50]}>
+                      Code: <Text style={[styles.enrollmentCode, isDark && styles.textGolden]}>{subject.enrollmentCode}</Text>
+                    </Text>
+                  </View>
                 </View>
               </View>
             </View>
-          </View>
+          </Pressable>
         ))}
         {subjects.length === 0 && (
           <Text style={[styles.empty, isDark && styles.textWhite50]}>No subjects yet.</Text>
@@ -90,9 +101,9 @@ export default function FacultySubjectsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F5F5' },
-  containerDark: { backgroundColor: '#0A0A0A' },
+  containerDark: { backgroundColor: '#0A0A0C' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-  headerDark: { backgroundColor: '#1A1A1A', borderBottomColor: '#222' },
+  headerDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
   iconBtn: { padding: 6 },
   heading: { flex: 1, fontSize: 22, fontWeight: '700', fontFamily: fonts.heading, color: '#4A0A0B' },
   headerRight: { flexDirection: 'row', gap: 8 },
@@ -102,7 +113,7 @@ const styles = StyleSheet.create({
   textGolden: { color: '#F5A800' },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   card: { backgroundColor: '#FFFFFF', borderRadius: 0, marginBottom: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
-  cardDark: { backgroundColor: '#1A1A1A' },
+  cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
   cardAccent: { width: 4, height: '100%', backgroundColor: '#7B1113', position: 'absolute', left: 0, top: 0, bottom: 0 },
   cardAccentDark: { backgroundColor: '#F5A800' },
   cardBody: { padding: 20, paddingLeft: 24 },

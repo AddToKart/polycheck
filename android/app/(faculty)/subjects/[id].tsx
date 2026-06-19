@@ -1,0 +1,295 @@
+import { useEffect, useMemo, useState } from 'react'
+import { View, Text, TextInput, ScrollView, TouchableOpacity, Pressable, Alert } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { MaterialIcons } from '@expo/vector-icons'
+import { router, useLocalSearchParams } from 'expo-router'
+import { api } from '../../../services/mock-api'
+import { useTheme } from '../../../theme/ThemeContext'
+import type { Subject, Student } from '@polycheck/shared'
+
+const PAGE_SIZE = 10
+
+export default function SubjectDetailScreen() {
+  const { isDark } = useTheme()
+  const { id } = useLocalSearchParams<{ id: string }>()
+  const [subject, setSubject] = useState<Subject | null>(null)
+  const [students, setStudents] = useState<(Student & { attendance: { present: number; late: number; absent: number } })[]>([])
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(0)
+
+  useEffect(() => {
+    if (!id) return
+    const s = api.getSubject(id)
+    if (!s) { router.back(); return }
+    setSubject(s)
+    setStudents(api.getSubjectStudents(id))
+  }, [id])
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return students
+    const q = search.toLowerCase()
+    return students.filter((s) =>
+      s.fullName.toLowerCase().includes(q) || s.studentId.toLowerCase().includes(q)
+    )
+  }, [students, search])
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
+  useEffect(() => { setPage(0) }, [search])
+
+  const handleResetCode = () => {
+    if (!id) return
+    api.resetEnrollmentCode(id)
+    const s = api.getSubject(id)
+    if (s) setSubject({ ...s })
+    Alert.alert('Code Reset', `New enrollment code: ${s?.enrollmentCode}`)
+  }
+
+  const handleDisableCode = () => {
+    if (!id) return
+    Alert.alert(
+      'Disable Code',
+      'Students will no longer be able to enroll using this code. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Disable',
+          style: 'destructive',
+          onPress: () => {
+            api.disableEnrollmentCode(id)
+            const s = api.getSubject(id)
+            if (s) setSubject({ ...s })
+          },
+        },
+      ],
+    )
+  }
+
+  if (!subject) return null
+
+  const totalPresent = students.reduce((sum, s) => sum + s.attendance.present, 0)
+  const totalLate = students.reduce((sum, s) => sum + s.attendance.late, 0)
+  const totalAbsent = students.reduce((sum, s) => sum + s.attendance.absent, 0)
+
+  const bg = isDark ? '#0A0A0C' : '#F5F5F5'
+  const surface = isDark ? '#121215' : '#FFFFFF'
+  const border = isDark ? 'rgba(245, 168, 0, 0.15)' : '#EEE'
+  const borderInput = isDark ? 'rgba(245, 168, 0, 0.2)' : '#DDD'
+  const textPrimary = isDark ? '#FFFFFF' : '#333'
+  const textSecondary = isDark ? 'rgba(255,255,255,0.5)' : '#888'
+  const textTertiary = isDark ? 'rgba(255,255,255,0.5)' : '#999'
+  const iconColor = isDark ? '#F5A800' : '#7B1113'
+  const chipBg = isDark ? '#0A0A0C' : '#F5F5F5'
+  const chipBorder = isDark ? 'rgba(245, 168, 0, 0.15)' : '#DDD'
+  const pillPresentBg = isDark ? 'rgba(245, 168, 0, 0.15)' : '#FFF5E0'
+  const pillLateBg = isDark ? 'rgba(239, 68, 68, 0.15)' : '#FDE8E8'
+  const pillAbsentBg = isDark ? 'rgba(255, 255, 255, 0.1)' : '#F0F0F0'
+  const statBorder = isDark ? 'rgba(245, 168, 0, 0.15)' : '#EEE'
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: surface, borderBottomWidth: 1, borderBottomColor: border }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ padding: 4, marginRight: 12 }} accessibilityLabel="Go back">
+          <MaterialIcons name="arrow-back" size={22} color={iconColor} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text className="text-lg font-heading font-bold" style={{ color: isDark ? '#F5A800' : '#4A0A0B' }} numberOfLines={1}>{subject.name}</Text>
+          <Text className="text-xs mt-0.5" style={{ color: textSecondary }}>{subject.code} · Sec {subject.section}</Text>
+        </View>
+      </View>
+
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }} keyboardShouldPersistTaps="handled">
+        {/* Subject Info Card */}
+        <View style={{ backgroundColor: surface, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: border }}>
+          <View className="flex-row gap-6 mb-3">
+            <View className="flex-1">
+              <Text className="text-[10px] font-sans-medium uppercase tracking-[0.5px] mb-0.5" style={{ color: textSecondary }}>Room</Text>
+              <Text className="text-sm font-sans-bold" style={{ color: textPrimary }}>{subject.room}</Text>
+            </View>
+            <View className="flex-1">
+              <Text className="text-[10px] font-sans-medium uppercase tracking-[0.5px] mb-0.5" style={{ color: textSecondary }}>Semester</Text>
+              <Text className="text-sm font-sans-bold" style={{ color: textPrimary }}>{subject.semester}</Text>
+            </View>
+          </View>
+          <View className="flex-row flex-wrap gap-1.5">
+            {subject.schedule.map((sd, i) => (
+              <View key={i} className="flex-row items-center gap-1 px-2 py-1 border" style={{ backgroundColor: chipBg, borderColor: chipBorder }}>
+                <Text className="text-[10px] font-sans-semibold" style={{ color: isDark ? '#F5A800' : '#7B1113' }}>{sd.day}</Text>
+                <Text className="text-[10px]" style={{ color: textSecondary }}>{sd.startTime}-{sd.endTime}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Enrollment Code Card */}
+        <View style={{ backgroundColor: surface, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: border }}>
+          <View className="flex-row items-center gap-1.5 mb-2.5">
+            <MaterialIcons name="vpn-key" size={18} color={iconColor} />
+            <Text className="text-base font-sans-bold" style={{ color: textPrimary }}>Enrollment Code</Text>
+          </View>
+          <View className="flex-row items-center gap-3 mb-2.5">
+            {subject.enrollmentCode ? (
+              <>
+                <Text className="text-xl font-[monospace] font-bold tracking-[2px]" style={{ color: isDark ? '#F5A800' : '#7B1113' }}>{subject.enrollmentCode}</Text>
+                <Text className="text-[11px]" style={{ color: textSecondary }}>
+                  Expires: {new Date(subject.enrollmentCodeExpiry).toLocaleDateString()}
+                </Text>
+              </>
+            ) : (
+              <Text className="text-sm italic" style={{ color: textTertiary }}>Enrollment code is disabled</Text>
+            )}
+          </View>
+          <View className="flex-row gap-2">
+            <TouchableOpacity className="flex-row items-center gap-1 px-3.5 py-1.5" style={{ backgroundColor: isDark ? '#F5A800' : '#7B1113' }} onPress={handleResetCode} accessibilityRole="button">
+              <MaterialIcons name="autorenew" size={16} color={isDark ? '#4A0A0B' : '#FFF'} />
+              <Text className="text-xs font-sans-semibold" style={{ color: isDark ? '#4A0A0B' : '#FFF' }}>Reset</Text>
+            </TouchableOpacity>
+            <TouchableOpacity className="px-3.5 py-1.5 flex-row items-center gap-1 border" style={{ borderColor: '#EF4444' }} onPress={handleDisableCode} accessibilityRole="button">
+              <MaterialIcons name="block" size={16} color="#EF4444" />
+              <Text className="text-red-500 text-xs font-sans-semibold">Disable</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Attendance Overview */}
+        <View className="flex-row mb-3" style={{ backgroundColor: surface, borderWidth: 1, borderColor: border }}>
+          <View className="flex-1 items-center py-3.5" style={{ borderRightWidth: 1, borderRightColor: statBorder }}>
+            <Text className="text-[22px] font-sans-bold" style={{ color: '#F5A800' }}>{totalPresent}</Text>
+            <Text className="text-[10px] font-sans-medium uppercase tracking-[0.5px] mt-0.5" style={{ color: textSecondary }}>Present</Text>
+          </View>
+          <View className="flex-1 items-center py-3.5" style={{ borderRightWidth: 1, borderRightColor: statBorder }}>
+            <Text className="text-[22px] font-sans-bold" style={{ color: isDark ? '#F5A800' : '#7B1113' }}>{totalLate}</Text>
+            <Text className="text-[10px] font-sans-medium uppercase tracking-[0.5px] mt-0.5" style={{ color: textSecondary }}>Late</Text>
+          </View>
+          <View className="flex-1 items-center py-3.5">
+            <Text className="text-[22px] font-sans-bold" style={{ color: isDark ? '#EF4444' : '#4A0A0B' }}>{totalAbsent}</Text>
+            <Text className="text-[10px] font-sans-medium uppercase tracking-[0.5px] mt-0.5" style={{ color: textSecondary }}>Absent</Text>
+          </View>
+        </View>
+
+        {/* Search */}
+        <View className="flex-row items-center gap-2 px-3 mb-2" style={{ backgroundColor: surface, borderWidth: 1, borderColor: borderInput }}>
+          <MaterialIcons name="search" size={18} color="#888" />
+          <TextInput
+            className="flex-1 h-10 text-sm"
+            style={{ color: textPrimary }}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search students..."
+            placeholderTextColor="#888"
+          />
+          {search ? (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <MaterialIcons name="close" size={18} color="#888" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {/* Student count */}
+        <Text className="text-[11px] font-sans-medium uppercase tracking-[0.5px] mb-2" style={{ color: textSecondary }}>
+          {filtered.length} student{filtered.length !== 1 ? 's' : ''}
+          {search ? ` matching "${search}"` : ''}
+        </Text>
+
+        {/* Student List */}
+        {paged.map((student) => {
+          const total = student.attendance.present + student.attendance.late + student.attendance.absent
+          return (
+            <Pressable
+              key={student.id}
+              onPress={() => router.push({ pathname: '/(faculty)/student/[id]', params: { id: student.id, subjectId: id } })}
+              className="active:opacity-70"
+            >
+              <View className="flex-row justify-between p-3.5 mb-2 border" style={{ backgroundColor: surface, borderColor: border }}>
+                <View className="flex-row items-center gap-3 flex-1">
+                  <View className="w-10 h-10 items-center justify-center" style={{ backgroundColor: isDark ? '#F5A800' : '#7B1113' }}>
+                    <Text className="text-xs font-sans-semibold" style={{ color: isDark ? '#4A0A0B' : '#FFF' }}>
+                      {student.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-sm font-sans-semibold" style={{ color: textPrimary }}>{student.fullName}</Text>
+                    <Text className="text-[11px] mt-0.5" style={{ color: textSecondary }}>{student.studentId}</Text>
+                    <Text className="text-[10px] mt-0.5" style={{ color: textTertiary }}>{student.program}</Text>
+                  </View>
+                </View>
+                <View className="items-end gap-1.5 ml-3">
+                  <View className="flex-row gap-1">
+                    <View className="items-center px-1.5 py-0.5 min-w-[28px]" style={{ backgroundColor: pillPresentBg }}>
+                      <Text className="text-sm font-sans-bold" style={{ color: '#F5A800' }}>{student.attendance.present}</Text>
+                      <Text className="text-[8px] font-sans-medium uppercase" style={{ color: textSecondary }}>P</Text>
+                    </View>
+                    <View className="items-center px-1.5 py-0.5 min-w-[28px]" style={{ backgroundColor: pillLateBg }}>
+                      <Text className="text-sm font-sans-bold" style={{ color: isDark ? '#F5A800' : '#7B1113' }}>{student.attendance.late}</Text>
+                      <Text className="text-[8px] font-sans-medium uppercase" style={{ color: textSecondary }}>L</Text>
+                    </View>
+                    <View className="items-center px-1.5 py-0.5 min-w-[28px]" style={{ backgroundColor: pillAbsentBg }}>
+                      <Text className="text-sm font-sans-bold" style={{ color: isDark ? '#EF4444' : '#4A0A0B' }}>{student.attendance.absent}</Text>
+                      <Text className="text-[8px] font-sans-medium uppercase" style={{ color: textSecondary }}>A</Text>
+                    </View>
+                  </View>
+                  {total > 0 && (
+                    <View className="flex-row items-center gap-1.5 w-[120px]">
+                      <View className="flex-1 h-1 rounded" style={{ backgroundColor: isDark ? '#333' : '#EEE' }}>
+                        <View style={{ width: `${(student.attendance.present / total) * 100}%`, height: 4, backgroundColor: '#F5A800', borderRadius: 2 }} />
+                      </View>
+                      <Text className="text-[10px] font-sans-medium min-w-[30px] text-right" style={{ color: textSecondary }}>
+                        {Math.round((student.attendance.present / total) * 100)}%
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            </Pressable>
+          )
+        })}
+
+        {filtered.length === 0 && (
+          <Text className="text-center py-10" style={{ color: isDark ? 'rgba(255,255,255,0.5)' : '#BBB' }}>No students found.</Text>
+        )}
+
+        {/* Pagination */}
+        {pageCount > 1 && (
+          <View className="flex-row justify-center items-center gap-1.5 mt-4 mb-10">
+            <TouchableOpacity
+              className="w-9 h-9 items-center justify-center border"
+              style={{ borderColor: borderInput, backgroundColor: surface, opacity: page === 0 ? 0.4 : 1 }}
+              onPress={() => setPage(Math.max(0, page - 1))}
+              disabled={page === 0}
+              accessibilityLabel="Previous page"
+            >
+              <MaterialIcons name="chevron-left" size={20} color={page === 0 ? '#CCC' : iconColor} />
+            </TouchableOpacity>
+
+            {Array.from({ length: pageCount }, (_, i) => (
+              <TouchableOpacity
+                key={i}
+                className="w-9 h-9 items-center justify-center border"
+                style={{
+                  borderColor: page === i ? (isDark ? '#F5A800' : '#7B1113') : borderInput,
+                  backgroundColor: page === i ? (isDark ? '#F5A800' : '#7B1113') : surface,
+                }}
+                onPress={() => setPage(i)}
+              >
+                <Text className="text-sm font-sans-semibold" style={{ color: page === i ? '#FFF' : '#555' }}>
+                  {i + 1}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            <TouchableOpacity
+              className="w-9 h-9 items-center justify-center border"
+              style={{ borderColor: borderInput, backgroundColor: surface, opacity: page === pageCount - 1 ? 0.4 : 1 }}
+              onPress={() => setPage(Math.min(pageCount - 1, page + 1))}
+              disabled={page === pageCount - 1}
+              accessibilityLabel="Next page"
+            >
+              <MaterialIcons name="chevron-right" size={20} color={page === pageCount - 1 ? '#CCC' : iconColor} />
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  )
+}

@@ -16,7 +16,7 @@ export const mockSubjects: Subject[] = [
     teacherName: 'Prof. Juan Miguel Dela Cruz',
     enrollmentCode: 'SE2026',
     enrollmentCodeExpiry: '2026-02-15T23:59:59Z',
-    studentCount: 6,
+    studentCount: 12,
     createdAt: '2026-01-10T00:00:00Z',
     updatedAt: '2026-01-15T00:00:00Z',
   },
@@ -104,4 +104,9 @@ export const mockEnrollments: Enrollment[] = [
   { id: 'e-022', studentId: 's-008', subjectId: 'subj-001', enrolledAt: '2026-01-16T00:00:00Z' },
   { id: 'e-023', studentId: 's-008', subjectId: 'subj-002', enrolledAt: '2026-01-16T00:00:00Z' },
   { id: 'e-024', studentId: 's-008', subjectId: 'subj-004', enrolledAt: '2026-01-17T00:00:00Z' },
+  { id: 'e-025', studentId: 's-009', subjectId: 'subj-001', enrolledAt: '2026-01-16T00:00:00Z' },
+  { id: 'e-026', studentId: 's-010', subjectId: 'subj-001', enrolledAt: '2026-01-16T00:00:00Z' },
+  { id: 'e-027', studentId: 's-011', subjectId: 'subj-001', enrolledAt: '2026-01-16T00:00:00Z' },
+  { id: 'e-028', studentId: 's-012', subjectId: 'subj-001', enrolledAt: '2026-01-16T00:00:00Z' },
+  { id: 'e-029', studentId: 's-013', subjectId: 'subj-001', enrolledAt: '2026-01-16T00:00:00Z' },
 ]

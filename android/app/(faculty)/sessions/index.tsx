@@ -43,7 +43,7 @@ export default function FacultySessionsScreen() {
   return (
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <View style={[styles.header, isDark && styles.headerDark]}>
-        <Text style={[styles.heading, isDark && styles.textWhite]}>Sessions</Text>
+        <Text style={[styles.heading, isDark && styles.textGolden]}>Sessions</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={() => router.push('/(faculty)/sessions/create')} style={styles.iconBtn} accessibilityLabel="Create session">
             <MaterialIcons name="add" size={24} color={isDark ? '#F5A800' : '#7B1113'} />
@@ -57,7 +57,7 @@ export default function FacultySessionsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         {Object.entries(grouped).map(([subjectName, subjectSessions]) => (
           <View key={subjectName} style={styles.group}>
-            <Text style={[styles.groupTitle, isDark && styles.textWhite]}>{subjectName}</Text>
+            <Text style={[styles.groupTitle, isDark && styles.textGolden]}>{subjectName}</Text>
             {subjectSessions.map((session) => (
               <TouchableOpacity
                 key={session.id}
@@ -69,24 +69,24 @@ export default function FacultySessionsScreen() {
                     {new Date(session.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                   </Text>
                   <Text style={[styles.sessionTime, isDark && styles.textWhite70]}>
-                    <MaterialIcons name="access-time" size={12} color="#888" /> {session.startTime} - {session.endTime}
+                    <MaterialIcons name="access-time" size={12} color={isDark ? 'rgba(255,255,255,0.5)' : '#888'} /> {session.startTime} - {session.endTime}
                   </Text>
                 </View>
                 <View style={styles.sessionRight}>
-                  <View style={[styles.badge, session.isActive ? styles.badgeActive : styles.badgeInactive]}>
-                    <Text style={[styles.badgeText, session.isActive ? styles.badgeTextActive : styles.badgeTextInactive]}>
+                  <View style={[styles.badge, session.isActive ? styles.badgeActive : (isDark ? styles.badgeInactiveDark : styles.badgeInactive)]}>
+                    <Text style={[styles.badgeText, session.isActive ? styles.badgeTextActive : (isDark ? styles.badgeTextInactiveDark : styles.badgeTextInactive)]}>
                       {session.isActive ? 'Active' : 'Inactive'}
                     </Text>
                   </View>
                   {!session.isActive && (
                     <TouchableOpacity
-                      style={styles.activateBtn}
+                      style={[styles.activateBtn, isDark && styles.activateBtnDark]}
                       onPress={() => handleActivate(session.id)}
                       accessibilityRole="button"
                       accessibilityLabel="Activate session"
                     >
-                      <MaterialIcons name="play-arrow" size={14} color="#FFFFFF" />
-                      <Text style={styles.activateText}>Activate</Text>
+                      <MaterialIcons name="play-arrow" size={14} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
+                      <Text style={[styles.activateText, isDark && styles.activateTextDark]}>Activate</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -104,20 +104,21 @@ export default function FacultySessionsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F5F5' },
-  containerDark: { backgroundColor: '#0A0A0A' },
+  containerDark: { backgroundColor: '#0A0A0C' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-  headerDark: { backgroundColor: '#1A1A1A', borderBottomColor: '#222' },
+  headerDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
   iconBtn: { padding: 6 },
   heading: { flex: 1, fontSize: 22, fontWeight: '700', fontFamily: fonts.heading, color: '#1A1A1A' },
   headerRight: { flexDirection: 'row', gap: 8 },
   textWhite: { color: '#FFFFFF' },
   textWhite70: { color: 'rgba(255,255,255,0.7)' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
+  textGolden: { color: '#F5A800' },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   group: { marginBottom: 24 },
   groupTitle: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#1A1A1A', marginBottom: 8 },
   sessionCard: { backgroundColor: '#FFFFFF', borderRadius: 0, padding: 16, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
-  cardDark: { backgroundColor: '#1A1A1A' },
+  cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
   sessionLeft: { flex: 1 },
   sessionDate: { fontSize: 15, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#333' },
   sessionTime: { fontSize: 12, fontFamily: fonts.body, color: '#888', marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -125,10 +126,14 @@ const styles = StyleSheet.create({
   badge: { borderRadius: 0, paddingHorizontal: 10, paddingVertical: 4 },
   badgeActive: { backgroundColor: '#4CAF50' },
   badgeInactive: { backgroundColor: '#E0E0E0' },
+  badgeInactiveDark: { backgroundColor: 'rgba(255,255,255,0.1)' },
   badgeText: { fontSize: 12, fontWeight: '600', fontFamily: fonts.bodySemiBold },
   badgeTextActive: { color: '#FFFFFF' },
   badgeTextInactive: { color: '#666' },
+  badgeTextInactiveDark: { color: 'rgba(255,255,255,0.5)' },
   activateBtn: { backgroundColor: '#7B1113', borderRadius: 0, paddingHorizontal: 14, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  activateBtnDark: { backgroundColor: '#F5A800' },
   activateText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600', fontFamily: fonts.bodySemiBold },
+  activateTextDark: { color: '#4A0A0B' },
   empty: { textAlign: 'center', fontFamily: fonts.body, paddingVertical: 60, color: '#BBB' },
 })

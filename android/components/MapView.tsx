@@ -1,5 +1,5 @@
-import { useRef, useCallback, useEffect } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native'
+import { useRef, useCallback, useEffect, useState } from 'react'
+import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useTheme } from '../theme/ThemeContext'
@@ -14,7 +14,8 @@ interface MapViewProps {
   onRadiusChange?: (r: number) => void
 }
 
-function html(lat: number, lng: number, radius: number, interactive: boolean) {
+function html(lat: number, lng: number, radius: number, interactive: boolean, isDark: boolean) {
+  const accentColor = isDark ? '#F5A800' : '#7B1113'
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -38,6 +39,14 @@ function html(lat: number, lng: number, radius: number, interactive: boolean) {
     z-index: 1000;
     pointer-events: none;
   }
+  ${isDark ? `
+  .leaflet-tile {
+    filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+  }
+  .leaflet-container {
+    background: #0A0A0C !important;
+  }
+  ` : ''}
 </style>
 </head>
 <body>
@@ -61,8 +70,8 @@ function html(lat: number, lng: number, radius: number, interactive: boolean) {
 
   var circle = L.circle([${lat}, ${lng}], {
     radius: ${radius},
-    color: '#7B1113',
-    fillColor: '#7B1113',
+    color: '${accentColor}',
+    fillColor: '${accentColor}',
     fillOpacity: 0.1,
     weight: 2,
     dashArray: '6 4'
@@ -80,8 +89,7 @@ function html(lat: number, lng: number, radius: number, interactive: boolean) {
     var pos = marker.getLatLng();
     window.ReactNativeWebView.postMessage(JSON.stringify({
       lat: pos.lat.toFixed(6),
-      lng: pos.lng.toFixed(6),
-      radius: ${radius}
+      lng: pos.lng.toFixed(6)
     }));
   });
 
@@ -90,8 +98,7 @@ function html(lat: number, lng: number, radius: number, interactive: boolean) {
     circle.setLatLng(e.latlng);
     window.ReactNativeWebView.postMessage(JSON.stringify({
       lat: e.latlng.lat.toFixed(6),
-      lng: e.latlng.lng.toFixed(6),
-      radius: ${radius}
+      lng: e.latlng.lng.toFixed(6)
     }));
   });
   ` : ''}
@@ -104,6 +111,10 @@ export default function MapView({ latitude, longitude, radius, interactive, onLo
   const { isDark } = useTheme()
   const webRef = useRef<WebView>(null)
   const prevRadiusRef = useRef(radius)
+  const [fullscreen, setFullscreen] = useState(false)
+  const sliderRef = useRef<View>(null)
+  const sliderWidthRef = useRef(0)
+  const sliderLeftRef = useRef(0)
 
   useEffect(() => {
     if (prevRadiusRef.current !== radius && webRef.current) {
@@ -115,6 +126,12 @@ export default function MapView({ latitude, longitude, radius, interactive, onLo
     }
   }, [radius, latitude, longitude])
 
+  const measureSlider = useCallback(() => {
+    sliderRef.current?.measureInWindow((x) => {
+      if (x != null) sliderLeftRef.current = x
+    })
+  }, [])
+
   const handleMessage = useCallback((event: { nativeEvent: { data: string } }) => {
     try {
       const { lat, lng } = JSON.parse(event.nativeEvent.data)
@@ -122,84 +139,131 @@ export default function MapView({ latitude, longitude, radius, interactive, onLo
     } catch {}
   }, [onLocationChange])
 
-  const RADIUS_STEPS = [10, 20, 30, 40, 50, 60, 80, 100, 150, 200]
+  const handleSliderTouch = useCallback((pageX: number) => {
+    if (sliderWidthRef.current === 0) return
+    const relativeX = pageX - sliderLeftRef.current
+    const fraction = Math.max(0, Math.min(1, relativeX / sliderWidthRef.current))
+    const newRadius = Math.round(10 + fraction * 190)
+    onRadiusChange?.(Math.round(newRadius / 5) * 5)
+  }, [onRadiusChange])
+
+  const mapWebView = () => (
+    <WebView
+      ref={webRef}
+      source={{ html: html(latitude, longitude, radius, !!interactive, isDark) }}
+      style={styles.webview}
+      scrollEnabled={false}
+      bounces={false}
+      onMessage={handleMessage}
+      javaScriptEnabled
+      domStorageEnabled
+      originWhitelist={['*']}
+      androidLayerType="hardware"
+    />
+  )
 
   return (
-    <View style={styles.wrapper}>
-      <View style={[styles.mapContainer, isDark && styles.mapContainerDark]}>
-        <WebView
-          ref={webRef}
-          source={{ html: html(latitude, longitude, radius, !!interactive) }}
-          style={styles.webview}
-          scrollEnabled={false}
-          bounces={false}
-          onMessage={handleMessage}
-          javaScriptEnabled
-          domStorageEnabled
-          originWhitelist={['*']}
-          androidLayerType="hardware"
-        />
-        {!interactive && (
-          <View style={styles.overlay} pointerEvents="none">
-            <Text style={styles.overlayCoords}>{latitude.toFixed(4)}, {longitude.toFixed(4)}</Text>
-            <Text style={styles.overlayRadius}>{radius}m geofence</Text>
-          </View>
+    <>
+      <View style={styles.wrapper}>
+        <View style={[styles.mapContainer, isDark && styles.mapContainerDark]}>
+          {mapWebView()}
+          {interactive && (
+            <TouchableOpacity
+              style={styles.fullscreenBtn}
+              onPress={() => setFullscreen(true)}
+              accessibilityLabel="Full screen map"
+            >
+              <MaterialIcons name="fullscreen" size={20} color="#FFF" />
+            </TouchableOpacity>
+          )}
+          {!interactive && (
+            <View style={styles.overlay} pointerEvents="none">
+              <Text style={styles.overlayCoords}>{latitude.toFixed(4)}, {longitude.toFixed(4)}</Text>
+              <Text style={styles.overlayRadius}>{radius}m geofence</Text>
+            </View>
+          )}
+        </View>
+
+        {interactive && (
+          <>
+            <View style={[styles.hintRow, isDark && styles.hintRowDark]}>
+              <MaterialIcons name="touch-app" size={14} color={isDark ? '#F5A800' : '#888'} />
+              <Text style={[styles.hintText, isDark && styles.hintTextDark]}>Drag the pin or tap the map to set location</Text>
+            </View>
+
+            <View style={styles.radiusSection}>
+              <Text style={[styles.radiusLabel, isDark && styles.radiusLabelDark]}>
+                Geofence Radius: <Text style={[styles.radiusValue, isDark && styles.radiusValueDark]}>{radius}m</Text>
+              </Text>
+              <View
+                ref={sliderRef}
+                style={styles.sliderTrack}
+                onLayout={(e) => {
+                  sliderWidthRef.current = e.nativeEvent.layout.width
+                  measureSlider()
+                }}
+                onStartShouldSetResponder={() => true}
+                onMoveShouldSetResponder={() => true}
+                onResponderGrant={(e) => handleSliderTouch(e.nativeEvent.pageX)}
+                onResponderMove={(e) => handleSliderTouch(e.nativeEvent.pageX)}
+              >
+                <View style={[styles.sliderTrackLine, isDark && styles.sliderTrackLineDark]} />
+                <View style={[styles.sliderFill, { width: `${((radius - 10) / 190) * 100}%` }, isDark && styles.sliderFillDark]} />
+                <View style={[styles.sliderThumb, { left: `${((radius - 10) / 190) * 100}%` }, isDark && styles.sliderThumbDark]} />
+              </View>
+              <View style={styles.sliderEndLabels}>
+                <Text style={[styles.sliderEndLabel, isDark && styles.sliderEndLabelDark]}>10m</Text>
+                <Text style={[styles.sliderEndLabel, isDark && styles.sliderEndLabelDark]}>200m</Text>
+              </View>
+            </View>
+          </>
         )}
       </View>
 
-      {interactive && (
-        <>
-          <View style={[styles.hintRow, isDark && styles.hintRowDark]}>
-            <MaterialIcons name="touch-app" size={14} color="#888" />
-            <Text style={[styles.hintText, isDark && styles.hintTextDark]}>Drag the pin or tap the map to set location</Text>
-          </View>
-
-          <View style={styles.radiusSection}>
-            <Text style={[styles.radiusLabel, isDark && styles.radiusLabelDark]}>Geofence Radius: <Text style={styles.radiusValue}>{radius}m</Text></Text>
-            <View style={styles.sliderTrack}>
-              <View style={[styles.sliderFill, { width: `${((radius - 10) / 190) * 100}%` }]} />
-              <View style={[styles.sliderThumb, { left: `${((radius - 10) / 190) * 100}%` }]} />
-            </View>
-            <View style={styles.sliderLabels}>
-              <Text style={[styles.sliderLabel, isDark && styles.sliderLabelDark]}>10m</Text>
-              <TouchableOpacity
-                style={styles.sliderMinus}
-                onPress={() => onRadiusChange?.(Math.max(10, radius - 10))}
-              >
-                <MaterialIcons name="remove" size={16} color="#7B1113" />
+      {fullscreen && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setFullscreen(false)}>
+          <View style={[styles.fsOverlay, isDark && styles.fsOverlayDark]}>
+            <View style={[styles.fsHeader, isDark && styles.fsHeaderDark]}>
+              <TouchableOpacity onPress={() => setFullscreen(false)} style={styles.fsCloseBtn} accessibilityLabel="Close full screen map">
+                <MaterialIcons name="close" size={24} color={isDark ? '#F5A800' : '#7B1113'} />
               </TouchableOpacity>
-              <Text style={[styles.sliderValue, isDark && styles.sliderValueDark]}>{radius}m</Text>
-              <TouchableOpacity
-                style={styles.sliderPlus}
-                onPress={() => onRadiusChange?.(Math.min(200, radius + 10))}
-              >
-                <MaterialIcons name="add" size={16} color="#7B1113" />
-              </TouchableOpacity>
-              <Text style={[styles.sliderLabel, isDark && styles.sliderLabelDark]}>200m</Text>
+              <Text style={[styles.fsTitle, isDark && styles.textWhite]}>Set Location</Text>
+              <View style={{ width: 40 }} />
             </View>
-            <View style={styles.radiusChips}>
-              {RADIUS_STEPS.map((r) => (
-                <TouchableOpacity
-                  key={r}
-                  style={[styles.chip, radius === r && styles.chipActive, isDark && styles.chipDark, radius === r && isDark && styles.chipActiveDark]}
-                  onPress={() => onRadiusChange?.(r)}
-                >
-                  <Text style={[styles.chipText, radius === r && styles.chipTextActive]}>{r}m</Text>
-                </TouchableOpacity>
-              ))}
+            <View style={styles.fsMapContainer}>
+              <WebView
+                source={{ html: html(latitude, longitude, radius, !!interactive, isDark) }}
+                style={styles.webview}
+                scrollEnabled={false}
+                bounces={false}
+                onMessage={handleMessage}
+                javaScriptEnabled
+                domStorageEnabled
+                originWhitelist={['*']}
+                androidLayerType="hardware"
+              />
+            </View>
+            <View style={[styles.fsCoords, isDark && styles.fsCoordsDark]}>
+              <MaterialIcons name="location-on" size={16} color="#F5A800" />
+              <Text style={[styles.fsCoordsText, isDark && styles.textWhite]}>{latitude.toFixed(6)}, {longitude.toFixed(6)}</Text>
             </View>
           </View>
-        </>
+        </Modal>
       )}
-    </View>
+    </>
   )
 }
 
 const styles = StyleSheet.create({
   wrapper: { marginBottom: 8 },
   mapContainer: { height: 280, borderWidth: 1, borderColor: '#DDD', overflow: 'hidden' },
-  mapContainerDark: { borderColor: '#333' },
+  mapContainerDark: { borderColor: 'rgba(245, 168, 0, 0.15)' },
   webview: { flex: 1, backgroundColor: 'transparent' },
+  fullscreenBtn: {
+    position: 'absolute', top: 8, right: 8, zIndex: 10,
+    backgroundColor: 'rgba(0,0,0,0.6)', width: 36, height: 36,
+    alignItems: 'center', justifyContent: 'center',
+  },
   overlay: {
     ...StyleSheet.absoluteFill,
     justifyContent: 'center',
@@ -216,12 +280,23 @@ const styles = StyleSheet.create({
   radiusLabel: { fontSize: 13, fontFamily: fonts.bodyMedium, color: '#666', marginBottom: 8 },
   radiusLabelDark: { color: 'rgba(255,255,255,0.5)' },
   radiusValue: { fontFamily: fonts.bodyBold, color: '#7B1113' },
+  radiusValueDark: { color: '#F5A800' },
   sliderTrack: {
-    height: 4,
-    backgroundColor: '#DDD',
-    borderRadius: 2,
+    height: 32,
+    justifyContent: 'center',
     position: 'relative',
-    marginBottom: 8,
+  },
+  sliderTrackLine: {
+    height: 4,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 2,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 14,
+  },
+  sliderTrackLineDark: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
   sliderFill: {
     height: 4,
@@ -229,45 +304,85 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     position: 'absolute',
     left: 0,
-    top: 0,
+    top: 14,
+  },
+  sliderFillDark: {
+    backgroundColor: '#F5A800',
   },
   sliderThumb: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: '#7B1113',
     position: 'absolute',
-    top: -7,
-    marginLeft: -9,
+    top: 4,
+    marginLeft: -12,
+    borderWidth: 3,
+    borderColor: '#FFF',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
-  sliderLabels: {
+  sliderThumbDark: {
+    backgroundColor: '#F5A800',
+    borderColor: '#121215',
+  },
+  sliderEndLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: -4,
+  },
+  sliderEndLabel: { fontSize: 11, fontFamily: fonts.body, color: '#999' },
+  sliderEndLabelDark: { color: 'rgba(255,255,255,0.4)' },
+
+  // Fullscreen styles
+  fsOverlay: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  fsOverlayDark: {
+    backgroundColor: '#0A0A0C',
+  },
+  fsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 56 : 40,
+    paddingBottom: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+  },
+  fsHeaderDark: {
+    backgroundColor: '#0A0A0C',
+    borderBottomColor: '#1C1C21',
+  },
+  fsCloseBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  fsTitle: { fontSize: 17, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#1A1A1A' },
+  textWhite: { color: '#FFFFFF' },
+  fsMapContainer: { flex: 1 },
+  fsCoords: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    marginBottom: 12,
-  },
-  sliderLabel: { fontSize: 11, fontFamily: fonts.body, color: '#999' },
-  sliderLabelDark: { color: 'rgba(255,255,255,0.4)' },
-  sliderValue: { fontSize: 16, fontFamily: fonts.bodyBold, color: '#333', minWidth: 40, textAlign: 'center' },
-  sliderValueDark: { color: '#FFF' },
-  sliderMinus: { width: 28, height: 28, borderRadius: 0, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#DDD' },
-  sliderPlus: { width: 28, height: 28, borderRadius: 0, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#DDD' },
-  radiusChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 6,
+    paddingVertical: 12,
+    backgroundColor: '#FAFAFA',
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
   },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: '#DDD',
-    backgroundColor: '#FFFFFF',
+  fsCoordsDark: {
+    backgroundColor: '#121215',
+    borderTopColor: '#1C1C21',
   },
-  chipActive: { borderColor: '#7B1113', backgroundColor: '#7B1113' },
-  chipDark: { borderColor: '#444', backgroundColor: '#1A1A1A' },
-  chipActiveDark: { borderColor: '#F5A800', backgroundColor: '#F5A800' },
-  chipText: { fontSize: 12, fontFamily: fonts.bodyMedium, color: '#666' },
-  chipTextActive: { color: '#FFFFFF' },
+  fsCoordsText: { fontSize: 13, fontFamily: fonts.mono, color: '#333' },
 })

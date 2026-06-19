@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Platform, View } from 'react-native'
 import { router, Tabs } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { api } from '../../services/mock-api'
 import { useTheme } from '../../theme/ThemeContext'
 
@@ -14,6 +15,7 @@ const iconMap: Record<string, keyof typeof MaterialIcons.glyphMap> = {
 
 export default function TabLayout() {
   const { isDark } = useTheme()
+  const insets = useSafeAreaInsets()
 
   useEffect(() => {
     const user = api.getCurrentUser()
@@ -26,17 +28,32 @@ export default function TabLayout() {
     <Tabs
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: isDark ? '#F5A800' : '#7B1113',
-        tabBarInactiveTintColor: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
+        tabBarActiveTintColor: isDark ? '#4A0A0B' : '#F5A800',
+        tabBarInactiveTintColor: isDark ? 'rgba(74, 10, 11, 0.5)' : 'rgba(255, 255, 255, 0.5)',
         tabBarStyle: {
-          backgroundColor: isDark ? '#0D0D0D' : '#FFFFFF',
-          borderTopWidth: 2,
-          borderTopColor: isDark ? '#27272a' : '#d4d4d8', // zinc-800 or zinc-300
+          position: 'absolute',
+          bottom: insets.bottom + 12,
+          left: 24,
+          right: 24,
+          backgroundColor: isDark ? '#F5A800' : '#7B1113',
+          borderTopWidth: 0,
+          borderWidth: isDark ? 1 : 0,
+          borderColor: isDark ? 'rgba(74, 10, 11, 0.2)' : 'transparent',
+          borderRadius: 28,
           height: 64,
-          paddingBottom: 8,
-          paddingTop: 8,
-          elevation: 0,
-          shadowOpacity: 0,
+          paddingBottom: 0,
+          paddingTop: 0,
+          ...Platform.select({
+            ios: {
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+            },
+            android: {
+              elevation: 8,
+            },
+          }),
         },
         tabBarLabelStyle: {
           fontSize: 10,
@@ -44,6 +61,9 @@ export default function TabLayout() {
           textTransform: 'uppercase',
           letterSpacing: 1,
           marginTop: -4,
+        },
+        tabBarIconStyle: {
+          marginTop: 4,
         },
         tabBarIcon: ({ focused }) => {
           const iconName = iconMap[route.name]
@@ -53,7 +73,7 @@ export default function TabLayout() {
               <MaterialIcons
                 name={iconName}
                 size={24}
-                color={focused ? (isDark ? '#F5A800' : '#7B1113') : (isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)')}
+                color={focused ? (isDark ? '#4A0A0B' : '#F5A800') : (isDark ? 'rgba(74, 10, 11, 0.5)' : 'rgba(255,255,255,0.5)')}
               />
             </View>
           )
