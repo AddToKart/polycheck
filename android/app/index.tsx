@@ -1,16 +1,17 @@
 import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native'
 import { router } from 'expo-router'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useTheme } from '../theme/ThemeContext'
 
 export default function LandingScreen() {
   const { isDark, toggle } = useTheme()
+  const insets = useSafeAreaInsets()
 
   return (
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <TouchableOpacity
-        style={[styles.themeBtn, isDark && styles.themeBtnDark]}
+        style={[styles.themeBtn, isDark && styles.themeBtnDark, { top: Math.max(insets.top, 16) }]}
         onPress={toggle}
         accessibilityLabel="Toggle theme"
       >
