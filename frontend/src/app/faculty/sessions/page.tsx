@@ -1,11 +1,11 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus } from 'lucide-react'
+import { Plus, ArrowRight } from 'lucide-react'
 import { api } from '@/lib/mock-api'
-import type { User, Session } from '@polycheck/shared'
+import type { User, Session, Subject, Section } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,8 +13,6 @@ import { Badge } from '@/components/ui/badge'
 
 function SessionsContent() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const subjectFilter = searchParams.get('subjectId')
   const [user, setUser] = useState<User | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const [activating, setActivating] = useState('')
@@ -26,21 +24,31 @@ function SessionsContent() {
       return
     }
     setUser(cu)
-    let allSessions = api.getSessions()
-    if (subjectFilter) {
-      allSessions = allSessions.filter((s) => s.sectionId === subjectFilter)
-    }
-    setSessions(allSessions)
-  }, [router, subjectFilter])
+    setSessions(api.getSessions())
+  }, [router])
 
   if (!user) return null
 
-  const grouped = sessions.reduce<Record<string, Session[]>>((acc, s) => {
-    const key = s.subjectName
-    if (!acc[key]) acc[key] = []
-    acc[key].push(s)
+  const allSubjects = api.getSubjects()
+  const allSections = api.getSections()
+
+  type GroupedSessions = Record<string, Session[]>
+  const grouped = sessions.reduce<Record<string, { subjectId: string; sessions: GroupedSessions }>>((acc, s) => {
+    const section = allSections.find(sec => sec.id === s.sectionId)
+    const subject = section ? allSubjects.find(sub => sub.id === section.subjectId) : undefined
+    const subjectName = subject?.name ?? s.subjectName
+    const subjectId = subject?.id ?? ''
+    if (!acc[subjectName]) acc[subjectName] = { subjectId, sessions: {} }
+    if (!acc[subjectName].sessions[s.sectionId]) acc[subjectName].sessions[s.sectionId] = []
+    acc[subjectName].sessions[s.sectionId].push(s)
     return acc
   }, {})
+
+  const getSectionLabel = (sectionId: string) => {
+    const sec = allSections.find(s => s.id === sectionId)
+    if (!sec) return 'Unknown Section'
+    return `Section ${sec.section}${sec.room ? ` \u2014 ${sec.room}` : ''}`
+  }
 
   const handleActivate = (sessionId: string) => {
     router.push(`/faculty/sessions/${sessionId}`)
@@ -72,71 +80,84 @@ function SessionsContent() {
             </Button>
           </div>
 
-          {Object.entries(grouped).map(([subjectName, subjectSessions]) => (
+          {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([subjectName, group]) => {
+            const subject = allSubjects.find(s => s.id === group.subjectId)
+            return (
             <Card key={subjectName} className="mb-8">
-              <CardHeader>
+              <CardHeader className="flex-row items-center justify-between pb-3">
                 <CardTitle className="text-lg">{subjectName}</CardTitle>
+                {subject && (
+                  <Link href={`/faculty/subjects/${subject.id}/sessions`} className="text-xs font-bold uppercase tracking-widest text-maroon dark:text-golden hover:underline flex items-center gap-1">
+                    All Sessions <ArrowRight className="w-3 h-3" />
+                  </Link>
+                )}
               </CardHeader>
-              <CardContent className="p-0">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
-                      <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Date</th>
-                      <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Time</th>
-                      <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Room</th>
-                      <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Status</th>
-                      <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Students</th>
-                      <th className="text-right px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {subjectSessions.map((session) => (
-                      <tr
-                        key={session.id}
-                        className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
-                        onClick={() => router.push(`/faculty/sessions/${session.id}`)}
-                      >
-                        <td className="px-6 py-3 text-zinc-900 dark:text-zinc-100">
-                          {new Date(session.date).toLocaleDateString('en-US', {
-                            weekday: 'short',
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                          })}
-                        </td>
-                        <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400">
-                          {session.startTime} - {session.endTime}
-                        </td>
-                        <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400 text-xs">
-                          {session.room || '\u2014'}
-                        </td>
-                        <td className="px-6 py-3">
-                          <Badge variant={session.isActive ? 'active' : 'inactive'}>
-                            {session.isActive ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </td>
-                        <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400">&mdash;</td>
-                        <td className="px-6 py-3 text-right">
-                          {!session.isActive && (
-                            <Button
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleActivate(session.id)
-                              }}
-                              disabled={activating === session.id}
-                            >
-                              {activating === session.id ? '...' : 'Activate'}
-                            </Button>
-                          )}
-                        </td>
+              {Object.entries(group.sessions).map(([sectionId, sectionSessions]) => (
+                <div key={sectionId}>
+                  <div className="px-6 py-2 bg-zinc-100 dark:bg-zinc-800/70 border-b border-t border-zinc-200 dark:border-zinc-700">
+                    <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider">
+                      {getSectionLabel(sectionId)}
+                    </span>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
+                        <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Date</th>
+                        <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Time</th>
+                        <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Room</th>
+                        <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Status</th>
+                        <th className="text-right px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </CardContent>
+                    </thead>
+                    <tbody>
+                      {sectionSessions.map((session) => (
+                        <tr
+                          key={session.id}
+                          className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                          onClick={() => router.push(`/faculty/sessions/${session.id}`)}
+                        >
+                          <td className="px-6 py-3 text-zinc-900 dark:text-zinc-100">
+                            {new Date(session.date).toLocaleDateString('en-US', {
+                              weekday: 'short',
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </td>
+                          <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400">
+                            {session.startTime} - {session.endTime}
+                          </td>
+                          <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400 text-xs">
+                            {session.room || '\u2014'}
+                          </td>
+                          <td className="px-6 py-3">
+                            <Badge variant={session.isActive ? 'active' : 'inactive'}>
+                              {session.isActive ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </td>
+                          <td className="px-6 py-3 text-right">
+                            {!session.isActive && (
+                              <Button
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleActivate(session.id)
+                                }}
+                                disabled={activating === session.id}
+                              >
+                                {activating === session.id ? '...' : 'Activate'}
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
             </Card>
-          ))}
+            )
+          })}
           {sessions.length === 0 && (
             <div className="text-center py-16 text-zinc-400 dark:text-zinc-500">
               <p className="text-lg mb-2">No sessions found</p>

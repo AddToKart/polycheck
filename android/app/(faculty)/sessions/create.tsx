@@ -7,7 +7,7 @@ import { api } from '../../../services/mock-api'
 import { fonts } from '../../../theme/typography'
 import { useTheme } from '../../../theme/ThemeContext'
 import MapView from '../../../components/MapView'
-import type { User, Section } from '@polycheck/shared'
+import type { User, Subject, Section } from '@polycheck/shared'
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const MINUTES = [0, 15, 30, 45]
@@ -96,7 +96,9 @@ export default function CreateSessionScreen() {
   const { isDark } = useTheme()
   const [user, setUser] = useState<User | null>(null)
   const [mapFocus, setMapFocus] = useState(false)
+  const [subjects, setSubjects] = useState<Subject[]>([])
   const [sections, setSections] = useState<Section[]>([])
+  const [selectedSubjectId, setSelectedSubjectId] = useState('')
   const [sectionId, setSectionId] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [startTime, setStartTime] = useState('09:00')
@@ -107,6 +109,7 @@ export default function CreateSessionScreen() {
   const [latitude, setLatitude] = useState(14.5863)
   const [longitude, setLongitude] = useState(120.9777)
   const [radius, setRadius] = useState(40)
+  const [showSubjectPicker, setShowSubjectPicker] = useState(false)
   const [showSectionPicker, setShowSectionPicker] = useState(false)
   const [showStartTime, setShowStartTime] = useState(false)
   const [showEndTime, setShowEndTime] = useState(false)
@@ -115,14 +118,29 @@ export default function CreateSessionScreen() {
     const cu = api.getCurrentUser()
     if (cu) {
       setUser(cu)
-      setSections(api.getSections().filter((s) => s.teacherId === cu.id))
+      setSubjects(api.getSubjects())
     }
   }, [])
 
+  useEffect(() => {
+    if (selectedSubjectId) {
+      setSections(api.getSections(selectedSubjectId).filter((s) => s.teacherId === user?.id))
+      setSectionId('')
+    } else {
+      setSections([])
+      setSectionId('')
+    }
+  }, [selectedSubjectId])
+
   if (!user) return null
 
+  const filteredSections = selectedSubjectId
+    ? sections.filter(s => s.subjectId === selectedSubjectId)
+    : []
+
+  const selectedSubject = subjects.find((s) => s.id === selectedSubjectId)
   const selectedSection = sections.find((s) => s.id === sectionId)
-  const selectedParentSubject = selectedSection ? api.getSubject(selectedSection.subjectId) : undefined
+  const selectedParentSubject = selectedSection ? subjects.find((s) => s.id === selectedSection.subjectId) : undefined
 
   const handleCreate = () => {
     if (!sectionId || !selectedSection) return
@@ -151,46 +169,87 @@ export default function CreateSessionScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" scrollEnabled={!mapFocus}>
-        {/* Subject */}
-        <Text style={[styles.label, isDark && styles.labelDark]}>Subject</Text>
-          <TouchableOpacity
-            style={[styles.picker, isDark && styles.pickerDark]}
-            onPress={() => setShowSectionPicker(!showSectionPicker)}
-          >
-            <Text style={[styles.pickerText, isDark && styles.textWhite, !selectedSection && styles.pickerPlaceholder]}>
-              {selectedSection && selectedParentSubject ? `${selectedParentSubject.name} (${selectedParentSubject.code}) - Sec ${selectedSection.section}` : 'Select a section'}
-            </Text>
-            <MaterialIcons name={showSectionPicker ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color={isDark ? '#F5A800' : '#888'} />
-          </TouchableOpacity>
+        {/* Step 1: Subject */}
+        <Text style={[styles.label, isDark && styles.labelDark]}>Step 1 — Subject</Text>
+        <TouchableOpacity
+          style={[styles.picker, isDark && styles.pickerDark]}
+          onPress={() => setShowSubjectPicker(true)}
+        >
+          <Text style={[styles.pickerText, isDark && styles.textWhite, !selectedSubject && styles.pickerPlaceholder]}>
+            {selectedSubject ? `${selectedSubject.name} (${selectedSubject.code})` : 'Select a subject'}
+          </Text>
+          <MaterialIcons name="keyboard-arrow-down" size={20} color={isDark ? '#F5A800' : '#888'} />
+        </TouchableOpacity>
 
-          <Modal visible={showSectionPicker} transparent animationType="fade" onRequestClose={() => setShowSectionPicker(false)}>
-            <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowSectionPicker(false)}>
-              <View style={[styles.sheet, isDark && styles.sheetDark]} onStartShouldSetResponder={() => true}>
-                <Text style={[styles.sheetTitle, isDark && styles.sheetTitleDark]}>Select Section</Text>
-                <ScrollView>
-                  {sections.map((s) => {
-                    const parent = api.getSubject(s.subjectId)
-                    return (
-                      <TouchableOpacity
-                        key={s.id}
-                        style={[
-                          styles.sheetOption,
-                          isDark && styles.sheetOptionDarkBorder,
-                          s.id === sectionId && (isDark ? styles.sheetOptionSelectedDark : styles.sheetOptionSelected)
-                        ]}
-                        onPress={() => { setSectionId(s.id); setShowSectionPicker(false) }}
-                      >
-                        <Text style={[styles.sheetOptionText, isDark && styles.sheetOptionTextDark, s.id === sectionId && (isDark ? styles.sheetOptionTextActiveDark : styles.sheetOptionTextActive)]}>
-                          {parent?.name ?? ''} ({parent?.code ?? ''}) - Sec {s.section}
-                        </Text>
-                        {s.id === sectionId && <MaterialIcons name="check" size={18} color={isDark ? '#F5A800' : '#7B1113'} />}
-                      </TouchableOpacity>
-                    )
-                  })}
-                </ScrollView>
-              </View>
-            </TouchableOpacity>
-          </Modal>
+        <Modal visible={showSubjectPicker} transparent animationType="fade" onRequestClose={() => setShowSubjectPicker(false)}>
+          <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowSubjectPicker(false)}>
+            <View style={[styles.sheet, isDark && styles.sheetDark]} onStartShouldSetResponder={() => true}>
+              <Text style={[styles.sheetTitle, isDark && styles.sheetTitleDark]}>Select Subject</Text>
+              <ScrollView>
+                {subjects.map((subj) => (
+                  <TouchableOpacity
+                    key={subj.id}
+                    style={[
+                      styles.sheetOption,
+                      isDark && styles.sheetOptionDarkBorder,
+                      subj.id === selectedSubjectId && (isDark ? styles.sheetOptionSelectedDark : styles.sheetOptionSelected)
+                    ]}
+                    onPress={() => { setSelectedSubjectId(subj.id); setShowSubjectPicker(false) }}
+                  >
+                    <Text style={[styles.sheetOptionText, isDark && styles.sheetOptionTextDark, subj.id === selectedSubjectId && (isDark ? styles.sheetOptionTextActiveDark : styles.sheetOptionTextActive)]}>
+                      {subj.name} ({subj.code})
+                    </Text>
+                    {subj.id === selectedSubjectId && <MaterialIcons name="check" size={18} color={isDark ? '#F5A800' : '#7B1113'} />}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* Step 2: Section */}
+        <Text style={[styles.label, isDark && styles.labelDark]}>Step 2 — Section</Text>
+        <TouchableOpacity
+          style={[styles.picker, isDark && styles.pickerDark, !selectedSubject && styles.pickerDisabled]}
+          onPress={() => selectedSubject && setShowSectionPicker(true)}
+          disabled={!selectedSubject}
+        >
+          <Text style={[styles.pickerText, isDark && styles.textWhite, !selectedSection && styles.pickerPlaceholder, !selectedSubject && styles.pickerTextDisabled]}>
+            {selectedSection
+              ? `Section ${selectedSection.section}${selectedSection.room ? ` - ${selectedSection.room}` : ''}`
+              : selectedSubject ? 'Select a section' : 'Select a subject first'}
+          </Text>
+          <MaterialIcons name="keyboard-arrow-down" size={20} color={isDark ? (selectedSubject ? '#F5A800' : 'rgba(245,168,0,0.3)') : (selectedSubject ? '#888' : '#CCC')} />
+        </TouchableOpacity>
+
+        <Modal visible={showSectionPicker} transparent animationType="fade" onRequestClose={() => setShowSectionPicker(false)}>
+          <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowSectionPicker(false)}>
+            <View style={[styles.sheet, isDark && styles.sheetDark]} onStartShouldSetResponder={() => true}>
+              <Text style={[styles.sheetTitle, isDark && styles.sheetTitleDark]}>Select Section</Text>
+              <ScrollView>
+                {filteredSections.map((s) => {
+                  const parent = subjects.find(sub => sub.id === s.subjectId)
+                  return (
+                    <TouchableOpacity
+                      key={s.id}
+                      style={[
+                        styles.sheetOption,
+                        isDark && styles.sheetOptionDarkBorder,
+                        s.id === sectionId && (isDark ? styles.sheetOptionSelectedDark : styles.sheetOptionSelected)
+                      ]}
+                      onPress={() => { setSectionId(s.id); setShowSectionPicker(false) }}
+                    >
+                      <Text style={[styles.sheetOptionText, isDark && styles.sheetOptionTextDark, s.id === sectionId && (isDark ? styles.sheetOptionTextActiveDark : styles.sheetOptionTextActive)]}>
+                        {parent?.name ?? ''} ({parent?.code ?? ''}) - Sec {s.section}{s.room ? ` - ${s.room}` : ''}
+                      </Text>
+                      {s.id === sectionId && <MaterialIcons name="check" size={18} color={isDark ? '#F5A800' : '#7B1113'} />}
+                    </TouchableOpacity>
+                  )
+                })}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
         {/* Date */}
         <Text style={[styles.label, isDark && styles.labelDark]}>Date</Text>
@@ -345,8 +404,10 @@ const styles = StyleSheet.create({
   half: { flex: 1 },
   picker: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#DDD', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FFFFFF' },
   pickerDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215' },
+  pickerDisabled: { opacity: 0.4 },
   pickerText: { fontSize: 15, fontFamily: fonts.body, color: '#333', flex: 1 },
   pickerPlaceholder: { color: '#AAA' },
+  pickerTextDisabled: { color: 'rgba(255,255,255,0.3)' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: '#FFFFFF', paddingTop: 20, paddingBottom: 40, maxHeight: '70%' },
   sheetDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },

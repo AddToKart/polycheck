@@ -6,29 +6,39 @@ import { router } from 'expo-router'
 import { api } from '../../../services/mock-api'
 import { fonts } from '../../../theme/typography'
 import { useTheme } from '../../../theme/ThemeContext'
-import type { User, Session } from '@polycheck/shared'
+import type { User, Session, Subject, Section } from '@polycheck/shared'
 
 export default function FacultySessionsScreen() {
   const { isDark } = useTheme()
   const [user, setUser] = useState<User | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
+  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [allSections, setAllSections] = useState<Section[]>([])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
     if (cu) {
       setUser(cu)
       setSessions(api.getSessions())
+      setSubjects(api.getSubjects())
+      setAllSections(api.getSections())
     }
   }, [])
 
   if (!user) return null
 
-  const grouped = sessions.reduce<Record<string, Session[]>>((acc, s) => {
-    const key = s.subjectName
-    if (!acc[key]) acc[key] = []
-    acc[key].push(s)
-    return acc
-  }, {})
+  const subjectSessionMap: Record<string, { subject: Subject; sessions: Session[] }> = {}
+  for (const session of sessions) {
+    const section = allSections.find(s => s.id === session.sectionId)
+    if (!section) continue
+    const subjectId = section.subjectId
+    const subject = subjects.find(s => s.id === subjectId)
+    if (!subject) continue
+    if (!subjectSessionMap[subjectId]) {
+      subjectSessionMap[subjectId] = { subject, sessions: [] }
+    }
+    subjectSessionMap[subjectId].sessions.push(session)
+  }
 
   const handleActivate = (sessionId: string) => {
     router.push(`/(faculty)/sessions/${sessionId}`)
@@ -54,48 +64,67 @@ export default function FacultySessionsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {Object.entries(grouped).map(([subjectName, subjectSessions]) => (
-          <View key={subjectName} style={styles.group}>
-            <Text style={[styles.groupTitle, isDark && styles.textGolden]}>{subjectName}</Text>
-            {subjectSessions.map((session) => (
+        {Object.entries(subjectSessionMap).map(([subjectId, group]) => (
+          <View key={subjectId} style={styles.group}>
+            <View style={styles.groupHeader}>
+              <Text style={[styles.groupTitle, isDark && styles.textGolden]}>{group.subject.name}</Text>
               <TouchableOpacity
-                key={session.id}
-                style={[styles.sessionCard, isDark && styles.cardDark]}
-                onPress={() => router.push(`/(faculty)/sessions/${session.id}`)}
+                onPress={() => router.push(`/(faculty)/subjects/${subjectId}/sessions`)}
+                style={styles.viewAllBtn}
+                accessibilityRole="button"
+                accessibilityLabel="View all sessions"
               >
-                <View style={styles.sessionLeft}>
-                  <Text style={[styles.sessionDate, isDark && styles.textWhite]}>
-                    {new Date(session.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                  </Text>
-                  <Text style={[styles.sessionTime, isDark && styles.textWhite70]}>
-                    <MaterialIcons name="access-time" size={12} color={isDark ? 'rgba(255,255,255,0.5)' : '#888'} /> {session.startTime} - {session.endTime}
-                  </Text>
-                  {session.room ? (
-                    <Text style={[styles.sessionRoom, isDark && styles.textWhite50]}>
-                      <MaterialIcons name="room" size={12} color={isDark ? 'rgba(255,255,255,0.5)' : '#888'} /> {session.room}
-                    </Text>
-                  ) : null}
-                </View>
-                <View style={styles.sessionRight}>
-                  <View style={[styles.badge, session.isActive ? styles.badgeActive : (isDark ? styles.badgeInactiveDark : styles.badgeInactive)]}>
-                    <Text style={[styles.badgeText, session.isActive ? styles.badgeTextActive : (isDark ? styles.badgeTextInactiveDark : styles.badgeTextInactive)]}>
-                      {session.isActive ? 'Active' : 'Inactive'}
-                    </Text>
-                  </View>
-                  {!session.isActive && (
-                    <TouchableOpacity
-                      style={[styles.activateBtn, isDark && styles.activateBtnDark]}
-                      onPress={() => handleActivate(session.id)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Activate session"
-                    >
-                      <MaterialIcons name="play-arrow" size={14} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
-                      <Text style={[styles.activateText, isDark && styles.activateTextDark]}>Activate</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
+                <Text style={[styles.viewAllText, isDark && styles.textGolden]}>View All</Text>
+                <MaterialIcons name="arrow-forward" size={14} color={isDark ? '#F5A800' : '#7B1113'} />
               </TouchableOpacity>
-            ))}
+            </View>
+            {group.sessions.map((session) => {
+              const section = allSections.find(s => s.id === session.sectionId)
+              return (
+                <TouchableOpacity
+                  key={session.id}
+                  style={[styles.sessionCard, isDark && styles.cardDark]}
+                  onPress={() => router.push(`/(faculty)/sessions/${session.id}`)}
+                >
+                  <View style={styles.sessionLeft}>
+                    <Text style={[styles.sessionDate, isDark && styles.textWhite]}>
+                      {new Date(session.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                    </Text>
+                    <Text style={[styles.sessionTime, isDark && styles.textWhite70]}>
+                      <MaterialIcons name="access-time" size={12} color={isDark ? 'rgba(255,255,255,0.5)' : '#888'} /> {session.startTime} - {session.endTime}
+                    </Text>
+                    {session.room ? (
+                      <Text style={[styles.sessionRoom, isDark && styles.textWhite50]}>
+                        <MaterialIcons name="room" size={12} color={isDark ? 'rgba(255,255,255,0.5)' : '#888'} /> {session.room}
+                      </Text>
+                    ) : null}
+                    {section ? (
+                      <Text style={[styles.sessionSection, isDark && styles.textWhite50]}>
+                        <MaterialIcons name="people" size={12} color={isDark ? 'rgba(255,255,255,0.5)' : '#888'} /> Sec {section.section}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.sessionRight}>
+                    <View style={[styles.badge, session.isActive ? styles.badgeActive : (isDark ? styles.badgeInactiveDark : styles.badgeInactive)]}>
+                      <Text style={[styles.badgeText, session.isActive ? styles.badgeTextActive : (isDark ? styles.badgeTextInactiveDark : styles.badgeTextInactive)]}>
+                        {session.isActive ? 'Active' : 'Inactive'}
+                      </Text>
+                    </View>
+                    {!session.isActive && (
+                      <TouchableOpacity
+                        style={[styles.activateBtn, isDark && styles.activateBtnDark]}
+                        onPress={() => handleActivate(session.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Activate session"
+                      >
+                        <MaterialIcons name="play-arrow" size={14} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
+                        <Text style={[styles.activateText, isDark && styles.activateTextDark]}>Activate</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              )
+            })}
           </View>
         ))}
         {sessions.length === 0 && (
@@ -120,13 +149,17 @@ const styles = StyleSheet.create({
   textGolden: { color: '#F5A800' },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   group: { marginBottom: 24 },
-  groupTitle: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#1A1A1A', marginBottom: 8 },
+  groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  groupTitle: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#1A1A1A' },
+  viewAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  viewAllText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: '#7B1113' },
   sessionCard: { backgroundColor: '#FFFFFF', borderRadius: 0, padding: 16, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
   cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
   sessionLeft: { flex: 1 },
   sessionDate: { fontSize: 15, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#333' },
   sessionTime: { fontSize: 12, fontFamily: fonts.body, color: '#888', marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 4 },
   sessionRoom: { fontSize: 11, fontFamily: fonts.body, color: '#999', marginTop: 2, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  sessionSection: { fontSize: 11, fontFamily: fonts.body, color: '#999', marginTop: 2, flexDirection: 'row', alignItems: 'center', gap: 4 },
   sessionRight: { alignItems: 'flex-end', gap: 8 },
   badge: { borderRadius: 0, paddingHorizontal: 10, paddingVertical: 4 },
   badgeActive: { backgroundColor: '#4CAF50' },

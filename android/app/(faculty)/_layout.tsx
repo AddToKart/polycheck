@@ -78,7 +78,7 @@ export default function FacultyLayout() {
         headerShown: false,
         tabBarActiveTintColor: isDark ? '#4A0A0B' : '#F5A800',
         tabBarInactiveTintColor: isDark ? 'rgba(74, 10, 11, 0.5)' : 'rgba(255, 255, 255, 0.5)',
-        tabBarStyle: route.name === 'sessions/create' || route.name === 'sessions/[id]' || route.name === 'subjects/create' || route.name === 'subjects/[id]' || route.name === 'sections/[id]' || route.name === 'student/[id]' ? { display: 'none' } : tabStyle,
+        tabBarStyle: route.name === 'sessions/create' || route.name === 'sessions/[id]' || route.name === 'subjects/create' || route.name === 'subjects/[id]' || route.name === 'subjects/[id]/sessions' || route.name === 'sections/create' || route.name === 'sections/[id]' || route.name === 'student/[id]' ? { display: 'none' } : tabStyle,
         tabBarLabelStyle: labelStyle,
         tabBarIconStyle: {
           marginTop: 4,
@@ -107,6 +107,8 @@ export default function FacultyLayout() {
       <Tabs.Screen name="sessions/create" options={{ href: null }} />
       <Tabs.Screen name="sessions/[id]" options={{ href: null }} />
       <Tabs.Screen name="subjects/[id]" options={{ href: null }} />
+      <Tabs.Screen name="subjects/[id]/sessions" options={{ href: null }} />
+      <Tabs.Screen name="sections/create" options={{ href: null }} />
       <Tabs.Screen name="sections/[id]" options={{ href: null }} />
       <Tabs.Screen name="student/[id]" options={{ href: null }} />
       <Tabs.Screen name="attendance" options={{ title: 'Attendance', tabBarLabel: 'Attendance' }} />

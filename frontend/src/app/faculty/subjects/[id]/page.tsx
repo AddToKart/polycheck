@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Users, CalendarDays, Key, Copy, ArrowRight } from 'lucide-react'
+import { ArrowLeft, Users, CalendarDays, Key, Copy, ArrowRight, Plus } from 'lucide-react'
 import { api } from '@/lib/mock-api'
 import type { User, Subject, Section } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -91,10 +91,17 @@ export default function SubjectDetailPage() {
           </Card>
 
           {/* Sections */}
-          <h2 className="text-lg font-heading font-bold text-zinc-800 dark:text-zinc-100 mb-4 flex items-center gap-2">
-            <Users className="w-4 h-4 text-maroon dark:text-golden" />
-            Sections
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-heading font-bold text-zinc-800 dark:text-zinc-100 flex items-center gap-2">
+              <Users className="w-4 h-4 text-maroon dark:text-golden" />
+              Sections
+            </h2>
+            <Button variant="default" size="sm" className="text-[10px] font-bold uppercase tracking-widest rounded-none h-9" asChild>
+              <Link href={`/faculty/sections/create?subjectId=${id}`}>
+                <Plus className="w-4 h-4 mr-1" /> Add Section
+              </Link>
+            </Button>
+          </div>
 
           {sections.length === 0 ? (
             <div className="border border-dashed border-zinc-300 dark:border-zinc-700 p-16 text-center bg-zinc-50/50 dark:bg-zinc-900/20">
@@ -163,7 +170,7 @@ export default function SubjectDetailPage() {
                           className="flex-1 text-[10px] font-bold uppercase tracking-widest rounded-none h-10"
                           asChild
                         >
-                          <Link href={`/faculty/sessions?subjectId=${section.id}`}>
+                          <Link href={`/faculty/subjects/${id}/sessions?sectionId=${section.id}`}>
                             <CalendarDays className="w-3 h-3 mr-1" />
                             Sessions
                           </Link>

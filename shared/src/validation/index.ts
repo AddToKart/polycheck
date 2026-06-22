@@ -27,9 +27,6 @@ export const SectionCreateSchema = z.object({
   room: z.string().min(1, 'Room is required'),
   schedule: z.array(ScheduleDaySchema).min(1, 'At least one schedule day required'),
   semester: z.string().min(1, 'Semester is required'),
-  latitude: z.number().min(-90).max(90),
-  longitude: z.number().min(-180).max(180),
-  geofenceRadiusMeters: z.number().min(10).max(500).default(40),
 })
 
 export const SessionCreateSchema = z.object({

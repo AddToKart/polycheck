@@ -50,9 +50,20 @@ export default function SubjectDetailScreen() {
           </View>
         ) : null}
 
-        <Text style={[styles.sectionTitle, isDark && styles.textGolden]}>
-          Sections ({sections.length})
-        </Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <Text style={[styles.sectionTitle, isDark && styles.textGolden]}>
+            Sections ({sections.length})
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.push({ pathname: '/(faculty)/sections/create', params: { subjectId: id } })}
+            style={[styles.addSectionBtn, isDark && styles.addSectionBtnDark]}
+            accessibilityRole="button"
+            accessibilityLabel="Add section"
+          >
+            <MaterialIcons name="add" size={16} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
+            <Text style={[styles.addSectionBtnText, isDark && styles.addSectionBtnTextDark]}>Add Section</Text>
+          </TouchableOpacity>
+        </View>
 
         {sections.map((section) => (
           <Pressable
@@ -85,8 +96,16 @@ export default function SubjectDetailScreen() {
                   </View>
                 </View>
                 <View style={[styles.cardAction, { borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : '#F0F0F0' }]}>
-                  <MaterialIcons name="chevron-right" size={18} color={iconColor} />
-                  <Text style={[styles.viewLabel, isDark && styles.textGolden]}>View Section</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <MaterialIcons name="chevron-right" size={18} color={iconColor} />
+                    <Text style={[styles.viewLabel, isDark && styles.textGolden]}>View Section</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => router.push({ pathname: '/(faculty)/subjects/[id]/sessions', params: { id: id, sectionId: section.id } })}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <MaterialIcons name="event" size={16} color={iconColor} />
+                      <Text style={[styles.viewLabel, isDark && styles.textGolden]}>Sessions</Text>
+                    </View>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
@@ -118,4 +137,8 @@ const styles = StyleSheet.create({
   cardAction: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
   viewLabel: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: '#7B1113' },
   empty: { textAlign: 'center', fontFamily: fonts.body, paddingVertical: 60, color: '#BBB' },
+  addSectionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#7B1113', paddingHorizontal: 12, paddingVertical: 6 },
+  addSectionBtnDark: { backgroundColor: '#F5A800' },
+  addSectionBtnText: { fontSize: 12, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#FFFFFF' },
+  addSectionBtnTextDark: { color: '#4A0A0B' },
 })
