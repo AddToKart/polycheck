@@ -88,7 +88,7 @@ Polycheck adheres strictly to the official brand guidelines of the **Polytechnic
 
 *   **Primary Maroon** (`#7B1113`): Buttons, navigation bars, active headers, and primary branding states.
 *   **Deep Maroon** (`#4A0A0B`): Dark mode cards, sidebar backgrounds, and hover/pressed states.
-*   **Golden Yellow** (`#F5A800`): Derived from the star in the PUP logo, used for highlights, badges, and CTAs.
+*   **Golden Yellow** (`#FFDF00`): Derived from the star in the PUP logo, used for highlights, badges, and CTAs.
 *   **Light Base** (`#FFFFFF`): Clean backgrounds and card layouts.
 *   **Dark Base** (`#0A0A0A`): Low-strain near-black theme base.
 *   **Typography Display**: `Lora` (academic serif font via Google Fonts).

@@ -8,7 +8,7 @@ import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
 
 function TabIcon({ name, focused, isDark }: { name: keyof typeof MaterialIcons.glyphMap; focused: boolean; isDark: boolean }) {
-  const activeColor = isDark ? '#4A0A0B' : '#F5A800'
+  const activeColor = isDark ? '#4A0A0B' : '#FFDF00'
   const inactiveColor = isDark ? 'rgba(74, 10, 11, 0.5)' : 'rgba(255, 255, 255, 0.5)'
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -44,7 +44,7 @@ export default function FacultyLayout() {
     bottom: insets.bottom + 12,
     left: 24,
     right: 24,
-    backgroundColor: isDark ? '#F5A800' : '#7B1113',
+    backgroundColor: isDark ? '#FFDF00' : '#7B1113',
     borderTopWidth: 0,
     borderWidth: isDark ? 1 : 0,
     borderColor: isDark ? 'rgba(74, 10, 11, 0.2)' : 'transparent',
@@ -76,7 +76,7 @@ export default function FacultyLayout() {
     <Tabs
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: isDark ? '#4A0A0B' : '#F5A800',
+        tabBarActiveTintColor: isDark ? '#4A0A0B' : '#FFDF00',
         tabBarInactiveTintColor: isDark ? 'rgba(74, 10, 11, 0.5)' : 'rgba(255, 255, 255, 0.5)',
         tabBarStyle: route.name === 'sessions/create' || route.name === 'sessions/[id]' || route.name === 'subjects/create' || route.name === 'subjects/[id]' || route.name === 'subjects/[id]/sessions' || route.name === 'sections/create' || route.name === 'sections/[id]' || route.name === 'student/[id]' ? { display: 'none' } : tabStyle,
         tabBarLabelStyle: labelStyle,

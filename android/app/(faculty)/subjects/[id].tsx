@@ -29,7 +29,7 @@ export default function SubjectDetailScreen() {
   const border = isDark ? 'rgba(245, 168, 0, 0.15)' : '#EEE'
   const textPrimary = isDark ? '#FFFFFF' : '#333'
   const textSecondary = isDark ? 'rgba(255,255,255,0.5)' : '#888'
-  const iconColor = isDark ? '#F5A800' : '#7B1113'
+  const iconColor = isDark ? '#FFDF00' : '#7B1113'
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
@@ -38,7 +38,7 @@ export default function SubjectDetailScreen() {
           <MaterialIcons name="arrow-back" size={22} color={iconColor} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text className="text-lg font-heading font-bold" style={{ color: isDark ? '#F5A800' : '#4A0A0B' }} numberOfLines={1}>{subject.name}</Text>
+          <Text className="text-lg font-heading font-bold" style={{ color: isDark ? '#FFDF00' : '#4A0A0B' }} numberOfLines={1}>{subject.name}</Text>
           <Text className="text-xs mt-0.5" style={{ color: textSecondary }}>{subject.code}</Text>
         </View>
       </View>
@@ -122,13 +122,13 @@ export default function SubjectDetailScreen() {
 
 const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#4A0A0B', marginBottom: 12 },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
   textWhite: { color: '#FFFFFF' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
   card: { backgroundColor: '#FFFFFF', borderRadius: 0, marginBottom: 12, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
   cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
   cardAccent: { width: 4, height: '100%', backgroundColor: '#7B1113', position: 'absolute', left: 0, top: 0, bottom: 0 },
-  cardAccentDark: { backgroundColor: '#F5A800' },
+  cardAccentDark: { backgroundColor: '#FFDF00' },
   cardBody: { padding: 16, paddingLeft: 24 },
   sectionName: { fontSize: 16, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#333', marginBottom: 8 },
   sectionDetails: { gap: 6 },
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
   viewLabel: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: '#7B1113' },
   empty: { textAlign: 'center', fontFamily: fonts.body, paddingVertical: 60, color: '#BBB' },
   addSectionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#7B1113', paddingHorizontal: 12, paddingVertical: 6 },
-  addSectionBtnDark: { backgroundColor: '#F5A800' },
+  addSectionBtnDark: { backgroundColor: '#FFDF00' },
   addSectionBtnText: { fontSize: 12, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#FFFFFF' },
   addSectionBtnTextDark: { color: '#4A0A0B' },
 })

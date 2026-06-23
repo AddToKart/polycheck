@@ -163,7 +163,7 @@ export default function CreateSessionScreen() {
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <View style={[styles.header, isDark && styles.headerDark]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Go back">
-          <MaterialIcons name="arrow-back" size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+          <MaterialIcons name="arrow-back" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
         </TouchableOpacity>
         <Text style={[styles.heading, isDark && styles.headingDark]}>Create Session</Text>
       </View>
@@ -178,7 +178,7 @@ export default function CreateSessionScreen() {
           <Text style={[styles.pickerText, isDark && styles.textWhite, !selectedSubject && styles.pickerPlaceholder]}>
             {selectedSubject ? `${selectedSubject.name} (${selectedSubject.code})` : 'Select a subject'}
           </Text>
-          <MaterialIcons name="keyboard-arrow-down" size={20} color={isDark ? '#F5A800' : '#888'} />
+          <MaterialIcons name="keyboard-arrow-down" size={20} color={isDark ? '#FFDF00' : '#888'} />
         </TouchableOpacity>
 
         <Modal visible={showSubjectPicker} transparent animationType="fade" onRequestClose={() => setShowSubjectPicker(false)}>
@@ -199,7 +199,7 @@ export default function CreateSessionScreen() {
                     <Text style={[styles.sheetOptionText, isDark && styles.sheetOptionTextDark, subj.id === selectedSubjectId && (isDark ? styles.sheetOptionTextActiveDark : styles.sheetOptionTextActive)]}>
                       {subj.name} ({subj.code})
                     </Text>
-                    {subj.id === selectedSubjectId && <MaterialIcons name="check" size={18} color={isDark ? '#F5A800' : '#7B1113'} />}
+                    {subj.id === selectedSubjectId && <MaterialIcons name="check" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />}
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -219,7 +219,7 @@ export default function CreateSessionScreen() {
               ? `Section ${selectedSection.section}${selectedSection.room ? ` - ${selectedSection.room}` : ''}`
               : selectedSubject ? 'Select a section' : 'Select a subject first'}
           </Text>
-          <MaterialIcons name="keyboard-arrow-down" size={20} color={isDark ? (selectedSubject ? '#F5A800' : 'rgba(245,168,0,0.3)') : (selectedSubject ? '#888' : '#CCC')} />
+          <MaterialIcons name="keyboard-arrow-down" size={20} color={isDark ? (selectedSubject ? '#FFDF00' : 'rgba(245,168,0,0.3)') : (selectedSubject ? '#888' : '#CCC')} />
         </TouchableOpacity>
 
         <Modal visible={showSectionPicker} transparent animationType="fade" onRequestClose={() => setShowSectionPicker(false)}>
@@ -242,7 +242,7 @@ export default function CreateSessionScreen() {
                       <Text style={[styles.sheetOptionText, isDark && styles.sheetOptionTextDark, s.id === sectionId && (isDark ? styles.sheetOptionTextActiveDark : styles.sheetOptionTextActive)]}>
                         {parent?.name ?? ''} ({parent?.code ?? ''}) - Sec {s.section}{s.room ? ` - ${s.room}` : ''}
                       </Text>
-                      {s.id === sectionId && <MaterialIcons name="check" size={18} color={isDark ? '#F5A800' : '#7B1113'} />}
+                      {s.id === sectionId && <MaterialIcons name="check" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />}
                     </TouchableOpacity>
                   )
                 })}
@@ -258,7 +258,7 @@ export default function CreateSessionScreen() {
           onPress={() => {}}
         >
           <Text style={[styles.pickerText, isDark && styles.textWhite]}>{date}</Text>
-          <MaterialIcons name="calendar-today" size={18} color={isDark ? '#F5A800' : '#888'} />
+          <MaterialIcons name="calendar-today" size={18} color={isDark ? '#FFDF00' : '#888'} />
         </TouchableOpacity>
 
         {/* Time row */}
@@ -267,14 +267,14 @@ export default function CreateSessionScreen() {
             <Text style={[styles.label, isDark && styles.labelDark]}>Start Time</Text>
             <TouchableOpacity style={[styles.picker, isDark && styles.pickerDark]} onPress={() => setShowStartTime(true)}>
               <Text style={[styles.pickerText, isDark && styles.textWhite]}>{formatTime(parseInt(startTime.split(':')[0], 10), parseInt(startTime.split(':')[1], 10))}</Text>
-              <MaterialIcons name="access-time" size={18} color={isDark ? '#F5A800' : '#888'} />
+              <MaterialIcons name="access-time" size={18} color={isDark ? '#FFDF00' : '#888'} />
             </TouchableOpacity>
           </View>
           <View style={styles.half}>
             <Text style={[styles.label, isDark && styles.labelDark]}>End Time</Text>
             <TouchableOpacity style={[styles.picker, isDark && styles.pickerDark]} onPress={() => setShowEndTime(true)}>
               <Text style={[styles.pickerText, isDark && styles.textWhite]}>{formatTime(parseInt(endTime.split(':')[0], 10), parseInt(endTime.split(':')[1], 10))}</Text>
-              <MaterialIcons name="access-time" size={18} color={isDark ? '#F5A800' : '#888'} />
+              <MaterialIcons name="access-time" size={18} color={isDark ? '#FFDF00' : '#888'} />
             </TouchableOpacity>
           </View>
         </View>
@@ -391,7 +391,7 @@ const styles = StyleSheet.create({
   headerDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
   backBtn: { padding: 4, marginRight: 12 },
   heading: { flex: 1, fontSize: 22, fontWeight: '700', fontFamily: fonts.heading, color: '#1A1A1A' },
-  headingDark: { color: '#F5A800' },
+  headingDark: { color: '#FFDF00' },
   textWhite: { color: '#FFFFFF' },
   content: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 100 },
   label: { fontSize: 12, fontFamily: fonts.bodyMedium, color: '#888', marginBottom: 6, marginTop: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -420,17 +420,17 @@ const styles = StyleSheet.create({
   sheetOptionText: { fontSize: 15, fontFamily: fonts.body, color: '#333', flex: 1 },
   sheetOptionTextDark: { color: '#FFF' },
   sheetOptionTextActive: { fontFamily: fonts.bodySemiBold, color: '#7B1113' },
-  sheetOptionTextActiveDark: { fontFamily: fonts.bodySemiBold, color: '#F5A800' },
+  sheetOptionTextActiveDark: { fontFamily: fonts.bodySemiBold, color: '#FFDF00' },
   optionRow: { flexDirection: 'row', gap: 0, marginTop: 2 },
   optChip: { paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#DDD', backgroundColor: '#FFFFFF', marginRight: 6 },
   optChipActive: { borderColor: '#7B1113', backgroundColor: '#7B1113' },
   optChipDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215' },
-  optChipActiveDark: { borderColor: '#F5A800', backgroundColor: '#F5A800' },
+  optChipActiveDark: { borderColor: '#FFDF00', backgroundColor: '#FFDF00' },
   optChipText: { fontSize: 12, fontFamily: fonts.bodyMedium, color: '#666' },
   optChipTextDark: { color: 'rgba(255,255,255,0.7)' },
   optChipTextActive: { color: '#FFFFFF' },
   createBtn: { backgroundColor: '#7B1113', paddingVertical: 14, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 32 },
-  createBtnDark: { backgroundColor: '#F5A800' },
+  createBtnDark: { backgroundColor: '#FFDF00' },
   createBtnDisabled: { opacity: 0.5 },
   createBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600', fontFamily: fonts.bodySemiBold },
   createBtnTextDark: { color: '#4A0A0B' },
@@ -446,9 +446,9 @@ const styles = StyleSheet.create({
   timeItemActiveDark: { backgroundColor: 'rgba(245, 168, 0, 0.1)' },
   timeItemText: { fontSize: 15, fontFamily: fonts.body, color: '#333' },
   timeItemTextActive: { fontFamily: fonts.bodySemiBold, color: '#7B1113' },
-  timeItemTextActiveDark: { fontFamily: fonts.bodySemiBold, color: '#F5A800' },
+  timeItemTextActiveDark: { fontFamily: fonts.bodySemiBold, color: '#FFDF00' },
   timeOkBtn: { backgroundColor: '#7B1113', marginHorizontal: 20, marginTop: 16, paddingVertical: 12, alignItems: 'center' },
-  timeOkBtnDark: { backgroundColor: '#F5A800' },
+  timeOkBtnDark: { backgroundColor: '#FFDF00' },
   timeOkBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600', fontFamily: fonts.bodySemiBold },
   timeOkBtnTextDark: { color: '#4A0A0B' },
 })

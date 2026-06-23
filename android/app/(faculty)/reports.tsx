@@ -68,10 +68,10 @@ export default function FacultyReportsScreen() {
         <Text style={[styles.heading, isDark && styles.textGolden]}>Reports</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
-            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleLogout} style={styles.iconBtn} accessibilityLabel="Sign out">
-            <MaterialIcons name="logout" size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="logout" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
         </View>
       </View>
@@ -80,7 +80,7 @@ export default function FacultyReportsScreen() {
         {/* Filters Card */}
         <View style={[styles.filterCard, isDark && styles.cardDark]}>
           <View style={styles.filterHeader}>
-            <MaterialIcons name="filter-list" size={18} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="filter-list" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.filterTitle, isDark && styles.textWhite]}>Filters</Text>
           </View>
 
@@ -93,7 +93,7 @@ export default function FacultyReportsScreen() {
               <Text style={[styles.dropdownSelectorText, isDark && styles.textWhite]}>
                 {selectedSubjectObj ? `${selectedSubjectObj.name} (${selectedSubjectObj.code})` : 'All Subjects'}
               </Text>
-              <MaterialIcons name={showSubjectDropdown ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color={isDark ? '#F5A800' : '#888'} />
+              <MaterialIcons name={showSubjectDropdown ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color={isDark ? '#FFDF00' : '#888'} />
             </TouchableOpacity>
             
             {showSubjectDropdown && (
@@ -127,7 +127,7 @@ export default function FacultyReportsScreen() {
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Total Attendance</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <Text style={[styles.statNumber, { color: '#F5A800' }]}>{presentPct}%</Text>
+            <Text style={[styles.statNumber, { color: '#FFDF00' }]}>{presentPct}%</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Present Rate</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
@@ -151,7 +151,7 @@ export default function FacultyReportsScreen() {
                 <Text style={[styles.gridValue, isDark && styles.textWhite]}>{s.totalSessions}</Text>
               </View>
               <View style={styles.gridCell}>
-                <Text style={[styles.gridLabel, { color: '#F5A800' }]}>Present</Text>
+                <Text style={[styles.gridLabel, { color: '#FFDF00' }]}>Present</Text>
                 <Text style={[styles.gridValue, isDark && styles.textWhite]}>{s.present}</Text>
               </View>
               <View style={styles.gridCell}>
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
   headerRight: { flexDirection: 'row', gap: 8 },
   textWhite: { color: '#FFFFFF' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   filterCard: { backgroundColor: '#FFFFFF', borderRadius: 0, padding: 16, marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
   cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },

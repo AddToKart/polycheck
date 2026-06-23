@@ -28,14 +28,14 @@ export default function TabLayout() {
     <Tabs
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: isDark ? '#4A0A0B' : '#F5A800',
+        tabBarActiveTintColor: isDark ? '#4A0A0B' : '#FFDF00',
         tabBarInactiveTintColor: isDark ? 'rgba(74, 10, 11, 0.5)' : 'rgba(255, 255, 255, 0.5)',
         tabBarStyle: {
           position: 'absolute',
           bottom: insets.bottom + 12,
           left: 24,
           right: 24,
-          backgroundColor: isDark ? '#F5A800' : '#7B1113',
+          backgroundColor: isDark ? '#FFDF00' : '#7B1113',
           borderTopWidth: 0,
           borderWidth: isDark ? 1 : 0,
           borderColor: isDark ? 'rgba(74, 10, 11, 0.2)' : 'transparent',
@@ -73,7 +73,7 @@ export default function TabLayout() {
               <MaterialIcons
                 name={iconName}
                 size={24}
-                color={focused ? (isDark ? '#4A0A0B' : '#F5A800') : (isDark ? 'rgba(74, 10, 11, 0.5)' : 'rgba(255,255,255,0.5)')}
+                color={focused ? (isDark ? '#4A0A0B' : '#FFDF00') : (isDark ? 'rgba(74, 10, 11, 0.5)' : 'rgba(255,255,255,0.5)')}
               />
             </View>
           )

@@ -146,7 +146,7 @@ Any failure → marked as `disputed`, surfaced to teacher
 |---|---|---|
 | Maroon (Primary) | `#7B1113` | Buttons, nav bars, headers, active states |
 | Deep Maroon (Dark) | `#4A0A0B` | Hover/pressed states, sidebar, dark mode surfaces |
-| Golden Yellow (Accent) | `#F5A800` | Highlights, badges, CTA emphasis, icons |
+| Golden Yellow (Accent) | `#FFDF00` | Highlights, badges, CTA emphasis, icons |
 | White (Light base) | `#FFFFFF` | Background, cards, text (light mode) |
 | Black (Dark base) | `#0A0A0A` | Background (dark mode) |
 

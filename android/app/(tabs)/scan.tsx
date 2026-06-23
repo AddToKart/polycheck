@@ -114,7 +114,7 @@ export default function ScanScreen() {
             <Text style={styles.checkInText}>Grant Permission</Text>
           </TouchableOpacity>
           <TouchableOpacity style={{ marginTop: 16 }} onPress={() => setShowManual(true)}>
-            <Text style={{ color: '#F5A800', fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>
+            <Text style={{ color: '#FFDF00', fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>
               Enter Code Manually
             </Text>
           </TouchableOpacity>
@@ -147,7 +147,7 @@ export default function ScanScreen() {
         {activeSession && (
           <View style={styles.sessionInfo}>
             <View style={styles.sessionRow}>
-              <MaterialIcons name="location-on" size={16} color={isDark ? '#F5A800' : '#7B1113'} />
+              <MaterialIcons name="location-on" size={16} color={isDark ? '#FFDF00' : '#7B1113'} />
               <Text style={[styles.sessionText, isDark && styles.textGolden]}>
                 {activeSession.subjectName} · {activeSession.startTime}-{activeSession.endTime}
               </Text>
@@ -190,8 +190,8 @@ export default function ScanScreen() {
 
       {result && (
         <View style={[styles.resultOverlay, result.status === 'present' ? (isDark ? styles.resultSuccessDark : styles.resultSuccess) : styles.resultFail]}>
-          <MaterialIcons name={result.status === 'present' ? 'check-circle' : 'cancel'} size={36} color={result.status === 'present' ? '#F5A800' : '#EF4444'} />
-          <Text style={[styles.resultTitle, { color: result.status === 'present' ? '#F5A800' : '#EF4444' }]}>
+          <MaterialIcons name={result.status === 'present' ? 'check-circle' : 'cancel'} size={36} color={result.status === 'present' ? '#FFDF00' : '#EF4444'} />
+          <Text style={[styles.resultTitle, { color: result.status === 'present' ? '#FFDF00' : '#EF4444' }]}>
             {result.status === 'present' ? 'Verified' : result.status === 'late' ? 'Late' : 'Rejected'}
           </Text>
           <Text style={styles.resultMessage}>{result.message}</Text>
@@ -204,28 +204,28 @@ export default function ScanScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0A0A0C' },
   scanArea: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  corner: { position: 'absolute', width: 24, height: 24, borderColor: '#F5A800' },
+  corner: { position: 'absolute', width: 24, height: 24, borderColor: '#FFDF00' },
   cornerTL: { top: 0, left: 0, borderTopWidth: 4, borderLeftWidth: 4 },
   cornerTR: { top: 0, right: 0, borderTopWidth: 4, borderRightWidth: 4 },
   cornerBL: { bottom: 0, left: 0, borderBottomWidth: 4, borderLeftWidth: 4 },
   cornerBR: { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4 },
   scanHint: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2, marginTop: 16 },
   bottomPanel: { backgroundColor: '#FFFFFF', borderTopWidth: 4, borderTopColor: '#7B1113', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 100 },
-  bottomPanelDark: { backgroundColor: '#0A0A0C', borderTopColor: '#F5A800' },
+  bottomPanelDark: { backgroundColor: '#0A0A0C', borderTopColor: '#FFDF00' },
   sessionInfo: { marginBottom: 16 },
   sessionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   sessionText: { fontSize: 10, fontWeight: '700', color: '#7B1113', textTransform: 'uppercase', letterSpacing: 2 },
   mapBorder: { borderWidth: 2, borderColor: '#D4D4D8' },
   mapBorderDark: { borderColor: 'rgba(245, 168, 0, 0.2)' },
   checkInBtn: { backgroundColor: '#7B1113', borderWidth: 2, borderColor: '#7B1113', paddingVertical: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginBottom: 16 },
-  checkInBtnDark: { backgroundColor: '#F5A800', borderColor: '#F5A800' },
+  checkInBtnDark: { backgroundColor: '#FFDF00', borderColor: '#FFDF00' },
   checkInText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2 },
   checkInTextDark: { color: '#4A0A0B' },
   cancelBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, paddingVertical: 8 },
   cancelText: { color: '#71717A', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2 },
   cancelTextDark: { color: '#A1A1AA' },
   manualOverlay: { position: 'absolute', bottom: 128, left: 20, right: 20, backgroundColor: '#FFFFFF', padding: 20, borderWidth: 2, borderColor: '#7B1113' },
-  manualOverlayDark: { backgroundColor: '#121215', borderColor: '#F5A800' },
+  manualOverlayDark: { backgroundColor: '#121215', borderColor: '#FFDF00' },
   manualTitle: { fontSize: 16, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#4A0A0B', marginBottom: 12, textAlign: 'center' },
   manualInputRow: { borderWidth: 1, borderColor: '#DDD', marginBottom: 12 },
   manualInputRowDark: { borderColor: 'rgba(245, 168, 0, 0.3)' },
@@ -236,10 +236,10 @@ const styles = StyleSheet.create({
   manualCloseText: { fontSize: 12, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 1 },
   manualCloseTextDark: { color: 'rgba(255,255,255,0.5)' },
   resultOverlay: { position: 'absolute', bottom: 128, left: 32, right: 32, padding: 20, alignItems: 'center', gap: 8, borderWidth: 2 },
-  resultSuccess: { backgroundColor: '#7B1113', borderColor: '#F5A800' },
-  resultSuccessDark: { backgroundColor: '#1E0405', borderColor: '#F5A800' },
+  resultSuccess: { backgroundColor: '#7B1113', borderColor: '#FFDF00' },
+  resultSuccessDark: { backgroundColor: '#1E0405', borderColor: '#FFDF00' },
   resultFail: { backgroundColor: '#18181B', borderColor: '#EF4444' },
   resultTitle: { fontSize: 20, fontWeight: '700', fontFamily: 'Lora_400Regular', textTransform: 'uppercase', letterSpacing: 2, marginTop: 8 },
   resultMessage: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, color: '#FFFFFF', textAlign: 'center' },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
 })

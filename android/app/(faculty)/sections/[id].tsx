@@ -81,7 +81,7 @@ export default function SectionDetailScreen() {
   const textPrimary = isDark ? '#FFFFFF' : '#333'
   const textSecondary = isDark ? 'rgba(255,255,255,0.5)' : '#888'
   const textTertiary = isDark ? 'rgba(255,255,255,0.5)' : '#999'
-  const iconColor = isDark ? '#F5A800' : '#7B1113'
+  const iconColor = isDark ? '#FFDF00' : '#7B1113'
   const chipBg = isDark ? '#0A0A0C' : '#F5F5F5'
   const chipBorder = isDark ? 'rgba(245, 168, 0, 0.15)' : '#DDD'
   const pillPresentBg = isDark ? 'rgba(245, 168, 0, 0.15)' : '#FFF5E0'
@@ -96,7 +96,7 @@ export default function SectionDetailScreen() {
           <MaterialIcons name="arrow-back" size={22} color={iconColor} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text className="text-lg font-heading font-bold" style={{ color: isDark ? '#F5A800' : '#4A0A0B' }} numberOfLines={1}>{parentSubject?.name ?? ''}</Text>
+          <Text className="text-lg font-heading font-bold" style={{ color: isDark ? '#FFDF00' : '#4A0A0B' }} numberOfLines={1}>{parentSubject?.name ?? ''}</Text>
           <Text className="text-xs mt-0.5" style={{ color: textSecondary }}>{parentSubject?.code ?? ''} · Sec {section.section}</Text>
         </View>
       </View>
@@ -117,7 +117,7 @@ export default function SectionDetailScreen() {
           <View className="flex-row flex-wrap gap-1.5">
             {section.schedule.map((sd, i) => (
               <View key={i} className="flex-row items-center gap-1 px-2 py-1 border" style={{ backgroundColor: chipBg, borderColor: chipBorder }}>
-                <Text className="text-[10px] font-sans-semibold" style={{ color: isDark ? '#F5A800' : '#7B1113' }}>{sd.day}</Text>
+                <Text className="text-[10px] font-sans-semibold" style={{ color: isDark ? '#FFDF00' : '#7B1113' }}>{sd.day}</Text>
                 <Text className="text-[10px]" style={{ color: textSecondary }}>{sd.startTime}-{sd.endTime}</Text>
                 {sd.room ? <Text className="text-[9px]" style={{ color: textTertiary }}>{sd.room}</Text> : null}
               </View>
@@ -134,7 +134,7 @@ export default function SectionDetailScreen() {
           <View className="flex-row items-center gap-3 mb-2.5">
             {section.enrollmentCode ? (
               <>
-                <Text className="text-xl font-[monospace] font-bold tracking-[2px]" style={{ color: isDark ? '#F5A800' : '#7B1113' }}>{section.enrollmentCode}</Text>
+                <Text className="text-xl font-[monospace] font-bold tracking-[2px]" style={{ color: isDark ? '#FFDF00' : '#7B1113' }}>{section.enrollmentCode}</Text>
                 <Text className="text-[11px]" style={{ color: textSecondary }}>
                   Expires: {new Date(section.enrollmentCodeExpiry).toLocaleDateString()}
                 </Text>
@@ -144,7 +144,7 @@ export default function SectionDetailScreen() {
             )}
           </View>
           <View className="flex-row gap-2">
-            <TouchableOpacity className="flex-row items-center gap-1 px-3.5 py-1.5" style={{ backgroundColor: isDark ? '#F5A800' : '#7B1113' }} onPress={handleResetCode} accessibilityRole="button">
+            <TouchableOpacity className="flex-row items-center gap-1 px-3.5 py-1.5" style={{ backgroundColor: isDark ? '#FFDF00' : '#7B1113' }} onPress={handleResetCode} accessibilityRole="button">
               <MaterialIcons name="autorenew" size={16} color={isDark ? '#4A0A0B' : '#FFF'} />
               <Text className="text-xs font-sans-semibold" style={{ color: isDark ? '#4A0A0B' : '#FFF' }}>Reset</Text>
             </TouchableOpacity>
@@ -158,11 +158,11 @@ export default function SectionDetailScreen() {
         {/* Attendance Overview */}
         <View className="flex-row mb-3" style={{ backgroundColor: surface, borderWidth: 1, borderColor: border }}>
           <View className="flex-1 items-center py-3.5" style={{ borderRightWidth: 1, borderRightColor: statBorder }}>
-            <Text className="text-[22px] font-sans-bold" style={{ color: '#F5A800' }}>{totalPresent}</Text>
+            <Text className="text-[22px] font-sans-bold" style={{ color: '#FFDF00' }}>{totalPresent}</Text>
             <Text className="text-[10px] font-sans-medium uppercase tracking-[0.5px] mt-0.5" style={{ color: textSecondary }}>Present</Text>
           </View>
           <View className="flex-1 items-center py-3.5" style={{ borderRightWidth: 1, borderRightColor: statBorder }}>
-            <Text className="text-[22px] font-sans-bold" style={{ color: isDark ? '#F5A800' : '#7B1113' }}>{totalLate}</Text>
+            <Text className="text-[22px] font-sans-bold" style={{ color: isDark ? '#FFDF00' : '#7B1113' }}>{totalLate}</Text>
             <Text className="text-[10px] font-sans-medium uppercase tracking-[0.5px] mt-0.5" style={{ color: textSecondary }}>Late</Text>
           </View>
           <View className="flex-1 items-center py-3.5">
@@ -206,7 +206,7 @@ export default function SectionDetailScreen() {
             >
               <View className="flex-row justify-between p-3.5 mb-2 border" style={{ backgroundColor: surface, borderColor: border }}>
                 <View className="flex-row items-center gap-3 flex-1">
-                  <View className="w-10 h-10 items-center justify-center" style={{ backgroundColor: isDark ? '#F5A800' : '#7B1113' }}>
+                  <View className="w-10 h-10 items-center justify-center" style={{ backgroundColor: isDark ? '#FFDF00' : '#7B1113' }}>
                     <Text className="text-xs font-sans-semibold" style={{ color: isDark ? '#4A0A0B' : '#FFF' }}>
                       {student.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                     </Text>
@@ -220,11 +220,11 @@ export default function SectionDetailScreen() {
                 <View className="items-end gap-1.5 ml-3">
                   <View className="flex-row gap-1">
                     <View className="items-center px-1.5 py-0.5 min-w-[28px]" style={{ backgroundColor: pillPresentBg }}>
-                      <Text className="text-sm font-sans-bold" style={{ color: '#F5A800' }}>{student.attendance.present}</Text>
+                      <Text className="text-sm font-sans-bold" style={{ color: '#FFDF00' }}>{student.attendance.present}</Text>
                       <Text className="text-[8px] font-sans-medium uppercase" style={{ color: textSecondary }}>P</Text>
                     </View>
                     <View className="items-center px-1.5 py-0.5 min-w-[28px]" style={{ backgroundColor: pillLateBg }}>
-                      <Text className="text-sm font-sans-bold" style={{ color: isDark ? '#F5A800' : '#7B1113' }}>{student.attendance.late}</Text>
+                      <Text className="text-sm font-sans-bold" style={{ color: isDark ? '#FFDF00' : '#7B1113' }}>{student.attendance.late}</Text>
                       <Text className="text-[8px] font-sans-medium uppercase" style={{ color: textSecondary }}>L</Text>
                     </View>
                     <View className="items-center px-1.5 py-0.5 min-w-[28px]" style={{ backgroundColor: pillAbsentBg }}>
@@ -235,7 +235,7 @@ export default function SectionDetailScreen() {
                   {total > 0 && (
                     <View className="flex-row items-center gap-1.5 w-[120px]">
                       <View className="flex-1 h-1 rounded" style={{ backgroundColor: isDark ? '#333' : '#EEE' }}>
-                        <View style={{ width: `${(student.attendance.present / total) * 100}%`, height: 4, backgroundColor: '#F5A800', borderRadius: 2 }} />
+                        <View style={{ width: `${(student.attendance.present / total) * 100}%`, height: 4, backgroundColor: '#FFDF00', borderRadius: 2 }} />
                       </View>
                       <Text className="text-[10px] font-sans-medium min-w-[30px] text-right" style={{ color: textSecondary }}>
                         {Math.round((student.attendance.present / total) * 100)}%
@@ -270,8 +270,8 @@ export default function SectionDetailScreen() {
                 key={i}
                 className="w-9 h-9 items-center justify-center border"
                 style={{
-                  borderColor: page === i ? (isDark ? '#F5A800' : '#7B1113') : borderInput,
-                  backgroundColor: page === i ? (isDark ? '#F5A800' : '#7B1113') : surface,
+                  borderColor: page === i ? (isDark ? '#FFDF00' : '#7B1113') : borderInput,
+                  backgroundColor: page === i ? (isDark ? '#FFDF00' : '#7B1113') : surface,
                 }}
                 onPress={() => setPage(i)}
               >

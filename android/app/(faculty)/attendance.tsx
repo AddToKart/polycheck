@@ -44,10 +44,10 @@ export default function FacultyAttendanceScreen() {
         <Text style={[styles.heading, isDark && styles.textGolden]}>Attendance</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
-            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleLogout} style={styles.iconBtn} accessibilityLabel="Sign out">
-            <MaterialIcons name="logout" size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="logout" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
         </View>
       </View>
@@ -59,7 +59,7 @@ export default function FacultyAttendanceScreen() {
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Sessions</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <Text style={[styles.statNumber, { color: '#F5A800' }]}>{totals.present}</Text>
+            <Text style={[styles.statNumber, { color: '#FFDF00' }]}>{totals.present}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Present</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
   headerRight: { flexDirection: 'row', gap: 8 },
   textWhite: { color: '#FFFFFF' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   statsRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
   statCard: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 0, padding: 14, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
@@ -126,11 +126,11 @@ const styles = StyleSheet.create({
   subjectSessions: { fontSize: 12, fontFamily: fonts.body, color: '#888', marginTop: 2 },
   badgeRow: { flexDirection: 'row', gap: 6, marginTop: 12, flexWrap: 'wrap' },
   badge: { borderRadius: 0, paddingHorizontal: 10, paddingVertical: 4 },
-  badgePresent: { backgroundColor: '#F5A800' },
+  badgePresent: { backgroundColor: '#FFDF00' },
   badgeTextPresent: { color: '#4A0A0B', fontSize: 11, fontWeight: '600', fontFamily: fonts.bodySemiBold },
   badgeLate: { backgroundColor: '#7B1113' },
   badgeTextLate: { color: '#FFFFFF', fontSize: 11, fontWeight: '600', fontFamily: fonts.bodySemiBold },
-  badgeAbsent: { backgroundColor: '#4A0A0B', borderWidth: 1, borderColor: '#F5A800' },
-  badgeTextAbsent: { color: '#F5A800', fontSize: 11, fontWeight: '600', fontFamily: fonts.bodySemiBold },
+  badgeAbsent: { backgroundColor: '#4A0A0B', borderWidth: 1, borderColor: '#FFDF00' },
+  badgeTextAbsent: { color: '#FFDF00', fontSize: 11, fontWeight: '600', fontFamily: fonts.bodySemiBold },
   empty: { textAlign: 'center', fontFamily: fonts.body, paddingVertical: 60, color: '#BBB' },
 })

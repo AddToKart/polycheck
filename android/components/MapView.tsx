@@ -15,7 +15,7 @@ interface MapViewProps {
 }
 
 function html(lat: number, lng: number, radius: number, interactive: boolean, isDark: boolean) {
-  const accentColor = isDark ? '#F5A800' : '#7B1113'
+  const accentColor = isDark ? '#FFDF00' : '#7B1113'
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -187,7 +187,7 @@ export default function MapView({ latitude, longitude, radius, interactive, onLo
         {interactive && (
           <>
             <View style={[styles.hintRow, isDark && styles.hintRowDark]}>
-              <MaterialIcons name="touch-app" size={14} color={isDark ? '#F5A800' : '#888'} />
+              <MaterialIcons name="touch-app" size={14} color={isDark ? '#FFDF00' : '#888'} />
               <Text style={[styles.hintText, isDark && styles.hintTextDark]}>Drag the pin or tap the map to set location</Text>
             </View>
 
@@ -225,7 +225,7 @@ export default function MapView({ latitude, longitude, radius, interactive, onLo
           <View style={[styles.fsOverlay, isDark && styles.fsOverlayDark]}>
             <View style={[styles.fsHeader, isDark && styles.fsHeaderDark]}>
               <TouchableOpacity onPress={() => setFullscreen(false)} style={styles.fsCloseBtn} accessibilityLabel="Close full screen map">
-                <MaterialIcons name="close" size={24} color={isDark ? '#F5A800' : '#7B1113'} />
+                <MaterialIcons name="close" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
               </TouchableOpacity>
               <Text style={[styles.fsTitle, isDark && styles.textWhite]}>Set Location</Text>
               <View style={{ width: 40 }} />
@@ -244,7 +244,7 @@ export default function MapView({ latitude, longitude, radius, interactive, onLo
               />
             </View>
             <View style={[styles.fsCoords, isDark && styles.fsCoordsDark]}>
-              <MaterialIcons name="location-on" size={16} color="#F5A800" />
+              <MaterialIcons name="location-on" size={16} color="#FFDF00" />
               <Text style={[styles.fsCoordsText, isDark && styles.textWhite]}>{latitude.toFixed(6)}, {longitude.toFixed(6)}</Text>
             </View>
           </View>
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
   radiusLabel: { fontSize: 13, fontFamily: fonts.bodyMedium, color: '#666', marginBottom: 8 },
   radiusLabelDark: { color: 'rgba(255,255,255,0.5)' },
   radiusValue: { fontFamily: fonts.bodyBold, color: '#7B1113' },
-  radiusValueDark: { color: '#F5A800' },
+  radiusValueDark: { color: '#FFDF00' },
   sliderTrack: {
     height: 32,
     justifyContent: 'center',
@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
     top: 14,
   },
   sliderFillDark: {
-    backgroundColor: '#F5A800',
+    backgroundColor: '#FFDF00',
   },
   sliderThumb: {
     width: 24,
@@ -332,7 +332,7 @@ const styles = StyleSheet.create({
     }),
   },
   sliderThumbDark: {
-    backgroundColor: '#F5A800',
+    backgroundColor: '#FFDF00',
     borderColor: '#121215',
   },
   sliderEndLabels: {

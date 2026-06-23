@@ -5,6 +5,7 @@ export const mockSuperAdmin: SuperAdmin = {
   fullName: 'Dr. Maria Concepcion Reyes',
   email: 'mcreyes@pup.edu.ph',
   role: 'super_admin',
+
   scope: 'institution',
   isActive: true,
   createdAt: '2025-06-01T00:00:00Z',
@@ -44,20 +45,6 @@ export const mockTeachers: Teacher[] = [
   },
 ]
 
-function studentTemplate(id: string, studentId: string, fullName: string, program: string, yearLevel: number, subjects: string[]): Student {
-  return {
-    id, studentId, fullName,
-    email: `${id.replace('-', '')}@iskolarngbayan.pup.edu.ph`,
-    role: 'student',
-    program, yearLevel,
-    photoUrl: '',
-    enrolledSectionIds: subjects,
-    isActive: true,
-    createdAt: '2025-08-15T00:00:00Z',
-    updatedAt: '2026-01-20T00:00:00Z',
-  }
-}
-
 export const mockStudents: Student[] = [
   {
     id: 's-001',
@@ -68,7 +55,7 @@ export const mockStudents: Student[] = [
     program: 'BS Computer Science',
     yearLevel: 2,
     photoUrl: '',
-    enrolledSectionIds: ['sec-001', 'sec-003', 'sec-004'],
+    enrolledSubjectIds: ['subj-001', 'subj-002', 'subj-003'],
     isActive: true,
     createdAt: '2025-08-15T00:00:00Z',
     updatedAt: '2026-01-20T00:00:00Z',
@@ -82,7 +69,7 @@ export const mockStudents: Student[] = [
     program: 'BS Computer Science',
     yearLevel: 2,
     photoUrl: '',
-    enrolledSectionIds: ['sec-001', 'sec-003', 'sec-005'],
+    enrolledSubjectIds: ['subj-001', 'subj-002', 'subj-004'],
     isActive: true,
     createdAt: '2025-08-15T00:00:00Z',
     updatedAt: '2026-01-20T00:00:00Z',
@@ -96,7 +83,7 @@ export const mockStudents: Student[] = [
     program: 'BS Computer Science',
     yearLevel: 2,
     photoUrl: '',
-    enrolledSectionIds: ['sec-001', 'sec-004', 'sec-005'],
+    enrolledSubjectIds: ['subj-001', 'subj-003', 'subj-004'],
     isActive: true,
     createdAt: '2025-08-15T00:00:00Z',
     updatedAt: '2026-01-20T00:00:00Z',
@@ -110,7 +97,7 @@ export const mockStudents: Student[] = [
     program: 'BS Computer Science',
     yearLevel: 2,
     photoUrl: '',
-    enrolledSectionIds: ['sec-001', 'sec-003', 'sec-004'],
+    enrolledSubjectIds: ['subj-001', 'subj-002', 'subj-003'],
     isActive: true,
     createdAt: '2025-08-15T00:00:00Z',
     updatedAt: '2026-01-20T00:00:00Z',
@@ -124,7 +111,7 @@ export const mockStudents: Student[] = [
     program: 'BS Computer Science',
     yearLevel: 2,
     photoUrl: '',
-    enrolledSectionIds: ['sec-001', 'sec-003', 'sec-004'],
+    enrolledSubjectIds: ['subj-001', 'subj-002', 'subj-003'],
     isActive: true,
     createdAt: '2025-08-15T00:00:00Z',
     updatedAt: '2026-01-20T00:00:00Z',
@@ -138,7 +125,7 @@ export const mockStudents: Student[] = [
     program: 'BS Computer Science',
     yearLevel: 2,
     photoUrl: '',
-    enrolledSectionIds: ['sec-003', 'sec-004', 'sec-005'],
+    enrolledSubjectIds: ['subj-002', 'subj-003', 'subj-004'],
     isActive: true,
     createdAt: '2025-08-15T00:00:00Z',
     updatedAt: '2026-01-20T00:00:00Z',
@@ -152,7 +139,7 @@ export const mockStudents: Student[] = [
     program: 'BS Computer Science',
     yearLevel: 2,
     photoUrl: '',
-    enrolledSectionIds: ['sec-001', 'sec-004', 'sec-005'],
+    enrolledSubjectIds: ['subj-001', 'subj-003', 'subj-004'],
     isActive: true,
     createdAt: '2025-08-15T00:00:00Z',
     updatedAt: '2026-01-20T00:00:00Z',
@@ -166,16 +153,11 @@ export const mockStudents: Student[] = [
     program: 'BS Computer Science',
     yearLevel: 2,
     photoUrl: '',
-    enrolledSectionIds: ['sec-001', 'sec-003', 'sec-005'],
+    enrolledSubjectIds: ['subj-001', 'subj-002', 'subj-004'],
     isActive: true,
     createdAt: '2025-08-15T00:00:00Z',
     updatedAt: '2026-01-20T00:00:00Z',
   },
-  studentTemplate('s-009', '2024-00567-MN-0', 'Isabella Marie Torres', 'BS Computer Science', 2, ['sec-001']),
-  studentTemplate('s-010', '2024-00890-MN-0', 'Jaime Luis Mendoza', 'BS Computer Science', 2, ['sec-001']),
-  studentTemplate('s-011', '2024-00134-MN-0', 'Kyla Andrea Navarro', 'BS Computer Science', 2, ['sec-001']),
-  studentTemplate('s-012', '2024-00467-MN-0', 'Lorenzo Miguel Ong', 'BS Computer Science', 2, ['sec-001']),
-  studentTemplate('s-013', '2024-00790-MN-0', 'Patricia Anne Ramirez', 'BS Computer Science', 2, ['sec-001']),
 ]
 
 export const mockUsers: User[] = [

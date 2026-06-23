@@ -35,7 +35,7 @@ export default function StudentSubjectInfoScreen() {
   const border = isDark ? 'rgba(245, 168, 0, 0.15)' : '#DDD'
   const textPrimary = isDark ? '#FFFFFF' : '#333'
   const textSecondary = isDark ? 'rgba(255,255,255,0.5)' : '#888'
-  const iconColor = isDark ? '#F5A800' : '#7B1113'
+  const iconColor = isDark ? '#FFDF00' : '#7B1113'
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
@@ -44,7 +44,7 @@ export default function StudentSubjectInfoScreen() {
           <MaterialIcons name="arrow-back" size={22} color={iconColor} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text className="text-lg font-heading font-bold" style={{ color: isDark ? '#F5A800' : '#4A0A0B' }} numberOfLines={1}>{parentSubject?.name ?? ''}</Text>
+          <Text className="text-lg font-heading font-bold" style={{ color: isDark ? '#FFDF00' : '#4A0A0B' }} numberOfLines={1}>{parentSubject?.name ?? ''}</Text>
           <Text className="text-xs mt-0.5" style={{ color: textSecondary }}>{parentSubject?.code ?? ''} · Sec {section.section}</Text>
         </View>
       </View>
@@ -81,7 +81,7 @@ export default function StudentSubjectInfoScreen() {
                 <View className="flex-row flex-wrap gap-1.5 mt-1">
                   {section.schedule.map((sd, i) => (
                     <View key={i} className="flex-row items-center gap-1 px-2 py-1 border" style={{ borderColor: border, backgroundColor: bg }}>
-                      <Text className="text-[10px] font-sans-semibold" style={{ color: isDark ? '#F5A800' : '#7B1113' }}>{sd.day}</Text>
+                      <Text className="text-[10px] font-sans-semibold" style={{ color: isDark ? '#FFDF00' : '#7B1113' }}>{sd.day}</Text>
                       <Text className="text-[10px]" style={{ color: textSecondary }}>{sd.startTime}-{sd.endTime}</Text>
                       {sd.room ? <Text className="text-[9px]" style={{ color: textSecondary }}>({sd.room})</Text> : null}
                     </View>

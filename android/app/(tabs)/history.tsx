@@ -47,10 +47,10 @@ export default function HistoryScreen() {
         <Text style={[styles.headerTitle, isDark && styles.textGolden]}>Audit Log</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
-            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={24} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleLogout} style={styles.iconBtn} accessibilityLabel="Sign out">
-            <MaterialIcons name="logout" size={24} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="logout" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
         </View>
       </View>
@@ -91,7 +91,7 @@ export default function HistoryScreen() {
             const section = sectionsMap.get(record.sectionId)
             const subject = section ? api.getSubject(section.subjectId) : undefined
             const statusIcon = record.status === 'present' ? 'check-circle' : record.status === 'late' ? 'warning' : record.status === 'absent' ? 'cancel' : 'help'
-            const iconColor = record.status === 'present' ? '#F5A800' : record.status === 'late' ? (isDark ? '#F5A800' : '#7B1113') : (isDark ? '#EF4444' : '#4A0A0B')
+            const iconColor = record.status === 'present' ? '#FFDF00' : record.status === 'late' ? (isDark ? '#FFDF00' : '#7B1113') : (isDark ? '#EF4444' : '#4A0A0B')
             return (
               <View key={record.id} style={[styles.recordRow, isDark && styles.recordRowDark]}>
                 <View style={styles.recordIcon}>
@@ -125,10 +125,10 @@ export default function HistoryScreen() {
 function StatusBadge({ status }: { status: string }) {
   const { isDark } = useTheme()
   const configs: Record<string, { bg: string; text: string; border?: string }> = {
-    present: { bg: '#F5A800', text: '#4A0A0B' },
-    late: { bg: isDark ? 'rgba(245, 168, 0, 0.15)' : '#7B1113', text: isDark ? '#F5A800' : '#FFFFFF', border: isDark ? '#F5A800' : undefined },
-    absent: { bg: isDark ? 'rgba(239, 68, 68, 0.15)' : '#4A0A0B', text: isDark ? '#EF4444' : '#F5A800', border: isDark ? '#EF4444' : undefined },
-    pending: { bg: 'transparent', text: isDark ? '#F5A800' : '#7B1113', border: isDark ? '#F5A800' : '#7B1113' },
+    present: { bg: '#FFDF00', text: '#4A0A0B' },
+    late: { bg: isDark ? 'rgba(245, 168, 0, 0.15)' : '#7B1113', text: isDark ? '#FFDF00' : '#FFFFFF', border: isDark ? '#FFDF00' : undefined },
+    absent: { bg: isDark ? 'rgba(239, 68, 68, 0.15)' : '#4A0A0B', text: isDark ? '#EF4444' : '#FFDF00', border: isDark ? '#EF4444' : undefined },
+    pending: { bg: 'transparent', text: isDark ? '#FFDF00' : '#7B1113', border: isDark ? '#FFDF00' : '#7B1113' },
   }
   const c = configs[status] || configs.pending
   return (
@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
   filterTabInactive: { backgroundColor: '#FFFFFF', borderColor: '#D4D4D8' },
   filterTabInactiveDark: { backgroundColor: '#121215', borderColor: 'rgba(245, 168, 0, 0.2)' },
   filterTabActive: { backgroundColor: '#7B1113', borderColor: '#7B1113' },
-  filterTabActiveDark: { backgroundColor: '#F5A800', borderColor: '#F5A800' },
+  filterTabActiveDark: { backgroundColor: '#FFDF00', borderColor: '#FFDF00' },
   filterText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2 },
   filterTextInactive: { color: '#71717A' },
   filterTextInactiveDark: { color: '#A1A1AA' },
@@ -194,5 +194,5 @@ const styles = StyleSheet.create({
 
   textWhite: { color: '#FFFFFF' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
 })

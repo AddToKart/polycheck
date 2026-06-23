@@ -163,7 +163,7 @@ The dominant brand color and the backbone of the entire UI. Used for primary but
 **Primary Dark — Deep Maroon** `#4A0A0B`
 Used for hover and pressed states on maroon elements, sidebar backgrounds, deep surface layers, and as the primary background color in dark mode. This is the dark counterpart that keeps the maroon family cohesive without introducing a foreign color.
 
-**Accent — Golden Yellow** `#F5A800`
+**Accent — Golden Yellow** `#FFDF00`
 The sole accent color, derived directly from the star in the PUP logo. Used for highlights, active navigation indicators, important badges, call-to-action emphasis, and any element that needs to stand out against a maroon or dark surface. It is never used as a background for large surfaces — only as an accent.
 
 **Light Mode Base — White** `#FFFFFF`

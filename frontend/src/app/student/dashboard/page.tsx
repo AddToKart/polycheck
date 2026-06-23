@@ -81,16 +81,16 @@ export default function StudentDashboardPage() {
     <div className="min-h-screen flex bg-background selection:bg-golden selection:text-maroon">
       {/* Sidebar */}
       <aside className="w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col shrink-0 h-dvh sticky top-0 overflow-hidden">
-        <div className="p-6 border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between bg-maroon text-white">
+        <div className="p-6 border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between bg-maroon dark:bg-golden text-white dark:text-maroon-dark">
           <div>
-            <h1 className="text-2xl font-heading font-bold tracking-tight text-golden">
+            <h1 className="text-2xl font-heading font-bold tracking-tight text-golden dark:text-maroon-dark">
               Polycheck
             </h1>
-            <p className="text-[10px] uppercase tracking-widest text-white/70 mt-1">Student</p>
+            <p className="text-[10px] uppercase tracking-widest text-white/70 dark:text-maroon-dark/80 mt-1">Student</p>
           </div>
           {/* Minimal Star motif from PUP logo */}
           <div className="w-8 h-8 flex items-center justify-center shrink-0">
-             <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[14px] border-b-golden relative before:content-[''] before:absolute before:-top-[4px] before:-left-[8px] before:w-0 before:h-0 before:border-l-[8px] before:border-l-transparent before:border-r-[8px] before:border-r-transparent before:border-t-[14px] before:border-t-golden"></div>
+             <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[14px] border-b-golden dark:border-b-maroon-dark relative before:content-[''] before:absolute before:-top-[4px] before:-left-[8px] before:w-0 before:h-0 before:border-l-[8px] before:border-l-transparent before:border-r-[8px] before:border-r-transparent before:border-t-[14px] before:border-t-golden dark:before:border-t-maroon-dark"></div>
           </div>
         </div>
 
@@ -176,7 +176,7 @@ export default function StudentDashboardPage() {
                 {/* Digital ID Card */}
                 <Card className="lg:col-span-1 rounded-none border-zinc-300 dark:border-zinc-800 shadow-none overflow-hidden flex flex-col relative bg-zinc-50 dark:bg-zinc-900/50">
                   <div className="h-24 bg-maroon flex items-center justify-center relative overflow-hidden">
-                    <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at center, #F5A800 2px, transparent 2px)', backgroundSize: '16px 16px' }}></div>
+                    <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at center, #FFDF00 2px, transparent 2px)', backgroundSize: '16px 16px' }}></div>
                     <img src="/pup-logo.png" alt="PUP Logo" className="w-16 h-16 absolute right-4 bottom-4 opacity-20 filter grayscale contrast-200" />
                   </div>
                   <div className="absolute top-12 left-6 w-24 h-24 bg-zinc-200 dark:bg-zinc-800 border-4 border-background flex items-center justify-center overflow-hidden">
@@ -394,40 +394,38 @@ export default function StudentDashboardPage() {
                 const subj = api.getSubject(section.subjectId)
                 return (
                 <Link key={section.id} href={`/student/subjects/${section.id}`} className="block group">
-                  <Card className="rounded-none border-zinc-300 dark:border-zinc-800 shadow-none hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50 cursor-pointer">
-                    <div className="border-l-4 border-maroon dark:border-golden h-full flex flex-col">
-                      <CardHeader className="pb-4 pt-6 px-6">
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">
-                            {subj?.code}
-                          </span>
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-                            Sec {section.section}
+                  <Card className="rounded-none border-zinc-300 dark:border-zinc-800 border-l-4 border-l-maroon dark:border-l-golden shadow-none hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50 cursor-pointer flex flex-col h-full">
+                    <CardHeader className="pb-4 pt-6 px-6">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">
+                          {subj?.code}
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                          Sec {section.section}
+                        </span>
+                      </div>
+                      <CardTitle className="text-xl font-heading font-bold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors line-clamp-2 leading-tight">
+                        {subj?.name}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-6 pb-6 flex-1 flex flex-col">
+                      <div className="space-y-3 text-xs font-medium text-zinc-600 dark:text-zinc-400 flex-1 uppercase tracking-wider">
+                        <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
+                          <span className="text-zinc-400">Instructor</span>
+                          <span className="text-foreground text-right">{section.teacherName}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
+                          <span className="text-zinc-400">Room</span>
+                          <span className="text-foreground text-right">{section.room}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
+                          <span className="text-zinc-400">Schedule</span>
+                          <span className="text-foreground text-right">
+                            {section.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')}
                           </span>
                         </div>
-                        <CardTitle className="text-xl font-heading font-bold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors line-clamp-2 leading-tight">
-                          {subj?.name}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="px-6 pb-6 flex-1 flex flex-col">
-                        <div className="space-y-3 text-xs font-medium text-zinc-600 dark:text-zinc-400 flex-1 uppercase tracking-wider">
-                          <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
-                            <span className="text-zinc-400">Instructor</span>
-                            <span className="text-foreground text-right">{section.teacherName}</span>
-                          </div>
-                          <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
-                            <span className="text-zinc-400">Room</span>
-                            <span className="text-foreground text-right">{section.room}</span>
-                          </div>
-                          <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
-                            <span className="text-zinc-400">Schedule</span>
-                            <span className="text-foreground text-right">
-                              {section.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')}
-                            </span>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </div>
+                      </div>
+                    </CardContent>
                   </Card>
                 </Link>
                 )

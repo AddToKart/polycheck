@@ -58,10 +58,10 @@ export default function DashboardScreen() {
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
-            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={24} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleLogout} style={styles.iconBtn} accessibilityLabel="Sign out">
-            <MaterialIcons name="logout" size={24} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="logout" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
         </View>
       </View>
@@ -69,7 +69,7 @@ export default function DashboardScreen() {
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={isDark ? '#F5A800' : '#7B1113'} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={isDark ? '#FFDF00' : '#7B1113'} />}
       >
         {/* Student info card */}
         <View style={[styles.card, isDark && styles.cardDark]}>
@@ -87,12 +87,12 @@ export default function DashboardScreen() {
         {/* Stats row */}
         <View style={styles.statsRow}>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="book" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="book" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.statNum, isDark && styles.textGolden]}>{mySections.length}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Subjects</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="trending-up" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="trending-up" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.statNum, isDark && styles.textGolden]}>{attendanceRate}%</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Rate</Text>
           </View>
@@ -105,7 +105,7 @@ export default function DashboardScreen() {
             <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Present</Text>
           </View>
           <View style={styles.attendanceItem}>
-            <Text style={[styles.attendanceNum, { color: isDark ? '#F5A800' : '#7B1113' }]}>{late}</Text>
+            <Text style={[styles.attendanceNum, { color: isDark ? '#FFDF00' : '#7B1113' }]}>{late}</Text>
             <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Late</Text>
           </View>
           <View style={styles.attendanceItem}>
@@ -218,10 +218,10 @@ export default function DashboardScreen() {
 function StatusBadge({ status }: { status: string }) {
   const { isDark } = useTheme()
   const configs: Record<string, { bg: string; text: string }> = {
-    present: { bg: '#F5A800', text: '#4A0A0B' },
-    late: { bg: isDark ? 'rgba(245, 168, 0, 0.15)' : '#7B1113', text: isDark ? '#F5A800' : '#FFFFFF' },
-    absent: { bg: isDark ? 'rgba(239, 68, 68, 0.15)' : '#4A0A0B', text: isDark ? '#EF4444' : '#F5A800' },
-    pending: { bg: 'transparent', text: isDark ? '#F5A800' : '#7B1113' },
+    present: { bg: '#FFDF00', text: '#4A0A0B' },
+    late: { bg: isDark ? 'rgba(245, 168, 0, 0.15)' : '#7B1113', text: isDark ? '#FFDF00' : '#FFFFFF' },
+    absent: { bg: isDark ? 'rgba(239, 68, 68, 0.15)' : '#4A0A0B', text: isDark ? '#EF4444' : '#FFDF00' },
+    pending: { bg: 'transparent', text: isDark ? '#FFDF00' : '#7B1113' },
   }
   const c = configs[status] || configs.pending
   return (
@@ -229,7 +229,7 @@ function StatusBadge({ status }: { status: string }) {
       styles.badge,
       { backgroundColor: c.bg },
       status === 'pending' && (isDark ? styles.badgeBorderGolden : styles.badgeBorder),
-      status === 'late' && isDark && { borderWidth: 1, borderColor: '#F5A800' },
+      status === 'late' && isDark && { borderWidth: 1, borderColor: '#FFDF00' },
       status === 'absent' && isDark && { borderWidth: 1, borderColor: '#EF4444' }
     ]}>
       <Text style={[styles.badgeText, { color: c.text }]}>{status}</Text>
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
     padding: 20, marginBottom: 24,
   },
   attendanceItem: { alignItems: 'center' },
-  attendanceNum: { fontSize: 24, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#F5A800' },
+  attendanceNum: { fontSize: 24, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#FFDF00' },
   attendanceLabel: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700', color: '#71717A', marginTop: 4 },
 
   sectionTitle: { fontSize: 18, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#000000', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 16 },
@@ -310,16 +310,16 @@ const styles = StyleSheet.create({
 
   badge: { paddingHorizontal: 8, paddingVertical: 4 },
   badgeBorder: { borderWidth: 2, borderColor: '#7B1113' },
-  badgeBorderGolden: { borderWidth: 2, borderColor: '#F5A800' },
+  badgeBorderGolden: { borderWidth: 2, borderColor: '#FFDF00' },
   badgeText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
 
   textWhite: { color: '#FFFFFF' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
 
   allSubjCard: { backgroundColor: '#FFFFFF', borderRadius: 0, marginBottom: 12, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2, flexDirection: 'row' },
   allSubjAccent: { width: 4, backgroundColor: '#7B1113' },
-  allSubjAccentDark: { backgroundColor: '#F5A800' },
+  allSubjAccentDark: { backgroundColor: '#FFDF00' },
   allSubjBody: { padding: 14, flex: 1 },
   allSubjName: { fontSize: 15, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#333' },
   allSubjMeta: { fontSize: 11, color: '#888', marginTop: 2 },
@@ -329,6 +329,6 @@ const styles = StyleSheet.create({
   allSubjFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
   allSubjRateBg: { flex: 1, height: 4, backgroundColor: '#EEE', borderRadius: 2 },
   allSubjRateBgDark: { backgroundColor: '#333' },
-  allSubjRateFill: { height: 4, backgroundColor: '#F5A800', borderRadius: 2 },
+  allSubjRateFill: { height: 4, backgroundColor: '#FFDF00', borderRadius: 2 },
   allSubjRateText: { fontSize: 10, fontWeight: '700', color: '#888', minWidth: 30, textAlign: 'right' },
 })

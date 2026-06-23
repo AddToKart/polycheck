@@ -55,10 +55,10 @@ export default function FacultySessionsScreen() {
         <Text style={[styles.heading, isDark && styles.textGolden]}>Sessions</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={() => router.push('/(faculty)/sessions/create')} style={styles.iconBtn} accessibilityLabel="Create session">
-            <MaterialIcons name="add" size={24} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="add" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleLogout} style={styles.iconBtn} accessibilityLabel="Sign out">
-            <MaterialIcons name="logout" size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="logout" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
         </View>
       </View>
@@ -75,7 +75,7 @@ export default function FacultySessionsScreen() {
                 accessibilityLabel="View all sessions"
               >
                 <Text style={[styles.viewAllText, isDark && styles.textGolden]}>View All</Text>
-                <MaterialIcons name="arrow-forward" size={14} color={isDark ? '#F5A800' : '#7B1113'} />
+                <MaterialIcons name="arrow-forward" size={14} color={isDark ? '#FFDF00' : '#7B1113'} />
               </TouchableOpacity>
             </View>
             {group.sessions.map((session) => {
@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
   textWhite: { color: '#FFFFFF' },
   textWhite70: { color: 'rgba(255,255,255,0.7)' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   group: { marginBottom: 24 },
   groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
@@ -170,7 +170,7 @@ const styles = StyleSheet.create({
   badgeTextInactive: { color: '#666' },
   badgeTextInactiveDark: { color: 'rgba(255,255,255,0.5)' },
   activateBtn: { backgroundColor: '#7B1113', borderRadius: 0, paddingHorizontal: 14, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  activateBtnDark: { backgroundColor: '#F5A800' },
+  activateBtnDark: { backgroundColor: '#FFDF00' },
   activateText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600', fontFamily: fonts.bodySemiBold },
   activateTextDark: { color: '#4A0A0B' },
   empty: { textAlign: 'center', fontFamily: fonts.body, paddingVertical: 60, color: '#BBB' },

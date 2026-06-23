@@ -14,11 +14,11 @@ import { Badge } from '@/components/ui/badge'
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 
 const STATUS_STYLES: Record<string, string> = {
-  present: 'bg-[#F5A800] text-[#4A0A0B]',
+  present: 'bg-[#FFDF00] text-[#4A0A0B]',
   late: 'bg-[#7B1113] text-white',
-  absent: 'bg-[#4A0A0B] text-[#F5A800] border border-[#F5A800]',
+  absent: 'bg-[#4A0A0B] text-[#FFDF00] border border-[#FFDF00]',
   pending: 'bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
-  disputed: 'bg-[#4A0A0B] text-[#F5A800] border border-[#F5A800]',
+  disputed: 'bg-[#4A0A0B] text-[#FFDF00] border border-[#FFDF00]',
 }
 
 export default function SessionDetailPage() {
@@ -178,10 +178,10 @@ export default function SessionDetailPage() {
         <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-[#0A0A0C] border-b border-gray-200 dark:border-[#1C1C21]">
           <div className="flex items-center gap-3">
             <button onClick={() => router.back()} className="p-1 hover:opacity-70">
-              <ArrowLeft className="w-5 h-5 text-[#7B1113] dark:text-[#F5A800]" />
+              <ArrowLeft className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
             </button>
             <div>
-              <h1 className="text-xl font-heading font-bold text-[#4A0A0B] dark:text-[#F5A800]">{session.subjectName}</h1>
+              <h1 className="text-xl font-heading font-bold text-[#4A0A0B] dark:text-[#FFDF00]">{session.subjectName}</h1>
               <p className="text-xs text-gray-400 dark:text-gray-500">
                 {new Date(session.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · {session.startTime}-{session.endTime}
               </p>
@@ -189,7 +189,7 @@ export default function SessionDetailPage() {
           </div>
           <div className="flex items-center gap-2">
             <button onClick={refreshData} className="p-2 hover:opacity-70">
-              <RefreshCw className="w-4 h-4 text-[#7B1113] dark:text-[#F5A800]" />
+              <RefreshCw className="w-4 h-4 text-[#7B1113] dark:text-[#FFDF00]" />
             </button>
           </div>
         </div>
@@ -199,7 +199,7 @@ export default function SessionDetailPage() {
           <Card className="dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215]">
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-4">
-                <QrCode className="w-5 h-5 text-[#7B1113] dark:text-[#F5A800]" />
+                <QrCode className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
                 <h2 className="text-base font-bold dark:text-white">QR Code</h2>
               </div>
               <div className="flex flex-col items-center py-4">
@@ -227,7 +227,7 @@ export default function SessionDetailPage() {
                 ) : (
                   <>
                     <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">Generate a QR code to start the session</p>
-                    <Button className="bg-[#7B1113] hover:bg-[#4A0A0B] dark:bg-[#F5A800] dark:hover:bg-[#E09A00] dark:text-[#4A0A0B] flex items-center gap-2" onClick={() => setShowValidityPrompt(true)}>
+                    <Button className="bg-[#7B1113] hover:bg-[#4A0A0B] dark:bg-[#FFDF00] dark:hover:bg-[#E09A00] dark:text-[#4A0A0B] flex items-center gap-2" onClick={() => setShowValidityPrompt(true)}>
                       <Play className="w-4 h-4" /> Generate QR Code
                     </Button>
                   </>
@@ -240,7 +240,7 @@ export default function SessionDetailPage() {
           <Card className="dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215]">
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-4">
-                <Timer className="w-5 h-5 text-[#7B1113] dark:text-[#F5A800]" />
+                <Timer className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
                 <h2 className="text-base font-bold dark:text-white">Session Info</h2>
               </div>
               <div className="flex gap-6 flex-wrap">
@@ -272,7 +272,7 @@ export default function SessionDetailPage() {
           <Card className="dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215]">
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-4">
-                <MapPin className="w-5 h-5 text-[#7B1113] dark:text-[#F5A800]" />
+                <MapPin className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
                 <h2 className="text-base font-bold dark:text-white">Geofence</h2>
               </div>
               <div className="flex gap-4 text-sm">
@@ -287,7 +287,7 @@ export default function SessionDetailPage() {
           <Card className="dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215]">
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-2">
-                <Users className="w-5 h-5 text-[#7B1113] dark:text-[#F5A800]" />
+                <Users className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
                 <h2 className="text-base font-bold dark:text-white">Student Roster</h2>
                 <span className="text-xs text-gray-400 dark:text-gray-500">({enrolledStudents.length})</span>
               </div>
@@ -295,7 +295,7 @@ export default function SessionDetailPage() {
               {/* Summary */}
               <div className="flex justify-around mb-4">
                 {[
-                  { label: 'Present', value: presentCount, color: 'text-[#F5A800]' },
+                  { label: 'Present', value: presentCount, color: 'text-[#FFDF00]' },
                   { label: 'Late', value: lateCount, color: 'text-[#7B1113] dark:text-[#FF6B6B]' },
                   { label: 'Absent', value: absentCount, color: 'text-[#4A0A0B] dark:text-[#FF4F5A]' },
                   { label: 'Pending', value: pendingCount, color: 'text-gray-400' },
@@ -312,7 +312,7 @@ export default function SessionDetailPage() {
                 {(['all', 'present', 'late', 'absent', 'pending'] as const).map((f) => (
                   <button
                     key={f}
-                    className={`px-3 py-1 text-xs border ${filter === f ? 'bg-[#7B1113] dark:bg-[#F5A800] border-[#7B1113] dark:border-[#F5A800] text-white dark:text-[#4A0A0B]' : 'bg-gray-100 dark:bg-[#121215] border-gray-300 dark:border-[rgba(245,168,0,0.15)] text-gray-500 dark:text-gray-400'}`}
+                    className={`px-3 py-1 text-xs border ${filter === f ? 'bg-[#7B1113] dark:bg-[#FFDF00] border-[#7B1113] dark:border-[#FFDF00] text-white dark:text-[#4A0A0B]' : 'bg-gray-100 dark:bg-[#121215] border-gray-300 dark:border-[rgba(245,168,0,0.15)] text-gray-500 dark:text-gray-400'}`}
                     onClick={() => setFilter(f)}
                   >
                     {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -340,7 +340,7 @@ export default function SessionDetailPage() {
                           <p className="text-xs text-gray-400 dark:text-gray-500">{student.studentId}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          {record?.manuallySet && <Edit3 className="w-3.5 h-3.5 text-[#7B1113] dark:text-[#F5A800]" />}
+                          {record?.manuallySet && <Edit3 className="w-3.5 h-3.5 text-[#7B1113] dark:text-[#FFDF00]" />}
                           <span className={`px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[status] || STATUS_STYLES.pending}`}>
                             {status.charAt(0).toUpperCase() + status.slice(1)}
                           </span>
@@ -367,7 +367,7 @@ export default function SessionDetailPage() {
       {showValidityPrompt && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowValidityPrompt(false)}>
           <div className="bg-white dark:bg-[#121215] dark:border dark:border-[rgba(245,168,0,0.15)] p-8 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
-            <Timer className="w-10 h-10 text-[#7B1113] dark:text-[#F5A800] mx-auto mb-3" />
+            <Timer className="w-10 h-10 text-[#7B1113] dark:text-[#FFDF00] mx-auto mb-3" />
             <h3 className="text-lg font-heading font-bold text-center dark:text-white mb-2">QR Validity Duration</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-6">
               How many minutes should the QR code be valid? After it expires, students who scan will be marked Late.
@@ -384,7 +384,7 @@ export default function SessionDetailPage() {
             </div>
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setShowValidityPrompt(false)}>Cancel</Button>
-              <Button className="flex-1 bg-[#7B1113] hover:bg-[#4A0A0B] dark:bg-[#F5A800] dark:hover:bg-[#E09A00] dark:text-[#4A0A0B]" onClick={handleGenerateQr}>Generate</Button>
+              <Button className="flex-1 bg-[#7B1113] hover:bg-[#4A0A0B] dark:bg-[#FFDF00] dark:hover:bg-[#E09A00] dark:text-[#4A0A0B]" onClick={handleGenerateQr}>Generate</Button>
             </div>
           </div>
         </div>

@@ -84,14 +84,14 @@ export default function DisputesScreen() {
                 <MaterialIcons
                   name={record.disputeReason ? DISPUTE_ICONS[record.disputeReason] : 'warning'}
                   size={20}
-                  color="#F5A800"
+                  color="#FFDF00"
                 />
                 <Text style={[styles.recordName, isDark && styles.textWhite]}>{record.studentName}</Text>
               </View>
               <View style={styles.recordDetails}>
                 <View style={styles.recordDetailRow}>
                   <Text style={[styles.detailLabel, isDark && styles.textWhite50]}>Reason</Text>
-                  <Text style={[styles.detailValue, { color: '#F5A800' }]}>
+                  <Text style={[styles.detailValue, { color: '#FFDF00' }]}>
                     {record.disputeReason ? DISPUTE_LABELS[record.disputeReason] : 'Unknown'}
                   </Text>
                 </View>
@@ -122,7 +122,7 @@ export default function DisputesScreen() {
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setSelectedRecord(null)}>
           {selectedRecord && (
             <View style={[styles.reviewSheet, isDark && styles.reviewSheetDark]} onStartShouldSetResponder={() => true}>
-              <MaterialIcons name="gavel" size={32} color="#F5A800" />
+              <MaterialIcons name="gavel" size={32} color="#FFDF00" />
               <Text style={[styles.reviewTitle, isDark && styles.textWhite]}>Review Dispute</Text>
               <Text style={[styles.reviewStudentName, isDark && styles.textGolden]}>{selectedRecord.studentName}</Text>
 
@@ -133,9 +133,9 @@ export default function DisputesScreen() {
                     <MaterialIcons
                       name={selectedRecord.disputeReason ? DISPUTE_ICONS[selectedRecord.disputeReason] : 'warning'}
                       size={16}
-                      color="#F5A800"
+                      color="#FFDF00"
                     />
-                    <Text style={[styles.reviewReasonText, { color: '#F5A800' }]}>
+                    <Text style={[styles.reviewReasonText, { color: '#FFDF00' }]}>
                       {selectedRecord.disputeReason ? DISPUTE_LABELS[selectedRecord.disputeReason] : 'Unknown'}
                     </Text>
                   </View>
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
   textWhite: { color: '#FFFFFF' },
   textWhite70: { color: 'rgba(255,255,255,0.7)' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
   content: { padding: 20, paddingBottom: 100 },
   emptyCard: { backgroundColor: '#FFFFFF', padding: 40, alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#EEE' },
   cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
   reviewRow: { flexDirection: 'row', gap: 8 },
   reviewLabel: { fontSize: 11, fontFamily: fonts.body, color: '#888', width: 50 },
   reviewReasonRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 },
-  reviewReasonText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: '#F5A800' },
+  reviewReasonText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: '#FFDF00' },
   reviewValue: { fontSize: 12, fontFamily: fonts.body, color: '#333', flex: 1 },
   reviewActionsLabel: { fontSize: 12, fontFamily: fonts.bodyMedium, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12, alignSelf: 'flex-start' },
   actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, width: '100%', marginBottom: 8 },

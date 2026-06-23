@@ -167,7 +167,7 @@ export default function SessionDetailScreen() {
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <View style={[styles.header, isDark && styles.headerDark]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+          <MaterialIcons name="arrow-back" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
         </TouchableOpacity>
         <View style={styles.headerTitle}>
           <Text style={[styles.heading, isDark && styles.textGolden]} numberOfLines={1}>{session.subjectName}</Text>
@@ -177,7 +177,7 @@ export default function SessionDetailScreen() {
           </Text>
         </View>
         <TouchableOpacity onPress={handleRefresh} style={styles.iconBtn}>
-          <MaterialIcons name="refresh" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+          <MaterialIcons name="refresh" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
         </TouchableOpacity>
       </View>
 
@@ -185,7 +185,7 @@ export default function SessionDetailScreen() {
         {/* QR Code Card */}
         <View style={[styles.card, isDark && styles.cardDark]}>
           <View style={styles.cardHeader}>
-            <MaterialIcons name="qr-code" size={18} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="qr-code" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.cardTitle, isDark && styles.textWhite]}>QR Code</Text>
           </View>
           <View style={styles.qrContainer}>
@@ -201,11 +201,11 @@ export default function SessionDetailScreen() {
                 ) : null}
                 <View style={styles.qrActions}>
                   <TouchableOpacity style={[styles.qrActionBtn, isDark && styles.qrActionBtnDark]} onPress={() => setShowQrModal(true)}>
-                    <MaterialIcons name="fullscreen" size={16} color={isDark ? '#F5A800' : '#7B1113'} />
+                    <MaterialIcons name="fullscreen" size={16} color={isDark ? '#FFDF00' : '#7B1113'} />
                     <Text style={[styles.qrActionText, isDark && styles.qrActionTextDark]}>Full Screen</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.qrActionBtn, isDark && styles.qrActionBtnDark]} onPress={handleShare}>
-                    <MaterialIcons name="share" size={16} color={isDark ? '#F5A800' : '#7B1113'} />
+                    <MaterialIcons name="share" size={16} color={isDark ? '#FFDF00' : '#7B1113'} />
                     <Text style={[styles.qrActionText, isDark && styles.qrActionTextDark]}>Share</Text>
                   </TouchableOpacity>
                 </View>
@@ -231,7 +231,7 @@ export default function SessionDetailScreen() {
         {/* Session Info */}
         <View style={[styles.card, isDark && styles.cardDark]}>
           <View style={styles.cardHeader}>
-            <MaterialIcons name="info" size={18} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="info" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.cardTitle, isDark && styles.textWhite]}>Session Info</Text>
           </View>
           <View style={styles.infoGrid}>
@@ -259,7 +259,7 @@ export default function SessionDetailScreen() {
         {/* Geofence Map */}
         <View style={[styles.card, isDark && styles.cardDark]}>
           <View style={styles.cardHeader}>
-            <MaterialIcons name="location-on" size={18} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="location-on" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.cardTitle, isDark && styles.textWhite]}>Geofence</Text>
           </View>
           <MapView latitude={session.geofence.latitude} longitude={session.geofence.longitude} radius={session.geofence.radiusMeters} />
@@ -282,7 +282,7 @@ export default function SessionDetailScreen() {
         {/* Student Roster */}
         <View style={[styles.card, isDark && styles.cardDark]}>
           <View style={styles.cardHeader}>
-            <MaterialIcons name="people" size={18} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="people" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.cardTitle, isDark && styles.textWhite]}>Student Roster</Text>
             <Text style={[styles.rosterCount, isDark && styles.textWhite50]}>({enrolledStudents.length})</Text>
           </View>
@@ -290,7 +290,7 @@ export default function SessionDetailScreen() {
           {/* Summary */}
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, { color: '#F5A800' }]}>{presentCount}</Text>
+              <Text style={[styles.summaryValue, { color: '#FFDF00' }]}>{presentCount}</Text>
               <Text style={[styles.summaryLabel, isDark && styles.textWhite50]}>Present</Text>
             </View>
             <View style={styles.summaryItem}>
@@ -340,7 +340,7 @@ export default function SessionDetailScreen() {
                   </View>
                   <View style={styles.rosterRight}>
                     {record?.manuallySet && (
-                      <MaterialIcons name="edit" size={14} color={isDark ? '#F5A800' : '#7B1113'} style={{ marginRight: 4 }} />
+                      <MaterialIcons name="edit" size={14} color={isDark ? '#FFDF00' : '#7B1113'} style={{ marginRight: 4 }} />
                     )}
                     <RosterStatusBadge status={status} isDark={isDark} />
                     <MaterialIcons name="chevron-right" size={18} color={isDark ? 'rgba(255,255,255,0.2)' : '#CCC'} />
@@ -364,7 +364,7 @@ export default function SessionDetailScreen() {
       <Modal visible={showValidityPrompt} transparent animationType="fade" onRequestClose={() => setShowValidityPrompt(false)}>
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowValidityPrompt(false)}>
           <View style={[styles.promptSheet, isDark && styles.promptSheetDark]} onStartShouldSetResponder={() => true}>
-            <MaterialIcons name="timer" size={32} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="timer" size={32} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.promptTitle, isDark && styles.promptTitleDark]}>QR Validity Duration</Text>
             <Text style={[styles.promptHint, isDark && styles.textWhite50]}>
               How many minutes should the QR code be valid?{'\n'}After it expires, students who scan will be marked Late.
@@ -401,7 +401,7 @@ export default function SessionDetailScreen() {
             )}
             <Text style={[styles.fullscreenHint, isDark && styles.textWhite50]}>Tap anywhere to close</Text>
             <TouchableOpacity style={[styles.qrActionBtn, isDark && styles.qrActionBtnDark, { marginTop: 16 }]} onPress={handleShare}>
-              <MaterialIcons name="share" size={16} color={isDark ? '#F5A800' : '#7B1113'} />
+              <MaterialIcons name="share" size={16} color={isDark ? '#FFDF00' : '#7B1113'} />
               <Text style={[styles.qrActionText, isDark && styles.qrActionTextDark]}>Copy Token to Share</Text>
             </TouchableOpacity>
           </View>
@@ -413,11 +413,11 @@ export default function SessionDetailScreen() {
 
 function RosterStatusBadge({ status, isDark }: { status: AttendanceStatus; isDark: boolean }) {
   const colors: Record<string, { bg: string; text: string; border?: string }> = {
-    present: { bg: '#F5A800', text: '#4A0A0B' },
+    present: { bg: '#FFDF00', text: '#4A0A0B' },
     late: { bg: '#7B1113', text: '#FFFFFF' },
-    absent: { bg: '#4A0A0B', text: '#F5A800', border: '#F5A800' },
+    absent: { bg: '#4A0A0B', text: '#FFDF00', border: '#FFDF00' },
     pending: { bg: isDark ? '#222' : '#E0E0E0', text: isDark ? 'rgba(255,255,255,0.5)' : '#666' },
-    disputed: { bg: '#4A0A0B', text: '#F5A800', border: '#F5A800' },
+    disputed: { bg: '#4A0A0B', text: '#FFDF00', border: '#FFDF00' },
   }
   const c = colors[status] || colors.pending
   return (
@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
   textWhite: { color: '#FFFFFF' },
   textWhite70: { color: 'rgba(255,255,255,0.7)' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   card: { backgroundColor: '#FFFFFF', borderRadius: 0, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE' },
   cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
@@ -460,9 +460,9 @@ const styles = StyleSheet.create({
   qrActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#DDD' },
   qrActionBtnDark: { borderColor: 'rgba(245, 168, 0, 0.3)' },
   qrActionText: { fontSize: 11, fontFamily: fonts.bodyMedium, color: '#7B1113' },
-  qrActionTextDark: { color: '#F5A800' },
+  qrActionTextDark: { color: '#FFDF00' },
   activateBtn: { backgroundColor: '#7B1113', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 10 },
-  activateBtnDark: { backgroundColor: '#F5A800' },
+  activateBtnDark: { backgroundColor: '#FFDF00' },
   activateText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600', fontFamily: fonts.bodySemiBold },
   activateTextDark: { color: '#4A0A0B' },
   infoGrid: { flexDirection: 'row', gap: 24 },
@@ -488,7 +488,7 @@ const styles = StyleSheet.create({
   filterTab: { paddingHorizontal: 12, paddingVertical: 5, backgroundColor: '#F5F5F5', borderWidth: 1, borderColor: '#DDD', marginRight: 6 },
   filterTabActive: { backgroundColor: '#7B1113', borderColor: '#7B1113' },
   filterTabDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215' },
-  filterTabActiveDark: { backgroundColor: '#F5A800', borderColor: '#F5A800' },
+  filterTabActiveDark: { backgroundColor: '#FFDF00', borderColor: '#FFDF00' },
   filterTabText: { fontSize: 11, fontFamily: fonts.bodyMedium, color: '#888' },
   filterTabTextActive: { color: '#FFFFFF' },
   empty: { textAlign: 'center', fontFamily: fonts.body, paddingVertical: 24, color: '#AAA' },
@@ -510,7 +510,7 @@ const styles = StyleSheet.create({
   promptInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 },
   promptInputRowDark: { borderColor: 'rgba(245, 168, 0, 0.15)' },
   promptInput: { borderWidth: 1, borderColor: '#DDD', paddingHorizontal: 16, paddingVertical: 10, fontSize: 24, fontFamily: fonts.bodyBold, color: '#333', textAlign: 'center', width: 80 },
-  promptInputDark: { borderColor: 'rgba(245, 168, 0, 0.3)', backgroundColor: '#0A0A0C', color: '#F5A800' },
+  promptInputDark: { borderColor: 'rgba(245, 168, 0, 0.3)', backgroundColor: '#0A0A0C', color: '#FFDF00' },
   promptUnit: { fontSize: 16, fontFamily: fonts.body, color: '#888' },
   promptActions: { flexDirection: 'row', gap: 12, width: '100%' },
   promptCancelBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#DDD' },
@@ -518,7 +518,7 @@ const styles = StyleSheet.create({
   promptCancelText: { fontSize: 14, fontFamily: fonts.bodySemiBold, color: '#888' },
   promptCancelTextDark: { color: 'rgba(255,255,255,0.5)' },
   promptConfirmBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', backgroundColor: '#7B1113' },
-  promptConfirmBtnDark: { backgroundColor: '#F5A800' },
+  promptConfirmBtnDark: { backgroundColor: '#FFDF00' },
   promptConfirmText: { fontSize: 14, fontFamily: fonts.bodySemiBold, color: '#FFFFFF' },
   promptConfirmTextDark: { color: '#4A0A0B' },
   fullscreenHint: { fontSize: 12, fontFamily: fonts.body, color: '#AAA', marginTop: 20 },

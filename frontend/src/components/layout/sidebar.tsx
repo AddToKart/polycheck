@@ -54,18 +54,18 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
 
   return (
     <aside className="w-64 bg-background border-r border-zinc-200 dark:border-zinc-800 flex flex-col shrink-0 h-dvh sticky top-0 overflow-hidden">
-      <div className="p-6 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-maroon text-white">
+      <div className="p-6 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-maroon dark:bg-golden text-white dark:text-maroon-dark">
         <div>
           <Link href="/faculty">
-            <h1 className="text-2xl font-heading font-bold tracking-tight text-golden">
+            <h1 className="text-2xl font-heading font-bold tracking-tight text-golden dark:text-maroon-dark">
               Polycheck
             </h1>
           </Link>
-          <p className="text-[10px] uppercase tracking-widest text-white/70 mt-1">Faculty</p>
+          <p className="text-[10px] uppercase tracking-widest text-white/70 dark:text-maroon-dark/80 mt-1">Faculty</p>
         </div>
         {/* Minimal Star motif from PUP logo */}
         <div className="w-8 h-8 flex items-center justify-center shrink-0">
-           <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[14px] border-b-golden relative before:content-[''] before:absolute before:-top-[4px] before:-left-[8px] before:w-0 before:h-0 before:border-l-[8px] before:border-l-transparent before:border-r-[8px] before:border-r-transparent before:border-t-[14px] before:border-t-golden"></div>
+           <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[14px] border-b-golden dark:border-b-maroon-dark relative before:content-[''] before:absolute before:-top-[4px] before:-left-[8px] before:w-0 before:h-0 before:border-l-[8px] before:border-l-transparent before:border-r-[8px] before:border-r-transparent before:border-t-[14px] before:border-t-golden dark:before:border-t-maroon-dark"></div>
         </div>
       </div>
 

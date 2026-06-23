@@ -54,10 +54,10 @@ export default function FacultyDashboardScreen() {
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
-            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleLogout} style={styles.iconBtn} accessibilityLabel="Sign out">
-            <MaterialIcons name="logout" size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="logout" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
         </View>
       </View>
@@ -65,17 +65,17 @@ export default function FacultyDashboardScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.statsRow}>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="menu-book" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="menu-book" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.statNumber, isDark && styles.textGolden]}>{sections.length}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Subjects</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="people" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="people" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.statNumber, isDark && styles.textGolden]}>{totalStudents}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Students</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="today" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="today" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.statNumber, isDark && styles.textGolden]}>{sessionsToday}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Today</Text>
           </View>
@@ -95,10 +95,10 @@ export default function FacultyDashboardScreen() {
               accessibilityRole="button"
             >
               <View style={styles.navItemLeft}>
-                <MaterialIcons name={item.icon} size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+                <MaterialIcons name={item.icon} size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
                 <Text style={[styles.navLabel, isDark && styles.textWhite]}>{item.label}</Text>
               </View>
-              <MaterialIcons name="chevron-right" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+              <MaterialIcons name="chevron-right" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
             </TouchableOpacity>
           ))}
         </View>
@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
   textWhite: { color: '#FFFFFF' },
   textWhite70: { color: 'rgba(255,255,255,0.7)' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   statsRow: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
   statCard: { backgroundColor: '#FFFFFF', borderRadius: 0, padding: 14, alignItems: 'center', gap: 4, minWidth: '22%', flex: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },

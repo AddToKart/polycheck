@@ -54,10 +54,10 @@ export default function FacultyUsersScreen() {
         <Text style={[styles.heading, isDark && styles.textGolden]}>User Management</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
-            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleLogout} style={styles.iconBtn} accessibilityLabel="Sign out">
-            <MaterialIcons name="logout" size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="logout" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
         </View>
       </View>
@@ -166,12 +166,12 @@ const styles = StyleSheet.create({
   headerRight: { flexDirection: 'row', gap: 8 },
   textWhite: { color: '#FFFFFF' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
   tabContainer: { flexDirection: 'row', padding: 4, marginHorizontal: 20, marginTop: 16, backgroundColor: '#E0E0E0', borderRadius: 0 },
   tabContainerDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
   tab: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 10, borderRadius: 0 },
   tabActive: { backgroundColor: '#7B1113' },
-  tabActiveDark: { backgroundColor: '#F5A800' },
+  tabActiveDark: { backgroundColor: '#FFDF00' },
   tabText: { fontSize: 14, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#888' },
   tabTextActive: { color: '#FFFFFF' },
   tabTextActiveDark: { color: '#4A0A0B' },
@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
   cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   avatar: { width: 40, height: 40, borderRadius: 0, backgroundColor: '#7B1113', justifyContent: 'center', alignItems: 'center' },
-  avatarDark: { backgroundColor: '#F5A800' },
+  avatarDark: { backgroundColor: '#FFDF00' },
   avatarText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', fontFamily: fonts.bodyBold },
   avatarTextDark: { color: '#4A0A0B' },
   userInfo: { flex: 1 },

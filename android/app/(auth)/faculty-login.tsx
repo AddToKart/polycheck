@@ -41,7 +41,7 @@ export default function FacultyLoginScreen() {
               style={[styles.iconBtn, isDark && styles.iconBtnDark]}
               accessibilityLabel="Toggle theme"
             >
-              <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={24} color={isDark ? '#F5A800' : '#7B1113'} />
+              <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
             </TouchableOpacity>
           </View>
 
@@ -121,11 +121,11 @@ const styles = StyleSheet.create({
   input: { flex: 1, paddingVertical: 16, paddingHorizontal: 12, fontSize: 16, color: '#000000' },
   demo: { fontSize: 10, fontWeight: '700', color: '#A1A1AA', textTransform: 'uppercase', letterSpacing: 2, textAlign: 'center', marginBottom: 24 },
   submitBtn: { backgroundColor: '#7B1113', borderWidth: 2, borderColor: '#7B1113', paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
-  submitBtnDark: { backgroundColor: '#F5A800', borderColor: '#F5A800' },
+  submitBtnDark: { backgroundColor: '#FFDF00', borderColor: '#FFDF00' },
   disabled: { opacity: 0.5 },
   submitText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', fontFamily: 'Lora_400Regular', textTransform: 'uppercase', letterSpacing: 2 },
   submitTextDark: { color: '#4A0A0B' },
   textWhite: { color: '#FFFFFF' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
 })
