@@ -41,8 +41,6 @@ export default function SubjectSessionsScreen() {
     }
   }, [paramSectionId])
 
-  if (!subject) return null
-
   const filtered = useMemo(() => {
     let result = sessions
     if (selectedSectionId) {
@@ -54,6 +52,8 @@ export default function SubjectSessionsScreen() {
     }
     return result
   }, [sessions, selectedSectionId, selectedDayFilter])
+
+  if (!subject) return null
 
   const groupedBySection: Record<string, Session[]> = {}
   for (const session of filtered) {
