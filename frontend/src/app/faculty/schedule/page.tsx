@@ -28,20 +28,22 @@ import {
 } from '@/lib/calendar-utils'
 
 function getEventStyle(event: CalendarEvent): string {
+  if (event.status === 'moved') return 'border-l-zinc-300 bg-zinc-50/50 dark:bg-zinc-900/10 border-dashed opacity-60'
   if (event.type === 'schedule') return 'border-l-zinc-300 bg-transparent hover:bg-zinc-50/50 dark:hover:bg-zinc-900/30 border-dashed'
   if (event.isActive) return 'border-l-green-500 bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-950/50'
   return 'border-l-zinc-400 bg-zinc-50 dark:bg-zinc-800/30 hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
 }
 
 function getEventTextClass(event: CalendarEvent): string {
+  if (event.status === 'moved') return 'text-zinc-400 dark:text-zinc-500 line-through font-normal'
   if (event.type === 'schedule') return 'text-zinc-300 dark:text-zinc-600'
-  if (event.isActive) return 'text-green-700 dark:text-green-300'
+  if (event.isActive) return 'text-green-700 dark:text-green-300 font-semibold'
   return 'text-zinc-500 dark:text-zinc-400'
 }
 
 function EventPopoverContent({ event, attendanceRecords }: { event: CalendarEvent; attendanceRecords?: AttendanceRecord[] }) {
-  const badgeLabel = event.type === 'schedule' ? 'Ghost' : event.isActive ? 'Active' : 'Completed'
-  const badgeVariant = event.type === 'schedule' ? 'outline' : event.isActive ? 'active' : 'inactive'
+  const badgeLabel = event.status === 'moved' ? 'Moved' : event.type === 'schedule' ? 'Ghost' : event.isActive ? 'Active' : 'Completed'
+  const badgeVariant = event.status === 'moved' ? 'outline' : event.type === 'schedule' ? 'outline' : event.isActive ? 'active' : 'inactive'
 
   const sessionRecords = useMemo(() => {
     if (!event.sessionId || !attendanceRecords) return null
@@ -61,10 +63,12 @@ function EventPopoverContent({ event, attendanceRecords }: { event: CalendarEven
   return (
     <div className="space-y-3">
       <div className="flex items-start justify-between gap-2">
-        <h4 className={`font-heading font-bold text-base leading-tight ${event.type === 'schedule' ? 'text-zinc-400 dark:text-zinc-500' : 'text-foreground'}`}>
-          {event.subjectName || 'No session yet'}
+        <h4 className={`font-heading font-bold text-base leading-tight ${event.status === 'moved' || event.type === 'schedule' ? 'text-zinc-400 dark:text-zinc-500' : 'text-foreground'}`}>
+          {event.status === 'moved' 
+            ? `${event.sectionName || 'Class'} (MOVED)`
+            : event.subjectName || 'No session yet'}
         </h4>
-        <Badge variant={badgeVariant as any} className={`shrink-0 text-[9px] uppercase tracking-widest ${event.type === 'schedule' ? 'opacity-50' : ''}`}>
+        <Badge variant={badgeVariant as any} className={`shrink-0 text-[9px] uppercase tracking-widest ${event.type === 'schedule' || event.status === 'moved' ? 'opacity-55' : ''}`}>
           {badgeLabel}
         </Badge>
       </div>
@@ -97,6 +101,27 @@ function EventPopoverContent({ event, attendanceRecords }: { event: CalendarEven
           </div>
         )}
       </div>
+
+      {event.status === 'moved' && event.rescheduledTo && (
+        <div className="p-2.5 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-900 text-yellow-800 dark:text-yellow-300 text-xs rounded-none">
+          <p className="font-bold uppercase tracking-wider text-[9px] mb-1">Class Rescheduled</p>
+          <p className="text-[10px]">Moved to:</p>
+          <p className="font-semibold text-[11px] mt-0.5">
+            {new Date(event.rescheduledTo.date + 'T00:00:00').toLocaleDateString('en-US', {
+              weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+            })}
+          </p>
+          <p className="font-semibold text-[11px]">{formatTime(event.rescheduledTo.startTime)} - {formatTime(event.rescheduledTo.endTime)}</p>
+          {event.rescheduledTo.room && <p className="font-semibold text-[10px] mt-0.5">Room: {event.rescheduledTo.room}</p>}
+        </div>
+      )}
+
+      {event.isRescheduled && (
+        <div className="p-2.5 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-900 text-yellow-800 dark:text-yellow-300 text-xs rounded-none">
+          <p className="font-bold uppercase tracking-wider text-[9px] mb-0.5">Rescheduled Session</p>
+          <p className="text-[10px]">This is a rescheduled make-up class meeting.</p>
+        </div>
+      )}
 
       {event.type === 'session' && counts && (
         <div className="pt-2 border-t border-zinc-200 dark:border-zinc-700">
@@ -140,7 +165,7 @@ function MonthView({
   const today = new Date()
 
   return (
-    <div className="border border-zinc-300 dark:border-zinc-700">
+    <div className="overflow-auto border border-zinc-300 dark:border-zinc-700 md:flex-1">
       <div className="grid grid-cols-7 border-b border-zinc-300 dark:border-zinc-700">
         {Array.from({ length: 7 }).map((_, i) => (
           <div key={i} className="px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500 text-center border-r last:border-r-0 border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/50">
@@ -183,9 +208,16 @@ function MonthView({
                             <span className={getEventTextClass(ev)}>
                               {formatTime(ev.startTime)}
                             </span>
-                            <span className={`ml-1 font-semibold ${ev.type === 'schedule' ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-700 dark:text-zinc-300'}`}>
-                              {ev.type === 'schedule' ? 'No session' : ev.subjectCode || ev.subjectName}
+                            <span className={`ml-1 font-semibold ${ev.status === 'moved' ? 'text-zinc-400 dark:text-zinc-500 line-through' : ev.type === 'schedule' ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-700 dark:text-zinc-300'}`}>
+                              {ev.status === 'moved'
+                                ? `${ev.sectionName || 'Class'} (MOVED)`
+                                : ev.type === 'schedule' ? 'No session' : ev.subjectCode || ev.subjectName}
                             </span>
+                            {ev.isRescheduled && (
+                              <span className="ml-1 inline-flex px-1 text-[8px] font-extrabold uppercase bg-yellow-500 text-black leading-tight">
+                                Moved
+                              </span>
+                            )}
                           </button>
                         </PopoverTrigger>
                         <PopoverContent className="w-72" align="start">
@@ -222,15 +254,15 @@ function WeekView({ date, events, attendanceRecords }: { date: Date; events: Cal
   }, [weekDays, events])
 
   return (
-    <div className="overflow-auto border border-zinc-300 dark:border-zinc-700">
+    <div className="overflow-auto border border-zinc-300 dark:border-zinc-700 md:flex-1">
       <div className="min-w-[700px]">
-        <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-zinc-300 dark:border-zinc-700">
-          <div className="border-r border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/50" />
+        <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-zinc-300 dark:border-zinc-700 sticky top-0 z-20 bg-zinc-50 dark:bg-zinc-900">
+          <div className="border-r border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900" />
           {weekDays.map((day, i) => {
             const isToday = isSameDay(day, today)
             return (
               <div key={i} className={`px-2 py-3 text-center border-r last:border-r-0 border-zinc-200 dark:border-zinc-700 ${
-                isToday ? 'bg-maroon/5 dark:bg-golden/10' : 'bg-zinc-50 dark:bg-zinc-900/50'
+                isToday ? 'bg-maroon/5 dark:bg-golden/10' : 'bg-zinc-50 dark:bg-zinc-900'
               }`}>
                 <p className={`text-[10px] font-bold uppercase tracking-widest ${isToday ? 'text-maroon dark:text-golden' : 'text-zinc-500'}`}>
                   {getDayName(i)}
@@ -245,39 +277,89 @@ function WeekView({ date, events, attendanceRecords }: { date: Date; events: Cal
 
         <div className="relative grid grid-cols-[60px_repeat(7,1fr)]" style={{ height: `${12 * 90}px` }}>
           <div className="col-start-1 col-span-1">
-            {hours.map((h) => (
+            {hours.map((h, index) => (
               <div key={h} className="border-b border-zinc-200 dark:border-zinc-700 pr-2 flex items-start justify-end" style={{ height: '90px' }}>
-                <span className="text-[10px] font-bold text-zinc-400 -mt-2">{formatTime(h)}</span>
+                <span className={`text-[10px] font-bold text-zinc-400 ${index === 0 ? 'mt-1' : '-mt-2'}`}>{formatTime(h)}</span>
               </div>
             ))}
           </div>
           {weekDays.map((day, di) => {
             const ds = formatDate(day)
             const dayEvs = weekDayEvents.get(ds) || []
+
+            // Sort by start time then by end time
+            const sortedEvs = [...dayEvs].sort((a, b) => a.startTime.localeCompare(b.startTime))
+
+            const columns: CalendarEvent[][] = []
+            for (const ev of sortedEvs) {
+              let placed = false
+              for (const col of columns) {
+                // Check if ev overlaps with any event in this column
+                const hasOverlap = col.some(
+                  (other) =>
+                    (ev.startTime >= other.startTime && ev.startTime < other.endTime) ||
+                    (other.startTime >= ev.startTime && other.startTime < ev.endTime)
+                )
+                if (!hasOverlap) {
+                  col.push(ev)
+                  placed = true
+                  break
+                }
+              }
+              if (!placed) {
+                columns.push([ev])
+              }
+            }
+
+            const eventLayout = new Map<string, { colIndex: number; totalCols: number }>()
+            columns.forEach((col, colIndex) => {
+              for (const ev of col) {
+                eventLayout.set(ev.id, { colIndex, totalCols: columns.length })
+              }
+            })
+
             return (
               <div key={di} className="relative border-r last:border-r-0 border-zinc-200 dark:border-zinc-700">
                 {hours.map((h) => (
                   <div key={h} className="border-b border-zinc-200/50 dark:border-zinc-700/50" style={{ height: '90px' }} />
                 ))}
-                {dayEvs.map((ev) => {
+                {sortedEvs.map((ev) => {
                   const top = timeToPosition(ev.startTime, startHour) * 1.5
                   const duration = timeToPosition(ev.endTime, startHour) - timeToPosition(ev.startTime, startHour)
                   const height = Math.max(duration * 1.5, 24)
+
+                  const layout = eventLayout.get(ev.id) || { colIndex: 0, totalCols: 1 }
+                  const widthPct = 100 / layout.totalCols
+                  const leftPct = layout.colIndex * widthPct
+
                   return (
                     <Popover key={ev.id}>
                       <PopoverTrigger asChild>
                         <button
-                          className={`absolute left-0.5 right-0.5 px-1.5 py-1 text-left overflow-hidden border-l-2 transition-colors ${getEventStyle(ev)}`}
-                          style={{ top: `${top}px`, height: `${height}px`, zIndex: 10 }}
+                          className={`absolute px-1.5 py-1 text-left overflow-hidden border-l-2 transition-colors ${getEventStyle(ev)}`}
+                          style={{
+                            top: `${top}px`,
+                            height: `${height}px`,
+                            left: `${leftPct}%`,
+                            width: `calc(${widthPct}% - 1px)`,
+                            zIndex: 10
+                          }}
                         >
                           <p className={`text-[10px] font-bold truncate leading-tight ${getEventTextClass(ev)}`}>
-                            {ev.type === 'schedule' ? 'No session' : ev.subjectCode || ev.subjectName}
+                            {ev.status === 'moved'
+                              ? `${ev.sectionName || 'Class'} (MOVED)`
+                              : ev.type === 'schedule' ? 'No session' : ev.subjectCode || ev.subjectName}
+                            {ev.isRescheduled && (
+                              <span className="ml-1 inline-flex px-1 text-[8px] font-extrabold uppercase bg-yellow-500 text-black leading-tight">
+                                Moved
+                              </span>
+                            )}
                           </p>
                           <p className="text-[8px] text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
                             {formatTime(ev.startTime)} - {formatTime(ev.endTime)}
                           </p>
                           {ev.room && (
-                            <p className={`text-[8px] truncate ${ev.type === 'schedule' ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-400 dark:text-zinc-500'}`}>{ev.room}</p>
+                            <p className={`text-[8px] truncate ${(ev.type === 'schedule' || ev.status === 'moved') ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-400 dark:text-zinc-500'}`}>{ev.room}</p>
                           )}
                         </button>
                       </PopoverTrigger>
@@ -296,12 +378,16 @@ function WeekView({ date, events, attendanceRecords }: { date: Date; events: Cal
   )
 }
 
-function Legend() {
+function Legend({ className }: { className?: string }) {
   return (
-    <div className="flex flex-wrap items-center gap-6 mt-6 px-1">
+    <div className={`flex flex-wrap items-center gap-6 mt-6 px-1 ${className || ''}`}>
       <div className="flex items-center gap-2">
         <div className="w-3 h-3 border-l-4 border-zinc-300 bg-transparent border-dashed" />
         <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Class scheduled (no session yet)</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="w-3 h-3 border-l-4 border-zinc-300 bg-zinc-50/50 dark:bg-zinc-900/10 border-dashed opacity-60" />
+        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Class slot moved</span>
       </div>
       <div className="flex items-center gap-2">
         <div className="w-3 h-3 border-l-4 border-green-500 bg-green-50 dark:bg-green-950/30" />
@@ -404,16 +490,16 @@ export default function FacultySchedulePage() {
   if (!user) return null
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-background selection:bg-golden selection:text-maroon">
+    <div className="min-h-screen md:h-screen md:overflow-hidden flex flex-col md:flex-row bg-background selection:bg-golden selection:text-maroon">
       <Sidebar user={user} onLogout={handleLogout} />
-      <main className="flex-1 overflow-y-auto">
-        <div className="p-8 md:p-12 max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row items-start md:items-end justify-between mb-8 border-b border-zinc-200 dark:border-zinc-800 pb-6">
+      <main className="flex-1 overflow-y-auto md:overflow-hidden flex flex-col">
+        <div className="p-8 md:p-12 max-w-7xl w-full mx-auto flex-1 flex flex-col md:overflow-hidden min-h-0">
+          <div className="flex flex-col md:flex-row items-start md:items-end justify-between mb-8 border-b border-zinc-200 dark:border-zinc-800 pb-6 shrink-0">
             <div>
               <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3">Faculty Schedule</p>
               <h1 className="text-3xl md:text-4xl font-heading font-bold text-foreground tracking-tight">{headerLabel}</h1>
             </div>
-            <div className="mt-4 md:mt-0 flex items-center gap-3">
+            <div className="mt-4 md:mt-0 flex items-center gap-3 shrink-0">
               <Button asChild className="rounded-none bg-maroon text-white hover:bg-maroon-dark uppercase tracking-widest font-bold text-xs h-10 px-5">
                 <Link href="/faculty/sessions/create">
                   <Plus className="w-4 h-4 mr-1.5" />
@@ -423,7 +509,7 @@ export default function FacultySchedulePage() {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 shrink-0">
             <Tabs value={view} onValueChange={setView}>
               <TabsList>
                 <TabsTrigger value="month">
@@ -437,7 +523,7 @@ export default function FacultySchedulePage() {
               </TabsList>
             </Tabs>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <Button
                 variant="outline"
                 size="sm"
@@ -457,35 +543,37 @@ export default function FacultySchedulePage() {
             </div>
           </div>
 
-          {view === 'month' ? (
-            events.length === 0 ? (
-              <div className="border border-dashed border-zinc-300 dark:border-zinc-700 p-16 text-center bg-zinc-50 dark:bg-zinc-900/20">
-                <CalendarDays className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mx-auto mb-4" />
-                <p className="text-xl font-heading font-bold text-zinc-400 mb-2">NO SCHEDULED CLASSES</p>
-                <p className="text-xs uppercase tracking-widest text-zinc-500 mb-6">No classes or sessions scheduled for this month.</p>
-                <Button asChild variant="outline" className="rounded-none text-[10px] font-bold uppercase tracking-widest">
-                  <Link href="/faculty/sessions/create"><Plus className="w-3.5 h-3.5 mr-1.5" />Create a Session</Link>
-                </Button>
-              </div>
+          <div className="flex-1 min-h-0 flex flex-col md:overflow-hidden">
+            {view === 'month' ? (
+              events.length === 0 ? (
+                <div className="border border-dashed border-zinc-300 dark:border-zinc-700 p-16 text-center bg-zinc-50 dark:bg-zinc-900/20 shrink-0">
+                  <CalendarDays className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mx-auto mb-4" />
+                  <p className="text-xl font-heading font-bold text-zinc-400 mb-2">NO SCHEDULED CLASSES</p>
+                  <p className="text-xs uppercase tracking-widest text-zinc-500 mb-6">No classes or sessions scheduled for this month.</p>
+                  <Button asChild variant="outline" className="rounded-none text-[10px] font-bold uppercase tracking-widest">
+                    <Link href="/faculty/sessions/create"><Plus className="w-3.5 h-3.5 mr-1.5" />Create a Session</Link>
+                  </Button>
+                </div>
+              ) : (
+                <MonthView year={currentYear} month={currentMonth} events={events} attendanceRecords={attendanceRecords} />
+              )
             ) : (
-              <MonthView year={currentYear} month={currentMonth} events={events} attendanceRecords={attendanceRecords} />
-            )
-          ) : (
-            events.length === 0 ? (
-              <div className="border border-dashed border-zinc-300 dark:border-zinc-700 p-16 text-center bg-zinc-50 dark:bg-zinc-900/20">
-                <Calendar className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mx-auto mb-4" />
-                <p className="text-xl font-heading font-bold text-zinc-400 mb-2">NO SCHEDULED CLASSES</p>
-                <p className="text-xs uppercase tracking-widest text-zinc-500 mb-6">No classes scheduled for this week.</p>
-                <Button asChild variant="outline" className="rounded-none text-[10px] font-bold uppercase tracking-widest">
-                  <Link href="/faculty/sessions/create"><Plus className="w-3.5 h-3.5 mr-1.5" />Create a Session</Link>
-                </Button>
-              </div>
-            ) : (
-              <WeekView date={currentDate} events={events} attendanceRecords={attendanceRecords} />
-            )
-          )}
+              events.length === 0 ? (
+                <div className="border border-dashed border-zinc-300 dark:border-zinc-700 p-16 text-center bg-zinc-50 dark:bg-zinc-900/20 shrink-0">
+                  <Calendar className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mx-auto mb-4" />
+                  <p className="text-xl font-heading font-bold text-zinc-400 mb-2">NO SCHEDULED CLASSES</p>
+                  <p className="text-xs uppercase tracking-widest text-zinc-500 mb-6">No classes scheduled for this week.</p>
+                  <Button asChild variant="outline" className="rounded-none text-[10px] font-bold uppercase tracking-widest">
+                    <Link href="/faculty/sessions/create"><Plus className="w-3.5 h-3.5 mr-1.5" />Create a Session</Link>
+                  </Button>
+                </div>
+              ) : (
+                <WeekView date={currentDate} events={events} attendanceRecords={attendanceRecords} />
+              )
+            )}
+          </div>
 
-          <Legend />
+          <Legend className="shrink-0" />
         </div>
       </main>
     </div>

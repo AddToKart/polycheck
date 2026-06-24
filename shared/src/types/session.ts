@@ -21,6 +21,10 @@ export interface Session {
   qrGeneratedAt?: string
   teacherId: string
   createdAt: string
+  isRescheduled?: boolean
+  rescheduledFromDate?: string
+  originalScheduleTime?: string
+  originalRoom?: string
 }
 
 export interface QRTokenPayload {

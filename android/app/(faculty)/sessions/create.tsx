@@ -119,6 +119,9 @@ export default function CreateSessionScreen() {
     const d = new Date(); d.setMonth(d.getMonth() + 4); return d.toISOString().slice(0, 10)
   })
   const [bulkDays, setBulkDays] = useState<string[]>([])
+  const [isRescheduled, setIsRescheduled] = useState(false)
+  const [rescheduledFromDate, setRescheduledFromDate] = useState('')
+  const [showReplaceDatePicker, setShowReplaceDatePicker] = useState(false)
   const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
   useEffect(() => {
@@ -153,8 +156,38 @@ export default function CreateSessionScreen() {
     if (selectedSection) {
       setBulkDays(selectedSection.schedule.map((s) => s.day as string))
       if (selectedSection.room) setRoom(selectedSection.room)
+      setIsRescheduled(false)
+      setRescheduledFromDate('')
     }
   }, [selectedSection])
+
+  const getStandardReplaceDates = () => {
+    if (!selectedSection) return []
+    const dates: { dateStr: string; label: string; scheduleTime: string; room?: string }[] = []
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    for (let i = 0; i < 14; i++) {
+      const d = new Date()
+      d.setDate(d.getDate() + i)
+      const dayName = dayNames[d.getDay()]
+      const sched = selectedSection.schedule.find((s) => s.day === dayName)
+      if (sched) {
+        const dateStr = d.toISOString().slice(0, 10)
+        const dateLabel = d.toLocaleDateString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        })
+        dates.push({
+          dateStr,
+          label: `${dateLabel} (${sched.startTime} - ${sched.endTime})`,
+          scheduleTime: `${sched.startTime} - ${sched.endTime}`,
+          room: selectedSection.room || undefined,
+        })
+      }
+    }
+    return dates
+  }
 
   const calculateBulkCount = () => {
     if (!bulkStartDate || !bulkEndDate || bulkDays.length === 0) return 0
@@ -193,6 +226,9 @@ export default function CreateSessionScreen() {
       Alert.alert('Sessions Created', `${count} session${count !== 1 ? 's' : ''} created successfully.`)
       router.back()
     } else {
+      const replaceDates = getStandardReplaceDates()
+      const selectedReplaceOption = replaceDates.find((d) => d.dateStr === rescheduledFromDate)
+
       api.createSession({
         sectionId,
         subjectName: selectedParentSubject?.name ?? '',
@@ -204,6 +240,10 @@ export default function CreateSessionScreen() {
         gracePeriodMinutes: gracePeriod,
         geofence: { latitude, longitude, radiusMeters: radius },
         teacherId: user.id,
+        isRescheduled: isRescheduled || undefined,
+        rescheduledFromDate: isRescheduled ? rescheduledFromDate : undefined,
+        originalScheduleTime: isRescheduled ? selectedReplaceOption?.scheduleTime : undefined,
+        originalRoom: isRescheduled ? selectedReplaceOption?.room : undefined,
       })
       router.back()
     }
@@ -380,6 +420,81 @@ export default function CreateSessionScreen() {
               placeholder="YYYY-MM-DD"
               placeholderTextColor="#AAA"
             />
+            
+            {selectedSection && selectedSection.schedule.length > 0 && (
+              <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : '#EEE', paddingTop: 12 }}>
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 }}
+                  onPress={() => {
+                    const nextVal = !isRescheduled
+                    setIsRescheduled(nextVal)
+                    if (nextVal) {
+                      const dates = getStandardReplaceDates()
+                      if (dates.length > 0) {
+                        setRescheduledFromDate(dates[0].dateStr)
+                      }
+                    } else {
+                      setRescheduledFromDate('')
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.checkbox, isRescheduled && styles.checkboxActive, isDark && styles.checkboxDark, isRescheduled && isDark && styles.checkboxActiveDark]}>
+                    {isRescheduled && <MaterialIcons name="check" size={14} color="#FFFFFF" />}
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: '700', fontFamily: fonts.bodyBold, color: isDark ? '#FFDF00' : '#7B1113' }}>
+                    Reschedule a standard class slot
+                  </Text>
+                </TouchableOpacity>
+
+                {isRescheduled && (
+                  <View style={{ marginTop: 10, padding: 12, backgroundColor: isDark ? '#121215' : '#FAFAFA', borderWidth: 1, borderColor: isDark ? 'rgba(245,168,0,0.15)' : '#E0E0E0' }}>
+                    <Text style={[styles.label, isDark && styles.labelDark, { marginTop: 0, marginBottom: 6 }]}>
+                      Standard slot to replace
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.picker, isDark && styles.pickerDark]}
+                      onPress={() => setShowReplaceDatePicker(true)}
+                    >
+                      <Text style={[styles.pickerText, isDark && styles.textWhite]}>
+                        {getStandardReplaceDates().find((d) => d.dateStr === rescheduledFromDate)?.label || 'Select standard slot'}
+                      </Text>
+                      <MaterialIcons name="keyboard-arrow-down" size={20} color={isDark ? '#FFDF00' : '#888'} />
+                    </TouchableOpacity>
+
+                    <Text style={{ fontSize: 11, color: '#888', marginTop: 6 }}>
+                      The selected standard slot will be visually marked as "MOVED" for students.
+                    </Text>
+
+                    <Modal visible={showReplaceDatePicker} transparent animationType="fade" onRequestClose={() => setShowReplaceDatePicker(false)}>
+                      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowReplaceDatePicker(false)}>
+                        <View style={[styles.sheet, isDark && styles.sheetDark]} onStartShouldSetResponder={() => true}>
+                          <Text style={[styles.sheetTitle, isDark && styles.sheetTitleDark]}>Select Standard Slot</Text>
+                          <ScrollView>
+                            {getStandardReplaceDates().map((d) => (
+                              <TouchableOpacity
+                                key={d.dateStr}
+                                style={[
+                                  styles.sheetOption,
+                                  isDark && styles.sheetOptionDarkBorder,
+                                  d.dateStr === rescheduledFromDate && (isDark ? styles.sheetOptionSelectedDark : styles.sheetOptionSelected)
+                                ]}
+                                onPress={() => { setRescheduledFromDate(d.dateStr); setShowReplaceDatePicker(false) }}
+                              >
+                                <Text style={[styles.sheetOptionText, isDark && styles.sheetOptionTextDark, d.dateStr === rescheduledFromDate && (isDark ? styles.sheetOptionTextActiveDark : styles.sheetOptionTextActive)]}>
+                                  {d.label}
+                                </Text>
+                                {d.dateStr === rescheduledFromDate && <MaterialIcons name="check" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />}
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        </View>
+                      </TouchableOpacity>
+                    </Modal>
+                  </View>
+                )}
+              </View>
+            )}
           </>
         )}
 

@@ -1,11 +1,12 @@
 'use client'
 
-import React, { useEffect, useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import React, { useEffect, useState, useMemo, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/mock-api'
 import type { Student, Section, AttendanceRecord } from '@polycheck/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Sidebar } from '@/components/layout/sidebar'
 import StatusBadge from '@/components/StatusBadge'
 import ThemeToggle from '@/components/ThemeToggle'
 import {
@@ -56,17 +57,26 @@ const statCards = [
   { key: 'disputed', label: 'Disputed', color: 'text-maroon-dark dark:text-golden' },
 ] as const
 
-export default function StudentDashboardPage() {
+function StudentDashboardContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [user, setUser] = useState<Student | null>(null)
   const [sections, setSections] = useState<Section[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [sessions, setSessions] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard')
+
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (tab && ['dashboard', 'subjects', 'schedule', 'attendance'].includes(tab)) {
+      setActiveTab(tab as NavTab)
+    } else {
+      setActiveTab('dashboard')
+    }
+  }, [searchParams])
   const [attendancePage, setAttendancePage] = useState(0)
   const [isIdModalOpen, setIsIdModalOpen] = useState(false)
   const [isIdFlipped, setIsIdFlipped] = useState(false)
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [scheduleDate, setScheduleDate] = useState(new Date())
   const [disputeRecord, setDisputeRecord] = useState<AttendanceRecord | null>(null)
   const [disputeReason, setDisputeReason] = useState('')
@@ -191,116 +201,10 @@ const ATTENDANCE_PAGE_SIZE = 8
     disputed: records.filter((r) => r.status === 'disputed').length,
   }
 
-  const sidebarContent = (
-    <>
-      <div className="p-6 border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between bg-maroon dark:bg-golden text-white dark:text-maroon-dark">
-        <div>
-          <h1 className="text-2xl font-heading font-bold tracking-tight text-golden dark:text-maroon-dark">
-            Polycheck
-          </h1>
-          <p className="text-[10px] uppercase tracking-widest text-white/70 dark:text-maroon-dark/80 mt-1">Student</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <img src="/pup-logo.png" alt="PUP Logo" className="w-8 h-8 shrink-0 object-contain" />
-          <button
-            onClick={() => setIsMenuOpen(false)}
-            className="md:hidden p-1 rounded-none hover:bg-white/10 text-white dark:text-maroon-dark transition-colors"
-            aria-label="Close menu"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-
-      <nav className="flex-1 overflow-y-auto py-4">
-        <div className="flex flex-col">
-          {navItems.map(({ key, label, icon: Icon }) => {
-            const isActive = activeTab === key
-            return (
-              <button
-                key={key}
-                onClick={() => { setActiveTab(key as NavTab); setIsMenuOpen(false) }}
-                className={`flex items-center gap-4 px-6 py-4 text-sm font-bold uppercase tracking-wider transition-all border-l-4 w-full text-left ${
-                  isActive
-                    ? 'border-maroon dark:border-golden bg-zinc-100 dark:bg-zinc-900 text-maroon dark:text-golden'
-                    : 'border-transparent text-zinc-500 hover:text-foreground hover:bg-zinc-50 dark:hover:bg-zinc-900'
-                }`}
-              >
-                <Icon 
-                  className={`w-5 h-5 shrink-0 ${isActive ? 'text-maroon dark:text-golden' : ''}`}
-                  strokeWidth={isActive ? 2.5 : 1.5}
-                />
-                {label}
-              </button>
-            )
-          })}
-        </div>
-      </nav>
-
-      <div className="p-6 border-t border-zinc-300 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
-        <div className="flex items-center justify-between mb-6">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-            Appearance
-          </p>
-          <ThemeToggle />
-        </div>
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-maroon flex items-center justify-center text-golden font-heading font-bold text-sm shrink-0 border border-maroon-dark">
-            {user.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2)}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-foreground truncate">{user.fullName}</p>
-            <p className="text-xs text-zinc-500 truncate">{user.studentId}</p>
-          </div>
-        </div>
-        <Button
-          variant="outline"
-          className="w-full justify-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-600 dark:text-zinc-400 hover:text-white hover:bg-maroon hover:border-maroon transition-colors"
-          onClick={handleLogout}
-        >
-          <LogOut className="w-4 h-4" />
-          Disconnect
-        </Button>
-      </div>
-    </>
-  )
 
   return (
     <div className="min-h-screen md:h-screen md:overflow-hidden flex flex-col md:flex-row bg-background selection:bg-golden selection:text-maroon">
-      {/* Mobile Top Navigation Header */}
-      <div className="md:hidden sticky top-0 z-30 w-full h-16 bg-maroon dark:bg-zinc-950 text-white dark:text-golden border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between px-6 shrink-0 select-none">
-        <div className="flex items-center gap-3">
-          <img src="/pup-logo.png" alt="PUP Logo" className="w-6 h-6 shrink-0 object-contain" />
-          <span className="font-heading font-bold text-lg tracking-tight">Polycheck</span>
-        </div>
-        <button 
-          onClick={() => setIsMenuOpen(true)}
-          className="p-2 hover:bg-white/10 dark:hover:bg-zinc-800 transition-colors"
-          aria-label="Open navigation menu"
-        >
-          <Menu className="w-6 h-6 text-white dark:text-golden" />
-        </button>
-      </div>
-
-      {/* Mobile Slide-Out Drawer Overlay */}
-      {isMenuOpen && (
-        <div className="fixed inset-0 z-50 md:hidden flex">
-          {/* Backdrop */}
-          <div 
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" 
-            onClick={() => setIsMenuOpen(false)}
-          />
-          {/* Slide-out Menu Panel */}
-          <aside className="relative w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col h-full z-50 overflow-hidden animate-in slide-in-from-left duration-200">
-            {sidebarContent}
-          </aside>
-        </div>
-      )}
-
-      {/* Desktop Persistent Sidebar */}
-      <aside className="hidden md:flex w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col shrink-0 h-dvh sticky top-0 overflow-hidden">
-        {sidebarContent}
-      </aside>
+      <Sidebar user={{ ...user, email: user.email || '' } as any} onLogout={handleLogout} />
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
@@ -983,5 +887,13 @@ const ATTENDANCE_PAGE_SIZE = 8
         </div>
       </main>
     </div>
+  )
+}
+
+export default function StudentDashboardPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-background text-zinc-500 uppercase tracking-widest text-xs font-bold">Loading portal...</div>}>
+      <StudentDashboardContent />
+    </Suspense>
   )
 }

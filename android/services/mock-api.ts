@@ -171,6 +171,10 @@ export const api = {
     gracePeriodMinutes: number
     geofence: { latitude: number; longitude: number; radiusMeters: number }
     teacherId: string
+    isRescheduled?: boolean
+    rescheduledFromDate?: string
+    originalScheduleTime?: string
+    originalRoom?: string
   }): Session {
     const now = new Date().toISOString()
     const session: Session = {

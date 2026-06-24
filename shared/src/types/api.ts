@@ -27,6 +27,10 @@ export interface CreateSessionInput {
   gracePeriodMinutes: number
   geofence: { latitude: number; longitude: number; radiusMeters: number }
   teacherId: string
+  isRescheduled?: boolean
+  rescheduledFromDate?: string
+  originalScheduleTime?: string
+  originalRoom?: string
 }
 
 export interface SubmitAttendanceResult {
@@ -74,11 +78,14 @@ export interface CalendarEvent {
   subjectName: string
   sectionName: string
   type: 'session' | 'schedule'
-  status?: 'active' | 'inactive' | 'completed'
+  status?: 'active' | 'inactive' | 'completed' | 'moved'
   studentStatus?: 'present' | 'late' | 'absent'
   attendanceCounts?: { present: number; late: number; absent: number; disputed: number }
   teacherName?: string
   subjectCode?: string
+  isRescheduled?: boolean
+  rescheduledFromDate?: string
+  rescheduledTo?: { date: string; startTime: string; endTime: string; room?: string }
 }
 
 export interface ApiClient {

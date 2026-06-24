@@ -132,11 +132,13 @@ export default function FacultyScheduleScreen() {
   }
 
   const getEventStatusLabel = (ev: CalendarEvent): string => {
+    if (ev.status === 'moved') return 'Moved'
     if (ev.type === 'session') return ev.status === 'active' ? 'Active' : 'Completed'
     return 'Scheduled'
   }
 
   const getEventStatusColor = (ev: CalendarEvent): string => {
+    if (ev.status === 'moved') return '#EF4444'
     if (ev.type === 'session') return ev.status === 'active' ? '#22C55E' : '#888'
     return '#FFDF00'
   }
@@ -180,6 +182,7 @@ export default function FacultyScheduleScreen() {
 
       <View style={[styles.legendRow, isDark && styles.legendRowDark]}>
         <View style={styles.legendItem}><View style={[styles.legendDot, { borderWidth: 1, borderColor: '#CCC', backgroundColor: 'transparent' }]} /><Text style={[styles.legendText, isDark && styles.textWhite50]}>No session</Text></View>
+        <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#D4D4D8', borderWidth: 1, borderColor: '#CCC', borderStyle: 'dashed' }]} /><Text style={[styles.legendText, isDark && styles.textWhite50]}>Moved</Text></View>
         <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#7B1113' }]} /><Text style={[styles.legendText, isDark && styles.textWhite50]}>Session</Text></View>
         <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#22C55E' }]} /><Text style={[styles.legendText, isDark && styles.textWhite50]}>Active</Text></View>
       </View>
@@ -227,7 +230,7 @@ export default function FacultyScheduleScreen() {
                               key={ei}
                               style={[
                                 ev.type === 'session' ? styles.eventDot : styles.ghostDot,
-                                { backgroundColor: ev.type === 'session' ? (ev.status === 'active' ? '#22C55E' : '#7B1113') : 'transparent' },
+                                { backgroundColor: ev.status === 'moved' ? '#EF4444' : ev.type === 'session' ? (ev.status === 'active' ? '#22C55E' : '#7B1113') : 'transparent' },
                                 ev.type === 'session' && ev.status === 'active' && styles.eventDotActive,
                               ]}
                             />
@@ -260,27 +263,45 @@ export default function FacultyScheduleScreen() {
                     {dayEvs.length === 0 ? (
                       <Text style={[styles.weekEmpty, isDark && styles.textWhite50]}>No events</Text>
                     ) : (
-                      dayEvs.map((ev) => (
-                        <TouchableOpacity
-                          key={ev.id}
-                          style={[styles.weekEvCard, isDark && styles.weekEvCardDark, ev.type === 'session' && styles.weekEvCardSession]}
-                          onPress={() => setSelectedEvent(ev)}
-                          activeOpacity={0.7}
-                        >
-                          <View style={[styles.weekEvDot, { backgroundColor: ev.type === 'session' ? '#7B1113' : '#FFDF00' }]} />
-                          <Text style={[styles.weekEvTime, isDark && ev.type === 'schedule' && styles.textGolden]} numberOfLines={1}>
-                            {formatTime(ev.startTime)}
-                          </Text>
-                          <Text style={[styles.weekEvTitle, isDark && styles.textWhite]} numberOfLines={2}>
-                            {ev.subjectName}
-                          </Text>
-                          {ev.room && (
-                            <Text style={[styles.weekEvRoom, isDark && styles.textWhite50]} numberOfLines={1}>
-                              {ev.room}
+                      dayEvs.map((ev) => {
+                        const isMoved = ev.status === 'moved'
+                        return (
+                          <TouchableOpacity
+                            key={ev.id}
+                            style={[
+                              styles.weekEvCard,
+                              isDark && styles.weekEvCardDark,
+                              ev.type === 'session' && styles.weekEvCardSession,
+                              isMoved && styles.weekEvCardMoved,
+                            ]}
+                            onPress={() => setSelectedEvent(ev)}
+                            activeOpacity={0.7}
+                          >
+                            <View style={[styles.weekEvDot, { backgroundColor: isMoved ? '#EF4444' : ev.type === 'session' ? '#7B1113' : '#FFDF00' }]} />
+                            <Text style={[styles.weekEvTime, isDark && ev.type === 'schedule' && styles.textGolden, isMoved && styles.movedText]} numberOfLines={1}>
+                              {formatTime(ev.startTime)}
                             </Text>
-                          )}
-                        </TouchableOpacity>
-                      ))
+                            <Text style={[styles.weekEvTitle, isDark && styles.textWhite, isMoved && styles.movedText]} numberOfLines={2}>
+                              {isMoved ? `${ev.sectionName || 'Class'} (MOVED)` : ev.subjectName}
+                            </Text>
+                            {isMoved && ev.rescheduledTo && (
+                              <Text style={{ fontSize: 8, color: isDark ? '#FFDF00' : '#7B1113', fontWeight: 'bold' }}>
+                                MOVED to {ev.rescheduledTo.date.slice(5)} {formatTime(ev.rescheduledTo.startTime)}
+                              </Text>
+                            )}
+                            {ev.room && (
+                              <Text style={[styles.weekEvRoom, isDark && styles.textWhite50, isMoved && styles.movedText]} numberOfLines={1}>
+                                {ev.room}
+                              </Text>
+                            )}
+                            {ev.isRescheduled && (
+                              <View style={{ alignSelf: 'flex-start', backgroundColor: '#FFDF00', paddingHorizontal: 4, paddingVertical: 1, marginTop: 4 }}>
+                                <Text style={{ fontSize: 8, color: '#4A0A0B', fontWeight: '800' }}>MOVED</Text>
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        )
+                      })
                     )}
                   </View>
                 </View>
@@ -300,31 +321,46 @@ export default function FacultyScheduleScreen() {
                 <Text style={[styles.emptyText, isDark && styles.textWhite50]}>No events this day</Text>
               </View>
             ) : (
-              selectedDayEvents.sort((a, b) => a.startTime.localeCompare(b.startTime)).map((ev) => (
-                <TouchableOpacity
-                  key={ev.id}
-                  style={[styles.dayEvCard, isDark && styles.cardDark]}
-                  onPress={() => setSelectedEvent(ev)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.dayEvTime, isDark && styles.dayEvTimeDark]}>
-                    <Text style={[styles.dayEvTimeText, isDark && styles.textGolden]}>{formatTime(ev.startTime)}</Text>
-                    <Text style={[styles.dayEvTimeSep, isDark && styles.textWhite50]}>—</Text>
-                    <Text style={[styles.dayEvTimeText, isDark && styles.textGolden]}>{formatTime(ev.endTime)}</Text>
-                  </View>
-                  <View style={styles.dayEvBody}>
-                    <Text style={[styles.dayEvName, isDark && styles.textWhite]}>{ev.subjectName}</Text>
-                    <Text style={[styles.dayEvMeta, isDark && styles.textWhite50]}>
-                      Sec {ev.sectionName}{ev.room ? ` · ${ev.room}` : ''}
-                    </Text>
-                    <View style={styles.dayEvStatusRow}>
-                      <View style={[styles.miniDot, { backgroundColor: getEventStatusColor(ev) }]} />
-                      <Text style={[styles.dayEvStatus, { color: getEventStatusColor(ev) }]}>{getEventStatusLabel(ev)}</Text>
+              selectedDayEvents.sort((a, b) => a.startTime.localeCompare(b.startTime)).map((ev) => {
+                const isMoved = ev.status === 'moved'
+                return (
+                  <TouchableOpacity
+                    key={ev.id}
+                    style={[styles.dayEvCard, isDark && styles.cardDark, isMoved && styles.movedCard]}
+                    onPress={() => setSelectedEvent(ev)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.dayEvTime, isDark && styles.dayEvTimeDark]}>
+                      <Text style={[styles.dayEvTimeText, isDark && styles.textGolden, isMoved && styles.movedText]}>{formatTime(ev.startTime)}</Text>
+                      <Text style={[styles.dayEvTimeSep, isDark && styles.textWhite50]}>—</Text>
+                      <Text style={[styles.dayEvTimeText, isDark && styles.textGolden, isMoved && styles.movedText]}>{formatTime(ev.endTime)}</Text>
                     </View>
-                  </View>
-                  <MaterialIcons name="chevron-right" size={20} color={isDark ? 'rgba(255,255,255,0.3)' : '#CCC'} />
-                </TouchableOpacity>
-              ))
+                    <View style={styles.dayEvBody}>
+                      <Text style={[styles.dayEvName, isDark && styles.textWhite, isMoved && styles.movedText]}>
+                        {isMoved ? `${ev.sectionName || 'Class'} (MOVED)` : ev.subjectName}
+                      </Text>
+                      <Text style={[styles.dayEvMeta, isDark && styles.textWhite50, isMoved && styles.movedText]}>
+                        Sec {ev.sectionName}{ev.room ? ` · ${ev.room}` : ''}
+                      </Text>
+                      {isMoved && ev.rescheduledTo && (
+                        <Text style={{ fontSize: 9, color: isDark ? '#FFDF00' : '#7B1113', fontWeight: 'bold', marginTop: 2 }}>
+                          Moved to: {ev.rescheduledTo.date} {formatTime(ev.rescheduledTo.startTime)}
+                        </Text>
+                      )}
+                      <View style={styles.dayEvStatusRow}>
+                        <View style={[styles.miniDot, { backgroundColor: getEventStatusColor(ev) }]} />
+                        <Text style={[styles.dayEvStatus, { color: getEventStatusColor(ev) }]}>{getEventStatusLabel(ev)}</Text>
+                      </View>
+                      {ev.isRescheduled && (
+                        <View style={{ alignSelf: 'flex-start', backgroundColor: '#FFDF00', paddingHorizontal: 4, paddingVertical: 1, marginTop: 4 }}>
+                          <Text style={{ fontSize: 8, color: '#4A0A0B', fontWeight: '800' }}>MOVED</Text>
+                        </View>
+                      )}
+                    </View>
+                    <MaterialIcons name="chevron-right" size={20} color={isDark ? 'rgba(255,255,255,0.3)' : '#CCC'} />
+                  </TouchableOpacity>
+                )
+              })
             )}
           </View>
         )}
@@ -335,14 +371,49 @@ export default function FacultyScheduleScreen() {
           {selectedEvent && (
             <View style={[styles.sheet, isDark && styles.sheetDark]} onStartShouldSetResponder={() => true}>
               <View style={[styles.sheetHandle, isDark && styles.sheetHandleDark]} />
-              <View style={[styles.typeBadge, { backgroundColor: selectedEvent.type === 'session' ? '#7B1113' : '#888' }]}>
-                <Text style={[styles.typeBadgeText, selectedEvent.type === 'schedule' && { color: '#FFF', opacity: 0.5 }]}>
-                  {selectedEvent.type === 'session' ? 'SESSION' : 'GHOST (NO SESSION)'}
+              <View style={[styles.typeBadge, { backgroundColor: selectedEvent.status === 'moved' ? '#EF4444' : selectedEvent.type === 'session' ? '#7B1113' : '#888' }]}>
+                <Text style={[styles.typeBadgeText, selectedEvent.type === 'schedule' && selectedEvent.status !== 'moved' && { color: '#FFF', opacity: 0.5 }]}>
+                  {selectedEvent.status === 'moved' ? 'MOVED' : selectedEvent.type === 'session' ? 'SESSION' : 'GHOST (NO SESSION)'}
                 </Text>
               </View>
-              <Text style={[styles.sheetTitle, isDark && styles.textWhite, selectedEvent.type === 'schedule' && { opacity: 0.4 }]}>
-                {selectedEvent.type === 'schedule' ? 'No session created yet' : selectedEvent.subjectName}
+              <Text style={[styles.sheetTitle, isDark && styles.textWhite, selectedEvent.type === 'schedule' && selectedEvent.status !== 'moved' && { opacity: 0.4 }]}>
+                {selectedEvent.status === 'moved'
+                  ? `${selectedEvent.sectionName || 'Class'} (MOVED)`
+                  : selectedEvent.subjectName}
               </Text>
+              
+              {selectedEvent.status === 'moved' && selectedEvent.rescheduledTo && (
+                <View style={{ padding: 12, backgroundColor: isDark ? '#1C1C21' : '#FFF9E6', borderLeftWidth: 3, borderLeftColor: '#FFDF00', marginBottom: 16 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: isDark ? '#FFDF00' : '#4A0A0B', textTransform: 'uppercase', marginBottom: 4 }}>
+                    Class Slot Rescheduled
+                  </Text>
+                  <Text style={{ fontSize: 12, color: isDark ? '#FFF' : '#333' }}>
+                    This class slot has been moved to:
+                  </Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? '#FFDF00' : '#7B1113', marginTop: 4 }}>
+                    {new Date(selectedEvent.rescheduledTo.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                  </Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? '#FFDF00' : '#7B1113' }}>
+                    {formatTime(selectedEvent.rescheduledTo.startTime)} — {formatTime(selectedEvent.rescheduledTo.endTime)}
+                  </Text>
+                  {selectedEvent.rescheduledTo.room && (
+                    <Text style={{ fontSize: 11, color: isDark ? 'rgba(255,255,255,0.6)' : '#666', marginTop: 2 }}>
+                      Room: {selectedEvent.rescheduledTo.room}
+                    </Text>
+                  )}
+                </View>
+              )}
+
+              {selectedEvent.isRescheduled && (
+                <View style={{ padding: 12, backgroundColor: isDark ? '#1C1C21' : '#FFF9E6', borderLeftWidth: 3, borderLeftColor: '#FFDF00', marginBottom: 16 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: isDark ? '#FFDF00' : '#4A0A0B', textTransform: 'uppercase', marginBottom: 2 }}>
+                    Rescheduled Session
+                  </Text>
+                  <Text style={{ fontSize: 12, color: isDark ? '#FFF' : '#333' }}>
+                    This is a rescheduled make-up class meeting.
+                  </Text>
+                </View>
+              )}
 
               <View style={[styles.sheetDetail, isDark && styles.sheetDetailDark]}>
                 <View style={styles.sheetRow}>
@@ -496,6 +567,9 @@ const styles = StyleSheet.create({
   weekEvCard: { backgroundColor: '#F9F9F9', padding: 8, borderRadius: 0, borderLeftWidth: 3, borderLeftColor: '#FFDF00' },
   weekEvCardDark: { backgroundColor: '#0A0A0C' },
   weekEvCardSession: { borderLeftColor: '#7B1113' },
+  weekEvCardMoved: { opacity: 0.6, borderStyle: 'dashed' as const },
+  movedCard: { opacity: 0.6 },
+  movedText: { textDecorationLine: 'line-through' as const, opacity: 0.6 },
   weekEvDot: { width: 6, height: 6, borderRadius: 3, marginBottom: 4 },
   weekEvTime: { fontSize: 10, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#7B1113', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 2 },
   weekEvTitle: { fontSize: 12, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#333', marginBottom: 2 },

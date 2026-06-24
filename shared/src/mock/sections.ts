@@ -7,8 +7,8 @@ export const mockSections: Section[] = [
     section: 'A',
     room: 'CCIS Lab 3',
     schedule: [
-      { day: 'Mon', startTime: '09:00', endTime: '10:30', room: 'CCIS Lab 3' },
-      { day: 'Wed', startTime: '09:00', endTime: '10:30', room: 'CCIS Lab 3' },
+      { day: 'Tue', startTime: '09:00', endTime: '10:30', room: 'CCIS Lab 3' },
+      { day: 'Thu', startTime: '09:00', endTime: '10:30', room: 'CCIS Lab 3' },
     ],
     semester: '2nd Semester AY 2025-2026',
     teacherId: 't-001',
@@ -25,8 +25,8 @@ export const mockSections: Section[] = [
     section: 'B',
     room: 'CCIS Lab 4',
     schedule: [
-      { day: 'Tue', startTime: '09:00', endTime: '10:30', room: 'CCIS Lab 4' },
-      { day: 'Thu', startTime: '09:00', endTime: '10:30', room: 'CCIS Lab 4' },
+      { day: 'Mon', startTime: '09:00', endTime: '10:30', room: 'CCIS Lab 4' },
+      { day: 'Wed', startTime: '09:00', endTime: '10:30', room: 'CCIS Lab 4' },
     ],
     semester: '2nd Semester AY 2025-2026',
     teacherId: 't-001',

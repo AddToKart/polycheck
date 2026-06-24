@@ -39,6 +39,8 @@ export default function CreateSessionPage() {
     return d.toISOString().slice(0, 10)
   })
   const [bulkDays, setBulkDays] = useState<string[]>([])
+  const [isRescheduled, setIsRescheduled] = useState(false)
+  const [rescheduledFromDate, setRescheduledFromDate] = useState('')
   const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
   useEffect(() => {
@@ -56,8 +58,6 @@ export default function CreateSessionPage() {
     setSectionId('')
   }, [subjectId])
 
-  if (!user) return null
-
   const selectedSection = sections.find((s) => s.id === sectionId)
   const selectedSubject = subjects.find((s) => s.id === subjectId)
 
@@ -66,8 +66,40 @@ export default function CreateSessionPage() {
       const scheduleDays = selectedSection.schedule.map((s) => s.day)
       setBulkDays(scheduleDays)
       setRoom(selectedSection.room || '')
+      setIsRescheduled(false)
+      setRescheduledFromDate('')
     }
   }, [selectedSection])
+
+  const getStandardReplaceDates = () => {
+    if (!selectedSection) return []
+    const dates: { dateStr: string; label: string; scheduleTime: string; room?: string }[] = []
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    
+    // Check next 14 days
+    for (let i = 0; i < 14; i++) {
+      const d = new Date()
+      d.setDate(d.getDate() + i)
+      const dayName = dayNames[d.getDay()]
+      const sched = selectedSection.schedule.find((s) => s.day === dayName)
+      if (sched) {
+        const dateStr = d.toISOString().slice(0, 10)
+        const dateLabel = d.toLocaleDateString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        })
+        dates.push({
+          dateStr,
+          label: `${dateLabel} (${sched.startTime} - ${sched.endTime})`,
+          scheduleTime: `${sched.startTime} - ${sched.endTime}`,
+          room: selectedSection.room || undefined,
+        })
+      }
+    }
+    return dates
+  }
 
   const calculateBulkCount = () => {
     if (!bulkStartDate || !bulkEndDate || bulkDays.length === 0) return 0
@@ -86,7 +118,7 @@ export default function CreateSessionPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedSection || !selectedSubject) return
+    if (!selectedSection || !selectedSubject || !user) return
     if (bulkMode) {
       const count = calculateBulkCount()
       if (count === 0) return
@@ -107,6 +139,9 @@ export default function CreateSessionPage() {
       alert(`Created ${count} sessions successfully!`)
       router.push('/faculty/sessions')
     } else {
+      const replaceDates = getStandardReplaceDates()
+      const selectedReplaceOption = replaceDates.find((d) => d.dateStr === rescheduledFromDate)
+
       api.createSession({
         sectionId: selectedSection.id,
         subjectName: selectedSubject.name,
@@ -122,6 +157,10 @@ export default function CreateSessionPage() {
           radiusMeters: radius,
         },
         teacherId: user.id,
+        isRescheduled: isRescheduled || undefined,
+        rescheduledFromDate: isRescheduled ? rescheduledFromDate : undefined,
+        originalScheduleTime: isRescheduled ? selectedReplaceOption?.scheduleTime : undefined,
+        originalRoom: isRescheduled ? selectedReplaceOption?.room : undefined,
       })
       router.push('/faculty/sessions')
     }
@@ -131,6 +170,8 @@ export default function CreateSessionPage() {
     api.logout()
     router.push('/')
   }
+
+  if (!user) return null
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
@@ -239,10 +280,62 @@ export default function CreateSessionPage() {
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    <Label htmlFor="date">Date</Label>
-                    <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-                  </div>
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="date">Date</Label>
+                      <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+                    </div>
+
+                    {selectedSection && selectedSection.schedule.length > 0 && (
+                      <div className="space-y-4 pt-3 border-t border-zinc-200 dark:border-zinc-700">
+                        <div className="flex items-center gap-3">
+                          <input
+                            id="isRescheduled"
+                            type="checkbox"
+                            checked={isRescheduled}
+                            onChange={(e) => {
+                              setIsRescheduled(e.target.checked)
+                              if (e.target.checked) {
+                                const dates = getStandardReplaceDates()
+                                if (dates.length > 0) {
+                                  setRescheduledFromDate(dates[0].dateStr)
+                                }
+                              } else {
+                                setRescheduledFromDate('')
+                              }
+                            }}
+                            className="accent-maroon h-4 w-4"
+                          />
+                          <Label htmlFor="isRescheduled" className="cursor-pointer font-bold text-maroon dark:text-golden">
+                            Reschedule a standard class slot
+                          </Label>
+                        </div>
+
+                        {isRescheduled && (
+                          <div className="space-y-2 bg-zinc-50 dark:bg-zinc-900 p-4 border border-zinc-200 dark:border-zinc-700">
+                            <Label htmlFor="replaceDate">Standard class slot to replace</Label>
+                            <select
+                              id="replaceDate"
+                              value={rescheduledFromDate}
+                              onChange={(e) => setRescheduledFromDate(e.target.value)}
+                              className="flex h-10 w-full rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon/30 focus-visible:border-maroon"
+                              required={isRescheduled}
+                            >
+                              <option value="">Select standard slot...</option>
+                              {getStandardReplaceDates().map((d) => (
+                                <option key={d.dateStr} value={d.dateStr}>
+                                  {d.label}
+                                </option>
+                              ))}
+                            </select>
+                            <p className="text-xs text-zinc-500 mt-1">
+                              The selected standard slot will be visually marked as "MOVED" for students.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <div className="grid sm:grid-cols-2 gap-4">

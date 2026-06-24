@@ -123,12 +123,38 @@ export function generateCalendarEvents(
   const start = new Date(startDate + 'T00:00:00')
   const end = new Date(endDate + 'T23:59:59')
 
-  const sessionMap = new Map<string, Session>()
+  const rescheduleMap = new Map<string, Session>()
   for (const s of sessions) {
-    const key = `${s.sectionId}|${s.date}`
-    sessionMap.set(key, s)
+    if (s.rescheduledFromDate) {
+      rescheduleMap.set(`${s.sectionId}|${s.rescheduledFromDate}`, s)
+    }
   }
 
+  // 1. Render all active/completed sessions
+  for (const session of sessions) {
+    const sessionDate = new Date(session.date + 'T00:00:00')
+    if (sessionDate < start || sessionDate > end) continue
+    const section = sections.find((s) => s.id === session.sectionId)
+    if (!section) continue
+
+    events.push({
+      id: session.id,
+      title: session.subjectName,
+      date: session.date,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      room: session.room,
+      sectionId: session.sectionId,
+      subjectName: session.subjectName,
+      sectionName: section.section,
+      type: 'session',
+      status: session.isActive ? 'active' : 'inactive',
+      isRescheduled: session.isRescheduled,
+      rescheduledFromDate: session.rescheduledFromDate,
+    })
+  }
+
+  // 2. Render standard schedule slots (ghost slots / moved slots)
   for (const section of sections) {
     for (const schedule of section.schedule) {
       const dayIndex = DAY_OF_WEEK_MAP[schedule.day]
@@ -138,24 +164,32 @@ export function generateCalendarEvents(
       while (cursor <= end) {
         if (cursor.getDay() === dayIndex) {
           const dateStr = formatDate(cursor)
-          const sessionKey = `${section.id}|${dateStr}`
-          const existing = sessionMap.get(sessionKey)
+          const hasRegularSession = sessions.some(
+            (s) => s.sectionId === section.id && s.date === dateStr && !s.rescheduledFromDate
+          )
+          const rescheduledSession = rescheduleMap.get(`${section.id}|${dateStr}`)
 
-          if (existing) {
+          if (rescheduledSession) {
             events.push({
-              id: existing.id,
-              title: existing.subjectName,
+              id: `schedule-moved-${section.id}-${dateStr}-${schedule.day}`,
+              title: section.section ? `${section.section}` : '',
               date: dateStr,
-              startTime: existing.startTime,
-              endTime: existing.endTime,
-              room: existing.room,
-              sectionId: existing.sectionId,
-              subjectName: existing.subjectName,
+              startTime: schedule.startTime,
+              endTime: schedule.endTime,
+              room: schedule.room,
+              sectionId: section.id,
+              subjectName: section.section || '',
               sectionName: section.section,
-              type: 'session',
-              status: existing.isActive ? 'active' : 'inactive',
+              type: 'schedule',
+              status: 'moved',
+              rescheduledTo: {
+                date: rescheduledSession.date,
+                startTime: rescheduledSession.startTime,
+                endTime: rescheduledSession.endTime,
+                room: rescheduledSession.room,
+              }
             })
-          } else {
+          } else if (!hasRegularSession) {
             events.push({
               id: `schedule-${section.id}-${dateStr}-${schedule.day}`,
               title: section.section ? `${section.section}` : '',
@@ -201,15 +235,16 @@ export function generateStudentCalendarEvents(
     attendanceBySession.set(r.sessionId, r)
   }
 
-  const sessionSectionMap = new Map<string, Section>()
-  for (const s of sections) {
-    for (const sess of sessions) {
-      if (sess.sectionId === s.id) sessionSectionMap.set(sess.id, s)
+  const rescheduleMap = new Map<string, Session>()
+  for (const s of sessions) {
+    if (s.rescheduledFromDate) {
+      rescheduleMap.set(`${s.sectionId}|${s.rescheduledFromDate}`, s)
     }
   }
 
   const now = new Date()
 
+  // 1. Render all active/completed sessions
   for (const session of sessions) {
     const sessionDate = new Date(session.date + 'T00:00:00')
     if (sessionDate < start || sessionDate > end) continue
@@ -248,9 +283,12 @@ export function generateStudentCalendarEvents(
       status: session.isActive ? 'active' : 'inactive',
       studentStatus,
       teacherName: section?.teacherName,
+      isRescheduled: session.isRescheduled,
+      rescheduledFromDate: session.rescheduledFromDate,
     })
   }
 
+  // 2. Render standard schedule slots (ghost slots / moved slots)
   for (const section of sections) {
     for (const schedule of section.schedule) {
       const dayIndex = DAY_OF_WEEK_MAP[schedule.day]
@@ -260,8 +298,34 @@ export function generateStudentCalendarEvents(
       while (cursor <= end) {
         if (cursor.getDay() === dayIndex) {
           const dateStr = formatDate(cursor)
-          const hasSession = sessions.some((s) => s.sectionId === section.id && s.date === dateStr)
-          if (!hasSession) {
+          const hasRegularSession = sessions.some(
+            (s) => s.sectionId === section.id && s.date === dateStr && !s.rescheduledFromDate
+          )
+          const rescheduledSession = rescheduleMap.get(`${section.id}|${dateStr}`)
+          const subject = getSubject(section.subjectId)
+
+          if (rescheduledSession) {
+            events.push({
+              id: `ghost-moved-${section.id}-${dateStr}-${schedule.day}`,
+              title: '',
+              date: dateStr,
+              startTime: schedule.startTime,
+              endTime: schedule.endTime,
+              room: schedule.room,
+              sectionId: section.id,
+              subjectName: subject?.name ?? '',
+              subjectCode: subject?.code,
+              sectionName: section.section,
+              type: 'schedule',
+              status: 'moved',
+              rescheduledTo: {
+                date: rescheduledSession.date,
+                startTime: rescheduledSession.startTime,
+                endTime: rescheduledSession.endTime,
+                room: rescheduledSession.room,
+              }
+            })
+          } else if (!hasRegularSession) {
             events.push({
               id: `ghost-${section.id}-${dateStr}-${schedule.day}`,
               title: '',
@@ -270,7 +334,8 @@ export function generateStudentCalendarEvents(
               endTime: schedule.endTime,
               room: schedule.room,
               sectionId: section.id,
-              subjectName: '',
+              subjectName: subject?.name ?? '',
+              subjectCode: subject?.code,
               sectionName: section.section,
               type: 'schedule',
             })

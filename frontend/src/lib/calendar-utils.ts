@@ -24,6 +24,10 @@ export interface CalendarEvent {
   sessionId?: string
   isActive?: boolean
   teacherName?: string
+  status?: 'active' | 'inactive' | 'completed' | 'moved'
+  isRescheduled?: boolean
+  rescheduledFromDate?: string
+  rescheduledTo?: { date: string; startTime: string; endTime: string; room?: string }
 }
 
 const DAY_MAP: Record<string, number> = {
@@ -93,18 +97,50 @@ export function timeToPosition(time: string, startHour: number = 7): number {
 
 export function generateCalendarEvents(
   sections: { id: string; section: string; room: string; schedule: { day: string; startTime: string; endTime: string; room?: string }[]; subjectId: string; teacherName: string }[],
-  sessions: { id: string; sectionId: string; subjectName: string; date: string; startTime: string; endTime: string; room?: string; isActive: boolean; teacherId: string }[],
+  sessions: { id: string; sectionId: string; subjectName: string; date: string; startTime: string; endTime: string; room?: string; isActive: boolean; teacherId: string; isRescheduled?: boolean; rescheduledFromDate?: string }[],
   getSubject: (id: string) => { name: string; code: string } | undefined,
   startDate: Date,
   endDate: Date,
 ): CalendarEvent[] {
   const events: CalendarEvent[] = []
-  const sessionMap = new Map<string, boolean>()
-
-  for (const session of sessions) {
-    sessionMap.set(`${session.sectionId}_${session.date}`, true)
+  
+  const rescheduleMap = new Map<string, any>()
+  for (const s of sessions) {
+    if (s.rescheduledFromDate) {
+      rescheduleMap.set(`${s.sectionId}|${s.rescheduledFromDate}`, s)
+    }
   }
 
+  // 1. Render all active/completed/rescheduled sessions
+  for (const session of sessions) {
+    const sessionDate = new Date(session.date + 'T00:00:00')
+    if (sessionDate < startDate || sessionDate > endDate) continue
+    const section = sections.find((s) => s.id === session.sectionId)
+    if (!section) continue
+    const subject = getSubject(section.subjectId)
+
+    events.push({
+      id: `sess-${session.id}`,
+      title: session.subjectName,
+      sectionId: session.sectionId,
+      sectionName: `Sec ${section.section}`,
+      subjectName: session.subjectName,
+      subjectCode: subject?.code,
+      room: session.room,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      date: session.date,
+      type: 'session',
+      sessionId: session.id,
+      isActive: session.isActive,
+      teacherName: section.teacherName,
+      status: session.isActive ? 'active' : 'inactive',
+      isRescheduled: session.isRescheduled,
+      rescheduledFromDate: session.rescheduledFromDate,
+    })
+  }
+
+  // 2. Render standard schedule slots (ghost slots / moved slots)
   for (const section of sections) {
     const subject = getSubject(section.subjectId)
     for (const sched of section.schedule) {
@@ -115,27 +151,34 @@ export function generateCalendarEvents(
       while (current <= endDate) {
         if (current.getDay() === dayIndex) {
           const dateStr = formatDate(current)
-          const existingSession = sessions.find(
-            (s) => s.sectionId === section.id && s.date === dateStr
+          const hasRegularSession = sessions.some(
+            (s) => s.sectionId === section.id && s.date === dateStr && !s.rescheduledFromDate
           )
-          if (existingSession) {
+          const rescheduledSession = rescheduleMap.get(`${section.id}|${dateStr}`)
+
+          if (rescheduledSession) {
             events.push({
-              id: `sess-${existingSession.id}`,
-              title: existingSession.subjectName,
+              id: `sched-moved-${section.id}-${dateStr}-${sched.startTime}`,
+              title: subject?.name ?? section.id,
               sectionId: section.id,
               sectionName: `Sec ${section.section}`,
-              subjectName: existingSession.subjectName,
+              subjectName: subject?.name ?? section.id,
               subjectCode: subject?.code,
-              room: existingSession.room || sched.room || section.room,
-              startTime: existingSession.startTime,
-              endTime: existingSession.endTime,
+              room: sched.room || section.room,
+              startTime: sched.startTime,
+              endTime: sched.endTime,
               date: dateStr,
-              type: 'session',
-              sessionId: existingSession.id,
-              isActive: existingSession.isActive,
+              type: 'schedule',
+              status: 'moved',
               teacherName: section.teacherName,
+              rescheduledTo: {
+                date: rescheduledSession.date,
+                startTime: rescheduledSession.startTime,
+                endTime: rescheduledSession.endTime,
+                room: rescheduledSession.room,
+              }
             })
-          } else {
+          } else if (!hasRegularSession) {
             events.push({
               id: `sched-${section.id}-${dateStr}-${sched.startTime}`,
               title: subject?.name ?? section.id,
@@ -155,33 +198,6 @@ export function generateCalendarEvents(
         current.setDate(current.getDate() + 1)
       }
     }
-  }
-
-  for (const session of sessions) {
-    const sessionDate = new Date(session.date + 'T00:00:00')
-    if (sessionDate < startDate || sessionDate > endDate) continue
-    const key = `${session.sectionId}_${session.date}`
-    if (sessionMap.get(key)) {
-      continue
-    }
-    const section = sections.find((s) => s.id === session.sectionId)
-    const subject = section ? getSubject(section.subjectId) : undefined
-    events.push({
-      id: `sess-${session.id}`,
-      title: session.subjectName,
-      sectionId: session.sectionId,
-      sectionName: section ? `Sec ${section.section}` : '',
-      subjectName: session.subjectName,
-      subjectCode: subject?.code,
-      room: session.room,
-      startTime: session.startTime,
-      endTime: session.endTime,
-      date: session.date,
-      type: 'session',
-      sessionId: session.id,
-      isActive: session.isActive,
-      teacherName: section?.teacherName,
-    })
   }
 
   return events.sort((a, b) => {

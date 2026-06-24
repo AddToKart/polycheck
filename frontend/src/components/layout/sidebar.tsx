@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import type { User } from '@polycheck/shared'
 import {
   LayoutDashboard,
@@ -17,11 +17,20 @@ import {
   LogOut,
   Menu,
   X,
+  Clock,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import ThemeToggle from '@/components/ThemeToggle'
 
-type NavItem = { label: string; href: string; icon: typeof LayoutDashboard }
+type NavItem = { label: string; href: string; icon: any }
+
+// Navigation for students
+const studentNav: NavItem[] = [
+  { label: 'Dashboard', href: '/student/dashboard', icon: LayoutDashboard },
+  { label: 'My Subjects', href: '/student/dashboard?tab=subjects', icon: BookOpen },
+  { label: 'Schedule', href: '/student/schedule', icon: Calendar },
+  { label: 'Attendance History', href: '/student/dashboard?tab=attendance', icon: Clock },
+]
 
 // Navigation for standard teachers
 const teacherNav: NavItem[] = [
@@ -50,25 +59,32 @@ interface SidebarProps {
 
 export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const activeTabQuery = searchParams.get('tab')
   const [isOpen, setIsOpen] = useState(false)
   const isSuper = user.role === 'super_admin'
+  
   const items = backHref
     ? []
-    : isSuper
-      ? superAdminNav
-      : teacherNav
+    : user.role === 'student'
+      ? studentNav
+      : isSuper
+        ? superAdminNav
+        : teacherNav
+
+  const homeHref = user.role === 'student' ? '/student/dashboard' : '/faculty'
 
   const sidebarContent = (
     <>
       <div className="p-6 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-maroon dark:bg-golden text-white dark:text-maroon-dark">
         <div>
-          <Link href="/faculty" onClick={() => setIsOpen(false)}>
+          <Link href={homeHref} onClick={() => setIsOpen(false)}>
             <h1 className="text-2xl font-heading font-bold tracking-tight text-golden dark:text-maroon-dark">
               Polycheck
             </h1>
           </Link>
           <p className="text-[10px] uppercase tracking-widest text-white/70 dark:text-maroon-dark/80 mt-1">
-            {isSuper ? 'Super Admin' : 'Faculty'}
+            {user.role === 'student' ? 'Student' : isSuper ? 'Super Admin' : 'Faculty'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -97,10 +113,18 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
         <div className="flex flex-col">
           {items.map((item) => {
             const Icon = item.icon
-            const isActive =
-              item.href === '/faculty'
-                ? pathname === '/faculty'
-                : pathname.startsWith(item.href)
+            let isActive = false
+            if (item.href.includes('?tab=')) {
+              const tabValue = item.href.split('?tab=')[1]
+              isActive = pathname === '/student/dashboard' && activeTabQuery === tabValue
+            } else if (item.href === '/student/dashboard') {
+              isActive = pathname === '/student/dashboard' && !activeTabQuery
+            } else if (item.href === '/faculty') {
+              isActive = pathname === '/faculty'
+            } else {
+              isActive = pathname.startsWith(item.href)
+            }
+
             return (
               <Link
                 key={item.href}
