@@ -16,6 +16,7 @@ import {
   LogOut,
   GraduationCap,
   CalendarDays,
+  Calendar,
   MapPin,
   X,
   Menu,
@@ -23,6 +24,8 @@ import {
   AlertTriangle,
   CheckCircle,
   XCircle,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import {
   Dialog,
@@ -34,12 +37,14 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { getWeekDays, getDayName, getDayNameFull, formatDate, formatTime, isSameDay, getDateRangeForWeek, type CalendarEvent } from '@/lib/calendar-utils'
 
-type NavTab = 'dashboard' | 'subjects' | 'attendance'
+type NavTab = 'dashboard' | 'subjects' | 'schedule' | 'attendance'
 
 const navItems = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'subjects', label: 'My Subjects', icon: BookOpen },
+  { key: 'schedule', label: 'Schedule', icon: Calendar },
   { key: 'attendance', label: 'Attendance History', icon: Clock },
 ] as const
 
@@ -60,6 +65,7 @@ export default function StudentDashboardPage() {
   const [isIdModalOpen, setIsIdModalOpen] = useState(false)
   const [isIdFlipped, setIsIdFlipped] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [scheduleDate, setScheduleDate] = useState(new Date())
   const [disputeRecord, setDisputeRecord] = useState<AttendanceRecord | null>(null)
   const [disputeReason, setDisputeReason] = useState('')
   const [disputeDescription, setDisputeDescription] = useState('')
@@ -162,9 +168,48 @@ export default function StudentDashboardPage() {
     setDisputeDescription('')
   }
 
-  if (!user) return null
+function generateStudentEvents(
+  sections: { id: string; section: string; schedule: { day: string; startTime: string; endTime: string; room?: string }[]; subjectId: string; teacherName: string; room: string }[],
+  getSubject: (id: string) => { name: string; code: string } | undefined,
+  startDate: Date,
+  endDate: Date,
+): CalendarEvent[] {
+  const events: CalendarEvent[] = []
+  const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+  for (const section of sections) {
+    const subject = getSubject(section.subjectId)
+    for (const sched of section.schedule) {
+      const dayIndex = dayMap[sched.day]
+      if (dayIndex === -1 || dayIndex === undefined) continue
+      const current = new Date(startDate)
+      while (current <= endDate) {
+        if (current.getDay() === dayIndex) {
+          events.push({
+            id: `sched-${section.id}-${formatDate(current)}-${sched.startTime}`,
+            title: subject?.name ?? section.id,
+            sectionId: section.id,
+            sectionName: `Sec ${section.section}`,
+            subjectName: subject?.name ?? section.id,
+            subjectCode: subject?.code,
+            room: sched.room || section.room,
+            startTime: sched.startTime,
+            endTime: sched.endTime,
+            date: formatDate(current),
+            type: 'schedule',
+            teacherName: section.teacherName,
+          })
+        }
+        current.setDate(current.getDate() + 1)
+      }
+    }
+  }
+  return events.sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date)
+    return a.startTime.localeCompare(b.startTime)
+  })
+}
 
-  const ATTENDANCE_PAGE_SIZE = 8
+const ATTENDANCE_PAGE_SIZE = 8
   const sortedRecords = useMemo(
     () => [...records].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
     [records]
@@ -174,6 +219,8 @@ export default function StudentDashboardPage() {
     () => sortedRecords.slice(attendancePage * ATTENDANCE_PAGE_SIZE, (attendancePage + 1) * ATTENDANCE_PAGE_SIZE),
     [sortedRecords, attendancePage]
   )
+
+  if (!user) return null
 
   const stats = {
     present: records.filter((r) => r.status === 'present').length,
@@ -611,6 +658,85 @@ export default function StudentDashboardPage() {
                 </div>
               )}
             </div>
+            </>
+          )}
+
+          {/* Schedule Tab */}
+          {activeTab === 'schedule' && (
+            <>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8 border-b border-zinc-200 dark:border-zinc-800 pb-6">
+                <div>
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">My Weekly Schedule</p>
+                  <h2 className="text-xl font-heading font-bold text-foreground">
+                    {(() => {
+                      const wd = getWeekDays(scheduleDate)
+                      const s = wd[0]; const e = wd[6]
+                      if (s.getMonth() === e.getMonth()) return `${s.toLocaleDateString('en-US', { month: 'long' })} ${s.getDate()} - ${e.getDate()}, ${s.getFullYear()}`
+                      return `${s.toLocaleDateString('en-US', { month: 'short' })} ${s.getDate()} - ${e.toLocaleDateString('en-US', { month: 'short' })} ${e.getDate()}, ${s.getFullYear()}`
+                    })()}
+                  </h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setScheduleDate(new Date())} className="text-[10px] font-bold uppercase tracking-widest rounded-none px-4">Today</Button>
+                  <div className="flex items-center border border-zinc-300 dark:border-zinc-700">
+                    <Button variant="ghost" size="icon" onClick={() => { const d = new Date(scheduleDate); d.setDate(d.getDate() - 7); setScheduleDate(d) }} className="rounded-none h-8 w-8 border-r border-zinc-300 dark:border-zinc-700"><ChevronLeft className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => { const d = new Date(scheduleDate); d.setDate(d.getDate() + 7); setScheduleDate(d) }} className="rounded-none h-8 w-8"><ChevronRight className="w-4 h-4" /></Button>
+                  </div>
+                </div>
+              </div>
+
+              {sections.length === 0 ? (
+                <div className="border border-dashed border-zinc-300 dark:border-zinc-700 p-16 text-center bg-zinc-50 dark:bg-zinc-900/20">
+                  <BookOpen className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mx-auto mb-4" />
+                  <p className="text-xl font-heading font-bold text-zinc-400 mb-2">NO ENROLLMENTS</p>
+                  <p className="text-xs uppercase tracking-widest text-zinc-500">Enroll in a subject to see your schedule.</p>
+                </div>
+              ) : (
+                <>
+                  {(() => {
+                    const weekDays = getWeekDays(scheduleDate)
+                    const today = new Date()
+                    const weekRange = getDateRangeForWeek(scheduleDate)
+                    const schedEvents = generateStudentEvents(sections, (id) => { const s = api.getSubject(id); return s ? { name: s.name, code: s.code } : undefined }, weekRange.start, weekRange.end)
+                    const weekDayEvents = new Map<string, CalendarEvent[]>()
+                    for (const day of weekDays) {
+                      weekDayEvents.set(formatDate(day), schedEvents.filter((e) => e.date === formatDate(day)))
+                    }
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
+                        {weekDays.map((day, i) => {
+                          const ds = formatDate(day)
+                          const dayEvs = weekDayEvents.get(ds) || []
+                          const isT = isSameDay(day, today)
+                          return (
+                            <div key={i} className={`rounded-none border ${isT ? 'border-maroon dark:border-golden border-t-4 border-t-maroon dark:border-t-golden' : 'border-zinc-300 dark:border-zinc-800'} bg-white dark:bg-zinc-900`}>
+                              <div className={`p-3 border-b border-zinc-200 dark:border-zinc-700 ${isT ? 'bg-maroon/5 dark:bg-golden/10' : 'bg-zinc-50 dark:bg-zinc-900/50'}`}>
+                                <p className={`text-[10px] font-bold uppercase tracking-widest ${isT ? 'text-maroon dark:text-golden' : 'text-zinc-500'}`}>{getDayName(i)}</p>
+                                <p className={`text-lg font-heading font-bold mt-0.5 ${isT ? 'text-maroon dark:text-golden' : 'text-foreground'}`}>{day.getDate()}</p>
+                                <p className="text-[9px] text-zinc-400 uppercase tracking-wider mt-0.5">{getDayNameFull(i)}</p>
+                              </div>
+                              <div className="p-2 space-y-2 min-h-[120px]">
+                                {dayEvs.length === 0 ? (
+                                  <p className="text-[10px] text-zinc-400 text-center py-4">No classes</p>
+                                ) : (
+                                  dayEvs.map((ev) => (
+                                    <Link key={ev.id} href={`/student/subjects/${ev.sectionId}`} className="block p-2 border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-colors">
+                                      <p className="text-[10px] font-bold text-blue-700 dark:text-blue-300 truncate leading-tight">{ev.subjectCode || ev.subjectName}</p>
+                                      <p className="text-[9px] text-zinc-500 dark:text-zinc-400 mt-0.5">{formatTime(ev.startTime)} - {formatTime(ev.endTime)}</p>
+                                      {ev.room && <p className="text-[9px] text-zinc-400 dark:text-zinc-500 truncate">{ev.room}</p>}
+                                      {ev.teacherName && <p className="text-[9px] text-zinc-400 dark:text-zinc-500 truncate">{ev.teacherName}</p>}
+                                    </Link>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })()}
+                </>
+              )}
             </>
           )}
 
