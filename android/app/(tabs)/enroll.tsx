@@ -69,8 +69,22 @@ export default function EnrollScreen() {
   const textSecondary = isDark ? 'rgba(255,255,255,0.5)' : '#888'
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
-      <Stack.Screen options={{ title: 'Enroll in Subject', headerShown: true }} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['bottom', 'left', 'right']}>
+      <Stack.Screen
+        options={{
+          title: 'Enroll in Subject',
+          headerShown: true,
+          headerStyle: {
+            backgroundColor: isDark ? '#0A0A0C' : '#FFFFFF',
+          },
+          headerTintColor: isDark ? '#FFDF00' : '#7B1113',
+          headerTitleStyle: {
+            fontFamily: 'DMSans_700Bold',
+            fontSize: 16,
+          },
+          headerShadowVisible: false,
+        }}
+      />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 24 }} keyboardShouldPersistTaps="handled">
           <View style={{ alignItems: 'center', marginBottom: 32 }}>
