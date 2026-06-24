@@ -27,7 +27,7 @@ export default function StudentScheduleScreen() {
     ? (user as typeof user & { studentId: string; program: string; yearLevel: number })
     : null
 
-  const mySections: Section[] = student ? api.getStudentSections(student.studentId) : []
+  const mySections: Section[] = student ? api.getStudentSections(student.id) : []
 
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate])
 

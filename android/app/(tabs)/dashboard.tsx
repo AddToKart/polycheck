@@ -13,8 +13,8 @@ export default function DashboardScreen() {
   const student = user && 'studentId' in user
     ? (user as typeof user & { studentId: string; program: string; yearLevel: number })
     : null
-  const mySections = student ? api.getStudentSections(student.studentId) : []
-  const myAttendance = student ? api.getMyAttendance(student.studentId) : []
+  const mySections = student ? api.getStudentSections(student.id) : []
+  const myAttendance = student ? api.getMyAttendance(student.id) : []
 
   const present = myAttendance.filter((r) => r.status === 'present').length
   const late = myAttendance.filter((r) => r.status === 'late').length

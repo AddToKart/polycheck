@@ -66,9 +66,9 @@ export default function ScanScreen() {
       // fallback to session center
     }
 
-    const result = api.checkAttendance(session.id, user.studentId ?? user.id, lat, lon)
+    const result = api.checkAttendance(session.id, user.id, lat, lon)
     if (result.success) {
-      api.submitScan(session.id, user.studentId ?? user.id, user.fullName, lat, lon, 'device-mobile')
+      api.submitScan(session.id, user.id, user.fullName, lat, lon, 'device-mobile')
       showResult(result.status === 'late' ? 'late' : 'present', result.message ?? 'Check-in successful!')
     } else {
       showResult('absent', result.message ?? 'Check-in rejected')
@@ -93,9 +93,9 @@ export default function ScanScreen() {
     const session = sessions[0]
     let lat = session.geofence.latitude
     let lon = session.geofence.longitude
-    const res = api.checkAttendance(session.id, (user as any).studentId, lat, lon)
+    const res = api.checkAttendance(session.id, user.id, lat, lon)
     if (res.success) {
-      api.submitScan(session.id, (user as any).studentId, user.fullName, lat, lon, 'device-mobile')
+      api.submitScan(session.id, user.id, user.fullName, lat, lon, 'device-mobile')
       showResult(res.status === 'late' ? 'late' : 'present', res.message ?? 'Check-in successful!')
     } else {
       showResult('absent', res.message ?? 'Check-in rejected')

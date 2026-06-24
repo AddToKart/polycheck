@@ -28,7 +28,7 @@ export default function HistoryScreen() {
     : null
 
   const allRecords = useMemo(
-    () => (student ? api.getMyAttendance(student.studentId) : []),
+    () => (student ? api.getMyAttendance(student.id) : []),
     [student],
   )
 
