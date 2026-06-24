@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
+import * as Clipboard from 'expo-clipboard'
 import { api } from '../../services/mock-api'
 import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
@@ -33,6 +34,12 @@ export default function FacultyAttendanceScreen() {
     { totalSessions: 0, present: 0, late: 0, absent: 0 }
   )
 
+  const handleExport = async () => {
+    const csv = api.exportAttendanceCsv()
+    await Clipboard.setStringAsync(csv)
+    Alert.alert('Exported', 'Attendance data copied to clipboard. You can paste it into a spreadsheet.')
+  }
+
   const handleLogout = () => {
     api.logout()
     router.replace('/')
@@ -43,6 +50,9 @@ export default function FacultyAttendanceScreen() {
       <View style={[styles.header, isDark && styles.headerDark]}>
         <Text style={[styles.heading, isDark && styles.textGolden]}>Attendance</Text>
         <View style={styles.headerRight}>
+          <TouchableOpacity onPress={handleExport} style={styles.iconBtn} accessibilityLabel="Export CSV">
+            <MaterialIcons name="file-download" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
             <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>

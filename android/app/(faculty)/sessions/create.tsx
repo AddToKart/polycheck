@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Modal, View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet } from 'react-native'
+import { Modal, View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -113,6 +113,13 @@ export default function CreateSessionScreen() {
   const [showSectionPicker, setShowSectionPicker] = useState(false)
   const [showStartTime, setShowStartTime] = useState(false)
   const [showEndTime, setShowEndTime] = useState(false)
+  const [bulkMode, setBulkMode] = useState(false)
+  const [bulkStartDate, setBulkStartDate] = useState(new Date().toISOString().slice(0, 10))
+  const [bulkEndDate, setBulkEndDate] = useState(() => {
+    const d = new Date(); d.setMonth(d.getMonth() + 4); return d.toISOString().slice(0, 10)
+  })
+  const [bulkDays, setBulkDays] = useState<string[]>([])
+  const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -142,21 +149,64 @@ export default function CreateSessionScreen() {
   const selectedSection = sections.find((s) => s.id === sectionId)
   const selectedParentSubject = selectedSection ? subjects.find((s) => s.id === selectedSection.subjectId) : undefined
 
+  useEffect(() => {
+    if (selectedSection) {
+      setBulkDays(selectedSection.schedule.map((s) => s.day as string))
+      if (selectedSection.room) setRoom(selectedSection.room)
+    }
+  }, [selectedSection])
+
+  const calculateBulkCount = () => {
+    if (!bulkStartDate || !bulkEndDate || bulkDays.length === 0) return 0
+    const dayMap: Record<string, number> = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 }
+    const targetDays = bulkDays.map((d) => dayMap[d])
+    const start = new Date(bulkStartDate)
+    const end = new Date(bulkEndDate)
+    let count = 0
+    const cursor = new Date(start)
+    while (cursor <= end) {
+      if (targetDays.includes(cursor.getDay())) count++
+      cursor.setDate(cursor.getDate() + 1)
+    }
+    return count
+  }
+
   const handleCreate = () => {
     if (!sectionId || !selectedSection) return
-    api.createSession({
-      sectionId,
-      subjectName: selectedParentSubject?.name ?? '',
-      date,
-      startTime,
-      endTime,
-      room: room || undefined,
-      qrValidityMinutes: qrValidity,
-      gracePeriodMinutes: gracePeriod,
-      geofence: { latitude, longitude, radiusMeters: radius },
-      teacherId: user.id,
-    })
-    router.back()
+    if (bulkMode) {
+      const count = calculateBulkCount()
+      if (count === 0) return
+      api.createBulkSessions({
+        sectionId,
+        subjectName: selectedParentSubject?.name ?? '',
+        startDate: bulkStartDate,
+        endDate: bulkEndDate,
+        daysOfWeek: bulkDays,
+        startTime,
+        endTime,
+        room: room || undefined,
+        qrValidityMinutes: qrValidity,
+        gracePeriodMinutes: gracePeriod,
+        geofence: { latitude, longitude, radiusMeters: radius },
+        teacherId: user.id,
+      })
+      Alert.alert('Sessions Created', `${count} session${count !== 1 ? 's' : ''} created successfully.`)
+      router.back()
+    } else {
+      api.createSession({
+        sectionId,
+        subjectName: selectedParentSubject?.name ?? '',
+        date,
+        startTime,
+        endTime,
+        room: room || undefined,
+        qrValidityMinutes: qrValidity,
+        gracePeriodMinutes: gracePeriod,
+        geofence: { latitude, longitude, radiusMeters: radius },
+        teacherId: user.id,
+      })
+      router.back()
+    }
   }
 
   return (
@@ -251,15 +301,87 @@ export default function CreateSessionScreen() {
           </TouchableOpacity>
         </Modal>
 
-        {/* Date */}
-        <Text style={[styles.label, isDark && styles.labelDark]}>Date</Text>
-        <TouchableOpacity
-          style={[styles.picker, isDark && styles.pickerDark]}
-          onPress={() => {}}
-        >
-          <Text style={[styles.pickerText, isDark && styles.textWhite]}>{date}</Text>
-          <MaterialIcons name="calendar-today" size={18} color={isDark ? '#FFDF00' : '#888'} />
-        </TouchableOpacity>
+        {/* Bulk Create Toggle */}
+        <View style={styles.bulkToggle}>
+          <TouchableOpacity
+            style={styles.bulkToggleRow}
+            onPress={() => setBulkMode(!bulkMode)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.checkbox, bulkMode && styles.checkboxActive, isDark && styles.checkboxDark, bulkMode && isDark && styles.checkboxActiveDark]}>
+              {bulkMode && <MaterialIcons name="check" size={14} color="#FFFFFF" />}
+            </View>
+            <Text style={[styles.bulkToggleLabel, isDark && styles.textWhite]}>Create recurring sessions for the semester</Text>
+          </TouchableOpacity>
+        </View>
+
+        {bulkMode ? (
+          <>
+            <Text style={[styles.label, isDark && styles.labelDark, { marginTop: 8 }]}>Bulk Session Range</Text>
+            <View style={[styles.bulkBox, isDark && styles.bulkBoxDark]}>
+              <Text style={[styles.hint, isDark && styles.hintDark, { marginBottom: 12 }]}>
+                Create sessions for all selected days between the start and end dates.
+              </Text>
+              <View style={styles.row}>
+                <View style={styles.half}>
+                  <Text style={[styles.bulkFieldLabel, isDark && styles.textWhite50]}>Start Date</Text>
+                  <TextInput
+                    style={[styles.picker, isDark && styles.pickerDark, { marginTop: 4 }]}
+                    value={bulkStartDate}
+                    onChangeText={setBulkStartDate}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor="#AAA"
+                  />
+                </View>
+                <View style={styles.half}>
+                  <Text style={[styles.bulkFieldLabel, isDark && styles.textWhite50]}>End Date</Text>
+                  <TextInput
+                    style={[styles.picker, isDark && styles.pickerDark, { marginTop: 4 }]}
+                    value={bulkEndDate}
+                    onChangeText={setBulkEndDate}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor="#AAA"
+                  />
+                </View>
+              </View>
+              <Text style={[styles.bulkFieldLabel, isDark && styles.textWhite50, { marginTop: 12, marginBottom: 6 }]}>Days of Week</Text>
+              <View style={styles.bulkDaysRow}>
+                {ALL_DAYS.map((day) => {
+                  const selected = bulkDays.includes(day)
+                  return (
+                    <TouchableOpacity
+                      key={day}
+                      style={[styles.bulkDayChip, selected && styles.bulkDayChipActive, isDark && styles.bulkDayChipDark, selected && isDark && styles.bulkDayChipActiveDark]}
+                      onPress={() => {
+                        setBulkDays((prev) => selected ? prev.filter((d) => d !== day) : [...prev, day])
+                      }}
+                    >
+                      <Text style={[styles.bulkDayText, selected && styles.bulkDayTextActive, isDark && styles.bulkDayTextDark]}>
+                        {day}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </View>
+              <View style={[styles.bulkCountBadge, isDark && styles.bulkCountBadgeDark]}>
+                <Text style={[styles.bulkCountText, isDark && styles.bulkCountTextDark]}>
+                  {calculateBulkCount()} session{calculateBulkCount() !== 1 ? 's' : ''} will be created
+                </Text>
+              </View>
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={[styles.label, isDark && styles.labelDark]}>Date</Text>
+            <TextInput
+              style={[styles.picker, isDark && styles.pickerDark]}
+              value={date}
+              onChangeText={setDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#AAA"
+            />
+          </>
+        )}
 
         {/* Time row */}
         <View style={styles.row}>
@@ -370,14 +492,16 @@ export default function CreateSessionScreen() {
 
         {/* Create button */}
         <TouchableOpacity
-          style={[styles.createBtn, isDark && styles.createBtnDark, !sectionId && styles.createBtnDisabled]}
+          style={[styles.createBtn, isDark && styles.createBtnDark, (!sectionId || (bulkMode && calculateBulkCount() === 0)) && styles.createBtnDisabled]}
           onPress={handleCreate}
-          disabled={!sectionId}
+          disabled={!sectionId || (bulkMode && calculateBulkCount() === 0)}
           accessibilityRole="button"
-          accessibilityLabel="Create session"
+          accessibilityLabel={bulkMode ? 'Create bulk sessions' : 'Create session'}
         >
           <MaterialIcons name="add" size={20} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
-          <Text style={[styles.createBtnText, isDark && styles.createBtnTextDark]}>Create Session</Text>
+          <Text style={[styles.createBtnText, isDark && styles.createBtnTextDark]}>
+            {bulkMode ? `Create ${calculateBulkCount()} Sessions` : 'Create Session'}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -393,6 +517,7 @@ const styles = StyleSheet.create({
   heading: { flex: 1, fontSize: 22, fontWeight: '700', fontFamily: fonts.heading, color: '#1A1A1A' },
   headingDark: { color: '#FFDF00' },
   textWhite: { color: '#FFFFFF' },
+  textWhite50: { color: 'rgba(255,255,255,0.5)' },
   content: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 100 },
   label: { fontSize: 12, fontFamily: fonts.bodyMedium, color: '#888', marginBottom: 6, marginTop: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
   labelDark: { color: 'rgba(255,255,255,0.5)' },
@@ -451,4 +576,27 @@ const styles = StyleSheet.create({
   timeOkBtnDark: { backgroundColor: '#FFDF00' },
   timeOkBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600', fontFamily: fonts.bodySemiBold },
   timeOkBtnTextDark: { color: '#4A0A0B' },
+  bulkToggle: { marginTop: 8 },
+  bulkToggleDark: {},
+  bulkToggleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
+  checkbox: { width: 20, height: 20, borderWidth: 2, borderColor: '#7B1113', justifyContent: 'center', alignItems: 'center' },
+  checkboxActive: { backgroundColor: '#7B1113' },
+  checkboxDark: { borderColor: '#FFDF00' },
+  checkboxActiveDark: { backgroundColor: '#FFDF00' },
+  bulkToggleLabel: { fontSize: 14, fontFamily: fonts.body, color: '#333', flex: 1 },
+  bulkBox: { backgroundColor: '#FAFAFA', borderWidth: 1, borderColor: '#E0E0E0', padding: 14 },
+  bulkBoxDark: { backgroundColor: '#121215', borderColor: 'rgba(245, 168, 0, 0.15)' },
+  bulkFieldLabel: { fontSize: 11, fontFamily: fonts.bodyMedium, color: '#888', marginTop: 4 },
+  bulkDaysRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  bulkDayChip: { paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: '#DDD', backgroundColor: '#FFFFFF' },
+  bulkDayChipActive: { backgroundColor: '#7B1113', borderColor: '#7B1113' },
+  bulkDayChipDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215' },
+  bulkDayChipActiveDark: { backgroundColor: '#FFDF00', borderColor: '#FFDF00' },
+  bulkDayText: { fontSize: 12, fontFamily: fonts.bodyMedium, color: '#666' },
+  bulkDayTextActive: { color: '#FFFFFF' },
+  bulkDayTextDark: { color: 'rgba(255,255,255,0.7)' },
+  bulkCountBadge: { marginTop: 12, backgroundColor: 'rgba(123,17,19,0.08)', paddingVertical: 6, paddingHorizontal: 10 },
+  bulkCountBadgeDark: { backgroundColor: 'rgba(245, 168, 0, 0.1)' },
+  bulkCountText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: '#7B1113' },
+  bulkCountTextDark: { color: '#FFDF00' },
 })

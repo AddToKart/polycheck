@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Sidebar } from '@/components/layout/sidebar'
 import StatusBadge from '@/components/StatusBadge'
+import { LoadingSpinner } from '@/lib/hooks'
 
 import {
   BookOpen,
@@ -30,12 +31,14 @@ import {
 function TeacherDashboard({ user }: { user: User }) {
   const [sections, setSections] = useState<Section[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const teacherSections = api.getSections().filter((s) => s.teacherId === user.id)
     setSections(teacherSections)
     const sectionIds = teacherSections.map((s) => s.id)
     setRecords(api.getAttendanceRecords().filter((r) => sectionIds.includes(r.sectionId)))
+    setLoading(false)
   }, [user.id])
 
   const sessionsToday = api.getSessions().filter((s) => s.date === new Date().toISOString().slice(0, 10)).length
@@ -47,6 +50,8 @@ function TeacherDashboard({ user }: { user: User }) {
     { label: 'Sessions Today', value: sessionsToday, icon: CalendarCheck },
     { label: 'Disputes', value: api.getDisputedRecords().length, icon: ClipboardList },
   ]
+
+  if (loading) return <LoadingSpinner className="min-h-[400px]" />
 
   return (
     <>
@@ -158,6 +163,12 @@ function TeacherDashboard({ user }: { user: User }) {
 // ============================================================================
 
 function SuperAdminDashboard({ user }: { user: User }) {
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(false)
+  }, [])
+
   const totalFaculty = api.getTeachers().length
   const totalStudents = api.getStudents().length
   const totalSubjects = api.getSubjects().length
@@ -168,6 +179,8 @@ function SuperAdminDashboard({ user }: { user: User }) {
     { label: 'Total Subjects', value: totalSubjects, icon: BookOpen },
     { label: 'System Health', value: 'Nominal', icon: ShieldCheck },
   ]
+
+  if (loading) return <LoadingSpinner className="min-h-[400px]" />
   
   // Mock trend data for the chart
   const weeklyTrends = [
@@ -328,6 +341,7 @@ function SuperAdminDashboard({ user }: { user: User }) {
 export default function FacultyPortalPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -336,6 +350,7 @@ export default function FacultyPortalPage() {
       return
     }
     setUser(cu)
+    setLoading(false)
   }, [router])
 
   const handleLogout = () => {
@@ -343,6 +358,11 @@ export default function FacultyPortalPage() {
     router.push('/')
   }
 
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <LoadingSpinner size="lg" />
+    </div>
+  )
   if (!user) return null
   
   const isSuper = user.role === 'super_admin'

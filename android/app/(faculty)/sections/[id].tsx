@@ -16,6 +16,10 @@ export default function SectionDetailScreen() {
   const [students, setStudents] = useState<(Student & { attendance: { present: number; late: number; absent: number } })[]>([])
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
+  const [isEnrollOpen, setIsEnrollOpen] = useState(false)
+  const [enrollSearch, setEnrollSearch] = useState('')
+
+  const allStudents = api.getStudents()
 
   useEffect(() => {
     if (!id) return
@@ -24,6 +28,28 @@ export default function SectionDetailScreen() {
     setSection(s)
     setStudents(api.getSectionStudents(id))
   }, [id])
+
+  const enrolledIds = new Set(students.map((s) => s.id))
+  const enrollCandidates = useMemo(() => {
+    if (!enrollSearch.trim()) return []
+    const q = enrollSearch.toLowerCase()
+    return allStudents.filter(
+      (s) => !enrolledIds.has(s.id) && (s.fullName.toLowerCase().includes(q) || s.studentId.toLowerCase().includes(q))
+    )
+  }, [allStudents, enrollSearch, enrolledIds])
+
+  const handleEnrollStudent = (targetId: string, targetName: string) => {
+    const result = api.enrollStudent({ sectionId: id!, studentId: targetId, studentName: targetName })
+    if (result) {
+      setStudents(api.getSectionStudents(id!))
+      const sec = api.getSection(id!)
+      if (sec) setSection({ ...sec })
+      Alert.alert('Enrolled', `${targetName} has been enrolled successfully.`)
+      setEnrollSearch('')
+    } else {
+      Alert.alert('Already Enrolled', `${targetName} is already enrolled in this section.`)
+    }
+  }
 
   const filtered = useMemo(() => {
     if (!search.trim()) return students
@@ -153,6 +179,79 @@ export default function SectionDetailScreen() {
               <Text className="text-red-500 text-xs font-sans-semibold">Disable</Text>
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Enroll Student */}
+        <View style={{ backgroundColor: surface, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: border }}>
+          <TouchableOpacity className="flex-row items-center" onPress={() => setIsEnrollOpen(!isEnrollOpen)} accessibilityRole="button">
+            <MaterialIcons name="person-add" size={18} color={iconColor} />
+            <Text className="text-base font-sans-bold flex-1 ml-1.5" style={{ color: textPrimary }}>Enroll Student</Text>
+            <MaterialIcons name={isEnrollOpen ? 'expand-less' : 'expand-more'} size={22} color={textSecondary} />
+          </TouchableOpacity>
+
+          {isEnrollOpen && (
+            <View className="mt-3">
+              <View className="flex-row items-center gap-2 px-3 mb-2" style={{ backgroundColor: isDark ? '#0A0A0C' : '#FAFAFA', borderWidth: 1, borderColor: borderInput }}>
+                <MaterialIcons name="search" size={18} color="#888" />
+                <TextInput
+                  className="flex-1 h-10 text-sm"
+                  style={{ color: textPrimary }}
+                  value={enrollSearch}
+                  onChangeText={setEnrollSearch}
+                  placeholder="Search students by name or ID..."
+                  placeholderTextColor="#888"
+                />
+                {enrollSearch ? (
+                  <TouchableOpacity onPress={() => setEnrollSearch('')}>
+                    <MaterialIcons name="close" size={18} color="#888" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              {enrollCandidates.length === 0 ? (
+                <Text className="text-sm text-center py-4" style={{ color: textTertiary }}>
+                  {enrollSearch.trim() ? 'No matching students found.' : 'Type a name or ID to search for students.'}
+                </Text>
+              ) : (
+                <>
+                  {enrollCandidates.slice(0, 10).map((s) => {
+                    const isAlreadyEnrolled = enrolledIds.has(s.id)
+                    return (
+                      <View key={s.id} className="flex-row items-center justify-between p-2.5 mb-1 border" style={{ backgroundColor: isDark ? '#0A0A0C' : '#F9F9F9', borderColor: border }}>
+                        <View className="flex-row items-center gap-2.5 flex-1 min-w-0">
+                          <View className="w-9 h-9 items-center justify-center" style={{ backgroundColor: isDark ? '#FFDF00' : '#7B1113' }}>
+                            <Text className="text-xs font-sans-semibold" style={{ color: isDark ? '#4A0A0B' : '#FFF' }}>
+                              {s.fullName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
+                            </Text>
+                          </View>
+                          <View className="flex-1 min-w-0">
+                            <Text className="text-sm font-sans-semibold" style={{ color: textPrimary }} numberOfLines={1}>{s.fullName}</Text>
+                            <Text className="text-[11px]" style={{ color: textSecondary }}>{s.studentId} · {s.program}</Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          className="px-3 py-1.5 ml-2"
+                          style={{ backgroundColor: isAlreadyEnrolled ? (isDark ? '#333' : '#CCC') : (isDark ? '#FFDF00' : '#7B1113'), opacity: isAlreadyEnrolled ? 0.5 : 1 }}
+                          onPress={() => handleEnrollStudent(s.id, s.fullName)}
+                          disabled={isAlreadyEnrolled}
+                          accessibilityRole="button"
+                        >
+                          <Text className="text-xs font-sans-semibold" style={{ color: isAlreadyEnrolled ? '#888' : (isDark ? '#4A0A0B' : '#FFF') }}>
+                            {isAlreadyEnrolled ? 'Enrolled' : 'Enroll'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )
+                  })}
+                  {enrollCandidates.length > 10 && (
+                    <Text className="text-[11px] text-center py-1.5" style={{ color: textTertiary }}>
+                      {enrollCandidates.length - 10} more student{enrollCandidates.length - 10 !== 1 ? 's' : ''} found. Refine your search.
+                    </Text>
+                  )}
+                </>
+              )}
+            </View>
+          )}
         </View>
 
         {/* Attendance Overview */}

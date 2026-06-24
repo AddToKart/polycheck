@@ -22,6 +22,9 @@ import type {
   AttendanceSummary,
   AttendanceStatus,
   Enrollment,
+  CalendarEvent,
+  BulkSessionInput,
+  DisputeInput,
 } from '@polycheck/shared'
 
 import { isWithinGeofence, createQRTokenData } from '@polycheck/shared/utils'
@@ -391,6 +394,126 @@ export const api = {
       record.disputeReason = undefined
       record.manuallySet = true
     }
+    return record
+  },
+
+  enrollStudent(data: { sectionId: string; studentId: string; studentName: string }): boolean {
+    const exists = mockEnrollments.find(e => e.sectionId === data.sectionId && e.studentId === data.studentId)
+    if (exists) return false
+
+    const enrollment: Enrollment = {
+      id: `e-${Date.now()}`,
+      studentId: data.studentId,
+      sectionId: data.sectionId,
+      enrolledAt: new Date().toISOString(),
+    }
+    mockEnrollments.push(enrollment)
+
+    const section = mockSections.find(s => s.id === data.sectionId)
+    if (section) section.studentCount++
+
+    return true
+  },
+
+  getCalendarEvents(userId: string, startDate: string, endDate: string): CalendarEvent[] {
+    const events: CalendarEvent[] = []
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+
+    const userSections = mockSections.filter(s => s.teacherId === userId ||
+      mockEnrollments.filter(e => e.studentId === userId).some(e => e.sectionId === s.id))
+
+    for (const section of userSections) {
+      const subject = mockSubjects.find(s => s.id === section.subjectId)
+      const sectionSessions = mockSessions.filter(s => s.sectionId === section.id)
+
+      let cursor = new Date(start)
+      while (cursor <= end) {
+        const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][cursor.getDay()]
+        for (const sched of section.schedule) {
+          if (sched.day === dayName) {
+            const dateStr = cursor.toISOString().split('T')[0]
+            const existingSession = sectionSessions.find(ss => ss.date === dateStr)
+            events.push({
+              id: `cal-${section.id}-${dateStr}-${sched.day}`,
+              title: subject?.name ?? 'Unknown',
+              date: dateStr,
+              startTime: sched.startTime,
+              endTime: sched.endTime,
+              room: sched.room,
+              sectionId: section.id,
+              subjectName: subject?.name ?? 'Unknown',
+              sectionName: section.section,
+              type: existingSession ? 'session' : 'schedule',
+              status: existingSession?.isActive ? 'active' : existingSession ? 'completed' : undefined,
+            })
+          }
+        }
+        cursor.setDate(cursor.getDate() + 1)
+      }
+    }
+
+    return events
+  },
+
+  createBulkSessions(data: BulkSessionInput): Session[] {
+    const created: Session[] = []
+    const start = new Date(data.startDate)
+    const end = new Date(data.endDate)
+    const dayMap: Record<string, number> = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 }
+    const targetDays = data.daysOfWeek.map(d => dayMap[d])
+
+    let cursor = new Date(start)
+    while (cursor <= end) {
+      if (targetDays.includes(cursor.getDay())) {
+        const now = new Date().toISOString()
+        const session: Session = {
+          id: `sess-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+          sectionId: data.sectionId,
+          subjectName: data.subjectName,
+          date: cursor.toISOString().split('T')[0],
+          startTime: data.startTime,
+          endTime: data.endTime,
+          room: data.room,
+          qrValidityMinutes: data.qrValidityMinutes,
+          gracePeriodMinutes: data.gracePeriodMinutes,
+          geofence: data.geofence,
+          isActive: false,
+          teacherId: data.teacherId,
+          createdAt: now,
+        }
+        mockSessions.push(session)
+        created.push(session)
+      }
+      cursor.setDate(cursor.getDate() + 1)
+    }
+
+    return created
+  },
+
+  exportAttendanceCsv(sectionId?: string, _sessionId?: string): string {
+    let records = [...mockAttendanceRecords]
+    if (sectionId) records = records.filter(r => r.sectionId === sectionId)
+
+    const header = 'ID,Student Name,Student ID,Date,Time,Status,Section,Session ID,Disputed,Notes'
+    const rows = records.map(r => {
+      const session = mockSessions.find(s => s.id === r.sessionId)
+      const date = r.timestamp.split('T')[0]
+      const time = r.timestamp.split('T')[1]?.slice(0, 5) ?? ''
+      const section = mockSections.find(s => s.id === r.sectionId)
+      return `${r.id},"${r.studentName}",${r.studentId},${date},${time},${r.status},${section?.section ?? ''},${r.sessionId},${r.status === 'disputed' ? 'Yes' : 'No'},"${r.notes ?? ''}"`
+    })
+
+    return [header, ...rows].join('\n')
+  },
+
+  submitDispute(data: DisputeInput): AttendanceRecord | undefined {
+    const record = mockAttendanceRecords.find(r => r.id === data.recordId)
+    if (!record) return undefined
+    if (record.status === 'disputed') return record
+    record.status = 'disputed'
+    record.disputeReason = data.reason as any
+    record.notes = data.description
     return record
   },
 }

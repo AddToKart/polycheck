@@ -91,6 +91,7 @@ export default function FacultyLayout() {
             case 'sessions':
             case 'sessions/index': iconName = 'event'; break
             case 'attendance': iconName = 'assignment'; break
+            case 'schedule': iconName = 'calendar-today'; break
             case 'disputes': iconName = 'gavel'; break
             case 'users': iconName = 'people'; break
             case 'reports': iconName = 'assessment'; break
@@ -112,6 +113,7 @@ export default function FacultyLayout() {
       <Tabs.Screen name="sections/[id]" options={{ href: null }} />
       <Tabs.Screen name="student/[id]" options={{ href: null }} />
       <Tabs.Screen name="attendance" options={{ title: 'Attendance', tabBarLabel: 'Attendance' }} />
+      <Tabs.Screen name="schedule" options={{ title: 'Schedule', tabBarLabel: 'Schedule' }} />
       <Tabs.Screen name="disputes" options={{ title: 'Disputes', tabBarLabel: 'Disputes' }} />
       <Tabs.Screen 
         name="users" 

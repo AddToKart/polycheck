@@ -10,6 +10,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { LoadingSpinner } from '@/lib/hooks'
+import { useNotifications } from '@/lib/notifications'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 
@@ -25,17 +27,22 @@ export default function SessionDetailPage() {
   const params = useParams()
   const router = useRouter()
   const id = params.id as string
+  const { addNotification } = useNotifications()
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [enrolledStudents, setEnrolledStudents] = useState<Student[]>([])
   const [filter, setFilter] = useState<AttendanceStatus | 'all'>('all')
+  const [loading, setLoading] = useState(true)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [showQrModal, setShowQrModal] = useState(false)
   const [showValidityPrompt, setShowValidityPrompt] = useState(false)
   const [validityMinutes, setValidityMinutes] = useState('20')
   const [countdown, setCountdown] = useState('')
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
+  const [refreshLabel, setRefreshLabel] = useState('Updated just now')
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const refreshData = useCallback(() => {
     if (!id) return
@@ -49,6 +56,7 @@ export default function SessionDetailPage() {
       }
     }
     setRecords(api.getAttendanceRecords(id))
+    setLastUpdated(new Date())
   }, [id])
 
   useEffect(() => {
@@ -66,7 +74,30 @@ export default function SessionDetailPage() {
         setEnrolledStudents(students as Student[])
       }
     }
+    setLoading(false)
   }, [id, router, refreshData])
+
+  useEffect(() => {
+    if (!session?.isActive) {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+      return
+    }
+    pollRef.current = setInterval(() => {
+      setRecords(api.getAttendanceRecords(id))
+      setLastUpdated(new Date())
+    }, 10000)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [session?.isActive, id])
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const seconds = Math.floor((Date.now() - lastUpdated.getTime()) / 1000)
+      if (seconds < 5) setRefreshLabel('Updated just now')
+      else if (seconds < 60) setRefreshLabel(`Updated ${seconds}s ago`)
+      else setRefreshLabel(`Updated ${Math.floor(seconds / 60)}m ago`)
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [lastUpdated])
 
   useEffect(() => {
     if (!session || !session.isActive || !session.qrTokenExpiresAt) {
@@ -88,6 +119,11 @@ export default function SessionDetailPage() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [session])
 
+  if (loading) return (
+    <div className="flex h-screen bg-[#F5F5F5] dark:bg-[#0A0A0C] items-center justify-center">
+      <LoadingSpinner size="lg" />
+    </div>
+  )
   if (!user || !session) return null
 
   const presentCount = records.filter((r) => r.status === 'present').length
@@ -102,12 +138,14 @@ export default function SessionDetailPage() {
     api.generateQrCode(session.id, mins)
     setShowValidityPrompt(false)
     refreshData()
+    addNotification('success', 'QR Code Generated', `Session activated with ${mins}min validity`)
   }
 
   const handleEndSession = () => {
     if (confirm('Mark all pending students as absent and end the session?')) {
       api.endSession(session.id)
       refreshData()
+      addNotification('info', 'Session Ended', 'All pending students marked as absent')
     }
   }
 
@@ -138,6 +176,7 @@ export default function SessionDetailPage() {
       })
     }
     refreshData()
+    addNotification('info', 'Status Updated', `Student marked as ${nextStatus}`)
   }
 
   const handleShare = async () => {
@@ -291,6 +330,7 @@ export default function SessionDetailPage() {
                 <h2 className="text-base font-bold dark:text-white">Student Roster</h2>
                 <span className="text-xs text-gray-400 dark:text-gray-500">({enrolledStudents.length})</span>
               </div>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-3">{refreshLabel}</p>
 
               {/* Summary */}
               <div className="flex justify-around mb-4">

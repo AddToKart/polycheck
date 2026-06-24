@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Sans } from "next/font/google";
 import "./globals.css";
+import { NotificationProvider } from "@/lib/notifications";
 
 const dmSans = DM_Sans({
   variable: "--font-body",
@@ -44,7 +45,9 @@ export default function RootLayout({
       <head>
         <ThemeScript />
       </head>
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="min-h-full flex flex-col font-sans">
+        <NotificationProvider>{children}</NotificationProvider>
+      </body>
     </html>
   );
 }

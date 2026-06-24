@@ -8,6 +8,7 @@ import { useTheme } from '../../theme/ThemeContext'
 
 const iconMap: Record<string, keyof typeof MaterialIcons.glyphMap> = {
   dashboard: 'dashboard',
+  schedule: 'calendar-today',
   scan: 'qr-code-scanner',
   'id-card': 'badge',
   history: 'history',
@@ -81,6 +82,8 @@ export default function TabLayout() {
       })}
     >
       <Tabs.Screen name="dashboard" options={{ title: 'Home', tabBarLabel: 'Home' }} />
+      <Tabs.Screen name="schedule" options={{ title: 'Schedule', tabBarLabel: 'Schedule' }} />
+      <Tabs.Screen name="enroll" options={{ href: null }} />
       <Tabs.Screen name="scan" options={{ title: 'Scan', tabBarLabel: 'Scan' }} />
       <Tabs.Screen name="id-card" options={{ title: 'ID Card', tabBarLabel: 'ID Card' }} />
       <Tabs.Screen name="history" options={{ title: 'Audit', tabBarLabel: 'Audit' }} />

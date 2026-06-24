@@ -6,8 +6,10 @@ import { api } from '@/lib/mock-api'
 import type { User, AttendanceSummary } from '@polycheck/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import StatusBadge from '@/components/StatusBadge'
 import { Sidebar } from '@/components/layout/sidebar'
+import { Download } from 'lucide-react'
 
 export default function AttendanceOverviewPage() {
   const router = useRouter()
@@ -36,12 +38,21 @@ export default function AttendanceOverviewPage() {
     { totalSessions: 0, present: 0, late: 0, absent: 0 }
   )
 
+  const handleExport = () => {
+    const csv = api.exportAttendanceCsv()
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `attendance-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleLogout = () => {
     api.logout()
     router.push('/')
   }
-
-
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
@@ -49,9 +60,15 @@ export default function AttendanceOverviewPage() {
 
       <main className="flex-1 overflow-y-auto">
         <div className="p-8 max-w-6xl mx-auto">
-          <h1 className="text-3xl font-heading font-bold text-maroon dark:text-white mb-8">
-            Attendance Overview
-          </h1>
+          <div className="flex items-center justify-between mb-8">
+            <h1 className="text-3xl font-heading font-bold text-maroon dark:text-white">
+              Attendance Overview
+            </h1>
+            <Button onClick={handleExport} variant="outline" className="rounded-none text-xs font-bold uppercase tracking-widest">
+              <Download className="w-4 h-4 mr-2" />
+              Export
+            </Button>
+          </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
             <Card className="border-t-4 border-t-maroon">

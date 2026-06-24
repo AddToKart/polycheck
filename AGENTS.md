@@ -292,6 +292,27 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 - **Validation**: Removed `latitude`, `longitude`, `geofenceRadiusMeters` from `SectionCreateSchema`. Geofence stays exclusively on `Session` type and `SessionCreateSchema`.
 - **Mock APIs**: `createSection` already accepted no geofence params — no changes needed. `createSubject` already accepted name/code/description — no changes needed.
 
+### Done (cont.)
+- **API client interface** (`shared/src/types/api.ts`): Defined complete `ApiClient` interface with 30+ methods covering auth, subjects, sections, sessions, attendance, disputes, enrollment, calendar, export, and bulk operations. Added `CalendarEvent`, `BulkSessionInput`, `DisputeInput`, `EnrollStudentInput` types.
+- **Mock API methods (both)**: Added `enrollStudent`, `getCalendarEvents`, `createBulkSessions`, `exportAttendanceCsv`, `submitDispute`. Fixed `getSections()` signature to accept optional `sectionId`.
+- **Web calendar view** (`frontend/src/app/faculty/schedule/page.tsx`): Full Month/Week toggle calendar with Prev/Next/Today navigation. Month view: 7-column date grid with event dots and popover details. Week view: time-slot columns with positioned event blocks. Color-coded: blue=scheduled, green=active, gray=completed. Legend at bottom.
+- **Student web schedule** (`frontend/src/app/student/schedule/page.tsx`): Weekly timetable based on enrolled sections, current day highlighted, class cards with subject/room/time/instructor.
+- **Mobile faculty schedule** (`android/app/(faculty)/schedule.tsx`): Month grid with event dots, week columns, tap-to-view event detail modal with View Session navigation. Added as tab in faculty layout.
+- **Mobile student schedule** (`android/app/(tabs)/schedule.tsx`): Weekly class schedule from enrolled sections, detail modal. Added as tab in student tab layout between Dashboard and Scan.
+- **Calendar utility** (`shared/src/utils/calendar.ts`): `getWeekDays`, `getMonthDays`, `formatDate`, `formatTime`, `getDayName`, `getMonthName`, `isSameDay`, `generateCalendarEvents`, `getDateRangeForMonth`, `getWeeksInMonth`.
+- **Student self-enrollment** (both): New `/student/enroll` page (web) and `enroll.tsx` screen (mobile) — enter enrollment code, validates against section data, calls `api.enrollStudent()`. Added "Enroll in Subject" button on both student dashboards.
+- **Teacher manual enrollment** (both): Added collapsible "Enroll Student" section to section detail pages (both platforms). Search input filters all students by name/ID, tap-to-enroll with instant feedback, auto-refreshes student roster.
+- **Student dispute submission** (both): Web — added "Report Issue" button to attendance records with full dispute modal (reason dropdown, description textarea). Mobile — made records tappable with dispute detail modal and reason picker. Calls `api.submitDispute()`.
+- **Attendance CSV export** (both): Web Export button on Reports and Attendance pages now generates downloadable CSV file. Mobile copies CSV to clipboard via expo-clipboard with confirmation Alert.
+- **Charts/analytics** (both): Web Reports page — SVG donut chart (Present/Late/Absent colored arcs) and attendance rate bar. Mobile Reports — View-based segmented donut chart and rate bar.
+- **Loading states & error handling** (web): Created `frontend/src/lib/hooks/use-api.tsx` with `useApi` hook, `LoadingSpinner`, `ErrorDisplay` components. Applied loading states to faculty dashboard, section detail, and session activation pages.
+- **Real-time polling**: Added 10s auto-refresh interval to session activation pages (both platforms) when session is active. Shows "Updated Xs ago" label with live countdown timer.
+- **In-app notifications** (web): Created `NotificationProvider` context with auto-dismiss toasts (success/error/info/warning) at top-right. Wrapped root layout. Added notifications for QR generation, session end, manual overrides, dispute resolution.
+- **Bulk session creation** (both): Added "Create recurring sessions" toggle to session create forms. Shows start/end date, day-of-week checkboxes (pre-selected from section schedule), session count calculation. Calls `api.createBulkSessions()`.
+- **Fixed disputed badge** (both): Web student dashboard — added 4th "Disputed" stat card. Mobile history — added 'disputed' to filter tabs, badge config map (deep maroon bg + golden text/border), and stats row.
+- **Fixed `enrolledSubjectIds` → `enrolledSectionIds`** in mock student data (`shared/src/mock/users.ts`).
+- **Added 5 future sessions** (sess-015 to sess-019, July 8-20) for calendar view demo data.
+
 ### In Progress
 - (none)
 
@@ -307,18 +328,20 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 - `expo-sharing` + `react-native-svg` ref for sharing QR image on mobile; clipboard copy for token.
 
 ## Next Steps
-- Add session list to section detail page (link or inline view connecting `sections/[id]` to `sessions/[id]`).
 - Connect sessions page to section context when navigated from section detail.
-- Implement enrollment management page for teachers to manually add/remove students via search.
-- Add student self-enrollment flow (enter enrollment code).
 - Add dispute notification badge on faculty sidebar/tab bar.
 - Wire `isTokenInValidityWindow` util into mock API's `checkAttendance` for proper signed-timestamp validation.
-- Add `disputed` badge styling to shared `StatusBadge` components on both platforms.
+- Implement real NestJS backend with all API endpoints.
+- Add offline sync engine for mobile (SQLite + background sync).
+- Implement push notifications (Expo Notifications / web push).
+- Add leave/excuse request workflow.
+- Add academic calendar integration (semester dates, holidays).
+- Add dark mode support parity across all pages.
 
 ## Critical Context
 - Android package: `edu.pup.polycheck`; iOS bundle: `edu.pup.polycheck`.
 - Permissions: camera (QR scan), location (geofence check) — already requested in `scan.tsx` via `useCameraPermissions` + `expo-location`.
-- Mock data: `mockStudents` has 13 entries (s-001 to s-013); `mockSubjects` has 4 parent entries (subj-001 to subj-004); `mockSections` has 5 sections (sec-001 to sec-005); `mockSessions` has 14 entries (sess-001 to sess-014); `mockAttendanceRecords` has 54 entries; `mockEnrollments` has 29 entries.
+- Mock data: `mockStudents` has 13 entries (s-001 to s-013); `mockSubjects` has 4 parent entries (subj-001 to subj-004); `mockSections` has 5 sections (sec-001 to sec-005); `mockSessions` has 19 entries (sess-001 to sess-019); `mockAttendanceRecords` has 54 entries; `mockEnrollments` has 29 entries.
 - `AttendanceRecord.status` now includes `'disputed'`. `AttendanceRecord` has optional `manuallySet?: boolean`. `AttendanceSummary` has `disputed: number`.
 - `Session` no longer has `tokenWindowSeconds`; replaced by `qrValidityMinutes: number`. `qrGeneratedAt?: string` tracks when QR was generated.
 - Mock API methods added: `generateQrCode`, `submitScan`, `endSession`, `getDisputedRecords`, `resolveDispute`.

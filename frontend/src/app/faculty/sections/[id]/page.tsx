@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Search, Key, RefreshCw, Ban, Users, CalendarDays } from 'lucide-react'
+import { ArrowLeft, Search, Key, RefreshCw, Ban, Users, CalendarDays, UserPlus, ChevronDown, ChevronUp } from 'lucide-react'
 import { api } from '@/lib/mock-api'
 import type { User, Section, Student } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -11,6 +11,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { LoadingSpinner } from '@/lib/hooks'
 
 const PAGE_SIZE = 10
 
@@ -23,6 +24,12 @@ export default function SectionDetailPage() {
   const [students, setStudents] = useState<(Student & { attendance: { present: number; late: number; absent: number } })[]>([])
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
+  const [isEnrollOpen, setIsEnrollOpen] = useState(false)
+  const [enrollSearch, setEnrollSearch] = useState('')
+  const [enrollSuccess, setEnrollSuccess] = useState('')
+
+  const allStudents = api.getStudents()
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -39,6 +46,7 @@ export default function SectionDetailPage() {
     if (!sec) { router.push('/faculty/subjects'); return }
     setSection(sec)
     setStudents(api.getSectionStudents(id))
+    setLoading(false)
   }, [id, router])
 
   const handleLogout = () => {
@@ -59,6 +67,26 @@ export default function SectionDetailPage() {
 
   useEffect(() => { setPage(0) }, [search])
 
+  const enrolledIds = new Set(students.map((s) => s.id))
+  const enrollCandidates = useMemo(() => {
+    if (!enrollSearch.trim()) return []
+    const q = enrollSearch.toLowerCase()
+    return allStudents.filter(
+      (s) => !enrolledIds.has(s.id) && (s.fullName.toLowerCase().includes(q) || s.studentId.toLowerCase().includes(q))
+    )
+  }, [allStudents, enrollSearch, enrolledIds])
+
+  const handleEnrollStudent = (targetStudentId: string, targetStudentName: string) => {
+    const result = api.enrollStudent({ sectionId: id!, studentId: targetStudentId, studentName: targetStudentName })
+    if (result) {
+      setEnrollSuccess(targetStudentName)
+      setStudents(api.getSectionStudents(id!))
+      const sec = api.getSection(id!)
+      if (sec) setSection({ ...sec })
+      setTimeout(() => setEnrollSuccess(''), 3000)
+    }
+  }
+
   const handleResetCode = () => {
     if (!id) return
     const code = api.resetEnrollmentCode(id)
@@ -76,6 +104,11 @@ export default function SectionDetailPage() {
     }
   }
 
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black">
+      <LoadingSpinner size="lg" />
+    </div>
+  )
   if (!user || !section) return null
 
   const subj = api.getSubject(section.subjectId)
@@ -159,6 +192,79 @@ export default function SectionDetailPage() {
                 </Button>
               </div>
             </CardContent>
+          </Card>
+
+          {/* Enroll Student */}
+          <Card className="mb-6 border-t-4 border-t-maroon dark:border-t-golden">
+            <CardHeader className="cursor-pointer" onClick={() => setIsEnrollOpen(!isEnrollOpen)}>
+              <CardTitle className="flex items-center gap-2 text-zinc-800 dark:text-zinc-100 text-base">
+                <UserPlus className="w-4 h-4 text-maroon dark:text-golden" />
+                Enroll Student
+                <span className="ml-auto">
+                  {isEnrollOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </span>
+              </CardTitle>
+            </CardHeader>
+            {isEnrollOpen && (
+              <CardContent>
+                {enrollSuccess && (
+                  <div className="border border-green-300 bg-green-50 dark:bg-green-950/30 dark:border-green-800 p-3 mb-4 text-xs text-green-700 dark:text-green-300 font-medium">
+                    Enrolled {enrollSuccess} successfully!
+                  </div>
+                )}
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                  <Input
+                    className="pl-9"
+                    value={enrollSearch}
+                    onChange={(e) => setEnrollSearch(e.target.value)}
+                    placeholder="Search students by name or ID..."
+                  />
+                </div>
+                {enrollCandidates.length === 0 ? (
+                  enrollSearch.trim() ? (
+                    <p className="text-sm text-zinc-400 text-center py-4">No matching students found.</p>
+                  ) : (
+                    <p className="text-sm text-zinc-400 text-center py-4">Type a name or ID to search for students.</p>
+                  )
+                ) : (
+                  <div className="space-y-1 max-h-[300px] overflow-y-auto">
+                    {enrollCandidates.slice(0, 10).map((s) => {
+                      const isAlreadyEnrolled = enrolledIds.has(s.id)
+                      return (
+                        <div key={s.id} className="flex items-center justify-between p-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="w-9 h-9 bg-maroon dark:bg-golden flex items-center justify-center shrink-0">
+                              <span className="text-xs font-bold text-white dark:text-maroon-dark">
+                                {s.fullName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">{s.fullName}</p>
+                              <p className="text-xs text-zinc-500">{s.studentId} &middot; {s.program}</p>
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant={isAlreadyEnrolled ? 'outline' : 'default'}
+                            disabled={isAlreadyEnrolled}
+                            className="shrink-0 ml-2"
+                            onClick={() => handleEnrollStudent(s.id, s.fullName)}
+                          >
+                            {isAlreadyEnrolled ? 'Enrolled' : 'Enroll'}
+                          </Button>
+                        </div>
+                      )
+                    })}
+                    {enrollCandidates.length > 10 && (
+                      <p className="text-xs text-zinc-400 text-center py-2">
+                        {enrollCandidates.length - 10} more student{enrollCandidates.length - 10 !== 1 ? 's' : ''} found. Refine your search.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            )}
           </Card>
 
           {/* Attendance Overview */}

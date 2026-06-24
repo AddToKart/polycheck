@@ -140,6 +140,56 @@ export default function FacultyReportsScreen() {
           </View>
         </View>
 
+        {/* Charts */}
+        <View style={styles.chartsRow}>
+          {/* Donut Chart */}
+          <View style={[styles.chartCard, isDark && styles.cardDark]}>
+            <Text style={[styles.chartTitle, isDark && styles.textWhite]}>Distribution</Text>
+            <View style={styles.donutContainer}>
+              {total.total > 0 ? (
+                <>
+                  <View style={styles.donut}>
+                    <View style={[styles.donutSlice, { backgroundColor: '#4A0A0B', zIndex: 1, flex: total.absent || 1 }]} />
+                    <View style={[styles.donutSlice, { backgroundColor: '#7B1113', zIndex: 2, flex: total.late || 1 }]} />
+                    <View style={[styles.donutSlice, { backgroundColor: '#FFDF00', zIndex: 3, flex: total.present || 1 }]} />
+                    <View style={styles.donutHole}>
+                      <Text style={styles.donutCount}>{total.total}</Text>
+                      <Text style={styles.donutLabel}>total</Text>
+                    </View>
+                  </View>
+                  <View style={styles.legend}>
+                    {[
+                      { label: 'Present', count: total.present, pct: presentPct, color: '#FFDF00' },
+                      { label: 'Late', count: total.late, pct: latePct, color: '#7B1113' },
+                      { label: 'Absent', count: total.absent, pct: absentPct, color: '#4A0A0B' },
+                    ].map((item) => (
+                      <View key={item.label} style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                        <Text style={[styles.legendText, isDark && styles.textWhite]}>{item.label}</Text>
+                        <Text style={[styles.legendCount, { color: item.color }]}>{item.count} ({item.pct}%)</Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              ) : (
+                <Text style={[styles.empty, isDark && styles.textWhite50]}>No data</Text>
+              )}
+            </View>
+          </View>
+
+          {/* Attendance Rate Bar */}
+          <View style={[styles.chartCard, isDark && styles.cardDark]}>
+            <Text style={[styles.chartTitle, isDark && styles.textWhite]}>Attendance Rate</Text>
+            <Text style={styles.ratePercent}>{presentPct}%</Text>
+            <View style={styles.barTrack}>
+              <View style={[styles.barFill, { width: `${presentPct}%` as any }]} />
+            </View>
+            <Text style={[styles.rateLabel, isDark && styles.textWhite50]}>
+              {total.present} of {total.total} present
+            </Text>
+          </View>
+        </View>
+
         <Text style={[styles.sectionTitle, isDark && styles.textGolden]}>Summary by Subject</Text>
 
         {filteredSummaries.map((s) => (
@@ -212,4 +262,31 @@ const styles = StyleSheet.create({
   gridLabel: { fontSize: 11, fontWeight: '600', fontFamily: fonts.bodySemiBold },
   gridValue: { fontSize: 14, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#333', marginTop: 2 },
   empty: { textAlign: 'center', fontFamily: fonts.body, paddingVertical: 60, color: '#BBB' },
+
+  chartsRow: { flexDirection: 'column', gap: 12, marginBottom: 20 },
+  chartCard: { backgroundColor: '#FFFFFF', borderRadius: 0, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
+  chartTitle: { fontSize: 13, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#333', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 },
+  donutContainer: { flexDirection: 'row', alignItems: 'center', gap: 20 },
+  donut: {
+    width: 100, height: 100, borderRadius: 50,
+    flexDirection: 'row', overflow: 'hidden',
+    borderWidth: 3, borderColor: '#E4E4E7',
+    position: 'relative', justifyContent: 'center', alignItems: 'center',
+  },
+  donutSlice: { height: '100%' },
+  donutHole: {
+    position: 'absolute', width: 60, height: 60, borderRadius: 30,
+    backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center',
+  },
+  donutCount: { fontSize: 18, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#333' },
+  donutLabel: { fontSize: 8, fontFamily: fonts.body, color: '#999', textTransform: 'uppercase', letterSpacing: 1 },
+  legend: { flex: 1, gap: 8 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendDot: { width: 10, height: 10 },
+  legendText: { fontSize: 11, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#333', flex: 1 },
+  legendCount: { fontSize: 11, fontWeight: '700', fontFamily: fonts.bodyBold },
+  ratePercent: { fontSize: 32, fontWeight: '700', fontFamily: fonts.heading, color: '#FFDF00', marginBottom: 8 },
+  barTrack: { width: '100%', height: 10, backgroundColor: '#E4E4E7', overflow: 'hidden' },
+  barFill: { height: '100%', backgroundColor: '#FFDF00' },
+  rateLabel: { fontSize: 11, fontFamily: fonts.body, color: '#999', marginTop: 6, textTransform: 'uppercase', letterSpacing: 1 },
 })

@@ -9,6 +9,7 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { useNotifications } from '@/lib/notifications'
 
 const DISPUTE_LABELS: Record<DisputeReason, string> = {
   outside_geofence: 'Outside Geofence',
@@ -30,6 +31,7 @@ const DISPUTE_ICONS: Record<DisputeReason, React.ElementType> = {
 
 export default function DisputesPage() {
   const router = useRouter()
+  const { addNotification } = useNotifications()
   const [user, setUser] = useState<User | null>(null)
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null)
@@ -49,6 +51,13 @@ export default function DisputesPage() {
     api.resolveDispute(selectedRecord.id, resolution, newStatus)
     setRecords(api.getDisputedRecords())
     setSelectedRecord(null)
+    if (resolution === 'accept') {
+      addNotification('success', 'Dispute Resolved', `${selectedRecord.studentName}'s record accepted as Present`)
+    } else if (resolution === 'reject') {
+      addNotification('info', 'Dispute Resolved', `${selectedRecord.studentName}'s record rejected as Absent`)
+    } else if (resolution === 'override' && newStatus) {
+      addNotification('info', 'Dispute Overridden', `${selectedRecord.studentName} set to ${newStatus}`)
+    }
   }
 
   if (!user) return null

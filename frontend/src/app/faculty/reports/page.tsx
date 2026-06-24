@@ -121,6 +121,17 @@ export default function ReportsPage() {
   const latePct = total.total > 0 ? Math.round((total.late / total.total) * 100) : 0
   const absentPct = total.total > 0 ? Math.round((total.absent / total.total) * 100) : 0
 
+  const handleExport = () => {
+    const csv = api.exportAttendanceCsv()
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `attendance-report-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleLogout = () => {
     api.logout()
     router.push('/')
@@ -134,7 +145,7 @@ export default function ReportsPage() {
         <div className="p-8 max-w-6xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <h1 className="text-3xl font-heading font-bold text-maroon dark:text-white">Reports</h1>
-            <Button>
+            <Button onClick={handleExport}>
               <Download className="w-4 h-4" />
               Export
             </Button>
@@ -210,6 +221,77 @@ export default function ReportsPage() {
               <CardContent className="p-5">
                 <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Absent %</p>
                 <p className="text-3xl font-bold text-maroon-dark">{absentPct}%</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Charts */}
+          <div className="grid sm:grid-cols-2 gap-6 mb-8">
+            {/* Donut Chart */}
+            <Card>
+              <CardContent className="p-6">
+                <p className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4">Attendance Distribution</p>
+                <div className="flex items-center justify-center gap-8">
+                  <svg width="140" height="140" viewBox="0 0 140 140" className="shrink-0">
+                    <circle cx="70" cy="70" r="60" fill="none" stroke="#E4E4E7" strokeWidth="20" />
+                    {total.total > 0 && (
+                      <>
+                        <circle cx="70" cy="70" r="60" fill="none" stroke="#FFDF00" strokeWidth="20"
+                          strokeDasharray={`${(total.present / total.total) * 377} 377`}
+                          strokeDashoffset="0"
+                          transform="rotate(-90 70 70)"
+                          style={{ transition: 'stroke-dasharray 0.5s ease' }}
+                        />
+                        <circle cx="70" cy="70" r="60" fill="none" stroke="#7B1113" strokeWidth="20"
+                          strokeDasharray={`${(total.late / total.total) * 377} 377`}
+                          strokeDashoffset={-((total.present / total.total) * 377)}
+                          transform="rotate(-90 70 70)"
+                          style={{ transition: 'stroke-dasharray 0.5s ease' }}
+                        />
+                        <circle cx="70" cy="70" r="60" fill="none" stroke="#4A0A0B" strokeWidth="20"
+                          strokeDasharray={`${(total.absent / total.total) * 377} 377`}
+                          strokeDashoffset={-(((total.present + total.late) / total.total) * 377)}
+                          transform="rotate(-90 70 70)"
+                          style={{ transition: 'stroke-dasharray 0.5s ease' }}
+                        />
+                      </>
+                    )}
+                    <text x="70" y="70" textAnchor="middle" dominantBaseline="middle" className="text-lg font-bold fill-zinc-900 dark:fill-zinc-100">{total.total}</text>
+                    <text x="70" y="86" textAnchor="middle" dominantBaseline="middle" className="text-[8px] fill-zinc-500 uppercase tracking-widest">total</text>
+                  </svg>
+                  <div className="space-y-3">
+                    {[
+                      { label: 'Present', count: total.present, pct: presentPct, color: '#FFDF00', textColor: 'text-golden' },
+                      { label: 'Late', count: total.late, pct: latePct, color: '#7B1113', textColor: 'text-maroon' },
+                      { label: 'Absent', count: total.absent, pct: absentPct, color: '#4A0A0B', textColor: 'text-maroon-dark' },
+                    ].map((item) => (
+                      <div key={item.label} className="flex items-center gap-3">
+                        <div className="w-3 h-3 shrink-0" style={{ backgroundColor: item.color }} />
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">{item.label}</p>
+                          <p className={`text-sm font-bold ${item.textColor}`}>{item.count} ({item.pct}%)</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Attendance Rate Bar */}
+            <Card>
+              <CardContent className="p-6">
+                <p className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">Attendance Rate</p>
+                <p className="text-4xl font-heading font-bold text-golden mb-4">{presentPct}%</p>
+                <div className="w-full h-6 bg-zinc-200 dark:bg-zinc-800 relative overflow-hidden">
+                  <div
+                    className="h-full bg-golden transition-all duration-700 ease-out"
+                    style={{ width: `${presentPct}%` }}
+                  />
+                </div>
+                <p className="text-xs font-medium text-zinc-500 mt-2 uppercase tracking-wider">
+                  {total.present} of {total.total} records marked present
+                </p>
               </CardContent>
             </Card>
           </div>

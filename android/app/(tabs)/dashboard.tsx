@@ -19,6 +19,7 @@ export default function DashboardScreen() {
   const present = myAttendance.filter((r) => r.status === 'present').length
   const late = myAttendance.filter((r) => r.status === 'late').length
   const absent = myAttendance.filter((r) => r.status === 'absent').length
+  const disputed = myAttendance.filter((r) => r.status === 'disputed').length
   const attendanceRate = myAttendance.length > 0 ? ((present / myAttendance.length) * 100).toFixed(0) : '0'
 
   const todaySchedule = useMemo(() => {
@@ -112,10 +113,23 @@ export default function DashboardScreen() {
             <Text style={[styles.attendanceNum, { color: isDark ? '#EF4444' : '#4A0A0B' }]}>{absent}</Text>
             <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Absent</Text>
           </View>
+          <View style={styles.attendanceItem}>
+            <Text style={[styles.attendanceNum, { color: '#4A0A0B' }]}>{disputed}</Text>
+            <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Disputed</Text>
+          </View>
         </View>
 
         {/* Today's schedule */}
-        <Text style={[styles.sectionTitle, isDark && styles.textGolden]}>Today's Schedule</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginBottom: 0 }]}>Today's Schedule</Text>
+          <TouchableOpacity
+            onPress={() => router.push('/(tabs)/schedule')}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderWidth: 1, borderColor: isDark ? '#FFDF00' : '#7B1113' }}
+          >
+            <MaterialIcons name="calendar-today" size={14} color={isDark ? '#FFDF00' : '#7B1113'} />
+            <Text style={{ fontSize: 10, fontWeight: '700', fontFamily: 'DMSans_700Bold', color: isDark ? '#FFDF00' : '#7B1113', textTransform: 'uppercase', letterSpacing: 0.5 }}>View Schedule</Text>
+          </TouchableOpacity>
+        </View>
 
         {todaySchedule.length === 0 ? (
           <View style={[styles.emptyCard, isDark && styles.cardDark]}>
@@ -154,6 +168,17 @@ export default function DashboardScreen() {
             )
           })
         )}
+
+        {/* Enroll CTA */}
+        <TouchableOpacity
+          style={[styles.enrollCta, isDark && styles.enrollCtaDark]}
+          onPress={() => router.push('/(tabs)/enroll')}
+          activeOpacity={0.7}
+        >
+          <MaterialIcons name="school" size={20} color={isDark ? '#4A0A0B' : '#FFF'} />
+          <Text style={[styles.enrollCtaText, isDark && styles.enrollCtaTextDark]}>Enroll in Subject</Text>
+          <MaterialIcons name="chevron-right" size={20} color={isDark ? '#4A0A0B' : '#FFF'} />
+        </TouchableOpacity>
 
         {/* My Subjects (all enrolled) */}
         <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginTop: 24 }]}>My Subjects</Text>
@@ -222,6 +247,7 @@ function StatusBadge({ status }: { status: string }) {
     late: { bg: isDark ? 'rgba(245, 168, 0, 0.15)' : '#7B1113', text: isDark ? '#FFDF00' : '#FFFFFF' },
     absent: { bg: isDark ? 'rgba(239, 68, 68, 0.15)' : '#4A0A0B', text: isDark ? '#EF4444' : '#FFDF00' },
     pending: { bg: 'transparent', text: isDark ? '#FFDF00' : '#7B1113' },
+    disputed: { bg: '#4A0A0B', text: '#FFDF00' },
   }
   const c = configs[status] || configs.pending
   return (
@@ -229,6 +255,7 @@ function StatusBadge({ status }: { status: string }) {
       styles.badge,
       { backgroundColor: c.bg },
       status === 'pending' && (isDark ? styles.badgeBorderGolden : styles.badgeBorder),
+      status === 'disputed' && { borderWidth: 1.5, borderColor: '#FFDF00' },
       status === 'late' && isDark && { borderWidth: 1, borderColor: '#FFDF00' },
       status === 'absent' && isDark && { borderWidth: 1, borderColor: '#EF4444' }
     ]}>
@@ -331,4 +358,16 @@ const styles = StyleSheet.create({
   allSubjRateBgDark: { backgroundColor: '#333' },
   allSubjRateFill: { height: 4, backgroundColor: '#FFDF00', borderRadius: 2 },
   allSubjRateText: { fontSize: 10, fontWeight: '700', color: '#888', minWidth: 30, textAlign: 'right' },
+
+  enrollCta: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#7B1113', padding: 16, marginBottom: 8,
+    borderWidth: 0,
+  },
+  enrollCtaDark: { backgroundColor: '#FFDF00' },
+  enrollCtaText: {
+    flex: 1, fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1,
+    color: '#FFFFFF',
+  },
+  enrollCtaTextDark: { color: '#4A0A0B' },
 })

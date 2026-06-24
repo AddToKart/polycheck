@@ -9,6 +9,7 @@ import {
   BookOpen,
   CalendarCheck,
   ClipboardList,
+  Calendar,
   Gavel,
   Users,
   BarChart3,
@@ -28,6 +29,7 @@ const teacherNav: NavItem[] = [
   { label: 'My Subjects', href: '/faculty/subjects', icon: BookOpen },
   { label: 'Class Sessions', href: '/faculty/sessions', icon: CalendarCheck },
   { label: 'Attendance Log', href: '/faculty/attendance', icon: ClipboardList },
+  { label: 'Schedule', href: '/faculty/schedule', icon: Calendar },
   { label: 'Disputes', href: '/faculty/disputes', icon: Gavel },
 ]
 

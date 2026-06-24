@@ -24,13 +24,17 @@ export default function SessionDetailScreen() {
   const [showValidityPrompt, setShowValidityPrompt] = useState(false)
   const [validityMinutes, setValidityMinutes] = useState('20')
   const [countdown, setCountdown] = useState('')
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
+  const [refreshLabel, setRefreshLabel] = useState('Updated just now')
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const refreshData = useCallback(() => {
     if (!id) return
     const s = api.getSession(id)
     if (s) setSession(s)
     setRecords(api.getAttendanceRecords(id))
+    setLastUpdated(new Date())
   }, [id])
 
   useEffect(() => {
@@ -77,6 +81,30 @@ export default function SessionDetailScreen() {
     intervalRef.current = setInterval(tick, 1000)
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [session])
+
+  useEffect(() => {
+    if (!session?.isActive) {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+      return
+    }
+    pollRef.current = setInterval(() => {
+      if (id) {
+        setRecords(api.getAttendanceRecords(id))
+        setLastUpdated(new Date())
+      }
+    }, 10000)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [session?.isActive, id])
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const seconds = Math.floor((Date.now() - lastUpdated.getTime()) / 1000)
+      if (seconds < 5) setRefreshLabel('Updated just now')
+      else if (seconds < 60) setRefreshLabel(`Updated ${seconds}s ago`)
+      else setRefreshLabel(`Updated ${Math.floor(seconds / 60)}m ago`)
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [lastUpdated])
 
   if (!user || !session) return null
 
@@ -287,6 +315,8 @@ export default function SessionDetailScreen() {
             <Text style={[styles.rosterCount, isDark && styles.textWhite50]}>({enrolledStudents.length})</Text>
           </View>
 
+          <Text style={[styles.rosterRefreshLabel, isDark && styles.textWhite50]}>{refreshLabel}</Text>
+
           {/* Summary */}
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
@@ -480,6 +510,7 @@ const styles = StyleSheet.create({
   coordLabel: { fontSize: 10, fontFamily: fonts.bodyMedium, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 },
   coordValue: { fontSize: 12, fontFamily: fonts.mono, color: '#333', marginTop: 2 },
   rosterCount: { fontSize: 12, fontFamily: fonts.body, color: '#AAA', marginLeft: 4 },
+  rosterRefreshLabel: { fontSize: 10, fontFamily: fonts.body, color: '#AAA', marginBottom: 8 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 12 },
   summaryItem: { alignItems: 'center' },
   summaryValue: { fontSize: 22, fontWeight: '700', fontFamily: fonts.bodyBold },

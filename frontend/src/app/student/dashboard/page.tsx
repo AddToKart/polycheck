@@ -6,7 +6,6 @@ import Link from 'next/link'
 import { api } from '@/lib/mock-api'
 import type { Student, Section, AttendanceRecord } from '@polycheck/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import StatusBadge from '@/components/StatusBadge'
 import ThemeToggle from '@/components/ThemeToggle'
 import {
@@ -20,7 +19,18 @@ import {
   MapPin,
   X,
   Menu,
+  Flag,
+  AlertTriangle,
 } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogClose,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 
 type NavTab = 'dashboard' | 'subjects' | 'attendance'
 
@@ -34,6 +44,7 @@ const statCards = [
   { key: 'present', label: 'Present', color: 'text-golden' },
   { key: 'late', label: 'Late', color: 'text-maroon' },
   { key: 'absent', label: 'Absent', color: 'text-maroon-dark' },
+  { key: 'disputed', label: 'Disputed', color: 'text-maroon-dark dark:text-golden' },
 ] as const
 
 export default function StudentDashboardPage() {
@@ -45,6 +56,10 @@ export default function StudentDashboardPage() {
   const [isIdModalOpen, setIsIdModalOpen] = useState(false)
   const [isIdFlipped, setIsIdFlipped] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [disputeRecord, setDisputeRecord] = useState<AttendanceRecord | null>(null)
+  const [disputeReason, setDisputeReason] = useState('')
+  const [disputeDescription, setDisputeDescription] = useState('')
+  const [disputeFeedback, setDisputeFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -71,12 +86,28 @@ export default function StudentDashboardPage() {
     return subj?.name ?? sectionId
   }
 
+  const handleSubmitDispute = () => {
+    if (!disputeRecord || !disputeReason) return
+    const result = api.submitDispute({ recordId: disputeRecord.id, reason: disputeReason, description: disputeDescription })
+    if (result) {
+      setDisputeFeedback({ type: 'success', message: 'Dispute submitted successfully.' })
+      setRecords(api.getAttendanceForStudent(user!.id))
+    } else {
+      setDisputeFeedback({ type: 'error', message: 'Failed to submit dispute.' })
+    }
+    setTimeout(() => setDisputeFeedback(null), 3000)
+    setDisputeRecord(null)
+    setDisputeReason('')
+    setDisputeDescription('')
+  }
+
   if (!user) return null
 
   const stats = {
     present: records.filter((r) => r.status === 'present').length,
     late: records.filter((r) => r.status === 'late').length,
     absent: records.filter((r) => r.status === 'absent').length,
+    disputed: records.filter((r) => r.status === 'disputed').length,
   }
 
   const sidebarContent = (
@@ -364,9 +395,9 @@ export default function StudentDashboardPage() {
 
                 <div className="lg:col-span-2 flex flex-col gap-8">
                   {/* Stats Grid */}
-                  <div className="grid grid-cols-3 gap-0 border border-zinc-300 dark:border-zinc-800 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-0 border border-zinc-300 dark:border-zinc-800 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
                     {statCards.map(({ key, label, color }, index) => (
-                      <div key={key} className={`p-6 border-zinc-300 dark:border-zinc-800 ${index !== 0 ? 'border-l' : ''}`}>
+                      <div key={key} className={`p-6 border-zinc-300 dark:border-zinc-800 ${index !== 0 ? 'border-l' : ''} ${index > 1 ? 'border-t lg:border-t-0' : ''}`}>
                         <div className="flex items-center gap-3 mb-4 text-zinc-400">
                           <p className="text-[10px] font-bold uppercase tracking-widest">{label}</p>
                         </div>
@@ -392,35 +423,49 @@ export default function StudentDashboardPage() {
                             <tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30">
                               <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Subject</th>
                               <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Date/Time</th>
-                              <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Status</th>
+                              <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Result</th>
+                              <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Action</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {records.slice(0, 5).map((r) => (
-                              <tr
-                                key={r.id}
-                                className="border-b border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors"
-                              >
-                                <td className="px-6 py-4">
-                                  <span className="font-bold text-foreground">
-                    {sectionSubjectName(r.sectionId)}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                                  {new Date(r.timestamp).toLocaleDateString()} at {new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                  <StatusBadge status={r.status} />
-                                </td>
-                              </tr>
-                            ))}
-                            {records.length === 0 && (
-                              <tr>
-                                <td colSpan={3} className="px-6 py-12 text-center text-zinc-400 dark:text-zinc-500 text-sm font-bold uppercase tracking-widest">
-                                  No scan history available
-                                </td>
-                              </tr>
-                            )}
+                        {records.map((r) => (
+                          <tr
+                            key={r.id}
+                            className="border-b border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors"
+                          >
+                            <td className="px-6 py-4 font-bold text-foreground">
+                              {sectionSubjectName(r.sectionId)}
+                            </td>
+                            <td className="px-6 py-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                               {new Date(r.timestamp).toLocaleDateString()} &mdash; {new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <StatusBadge status={r.status} />
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              {r.status === 'disputed' ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Disputed
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => { setDisputeRecord(r); setDisputeReason(''); setDisputeDescription(''); setDisputeFeedback(null) }}
+                                  className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-maroon dark:hover:text-golden transition-colors border border-zinc-300 dark:border-zinc-700 px-2 py-1 hover:border-maroon dark:hover:border-golden"
+                                >
+                                  Report Issue
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {records.length === 0 && (
+                          <tr>
+                            <td colSpan={4} className="px-6 py-16 text-center text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest">
+                              Audit log is empty
+                            </td>
+                          </tr>
+                        )}
                           </tbody>
                         </table>
                       </div>
@@ -433,7 +478,16 @@ export default function StudentDashboardPage() {
 
           {/* My Subjects Tab */}
           {activeTab === 'subjects' && (
-            <div className="grid gap-6 sm:grid-cols-2">
+            <>
+              <div className="mb-6">
+                <Button asChild className="rounded-none bg-maroon text-white hover:bg-maroon-dark uppercase tracking-widest font-bold text-xs h-10 px-6">
+                  <Link href="/student/enroll">
+                    <GraduationCap className="w-4 h-4 mr-2" />
+                    Enroll in Subject
+                  </Link>
+                </Button>
+              </div>
+              <div className="grid gap-6 sm:grid-cols-2">
               {sections.map((section) => {
                 const subj = api.getSubject(section.subjectId)
                 return (
@@ -481,6 +535,7 @@ export default function StudentDashboardPage() {
                 </div>
               )}
             </div>
+            </>
           )}
 
           {/* Attendance History Tab */}
@@ -500,6 +555,7 @@ export default function StudentDashboardPage() {
                         <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Subject</th>
                         <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Date/Time</th>
                         <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Result</th>
+                        <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -517,11 +573,26 @@ export default function StudentDashboardPage() {
                           <td className="px-6 py-4 text-right">
                             <StatusBadge status={r.status} />
                           </td>
+                          <td className="px-6 py-4 text-right">
+                            {r.status === 'disputed' ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">
+                                <AlertTriangle className="w-3 h-3" />
+                                Disputed
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => { setDisputeRecord(r); setDisputeReason(''); setDisputeDescription(''); setDisputeFeedback(null) }}
+                                className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-maroon dark:hover:text-golden transition-colors border border-zinc-300 dark:border-zinc-700 px-2 py-1 hover:border-maroon dark:hover:border-golden"
+                              >
+                                Report Issue
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       ))}
                       {records.length === 0 && (
                         <tr>
-                          <td colSpan={3} className="px-6 py-16 text-center text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest">
+                          <td colSpan={4} className="px-6 py-16 text-center text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest">
                             Audit log is empty
                           </td>
                         </tr>
@@ -532,6 +603,77 @@ export default function StudentDashboardPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Dispute Modal */}
+          <Dialog open={!!disputeRecord} onOpenChange={(open) => { if (!open) { setDisputeRecord(null); setDisputeFeedback(null) } }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Dispute Attendance Record</DialogTitle>
+                <DialogDescription>
+                  Report an issue with this attendance record.
+                </DialogDescription>
+              </DialogHeader>
+              {disputeRecord && (
+                <div className="space-y-4 mt-2">
+                  <div className="text-sm text-zinc-600 dark:text-zinc-400 space-y-1 pb-3 border-b border-zinc-200 dark:border-zinc-800">
+                    <p><span className="font-bold text-zinc-900 dark:text-zinc-100">Student:</span> {disputeRecord.studentName}</p>
+                    <p><span className="font-bold text-zinc-900 dark:text-zinc-100">Date:</span> {new Date(disputeRecord.timestamp).toLocaleDateString()} at {new Date(disputeRecord.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                    <p><span className="font-bold text-zinc-900 dark:text-zinc-100">Session:</span> {sectionSubjectName(disputeRecord.sectionId)}</p>
+                    <p><span className="font-bold text-zinc-900 dark:text-zinc-100">Status:</span> <StatusBadge status={disputeRecord.status} /></p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1.5">Reason</label>
+                    <select
+                      value={disputeReason}
+                      onChange={(e) => setDisputeReason(e.target.value)}
+                      className="w-full h-10 rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors"
+                    >
+                      <option value="">Select a reason</option>
+                      <option value="outside_geofence">Wrong location</option>
+                      <option value="expired_token">Wrong time</option>
+                      <option value="duplicate_submission">I was present</option>
+                      <option value="invalid_signature">Technical issue</option>
+                      <option value="device_mismatch">Other</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1.5">Description</label>
+                    <textarea
+                      value={disputeDescription}
+                      onChange={(e) => setDisputeDescription(e.target.value)}
+                      rows={3}
+                      className="w-full rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors resize-none"
+                      placeholder="Describe the issue..."
+                    />
+                  </div>
+
+                  {disputeFeedback && (
+                    <div className={`text-xs font-bold uppercase tracking-widest px-3 py-2 ${disputeFeedback.type === 'success' ? 'text-golden bg-maroon-dark' : 'text-white bg-red-600'}`}>
+                      {disputeFeedback.message}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-3 pt-2">
+                    <DialogClose asChild>
+                      <Button variant="outline" className="rounded-none text-xs font-bold uppercase tracking-widest">
+                        Cancel
+                      </Button>
+                    </DialogClose>
+                    <Button
+                      onClick={handleSubmitDispute}
+                      disabled={!disputeReason}
+                      className="rounded-none bg-maroon text-white hover:bg-maroon-dark text-xs font-bold uppercase tracking-widest"
+                    >
+                      <Flag className="w-3 h-3 mr-2" />
+                      Submit Dispute
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
         </div>
       </main>
     </div>
