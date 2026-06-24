@@ -241,7 +241,7 @@ export default function StudentDashboardPage() {
   )
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-background selection:bg-golden selection:text-maroon">
+    <div className="min-h-screen md:h-screen md:overflow-hidden flex flex-col md:flex-row bg-background selection:bg-golden selection:text-maroon">
       {/* Mobile Top Navigation Header */}
       <div className="md:hidden sticky top-0 z-30 w-full h-16 bg-maroon dark:bg-zinc-950 text-white dark:text-golden border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between px-6 shrink-0 select-none">
         <div className="flex items-center gap-3">
