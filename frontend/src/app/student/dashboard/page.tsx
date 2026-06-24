@@ -315,7 +315,7 @@ export default function StudentDashboardPage() {
           {/* Dashboard Tab */}
           {activeTab === 'dashboard' && (
             <>
-              <div className="grid lg:grid-cols-3 gap-8 mb-8">
+              <div className="grid lg:grid-cols-3 gap-8 mb-8 items-start">
                 {/* Digital ID Card */}
                 <Card className="lg:col-span-1 rounded-none border-zinc-300 dark:border-zinc-800 shadow-none overflow-hidden flex flex-col relative bg-zinc-50 dark:bg-zinc-900/50">
                   <div className="h-24 bg-maroon flex items-center justify-center relative overflow-hidden">
