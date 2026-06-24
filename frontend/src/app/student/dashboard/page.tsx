@@ -54,6 +54,46 @@ const statCards = [
   { key: 'absent', label: 'Absent', color: 'text-maroon-dark' },
   { key: 'disputed', label: 'Disputed', color: 'text-maroon-dark dark:text-golden' },
 ] as const
+function generateStudentEvents(
+  sections: { id: string; section: string; schedule: { day: string; startTime: string; endTime: string; room?: string }[]; subjectId: string; teacherName: string; room: string }[],
+  getSubject: (id: string) => { name: string; code: string } | undefined,
+  startDate: Date,
+  endDate: Date,
+): CalendarEvent[] {
+  const events: CalendarEvent[] = []
+  const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+  for (const section of sections) {
+    const subject = getSubject(section.subjectId)
+    for (const sched of section.schedule) {
+      const dayIndex = dayMap[sched.day]
+      if (dayIndex === -1 || dayIndex === undefined) continue
+      const current = new Date(startDate)
+      while (current <= endDate) {
+        if (current.getDay() === dayIndex) {
+          events.push({
+            id: `sched-${section.id}-${formatDate(current)}-${sched.startTime}`,
+            title: subject?.name ?? section.id,
+            sectionId: section.id,
+            sectionName: `Sec ${section.section}`,
+            subjectName: subject?.name ?? section.id,
+            subjectCode: subject?.code,
+            room: sched.room || section.room,
+            startTime: sched.startTime,
+            endTime: sched.endTime,
+            date: formatDate(current),
+            type: 'schedule',
+            teacherName: section.teacherName,
+          })
+        }
+        current.setDate(current.getDate() + 1)
+      }
+    }
+  }
+  return events.sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date)
+    return a.startTime.localeCompare(b.startTime)
+  })
+}
 
 export default function StudentDashboardPage() {
   const router = useRouter()
@@ -167,47 +207,6 @@ export default function StudentDashboardPage() {
     setDisputeReason('')
     setDisputeDescription('')
   }
-
-function generateStudentEvents(
-  sections: { id: string; section: string; schedule: { day: string; startTime: string; endTime: string; room?: string }[]; subjectId: string; teacherName: string; room: string }[],
-  getSubject: (id: string) => { name: string; code: string } | undefined,
-  startDate: Date,
-  endDate: Date,
-): CalendarEvent[] {
-  const events: CalendarEvent[] = []
-  const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
-  for (const section of sections) {
-    const subject = getSubject(section.subjectId)
-    for (const sched of section.schedule) {
-      const dayIndex = dayMap[sched.day]
-      if (dayIndex === -1 || dayIndex === undefined) continue
-      const current = new Date(startDate)
-      while (current <= endDate) {
-        if (current.getDay() === dayIndex) {
-          events.push({
-            id: `sched-${section.id}-${formatDate(current)}-${sched.startTime}`,
-            title: subject?.name ?? section.id,
-            sectionId: section.id,
-            sectionName: `Sec ${section.section}`,
-            subjectName: subject?.name ?? section.id,
-            subjectCode: subject?.code,
-            room: sched.room || section.room,
-            startTime: sched.startTime,
-            endTime: sched.endTime,
-            date: formatDate(current),
-            type: 'schedule',
-            teacherName: section.teacherName,
-          })
-        }
-        current.setDate(current.getDate() + 1)
-      }
-    }
-  }
-  return events.sort((a, b) => {
-    if (a.date !== b.date) return a.date.localeCompare(b.date)
-    return a.startTime.localeCompare(b.startTime)
-  })
-}
 
 const ATTENDANCE_PAGE_SIZE = 8
   const sortedRecords = useMemo(
