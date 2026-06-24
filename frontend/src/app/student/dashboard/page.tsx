@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/mock-api'
@@ -56,6 +56,7 @@ export default function StudentDashboardPage() {
   const [sections, setSections] = useState<Section[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard')
+  const [attendancePage, setAttendancePage] = useState(0)
   const [isIdModalOpen, setIsIdModalOpen] = useState(false)
   const [isIdFlipped, setIsIdFlipped] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -129,6 +130,10 @@ export default function StudentDashboardPage() {
       setRecords(api.getAttendanceForStudent(cu.id))
     }
   }, [router])
+  
+  useEffect(() => {
+    setAttendancePage(0)
+  }, [activeTab])
 
   const handleLogout = () => {
     api.logout()
@@ -158,6 +163,17 @@ export default function StudentDashboardPage() {
   }
 
   if (!user) return null
+
+  const ATTENDANCE_PAGE_SIZE = 8
+  const sortedRecords = useMemo(
+    () => [...records].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+    [records]
+  )
+  const attendancePageCount = Math.max(1, Math.ceil(sortedRecords.length / ATTENDANCE_PAGE_SIZE))
+  const pagedRecords = useMemo(
+    () => sortedRecords.slice(attendancePage * ATTENDANCE_PAGE_SIZE, (attendancePage + 1) * ATTENDANCE_PAGE_SIZE),
+    [sortedRecords, attendancePage]
+  )
 
   const stats = {
     present: records.filter((r) => r.status === 'present').length,
@@ -619,7 +635,7 @@ export default function StudentDashboardPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {records.map((r) => (
+                      {pagedRecords.map((r) => (
                         <tr
                           key={r.id}
                           className="border-b border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors"
@@ -661,6 +677,46 @@ export default function StudentDashboardPage() {
                   </table>
                 </div>
               </CardContent>
+
+              {/* Pagination controls */}
+              {attendancePageCount > 1 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between border-t border-zinc-200 dark:border-zinc-800 px-6 py-4 bg-zinc-50/50 dark:bg-zinc-900/30 gap-4">
+                  <div className="text-xs text-zinc-500 uppercase tracking-widest font-bold">
+                    Showing {attendancePage * ATTENDANCE_PAGE_SIZE + 1} - {Math.min((attendancePage + 1) * ATTENDANCE_PAGE_SIZE, records.length)} of {records.length} scans
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap justify-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-none text-xs font-bold uppercase tracking-widest h-8"
+                      onClick={() => setAttendancePage(Math.max(0, attendancePage - 1))}
+                      disabled={attendancePage === 0}
+                    >
+                      Prev
+                    </Button>
+                    {Array.from({ length: attendancePageCount }, (_, i) => (
+                      <Button
+                        key={i}
+                        variant={attendancePage === i ? 'default' : 'outline'}
+                        size="sm"
+                        className={`rounded-none text-xs font-bold w-8 h-8 p-0 ${attendancePage === i ? 'bg-maroon hover:bg-maroon-dark text-white border-maroon' : 'text-zinc-500 hover:text-foreground'}`}
+                        onClick={() => setAttendancePage(i)}
+                      >
+                        {i + 1}
+                      </Button>
+                    ))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-none text-xs font-bold uppercase tracking-widest h-8"
+                      onClick={() => setAttendancePage(Math.min(attendancePageCount - 1, attendancePage + 1))}
+                      disabled={attendancePage === attendancePageCount - 1}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
             </Card>
           )}
 
