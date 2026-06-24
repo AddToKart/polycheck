@@ -21,6 +21,8 @@ import {
   Menu,
   Flag,
   AlertTriangle,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react'
 import {
   Dialog,
@@ -31,6 +33,7 @@ import {
   DialogClose,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 type NavTab = 'dashboard' | 'subjects' | 'attendance'
 
@@ -60,6 +63,59 @@ export default function StudentDashboardPage() {
   const [disputeReason, setDisputeReason] = useState('')
   const [disputeDescription, setDisputeDescription] = useState('')
   const [disputeFeedback, setDisputeFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  // Enrollment Modal States
+  const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false)
+  const [enrollCode, setEnrollCode] = useState('')
+  const [enrollLoading, setEnrollLoading] = useState(false)
+  const [enrollSuccess, setEnrollSuccess] = useState(false)
+  const [enrollError, setEnrollError] = useState('')
+
+  const handleEnrollSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setEnrollError('')
+    setEnrollSuccess(false)
+
+    const trimmed = enrollCode.trim()
+    if (!trimmed) {
+      setEnrollError('Please enter an enrollment code.')
+      return
+    }
+
+    setEnrollLoading(true)
+
+    const allSections = api.getSections()
+    const foundSection = allSections.find((s) => s.enrollmentCode === trimmed)
+    if (!foundSection) {
+      setEnrollError('Invalid enrollment code. Please check and try again.')
+      setEnrollLoading(false)
+      return
+    }
+
+    if (new Date(foundSection.enrollmentCodeExpiry) < new Date()) {
+      setEnrollError('This enrollment code has expired.')
+      setEnrollLoading(false)
+      return
+    }
+
+    const result = api.enrollStudent({
+      sectionId: foundSection.id,
+      studentId: user!.id,
+      studentName: user!.fullName,
+    })
+
+    if (!result) {
+      setEnrollError('You are already enrolled in this section.')
+      setEnrollLoading(false)
+      return
+    }
+
+    setEnrollSuccess(true)
+    setEnrollCode('')
+    setEnrollLoading(false)
+    // Refresh student's enrolled subjects list
+    setSections(api.getStudentSections(user!.id))
+  }
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -235,6 +291,18 @@ export default function StudentDashboardPage() {
               </h1>
             </div>
             <div className="mt-4 md:mt-0 flex gap-2">
+              <Button 
+                onClick={() => {
+                  setIsEnrollModalOpen(true)
+                  setEnrollError('')
+                  setEnrollSuccess(false)
+                  setEnrollCode('')
+                }}
+                className="rounded-none bg-maroon text-white hover:bg-maroon-dark uppercase tracking-widest font-bold text-xs h-10 px-6"
+              >
+                <GraduationCap className="w-4 h-4 mr-2" />
+                Enroll in Subject
+              </Button>
               <Button asChild className="rounded-none bg-maroon text-white hover:bg-maroon-dark uppercase tracking-widest font-bold text-xs h-10 px-6">
                 <button onClick={() => {/* Future Scan QR Trigger */}}>
                   <MapPin className="w-4 h-4 mr-2" />
@@ -479,14 +547,6 @@ export default function StudentDashboardPage() {
           {/* My Subjects Tab */}
           {activeTab === 'subjects' && (
             <>
-              <div className="mb-6">
-                <Button asChild className="rounded-none bg-maroon text-white hover:bg-maroon-dark uppercase tracking-widest font-bold text-xs h-10 px-6">
-                  <Link href="/student/enroll">
-                    <GraduationCap className="w-4 h-4 mr-2" />
-                    Enroll in Subject
-                  </Link>
-                </Button>
-              </div>
               <div className="grid gap-6 sm:grid-cols-2">
               {sections.map((section) => {
                 const subj = api.getSubject(section.subjectId)
@@ -672,6 +732,71 @@ export default function StudentDashboardPage() {
                   </div>
                 </div>
               )}
+            </DialogContent>
+          </Dialog>
+
+          {/* Enroll in Subject Modal */}
+          <Dialog open={isEnrollModalOpen} onOpenChange={(open) => { if (!open) setIsEnrollModalOpen(false) }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-xl text-maroon dark:text-golden font-heading font-bold">
+                  <GraduationCap className="w-5 h-5 text-maroon dark:text-golden" />
+                  Enroll in a Subject
+                </DialogTitle>
+                <DialogDescription>
+                  Enter the enrollment code provided by your instructor.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 mt-2">
+                {enrollSuccess ? (
+                  <div className="border border-green-300 bg-green-50 dark:bg-green-950/30 dark:border-green-800 p-4 flex items-start gap-3">
+                    <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-bold text-green-700 dark:text-green-300">Successfully enrolled!</p>
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1">You can now access your new subject from the dashboard.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleEnrollSubmit} className="space-y-4">
+                    <div>
+                      <Input
+                        value={enrollCode}
+                        onChange={(e) => setEnrollCode(e.target.value)}
+                        placeholder="Enter enrollment code"
+                        className="text-lg text-center tracking-widest font-mono uppercase rounded-none h-12"
+                        autoFocus
+                      />
+                    </div>
+
+                    {enrollError && (
+                      <div className="border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800 p-3 flex items-start gap-2">
+                        <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-red-600 dark:text-red-400">{enrollError}</p>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end gap-3 pt-2">
+                      <DialogClose asChild>
+                        <Button type="button" variant="outline" className="rounded-none text-xs font-bold uppercase tracking-widest h-10">
+                          Cancel
+                        </Button>
+                      </DialogClose>
+                      <Button type="submit" disabled={enrollLoading} className="rounded-none bg-maroon text-white hover:bg-maroon-dark text-xs font-bold uppercase tracking-widest h-10 px-6">
+                        {enrollLoading ? 'Enrolling...' : 'Enroll'}
+                      </Button>
+                    </div>
+                  </form>
+                )}
+
+                {enrollSuccess && (
+                  <div className="flex justify-end pt-2">
+                    <Button onClick={() => setIsEnrollModalOpen(false)} className="rounded-none bg-maroon text-white hover:bg-maroon-dark text-xs font-bold uppercase tracking-widest h-10 px-6">
+                      Close
+                    </Button>
+                  </div>
+                )}
+              </div>
             </DialogContent>
           </Dialog>
         </div>

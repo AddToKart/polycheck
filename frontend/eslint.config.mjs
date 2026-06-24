@@ -12,7 +12,8 @@ const eslintConfig = defineConfig([
       "react-hooks/static-components": "off",
       "react-hooks/purity": "off",
       "@next/next/no-html-link-for-pages": "off",
-      "@typescript-eslint/no-explicit-any": "off"
+      "@typescript-eslint/no-explicit-any": "off",
+      "prefer-const": "off"
     }
   },
   // Override default ignores of eslint-config-next.
