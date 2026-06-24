@@ -83,7 +83,6 @@ export default function EnrollScreen() {
 
           <View style={{ backgroundColor: surface, padding: 20, borderWidth: 1, borderColor: border }}>
             <TextInput
-              className="text-lg text-center tracking-[3px] font-mono uppercase h-12"
               style={{
                 color: textPrimary,
                 backgroundColor: isDark ? '#0A0A0C' : '#FAFAFA',
@@ -91,6 +90,12 @@ export default function EnrollScreen() {
                 borderColor: isDark ? 'rgba(245, 168, 0, 0.3)' : '#DDD',
                 marginBottom: 16,
                 paddingHorizontal: 12,
+                fontSize: 18,
+                textAlign: 'center',
+                letterSpacing: 3,
+                fontFamily: 'monospace',
+                textTransform: 'uppercase',
+                height: 48,
               }}
               value={code}
               onChangeText={setCode}
