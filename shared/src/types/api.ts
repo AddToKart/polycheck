@@ -75,6 +75,10 @@ export interface CalendarEvent {
   sectionName: string
   type: 'session' | 'schedule'
   status?: 'active' | 'inactive' | 'completed'
+  studentStatus?: 'present' | 'late' | 'absent'
+  attendanceCounts?: { present: number; late: number; absent: number; disputed: number }
+  teacherName?: string
+  subjectCode?: string
 }
 
 export interface ApiClient {

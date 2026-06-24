@@ -75,6 +75,21 @@ export default function FacultyScheduleScreen() {
     return eventsByDate.get(selectedDay) || []
   }, [selectedDay, eventsByDate])
 
+  const attendanceRecords = useMemo(() => {
+    return api.getAttendanceRecords()
+  }, [])
+
+  const selectedEventCounts = useMemo(() => {
+    if (!selectedEvent || selectedEvent.type !== 'session') return null
+    const records = attendanceRecords.filter((r: any) => r.sessionId === selectedEvent.id)
+    return {
+      present: records.filter((r: any) => r.status === 'present').length,
+      late: records.filter((r: any) => r.status === 'late').length,
+      absent: records.filter((r: any) => r.status === 'absent').length,
+      total: records.length,
+    }
+  }, [selectedEvent, attendanceRecords])
+
   const displayedWeekRange = useMemo(() => {
     if (viewMode !== 'week' || weekDays.length < 7) return ''
     const start = new Date(weekDays[0].date + 'T00:00:00')
@@ -206,9 +221,9 @@ export default function FacultyScheduleScreen() {
                             <View
                               key={ei}
                               style={[
-                                styles.eventDot,
-                                { backgroundColor: ev.type === 'session' ? '#7B1113' : '#FFDF00' },
-                                ev.status === 'active' && styles.eventDotActive,
+                                ev.type === 'session' ? styles.eventDot : styles.ghostDot,
+                                { backgroundColor: ev.type === 'session' ? (ev.status === 'active' ? '#22C55E' : '#7B1113') : 'transparent' },
+                                ev.type === 'session' && ev.status === 'active' && styles.eventDotActive,
                               ]}
                             />
                           ))}
@@ -315,12 +330,14 @@ export default function FacultyScheduleScreen() {
           {selectedEvent && (
             <View style={[styles.sheet, isDark && styles.sheetDark]} onStartShouldSetResponder={() => true}>
               <View style={[styles.sheetHandle, isDark && styles.sheetHandleDark]} />
-              <View style={[styles.typeBadge, { backgroundColor: selectedEvent.type === 'session' ? '#7B1113' : '#FFDF00' }]}>
-                <Text style={[styles.typeBadgeText, selectedEvent.type === 'schedule' && { color: '#4A0A0B' }]}>
-                  {selectedEvent.type === 'session' ? 'SESSION' : 'SCHEDULE'}
+              <View style={[styles.typeBadge, { backgroundColor: selectedEvent.type === 'session' ? '#7B1113' : '#888' }]}>
+                <Text style={[styles.typeBadgeText, selectedEvent.type === 'schedule' && { color: '#FFF', opacity: 0.5 }]}>
+                  {selectedEvent.type === 'session' ? 'SESSION' : 'GHOST (NO SESSION)'}
                 </Text>
               </View>
-              <Text style={[styles.sheetTitle, isDark && styles.textWhite]}>{selectedEvent.subjectName}</Text>
+              <Text style={[styles.sheetTitle, isDark && styles.textWhite, selectedEvent.type === 'schedule' && { opacity: 0.4 }]}>
+                {selectedEvent.subjectName || 'Scheduled class time'}
+              </Text>
 
               <View style={[styles.sheetDetail, isDark && styles.sheetDetailDark]}>
                 <View style={styles.sheetRow}>
@@ -360,6 +377,20 @@ export default function FacultyScheduleScreen() {
                   </View>
                 </View>
               </View>
+
+              {selectedEvent.type === 'session' && selectedEventCounts && (
+                <View style={styles.attendanceCountsRow}>
+                  <View style={styles.countBadgeGreen}>
+                    <Text style={styles.countBadgeText}>P {selectedEventCounts.present}</Text>
+                  </View>
+                  <View style={styles.countBadgeYellow}>
+                    <Text style={styles.countBadgeTextDark}>L {selectedEventCounts.late}</Text>
+                  </View>
+                  <View style={styles.countBadgeRed}>
+                    <Text style={styles.countBadgeText}>A {selectedEventCounts.absent}</Text>
+                  </View>
+                </View>
+              )}
 
               {selectedEvent.type === 'session' && (
                 <TouchableOpacity
@@ -428,8 +459,16 @@ const styles = StyleSheet.create({
   dayNumOtherDark: { color: 'rgba(255,255,255,0.2)' },
   dotRow: { flexDirection: 'row', alignItems: 'center', gap: 2, height: 14 },
   eventDot: { width: 5, height: 5, borderRadius: 2.5 },
+  ghostDot: { width: 5, height: 5, borderRadius: 2.5, borderWidth: 1, borderColor: '#CCC' },
   eventDotActive: { width: 6, height: 6, borderRadius: 3 },
   moreDots: { fontSize: 8, fontFamily: fonts.body, color: '#AAA' },
+
+  attendanceCountsRow: { flexDirection: 'row', gap: 8, marginBottom: 16, paddingHorizontal: 4 },
+  countBadgeGreen: { flex: 1, backgroundColor: '#22C55E', paddingVertical: 8, alignItems: 'center' },
+  countBadgeYellow: { flex: 1, backgroundColor: '#FFDF00', paddingVertical: 8, alignItems: 'center' },
+  countBadgeRed: { flex: 1, backgroundColor: '#EF4444', paddingVertical: 8, alignItems: 'center' },
+  countBadgeText: { color: '#FFF', fontSize: 12, fontWeight: '700', fontFamily: fonts.bodyBold },
+  countBadgeTextDark: { color: '#4A0A0B', fontSize: 12, fontWeight: '700', fontFamily: fonts.bodyBold },
 
   weekContainer: { paddingRight: 8 },
   weekCol: { width: WEEK_COL_WIDTH, marginRight: 8, backgroundColor: '#FFF', borderRadius: 0 },

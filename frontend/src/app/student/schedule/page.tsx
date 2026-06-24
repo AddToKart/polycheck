@@ -3,67 +3,50 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, Calendar, BookOpen } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Calendar, BookOpen, CheckCircle, Clock, XCircle } from 'lucide-react'
 import { api } from '@/lib/mock-api'
-import type { Student } from '@polycheck/shared'
+import type { Student, AttendanceRecord } from '@polycheck/shared'
+import { generateStudentCalendarEvents, formatTime, getWeekDays, getDayName, getDayNameFull, isSameDay, getDateRangeForWeek } from '@polycheck/shared/utils'
+import type { CalendarEvent } from '@polycheck/shared'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import {
-  getWeekDays,
-  getDayName,
-  getDayNameFull,
-  formatDate,
-  formatTime,
-  isSameDay,
-  getDateRangeForWeek,
-  type CalendarEvent,
-} from '@/lib/calendar-utils'
 
-function generateStudentEvents(
-  sections: { id: string; section: string; schedule: { day: string; startTime: string; endTime: string; room?: string }[]; subjectId: string; teacherName: string; room: string }[],
-  getSubject: (id: string) => { name: string; code: string } | undefined,
-  startDate: Date,
-  endDate: Date,
-): CalendarEvent[] {
-  const events: CalendarEvent[] = []
-  for (const section of sections) {
-    const subject = getSubject(section.subjectId)
-    for (const sched of section.schedule) {
-      const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
-      const dayIndex = dayMap[sched.day]
-      if (dayIndex === -1 || dayIndex === undefined) continue
-      const current = new Date(startDate)
-      while (current <= endDate) {
-        if (current.getDay() === dayIndex) {
-          events.push({
-            id: `sched-${section.id}-${formatDate(current)}-${sched.startTime}`,
-            title: subject?.name ?? section.id,
-            sectionId: section.id,
-            sectionName: `Sec ${section.section}`,
-            subjectName: subject?.name ?? section.id,
-            subjectCode: subject?.code,
-            room: sched.room || section.room,
-            startTime: sched.startTime,
-            endTime: sched.endTime,
-            date: formatDate(current),
-            type: 'schedule',
-            teacherName: section.teacherName,
-          })
-        }
-        current.setDate(current.getDate() + 1)
-      }
-    }
-  }
-  return events.sort((a, b) => {
-    if (a.date !== b.date) return a.date.localeCompare(b.date)
-    return a.startTime.localeCompare(b.startTime)
-  })
+const STATUS_BORDER_COLORS: Record<string, string> = {
+  present: 'border-l-green-500 bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-950/50',
+  late: 'border-l-yellow-500 bg-yellow-50 dark:bg-yellow-950/30 hover:bg-yellow-100 dark:hover:bg-yellow-950/50',
+  absent: 'border-l-red-500 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50',
+}
+
+const STATUS_TEXT_COLORS: Record<string, string> = {
+  present: 'text-green-700 dark:text-green-300',
+  late: 'text-yellow-700 dark:text-yellow-300',
+  absent: 'text-red-700 dark:text-red-300',
+}
+
+const STATUS_ICONS: Record<string, React.ReactNode> = {
+  present: <CheckCircle className="w-3 h-3 text-green-600" />,
+  late: <Clock className="w-3 h-3 text-yellow-600" />,
+  absent: <XCircle className="w-3 h-3 text-red-600" />,
+}
+
+function StatusBlock({ event }: { event: CalendarEvent }) {
+  if (event.type === 'schedule') return null
+  const color = event.studentStatus ? STATUS_TEXT_COLORS[event.studentStatus] || '' : 'text-zinc-400 dark:text-zinc-500'
+  const icon = event.studentStatus ? STATUS_ICONS[event.studentStatus] || null : null
+  const label = event.studentStatus ? event.studentStatus.charAt(0).toUpperCase() + event.studentStatus.slice(1) : 'Pending'
+  return (
+    <div className={`flex items-center gap-1 mt-1 text-[9px] font-bold uppercase tracking-widest ${color}`}>
+      {icon}
+      {label}
+    </div>
+  )
 }
 
 export default function StudentSchedulePage() {
   const router = useRouter()
   const [user, setUser] = useState<Student | null>(null)
   const [currentDate, setCurrentDate] = useState(new Date())
+  const [records, setRecords] = useState<AttendanceRecord[]>([])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -72,6 +55,9 @@ export default function StudentSchedulePage() {
       return
     }
     setUser(cu as Student)
+    if (cu.studentId) {
+      setRecords(api.getAttendanceForStudent(cu.id))
+    }
   }, [router])
 
   const handleLogout = useCallback(() => {
@@ -79,16 +65,24 @@ export default function StudentSchedulePage() {
     router.push('/')
   }, [router])
 
+  const studentId = user?.id ?? ''
+
   const sections = useMemo(() => {
     if (!user) return []
     return api.getStudentSections(user.id)
   }, [user])
 
+  const sessions = useMemo(() => {
+    return api.getSessions()
+  }, [])
+
   const events = useMemo(() => {
-    if (sections.length === 0) return []
+    if (sections.length === 0 || !studentId) return []
     const range = getDateRangeForWeek(currentDate)
-    return generateStudentEvents(
+    return generateStudentCalendarEvents(
       sections,
+      sessions,
+      records,
       (id) => {
         const subj = api.getSubject(id)
         return subj ? { name: subj.name, code: subj.code } : undefined
@@ -96,7 +90,7 @@ export default function StudentSchedulePage() {
       range.start,
       range.end,
     )
-  }, [sections, currentDate])
+  }, [sections, sessions, records, currentDate, studentId])
 
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate])
   const today = new Date()
@@ -104,7 +98,7 @@ export default function StudentSchedulePage() {
   const weekDayEvents = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>()
     for (const day of weekDays) {
-      map.set(formatDate(day), events.filter((e) => e.date === formatDate(day)))
+      map.set(day.date, events.filter((e) => e.date === day.date))
     }
     return map
   }, [weekDays, events])
@@ -126,8 +120,8 @@ export default function StudentSchedulePage() {
   }, [])
 
   const headerLabel = useMemo(() => {
-    const start = weekDays[0]
-    const end = weekDays[6]
+    const start = new Date(weekDays[0].date + 'T00:00:00')
+    const end = new Date(weekDays[6].date + 'T00:00:00')
     if (start.getMonth() === end.getMonth()) {
       return `${start.toLocaleDateString('en-US', { month: 'long' })} ${start.getDate()} - ${end.getDate()}, ${start.getFullYear()}`
     }
@@ -231,17 +225,17 @@ export default function StudentSchedulePage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
               {weekDays.map((day, i) => {
-                const ds = formatDate(day)
+                const ds = day.date
                 const dayEvs = weekDayEvents.get(ds) || []
-                const isToday = isSameDay(day, today)
+                const isT = isSameDay(new Date(day.date + 'T00:00:00'), today)
                 return (
-                  <Card key={i} className={`rounded-none border ${isToday ? 'border-maroon dark:border-golden border-t-4 border-t-maroon dark:border-t-golden' : 'border-zinc-300 dark:border-zinc-800'} bg-white dark:bg-zinc-900`}>
-                    <div className={`p-3 border-b border-zinc-200 dark:border-zinc-700 ${isToday ? 'bg-maroon/5 dark:bg-golden/10' : 'bg-zinc-50 dark:bg-zinc-900/50'}`}>
-                      <p className={`text-[10px] font-bold uppercase tracking-widest ${isToday ? 'text-maroon dark:text-golden' : 'text-zinc-500'}`}>
+                  <Card key={i} className={`rounded-none border ${isT ? 'border-maroon dark:border-golden border-t-4 border-t-maroon dark:border-t-golden' : 'border-zinc-300 dark:border-zinc-800'} bg-white dark:bg-zinc-900`}>
+                    <div className={`p-3 border-b border-zinc-200 dark:border-zinc-700 ${isT ? 'bg-maroon/5 dark:bg-golden/10' : 'bg-zinc-50 dark:bg-zinc-900/50'}`}>
+                      <p className={`text-[10px] font-bold uppercase tracking-widest ${isT ? 'text-maroon dark:text-golden' : 'text-zinc-500'}`}>
                         {getDayName(i)}
                       </p>
-                      <p className={`text-lg font-heading font-bold mt-0.5 ${isToday ? 'text-maroon dark:text-golden' : 'text-foreground'}`}>
-                        {day.getDate()}
+                      <p className={`text-lg font-heading font-bold mt-0.5 ${isT ? 'text-maroon dark:text-golden' : 'text-foreground'}`}>
+                        {new Date(day.date + 'T00:00:00').getDate()}
                       </p>
                       <p className="text-[9px] text-zinc-400 uppercase tracking-wider mt-0.5">
                         {getDayNameFull(i)}
@@ -251,26 +245,32 @@ export default function StudentSchedulePage() {
                       {dayEvs.length === 0 ? (
                         <p className="text-[10px] text-zinc-400 text-center py-4">No classes</p>
                       ) : (
-                        dayEvs.map((ev) => (
-                          <Link
-                            key={ev.id}
-                            href={`/student/subjects/${ev.sectionId}`}
-                            className="block p-2 border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-colors"
-                          >
-                            <p className="text-[10px] font-bold text-blue-700 dark:text-blue-300 truncate leading-tight">
-                              {ev.subjectCode || ev.subjectName}
-                            </p>
-                            <p className="text-[9px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                              {formatTime(ev.startTime)} - {formatTime(ev.endTime)}
-                            </p>
-                            {ev.room && (
-                              <p className="text-[9px] text-zinc-400 dark:text-zinc-500 truncate">{ev.room}</p>
-                            )}
-                            {ev.teacherName && (
-                              <p className="text-[9px] text-zinc-400 dark:text-zinc-500 truncate">{ev.teacherName}</p>
-                            )}
-                          </Link>
-                        ))
+                        dayEvs.map((ev) => {
+                          const isGhost = ev.type === 'schedule'
+                          const borderColor = isGhost ? 'border-l-zinc-300 bg-transparent border-dashed' : (ev.studentStatus ? STATUS_BORDER_COLORS[ev.studentStatus] || 'border-l-zinc-400 bg-zinc-50 dark:bg-zinc-800/30 hover:bg-zinc-100 dark:hover:bg-zinc-800/50' : 'border-l-zinc-400 bg-zinc-50 dark:bg-zinc-800/30 hover:bg-zinc-100 dark:hover:bg-zinc-800/50')
+                          const textColor = isGhost ? 'text-zinc-300 dark:text-zinc-600' : (ev.studentStatus ? STATUS_TEXT_COLORS[ev.studentStatus] || 'text-zinc-500 dark:text-zinc-400' : 'text-zinc-500 dark:text-zinc-400')
+                          return (
+                            <Link
+                              key={ev.id}
+                              href={isGhost ? '#' : `/student/subjects/${ev.sectionId}`}
+                              className={`block p-2 border-l-4 transition-colors ${borderColor} ${isGhost ? 'cursor-default' : ''}`}
+                            >
+                              <p className={`text-[10px] font-bold truncate leading-tight ${textColor}`}>
+                                {isGhost ? '(class)' : ev.subjectCode || ev.subjectName}
+                              </p>
+                              <p className="text-[9px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                                {formatTime(ev.startTime)} - {formatTime(ev.endTime)}
+                              </p>
+                              {ev.room && (
+                                <p className={`text-[9px] truncate ${isGhost ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-400 dark:text-zinc-500'}`}>{ev.room}</p>
+                              )}
+                              {ev.teacherName && (
+                                <p className={`text-[9px] truncate ${isGhost ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-400 dark:text-zinc-500'}`}>{ev.teacherName}</p>
+                              )}
+                              {!isGhost && <StatusBlock event={ev} />}
+                            </Link>
+                          )
+                        })
                       )}
                     </div>
                   </Card>

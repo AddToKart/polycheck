@@ -2,25 +2,43 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, Modal, StyleSheet, Dimensions } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
+import { router } from 'expo-router'
 import { api } from '../../services/mock-api'
 import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
-import { getWeekDays, formatTime, getMonthName, getDayName } from '@polycheck/shared/utils'
-import type { User, Section, ScheduleDay } from '@polycheck/shared'
+import { getWeekDays, formatTime, getMonthName, getDayName, formatDate, generateStudentCalendarEvents } from '@polycheck/shared/utils'
+import type { User, Section, CalendarEvent, AttendanceRecord } from '@polycheck/shared'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
 const WEEK_COL_WIDTH = 140
+
+const STATUS_BORDER: Record<string, string> = {
+  present: '#22C55E',
+  late: '#FFDF00',
+  absent: '#EF4444',
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  present: 'Present',
+  late: 'Late',
+  absent: 'Absent',
+  pending: 'Pending',
+}
 
 export default function StudentScheduleScreen() {
   const { isDark } = useTheme()
   const [user, setUser] = useState<User | null>(null)
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [selectedSection, setSelectedSection] = useState<{ section: Section; schedule: ScheduleDay; parentName: string; parentCode: string } | null>(null)
+  const [records, setRecords] = useState<AttendanceRecord[]>([])
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
 
   useEffect(() => {
     const cu = api.getCurrentUser()
     if (!cu || cu.role !== 'student') return
     setUser(cu)
+    if (cu.studentId) {
+      setRecords(api.getMyAttendance(cu.id))
+    }
   }, [])
 
   const student = user && 'studentId' in user
@@ -28,20 +46,36 @@ export default function StudentScheduleScreen() {
     : null
 
   const mySections: Section[] = student ? api.getStudentSections(student.id) : []
+  const allSessions = api.getSessions()
 
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate])
 
+  const events = useMemo(() => {
+    if (!student || mySections.length === 0) return []
+    const start = weekDays[0].date
+    const end = weekDays[6].date
+    return generateStudentCalendarEvents(
+      mySections,
+      allSessions,
+      records,
+      (id) => {
+        const subj = api.getSubject(id)
+        return subj ? { name: subj.name, code: subj.code } : undefined
+      },
+      start,
+      end,
+    )
+  }, [mySections, allSessions, records, weekDays, student])
+
   const dayEventsMap = useMemo(() => {
-    const map = new Map<string, { section: Section; schedule: ScheduleDay }[]>()
-    for (const section of mySections) {
-      for (const sched of section.schedule) {
-        const events = map.get(sched.day) || []
-        events.push({ section, schedule: sched })
-        map.set(sched.day, events)
-      }
+    const map = new Map<string, CalendarEvent[]>()
+    for (const ev of events) {
+      const list = map.get(ev.date) || []
+      list.push(ev)
+      map.set(ev.date, list)
     }
     return map
-  }, [mySections])
+  }, [events])
 
   const goToPrev = useCallback(() => {
     const d = new Date(currentDate)
@@ -98,7 +132,7 @@ export default function StudentScheduleScreen() {
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.weekContainer}>
           {weekDays.map((wd) => {
-            const events = (dayEventsMap.get(wd.day) || []).sort((a, b) => a.schedule.startTime.localeCompare(b.schedule.startTime))
+            const dayEvs = (dayEventsMap.get(wd.date) || []).sort((a, b) => a.startTime.localeCompare(b.startTime))
             const isToday = wd.isToday
             return (
               <View key={wd.date} style={[styles.weekCol, isDark && styles.weekColDark, isToday && styles.weekColToday]}>
@@ -109,31 +143,40 @@ export default function StudentScheduleScreen() {
                   </Text>
                 </View>
                 <View style={styles.weekColBody}>
-                  {events.length === 0 ? (
+                  {dayEvs.length === 0 ? (
                     <Text style={[styles.weekEmpty, isDark && styles.textWhite50]}>No classes</Text>
                   ) : (
-                    events.map((ev, ei) => {
-                      const parent = api.getSubject(ev.section.subjectId)
+                    dayEvs.map((ev) => {
+                      const isGhost = ev.type === 'schedule'
+                      const borderColor = isGhost ? '#CCC' : (ev.studentStatus ? STATUS_BORDER[ev.studentStatus] : '#7B1113')
                       return (
                         <TouchableOpacity
-                          key={`${ev.section.id}-${ev.schedule.day}-${ei}`}
-                          style={[styles.classCard, isDark && styles.classCardDark]}
-                          onPress={() => setSelectedSection({ ...ev, parentName: parent?.name ?? '', parentCode: parent?.code ?? '' })}
-                          activeOpacity={0.7}
+                          key={ev.id}
+                          style={[styles.classCard, isDark && styles.classCardDark, { borderLeftColor: borderColor }, isGhost && styles.ghostCard]}
+                          onPress={() => !isGhost && setSelectedEvent(ev)}
+                          activeOpacity={isGhost ? 1 : 0.7}
                         >
-                          <View style={[styles.classDot, { backgroundColor: isToday ? '#7B1113' : '#FFDF00' }]} />
-                          <Text style={[styles.classTime, isDark && styles.textGolden]} numberOfLines={1}>
-                            {formatTime(ev.schedule.startTime)}
+                          <View style={[styles.classDot, { backgroundColor: borderColor }]} />
+                          <Text style={[styles.classTime, isDark && styles.textGolden, isGhost && styles.ghostText]} numberOfLines={1}>
+                            {formatTime(ev.startTime)}
                           </Text>
-                          <Text style={[styles.className, isDark && styles.textWhite]} numberOfLines={2}>
-                            {parent?.name ?? ''}
+                          <Text style={[styles.className, isDark && styles.textWhite, isGhost && styles.ghostText]} numberOfLines={2}>
+                            {isGhost ? '(class)' : ev.subjectCode || ev.subjectName}
                           </Text>
-                          <Text style={[styles.classRoom, isDark && styles.textWhite50]} numberOfLines={1}>
-                            {ev.schedule.room || ev.section.room}
+                          <Text style={[styles.classRoom, isDark && styles.textWhite50, isGhost && styles.ghostText]} numberOfLines={1}>
+                            {ev.room}
                           </Text>
-                          <Text style={[styles.classSection, isDark && styles.textWhite50]} numberOfLines={1}>
-                            Sec {ev.section.section}
+                          <Text style={[styles.classSection, isDark && styles.textWhite50, isGhost && styles.ghostText]} numberOfLines={1}>
+                            {isGhost ? `Sec ${ev.sectionName}` : `Sec ${ev.sectionName}`}
                           </Text>
+                          {!isGhost && ev.studentStatus && (
+                            <Text style={[
+                              styles.statusLabel,
+                              { color: STATUS_BORDER[ev.studentStatus] || '#888' },
+                            ]}>
+                              {STATUS_LABEL[ev.studentStatus] || ''}
+                            </Text>
+                          )}
                         </TouchableOpacity>
                       )
                     })
@@ -145,54 +188,59 @@ export default function StudentScheduleScreen() {
         </ScrollView>
       )}
 
-      <Modal visible={!!selectedSection} transparent animationType="fade" onRequestClose={() => setSelectedSection(null)}>
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setSelectedSection(null)}>
-          {selectedSection && (
+      <Modal visible={!!selectedEvent} transparent animationType="fade" onRequestClose={() => setSelectedEvent(null)}>
+        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setSelectedEvent(null)}>
+          {selectedEvent && (
             <View style={[styles.sheet, isDark && styles.sheetDark]} onStartShouldSetResponder={() => true}>
               <View style={[styles.sheetHandle, isDark && styles.sheetHandleDark]} />
-              <View style={[styles.typeBadge, { backgroundColor: '#7B1113' }]}>
-                <Text style={styles.typeBadgeText}>CLASS</Text>
+              <View style={[styles.typeBadge, { backgroundColor: selectedEvent.studentStatus === 'present' ? '#22C55E' : selectedEvent.studentStatus === 'late' ? '#FFDF00' : selectedEvent.studentStatus === 'absent' ? '#EF4444' : '#7B1113' }]}>
+                <Text style={[styles.typeBadgeText, selectedEvent.studentStatus === 'late' && { color: '#4A0A0B' }]}>
+                  {selectedEvent.studentStatus ? STATUS_LABEL[selectedEvent.studentStatus]?.toUpperCase() : 'PENDING'}
+                </Text>
               </View>
-              <Text style={[styles.sheetTitle, isDark && styles.textWhite]}>{selectedSection.parentName}</Text>
+              <Text style={[styles.sheetTitle, isDark && styles.textWhite]}>{selectedEvent.subjectName}</Text>
 
               <View style={[styles.sheetDetail, isDark && styles.sheetDetailDark]}>
                 <View style={styles.sheetRow}>
                   <MaterialIcons name="class" size={18} color="#FFDF00" />
-                  <Text style={[styles.sheetRowLabel, isDark && styles.textWhite50]}>Code</Text>
-                  <Text style={[styles.sheetRowValue, isDark && styles.textWhite]}>{selectedSection.parentCode}</Text>
-                </View>
-                <View style={styles.sheetRow}>
-                  <MaterialIcons name="groups" size={18} color="#FFDF00" />
                   <Text style={[styles.sheetRowLabel, isDark && styles.textWhite50]}>Section</Text>
-                  <Text style={[styles.sheetRowValue, isDark && styles.textWhite]}>Sec {selectedSection.section.section}</Text>
+                  <Text style={[styles.sheetRowValue, isDark && styles.textWhite]}>Sec {selectedEvent.sectionName}</Text>
                 </View>
-                <View style={styles.sheetRow}>
-                  <MaterialIcons name="person" size={18} color="#FFDF00" />
-                  <Text style={[styles.sheetRowLabel, isDark && styles.textWhite50]}>Instructor</Text>
-                  <Text style={[styles.sheetRowValue, isDark && styles.textWhite]}>{selectedSection.section.teacherName}</Text>
-                </View>
-                <View style={styles.sheetRow}>
-                  <MaterialIcons name="room" size={18} color="#FFDF00" />
-                  <Text style={[styles.sheetRowLabel, isDark && styles.textWhite50]}>Room</Text>
-                  <Text style={[styles.sheetRowValue, isDark && styles.textWhite]}>
-                    {selectedSection.schedule.room || selectedSection.section.room}
-                  </Text>
-                </View>
+                {selectedEvent.room && (
+                  <View style={styles.sheetRow}>
+                    <MaterialIcons name="room" size={18} color="#FFDF00" />
+                    <Text style={[styles.sheetRowLabel, isDark && styles.textWhite50]}>Room</Text>
+                    <Text style={[styles.sheetRowValue, isDark && styles.textWhite]}>{selectedEvent.room}</Text>
+                  </View>
+                )}
                 <View style={styles.sheetRow}>
                   <MaterialIcons name="access-time" size={18} color="#FFDF00" />
                   <Text style={[styles.sheetRowLabel, isDark && styles.textWhite50]}>Time</Text>
                   <Text style={[styles.sheetRowValue, isDark && styles.textWhite]}>
-                    {formatTime(selectedSection.schedule.startTime)} — {formatTime(selectedSection.schedule.endTime)}
+                    {formatTime(selectedEvent.startTime)} — {formatTime(selectedEvent.endTime)}
                   </Text>
                 </View>
                 <View style={styles.sheetRow}>
-                  <MaterialIcons name="calendar-today" size={18} color="#FFDF00" />
-                  <Text style={[styles.sheetRowLabel, isDark && styles.textWhite50]}>Day</Text>
-                  <Text style={[styles.sheetRowValue, isDark && styles.textWhite]}>{selectedSection.schedule.day}</Text>
+                  <MaterialIcons name="today" size={18} color="#FFDF00" />
+                  <Text style={[styles.sheetRowLabel, isDark && styles.textWhite50]}>Date</Text>
+                  <Text style={[styles.sheetRowValue, isDark && styles.textWhite]}>
+                    {new Date(selectedEvent.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                  </Text>
                 </View>
               </View>
 
-              <TouchableOpacity style={[styles.closeBtn, isDark && styles.closeBtnDark]} onPress={() => setSelectedSection(null)}>
+              <TouchableOpacity
+                style={styles.viewSessionBtn}
+                onPress={() => {
+                  setSelectedEvent(null)
+                  router.push(`/(tabs)/subject-info/${selectedEvent.sectionId}`)
+                }}
+              >
+                <MaterialIcons name="visibility" size={18} color="#FFF" />
+                <Text style={styles.viewSessionBtnText}>View Subject</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[styles.closeBtn, isDark && styles.closeBtnDark]} onPress={() => setSelectedEvent(null)}>
                 <Text style={[styles.closeBtnText, isDark && styles.closeBtnTextDark]}>Close</Text>
               </TouchableOpacity>
             </View>
@@ -240,11 +288,14 @@ const styles = StyleSheet.create({
 
   classCard: { backgroundColor: '#F9F9F9', padding: 8, borderLeftWidth: 3, borderLeftColor: '#FFDF00' },
   classCardDark: { backgroundColor: '#0A0A0C' },
+  ghostCard: { opacity: 0.4, borderStyle: 'dashed' as const },
+  ghostText: { opacity: 0.5 },
   classDot: { width: 6, height: 6, borderRadius: 3, marginBottom: 4 },
   classTime: { fontSize: 10, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#7B1113', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 2 },
   className: { fontSize: 12, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#333', marginBottom: 2 },
   classRoom: { fontSize: 10, fontFamily: fonts.body, color: '#888', marginBottom: 1 },
   classSection: { fontSize: 9, fontFamily: fonts.body, color: '#AAA', textTransform: 'uppercase', letterSpacing: 0.3 },
+  statusLabel: { fontSize: 8, fontWeight: '700', fontFamily: fonts.bodyBold, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 },
 
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: '#FFF', padding: 24, paddingBottom: 40 },
@@ -259,6 +310,8 @@ const styles = StyleSheet.create({
   sheetRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sheetRowLabel: { fontSize: 11, fontFamily: fonts.bodyBold, color: '#888', width: 65, textTransform: 'uppercase', letterSpacing: 0.3 },
   sheetRowValue: { fontSize: 13, fontFamily: fonts.bodyMedium, color: '#333', flex: 1 },
+  viewSessionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#7B1113', paddingVertical: 14, marginBottom: 12 },
+  viewSessionBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700', fontFamily: fonts.bodyBold, textTransform: 'uppercase', letterSpacing: 0.5 },
   closeBtn: { alignItems: 'center', paddingVertical: 10 },
   closeBtnDark: {},
   closeBtnText: { fontSize: 12, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 1 },

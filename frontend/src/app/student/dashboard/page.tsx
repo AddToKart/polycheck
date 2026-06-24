@@ -15,7 +15,6 @@ import {
   User,
   LogOut,
   GraduationCap,
-  CalendarDays,
   Calendar,
   MapPin,
   X,
@@ -37,7 +36,9 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { getWeekDays, getDayName, getDayNameFull, formatDate, formatTime, isSameDay, getDateRangeForWeek, type CalendarEvent } from '@/lib/calendar-utils'
+import { getWeekDays, getDayName, getDayNameFull, formatDate, formatTime, isSameDay, getDateRangeForWeek } from '@/lib/calendar-utils'
+import type { CalendarEvent } from '@polycheck/shared'
+import { generateStudentCalendarEvents } from '@polycheck/shared/utils'
 
 type NavTab = 'dashboard' | 'subjects' | 'schedule' | 'attendance'
 
@@ -54,52 +55,13 @@ const statCards = [
   { key: 'absent', label: 'Absent', color: 'text-maroon-dark' },
   { key: 'disputed', label: 'Disputed', color: 'text-maroon-dark dark:text-golden' },
 ] as const
-function generateStudentEvents(
-  sections: { id: string; section: string; schedule: { day: string; startTime: string; endTime: string; room?: string }[]; subjectId: string; teacherName: string; room: string }[],
-  getSubject: (id: string) => { name: string; code: string } | undefined,
-  startDate: Date,
-  endDate: Date,
-): CalendarEvent[] {
-  const events: CalendarEvent[] = []
-  const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
-  for (const section of sections) {
-    const subject = getSubject(section.subjectId)
-    for (const sched of section.schedule) {
-      const dayIndex = dayMap[sched.day]
-      if (dayIndex === -1 || dayIndex === undefined) continue
-      const current = new Date(startDate)
-      while (current <= endDate) {
-        if (current.getDay() === dayIndex) {
-          events.push({
-            id: `sched-${section.id}-${formatDate(current)}-${sched.startTime}`,
-            title: subject?.name ?? section.id,
-            sectionId: section.id,
-            sectionName: `Sec ${section.section}`,
-            subjectName: subject?.name ?? section.id,
-            subjectCode: subject?.code,
-            room: sched.room || section.room,
-            startTime: sched.startTime,
-            endTime: sched.endTime,
-            date: formatDate(current),
-            type: 'schedule',
-            teacherName: section.teacherName,
-          })
-        }
-        current.setDate(current.getDate() + 1)
-      }
-    }
-  }
-  return events.sort((a, b) => {
-    if (a.date !== b.date) return a.date.localeCompare(b.date)
-    return a.startTime.localeCompare(b.startTime)
-  })
-}
 
 export default function StudentDashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<Student | null>(null)
   const [sections, setSections] = useState<Section[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
+  const [sessions, setSessions] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard')
   const [attendancePage, setAttendancePage] = useState(0)
   const [isIdModalOpen, setIsIdModalOpen] = useState(false)
@@ -174,6 +136,7 @@ export default function StudentDashboardPage() {
     if (cu.studentId) {
       setSections(api.getStudentSections(cu.id))
       setRecords(api.getAttendanceForStudent(cu.id))
+      setSessions(api.getSessions())
     }
   }, [router])
   
@@ -693,17 +656,39 @@ const ATTENDANCE_PAGE_SIZE = 8
               ) : (
                 <>
                   {(() => {
-                    const weekDays = getWeekDays(scheduleDate)
+                    const wd = getWeekDays(scheduleDate)
                     const today = new Date()
                     const weekRange = getDateRangeForWeek(scheduleDate)
-                    const schedEvents = generateStudentEvents(sections, (id) => { const s = api.getSubject(id); return s ? { name: s.name, code: s.code } : undefined }, weekRange.start, weekRange.end)
+                    const allEvents = generateStudentCalendarEvents(
+                      sections,
+                      sessions,
+                      records,
+                      (id) => { const s = api.getSubject(id); return s ? { name: s.name, code: s.code } : undefined },
+                      formatDate(weekRange.start),
+                      formatDate(weekRange.end),
+                    )
                     const weekDayEvents = new Map<string, CalendarEvent[]>()
-                    for (const day of weekDays) {
-                      weekDayEvents.set(formatDate(day), schedEvents.filter((e) => e.date === formatDate(day)))
+                    for (const day of wd) {
+                      weekDayEvents.set(formatDate(day), allEvents.filter((e) => e.date === formatDate(day)))
+                    }
+                    const STATUS_BORDER: Record<string, string> = {
+                      present: 'border-l-green-500 bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-950/50',
+                      late: 'border-l-yellow-500 bg-yellow-50 dark:bg-yellow-950/30 hover:bg-yellow-100 dark:hover:bg-yellow-950/50',
+                      absent: 'border-l-red-500 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50',
+                    }
+                    const STATUS_TEXT: Record<string, string> = {
+                      present: 'text-green-700 dark:text-green-300',
+                      late: 'text-yellow-700 dark:text-yellow-300',
+                      absent: 'text-red-700 dark:text-red-300',
+                    }
+                    const STATUS_ICONS: Record<string, React.ReactNode> = {
+                      present: <CheckCircle className="w-3 h-3 text-green-600" />,
+                      late: <Clock className="w-3 h-3 text-yellow-600" />,
+                      absent: <XCircle className="w-3 h-3 text-red-600" />,
                     }
                     return (
                       <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
-                        {weekDays.map((day, i) => {
+                        {wd.map((day, i) => {
                           const ds = formatDate(day)
                           const dayEvs = weekDayEvents.get(ds) || []
                           const isT = isSameDay(day, today)
@@ -718,14 +703,29 @@ const ATTENDANCE_PAGE_SIZE = 8
                                 {dayEvs.length === 0 ? (
                                   <p className="text-[10px] text-zinc-400 text-center py-4">No classes</p>
                                 ) : (
-                                  dayEvs.map((ev) => (
-                                    <Link key={ev.id} href={`/student/subjects/${ev.sectionId}`} className="block p-2 border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-colors">
-                                      <p className="text-[10px] font-bold text-blue-700 dark:text-blue-300 truncate leading-tight">{ev.subjectCode || ev.subjectName}</p>
-                                      <p className="text-[9px] text-zinc-500 dark:text-zinc-400 mt-0.5">{formatTime(ev.startTime)} - {formatTime(ev.endTime)}</p>
-                                      {ev.room && <p className="text-[9px] text-zinc-400 dark:text-zinc-500 truncate">{ev.room}</p>}
-                                      {ev.teacherName && <p className="text-[9px] text-zinc-400 dark:text-zinc-500 truncate">{ev.teacherName}</p>}
-                                    </Link>
-                                  ))
+                                  dayEvs.map((ev) => {
+                                    const isGhost = ev.type === 'schedule'
+                                    const borderColor = isGhost ? 'border-l-zinc-300 bg-transparent border-dashed' : (ev.studentStatus ? STATUS_BORDER[ev.studentStatus] || 'border-l-zinc-400 bg-zinc-50 dark:bg-zinc-800/30' : 'border-l-zinc-400 bg-zinc-50 dark:bg-zinc-800/30')
+                                    const textColor = isGhost ? 'text-zinc-300 dark:text-zinc-600' : (ev.studentStatus ? STATUS_TEXT[ev.studentStatus] || 'text-zinc-500' : 'text-zinc-500')
+                                    const statusIcon = ev.studentStatus ? STATUS_ICONS[ev.studentStatus] : null
+                                    const statusLabel = ev.studentStatus ? ev.studentStatus.charAt(0).toUpperCase() + ev.studentStatus.slice(1) : null
+                                    return (
+                                      <Link key={ev.id} href={isGhost ? '#' : `/student/subjects/${ev.sectionId}`} className={`block p-2 border-l-4 transition-colors ${borderColor} ${isGhost ? 'cursor-default' : ''}`}>
+                                        <p className={`text-[10px] font-bold truncate leading-tight ${textColor}`}>
+                                          {isGhost ? '(class)' : ev.subjectCode || ev.subjectName}
+                                        </p>
+                                        <p className="text-[9px] text-zinc-500 dark:text-zinc-400 mt-0.5">{formatTime(ev.startTime)} - {formatTime(ev.endTime)}</p>
+                                        {ev.room && <p className={`text-[9px] truncate ${isGhost ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-400 dark:text-zinc-500'}`}>{ev.room}</p>}
+                                        {ev.teacherName && <p className={`text-[9px] truncate ${isGhost ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-400 dark:text-zinc-500'}`}>{ev.teacherName}</p>}
+                                        {!isGhost && statusIcon && statusLabel && (
+                                          <div className={`flex items-center gap-1 mt-1 text-[9px] font-bold uppercase tracking-widest ${textColor}`}>
+                                            {statusIcon}
+                                            {statusLabel}
+                                          </div>
+                                        )}
+                                      </Link>
+                                    )
+                                  })
                                 )}
                               </div>
                             </div>

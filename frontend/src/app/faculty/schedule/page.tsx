@@ -3,14 +3,14 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, Plus, CalendarDays, Calendar, Clock, MapPin, User as UserIcon } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, CalendarDays, Calendar, Clock, MapPin, User as UserIcon, CheckCircle, XCircle } from 'lucide-react'
 import { api } from '@/lib/mock-api'
-import type { User } from '@polycheck/shared'
+import type { User, AttendanceRecord } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   getMonthDays,
   getWeekDays,
@@ -27,40 +27,45 @@ import {
   type CalendarEvent,
 } from '@/lib/calendar-utils'
 
-const STATUS_COLORS: Record<string, string> = {
-  schedule: 'border-l-blue-500 bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-950/50',
-  session_active: 'border-l-green-500 bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-950/50',
-  session_completed: 'border-l-zinc-400 bg-zinc-50 dark:bg-zinc-800/30 hover:bg-zinc-100 dark:hover:bg-zinc-800/50',
-}
-
 function getEventStyle(event: CalendarEvent): string {
-  if (event.type === 'schedule') return STATUS_COLORS.schedule
-  if (event.isActive) return STATUS_COLORS.session_active
-  return STATUS_COLORS.session_completed
+  if (event.type === 'schedule') return 'border-l-zinc-300 bg-transparent hover:bg-zinc-50/50 dark:hover:bg-zinc-900/30 border-dashed'
+  if (event.isActive) return 'border-l-green-500 bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-950/50'
+  return 'border-l-zinc-400 bg-zinc-50 dark:bg-zinc-800/30 hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
 }
 
-const BADGE_CONFIG: Record<string, { label: string; variant: string }> = {
-  schedule: { label: 'Scheduled', variant: 'outline' },
-  session_active: { label: 'Active', variant: 'active' },
-  session_completed: { label: 'Completed', variant: 'inactive' },
+function getEventTextClass(event: CalendarEvent): string {
+  if (event.type === 'schedule') return 'text-zinc-300 dark:text-zinc-600'
+  if (event.isActive) return 'text-green-700 dark:text-green-300'
+  return 'text-zinc-500 dark:text-zinc-400'
 }
 
-function getEventBadge(event: CalendarEvent): { label: string; variant: string } {
-  if (event.type === 'schedule') return BADGE_CONFIG.schedule
-  if (event.isActive) return BADGE_CONFIG.session_active
-  return BADGE_CONFIG.session_completed
-}
+function EventPopoverContent({ event, attendanceRecords }: { event: CalendarEvent; attendanceRecords?: AttendanceRecord[] }) {
+  const badgeLabel = event.type === 'schedule' ? 'Ghost' : event.isActive ? 'Active' : 'Completed'
+  const badgeVariant = event.type === 'schedule' ? 'outline' : event.isActive ? 'active' : 'inactive'
 
-function EventPopoverContent({ event }: { event: CalendarEvent }) {
-  const badge = getEventBadge(event)
+  const sessionRecords = useMemo(() => {
+    if (!event.sessionId || !attendanceRecords) return null
+    return attendanceRecords.filter((r) => r.sessionId === event.sessionId)
+  }, [event.sessionId, attendanceRecords])
+
+  const counts = useMemo(() => {
+    if (!sessionRecords) return null
+    return {
+      present: sessionRecords.filter((r) => r.status === 'present').length,
+      late: sessionRecords.filter((r) => r.status === 'late').length,
+      absent: sessionRecords.filter((r) => r.status === 'absent').length,
+      total: sessionRecords.length,
+    }
+  }, [sessionRecords])
+
   return (
     <div className="space-y-3">
       <div className="flex items-start justify-between gap-2">
-        <h4 className="font-heading font-bold text-base text-foreground leading-tight">
-          {event.subjectName}
+        <h4 className={`font-heading font-bold text-base leading-tight ${event.type === 'schedule' ? 'text-zinc-400 dark:text-zinc-500' : 'text-foreground'}`}>
+          {event.subjectName || 'No session yet'}
         </h4>
-        <Badge variant={badge.variant as any} className="shrink-0 text-[9px] uppercase tracking-widest">
-          {badge.label}
+        <Badge variant={badgeVariant as any} className={`shrink-0 text-[9px] uppercase tracking-widest ${event.type === 'schedule' ? 'opacity-50' : ''}`}>
+          {badgeLabel}
         </Badge>
       </div>
       <div className="space-y-2 text-xs text-zinc-600 dark:text-zinc-400">
@@ -92,6 +97,29 @@ function EventPopoverContent({ event }: { event: CalendarEvent }) {
           </div>
         )}
       </div>
+
+      {event.type === 'session' && counts && (
+        <div className="pt-2 border-t border-zinc-200 dark:border-zinc-700">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="flex items-center gap-1.5 bg-green-50 dark:bg-green-950/20 px-2 py-1.5">
+              <CheckCircle className="w-3 h-3 text-green-600" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-green-700 dark:text-green-300">{counts.present}</span>
+            </div>
+            <div className="flex items-center gap-1.5 bg-yellow-50 dark:bg-yellow-950/20 px-2 py-1.5">
+              <Clock className="w-3 h-3 text-yellow-600" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-yellow-700 dark:text-yellow-300">{counts.late}</span>
+            </div>
+            <div className="flex items-center gap-1.5 bg-red-50 dark:bg-red-950/20 px-2 py-1.5">
+              <XCircle className="w-3 h-3 text-red-600" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-red-700 dark:text-red-300">{counts.absent}</span>
+            </div>
+          </div>
+          <p className="text-[9px] text-zinc-400 mt-1.5 text-center uppercase tracking-widest font-bold">
+            {counts.total} total students
+          </p>
+        </div>
+      )}
+
       {event.type === 'session' && event.sessionId && (
         <div className="pt-2 border-t border-zinc-200 dark:border-zinc-700">
           <Button asChild variant="outline" size="sm" className="w-full text-[10px] font-bold uppercase tracking-widest rounded-none">
@@ -104,9 +132,9 @@ function EventPopoverContent({ event }: { event: CalendarEvent }) {
 }
 
 function MonthView({
-  year, month, events,
+  year, month, events, attendanceRecords,
 }: {
-  year: number; month: number; events: CalendarEvent[]
+  year: number; month: number; events: CalendarEvent[]; attendanceRecords?: AttendanceRecord[]
 }) {
   const weeks = useMemo(() => getMonthDays(year, month), [year, month])
   const today = new Date()
@@ -152,18 +180,16 @@ function MonthView({
                       <Popover key={ev.id}>
                         <PopoverTrigger asChild>
                           <button className={`w-full text-left px-1.5 py-0.5 text-[10px] font-medium truncate border-l-2 transition-colors ${getEventStyle(ev)}`}>
-                            <span className={
-                              ev.type === 'schedule' ? 'text-blue-700 dark:text-blue-300' :
-                              ev.isActive ? 'text-green-700 dark:text-green-300' :
-                              'text-zinc-500 dark:text-zinc-400'
-                            }>
+                            <span className={getEventTextClass(ev)}>
                               {formatTime(ev.startTime)}
                             </span>
-                            <span className="ml-1 text-zinc-700 dark:text-zinc-300 font-semibold">{ev.subjectCode || ev.subjectName}</span>
+                            <span className={`ml-1 font-semibold ${ev.type === 'schedule' ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-700 dark:text-zinc-300'}`}>
+                              {ev.type === 'schedule' ? '(class)' : ev.subjectCode || ev.subjectName}
+                            </span>
                           </button>
                         </PopoverTrigger>
                         <PopoverContent className="w-72" align="start">
-                          <EventPopoverContent event={ev} />
+                          <EventPopoverContent event={ev} attendanceRecords={attendanceRecords} />
                         </PopoverContent>
                       </Popover>
                     ))}
@@ -181,7 +207,7 @@ function MonthView({
   )
 }
 
-function WeekView({ date, events }: { date: Date; events: CalendarEvent[] }) {
+function WeekView({ date, events, attendanceRecords }: { date: Date; events: CalendarEvent[]; attendanceRecords?: AttendanceRecord[] }) {
   const weekDays = useMemo(() => getWeekDays(date), [date])
   const hours = useMemo(() => getHours(), [])
   const today = new Date()
@@ -244,23 +270,19 @@ function WeekView({ date, events }: { date: Date; events: CalendarEvent[] }) {
                           className={`absolute left-0.5 right-0.5 px-1.5 py-1 text-left overflow-hidden border-l-2 transition-colors ${getEventStyle(ev)}`}
                           style={{ top: `${top}px`, height: `${height}px`, zIndex: 10 }}
                         >
-                          <p className={`text-[10px] font-bold truncate leading-tight ${
-                            ev.type === 'schedule' ? 'text-blue-700 dark:text-blue-300' :
-                            ev.isActive ? 'text-green-700 dark:text-green-300' :
-                            'text-zinc-500 dark:text-zinc-400'
-                          }`}>
-                            {ev.subjectCode || ev.subjectName}
+                          <p className={`text-[10px] font-bold truncate leading-tight ${getEventTextClass(ev)}`}>
+                            {ev.type === 'schedule' ? '(class)' : ev.subjectCode || ev.subjectName}
                           </p>
                           <p className="text-[8px] text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
                             {formatTime(ev.startTime)} - {formatTime(ev.endTime)}
                           </p>
                           {ev.room && (
-                            <p className="text-[8px] text-zinc-400 dark:text-zinc-500 truncate">{ev.room}</p>
+                            <p className={`text-[8px] truncate ${ev.type === 'schedule' ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-400 dark:text-zinc-500'}`}>{ev.room}</p>
                           )}
                         </button>
                       </PopoverTrigger>
                       <PopoverContent className="w-72" align="start">
-                        <EventPopoverContent event={ev} />
+                        <EventPopoverContent event={ev} attendanceRecords={attendanceRecords} />
                       </PopoverContent>
                     </Popover>
                   )
@@ -278,8 +300,8 @@ function Legend() {
   return (
     <div className="flex flex-wrap items-center gap-6 mt-6 px-1">
       <div className="flex items-center gap-2">
-        <div className="w-3 h-3 border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950/30" />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Scheduled Class</span>
+        <div className="w-3 h-3 border-l-4 border-zinc-300 bg-transparent border-dashed" />
+        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Ghost (scheduled but no session)</span>
       </div>
       <div className="flex items-center gap-2">
         <div className="w-3 h-3 border-l-4 border-green-500 bg-green-50 dark:bg-green-950/30" />
@@ -333,6 +355,11 @@ export default function FacultySchedulePage() {
       range.end,
     )
   }, [user, currentYear, currentMonth])
+
+  const attendanceRecords = useMemo(() => {
+    if (!user) return []
+    return api.getAttendanceRecords() as AttendanceRecord[]
+  }, [user])
 
   const goToPrev = useCallback(() => {
     if (view === 'month') {
@@ -441,7 +468,7 @@ export default function FacultySchedulePage() {
                 </Button>
               </div>
             ) : (
-              <MonthView year={currentYear} month={currentMonth} events={events} />
+              <MonthView year={currentYear} month={currentMonth} events={events} attendanceRecords={attendanceRecords} />
             )
           ) : (
             events.length === 0 ? (
@@ -454,7 +481,7 @@ export default function FacultySchedulePage() {
                 </Button>
               </div>
             ) : (
-              <WeekView date={currentDate} events={events} />
+              <WeekView date={currentDate} events={events} attendanceRecords={attendanceRecords} />
             )
           )}
 
