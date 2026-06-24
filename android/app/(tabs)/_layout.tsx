@@ -88,6 +88,7 @@ export default function TabLayout() {
       <Tabs.Screen name="id-card" options={{ title: 'ID Card', tabBarLabel: 'ID Card' }} />
       <Tabs.Screen name="history" options={{ title: 'Audit', tabBarLabel: 'Audit' }} />
       <Tabs.Screen name="subject-info/[id]" options={{ href: null }} />
+      <Tabs.Screen name="subjects" options={{ href: null }} />
     </Tabs>
   )
 }

@@ -180,15 +180,26 @@ export default function DashboardScreen() {
           <MaterialIcons name="chevron-right" size={20} color={isDark ? '#4A0A0B' : '#FFF'} />
         </TouchableOpacity>
 
-        {/* My Subjects (all enrolled) */}
-        <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginTop: 24 }]}>My Subjects</Text>
+        {/* My Subjects */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 16 }}>
+          <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginBottom: 0 }]}>My Subjects</Text>
+          {mySections.length > 2 && (
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs)/subjects')}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderWidth: 1, borderColor: isDark ? '#FFDF00' : '#7B1113' }}
+            >
+              <MaterialIcons name="book" size={14} color={isDark ? '#FFDF00' : '#7B1113'} />
+              <Text style={{ fontSize: 10, fontWeight: '700', fontFamily: 'DMSans_700Bold', color: isDark ? '#FFDF00' : '#7B1113', textTransform: 'uppercase', letterSpacing: 0.5 }}>View All</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         {mySections.length === 0 ? (
           <View style={[styles.emptyCard, isDark && styles.cardDark]}>
             <MaterialIcons name="book" size={32} color="#CCC" />
             <Text style={[styles.emptyText, isDark && styles.textWhite50]}>No enrollments yet</Text>
           </View>
         ) : (
-          mySections.map((section) => {
+          mySections.slice(0, 2).map((section) => {
             const parent = api.getSubject(section.subjectId)
             const presentCount = myAttendance.filter((r) => r.sectionId === section.id && r.status === 'present').length
             return (
