@@ -317,7 +317,7 @@ export default function StudentDashboardPage() {
             <>
               <div className="grid lg:grid-cols-3 gap-8 mb-8 items-start">
                 {/* Digital ID Card */}
-                <Card className="lg:col-span-1 rounded-none border-zinc-300 dark:border-zinc-800 shadow-none overflow-hidden flex flex-col relative bg-zinc-50 dark:bg-zinc-900/50">
+                <Card className="lg:col-span-1 lg:sticky lg:top-8 rounded-none border-zinc-300 dark:border-zinc-800 shadow-none overflow-hidden flex flex-col relative bg-zinc-50 dark:bg-zinc-900/50">
                   <div className="h-24 bg-maroon flex items-center justify-center relative overflow-hidden">
                     <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at center, #FFDF00 2px, transparent 2px)', backgroundSize: '16px 16px' }}></div>
                     <img src="/pup-logo.png" alt="PUP Logo" className="w-16 h-16 absolute right-4 bottom-4 opacity-20 filter grayscale contrast-200" />
