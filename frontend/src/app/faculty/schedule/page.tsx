@@ -184,7 +184,7 @@ function MonthView({
                               {formatTime(ev.startTime)}
                             </span>
                             <span className={`ml-1 font-semibold ${ev.type === 'schedule' ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-700 dark:text-zinc-300'}`}>
-                              {ev.type === 'schedule' ? '(class)' : ev.subjectCode || ev.subjectName}
+                              {ev.type === 'schedule' ? 'No session' : ev.subjectCode || ev.subjectName}
                             </span>
                           </button>
                         </PopoverTrigger>
@@ -271,7 +271,7 @@ function WeekView({ date, events, attendanceRecords }: { date: Date; events: Cal
                           style={{ top: `${top}px`, height: `${height}px`, zIndex: 10 }}
                         >
                           <p className={`text-[10px] font-bold truncate leading-tight ${getEventTextClass(ev)}`}>
-                            {ev.type === 'schedule' ? '(class)' : ev.subjectCode || ev.subjectName}
+                            {ev.type === 'schedule' ? 'No session' : ev.subjectCode || ev.subjectName}
                           </p>
                           <p className="text-[8px] text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
                             {formatTime(ev.startTime)} - {formatTime(ev.endTime)}
@@ -301,7 +301,7 @@ function Legend() {
     <div className="flex flex-wrap items-center gap-6 mt-6 px-1">
       <div className="flex items-center gap-2">
         <div className="w-3 h-3 border-l-4 border-zinc-300 bg-transparent border-dashed" />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Ghost (scheduled but no session)</span>
+        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Class scheduled (no session yet)</span>
       </div>
       <div className="flex items-center gap-2">
         <div className="w-3 h-3 border-l-4 border-green-500 bg-green-50 dark:bg-green-950/30" />

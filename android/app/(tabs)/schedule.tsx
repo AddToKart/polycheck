@@ -161,7 +161,7 @@ export default function StudentScheduleScreen() {
                             {formatTime(ev.startTime)}
                           </Text>
                           <Text style={[styles.className, isDark && styles.textWhite, isGhost && styles.ghostText]} numberOfLines={2}>
-                            {isGhost ? '(class)' : ev.subjectCode || ev.subjectName}
+                            {isGhost ? 'No session yet' : ev.subjectCode || ev.subjectName}
                           </Text>
                           <Text style={[styles.classRoom, isDark && styles.textWhite50, isGhost && styles.ghostText]} numberOfLines={1}>
                             {ev.room}

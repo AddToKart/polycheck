@@ -712,7 +712,7 @@ const ATTENDANCE_PAGE_SIZE = 8
                                     return (
                                       <Link key={ev.id} href={isGhost ? '#' : `/student/subjects/${ev.sectionId}`} className={`block p-2 border-l-4 transition-colors ${borderColor} ${isGhost ? 'cursor-default' : ''}`}>
                                         <p className={`text-[10px] font-bold truncate leading-tight ${textColor}`}>
-                                          {isGhost ? '(class)' : ev.subjectCode || ev.subjectName}
+                                          {isGhost ? 'No session yet' : ev.subjectCode || ev.subjectName}
                                         </p>
                                         <p className="text-[9px] text-zinc-500 dark:text-zinc-400 mt-0.5">{formatTime(ev.startTime)} - {formatTime(ev.endTime)}</p>
                                         {ev.room && <p className={`text-[9px] truncate ${isGhost ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-400 dark:text-zinc-500'}`}>{ev.room}</p>}

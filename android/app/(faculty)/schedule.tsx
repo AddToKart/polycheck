@@ -178,6 +178,11 @@ export default function FacultyScheduleScreen() {
         </TouchableOpacity>
       </View>
 
+      <View style={[styles.legendRow, isDark && styles.legendRowDark]}>
+        <View style={styles.legendItem}><View style={[styles.legendDot, { borderWidth: 1, borderColor: '#CCC', backgroundColor: 'transparent' }]} /><Text style={[styles.legendText, isDark && styles.textWhite50]}>No session</Text></View>
+        <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#7B1113' }]} /><Text style={[styles.legendText, isDark && styles.textWhite50]}>Session</Text></View>
+        <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#22C55E' }]} /><Text style={[styles.legendText, isDark && styles.textWhite50]}>Active</Text></View>
+      </View>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {viewMode === 'month' ? (
           <View style={[styles.calendarCard, isDark && styles.cardDark]}>
@@ -336,7 +341,7 @@ export default function FacultyScheduleScreen() {
                 </Text>
               </View>
               <Text style={[styles.sheetTitle, isDark && styles.textWhite, selectedEvent.type === 'schedule' && { opacity: 0.4 }]}>
-                {selectedEvent.subjectName || 'Scheduled class time'}
+                {selectedEvent.type === 'schedule' ? 'No session created yet' : selectedEvent.subjectName}
               </Text>
 
               <View style={[styles.sheetDetail, isDark && styles.sheetDetailDark]}>
@@ -438,6 +443,12 @@ const styles = StyleSheet.create({
   todayBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: '#7B1113' },
   todayText: { fontSize: 12, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#7B1113', textTransform: 'uppercase', letterSpacing: 0.5 },
   dateLabel: { fontSize: 14, fontWeight: '700', fontFamily: fonts.bodySemiBold, color: '#333', flex: 1, textAlign: 'center' },
+
+  legendRow: { flexDirection: 'row', justifyContent: 'center', gap: 16, paddingVertical: 8, backgroundColor: '#F9F9F9', borderBottomWidth: 1, borderBottomColor: '#EEE' },
+  legendRowDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { fontSize: 9, fontFamily: fonts.bodyBold, color: '#888', textTransform: 'uppercase', letterSpacing: 0.3 },
 
   scrollContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120 },
 

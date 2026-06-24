@@ -208,12 +208,30 @@ export function generateStudentCalendarEvents(
     }
   }
 
+  const now = new Date()
+
   for (const session of sessions) {
     const sessionDate = new Date(session.date + 'T00:00:00')
     if (sessionDate < start || sessionDate > end) continue
     const section = sections.find((s) => s.id === session.sectionId)
     const subject = section ? getSubject(section.subjectId) : undefined
     const record = attendanceBySession.get(session.id)
+
+    const sessionStart = new Date(`${session.date}T${session.startTime}`)
+    const isFuture = sessionStart.getTime() > Date.now()
+    const sessionEnd = new Date(`${session.date}T${session.endTime}:00`)
+    const isPastSession = sessionEnd < now
+
+    let studentStatus: 'present' | 'late' | 'absent' | undefined
+    if (isFuture) {
+      studentStatus = undefined
+    } else if (record) {
+      if (record.status === 'present') studentStatus = 'present'
+      else if (record.status === 'late') studentStatus = 'late'
+      else if (record.status === 'absent') studentStatus = 'absent'
+    } else if (isPastSession && !session.isActive) {
+      studentStatus = 'absent'
+    }
 
     events.push({
       id: session.id,
@@ -228,7 +246,7 @@ export function generateStudentCalendarEvents(
       sectionName: section?.section ?? '',
       type: 'session',
       status: session.isActive ? 'active' : 'inactive',
-      studentStatus: record ? (record.status === 'present' ? 'present' : record.status === 'late' ? 'late' : record.status === 'absent' ? 'absent' : undefined) : (!session.isActive ? 'absent' : undefined),
+      studentStatus,
       teacherName: section?.teacherName,
     })
   }

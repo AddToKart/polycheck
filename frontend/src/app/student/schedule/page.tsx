@@ -254,9 +254,10 @@ export default function StudentSchedulePage() {
                               key={ev.id}
                               href={isGhost ? '#' : `/student/subjects/${ev.sectionId}`}
                               className={`block p-2 border-l-4 transition-colors ${borderColor} ${isGhost ? 'cursor-default' : ''}`}
+                              title={isGhost ? 'Class is scheduled at this time but no session has been created yet' : undefined}
                             >
                               <p className={`text-[10px] font-bold truncate leading-tight ${textColor}`}>
-                                {isGhost ? '(class)' : ev.subjectCode || ev.subjectName}
+                                {isGhost ? 'No session yet' : ev.subjectCode || ev.subjectName}
                               </p>
                               <p className="text-[9px] text-zinc-500 dark:text-zinc-400 mt-0.5">
                                 {formatTime(ev.startTime)} - {formatTime(ev.endTime)}
@@ -278,6 +279,27 @@ export default function StudentSchedulePage() {
               })}
             </div>
           )}
+
+          <div className="flex flex-wrap items-center gap-6 mt-8 px-1 border-t border-zinc-200 dark:border-zinc-800 pt-6">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 border-l-4 border-zinc-300 bg-transparent border-dashed" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                Class scheduled (no session yet)
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 border-l-4 border-green-500 bg-green-50" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Present</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 border-l-4 border-yellow-500 bg-yellow-50" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Late</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 border-l-4 border-red-500 bg-red-50" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Absent</span>
+            </div>
+          </div>
         </div>
       </main>
     </div>
