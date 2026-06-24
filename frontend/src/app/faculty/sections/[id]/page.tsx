@@ -85,7 +85,7 @@ export default function SectionDetailPage() {
   const totalAbsent = students.reduce((sum, s) => sum + s.attendance.absent, 0)
 
   return (
-    <div className="min-h-screen flex bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
       <Sidebar user={user} onLogout={handleLogout} backHref={`/faculty/subjects/${section.subjectId}`} backLabel="Back to Subject" />
 
       <main className="flex-1 overflow-y-auto">
@@ -102,7 +102,7 @@ export default function SectionDetailPage() {
           </div>
 
           {/* Section Info */}
-          <Card className="mb-6">
+          <Card className="mb-6 border-t-4 border-t-maroon dark:border-t-golden">
             <CardContent className="pt-6">
               <div className="grid sm:grid-cols-4 gap-4 mb-4">
                 <div>
@@ -121,7 +121,7 @@ export default function SectionDetailPage() {
                   <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">Schedule</p>
                   <div className="flex flex-wrap gap-1">
                     {section.schedule.map((sd, i) => (
-                      <span key={i} className="text-xs bg-zinc-100 dark:bg-zinc-800 text-maroon dark:text-golden px-2 py-0.5 border border-zinc-200 dark:border-zinc-700">
+                      <span key={i} className="text-xs bg-zinc-100 dark:bg-zinc-800 text-maroon dark:text-golden px-2 py-0.5 border border-zinc-300/80 dark:border-zinc-700">
                         {sd.day} {sd.startTime}-{sd.endTime}{sd.room ? ` (${sd.room})` : ''}
                       </span>
                     ))}
@@ -132,7 +132,7 @@ export default function SectionDetailPage() {
           </Card>
 
           {/* Enrollment Code */}
-          <Card className="mb-6">
+          <Card className="mb-6 border-t-4 border-t-maroon dark:border-t-golden">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-zinc-800 dark:text-zinc-100 text-base">
                 <Key className="w-4 h-4 text-maroon dark:text-golden" />
@@ -163,22 +163,22 @@ export default function SectionDetailPage() {
 
           {/* Attendance Overview */}
           <div className="grid grid-cols-3 gap-4 mb-6">
-            <Card>
+            <Card className="border-t-4 border-t-golden">
               <CardContent className="py-6 text-center">
                 <p className="text-3xl font-bold text-golden">{totalPresent}</p>
-                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mt-1">Present</p>
+                <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mt-1">Present</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="border-t-4 border-t-maroon">
               <CardContent className="py-6 text-center">
                 <p className="text-3xl font-bold text-maroon">{totalLate}</p>
-                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mt-1">Late</p>
+                <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mt-1">Late</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="border-t-4 border-t-maroon-dark">
               <CardContent className="py-6 text-center">
                 <p className="text-3xl font-bold text-maroon-dark">{totalAbsent}</p>
-                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mt-1">Absent</p>
+                <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mt-1">Absent</p>
               </CardContent>
             </Card>
           </div>
@@ -210,7 +210,7 @@ export default function SectionDetailPage() {
                   <Link
                     key={student.id}
                     href={`/faculty/students/${student.id}?subjectId=${id}`}
-                    className="block bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-maroon/30 dark:hover:border-golden/30 transition-colors"
+                    className="block bg-white dark:bg-zinc-900 border border-zinc-300/80 dark:border-zinc-800 hover:border-maroon/30 dark:hover:border-golden/30 transition-colors shadow-[0_2px_8px_rgba(123,17,19,0.02)] hover:shadow-md"
                   >
                     <div className="p-4 flex items-center gap-4">
                       <div className="w-10 h-10 bg-maroon dark:bg-golden flex items-center justify-center shrink-0">

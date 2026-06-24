@@ -40,7 +40,7 @@ export default function SubjectsPage() {
   }
 
   return (
-    <div className="min-h-screen flex bg-background selection:bg-golden selection:text-maroon">
+    <div className="min-h-screen flex flex-col md:flex-row bg-background selection:bg-golden selection:text-maroon">
       <Sidebar user={user} onLogout={handleLogout} />
 
       <main className="flex-1 overflow-y-auto">
@@ -80,7 +80,7 @@ export default function SubjectsPage() {
                 onClick={() => router.push(`/faculty/subjects/${subject.id}`)}
                 className="block group cursor-pointer"
               >
-                <Card className="rounded-none border-zinc-200 dark:border-zinc-800 border-l-4 border-l-maroon dark:border-l-golden shadow-none hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50 flex flex-col h-full">
+                <Card className="rounded-none border-zinc-300/80 dark:border-zinc-800 border-l-4 border-l-maroon dark:border-l-golden hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50 flex flex-col h-full">
                   <CardHeader className="pb-4 pt-6 px-6">
                     <div className="flex justify-between items-start mb-2">
                       <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">

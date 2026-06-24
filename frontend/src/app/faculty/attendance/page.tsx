@@ -44,7 +44,7 @@ export default function AttendanceOverviewPage() {
 
 
   return (
-    <div className="min-h-screen flex bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
       <Sidebar user={user} onLogout={handleLogout} />
 
       <main className="flex-1 overflow-y-auto">
@@ -54,9 +54,9 @@ export default function AttendanceOverviewPage() {
           </h1>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-            <Card>
+            <Card className="border-t-4 border-t-maroon">
               <CardHeader className="pb-2">
-                <CardTitle className="text-xs text-zinc-400 uppercase tracking-wider font-medium">
+                <CardTitle className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
                   Total Sessions
                 </CardTitle>
               </CardHeader>
@@ -66,9 +66,9 @@ export default function AttendanceOverviewPage() {
                 </div>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="border-t-4 border-t-golden">
               <CardHeader className="pb-2">
-                <CardTitle className="text-xs text-zinc-400 uppercase tracking-wider font-medium">
+                <CardTitle className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
                   Present
                 </CardTitle>
               </CardHeader>
@@ -78,9 +78,9 @@ export default function AttendanceOverviewPage() {
                 </div>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="border-t-4 border-t-maroon">
               <CardHeader className="pb-2">
-                <CardTitle className="text-xs text-zinc-400 uppercase tracking-wider font-medium">
+                <CardTitle className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
                   Late
                 </CardTitle>
               </CardHeader>
@@ -90,9 +90,9 @@ export default function AttendanceOverviewPage() {
                 </div>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="border-t-4 border-t-maroon-dark">
               <CardHeader className="pb-2">
-                <CardTitle className="text-xs text-zinc-400 uppercase tracking-wider font-medium">
+                <CardTitle className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
                   Absent
                 </CardTitle>
               </CardHeader>
@@ -104,7 +104,7 @@ export default function AttendanceOverviewPage() {
             </Card>
           </div>
 
-          <Card>
+          <Card className="border-t-4 border-t-maroon dark:border-t-golden">
             <CardHeader>
               <CardTitle className="text-zinc-800 dark:text-zinc-100">
                 By Subject
@@ -114,20 +114,20 @@ export default function AttendanceOverviewPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
-                      <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">
+                    <tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
+                      <th className="text-left px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">
                         Subject
                       </th>
-                      <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">
+                      <th className="text-center px-4 py-3 font-bold text-zinc-500 dark:text-zinc-400">
                         Sessions
                       </th>
-                      <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">
+                      <th className="text-center px-4 py-3 font-bold text-zinc-500 dark:text-zinc-400">
                         <span className="text-golden">Present</span>
                       </th>
-                      <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">
+                      <th className="text-center px-4 py-3 font-bold text-zinc-500 dark:text-zinc-400">
                         <span className="text-maroon">Late</span>
                       </th>
-                      <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">
+                      <th className="text-center px-4 py-3 font-bold text-zinc-500 dark:text-zinc-400">
                         <span className="text-maroon-dark">Absent</span>
                       </th>
                     </tr>
@@ -136,7 +136,7 @@ export default function AttendanceOverviewPage() {
                     {summaries.map((s) => (
                       <tr
                         key={s.sectionId}
-                        className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                        className="border-b border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors"
                       >
                         <td className="px-6 py-3 text-zinc-900 dark:text-zinc-100 font-medium">
                           {s.subjectName}

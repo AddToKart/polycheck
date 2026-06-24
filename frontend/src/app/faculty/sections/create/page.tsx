@@ -130,7 +130,7 @@ function CreateSectionForm() {
   }
 
   return (
-    <div className="min-h-screen flex bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
       <Sidebar
         user={user}
         onLogout={handleLogout}
@@ -220,7 +220,7 @@ function CreateSectionForm() {
               </CardHeader>
               <CardContent className="space-y-5">
                 {/* Schedule Entry Form */}
-                <div className="grid grid-cols-[1fr_1fr_1fr_1fr] gap-3 items-end">
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 items-end">
                   <div className="space-y-2">
                     <Label>Day</Label>
                     <select
@@ -241,7 +241,7 @@ function CreateSectionForm() {
                     <Label>End</Label>
                     <Input type="time" value={currentEndTime} onChange={(e) => setCurrentEndTime(e.target.value)} />
                   </div>
-                  <Button type="button" variant="default" size="sm" className="rounded-none h-10" onClick={handleAddSchedule}>
+                  <Button type="button" variant="default" size="sm" className="rounded-none h-10 w-full col-span-3 sm:col-span-1" onClick={handleAddSchedule}>
                     <Plus className="w-4 h-4 mr-1" /> Add
                   </Button>
                 </div>

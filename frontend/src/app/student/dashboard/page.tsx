@@ -19,6 +19,7 @@ import {
   CalendarDays,
   MapPin,
   X,
+  Menu,
 } from 'lucide-react'
 
 type NavTab = 'dashboard' | 'subjects' | 'attendance'
@@ -43,6 +44,7 @@ export default function StudentDashboardPage() {
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard')
   const [isIdModalOpen, setIsIdModalOpen] = useState(false)
   const [isIdFlipped, setIsIdFlipped] = useState(false)
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -77,73 +79,115 @@ export default function StudentDashboardPage() {
     absent: records.filter((r) => r.status === 'absent').length,
   }
 
-  return (
-    <div className="min-h-screen flex bg-background selection:bg-golden selection:text-maroon">
-      {/* Sidebar */}
-      <aside className="w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col shrink-0 h-dvh sticky top-0 overflow-hidden">
-        <div className="p-6 border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between bg-maroon dark:bg-golden text-white dark:text-maroon-dark">
-          <div>
-            <h1 className="text-2xl font-heading font-bold tracking-tight text-golden dark:text-maroon-dark">
-              Polycheck
-            </h1>
-            <p className="text-[10px] uppercase tracking-widest text-white/70 dark:text-maroon-dark/80 mt-1">Student</p>
-          </div>
-          {/* Minimal Star motif from PUP logo */}
-          <div className="w-8 h-8 flex items-center justify-center shrink-0">
-             <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[14px] border-b-golden dark:border-b-maroon-dark relative before:content-[''] before:absolute before:-top-[4px] before:-left-[8px] before:w-0 before:h-0 before:border-l-[8px] before:border-l-transparent before:border-r-[8px] before:border-r-transparent before:border-t-[14px] before:border-t-golden dark:before:border-t-maroon-dark"></div>
-          </div>
+  const sidebarContent = (
+    <>
+      <div className="p-6 border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between bg-maroon dark:bg-golden text-white dark:text-maroon-dark">
+        <div>
+          <h1 className="text-2xl font-heading font-bold tracking-tight text-golden dark:text-maroon-dark">
+            Polycheck
+          </h1>
+          <p className="text-[10px] uppercase tracking-widest text-white/70 dark:text-maroon-dark/80 mt-1">Student</p>
         </div>
-
-        <nav className="flex-1 overflow-y-auto py-4">
-          <div className="flex flex-col">
-            {navItems.map(({ key, label, icon: Icon }) => {
-              const isActive = activeTab === key
-              return (
-                <button
-                  key={key}
-                  onClick={() => setActiveTab(key as NavTab)}
-                  className={`flex items-center gap-4 px-6 py-4 text-sm font-bold uppercase tracking-wider transition-all border-l-4 w-full text-left ${
-                    isActive
-                      ? 'border-maroon dark:border-golden bg-zinc-100 dark:bg-zinc-900 text-maroon dark:text-golden'
-                      : 'border-transparent text-zinc-500 hover:text-foreground hover:bg-zinc-50 dark:hover:bg-zinc-900'
-                  }`}
-                >
-                  <Icon 
-                    className={`w-5 h-5 shrink-0 ${isActive ? 'text-maroon dark:text-golden' : ''}`}
-                    strokeWidth={isActive ? 2.5 : 1.5}
-                  />
-                  {label}
-                </button>
-              )
-            })}
-          </div>
-        </nav>
-
-        <div className="p-6 border-t border-zinc-300 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
-          <div className="flex items-center justify-between mb-6">
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-              Appearance
-            </p>
-            <ThemeToggle />
-          </div>
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-maroon flex items-center justify-center text-golden font-heading font-bold text-sm shrink-0 border border-maroon-dark">
-              {user.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2)}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-foreground truncate">{user.fullName}</p>
-              <p className="text-xs text-zinc-500 truncate">{user.studentId}</p>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            className="w-full justify-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-600 dark:text-zinc-400 hover:text-white hover:bg-maroon hover:border-maroon transition-colors"
-            onClick={handleLogout}
+        <div className="flex items-center gap-2">
+          <img src="/pup-logo.png" alt="PUP Logo" className="w-8 h-8 shrink-0 object-contain" />
+          <button
+            onClick={() => setIsMenuOpen(false)}
+            className="md:hidden p-1 rounded-none hover:bg-white/10 text-white dark:text-maroon-dark transition-colors"
+            aria-label="Close menu"
           >
-            <LogOut className="w-4 h-4" />
-            Disconnect
-          </Button>
+            <X className="w-5 h-5" />
+          </button>
         </div>
+      </div>
+
+      <nav className="flex-1 overflow-y-auto py-4">
+        <div className="flex flex-col">
+          {navItems.map(({ key, label, icon: Icon }) => {
+            const isActive = activeTab === key
+            return (
+              <button
+                key={key}
+                onClick={() => { setActiveTab(key as NavTab); setIsMenuOpen(false) }}
+                className={`flex items-center gap-4 px-6 py-4 text-sm font-bold uppercase tracking-wider transition-all border-l-4 w-full text-left ${
+                  isActive
+                    ? 'border-maroon dark:border-golden bg-zinc-100 dark:bg-zinc-900 text-maroon dark:text-golden'
+                    : 'border-transparent text-zinc-500 hover:text-foreground hover:bg-zinc-50 dark:hover:bg-zinc-900'
+                }`}
+              >
+                <Icon 
+                  className={`w-5 h-5 shrink-0 ${isActive ? 'text-maroon dark:text-golden' : ''}`}
+                  strokeWidth={isActive ? 2.5 : 1.5}
+                />
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      </nav>
+
+      <div className="p-6 border-t border-zinc-300 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
+        <div className="flex items-center justify-between mb-6">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
+            Appearance
+          </p>
+          <ThemeToggle />
+        </div>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 bg-maroon flex items-center justify-center text-golden font-heading font-bold text-sm shrink-0 border border-maroon-dark">
+            {user.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-foreground truncate">{user.fullName}</p>
+            <p className="text-xs text-zinc-500 truncate">{user.studentId}</p>
+          </div>
+        </div>
+        <Button
+          variant="outline"
+          className="w-full justify-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-600 dark:text-zinc-400 hover:text-white hover:bg-maroon hover:border-maroon transition-colors"
+          onClick={handleLogout}
+        >
+          <LogOut className="w-4 h-4" />
+          Disconnect
+        </Button>
+      </div>
+    </>
+  )
+
+  return (
+    <div className="min-h-screen flex flex-col md:flex-row bg-background selection:bg-golden selection:text-maroon">
+      {/* Mobile Top Navigation Header */}
+      <div className="md:hidden sticky top-0 z-30 w-full h-16 bg-maroon dark:bg-zinc-950 text-white dark:text-golden border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between px-6 shrink-0 select-none">
+        <div className="flex items-center gap-3">
+          <img src="/pup-logo.png" alt="PUP Logo" className="w-6 h-6 shrink-0 object-contain" />
+          <span className="font-heading font-bold text-lg tracking-tight">Polycheck</span>
+        </div>
+        <button 
+          onClick={() => setIsMenuOpen(true)}
+          className="p-2 hover:bg-white/10 dark:hover:bg-zinc-800 transition-colors"
+          aria-label="Open navigation menu"
+        >
+          <Menu className="w-6 h-6 text-white dark:text-golden" />
+        </button>
+      </div>
+
+      {/* Mobile Slide-Out Drawer Overlay */}
+      {isMenuOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex">
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" 
+            onClick={() => setIsMenuOpen(false)}
+          />
+          {/* Slide-out Menu Panel */}
+          <aside className="relative w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col h-full z-50 overflow-hidden animate-in slide-in-from-left duration-200">
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+
+      {/* Desktop Persistent Sidebar */}
+      <aside className="hidden md:flex w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col shrink-0 h-dvh sticky top-0 overflow-hidden">
+        {sidebarContent}
       </aside>
 
       {/* Main Content */}
@@ -302,7 +346,7 @@ export default function StudentDashboardPage() {
                                  <div className="w-full aspect-square bg-zinc-100 border-2 border-zinc-300 flex items-center justify-center p-2">
                                    <div className="grid grid-cols-5 grid-rows-5 w-full h-full gap-[1px]">
                                      {Array.from({length: 25}).map((_, i) => (
-                                       <div key={i} className={`bg-zinc-900 ${Math.random() > 0.5 ? 'opacity-100' : 'opacity-0'}`}></div>
+                                       <div key={i} className={`bg-zinc-900 ${(i * 17 + 5) % 3 === 0 ? 'opacity-100' : 'opacity-0'}`}></div>
                                      ))}
                                    </div>
                                  </div>
@@ -320,7 +364,7 @@ export default function StudentDashboardPage() {
 
                 <div className="lg:col-span-2 flex flex-col gap-8">
                   {/* Stats Grid */}
-                  <div className="grid grid-cols-3 gap-0 border border-zinc-300 dark:border-zinc-800 bg-background">
+                  <div className="grid grid-cols-3 gap-0 border border-zinc-300 dark:border-zinc-800 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
                     {statCards.map(({ key, label, color }, index) => (
                       <div key={key} className={`p-6 border-zinc-300 dark:border-zinc-800 ${index !== 0 ? 'border-l' : ''}`}>
                         <div className="flex items-center gap-3 mb-4 text-zinc-400">
@@ -334,7 +378,7 @@ export default function StudentDashboardPage() {
                   </div>
 
                   {/* Recent Attendance */}
-                  <Card className="rounded-none border-zinc-300 dark:border-zinc-800 shadow-none bg-zinc-50 dark:bg-zinc-900/20 flex-1">
+                  <Card className="rounded-none border-zinc-300 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden">
                     <CardHeader className="border-b border-zinc-300 dark:border-zinc-800 p-6">
                       <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
                         <Clock className="w-4 h-4 text-maroon dark:text-golden" />
@@ -345,7 +389,7 @@ export default function StudentDashboardPage() {
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
-                            <tr className="border-b border-zinc-300 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30">
+                            <tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30">
                               <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Subject</th>
                               <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Date/Time</th>
                               <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Status</th>
@@ -355,7 +399,7 @@ export default function StudentDashboardPage() {
                             {records.slice(0, 5).map((r) => (
                               <tr
                                 key={r.id}
-                                className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                                className="border-b border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors"
                               >
                                 <td className="px-6 py-4">
                                   <span className="font-bold text-foreground">
@@ -394,7 +438,7 @@ export default function StudentDashboardPage() {
                 const subj = api.getSubject(section.subjectId)
                 return (
                 <Link key={section.id} href={`/student/subjects/${section.id}`} className="block group">
-                  <Card className="rounded-none border-zinc-300 dark:border-zinc-800 border-l-4 border-l-maroon dark:border-l-golden shadow-none hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50 cursor-pointer flex flex-col h-full">
+                  <Card className="rounded-none border-zinc-300 dark:border-zinc-800 border-l-4 border-l-maroon dark:border-l-golden hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50 cursor-pointer flex flex-col h-full">
                     <CardHeader className="pb-4 pt-6 px-6">
                       <div className="flex justify-between items-start mb-2">
                         <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">
@@ -441,7 +485,7 @@ export default function StudentDashboardPage() {
 
           {/* Attendance History Tab */}
           {activeTab === 'attendance' && (
-            <Card className="rounded-none border-zinc-300 dark:border-zinc-800 shadow-none bg-zinc-50 dark:bg-zinc-900/20">
+            <Card className="rounded-none border-zinc-300 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden">
               <CardHeader className="border-b border-zinc-300 dark:border-zinc-800 p-6">
                 <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
                   <Clock className="w-4 h-4 text-maroon dark:text-golden" />
@@ -452,7 +496,7 @@ export default function StudentDashboardPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-zinc-300 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30">
+                      <tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30">
                         <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Subject</th>
                         <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Date/Time</th>
                         <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Result</th>
@@ -462,7 +506,7 @@ export default function StudentDashboardPage() {
                       {records.map((r) => (
                         <tr
                           key={r.id}
-                          className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                          className="border-b border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors"
                         >
                           <td className="px-6 py-4 font-bold text-foreground">
                             {sectionSubjectName(r.sectionId)}

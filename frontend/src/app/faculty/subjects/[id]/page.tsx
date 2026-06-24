@@ -54,7 +54,7 @@ export default function SubjectDetailPage() {
   if (!user || !subject) return null
 
   return (
-    <div className="min-h-screen flex bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
       <Sidebar user={user} onLogout={handleLogout} backHref="/faculty/subjects" backLabel="Back to Subjects" />
 
       <main className="flex-1 overflow-y-auto">
@@ -71,7 +71,7 @@ export default function SubjectDetailPage() {
           </div>
 
           {/* Subject Info */}
-          <Card className="mb-8">
+          <Card className="mb-8 border-t-4 border-t-maroon dark:border-t-golden">
             <CardContent className="pt-6">
               <div className="grid sm:grid-cols-3 gap-4">
                 <div>
@@ -111,7 +111,7 @@ export default function SubjectDetailPage() {
           ) : (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {sections.map((section) => (
-                <Card key={section.id} className="rounded-none border-zinc-200 dark:border-zinc-800 border-l-4 border-l-maroon dark:border-l-golden shadow-none hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50 flex flex-col h-full">
+                <Card key={section.id} className="rounded-none border-zinc-300/80 dark:border-zinc-800 border-l-4 border-l-maroon dark:border-l-golden hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50 flex flex-col h-full">
                   <CardHeader className="pb-4 pt-6 px-6">
                     <div className="flex justify-between items-start mb-2">
                       <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">
@@ -127,11 +127,11 @@ export default function SubjectDetailPage() {
                   </CardHeader>
                   <CardContent className="px-6 pb-6 flex-1 flex flex-col">
                     <div className="space-y-3 text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-6 flex-1 uppercase tracking-wider">
-                      <div className="flex justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
+                      <div className="flex justify-between border-b border-zinc-300/60 dark:border-zinc-800 pb-2">
                         <span className="text-zinc-400">Instructor</span>
                         <span className="text-foreground text-right">{section.teacherName}</span>
                       </div>
-                      <div className="flex justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
+                      <div className="flex justify-between border-b border-zinc-300/60 dark:border-zinc-800 pb-2">
                         <span className="text-zinc-400">Schedule</span>
                         <span className="text-foreground text-right">
                           {section.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}${s.room ? ` (${s.room})` : ''}`).join(', ')}

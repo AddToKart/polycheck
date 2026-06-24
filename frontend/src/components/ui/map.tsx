@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable */
 
 import MapLibreGL, { type PopupOptions, type MarkerOptions } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";

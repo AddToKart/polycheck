@@ -54,10 +54,10 @@ export default function DisputesPage() {
   if (!user) return null
 
   return (
-    <div className="flex h-screen bg-[#F5F5F5] dark:bg-[#0A0A0C]">
+    <div className="flex flex-col md:flex-row min-h-screen bg-[#F5F5F5] dark:bg-[#0A0A0C]">
       <Sidebar user={user} onLogout={() => { api.logout(); router.push('/') }} />
       <div className="flex-1 overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-[#0A0A0C] border-b border-gray-200 dark:border-[#1C1C21]">
+        <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-[#0A0A0C] border-b border-zinc-300/80 dark:border-[#1C1C21]">
           <div>
             <h1 className="text-xl font-heading font-bold text-[#4A0A0B] dark:text-[#FFDF00]">Disputed Records</h1>
             <p className="text-xs text-gray-400 dark:text-gray-500">{records.length} record{records.length !== 1 ? 's' : ''} flagged</p>
@@ -79,16 +79,16 @@ export default function DisputesPage() {
               return (
                 <Card
                   key={record.id}
-                  className="dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215] cursor-pointer hover:shadow-md transition-shadow"
+                  className="border-l-4 border-l-maroon dark:border-l-golden dark:border-y-[rgba(245,168,0,0.15)] dark:border-r-[rgba(245,168,0,0.15)] dark:bg-[#121215] cursor-pointer hover:shadow-md transition-shadow"
                   onClick={() => setSelectedRecord(record)}
                 >
                   <CardContent className="p-5">
                     <div className="flex items-center gap-3 mb-3">
-                      <Icon className="w-5 h-5 text-[#FFDF00]" />
-                      <h3 className="text-sm font-semibold dark:text-white">{record.studentName}</h3>
+                      <Icon className="w-5 h-5 text-maroon dark:text-golden" />
+                      <h3 className="text-sm font-bold dark:text-white">{record.studentName}</h3>
                     </div>
                     <div className="ml-8 space-y-1 text-xs">
-                      <p><span className="text-gray-400 dark:text-gray-500">Reason:</span> <span className="text-[#FFDF00] font-semibold">{record.disputeReason ? DISPUTE_LABELS[record.disputeReason] : 'Unknown'}</span></p>
+                      <p><span className="text-gray-400 dark:text-gray-500">Reason:</span> <span className="text-maroon dark:text-golden font-bold">{record.disputeReason ? DISPUTE_LABELS[record.disputeReason] : 'Unknown'}</span></p>
                       <p><span className="text-gray-400 dark:text-gray-500">Session:</span> <span className="dark:text-gray-300">{record.sessionId} · {new Date(record.timestamp).toLocaleDateString()}</span></p>
                       {record.notes && <p><span className="text-gray-400 dark:text-gray-500">Notes:</span> <span className="dark:text-gray-400">{record.notes}</span></p>}
                     </div>
@@ -104,18 +104,18 @@ export default function DisputesPage() {
       {selectedRecord && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setSelectedRecord(null)}>
           <div className="bg-white dark:bg-[#121215] dark:border dark:border-[rgba(245,168,0,0.15)] p-8 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
-            <Gavel className="w-10 h-10 text-[#FFDF00] mx-auto mb-3" />
+            <Gavel className="w-10 h-10 text-maroon dark:text-golden mx-auto mb-3" />
             <h3 className="text-lg font-heading font-bold text-center dark:text-white mb-1">Review Dispute</h3>
             <p className="text-sm font-semibold text-[#7B1113] dark:text-[#FFDF00] text-center mb-4">{selectedRecord.studentName}</p>
 
-            <div className="bg-gray-50 dark:bg-[#0A0A0C] p-4 mb-4 space-y-2 text-sm">
+            <div className="bg-zinc-50 dark:bg-[#0A0A0C] border border-zinc-200 dark:border-zinc-800 p-4 mb-4 space-y-2 text-sm">
               <div className="flex gap-2">
-                <span className="text-gray-400 dark:text-gray-500 shrink-0 w-16">Reason:</span>
-                <span className="text-[#FFDF00] font-semibold">{selectedRecord.disputeReason ? DISPUTE_LABELS[selectedRecord.disputeReason] : 'Unknown'}</span>
+                <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-16">Reason:</span>
+                <span className="text-maroon dark:text-golden font-bold">{selectedRecord.disputeReason ? DISPUTE_LABELS[selectedRecord.disputeReason] : 'Unknown'}</span>
               </div>
               {selectedRecord.notes && (
                 <div className="flex gap-2">
-                  <span className="text-gray-400 dark:text-gray-500 shrink-0 w-16">Notes:</span>
+                  <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-16">Notes:</span>
                   <span className="dark:text-gray-300">{selectedRecord.notes}</span>
                 </div>
               )}

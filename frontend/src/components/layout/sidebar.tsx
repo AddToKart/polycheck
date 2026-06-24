@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import type { User } from '@polycheck/shared'
@@ -13,6 +14,8 @@ import {
   BarChart3,
   ArrowLeft,
   LogOut,
+  Menu,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import ThemeToggle from '@/components/ThemeToggle'
@@ -45,6 +48,7 @@ interface SidebarProps {
 
 export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
   const pathname = usePathname()
+  const [isOpen, setIsOpen] = useState(false)
   const isSuper = user.role === 'super_admin'
   const items = backHref
     ? []
@@ -52,20 +56,28 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
       ? superAdminNav
       : teacherNav
 
-  return (
-    <aside className="w-64 bg-background border-r border-zinc-200 dark:border-zinc-800 flex flex-col shrink-0 h-dvh sticky top-0 overflow-hidden">
+  const sidebarContent = (
+    <>
       <div className="p-6 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-maroon dark:bg-golden text-white dark:text-maroon-dark">
         <div>
-          <Link href="/faculty">
+          <Link href="/faculty" onClick={() => setIsOpen(false)}>
             <h1 className="text-2xl font-heading font-bold tracking-tight text-golden dark:text-maroon-dark">
               Polycheck
             </h1>
           </Link>
-          <p className="text-[10px] uppercase tracking-widest text-white/70 dark:text-maroon-dark/80 mt-1">Faculty</p>
+          <p className="text-[10px] uppercase tracking-widest text-white/70 dark:text-maroon-dark/80 mt-1">
+            {isSuper ? 'Super Admin' : 'Faculty'}
+          </p>
         </div>
-        {/* Minimal Star motif from PUP logo */}
-        <div className="w-8 h-8 flex items-center justify-center shrink-0">
-           <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[14px] border-b-golden dark:border-b-maroon-dark relative before:content-[''] before:absolute before:-top-[4px] before:-left-[8px] before:w-0 before:h-0 before:border-l-[8px] before:border-l-transparent before:border-r-[8px] before:border-r-transparent before:border-t-[14px] before:border-t-golden dark:before:border-t-maroon-dark"></div>
+        <div className="flex items-center gap-2">
+          <img src="/pup-logo.png" alt="PUP Logo" className="w-8 h-8 shrink-0 object-contain" />
+          <button
+            onClick={() => setIsOpen(false)}
+            className="md:hidden p-1 rounded-none hover:bg-white/10 text-white dark:text-maroon-dark transition-colors"
+            aria-label="Close menu"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
       </div>
 
@@ -73,7 +85,7 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
         {backHref && backLabel && (
           <div className="px-4 mb-4">
             <Button variant="outline" className="w-full justify-start gap-3 border-zinc-300 dark:border-zinc-700" asChild>
-              <Link href={backHref}>
+              <Link href={backHref} onClick={() => setIsOpen(false)}>
                 <ArrowLeft className="w-4 h-4 shrink-0" />
                 <span className="uppercase tracking-widest text-xs font-bold">{backLabel}</span>
               </Link>
@@ -91,6 +103,7 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => setIsOpen(false)}
                 className={`flex items-center gap-4 px-6 py-4 text-sm font-bold uppercase tracking-wider transition-all border-l-4 ${
                   isActive
                     ? 'border-maroon dark:border-golden bg-zinc-100 dark:bg-zinc-900 text-maroon dark:text-golden'
@@ -136,6 +149,45 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
           Disconnect
         </Button>
       </div>
-    </aside>
+    </>
+  )
+
+  return (
+    <>
+      {/* Mobile Top Navigation Header */}
+      <div className="md:hidden sticky top-0 z-30 w-full h-16 bg-maroon dark:bg-zinc-950 text-white dark:text-golden border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between px-6 shrink-0 select-none">
+        <div className="flex items-center gap-3">
+          <img src="/pup-logo.png" alt="PUP Logo" className="w-6 h-6 shrink-0 object-contain" />
+          <span className="font-heading font-bold text-lg tracking-tight">Polycheck</span>
+        </div>
+        <button 
+          onClick={() => setIsOpen(true)}
+          className="p-2 hover:bg-white/10 dark:hover:bg-zinc-800 transition-colors"
+          aria-label="Open navigation menu"
+        >
+          <Menu className="w-6 h-6 text-white dark:text-golden" />
+        </button>
+      </div>
+
+      {/* Mobile Slide-Out Drawer Overlay */}
+      {isOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex">
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" 
+            onClick={() => setIsOpen(false)}
+          />
+          {/* Slide-out Menu Panel */}
+          <aside className="relative w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col h-full z-50 overflow-hidden animate-in slide-in-from-left duration-200">
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+
+      {/* Desktop Persistent Sidebar */}
+      <aside className="hidden md:flex w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col shrink-0 h-dvh sticky top-0 overflow-hidden">
+        {sidebarContent}
+      </aside>
+    </>
   )
 }
