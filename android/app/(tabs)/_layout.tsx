@@ -29,17 +29,17 @@ export default function TabLayout() {
     <Tabs
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: isDark ? '#4A0A0B' : '#FFDF00',
-        tabBarInactiveTintColor: isDark ? 'rgba(74, 10, 11, 0.5)' : 'rgba(255, 255, 255, 0.5)',
+        tabBarActiveTintColor: isDark ? '#4A0A0B' : '#7B1113',
+        tabBarInactiveTintColor: isDark ? 'rgba(74, 10, 11, 0.4)' : 'rgba(123, 17, 19, 0.4)',
         tabBarStyle: {
           position: 'absolute',
           bottom: insets.bottom + 12,
           left: 24,
           right: 24,
-          backgroundColor: isDark ? '#FFDF00' : '#7B1113',
+          backgroundColor: '#FFDF00',
           borderTopWidth: 0,
-          borderWidth: isDark ? 1 : 0,
-          borderColor: isDark ? 'rgba(74, 10, 11, 0.2)' : 'transparent',
+          borderWidth: 1,
+          borderColor: isDark ? 'rgba(74, 10, 11, 0.15)' : 'rgba(123, 17, 19, 0.15)',
           borderRadius: 28,
           height: 64,
           paddingBottom: 0,
@@ -66,7 +66,7 @@ export default function TabLayout() {
         tabBarIconStyle: {
           marginTop: 4,
         },
-        tabBarIcon: ({ focused }) => {
+        tabBarIcon: ({ focused, color }) => {
           const iconName = iconMap[route.name]
           if (!iconName) return null
           return (
@@ -74,7 +74,7 @@ export default function TabLayout() {
               <MaterialIcons
                 name={iconName}
                 size={24}
-                color={focused ? (isDark ? '#4A0A0B' : '#FFDF00') : (isDark ? 'rgba(74, 10, 11, 0.5)' : 'rgba(255,255,255,0.5)')}
+                color={color}
               />
             </View>
           )

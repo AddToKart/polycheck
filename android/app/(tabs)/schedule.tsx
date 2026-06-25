@@ -149,18 +149,28 @@ export default function StudentScheduleScreen() {
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <View style={[styles.header, isDark && styles.headerDark]}>
         <Text style={[styles.heading, isDark && styles.textGolden]}>Schedule</Text>
-        <View style={styles.toggleRow}>
+        <View style={[styles.toggleRow, isDark && styles.toggleRowDark]}>
           <TouchableOpacity
-            style={[styles.toggleBtn, viewMode === 'month' && styles.toggleActive, isDark && viewMode === 'month' && styles.toggleActiveDark]}
+            style={[styles.toggleBtn, isDark && styles.toggleBtnDark, viewMode === 'month' && styles.toggleActive, isDark && viewMode === 'month' && styles.toggleActiveDark]}
             onPress={() => setViewMode('month')}
           >
-            <Text style={[styles.toggleText, viewMode === 'month' && styles.toggleTextActive]}>Month</Text>
+            <Text style={[
+              styles.toggleText,
+              isDark && styles.toggleTextDark,
+              viewMode === 'month' && styles.toggleTextActive,
+              isDark && viewMode === 'month' && styles.toggleTextActiveDark
+            ]}>Month</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.toggleBtn, viewMode === 'week' && styles.toggleActive, isDark && viewMode === 'week' && styles.toggleActiveDark]}
+            style={[styles.toggleBtn, isDark && styles.toggleBtnDark, viewMode === 'week' && styles.toggleActive, isDark && viewMode === 'week' && styles.toggleActiveDark]}
             onPress={() => setViewMode('week')}
           >
-            <Text style={[styles.toggleText, viewMode === 'week' && styles.toggleTextActive]}>Week</Text>
+            <Text style={[
+              styles.toggleText,
+              isDark && styles.toggleTextDark,
+              viewMode === 'week' && styles.toggleTextActive,
+              isDark && viewMode === 'week' && styles.toggleTextActiveDark
+            ]}>Week</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -169,7 +179,7 @@ export default function StudentScheduleScreen() {
         <TouchableOpacity onPress={goToPrev} style={styles.navBtn} accessibilityLabel="Previous">
           <MaterialIcons name="chevron-left" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={goToToday} style={styles.todayBtn}>
+        <TouchableOpacity onPress={goToToday} style={[styles.todayBtn, isDark && styles.todayBtnDark]}>
           <Text style={[styles.todayText, isDark && styles.textGolden]}>Today</Text>
         </TouchableOpacity>
         <Text style={[styles.dateLabel, isDark && styles.textWhite]}>{displayedRange}</Text>
@@ -198,7 +208,7 @@ export default function StudentScheduleScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {viewMode === 'month' ? (
             <View style={[styles.calendarCard, isDark && styles.cardDark]}>
-              <View style={styles.weekdayRow}>
+              <View style={[styles.weekdayRow, isDark && styles.weekdayRowDark]}>
                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
                   <View key={d} style={styles.weekdayCell}>
                     <Text style={[styles.weekdayLabel, isDark && styles.textWhite50]}>{d}</Text>
@@ -208,7 +218,7 @@ export default function StudentScheduleScreen() {
               {monthDays.map((week, wi) => (
                 <View key={wi} style={styles.weekRow}>
                   {week.map((day, di) => {
-                    if (!day) return <View key={`e-${di}`} style={styles.dayCell} />
+                    if (!day) return <View key={`e-${di}`} style={[styles.dayCell, isDark && styles.dayCellDark]} />
                     const dateStr = formatDate(day)
                     const dayEvents = eventsByDate.get(dateStr) || []
                     const isToday = dateStr === todayStr
@@ -217,7 +227,12 @@ export default function StudentScheduleScreen() {
                     return (
                       <TouchableOpacity
                         key={dateStr}
-                        style={[styles.dayCell, isSel && styles.dayCellSel, isDark && isSel && styles.dayCellSelDark]}
+                        style={[
+                          styles.dayCell,
+                          isDark && styles.dayCellDark,
+                          isSel && styles.dayCellSel,
+                          isDark && isSel && styles.dayCellSelDark
+                        ]}
                         onPress={() => setSelectedDay(dateStr === selectedDay ? null : dateStr)}
                         activeOpacity={0.6}
                       >
@@ -377,6 +392,7 @@ export default function StudentScheduleScreen() {
                         <Text style={[styles.dayEvTimeSep, isDark && styles.textWhite50]}>—</Text>
                         <Text style={[styles.dayEvTimeText, isDark && styles.textGolden, isMoved && styles.movedText]}>{formatTime(ev.endTime)}</Text>
                       </View>
+                      <View style={[styles.timeDivider, isDark && styles.timeDividerDark]} />
                       <View style={styles.dayEvBody}>
                         <Text style={[styles.dayEvName, isDark && styles.textWhite, isMoved && styles.movedText]}>
                           {isMoved ? `${ev.subjectCode || 'Class'} (MOVED)` : isGhost ? 'No session yet' : ev.subjectName}
@@ -526,11 +542,15 @@ const styles = StyleSheet.create({
   headerDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
   heading: { fontSize: 20, fontWeight: '700', fontFamily: fonts.heading, color: '#7B1113' },
   toggleRow: { flexDirection: 'row', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#7B1113' },
+  toggleRowDark: { borderColor: '#FFDF00' },
   toggleBtn: { paddingHorizontal: 16, paddingVertical: 6, backgroundColor: '#FFF' },
+  toggleBtnDark: { backgroundColor: '#121215' },
   toggleActive: { backgroundColor: '#7B1113' },
   toggleActiveDark: { backgroundColor: '#FFDF00' },
   toggleText: { fontSize: 12, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#7B1113', textTransform: 'uppercase', letterSpacing: 0.5 },
+  toggleTextDark: { color: '#FFDF00' },
   toggleTextActive: { color: '#FFF' },
+  toggleTextActiveDark: { color: '#4A0A0B' },
   textWhite: { color: '#FFF' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
   textGolden: { color: '#FFDF00' },
@@ -539,6 +559,7 @@ const styles = StyleSheet.create({
   navBarDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
   navBtn: { padding: 8 },
   todayBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: '#7B1113' },
+  todayBtnDark: { borderColor: '#FFDF00' },
   todayText: { fontSize: 12, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#7B1113', textTransform: 'uppercase', letterSpacing: 0.5 },
   dateLabel: { fontSize: 14, fontWeight: '700', fontFamily: fonts.bodySemiBold, color: '#333', flex: 1, textAlign: 'center' },
 
@@ -549,7 +570,7 @@ const styles = StyleSheet.create({
   legendText: { fontSize: 9, fontFamily: fonts.bodyBold, color: '#888', textTransform: 'uppercase', letterSpacing: 0.3 },
 
   emptyContainer: { margin: 20, padding: 48, alignItems: 'center', gap: 8, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#EEE', borderStyle: 'dashed' },
-  cardDark: { backgroundColor: '#121215', borderColor: 'rgba(245,168,0,0.15)' },
+  cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245,168,0,0.15)' },
   emptyText: { fontSize: 16, fontFamily: fonts.bodyBold, color: '#AAA' },
   emptyHint: { fontSize: 12, fontFamily: fonts.body, color: '#BBB', textAlign: 'center' },
 
@@ -557,10 +578,12 @@ const styles = StyleSheet.create({
 
   calendarCard: { backgroundColor: '#FFF', borderRadius: 0, overflow: 'hidden' },
   weekdayRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#EEE' },
+  weekdayRowDark: { borderBottomColor: 'rgba(255, 255, 255, 0.08)' },
   weekdayCell: { width: DAY_CELL_SIZE, alignItems: 'center', paddingVertical: 8 },
   weekdayLabel: { fontSize: 11, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 },
   weekRow: { flexDirection: 'row' },
   dayCell: { width: DAY_CELL_SIZE, height: 56, alignItems: 'center', paddingTop: 4, borderWidth: 0.5, borderColor: '#F0F0F0' },
+  dayCellDark: { borderColor: 'rgba(255, 255, 255, 0.08)' },
   dayCellSel: { backgroundColor: 'rgba(123,17,19,0.08)' },
   dayCellSelDark: { backgroundColor: 'rgba(255,223,0,0.12)' },
   dayNumWrap: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
@@ -604,8 +627,10 @@ const styles = StyleSheet.create({
   dayEvTitle: { fontSize: 16, fontWeight: '700', fontFamily: fonts.heading, color: '#4A0A0B', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 },
   emptyCard: { backgroundColor: '#FFF', padding: 32, alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#EEE', borderStyle: 'dashed' },
   dayEvCard: { backgroundColor: '#FFF', padding: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#EEE' },
-  dayEvTime: { width: 60, alignItems: 'center', gap: 2, marginRight: 12, paddingVertical: 8, backgroundColor: '#F9F9F9' },
-  dayEvTimeDark: { backgroundColor: '#0A0A0C' },
+  dayEvTime: { width: 68, alignItems: 'center', justifyContent: 'center', gap: 2, marginRight: 8, paddingVertical: 4, backgroundColor: 'transparent' },
+  dayEvTimeDark: { backgroundColor: 'transparent' },
+  timeDivider: { width: 1, height: '80%', backgroundColor: '#E4E4E7', marginRight: 12 },
+  timeDividerDark: { backgroundColor: 'rgba(255, 255, 255, 0.1)' },
   dayEvTimeText: { fontSize: 11, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#7B1113' },
   dayEvTimeSep: { fontSize: 8, color: '#CCC' },
   dayEvBody: { flex: 1 },

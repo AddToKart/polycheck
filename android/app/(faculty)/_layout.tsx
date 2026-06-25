@@ -7,15 +7,13 @@ import { api } from '../../services/mock-api'
 import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
 
-function TabIcon({ name, focused, isDark }: { name: keyof typeof MaterialIcons.glyphMap; focused: boolean; isDark: boolean }) {
-  const activeColor = isDark ? '#4A0A0B' : '#FFDF00'
-  const inactiveColor = isDark ? 'rgba(74, 10, 11, 0.5)' : 'rgba(255, 255, 255, 0.5)'
+function TabIcon({ name, focused, color }: { name: keyof typeof MaterialIcons.glyphMap; focused: boolean; color: any }) {
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center' }}>
       <MaterialIcons
         name={name}
         size={22}
-        color={focused ? activeColor : inactiveColor}
+        color={color}
       />
     </View>
   )
@@ -44,10 +42,10 @@ export default function FacultyLayout() {
     bottom: insets.bottom + 12,
     left: 24,
     right: 24,
-    backgroundColor: isDark ? '#FFDF00' : '#7B1113',
+    backgroundColor: '#FFDF00',
     borderTopWidth: 0,
-    borderWidth: isDark ? 1 : 0,
-    borderColor: isDark ? 'rgba(74, 10, 11, 0.2)' : 'transparent',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(74, 10, 11, 0.15)' : 'rgba(123, 17, 19, 0.15)',
     borderRadius: 28,
     height: 64,
     paddingBottom: 0,
@@ -76,14 +74,14 @@ export default function FacultyLayout() {
     <Tabs
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: isDark ? '#4A0A0B' : '#FFDF00',
-        tabBarInactiveTintColor: isDark ? 'rgba(74, 10, 11, 0.5)' : 'rgba(255, 255, 255, 0.5)',
+        tabBarActiveTintColor: isDark ? '#4A0A0B' : '#7B1113',
+        tabBarInactiveTintColor: isDark ? 'rgba(74, 10, 11, 0.4)' : 'rgba(123, 17, 19, 0.4)',
         tabBarStyle: route.name === 'sessions/create' || route.name === 'sessions/[id]' || route.name === 'subjects/create' || route.name === 'subjects/[id]' || route.name === 'subjects/[id]/sessions' || route.name === 'sections/create' || route.name === 'sections/[id]' || route.name === 'student/[id]' ? { display: 'none' } : tabStyle,
         tabBarLabelStyle: labelStyle,
         tabBarIconStyle: {
           marginTop: 4,
         },
-        tabBarIcon: ({ focused }) => {
+        tabBarIcon: ({ focused, color }) => {
           let iconName: keyof typeof MaterialIcons.glyphMap | undefined
           switch (route.name) {
             case 'dashboard': iconName = 'dashboard'; break
@@ -97,7 +95,7 @@ export default function FacultyLayout() {
             case 'reports': iconName = 'assessment'; break
           }
           if (!iconName) return null
-          return <TabIcon name={iconName} focused={focused} isDark={isDark} />
+          return <TabIcon name={iconName} focused={focused} color={color} />
         },
       })}
     >

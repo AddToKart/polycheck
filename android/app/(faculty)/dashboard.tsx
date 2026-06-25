@@ -26,19 +26,24 @@ export default function FacultyDashboardScreen() {
   if (!user) return null
 
   const isSuper = user.role === 'super_admin'
-  const totalStudents = api.getStudents().length
-  const sessionsToday = api.getSessions().filter((s) => s.date === new Date().toISOString().slice(0, 10)).length
-  const absentCount = records.filter((r) => r.status === 'absent').length
+  const teacherSectionIds = sections.map((s) => s.id)
 
-  const navItems = [
-    { label: 'My Subjects', icon: 'menu-book' as const, onPress: () => router.push('/(faculty)/subjects') },
-    { label: 'Sessions', icon: 'event' as const, onPress: () => router.push('/(faculty)/sessions') },
-    { label: 'Attendance', icon: 'assignment' as const, onPress: () => router.push('/(faculty)/attendance') },
-    ...(isSuper ? [
-      { label: 'Users', icon: 'people' as const, onPress: () => router.push('/(faculty)/users') },
-      { label: 'Reports', icon: 'assessment' as const, onPress: () => router.push('/(faculty)/reports') },
-    ] : []),
-  ]
+  const teacherStudentCount = (() => {
+    const studentIds = new Set<string>()
+    sections.forEach((sec) => {
+      const roster = api.getSectionStudents(sec.id)
+      roster.forEach((st) => studentIds.add(st.id))
+    })
+    return studentIds.size
+  })()
+
+  const sessionsToday = api.getSessions().filter((s) => 
+    s.date === new Date().toISOString().slice(0, 10) && teacherSectionIds.includes(s.sectionId)
+  ).length
+
+  const pendingDisputes = api.getDisputedRecords().filter((r) => 
+    teacherSectionIds.includes(r.sectionId)
+  ).length
 
   const handleLogout = () => {
     api.logout()
@@ -63,6 +68,22 @@ export default function FacultyDashboardScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {pendingDisputes > 0 && (
+          <TouchableOpacity 
+            style={[styles.alertBanner, isDark && styles.alertBannerDark]} 
+            onPress={() => router.push('/(faculty)/disputes')}
+          >
+            <MaterialIcons name="gavel" size={20} color={isDark ? '#FCA5A5' : '#991B1B'} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.alertTitle, isDark && styles.alertTitleDark]}>Disputes Pending Review</Text>
+              <Text style={[styles.alertDesc, isDark && styles.alertDescDark]}>
+                You have {pendingDisputes} dispute{pendingDisputes > 1 ? 's' : ''} waiting for resolution.
+              </Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={20} color={isDark ? '#FCA5A5' : '#991B1B'} />
+          </TouchableOpacity>
+        )}
+
         <View style={styles.statsRow}>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
             <MaterialIcons name="menu-book" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
@@ -71,7 +92,7 @@ export default function FacultyDashboardScreen() {
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
             <MaterialIcons name="people" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
-            <Text style={[styles.statNumber, isDark && styles.textGolden]}>{totalStudents}</Text>
+            <Text style={[styles.statNumber, isDark && styles.textGolden]}>{teacherStudentCount}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Students</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
@@ -80,27 +101,12 @@ export default function FacultyDashboardScreen() {
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Today</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="report" size={20} color={isDark ? '#EF4444' : '#4A0A0B'} />
-            <Text style={[styles.statNumber, { color: isDark ? '#EF4444' : '#4A0A0B' }]}>{absentCount}</Text>
-            <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Absent</Text>
+            <MaterialIcons name="gavel" size={20} color={pendingDisputes > 0 ? '#EF4444' : (isDark ? '#FFDF00' : '#7B1113')} />
+            <Text style={[styles.statNumber, pendingDisputes > 0 ? { color: '#EF4444' } : (isDark && styles.textGolden)]}>
+              {pendingDisputes}
+            </Text>
+            <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Disputes</Text>
           </View>
-        </View>
-
-        <View style={[styles.navCard, isDark && styles.cardDark]}>
-          {navItems.map((item) => (
-            <TouchableOpacity
-              key={item.label}
-              style={[styles.navItem, isDark && styles.navItemDark]}
-              onPress={item.onPress}
-              accessibilityRole="button"
-            >
-              <View style={styles.navItemLeft}>
-                <MaterialIcons name={item.icon} size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
-                <Text style={[styles.navLabel, isDark && styles.textWhite]}>{item.label}</Text>
-              </View>
-              <MaterialIcons name="chevron-right" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
-            </TouchableOpacity>
-          ))}
         </View>
 
         <Text style={[styles.sectionTitle, isDark && styles.textGolden]}>My Subjects</Text>
@@ -145,17 +151,20 @@ const styles = StyleSheet.create({
   textGolden: { color: '#FFDF00' },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   statsRow: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
-  statCard: { backgroundColor: '#FFFFFF', borderRadius: 0, padding: 14, alignItems: 'center', gap: 4, minWidth: '22%', flex: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
-  cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
+  statCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 14, alignItems: 'center', gap: 4, minWidth: '22%', flex: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
+  cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)', borderRadius: 12 },
   statNumber: { fontSize: 22, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#7B1113' },
   statLabel: { fontSize: 10, fontFamily: fonts.body, color: '#AAA', marginTop: 2 },
-  navCard: { backgroundColor: '#FFFFFF', borderRadius: 0, overflow: 'hidden', marginBottom: 20 },
-  navItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
-  navItemDark: { borderBottomColor: '#1C1C21' },
-  navItemLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  navLabel: { fontSize: 16, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#333' },
+  
+  alertBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FEF2F2', borderColor: '#FCA5A5', borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 16 },
+  alertBannerDark: { backgroundColor: '#1E1B1B', borderColor: '#7F1D1D' },
+  alertTitle: { fontSize: 14, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#991B1B' },
+  alertTitleDark: { color: '#FCA5A5' },
+  alertDesc: { fontSize: 12, fontFamily: fonts.body, color: '#B91C1C', marginTop: 2 },
+  alertDescDark: { color: '#FEE2E2' },
+
   sectionTitle: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#4A0A0B', marginBottom: 12 },
-  subjectCard: { backgroundColor: '#FFFFFF', borderRadius: 0, padding: 16, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
+  subjectCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
   subjectLeft: { flex: 1 },
   subjectName: { fontSize: 15, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#333' },
   subjectMeta: { fontSize: 12, fontFamily: fonts.body, color: '#888', marginTop: 2 },
