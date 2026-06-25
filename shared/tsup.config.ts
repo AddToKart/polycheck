@@ -24,4 +24,12 @@ export default defineConfig([
     sourcemap: true,
     clean: false,
   },
+  {
+    entry: ['src/map/index.ts'],
+    outDir: 'dist/map',
+    format: ['cjs', 'esm'],
+    dts: true,
+    sourcemap: true,
+    clean: false,
+  },
 ])

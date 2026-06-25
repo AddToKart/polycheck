@@ -7,7 +7,7 @@ import * as Clipboard from 'expo-clipboard'
 import { api } from '../../../services/mock-api'
 import { fonts } from '../../../theme/typography'
 import { useTheme } from '../../../theme/ThemeContext'
-import MapView from '../../../components/MapView'
+import MapView, { type StudentMapPin } from '../../../components/MapView'
 import type { User, Session, AttendanceRecord, AttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
@@ -117,6 +117,19 @@ export default function SessionDetailScreen() {
   const pendingCount = records.filter((r) => r.status === 'pending').length
 
   const studentMap = new Map(records.map((r) => [r.studentId, r]))
+
+  const studentPins: StudentMapPin[] = records
+    .filter((r) => r.coordinates && (r.coordinates.latitude !== 0 || r.coordinates.longitude !== 0))
+    .map((r) => ({
+      id: r.studentId,
+      latitude: r.coordinates.latitude,
+      longitude: r.coordinates.longitude,
+      label: r.studentName,
+      program: r.studentProgram,
+      status: r.status,
+      timestamp: r.timestamp,
+      deviceId: r.deviceId,
+    }))
 
   const handleGenerateQr = () => {
     const mins = parseInt(validityMinutes, 10)
@@ -292,7 +305,7 @@ export default function SessionDetailScreen() {
             <MaterialIcons name="location-on" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.cardTitle, isDark && styles.textWhite]}>Geofence</Text>
           </View>
-          <MapView latitude={session.geofence.latitude} longitude={session.geofence.longitude} radius={session.geofence.radiusMeters} />
+          <MapView latitude={session.geofence.latitude} longitude={session.geofence.longitude} radius={session.geofence.radiusMeters} studentPins={studentPins} />
           <View style={styles.coordRow}>
             <View style={styles.coord}>
               <Text style={[styles.coordLabel, isDark && styles.textWhite50]}>Lat</Text>

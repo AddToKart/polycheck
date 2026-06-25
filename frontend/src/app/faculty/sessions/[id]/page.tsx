@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, QrCode, MapPin, Timer, Play, StopCircle, Share2, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, X, Trash2 } from 'lucide-react'
+import { ArrowLeft, QrCode, Timer, Play, StopCircle, Share2, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2 } from 'lucide-react'
 import { api } from '@/lib/mock-api'
 import type { User, Session, AttendanceRecord, AttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { LoadingSpinner } from '@/lib/hooks'
 import { useNotifications } from '@/lib/notifications'
+import CampusMap from '@/components/CampusMap'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 
@@ -309,18 +310,15 @@ export default function SessionDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Geofence Card */}
+          {/* Campus Map Card */}
           <Card className="dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215]">
             <CardContent className="p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <MapPin className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
-                <h2 className="text-base font-bold dark:text-white">Geofence</h2>
-              </div>
-              <div className="flex gap-4 text-sm">
-                <div><span className="text-[10px] uppercase tracking-[0.5px] text-gray-400 dark:text-gray-500 block mb-1">Lat</span><span className="font-mono dark:text-white">{session.geofence.latitude}</span></div>
-                <div><span className="text-[10px] uppercase tracking-[0.5px] text-gray-400 dark:text-gray-500 block mb-1">Lng</span><span className="font-mono dark:text-white">{session.geofence.longitude}</span></div>
-                <div><span className="text-[10px] uppercase tracking-[0.5px] text-gray-400 dark:text-gray-500 block mb-1">Radius</span><span className="font-mono dark:text-white">{session.geofence.radiusMeters}m</span></div>
-              </div>
+              <CampusMap
+                session={session}
+                records={records}
+                isActive={session.isActive}
+                refreshLabel={refreshLabel}
+              />
             </CardContent>
           </Card>
 

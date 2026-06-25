@@ -20,6 +20,11 @@
       "types": "./dist/mock/index.d.ts",
       "import": "./dist/mock/index.mjs",
       "require": "./dist/mock/index.js"
+    },
+    "./map": {
+      "types": "./dist/map/index.d.ts",
+      "import": "./dist/map/index.mjs",
+      "require": "./dist/map/index.js"
     }
   },
   "scripts": {

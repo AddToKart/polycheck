@@ -4,6 +4,18 @@ import { WebView } from 'react-native-webview'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useTheme } from '../theme/ThemeContext'
 import { fonts } from '../theme/typography'
+import { pupSantaMaria } from '@polycheck/shared/map'
+
+export interface StudentMapPin {
+  id: string
+  latitude: number
+  longitude: number
+  label: string
+  program?: string
+  status: 'present' | 'late' | 'absent' | 'pending' | 'disputed'
+  timestamp: string
+  deviceId?: string
+}
 
 interface MapViewProps {
   latitude: number
@@ -12,10 +24,50 @@ interface MapViewProps {
   interactive?: boolean
   onLocationChange?: (lat: number, lng: number) => void
   onRadiusChange?: (r: number) => void
+  studentPins?: StudentMapPin[]
 }
 
-function html(lat: number, lng: number, radius: number, interactive: boolean, isDark: boolean) {
+function html(
+  lat: number,
+  lng: number,
+  radius: number,
+  interactive: boolean,
+  isDark: boolean,
+  studentPins: StudentMapPin[],
+) {
   const accentColor = isDark ? '#FFDF00' : '#7B1113'
+
+  const statusColors: Record<string, string> = {
+    present: '#22C55E',
+    late: '#FFDF00',
+    absent: '#EF4444',
+    pending: '#9CA3AF',
+    disputed: '#F59E0B',
+  }
+
+  const buildingsJSON = JSON.stringify(
+    pupSantaMaria.buildings.map((b) => ({
+      name: b.name,
+      abbr: b.abbreviation,
+      lng: b.center[0],
+      lat: b.center[1],
+      polygon: b.polygon.map((p) => ({ lng: p[0], lat: p[1] })),
+    }))
+  )
+
+  const pinsJSON = JSON.stringify(
+    studentPins.map((p) => ({
+      id: p.id,
+      lat: p.latitude,
+      lng: p.longitude,
+      label: p.label,
+      program: p.program || '',
+      status: p.status,
+      timestamp: p.timestamp,
+      deviceId: p.deviceId || '',
+    }))
+  )
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -39,10 +91,20 @@ function html(lat: number, lng: number, radius: number, interactive: boolean, is
     z-index: 1000;
     pointer-events: none;
   }
+  .student-popup { font-family: 'DM Sans', sans-serif; min-width: 160px; }
+  .student-popup .name { font-weight: 700; font-size: 13px; margin-bottom: 2px; }
+  .student-popup .id { font-size: 11px; color: #888; }
+  .student-popup .status-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .student-popup .status { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 2px; }
+  .student-popup .time { font-size: 10px; color: #999; }
+  .student-popup .device { font-size: 10px; color: #aaa; margin-top: 2px; }
   ${isDark ? `
-  .leaflet-container {
-    background: #0A0A0C !important;
-  }
+  .leaflet-container { background: #0A0A0C !important; }
+  .leaflet-popup-content-wrapper { background: #121215 !important; color: #fff !important; border: 1px solid rgba(245,168,0,0.15) !important; border-radius: 0 !important; }
+  .leaflet-popup-tip { background: #121215 !important; border: 1px solid rgba(245,168,0,0.15) !important; }
+  .student-popup .id { color: #999; }
+  .student-popup .time { color: #666; }
+  .student-popup .device { color: #666; }
   ` : ''}
 </style>
 </head>
@@ -57,17 +119,13 @@ function html(lat: number, lng: number, radius: number, interactive: boolean, is
     attributionControl: false
   });
 
-  var tileUrl = ${isDark} 
+  var tileUrl = ${isDark}
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
     : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png';
 
-  L.tileLayer(tileUrl, {
-    maxZoom: 19
-  }).addTo(map);
+  L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(map);
 
-  var marker = L.marker([${lat}, ${lng}], {
-    draggable: ${interactive}
-  }).addTo(map);
+  var marker = L.marker([${lat}, ${lng}], { draggable: ${interactive} }).addTo(map);
 
   var circle = L.circle([${lat}, ${lng}], {
     radius: ${radius},
@@ -77,6 +135,57 @@ function html(lat: number, lng: number, radius: number, interactive: boolean, is
     weight: 2,
     dashArray: '6 4'
   }).addTo(map);
+
+  var buildings = ${buildingsJSON};
+  buildings.forEach(function(b) {
+    var coords = b.polygon.map(function(p) { return [p.lat, p.lng]; });
+    L.polygon(coords, {
+      color: '${accentColor}',
+      fillColor: '${accentColor}',
+      fillOpacity: 0.08,
+      weight: 1.5,
+      opacity: 0.4
+    }).addTo(map);
+
+    L.marker([b.lat, b.lng], {
+      icon: L.divIcon({
+        className: 'building-label',
+        html: '<span style="font-size:10px;font-weight:700;color:${accentColor};text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap">' + b.abbr + '</span>',
+        iconSize: [0, 0],
+        iconAnchor: [0, 0]
+      })
+    }).addTo(map);
+  });
+
+  var statusColors = ${JSON.stringify(statusColors)};
+  var statusLabels = { present: 'Present', late: 'Late', absent: 'Absent', pending: 'Pending', disputed: 'Disputed' };
+
+  var pins = ${pinsJSON};
+  var pinMarkers = [];
+  pins.forEach(function(p) {
+    if (p.lat === 0 && p.lng === 0) return;
+    var color = statusColors[p.status] || '#9CA3AF';
+    var circleMarker = L.circleMarker([p.lat, p.lng], {
+      radius: 7,
+      fillColor: color,
+      color: '#fff',
+      weight: 2,
+      fillOpacity: 1
+    }).addTo(map);
+
+    var popupHtml = '<div class="student-popup">' +
+      '<div class="name">' + p.label + '</div>' +
+      '<div class="id">' + (p.program ? p.id + ' · ' + p.program : p.id) + '</div>' +
+      '<div class="status-row">' +
+        '<span class="status" style="background:' + color + ';color:' + (p.status === 'late' ? '#4A0A0B' : '#fff') + '">' + (statusLabels[p.status] || p.status) + '</span>' +
+        '<span class="time">' + new Date(p.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) + '</span>' +
+      '</div>' +
+      (p.deviceId && p.deviceId !== 'manual' ? '<div class="device">Device: ' + p.deviceId + '</div>' : '') +
+    '</div>';
+
+    circleMarker.bindPopup(popupHtml);
+    pinMarkers.push(circleMarker);
+  });
 
   function update(lat, lng, rad) {
     marker.setLatLng([lat, lng]);
@@ -108,7 +217,7 @@ function html(lat: number, lng: number, radius: number, interactive: boolean, is
 </html>`
 }
 
-export default function MapView({ latitude, longitude, radius, interactive, onLocationChange, onRadiusChange }: MapViewProps) {
+export default function MapView({ latitude, longitude, radius, interactive, onLocationChange, onRadiusChange, studentPins = [] }: MapViewProps) {
   const { isDark } = useTheme()
   const webRef = useRef<WebView>(null)
   const prevRadiusRef = useRef(radius)
@@ -151,7 +260,7 @@ export default function MapView({ latitude, longitude, radius, interactive, onLo
   const mapWebView = () => (
     <WebView
       ref={webRef}
-      source={{ html: html(latitude, longitude, radius, !!interactive, isDark) }}
+      source={{ html: html(latitude, longitude, radius, !!interactive, isDark, studentPins) }}
       style={styles.webview}
       scrollEnabled={false}
       bounces={false}
@@ -178,10 +287,20 @@ export default function MapView({ latitude, longitude, radius, interactive, onLo
               <MaterialIcons name="fullscreen" size={20} color="#FFF" />
             </TouchableOpacity>
           )}
-          {!interactive && (
+          {!interactive && studentPins.length === 0 && (
             <View style={styles.overlay} pointerEvents="none">
               <Text style={styles.overlayCoords}>{latitude.toFixed(4)}, {longitude.toFixed(4)}</Text>
               <Text style={styles.overlayRadius}>{radius}m geofence</Text>
+            </View>
+          )}
+          {!interactive && studentPins.length > 0 && (
+            <View style={styles.legendOverlay} pointerEvents="none">
+              <Text style={styles.legendText}>
+                <Text style={{color: '#22C55E'}}>●</Text> Present{'  '}
+                <Text style={{color: '#FFDF00'}}>●</Text> Late{'  '}
+                <Text style={{color: '#EF4444'}}>●</Text> Absent{'  '}
+                <Text style={{color: '#9CA3AF'}}>●</Text> Pending
+              </Text>
             </View>
           )}
         </View>
@@ -234,7 +353,7 @@ export default function MapView({ latitude, longitude, radius, interactive, onLo
             </View>
             <View style={styles.fsMapContainer}>
               <WebView
-                source={{ html: html(latitude, longitude, radius, !!interactive, isDark) }}
+                source={{ html: html(latitude, longitude, radius, !!interactive, isDark, studentPins) }}
                 style={styles.webview}
                 scrollEnabled={false}
                 bounces={false}
@@ -275,6 +394,16 @@ const styles = StyleSheet.create({
   },
   overlayCoords: { color: '#FFF', fontSize: 14, fontFamily: fonts.mono, fontWeight: '600' },
   overlayRadius: { color: 'rgba(255,255,255,0.7)', fontSize: 12, fontFamily: fonts.body, marginTop: 2 },
+  legendOverlay: {
+    position: 'absolute', bottom: 8, left: 0, right: 0,
+    alignItems: 'center',
+  },
+  legendText: {
+    fontSize: 11, fontFamily: fonts.body, color: '#FFF',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 10, paddingVertical: 4,
+    overflow: 'hidden',
+  },
   hintRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   hintRowDark: {},
   hintText: { fontSize: 12, fontFamily: fonts.body, color: '#999' },
