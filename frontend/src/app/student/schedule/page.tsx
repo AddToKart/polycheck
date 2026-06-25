@@ -326,33 +326,62 @@ function WeekView({ date, events }: { date: Date; events: CalendarEvent[] }) {
             // Sort by start time then by end time
             const sortedEvs = [...dayEvs].sort((a, b) => a.startTime.localeCompare(b.startTime))
 
-            const columns: CalendarEvent[][] = []
+            // Cluster events into connected components of overlapping events
+            const clusters: CalendarEvent[][] = []
+            let currentCluster: CalendarEvent[] = []
+            let clusterMaxEnd = ''
+
             for (const ev of sortedEvs) {
-              let placed = false
-              for (const col of columns) {
-                // Check if ev overlaps with any event in this column
-                const hasOverlap = col.some(
-                  (other) =>
-                    (ev.startTime >= other.startTime && ev.startTime < other.endTime) ||
-                    (other.startTime >= ev.startTime && other.startTime < ev.endTime)
-                )
-                if (!hasOverlap) {
-                  col.push(ev)
-                  placed = true
-                  break
+              if (currentCluster.length === 0) {
+                currentCluster.push(ev)
+                clusterMaxEnd = ev.endTime
+              } else if (ev.startTime < clusterMaxEnd) {
+                // Overlaps with the current cluster
+                currentCluster.push(ev)
+                if (ev.endTime > clusterMaxEnd) {
+                  clusterMaxEnd = ev.endTime
                 }
+              } else {
+                // Does not overlap with the current cluster; start a new one
+                clusters.push(currentCluster)
+                currentCluster = [ev]
+                clusterMaxEnd = ev.endTime
               }
-              if (!placed) {
-                columns.push([ev])
-              }
+            }
+            if (currentCluster.length > 0) {
+              clusters.push(currentCluster)
             }
 
             const eventLayout = new Map<string, { colIndex: number; totalCols: number }>()
-            columns.forEach((col, colIndex) => {
-              for (const ev of col) {
-                eventLayout.set(ev.id, { colIndex, totalCols: columns.length })
+
+            for (const cluster of clusters) {
+              const columns: CalendarEvent[][] = []
+              for (const ev of cluster) {
+                let placed = false
+                for (const col of columns) {
+                  // Check if ev overlaps with any event in this column
+                  const hasOverlap = col.some(
+                    (other) =>
+                      (ev.startTime >= other.startTime && ev.startTime < other.endTime) ||
+                      (other.startTime >= ev.startTime && other.startTime < ev.endTime)
+                  )
+                  if (!hasOverlap) {
+                    col.push(ev)
+                    placed = true
+                    break
+                  }
+                }
+                if (!placed) {
+                  columns.push([ev])
+                }
               }
-            })
+
+              columns.forEach((col, colIndex) => {
+                for (const ev of col) {
+                  eventLayout.set(ev.id, { colIndex, totalCols: columns.length })
+                }
+              })
+            }
 
             return (
               <div key={di} className="relative border-r last:border-r-0 border-zinc-200 dark:border-zinc-700">
