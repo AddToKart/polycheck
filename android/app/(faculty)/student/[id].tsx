@@ -346,37 +346,29 @@ export default function StudentDetailScreen() {
               const spc = Math.max(1, Math.ceil(sessions.length / SESSION_PAGE_SIZE))
               if (spc <= 1) return null
               return (
-                <View className="flex-row justify-center items-center gap-1.5 mt-4 mb-6">
+                <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 16, marginBottom: 24 }}>
                   <TouchableOpacity
-                    className="w-9 h-9 items-center justify-center border"
-                    style={{ borderColor: border, backgroundColor: surface, opacity: sessionPage === 0 ? 0.4 : 1 }}
+                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: sessionPage === 0 ? (isDark ? 'rgba(255,255,255,0.1)' : '#E0E0E0') : (isDark ? '#FFDF00' : '#7B1113'), backgroundColor: sessionPage === 0 ? 'transparent' : (isDark ? '#FFDF00' : '#7B1113'), opacity: sessionPage === 0 ? 0.4 : 1 }}
                     onPress={() => setSessionPage(Math.max(0, sessionPage - 1))}
                     disabled={sessionPage === 0}
                     accessibilityLabel="Previous session page"
                   >
-                    <MaterialIcons name="chevron-left" size={20} color={sessionPage === 0 ? (isDark ? 'rgba(255,255,255,0.2)' : '#CCC') : iconColor} />
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: sessionPage === 0 ? '#999' : (isDark ? '#4A0A0B' : '#FFFFFF') }}>← Prev</Text>
                   </TouchableOpacity>
-                  {Array.from({ length: spc }, (_, i) => (
-                    <TouchableOpacity
-                      key={i}
-                      className="w-9 h-9 items-center justify-center border"
-                      style={{
-                        borderColor: i === sessionPage ? (isDark ? '#FFDF00' : '#7B1113') : border,
-                        backgroundColor: i === sessionPage ? (isDark ? '#FFDF00' : '#7B1113') : surface,
-                      }}
-                      onPress={() => setSessionPage(i)}
-                    >
-                      <Text className="text-sm font-sans-semibold" style={{ color: i === sessionPage ? (isDark ? '#4A0A0B' : '#FFF') : (isDark ? 'rgba(255,255,255,0.7)' : '#555') }}>{i + 1}</Text>
-                    </TouchableOpacity>
-                  ))}
+
+                  <View style={{ paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E0E0E0' }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: isDark ? '#FFFFFF' : '#333' }}>
+                      Page {sessionPage + 1} of {spc}
+                    </Text>
+                  </View>
+
                   <TouchableOpacity
-                    className="w-9 h-9 items-center justify-center border"
-                    style={{ borderColor: border, backgroundColor: surface, opacity: sessionPage === spc - 1 ? 0.4 : 1 }}
+                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: sessionPage === spc - 1 ? (isDark ? 'rgba(255,255,255,0.1)' : '#E0E0E0') : (isDark ? '#FFDF00' : '#7B1113'), backgroundColor: sessionPage === spc - 1 ? 'transparent' : (isDark ? '#FFDF00' : '#7B1113'), opacity: sessionPage === spc - 1 ? 0.4 : 1 }}
                     onPress={() => setSessionPage(Math.min(spc - 1, sessionPage + 1))}
                     disabled={sessionPage === spc - 1}
                     accessibilityLabel="Next session page"
                   >
-                    <MaterialIcons name="chevron-right" size={20} color={sessionPage === spc - 1 ? (isDark ? 'rgba(255,255,255,0.2)' : '#CCC') : iconColor} />
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: sessionPage === spc - 1 ? '#999' : (isDark ? '#4A0A0B' : '#FFFFFF') }}>Next →</Text>
                   </TouchableOpacity>
                 </View>
               )

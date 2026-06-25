@@ -114,7 +114,7 @@ export default function DashboardScreen() {
             <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Absent</Text>
           </View>
           <View style={styles.attendanceItem}>
-            <Text style={[styles.attendanceNum, { color: '#4A0A0B' }]}>{disputed}</Text>
+            <Text style={[styles.attendanceNum, { color: isDark ? '#FFDF00' : '#4A0A0B' }]}>{disputed}</Text>
             <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Disputed</Text>
           </View>
         </View>
@@ -143,10 +143,19 @@ export default function DashboardScreen() {
               (sd) => sd.day === ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date().getDay()],
             )
             const status = myAttendance.find((r) => r.sectionId === section.id)?.status ?? 'pending'
+            
+            const STATUS_BORDER_COLORS: Record<string, string> = {
+              present: '#10B981', // green
+              late: '#FBBF24',    // yellow
+              absent: '#EF4444',  // red
+              pending: isDark ? '#FFDF00' : '#7B1113',
+              disputed: '#FFDF00',
+            }
+
             return (
               <TouchableOpacity
                 key={section.id}
-                style={[styles.schedCard, isDark && styles.cardDark]}
+                style={[styles.schedCard, isDark && styles.cardDark, { borderLeftColor: STATUS_BORDER_COLORS[status] || '#7B1113' }]}
                 onPress={() => handleSubjectTap(section.id)}
                 activeOpacity={0.7}
               >
@@ -183,15 +192,6 @@ export default function DashboardScreen() {
         {/* My Subjects */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 16 }}>
           <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginBottom: 0 }]}>My Subjects</Text>
-          {mySections.length > 2 && (
-            <TouchableOpacity
-              onPress={() => router.push('/(tabs)/subjects')}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderWidth: 1, borderColor: isDark ? '#FFDF00' : '#7B1113' }}
-            >
-              <MaterialIcons name="book" size={14} color={isDark ? '#FFDF00' : '#7B1113'} />
-              <Text style={{ fontSize: 10, fontWeight: '700', fontFamily: 'DMSans_700Bold', color: isDark ? '#FFDF00' : '#7B1113', textTransform: 'uppercase', letterSpacing: 0.5 }}>View All</Text>
-            </TouchableOpacity>
-          )}
         </View>
         {mySections.length === 0 ? (
           <View style={[styles.emptyCard, isDark && styles.cardDark]}>
@@ -199,7 +199,7 @@ export default function DashboardScreen() {
             <Text style={[styles.emptyText, isDark && styles.textWhite50]}>No enrollments yet</Text>
           </View>
         ) : (
-          mySections.slice(0, 2).map((section) => {
+          mySections.slice(0, 4).map((section) => {
             const parent = api.getSubject(section.subjectId)
             const presentCount = myAttendance.filter((r) => r.sectionId === section.id && r.status === 'present').length
             return (
@@ -245,6 +245,19 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             )
           })
+        )}
+
+        {/* View All Subjects — full-width when > 4 subjects */}
+        {mySections.length > 4 && (
+          <TouchableOpacity
+            style={[styles.viewAllBtn, isDark && styles.viewAllBtnDark]}
+            onPress={() => router.push('/(tabs)/subjects')}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="book" size={16} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
+            <Text style={[styles.viewAllText, isDark && styles.viewAllTextDark]}>View All Subjects ({mySections.length})</Text>
+            <MaterialIcons name="chevron-right" size={16} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
+          </TouchableOpacity>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -292,10 +305,12 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 120 },
 
   card: {
-    borderWidth: 2, borderColor: '#D4D4D8', backgroundColor: '#FFFFFF',
-    padding: 20, marginBottom: 16,
+    borderWidth: 1, borderColor: '#E4E4E7', backgroundColor: '#FFFFFF',
+    borderLeftWidth: 4, borderLeftColor: '#7B1113',
+    padding: 20, marginBottom: 16, borderRadius: 0,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
   },
-  cardDark: { borderColor: 'rgba(245, 168, 0, 0.2)', backgroundColor: '#121215' },
+  cardDark: { borderColor: 'rgba(255, 223, 0, 0.15)', backgroundColor: '#121215', borderLeftColor: '#FFDF00', borderRadius: 0 },
   programText: { fontSize: 20, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#7B1113', marginBottom: 16 },
 
   cardRow: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#E4E4E7', paddingBottom: 8, marginBottom: 8 },
@@ -306,16 +321,18 @@ const styles = StyleSheet.create({
 
   statsRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   statCard: {
-    flex: 1, borderWidth: 2, borderColor: '#D4D4D8', backgroundColor: '#FFFFFF',
-    padding: 16, alignItems: 'center', gap: 8,
+    flex: 1, borderWidth: 1, borderColor: '#E4E4E7', backgroundColor: '#FFFFFF',
+    padding: 16, alignItems: 'center', gap: 8, borderRadius: 0,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
   },
   statNum: { fontSize: 24, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#7B1113' },
   statLabel: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700', color: '#71717A' },
 
   attendanceCard: {
     flexDirection: 'row', justifyContent: 'space-around',
-    borderWidth: 2, borderColor: '#D4D4D8', backgroundColor: '#FFFFFF',
-    padding: 20, marginBottom: 24,
+    borderWidth: 1, borderColor: '#E4E4E7', backgroundColor: '#FFFFFF',
+    padding: 20, marginBottom: 24, borderRadius: 0,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
   },
   attendanceItem: { alignItems: 'center' },
   attendanceNum: { fontSize: 24, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#FFDF00' },
@@ -324,14 +341,16 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#000000', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 16 },
 
   emptyCard: {
-    borderWidth: 2, borderColor: '#D4D4D8', borderStyle: 'dashed',
-    backgroundColor: '#FAFAFA', padding: 32, alignItems: 'center', justifyContent: 'center', marginBottom: 40,
+    borderWidth: 1, borderColor: '#E4E4E7', borderStyle: 'dashed',
+    backgroundColor: '#FAFAFA', padding: 32, alignItems: 'center', justifyContent: 'center', marginBottom: 40, borderRadius: 0,
   },
   emptyText: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700', color: '#71717A', marginTop: 16 },
 
   schedCard: {
-    borderWidth: 2, borderColor: '#D4D4D8', backgroundColor: '#FFFFFF',
-    padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between',
+    borderWidth: 1, borderColor: '#E4E4E7', backgroundColor: '#FFFFFF',
+    borderLeftWidth: 4, borderLeftColor: '#7B1113',
+    padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', borderRadius: 0,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
   },
   schedLeft: { flex: 1, paddingRight: 16 },
   schedTime: { fontSize: 11, fontWeight: '700', color: '#7B1113', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
@@ -346,7 +365,7 @@ const styles = StyleSheet.create({
   schedCode: { fontSize: 12, fontWeight: '700', color: '#52525B' },
   schedSection: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, color: '#A1A1AA' },
 
-  badge: { paddingHorizontal: 8, paddingVertical: 4 },
+  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 0 },
   badgeBorder: { borderWidth: 2, borderColor: '#7B1113' },
   badgeBorderGolden: { borderWidth: 2, borderColor: '#FFDF00' },
   badgeText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
@@ -365,15 +384,15 @@ const styles = StyleSheet.create({
   allSubjDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   allSubjDetailText: { fontSize: 11, color: '#888', flex: 1 },
   allSubjFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
-  allSubjRateBg: { flex: 1, height: 4, backgroundColor: '#EEE', borderRadius: 2 },
+  allSubjRateBg: { flex: 1, height: 4, backgroundColor: '#EEE', borderRadius: 0 },
   allSubjRateBgDark: { backgroundColor: '#333' },
-  allSubjRateFill: { height: 4, backgroundColor: '#FFDF00', borderRadius: 2 },
+  allSubjRateFill: { height: 4, backgroundColor: '#FFDF00', borderRadius: 0 },
   allSubjRateText: { fontSize: 10, fontWeight: '700', color: '#888', minWidth: 30, textAlign: 'right' },
 
   enrollCta: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: '#7B1113', padding: 16, marginBottom: 8,
-    borderWidth: 0,
+    borderWidth: 0, borderRadius: 0,
   },
   enrollCtaDark: { backgroundColor: '#FFDF00' },
   enrollCtaText: {
@@ -381,4 +400,11 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   enrollCtaTextDark: { color: '#4A0A0B' },
+  viewAllBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#7B1113', padding: 14, marginTop: 8, marginBottom: 4,
+  },
+  viewAllBtnDark: { backgroundColor: '#FFDF00' },
+  viewAllText: { flex: 1, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, color: '#FFFFFF', textAlign: 'center' },
+  viewAllTextDark: { color: '#4A0A0B' },
 })

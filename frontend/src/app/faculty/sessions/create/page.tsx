@@ -61,6 +61,12 @@ export default function CreateSessionPage() {
   const selectedSection = sections.find((s) => s.id === sectionId)
   const selectedSubject = subjects.find((s) => s.id === subjectId)
 
+  // Issue 3: Duplicate session detection
+  const existingSessionOnDate = !bulkMode && sectionId && date
+    ? api.getSessions(sectionId).find((s) => s.date === date)
+    : null
+  const hasDuplicateConflict = !!existingSessionOnDate && !isRescheduled
+
   useEffect(() => {
     if (selectedSection) {
       const scheduleDays = selectedSection.schedule.map((s) => s.day)
@@ -190,6 +196,19 @@ export default function CreateSessionPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
+
+                {/* Duplicate session warning */}
+                {hasDuplicateConflict && (
+                  <div className="flex items-start gap-3 p-4 border-l-4 border-amber-400 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-500">
+                    <CalendarCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest mb-0.5">Session Conflict Detected</p>
+                      <p className="text-xs text-amber-600 dark:text-amber-300">
+                        A session already exists for this section on <strong>{date}</strong> (Session ID: {existingSessionOnDate?.id}). Creating another may cause duplicate attendance records. Use &quot;Reschedule&quot; instead, or change the date.
+                      </p>
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="subject">Subject</Label>
                   <select
@@ -425,7 +444,7 @@ export default function CreateSessionPage() {
             </Card>
 
             <div className="flex items-center gap-3">
-              <Button type="submit" disabled={!selectedSection || !selectedSubject || (bulkMode && calculateBulkCount() === 0)}>
+              <Button type="submit" disabled={!selectedSection || !selectedSubject || (bulkMode && calculateBulkCount() === 0) || hasDuplicateConflict}>
                 {bulkMode ? `Create ${calculateBulkCount()} Sessions` : 'Create Session'}
               </Button>
               <Button variant="ghost" asChild>

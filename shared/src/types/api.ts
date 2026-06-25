@@ -1,4 +1,4 @@
-import type { User, Student, Teacher, Subject, Section, Session, AttendanceRecord, AttendanceSummary, AttendanceStatus, Enrollment } from './index'
+import type { User, Student, Teacher, Subject, Section, Session, AttendanceRecord, AttendanceSummary, AttendanceStatus, Enrollment, SectionRole, SectionRoleType, SessionPermission, ProofOfClass } from './index'
 
 export interface CreateSubjectInput {
   name: string
@@ -125,7 +125,7 @@ export interface ApiClient {
   submitScan(sessionId: string, studentId: string, studentName: string, lat: number, lon: number, deviceId: string): AttendanceRecord | { error: string }
   checkAttendance(sessionId: string, studentId: string, lat: number, lon: number): SubmitAttendanceResult
 
-  getDisputedRecords(sessionId?: string): AttendanceRecord[]
+  getDisputedRecords(sessionId?: string, filters?: { search?: string; status?: 'pending' | 'resolved' | 'all' }): AttendanceRecord[]
   resolveDispute(recordId: string, resolution: 'accept' | 'reject' | 'override', newStatus?: AttendanceStatus): AttendanceRecord | undefined
   submitDispute(data: DisputeInput): AttendanceRecord | undefined
 
@@ -136,6 +136,20 @@ export interface ApiClient {
   getMySubjects(studentId: string): Subject[]
 
   getSectionSessions(sectionId: string): Session[]
+
+  assignSectionRole(sectionId: string, studentId: string, role: SectionRoleType): SectionRole
+  removeSectionRole(sectionId: string, studentId: string, role: SectionRoleType): boolean
+  getSectionRoles(sectionId: string): SectionRole[]
+  getStudentRoles(studentId: string): SectionRole[]
+
+  grantSessionPermission(sectionId: string, studentId: string): SessionPermission
+  revokeSessionPermission(sectionId: string, studentId: string): boolean
+  checkSessionPermission(sectionId: string, studentId: string): boolean
+  getActiveSessionPermissions(sectionId: string): SessionPermission[]
+
+  uploadProofOfClass(data: { sectionId: string; sessionId: string; photoData: string; description?: string; uploadedBy: string; uploadedByStudentName: string }): ProofOfClass
+  getProofsOfClass(sessionId: string): ProofOfClass[]
+  deleteProofOfClass(proofId: string): boolean
 
   enrollStudent(data: EnrollStudentInput): boolean
   getCalendarEvents(userId: string, startDate: string, endDate: string): CalendarEvent[]

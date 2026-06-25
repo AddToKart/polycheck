@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/mock-api'
-import type { User, Section, Session, AttendanceRecord } from '@polycheck/shared'
+import type { User, Section, Session, AttendanceRecord, CalendarEvent } from '@polycheck/shared'
+import { formatTime } from '@polycheck/shared/utils'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -31,6 +32,7 @@ import {
 function TeacherDashboard({ user }: { user: User }) {
   const [sections, setSections] = useState<Section[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
+  const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -38,6 +40,12 @@ function TeacherDashboard({ user }: { user: User }) {
     setSections(teacherSections)
     const sectionIds = teacherSections.map((s) => s.id)
     setRecords(api.getAttendanceRecords().filter((r) => sectionIds.includes(r.sectionId)))
+    
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const evs = api.getCalendarEvents(user.id, todayStr, todayStr)
+      .sort((a, b) => a.startTime.localeCompare(b.startTime))
+    setTodayEvents(evs)
+
     setLoading(false)
   }, [user.id])
 
@@ -52,6 +60,35 @@ function TeacherDashboard({ user }: { user: User }) {
   ]
 
   if (loading) return <LoadingSpinner className="min-h-[400px]" />
+
+  // ── Empty state when teacher has no sections yet ──
+  if (sections.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <div className="border border-dashed border-zinc-300 dark:border-zinc-700 p-16 max-w-md mx-auto">
+          <div className="w-12 h-12 border-2 border-maroon dark:border-golden flex items-center justify-center mx-auto mb-6">
+            <BookOpen className="w-6 h-6 text-maroon dark:text-golden" />
+          </div>
+          <h2 className="text-xl font-heading font-bold text-foreground mb-2">No Subjects Assigned Yet</h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6 leading-relaxed">
+            You have no sections assigned for this semester. Create a subject and add a section to get started with attendance tracking.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href="/faculty/subjects/create">
+              <Button className="rounded-none bg-maroon text-white hover:bg-maroon-dark font-bold uppercase tracking-widest text-[10px] h-9 px-6">
+                Create Subject
+              </Button>
+            </Link>
+            <Link href="/faculty/subjects">
+              <Button variant="outline" className="rounded-none font-bold uppercase tracking-widest text-[10px] h-9 px-6">
+                View All Subjects
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <>
@@ -88,6 +125,93 @@ function TeacherDashboard({ user }: { user: User }) {
             </div>
           )
         })}
+      </div>
+
+      {/* Today's Schedule Section */}
+      <div className="mb-12">
+        <div className="flex items-center gap-2 mb-6">
+          <div className="w-1.5 h-1.5 bg-maroon dark:bg-golden" />
+          <h2 className="text-lg font-heading font-bold uppercase tracking-wider">Today's Schedule</h2>
+        </div>
+        {todayEvents.length === 0 ? (
+          <div className="border border-zinc-300 dark:border-zinc-800 p-8 text-center bg-zinc-50/50 dark:bg-zinc-900/20 shadow-[0_4px_20px_rgba(123,17,19,0.015)]">
+            <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">No classes scheduled for today</p>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {todayEvents.map((ev) => {
+              const isActive = ev.status === 'active'
+              const isCompleted = ev.status === 'completed'
+              const isMoved = ev.status === 'moved'
+              const todayStr = new Date().toISOString().slice(0, 10)
+
+              let borderStyle = "border-t-zinc-300 dark:border-t-zinc-800"
+              if (isActive) borderStyle = "border-t-golden"
+              else if (isCompleted) borderStyle = "border-t-zinc-400"
+              else if (isMoved) borderStyle = "border-t-red-600"
+              else borderStyle = "border-t-maroon"
+
+              return (
+                <Card key={ev.id} className={`rounded-none border-zinc-300 dark:border-zinc-800 border-t-4 ${borderStyle} flex flex-col h-full bg-zinc-50/50 dark:bg-zinc-900/50 shadow-none`}>
+                  <CardContent className="p-6 flex flex-col justify-between h-full flex-1">
+                    <div>
+                      <div className="flex justify-between items-start mb-4">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                          {formatTime(ev.startTime)} - {formatTime(ev.endTime)}
+                        </span>
+                        {isActive ? (
+                          <Badge variant="present" className="rounded-none uppercase text-[9px] font-bold tracking-wider px-2 py-0.5">
+                            Active
+                          </Badge>
+                        ) : isCompleted ? (
+                          <Badge variant="outline" className="rounded-none uppercase text-[9px] font-bold tracking-wider px-2 py-0.5 border-zinc-400 text-zinc-400">
+                            Completed
+                          </Badge>
+                        ) : isMoved ? (
+                          <Badge variant="absent" className="rounded-none uppercase text-[9px] font-bold tracking-wider px-2 py-0.5">
+                            Moved
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="rounded-none uppercase text-[9px] font-bold tracking-wider px-2 py-0.5 text-zinc-500">
+                            Scheduled
+                          </Badge>
+                        )}
+                      </div>
+                      <h3 className="text-lg font-heading font-bold text-foreground mb-1 leading-snug line-clamp-1">{ev.subjectName}</h3>
+                      <p className="text-xs text-zinc-500 uppercase tracking-wider mb-6">
+                        Section {ev.sectionName} {ev.room ? `\\ ${ev.room}` : ''}
+                      </p>
+                    </div>
+                    <div className="mt-auto pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between">
+                      {isActive ? (
+                        <Link href={(() => {
+                          const activeSession = api.getSessions().find(
+                            (sess) => sess.sectionId === ev.sectionId && sess.date === todayStr && sess.isActive
+                          )
+                          return activeSession ? `/faculty/sessions/${activeSession.id}` : '#'
+                        })()} className="w-full">
+                          <Button className="w-full rounded-none bg-golden text-maroon hover:bg-golden/90 font-bold uppercase tracking-widest text-[10px] h-9 border border-golden">
+                            View Active QR
+                          </Button>
+                        </Link>
+                      ) : isCompleted ? (
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Class ended</span>
+                      ) : isMoved ? (
+                        <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Rescheduled</span>
+                      ) : (
+                        <Link href={`/faculty/sessions/create?sectionId=${ev.sectionId}`} className="w-full">
+                          <Button className="w-full rounded-none bg-maroon text-white hover:bg-maroon-dark font-bold uppercase tracking-widest text-[10px] h-9">
+                            Activate Session
+                          </Button>
+                        </Link>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-8">
@@ -182,21 +306,33 @@ function SuperAdminDashboard({ user }: { user: User }) {
 
   if (loading) return <LoadingSpinner className="min-h-[400px]" />
   
-  // Mock trend data for the chart
-  const weeklyTrends = [
-    { day: 'Mon', present: 85, late: 10, absent: 5 },
-    { day: 'Tue', present: 82, late: 12, absent: 6 },
-    { day: 'Wed', present: 88, late: 8, absent: 4 },
-    { day: 'Thu', present: 75, late: 15, absent: 10 },
-    { day: 'Fri', present: 90, late: 5, absent: 5 },
-  ]
+  // Compute weekly attendance trends from real data
+  const allRecords = api.getAttendanceRecords()
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const displayDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+  const weeklyTrends = displayDays.map((dayName) => {
+    const dayRecords = allRecords.filter((r) => {
+      const d = new Date(r.timestamp)
+      return dayNames[d.getDay()] === dayName
+    })
+    const total = dayRecords.length || 1
+    return {
+      day: dayName,
+      present: Math.round((dayRecords.filter((r) => r.status === 'present').length / total) * 100),
+      late: Math.round((dayRecords.filter((r) => r.status === 'late').length / total) * 100),
+      absent: Math.round((dayRecords.filter((r) => r.status === 'absent').length / total) * 100),
+    }
+  })
 
-  // Mock anomaly records
-  const anomalies = [
-    { id: 1, type: 'Duplicate Scan', student: 'Conrad', time: '10:42 AM', severity: 'High' },
-    { id: 2, type: 'Geofence Bypass', student: 'Alice', time: '09:15 AM', severity: 'Medium' },
-    { id: 3, type: 'Multiple Logins', student: 'Bob', time: '08:30 AM', severity: 'High' }
-  ]
+  // Real anomaly data from disputed records
+  const disputedRecords = api.getDisputedRecords().slice(0, 5)
+  const anomalies = disputedRecords.map((r) => ({
+    id: r.id,
+    type: r.disputeReason ?? 'Attendance Dispute',
+    student: r.studentName,
+    time: new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    severity: r.disputeReason?.toLowerCase().includes('geo') ? 'High' : 'Medium',
+  }))
   
   return (
     <>

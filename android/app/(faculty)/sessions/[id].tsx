@@ -8,7 +8,7 @@ import { api } from '../../../services/mock-api'
 import { fonts } from '../../../theme/typography'
 import { useTheme } from '../../../theme/ThemeContext'
 import MapView from '../../../components/MapView'
-import type { User, Session, AttendanceRecord, AttendanceStatus, Student } from '@polycheck/shared'
+import type { User, Session, AttendanceRecord, AttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 
@@ -20,6 +20,7 @@ export default function SessionDetailScreen() {
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [enrolledStudents, setEnrolledStudents] = useState<Student[]>([])
   const [filter, setFilter] = useState<AttendanceStatus | 'all'>('all')
+  const [proofsOfClass, setProofsOfClass] = useState<ProofOfClass[]>([])
   const [showQrModal, setShowQrModal] = useState(false)
   const [showValidityPrompt, setShowValidityPrompt] = useState(false)
   const [validityMinutes, setValidityMinutes] = useState('20')
@@ -34,6 +35,7 @@ export default function SessionDetailScreen() {
     const s = api.getSession(id)
     if (s) setSession(s)
     setRecords(api.getAttendanceRecords(id))
+    setProofsOfClass(api.getProofsOfClass(id))
     setLastUpdated(new Date())
   }, [id])
 
@@ -305,6 +307,42 @@ export default function SessionDetailScreen() {
               <Text style={[styles.coordValue, isDark && styles.textWhite]}>{session.geofence.radiusMeters}m</Text>
             </View>
           </View>
+        </View>
+
+        {/* Proof of Class */}
+        <View style={[styles.card, isDark && styles.cardDark]}>
+          <View style={styles.cardHeader}>
+            <MaterialIcons name="camera-alt" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
+            <Text style={[styles.cardTitle, isDark && styles.textWhite]}>Proof of Class</Text>
+            <Text style={[styles.rosterCount, isDark && styles.textWhite50]}>({proofsOfClass.length})</Text>
+          </View>
+          {proofsOfClass.length === 0 ? (
+            <Text style={[styles.empty, isDark && styles.textWhite50]}>No proof photos uploaded yet.</Text>
+          ) : (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+              {proofsOfClass.map((poc) => (
+                <View key={poc.id} style={{ width: '47%', backgroundColor: isDark ? '#0A0A0C' : '#F9F9F9', borderWidth: 1, borderColor: border, padding: 10 }}>
+                  <View style={{ width: '100%', aspectRatio: 16 / 9, backgroundColor: isDark ? '#1A1A1D' : '#E5E5E5', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
+                    <MaterialIcons name="camera-alt" size={24} color={isDark ? 'rgba(255,255,255,0.3)' : '#BBB'} />
+                  </View>
+                  <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: textPrimary }}>{poc.uploadedByStudentName}</Text>
+                  <Text style={{ fontSize: 9, color: textSecondary }}>{new Date(poc.uploadedAt).toLocaleString()}</Text>
+                  {poc.description && <Text style={{ fontSize: 9, color: textTertiary, marginTop: 2, fontStyle: 'italic' }}>"{poc.description}"</Text>}
+                  <TouchableOpacity
+                    style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                    onPress={() => {
+                      api.deleteProofOfClass(poc.id)
+                      setProofsOfClass(api.getProofsOfClass(id))
+                    }}
+                    accessibilityRole="button"
+                  >
+                    <MaterialIcons name="delete" size={12} color="#EF4444" />
+                    <Text style={{ fontSize: 9, color: '#EF4444', fontWeight: '600' }}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Student Roster */}

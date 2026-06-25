@@ -128,6 +128,16 @@ Session activation is the act of opening an already-configured subject and gener
 
 This separation means the system's offline capability is real and complete for the actual classroom experience, while still requiring a one-time connected setup that any teacher can do at home or on mobile data before the semester starts.
 
+### Retroactive Session Management & Expiry Buffers
+
+While check-in tokens (QR codes) expire in a short window of 2 to 5 minutes to prevent visual code sharing, the administrative state of a session remains open and activate-able by instructors even days or weeks after the scheduled date. This design decision is critical for several real-world administrative and technical reasons:
+
+1. **Roster Sync Buffer (Offline Sync Delays)**: In an offline-first environment, students might not have mobile data or campus Wi-Fi to sync their local check-in records to the cloud database immediately. A student who checked in successfully on a Monday might only connect to Wi-Fi to sync on Friday. Until then, the cloud database marks them as absent. Instructors auditing class records 7+ days later need the ability to open the session to review the synced check-ins once all student queues have cleared.
+2. **Batch Review of Attendance Disputes**: Students are typically granted a grace window (often 3 to 7 days) to submit attendance disputes for technical issues like GPS drift or camera errors. Instructors review and resolve these disputes in weekly batches, requiring the administrative state of past sessions to remain active for manual adjustment and roster overrides.
+3. **Make-up Classes and Rescheduling**: Real-world academic schedules are dynamic. If a lecture is suspended due to holidays, bad weather, or school suspensions, instructors can activate the planned session retroactively on the make-up day without needing to manually reconstruct schedules.
+4. **Instructor Administrative Authority**: Instructors serve as the final authority over their grade books. Imposing hard software blocks or cutoffs on past sessions would make the system too rigid, locking teachers out of editing their rosters when students present valid retroactive doctor notes or university excuse slips.
+
+
 ### Pre-Session Sync Expectation
 
 Students are expected to open Polycheck while connected at least once before each class day — at home, on the commute, or anywhere with data. This sync pulls down geofence configurations and subject data for all enrolled subjects. If a student has not synced and has no cached data for the current class, they will not be able to scan. This is a known and acceptable constraint, equivalent to a student forgetting their physical ID.

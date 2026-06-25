@@ -247,6 +247,8 @@ export const mockAttendanceRecords: AttendanceRecord[] = [
   { id: 'a-053', sessionId: 'sess-003', sectionId: 'sec-003', studentId: 's-001', studentName: 'Angela Marie Cruz', studentProgram: 'BS Computer Science', timestamp: '2026-06-17T13:20:00Z', status: 'disputed', coordinates: { latitude: 14.5863, longitude: 120.9777 }, deviceId: 'dev-f8e2a1', isSynced: true, syncedAt: '2026-06-17T14:00:00Z', disputeReason: 'expired_token', notes: 'Token expired before scan timestamp' },
   // Manually-set records
   { id: 'a-054', sessionId: 'sess-008', sectionId: 'sec-001', studentId: 's-005', studentName: 'Erika Mae Gonzales', studentProgram: 'BS Computer Science', timestamp: '2026-06-25T10:15:00Z', status: 'present', coordinates: { latitude: 14.5863, longitude: 120.9777 }, deviceId: 'dev-j1k2l3', isSynced: true, syncedAt: '2026-06-25T10:20:00Z', manuallySet: true, notes: 'No phone, teacher marked present' },
+  // Resolved disputes records
+  { id: 'a-055', sessionId: 'sess-004', sectionId: 'sec-004', studentId: 's-002', studentName: 'Carlos Miguel Dimagiba', studentProgram: 'BS Computer Science', timestamp: '2026-06-18T14:10:00Z', status: 'present', coordinates: { latitude: 14.5863, longitude: 120.9777 }, deviceId: 'dev-a3b2c4', isSynced: true, syncedAt: '2026-06-18T14:15:00Z', disputeReason: 'outside_geofence', disputeResolved: true, notes: 'GPS reported outside; Dispute accepted after manual verification' },
 ]
 
 export const mockAttendanceSummaries: AttendanceSummary[] = [

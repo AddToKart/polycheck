@@ -9,6 +9,9 @@ import {
   mockAttendanceRecords,
   mockAttendanceSummaries,
   mockSuperAdmin,
+  mockSectionRoles,
+  mockSessionPermissions,
+  mockProofsOfClass,
 } from '@polycheck/shared/mock'
 
 import type {
@@ -25,6 +28,10 @@ import type {
   CalendarEvent,
   BulkSessionInput,
   DisputeInput,
+  SectionRole,
+  SectionRoleType,
+  SessionPermission,
+  ProofOfClass,
 } from '@polycheck/shared'
 
 import { isWithinGeofence, createQRTokenData } from '@polycheck/shared/utils'
@@ -378,24 +385,45 @@ export const api = {
     return session
   },
 
-  getDisputedRecords(sessionId?: string): AttendanceRecord[] {
-    const disputed = mockAttendanceRecords.filter((r) => r.status === 'disputed')
-    if (sessionId) return disputed.filter((r) => r.sessionId === sessionId)
-    return disputed
+  getDisputedRecords(sessionId?: string, filters?: { search?: string; status?: 'pending' | 'resolved' | 'all' }): AttendanceRecord[] {
+    const statusFilter = filters?.status ?? 'pending'
+    let records = mockAttendanceRecords
+
+    if (statusFilter === 'pending') {
+      records = records.filter((r) => r.status === 'disputed')
+    } else if (statusFilter === 'resolved') {
+      records = records.filter((r) => r.disputeResolved === true)
+    } else if (statusFilter === 'all') {
+      records = records.filter((r) => r.status === 'disputed' || r.disputeResolved === true)
+    }
+
+    if (sessionId) {
+      records = records.filter((r) => r.sessionId === sessionId)
+    }
+
+    if (filters?.search) {
+      const searchLower = filters.search.toLowerCase()
+      records = records.filter((r) => 
+        r.studentName.toLowerCase().includes(searchLower) ||
+        r.studentId.toLowerCase().includes(searchLower)
+      )
+    }
+
+    return records
   },
 
   resolveDispute(recordId: string, resolution: 'accept' | 'reject' | 'override', newStatus?: AttendanceStatus): AttendanceRecord | undefined {
     const record = mockAttendanceRecords.find((r) => r.id === recordId)
     if (!record || record.status !== 'disputed') return undefined
+
+    record.disputeResolved = true
+
     if (resolution === 'accept') {
       record.status = 'present'
-      record.disputeReason = undefined
     } else if (resolution === 'reject') {
       record.status = 'absent'
-      record.disputeReason = undefined
     } else if (resolution === 'override' && newStatus) {
       record.status = newStatus
-      record.disputeReason = undefined
       record.manuallySet = true
     }
     return record
@@ -519,5 +547,146 @@ export const api = {
     record.disputeReason = data.reason as any
     record.notes = data.description
     return record
+  },
+
+  // Section Roles
+  mutableSectionRoles: [...mockSectionRoles],
+  mutableSessionPermissions: [...mockSessionPermissions],
+  mutableProofsOfClass: [...mockProofsOfClass],
+
+  assignSectionRole(sectionId: string, studentId: string, role: SectionRoleType): SectionRole {
+    const existing = this.mutableSectionRoles.find(
+      (r) => r.sectionId === sectionId && r.studentId === studentId && r.role === role
+    )
+    if (existing) return existing
+    const student = mockStudents.find((s) => s.id === studentId)
+    const sr: SectionRole = {
+      id: `sr-${Date.now()}`,
+      sectionId,
+      studentId,
+      studentName: student?.fullName ?? 'Unknown',
+      role,
+      grantedBy: currentUser?.id ?? '',
+      grantedAt: new Date().toISOString(),
+    }
+    this.mutableSectionRoles.push(sr)
+    return sr
+  },
+
+  removeSectionRole(sectionId: string, studentId: string, role: SectionRoleType): boolean {
+    const idx = this.mutableSectionRoles.findIndex(
+      (r) => r.sectionId === sectionId && r.studentId === studentId && r.role === role
+    )
+    if (idx === -1) return false
+    this.mutableSectionRoles.splice(idx, 1)
+    return true
+  },
+
+  getSectionRoles(sectionId: string): SectionRole[] {
+    return this.mutableSectionRoles.filter((r) => r.sectionId === sectionId)
+  },
+
+  getStudentRoles(studentId: string): SectionRole[] {
+    return this.mutableSectionRoles.filter((r) => r.studentId === studentId)
+  },
+
+  // Session Permissions
+  grantSessionPermission(sectionId: string, studentId: string): SessionPermission {
+    const existing = this.mutableSessionPermissions.find(
+      (p) => p.sectionId === sectionId && p.studentId === studentId && p.isActive
+    )
+    if (existing) {
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      existing.expiresAt = expiresAt
+      existing.isActive = true
+      existing.grantedAt = new Date().toISOString()
+      return existing
+    }
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString()
+    const sp: SessionPermission = {
+      id: `sp-${Date.now()}`,
+      sectionId,
+      studentId,
+      grantedBy: currentUser?.id ?? '',
+      grantedAt: now.toISOString(),
+      expiresAt,
+      isActive: true,
+    }
+    this.mutableSessionPermissions.push(sp)
+    return sp
+  },
+
+  revokeSessionPermission(sectionId: string, studentId: string): boolean {
+    const perm = this.mutableSessionPermissions.find(
+      (p) => p.sectionId === sectionId && p.studentId === studentId && p.isActive
+    )
+    if (!perm) return false
+    perm.isActive = false
+    return true
+  },
+
+  checkSessionPermission(sectionId: string, studentId: string): boolean {
+    const perm = this.mutableSessionPermissions.find(
+      (p) => p.sectionId === sectionId && p.studentId === studentId && p.isActive
+    )
+    if (!perm) return false
+    return Date.now() < new Date(perm.expiresAt).getTime()
+  },
+
+  getActiveSessionPermissions(sectionId: string): SessionPermission[] {
+    return this.mutableSessionPermissions.filter(
+      (p) => p.sectionId === sectionId && p.isActive && Date.now() < new Date(p.expiresAt).getTime()
+    )
+  },
+
+  // Proof of Class
+  uploadProofOfClass(data: { sectionId: string; sessionId: string; photoData: string; description?: string; uploadedBy: string; uploadedByStudentName: string }): ProofOfClass {
+    const poc: ProofOfClass = {
+      id: `poc-${Date.now()}`,
+      sectionId: data.sectionId,
+      sessionId: data.sessionId,
+      uploadedBy: data.uploadedBy,
+      uploadedByStudentName: data.uploadedByStudentName,
+      photoData: data.photoData,
+      uploadedAt: new Date().toISOString(),
+      description: data.description,
+    }
+    this.mutableProofsOfClass.push(poc)
+    return poc
+  },
+
+  getProofsOfClass(sessionId: string): ProofOfClass[] {
+    return this.mutableProofsOfClass.filter((p) => p.sessionId === sessionId)
+  },
+
+  deleteProofOfClass(proofId: string): boolean {
+    const idx = this.mutableProofsOfClass.findIndex((p) => p.id === proofId)
+    if (idx === -1) return false
+    this.mutableProofsOfClass.splice(idx, 1)
+    return true
+  },
+
+  search(query: string): { students: Student[]; sections: Section[]; sessions: Session[] } {
+    if (!query.trim()) return { students: [], sections: [], sessions: [] }
+    const q = query.toLowerCase().trim()
+    const students = mockStudents.filter(
+      (s) => s.fullName.toLowerCase().includes(q) || s.studentId.toLowerCase().includes(q) || s.email?.toLowerCase().includes(q)
+    ).slice(0, 10)
+    const subjects = mockSubjects
+    const sections = mockSections.filter((s) => {
+      const subj = subjects.find((sub) => sub.id === s.subjectId)
+      return (
+        subj?.name.toLowerCase().includes(q) ||
+        subj?.code.toLowerCase().includes(q) ||
+        s.section.toLowerCase().includes(q) ||
+        s.room?.toLowerCase().includes(q)
+      )
+    }).slice(0, 8)
+    const sessions = mockSessions.filter((s) =>
+      s.subjectName.toLowerCase().includes(q) ||
+      s.date.includes(q)
+    ).slice(0, 8)
+    return { students, sections, sessions }
   },
 }

@@ -5,7 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import { api } from '../../../services/mock-api'
 import { useTheme } from '../../../theme/ThemeContext'
-import type { Section, Student } from '@polycheck/shared'
+import type { Section, Student, SectionRole, SessionPermission } from '@polycheck/shared'
 
 const PAGE_SIZE = 10
 
@@ -18,6 +18,10 @@ export default function SectionDetailScreen() {
   const [page, setPage] = useState(0)
   const [isEnrollOpen, setIsEnrollOpen] = useState(false)
   const [enrollSearch, setEnrollSearch] = useState('')
+  const [sectionRoles, setSectionRoles] = useState<SectionRole[]>([])
+  const [sessionPermissions, setSessionPermissions] = useState<SessionPermission[]>([])
+  const [presSelectOpen, setPresSelectOpen] = useState(false)
+  const [qacSelectOpen, setQacSelectOpen] = useState(false)
 
   const allStudents = api.getStudents()
 
@@ -27,6 +31,8 @@ export default function SectionDetailScreen() {
     if (!s) { router.back(); return }
     setSection(s)
     setStudents(api.getSectionStudents(id))
+    setSectionRoles(api.getSectionRoles(id))
+    setSessionPermissions(api.getActiveSessionPermissions(id))
   }, [id])
 
   const enrolledIds = new Set(students.map((s) => s.id))
@@ -161,9 +167,26 @@ export default function SectionDetailScreen() {
             {section.enrollmentCode ? (
               <>
                 <Text className="text-xl font-[monospace] font-bold tracking-[2px]" style={{ color: isDark ? '#FFDF00' : '#7B1113' }}>{section.enrollmentCode}</Text>
-                <Text className="text-[11px]" style={{ color: textSecondary }}>
-                  Expires: {new Date(section.enrollmentCodeExpiry).toLocaleDateString()}
-                </Text>
+                {(() => {
+                  const expiry = new Date(section.enrollmentCodeExpiry)
+                  const now = new Date()
+                  const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+                  if (daysLeft < 0) {
+                    return (
+                      <View style={{ backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#FECACA', paddingHorizontal: 8, paddingVertical: 3 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#DC2626', textTransform: 'uppercase', letterSpacing: 0.5 }}>Expired</Text>
+                      </View>
+                    )
+                  } else if (daysLeft <= 3) {
+                    return (
+                      <View style={{ backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A', paddingHorizontal: 8, paddingVertical: 3 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#D97706', textTransform: 'uppercase', letterSpacing: 0.5 }}>Expires in {daysLeft}d</Text>
+                      </View>
+                    )
+                  } else {
+                    return <Text className="text-[11px]" style={{ color: textSecondary }}>Expires: {expiry.toLocaleDateString()}</Text>
+                  }
+                })()}
               </>
             ) : (
               <Text className="text-sm italic" style={{ color: textTertiary }}>Enrollment code is disabled</Text>
@@ -252,6 +275,157 @@ export default function SectionDetailScreen() {
               )}
             </View>
           )}
+        </View>
+
+        {/* Section Roles */}
+        <View style={{ backgroundColor: surface, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: border }}>
+          <View className="flex-row items-center gap-1.5 mb-3">
+            <MaterialIcons name="security" size={18} color={iconColor} />
+            <Text className="text-base font-sans-bold" style={{ color: textPrimary }}>Section Roles</Text>
+          </View>
+
+          {/* President */}
+          <View style={{ marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: border }}>
+            <View className="flex-row items-center gap-1.5 mb-2">
+              <MaterialIcons name="star" size={16} color={iconColor} />
+              <Text className="text-sm font-sans-bold" style={{ color: textPrimary }}>President</Text>
+            </View>
+            {(() => {
+              const pres = sectionRoles.find((r) => r.role === 'president')
+              if (pres) {
+                const perm = sessionPermissions.find((p) => p.studentId === pres.studentId)
+                const isExpired = perm ? Date.now() >= new Date(perm.expiresAt).getTime() : true
+                return (
+                  <View style={{ backgroundColor: isDark ? '#0A0A0C' : '#F9F9F9', padding: 12, borderWidth: 1, borderColor: border, marginBottom: 8 }}>
+                    <View className="flex-row items-center gap-2.5 mb-2">
+                      <View className="w-8 h-8 items-center justify-center" style={{ backgroundColor: isDark ? '#FFDF00' : '#7B1113' }}>
+                        <Text className="text-[10px] font-sans-bold" style={{ color: isDark ? '#4A0A0B' : '#FFF' }}>
+                          {pres.studentName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View className="flex-1">
+                        <Text className="text-sm font-sans-semibold" style={{ color: textPrimary }}>{pres.studentName}</Text>
+                        <Text className="text-[10px]" style={{ color: isDark ? '#FFDF00' : '#7B1113' }}>
+                          {perm && !isExpired ? `Active until ${new Date(perm.expiresAt).toLocaleString()}` : 'No active permission'}
+                        </Text>
+                      </View>
+                    </View>
+                    <View className="flex-row gap-2">
+                      {perm && !isExpired ? (
+                        <TouchableOpacity className="px-3 py-1.5 border" style={{ borderColor: '#EF4444' }} onPress={() => {
+                          api.revokeSessionPermission(id, pres.studentId)
+                          setSessionPermissions(api.getActiveSessionPermissions(id))
+                        }} accessibilityRole="button">
+                          <Text className="text-xs font-sans-semibold text-red-500">Revoke</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity className="px-3 py-1.5" style={{ backgroundColor: isDark ? '#FFDF00' : '#7B1113' }} onPress={() => {
+                          api.grantSessionPermission(id, pres.studentId)
+                          setSessionPermissions(api.getActiveSessionPermissions(id))
+                        }} accessibilityRole="button">
+                          <Text className="text-xs font-sans-semibold" style={{ color: isDark ? '#4A0A0B' : '#FFF' }}>Grant 24hr</Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity className="px-3 py-1.5 border" style={{ borderColor: '#FCA5A5' }} onPress={() => {
+                        api.removeSectionRole(id, pres.studentId, 'president')
+                        setSectionRoles(api.getSectionRoles(id))
+                      }} accessibilityRole="button">
+                        <Text className="text-xs font-sans-semibold text-red-400">Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )
+              }
+              return (
+                <View>
+                  <Text className="text-sm mb-1.5" style={{ color: textTertiary }}>No president assigned</Text>
+                  <View style={{ position: 'relative', zIndex: 20 }}>
+                    <TouchableOpacity className="flex-row items-center gap-1 px-3 py-1.5 border self-start" style={{ borderColor: border }} onPress={() => setPresSelectOpen(!presSelectOpen)} accessibilityRole="button">
+                      <MaterialIcons name="star" size={14} color={iconColor} />
+                      <Text className="text-xs font-sans-semibold" style={{ color: textPrimary }}>Assign President</Text>
+                    </TouchableOpacity>
+                    {presSelectOpen && (
+                      <View style={{ position: 'absolute', top: 32, left: 0, width: 260, backgroundColor: surface, borderWidth: 1, borderColor: border, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 8, maxHeight: 200, zIndex: 100 }}>
+                        <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+                          {students.filter(s => !sectionRoles.find(r => r.studentId === s.id && r.role === 'president')).map((s) => (
+                            <TouchableOpacity key={s.id} className="px-3 py-2 flex-row items-center gap-2" style={{ borderBottomWidth: 1, borderBottomColor: border }} onPress={() => {
+                              api.assignSectionRole(id, s.id, 'president')
+                              setSectionRoles(api.getSectionRoles(id))
+                              setPresSelectOpen(false)
+                            }} accessibilityRole="button">
+                              <Text className="text-[10px] font-sans-medium" style={{ color: textSecondary }}>{s.studentId}</Text>
+                              <Text className="text-sm font-sans-medium" style={{ color: textPrimary }}>{s.fullName}</Text>
+                            </TouchableOpacity>
+                          ))}
+                          {students.filter(s => !sectionRoles.find(r => r.studentId === s.id && r.role === 'president')).length === 0 && (
+                            <Text className="px-3 py-2 text-xs" style={{ color: textTertiary }}>All students assigned</Text>
+                          )}
+                        </ScrollView>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )
+            })()}
+          </View>
+
+          {/* QAC */}
+          <View>
+            <View className="flex-row items-center gap-1.5 mb-2">
+              <MaterialIcons name="camera-alt" size={16} color={iconColor} />
+              <Text className="text-sm font-sans-bold" style={{ color: textPrimary }}>Quality Assurance Coordinator</Text>
+              <Text className="text-[10px]" style={{ color: textTertiary }}>(multiple)</Text>
+            </View>
+            {(() => {
+              const qacs = sectionRoles.filter((r) => r.role === 'qac')
+              return (
+                <View>
+                  {qacs.length > 0 ? (
+                    <View className="flex-row flex-wrap gap-2 mb-2">
+                      {qacs.map((qac) => (
+                        <View key={qac.id} className="flex-row items-center gap-1.5 px-2.5 py-1 border" style={{ backgroundColor: isDark ? '#0A0A0C' : '#F9F9F9', borderColor: border }}>
+                          <Text className="text-xs font-sans-medium" style={{ color: textPrimary }}>{qac.studentName}</Text>
+                          <TouchableOpacity onPress={() => {
+                            api.removeSectionRole(id, qac.studentId, 'qac')
+                            setSectionRoles(api.getSectionRoles(id))
+                          }} accessibilityRole="button">
+                            <MaterialIcons name="close" size={14} color="#EF4444" />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text className="text-sm mb-1.5" style={{ color: textTertiary }}>No QAC assigned</Text>
+                  )}
+                  <View style={{ position: 'relative', zIndex: 19 }}>
+                    <TouchableOpacity className="flex-row items-center gap-1 px-3 py-1.5 border self-start" style={{ borderColor: border }} onPress={() => setQacSelectOpen(!qacSelectOpen)} accessibilityRole="button">
+                      <MaterialIcons name="camera-alt" size={14} color={iconColor} />
+                      <Text className="text-xs font-sans-semibold" style={{ color: textPrimary }}>Assign QAC</Text>
+                    </TouchableOpacity>
+                    {qacSelectOpen && (
+                      <View style={{ position: 'absolute', top: 32, left: 0, width: 260, backgroundColor: surface, borderWidth: 1, borderColor: border, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 8, maxHeight: 200, zIndex: 99 }}>
+                        <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+                          {students.filter(s => !sectionRoles.find(r => r.studentId === s.id && r.role === 'qac')).map((s) => (
+                            <TouchableOpacity key={s.id} className="px-3 py-2 flex-row items-center gap-2" style={{ borderBottomWidth: 1, borderBottomColor: border }} onPress={() => {
+                              api.assignSectionRole(id, s.id, 'qac')
+                              setSectionRoles(api.getSectionRoles(id))
+                              setQacSelectOpen(false)
+                            }} accessibilityRole="button">
+                              <Text className="text-[10px] font-sans-medium" style={{ color: textSecondary }}>{s.studentId}</Text>
+                              <Text className="text-sm font-sans-medium" style={{ color: textPrimary }}>{s.fullName}</Text>
+                            </TouchableOpacity>
+                          ))}
+                          {students.filter(s => !sectionRoles.find(r => r.studentId === s.id && r.role === 'qac')).length === 0 && (
+                            <Text className="px-3 py-2 text-xs" style={{ color: textTertiary }}>All students assigned</Text>
+                          )}
+                        </ScrollView>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )
+            })()}
+          </View>
         </View>
 
         {/* Attendance Overview */}
@@ -353,41 +527,31 @@ export default function SectionDetailScreen() {
 
         {/* Pagination */}
         {pageCount > 1 && (
-          <View className="flex-row justify-center items-center gap-1.5 mt-4 mb-10">
+          <View className="flex-row justify-center items-center gap-3 mt-4 mb-10">
             <TouchableOpacity
-              className="w-9 h-9 items-center justify-center border"
-              style={{ borderColor: borderInput, backgroundColor: surface, opacity: page === 0 ? 0.4 : 1 }}
+              className="px-4 py-2 border"
+              style={{ borderColor: page === 0 ? (isDark ? 'rgba(255,255,255,0.1)' : '#E0E0E0') : (isDark ? '#FFDF00' : '#7B1113'), opacity: page === 0 ? 0.4 : 1, backgroundColor: page === 0 ? 'transparent' : (isDark ? '#FFDF00' : '#7B1113') }}
               onPress={() => setPage(Math.max(0, page - 1))}
               disabled={page === 0}
               accessibilityLabel="Previous page"
             >
-              <MaterialIcons name="chevron-left" size={20} color={page === 0 ? '#CCC' : iconColor} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: page === 0 ? '#999' : (isDark ? '#4A0A0B' : '#FFFFFF') }}>← Prev</Text>
             </TouchableOpacity>
 
-            {Array.from({ length: pageCount }, (_, i) => (
-              <TouchableOpacity
-                key={i}
-                className="w-9 h-9 items-center justify-center border"
-                style={{
-                  borderColor: page === i ? (isDark ? '#FFDF00' : '#7B1113') : borderInput,
-                  backgroundColor: page === i ? (isDark ? '#FFDF00' : '#7B1113') : surface,
-                }}
-                onPress={() => setPage(i)}
-              >
-                <Text className="text-sm font-sans-semibold" style={{ color: page === i ? '#FFF' : '#555' }}>
-                  {i + 1}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            <View className="flex-row items-center px-4 py-2" style={{ borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E0E0E0' }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? '#FFFFFF' : '#333' }}>
+                Page {page + 1} of {pageCount}
+              </Text>
+            </View>
 
             <TouchableOpacity
-              className="w-9 h-9 items-center justify-center border"
-              style={{ borderColor: borderInput, backgroundColor: surface, opacity: page === pageCount - 1 ? 0.4 : 1 }}
+              className="px-4 py-2 border"
+              style={{ borderColor: page === pageCount - 1 ? (isDark ? 'rgba(255,255,255,0.1)' : '#E0E0E0') : (isDark ? '#FFDF00' : '#7B1113'), opacity: page === pageCount - 1 ? 0.4 : 1, backgroundColor: page === pageCount - 1 ? 'transparent' : (isDark ? '#FFDF00' : '#7B1113') }}
               onPress={() => setPage(Math.min(pageCount - 1, page + 1))}
               disabled={page === pageCount - 1}
               accessibilityLabel="Next page"
             >
-              <MaterialIcons name="chevron-right" size={20} color={page === pageCount - 1 ? '#CCC' : iconColor} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: page === pageCount - 1 ? '#999' : (isDark ? '#4A0A0B' : '#FFFFFF') }}>Next →</Text>
             </TouchableOpacity>
           </View>
         )}

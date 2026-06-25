@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, QrCode, MapPin, Timer, Play, StopCircle, Share2, Maximize, RefreshCw, Users, ChevronRight, Edit3 } from 'lucide-react'
+import { ArrowLeft, QrCode, MapPin, Timer, Play, StopCircle, Share2, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, X, Trash2 } from 'lucide-react'
 import { api } from '@/lib/mock-api'
-import type { User, Session, AttendanceRecord, AttendanceStatus, Student } from '@polycheck/shared'
+import type { User, Session, AttendanceRecord, AttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -33,6 +33,7 @@ export default function SessionDetailPage() {
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [enrolledStudents, setEnrolledStudents] = useState<Student[]>([])
   const [filter, setFilter] = useState<AttendanceStatus | 'all'>('all')
+  const [proofsOfClass, setProofsOfClass] = useState<ProofOfClass[]>([])
   const [loading, setLoading] = useState(true)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [showQrModal, setShowQrModal] = useState(false)
@@ -56,6 +57,7 @@ export default function SessionDetailPage() {
       }
     }
     setRecords(api.getAttendanceRecords(id))
+    setProofsOfClass(api.getProofsOfClass(id))
     setLastUpdated(new Date())
   }, [id])
 
@@ -319,6 +321,39 @@ export default function SessionDetailPage() {
                 <div><span className="text-[10px] uppercase tracking-[0.5px] text-gray-400 dark:text-gray-500 block mb-1">Lng</span><span className="font-mono dark:text-white">{session.geofence.longitude}</span></div>
                 <div><span className="text-[10px] uppercase tracking-[0.5px] text-gray-400 dark:text-gray-500 block mb-1">Radius</span><span className="font-mono dark:text-white">{session.geofence.radiusMeters}m</span></div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Proof of Class */}
+          <Card className="dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215]">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Camera className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
+                <h2 className="text-base font-bold dark:text-white">Proof of Class</h2>
+                <span className="text-xs text-gray-400 dark:text-gray-500">({proofsOfClass.length})</span>
+              </div>
+              {proofsOfClass.length === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No proof photos uploaded yet.</p>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {proofsOfClass.map((poc) => (
+                    <div key={poc.id} className="border border-gray-200 dark:border-[rgba(245,168,0,0.15)] p-3 bg-gray-50 dark:bg-[#0A0A0C]">
+                      <div className="w-full aspect-video bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center mb-2">
+                        <Camera className="w-8 h-8 text-zinc-400" />
+                      </div>
+                      <p className="text-xs font-medium dark:text-white truncate">{poc.uploadedByStudentName}</p>
+                      <p className="text-[10px] text-gray-400">{new Date(poc.uploadedAt).toLocaleString()}</p>
+                      {poc.description && <p className="text-[10px] text-gray-500 mt-1 italic">"{poc.description}"</p>}
+                      <button
+                        className="mt-2 text-[10px] text-red-500 hover:text-red-700 flex items-center gap-1"
+                        onClick={() => { api.deleteProofOfClass(poc.id); setProofsOfClass(api.getProofsOfClass(id)) }}
+                      >
+                        <Trash2 className="w-3 h-3" /> Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 

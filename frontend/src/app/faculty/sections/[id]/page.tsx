@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Search, Key, RefreshCw, Ban, Users, CalendarDays, UserPlus, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Search, Key, RefreshCw, Ban, Users, CalendarDays, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle } from 'lucide-react'
 import { api } from '@/lib/mock-api'
-import type { User, Section, Student } from '@polycheck/shared'
+import type { User, Section, Student, SectionRole, SessionPermission } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,11 @@ export default function SectionDetailPage() {
   const [enrollSearch, setEnrollSearch] = useState('')
   const [enrollSuccess, setEnrollSuccess] = useState('')
 
+  const [sectionRoles, setSectionRoles] = useState<SectionRole[]>([])
+  const [sessionPermissions, setSessionPermissions] = useState<SessionPermission[]>([])
+  const [presidentSelectOpen, setPresidentSelectOpen] = useState(false)
+  const [qacSelectOpen, setQacSelectOpen] = useState(false)
+
   const allStudents = api.getStudents()
   const [loading, setLoading] = useState(true)
 
@@ -46,6 +51,8 @@ export default function SectionDetailPage() {
     if (!sec) { router.push('/faculty/subjects'); return }
     setSection(sec)
     setStudents(api.getSectionStudents(id))
+    setSectionRoles(api.getSectionRoles(id))
+    setSessionPermissions(api.getActiveSessionPermissions(id))
     setLoading(false)
   }, [id, router])
 
@@ -174,11 +181,26 @@ export default function SectionDetailPage() {
             </CardHeader>
             <CardContent>
               {section.enrollmentCode ? (
-                <div className="flex items-center gap-4 mb-3">
+                <div className="flex items-center gap-4 mb-3 flex-wrap">
                   <span className="text-2xl font-mono font-bold text-maroon dark:text-golden tracking-wider">{section.enrollmentCode}</span>
-                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                    Expires: {new Date(section.enrollmentCodeExpiry).toLocaleDateString()}
-                  </span>
+                  {(() => {
+                    const expiry = new Date(section.enrollmentCodeExpiry)
+                    const now = new Date()
+                    const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+                    if (daysLeft < 0) {
+                      return <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 border border-red-300 dark:border-red-800">Expired</span>
+                    } else if (daysLeft <= 3) {
+                      return (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-300 dark:border-amber-700">
+                            Expires in {daysLeft}d
+                          </span>
+                        </div>
+                      )
+                    } else {
+                      return <span className="text-xs text-zinc-500 dark:text-zinc-400">Expires: {expiry.toLocaleDateString()}</span>
+                    }
+                  })()}
                 </div>
               ) : (
                 <p className="text-sm text-zinc-400 italic mb-3">Enrollment code is disabled</p>
@@ -265,6 +287,158 @@ export default function SectionDetailPage() {
                 )}
               </CardContent>
             )}
+          </Card>
+
+          {/* Section Roles */}
+          <Card className="mb-6 border-t-4 border-t-maroon dark:border-t-golden">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-zinc-800 dark:text-zinc-100 text-base">
+                <Shield className="w-4 h-4 text-maroon dark:text-golden" />
+                Section Roles
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* President */}
+              <div className="mb-5 pb-5 border-b border-zinc-200 dark:border-zinc-800">
+                <div className="flex items-center gap-2 mb-2">
+                  <Crown className="w-4 h-4 text-maroon dark:text-golden" />
+                  <span className="text-sm font-bold text-zinc-700 dark:text-zinc-300">President</span>
+                </div>
+                {(() => {
+                  const pres = sectionRoles.find((r) => r.role === 'president')
+                  if (pres) {
+                    const perm = sessionPermissions.find((p) => p.studentId === pres.studentId)
+                    const isExpired = perm ? Date.now() >= new Date(perm.expiresAt).getTime() : true
+                    return (
+                      <div className="flex items-center justify-between bg-zinc-50 dark:bg-zinc-900 p-3 border border-zinc-200 dark:border-zinc-800 mb-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-maroon dark:bg-golden flex items-center justify-center">
+                            <span className="text-[10px] font-bold text-white dark:text-maroon-dark">
+                              {pres.studentName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{pres.studentName}</p>
+                            <p className="text-[10px] text-maroon dark:text-golden font-medium">
+                              {perm && !isExpired ? (
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" /> Active until {new Date(perm.expiresAt).toLocaleString()}
+                                </span>
+                              ) : (
+                                <span className="text-zinc-400">No active permission</span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          {perm && !isExpired ? (
+                            <Button variant="outline" size="sm" className="text-red-500 border-red-500 text-xs" onClick={() => {
+                              api.revokeSessionPermission(id, pres.studentId)
+                              setSessionPermissions(api.getActiveSessionPermissions(id))
+                            }}>
+                              <XCircle className="w-3 h-3 mr-1" /> Revoke
+                            </Button>
+                          ) : (
+                            <Button variant="default" size="sm" className="text-xs" onClick={() => {
+                              api.grantSessionPermission(id, pres.studentId)
+                              setSessionPermissions(api.getActiveSessionPermissions(id))
+                            }}>
+                              <CheckCircle className="w-3 h-3 mr-1" /> Grant 24hr
+                            </Button>
+                          )}
+                          <Button variant="outline" size="sm" className="text-xs text-red-400 border-red-300" onClick={() => {
+                            api.removeSectionRole(id, pres.studentId, 'president')
+                            setSectionRoles(api.getSectionRoles(id))
+                          }}>Remove</Button>
+                        </div>
+                      </div>
+                    )
+                  }
+                  return (
+                    <div>
+                      <p className="text-sm text-zinc-400 mb-2">No president assigned</p>
+                      <div className="relative">
+                        <Button variant="outline" size="sm" onClick={() => setPresidentSelectOpen(!presidentSelectOpen)}>
+                          <Crown className="w-3 h-3 mr-1" /> Assign President
+                        </Button>
+                        {presidentSelectOpen && (
+                          <div className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-lg z-10 max-h-48 overflow-y-auto">
+                            {students.filter(s => !sectionRoles.find(r => r.studentId === s.id && r.role === 'president')).map((s) => (
+                              <button key={s.id} className="w-full text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center gap-2" onClick={() => {
+                                api.assignSectionRole(id, s.id, 'president')
+                                setSectionRoles(api.getSectionRoles(id))
+                                setPresidentSelectOpen(false)
+                              }}>
+                                <span className="text-[10px] font-bold text-zinc-500">{s.studentId}</span>
+                                <span className="font-medium text-zinc-800 dark:text-zinc-200">{s.fullName}</span>
+                              </button>
+                            ))}
+                            {students.filter(s => !sectionRoles.find(r => r.studentId === s.id && r.role === 'president')).length === 0 && (
+                              <p className="px-3 py-2 text-xs text-zinc-400">All students are already assigned</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+
+              {/* QAC */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Camera className="w-4 h-4 text-maroon dark:text-golden" />
+                  <span className="text-sm font-bold text-zinc-700 dark:text-zinc-300">Quality Assurance Coordinator</span>
+                  <span className="text-[10px] text-zinc-400">(multiple allowed)</span>
+                </div>
+                {(() => {
+                  const qacs = sectionRoles.filter((r) => r.role === 'qac')
+                  return (
+                    <>
+                      {qacs.length > 0 ? (
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {qacs.map((qac) => (
+                            <div key={qac.id} className="flex items-center gap-2 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border border-zinc-200 dark:border-zinc-800">
+                              <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{qac.studentName}</span>
+                              <button className="text-red-400 hover:text-red-600" onClick={() => {
+                                api.removeSectionRole(id, qac.studentId, 'qac')
+                                setSectionRoles(api.getSectionRoles(id))
+                              }}>
+                                <XCircle className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-zinc-400 mb-2">No QAC assigned</p>
+                      )}
+                      <div className="relative">
+                        <Button variant="outline" size="sm" onClick={() => setQacSelectOpen(!qacSelectOpen)}>
+                          <Camera className="w-3 h-3 mr-1" /> Assign QAC
+                        </Button>
+                        {qacSelectOpen && (
+                          <div className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-lg z-10 max-h-48 overflow-y-auto">
+                            {students.filter(s => !sectionRoles.find(r => r.studentId === s.id && r.role === 'qac')).map((s) => (
+                              <button key={s.id} className="w-full text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center gap-2" onClick={() => {
+                                api.assignSectionRole(id, s.id, 'qac')
+                                setSectionRoles(api.getSectionRoles(id))
+                                setQacSelectOpen(false)
+                              }}>
+                                <span className="text-[10px] font-bold text-zinc-500">{s.studentId}</span>
+                                <span className="font-medium text-zinc-800 dark:text-zinc-200">{s.fullName}</span>
+                              </button>
+                            ))}
+                            {students.filter(s => !sectionRoles.find(r => r.studentId === s.id && r.role === 'qac')).length === 0 && (
+                              <p className="px-3 py-2 text-xs text-zinc-400">All students are already assigned</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+            </CardContent>
           </Card>
 
           {/* Attendance Overview */}

@@ -27,19 +27,20 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      key={isDark ? 'dark' : 'light'}
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: isDark ? '#4A0A0B' : '#7B1113',
-        tabBarInactiveTintColor: isDark ? 'rgba(74, 10, 11, 0.4)' : 'rgba(123, 17, 19, 0.4)',
+        tabBarActiveTintColor: isDark ? '#4A0A0B' : '#FFDF00',
+        tabBarInactiveTintColor: isDark ? 'rgba(74, 10, 11, 0.4)' : 'rgba(255, 223, 0, 0.55)',
         tabBarStyle: {
           position: 'absolute',
           bottom: insets.bottom + 12,
           left: 24,
           right: 24,
-          backgroundColor: '#FFDF00',
+          backgroundColor: isDark ? '#FFDF00' : '#7B1113',
           borderTopWidth: 0,
           borderWidth: 1,
-          borderColor: isDark ? 'rgba(74, 10, 11, 0.15)' : 'rgba(123, 17, 19, 0.15)',
+          borderColor: isDark ? 'rgba(74, 10, 11, 0.15)' : 'rgba(255, 223, 0, 0.15)',
           borderRadius: 28,
           height: 64,
           paddingBottom: 0,
@@ -88,6 +89,8 @@ export default function TabLayout() {
       <Tabs.Screen name="id-card" options={{ title: 'ID Card', tabBarLabel: 'ID Card' }} />
       <Tabs.Screen name="history" options={{ title: 'Audit', tabBarLabel: 'Audit' }} />
       <Tabs.Screen name="subject-info/[id]" options={{ href: null }} />
+      <Tabs.Screen name="subject-info/[id]/create-session" options={{ href: null }} />
+      <Tabs.Screen name="subject-info/[id]/sessions/[sessionId]" options={{ href: null }} />
       <Tabs.Screen name="subjects" options={{ href: null }} />
     </Tabs>
   )

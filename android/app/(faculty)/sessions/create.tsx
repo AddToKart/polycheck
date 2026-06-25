@@ -142,8 +142,6 @@ export default function CreateSessionScreen() {
     }
   }, [selectedSubjectId])
 
-  if (!user) return null
-
   const filteredSections = selectedSubjectId
     ? sections.filter(s => s.subjectId === selectedSubjectId)
     : []
@@ -151,6 +149,12 @@ export default function CreateSessionScreen() {
   const selectedSubject = subjects.find((s) => s.id === selectedSubjectId)
   const selectedSection = sections.find((s) => s.id === sectionId)
   const selectedParentSubject = selectedSection ? subjects.find((s) => s.id === selectedSection.subjectId) : undefined
+
+  // Issue 3: Duplicate session detection
+  const existingSessionOnDate = !bulkMode && sectionId && date
+    ? api.getSessions(sectionId).find((s) => s.date === date)
+    : null
+  const hasDuplicateConflict = !!existingSessionOnDate && !isRescheduled
 
   useEffect(() => {
     if (selectedSection) {
@@ -160,6 +164,8 @@ export default function CreateSessionScreen() {
       setRescheduledFromDate('')
     }
   }, [selectedSection])
+
+  if (!user) return null
 
   const getStandardReplaceDates = () => {
     if (!selectedSection) return []
@@ -420,6 +426,18 @@ export default function CreateSessionScreen() {
               placeholder="YYYY-MM-DD"
               placeholderTextColor="#AAA"
             />
+
+            {/* Duplicate session warning */}
+            {hasDuplicateConflict && (
+              <View style={{ backgroundColor: '#FFFBEB', borderLeftWidth: 3, borderLeftColor: '#F59E0B', padding: 12, marginTop: 8 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#B45309', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 3 }}>
+                  Session Conflict
+                </Text>
+                <Text style={{ fontSize: 12, color: '#92400E', lineHeight: 17 }}>
+                  A session already exists for this section on {date}. Change the date or enable "Reschedule" to replace it.
+                </Text>
+              </View>
+            )}
             
             {selectedSection && selectedSection.schedule.length > 0 && (
               <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : '#EEE', paddingTop: 12 }}>
@@ -607,9 +625,9 @@ export default function CreateSessionScreen() {
 
         {/* Create button */}
         <TouchableOpacity
-          style={[styles.createBtn, isDark && styles.createBtnDark, (!sectionId || (bulkMode && calculateBulkCount() === 0)) && styles.createBtnDisabled]}
+          style={[styles.createBtn, isDark && styles.createBtnDark, (!sectionId || (bulkMode && calculateBulkCount() === 0) || hasDuplicateConflict) && styles.createBtnDisabled]}
           onPress={handleCreate}
-          disabled={!sectionId || (bulkMode && calculateBulkCount() === 0)}
+          disabled={!sectionId || (bulkMode && calculateBulkCount() === 0) || hasDuplicateConflict}
           accessibilityRole="button"
           accessibilityLabel={bulkMode ? 'Create bulk sessions' : 'Create session'}
         >

@@ -51,3 +51,20 @@ export const AttendanceRecordSchema = z.object({
   deviceId: z.string().optional(),
   tokenPayload: z.string().optional(),
 })
+
+export const SectionRoleTypeEnum = z.enum(['president', 'qac'])
+
+export const AssignSectionRoleSchema = z.object({
+  sectionId: z.string().min(1),
+  studentId: z.string().min(1),
+  role: SectionRoleTypeEnum,
+})
+
+export const ProofOfClassUploadSchema = z.object({
+  sectionId: z.string().min(1),
+  sessionId: z.string().min(1),
+  photoData: z.string().min(1),
+  description: z.string().optional(),
+  uploadedBy: z.string().min(1),
+  uploadedByStudentName: z.string().min(1),
+})

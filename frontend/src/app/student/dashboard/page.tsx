@@ -64,6 +64,7 @@ function StudentDashboardContent() {
   const [sections, setSections] = useState<Section[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [sessions, setSessions] = useState<any[]>([])
+  const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard')
 
   useEffect(() => {
@@ -133,7 +134,20 @@ function StudentDashboardContent() {
     setEnrollCode('')
     setEnrollLoading(false)
     // Refresh student's enrolled subjects list
-    setSections(api.getStudentSections(user!.id))
+    const updatedSections = api.getStudentSections(user!.id)
+    setSections(updatedSections)
+    const updatedRecords = api.getAttendanceForStudent(user!.id)
+    const updatedSessions = api.getSessions()
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const evs = generateStudentCalendarEvents(
+      updatedSections,
+      updatedSessions,
+      updatedRecords,
+      (id) => { const s = api.getSubject(id); return s ? { name: s.name, code: s.code } : undefined },
+      todayStr,
+      todayStr
+    ).sort((a, b) => a.startTime.localeCompare(b.startTime))
+    setTodayEvents(evs)
   }
 
   useEffect(() => {
@@ -144,9 +158,23 @@ function StudentDashboardContent() {
     }
     setUser(cu as Student)
     if (cu.studentId) {
-      setSections(api.getStudentSections(cu.id))
-      setRecords(api.getAttendanceForStudent(cu.id))
-      setSessions(api.getSessions())
+      const studentSections = api.getStudentSections(cu.id)
+      const studentRecords = api.getAttendanceForStudent(cu.id)
+      const allSessions = api.getSessions()
+      setSections(studentSections)
+      setRecords(studentRecords)
+      setSessions(allSessions)
+
+      const todayStr = new Date().toISOString().slice(0, 10)
+      const evs = generateStudentCalendarEvents(
+        studentSections,
+        allSessions,
+        studentRecords,
+        (id) => { const s = api.getSubject(id); return s ? { name: s.name, code: s.code } : undefined },
+        todayStr,
+        todayStr
+      ).sort((a, b) => a.startTime.localeCompare(b.startTime))
+      setTodayEvents(evs)
     }
   }, [router])
   
@@ -404,6 +432,85 @@ const ATTENDANCE_PAGE_SIZE = 8
                       </div>
                     ))}
                   </div>
+
+                  {/* Today's Schedule */}
+                  <Card className="rounded-none border-zinc-300 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden shadow-none bg-zinc-50/50 dark:bg-zinc-900/50">
+                    <CardHeader className="border-b border-zinc-200 dark:border-zinc-800 p-6 flex flex-row items-center justify-between space-y-0 bg-zinc-50 dark:bg-zinc-900/50">
+                      <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-maroon dark:text-golden" />
+                        Today's Schedule
+                      </CardTitle>
+                      <button 
+                        onClick={() => router.push('?tab=schedule')}
+                        className="text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden hover:opacity-85 transition-opacity"
+                      >
+                        Full Schedule
+                      </button>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                      {todayEvents.length === 0 ? (
+                        <div className="text-center py-6">
+                          <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">No classes scheduled for today</p>
+                        </div>
+                      ) : (
+                        <div className="grid md:grid-cols-2 gap-4">
+                          {todayEvents.map((ev) => {
+                            const isGhost = ev.type === 'schedule'
+                            const isSessionActive = ev.status === 'active'
+                            const studentStatus = ev.studentStatus
+
+                            let borderStyle = "border-l-zinc-300 dark:border-l-zinc-800"
+                            let badgeLabel = "Scheduled"
+                            let badgeStyle = "text-zinc-500 bg-zinc-100 dark:bg-zinc-800"
+
+                            if (studentStatus === 'present') {
+                              borderStyle = "border-l-emerald-500"
+                              badgeLabel = "Present"
+                              badgeStyle = "text-emerald-700 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-950/30"
+                            } else if (studentStatus === 'late') {
+                              borderStyle = "border-l-amber-500"
+                              badgeLabel = "Late"
+                              badgeStyle = "text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/30"
+                            } else if (studentStatus === 'absent') {
+                              borderStyle = "border-l-rose-500"
+                              badgeLabel = "Absent"
+                              badgeStyle = "text-rose-700 bg-rose-50 dark:text-rose-300 dark:bg-rose-950/30"
+                            } else if (isSessionActive) {
+                              borderStyle = "border-l-golden"
+                              badgeLabel = "Active Now"
+                              badgeStyle = "text-maroon bg-golden/20 dark:text-golden dark:bg-golden/10 border border-golden/30"
+                            }
+
+                            return (
+                              <div key={ev.id} className={`p-4 border border-zinc-200 dark:border-zinc-800 border-l-4 ${borderStyle} bg-background dark:bg-zinc-900/30 flex flex-col justify-between rounded-none`}>
+                                <div className="flex justify-between items-start mb-2 gap-4">
+                                  <div className="min-w-0">
+                                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                                      {formatTime(ev.startTime)} - {formatTime(ev.endTime)}
+                                    </p>
+                                    <h4 className="text-sm font-bold text-foreground truncate leading-snug">
+                                      {ev.subjectName}
+                                    </h4>
+                                  </div>
+                                  <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 whitespace-nowrap ${badgeStyle}`}>
+                                    {badgeLabel}
+                                  </span>
+                                </div>
+                                <div className="mt-4 flex justify-between items-center text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                                  <span>Sec {ev.sectionName} {ev.room ? `\\ ${ev.room}` : ''}</span>
+                                  {isSessionActive && !studentStatus && (
+                                    <Link href="/student/dashboard?tab=dashboard" className="text-[9px] font-bold uppercase tracking-widest text-maroon dark:text-golden border border-maroon dark:border-golden px-2 py-1 bg-white dark:bg-zinc-800 hover:bg-maroon hover:text-white dark:hover:bg-golden dark:hover:text-maroon transition-colors">
+                                      Scan Attendance
+                                    </Link>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
 
                   {/* Recent Attendance */}
                   <Card className="rounded-none border-zinc-300 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden">

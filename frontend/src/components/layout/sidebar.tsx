@@ -18,7 +18,9 @@ import {
   Menu,
   X,
   Clock,
+  Search,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import ThemeToggle from '@/components/ThemeToggle'
 
@@ -40,6 +42,7 @@ const teacherNav: NavItem[] = [
   { label: 'Attendance Log', href: '/faculty/attendance', icon: ClipboardList },
   { label: 'Schedule', href: '/faculty/schedule', icon: Calendar },
   { label: 'Disputes', href: '/faculty/disputes', icon: Gavel },
+  { label: 'Search', href: '/faculty/search', icon: Search },
 ]
 
 // Navigation for super admins
@@ -61,8 +64,11 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const activeTabQuery = searchParams.get('tab')
+  const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const isSuper = user.role === 'super_admin'
+  const showSearch = !backHref && (user.role === 'teacher' || user.role === 'super_admin')
   
   const items = backHref
     ? []
@@ -100,6 +106,30 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
       </div>
 
       <nav className="flex-1 overflow-y-auto py-4">
+        {/* Global Search — faculty only */}
+        {showSearch && (
+          <div className="px-4 mb-3">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (searchQuery.trim()) {
+                  router.push(`/faculty/search?q=${encodeURIComponent(searchQuery.trim())}`)
+                  setIsOpen(false)
+                }
+              }}
+              className="relative"
+            >
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search students, sections…"
+                className="w-full h-8 pl-8 pr-3 text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-foreground placeholder:text-zinc-400 focus:outline-none focus:border-maroon dark:focus:border-golden transition-colors"
+                aria-label="Global search"
+              />
+            </form>
+          </div>
+        )}
         {backHref && backLabel && (
           <div className="px-4 mb-4">
             <Button variant="outline" className="w-full justify-start gap-3 border-zinc-300 dark:border-zinc-700" asChild>

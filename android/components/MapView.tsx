@@ -40,9 +40,6 @@ function html(lat: number, lng: number, radius: number, interactive: boolean, is
     pointer-events: none;
   }
   ${isDark ? `
-  .leaflet-tile {
-    filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
-  }
   .leaflet-container {
     background: #0A0A0C !important;
   }
@@ -60,7 +57,11 @@ function html(lat: number, lng: number, radius: number, interactive: boolean, is
     attributionControl: false
   });
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  var tileUrl = ${isDark} 
+    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+    : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png';
+
+  L.tileLayer(tileUrl, {
     maxZoom: 19
   }).addTo(map);
 
@@ -158,7 +159,8 @@ export default function MapView({ latitude, longitude, radius, interactive, onLo
       javaScriptEnabled
       domStorageEnabled
       originWhitelist={['*']}
-      androidLayerType="hardware"
+      androidLayerType="software"
+      userAgent="Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
     />
   )
 
@@ -240,7 +242,8 @@ export default function MapView({ latitude, longitude, radius, interactive, onLo
                 javaScriptEnabled
                 domStorageEnabled
                 originWhitelist={['*']}
-                androidLayerType="hardware"
+                androidLayerType="software"
+                userAgent="Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
               />
             </View>
             <View style={[styles.fsCoords, isDark && styles.fsCoordsDark]}>
