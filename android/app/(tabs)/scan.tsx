@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, Dimensions, StyleSheet } from 
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { CameraView, useCameraPermissions } from 'expo-camera'
-import { router } from 'expo-router'
+import { router, useFocusEffect } from 'expo-router'
 import { api } from '../../services/mock-api'
 import { useTheme } from '../../theme/ThemeContext'
 import MapView from '../../components/MapView'
@@ -26,7 +26,14 @@ export default function ScanScreen() {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scannedRef = useRef(false)
 
-  const activeSession = useMemo(() => api.getSessions().find((s) => s.isActive), [])
+  const [activeSession, setActiveSession] = useState(() => api.getSessions().find((s) => s.isActive))
+
+  // Refresh active session whenever the screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      setActiveSession(api.getSessions().find((s) => s.isActive))
+    }, [])
+  )
 
   const showResult = useCallback((status: 'present' | 'late' | 'absent', message: string) => {
     setResult({ status, message })
