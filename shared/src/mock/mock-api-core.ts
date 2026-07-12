@@ -672,6 +672,164 @@ export function createMockApiCore() {
       }
       return mockAttendanceSummaries
     },
+
+    // Alias for backwards compatibility
+    getAttendanceSummaries(sectionId?: string): AttendanceSummary[] {
+      return this.getAttendanceSummary(sectionId)
+    },
+
+    // ========== User Query Methods ==========
+    
+    getTeachers(): Teacher[] {
+      return mockTeachers
+    },
+
+    getStudents(): Student[] {
+      return mockStudents
+    },
+
+    // ========== Section Roles Methods ==========
+    
+    getSectionRoles(sectionId: string): SectionRole[] {
+      return mockSectionRoles.filter(r => r.sectionId === sectionId)
+    },
+
+    getStudentRoles(studentId: string): SectionRole[] {
+      return mockSectionRoles.filter(r => r.studentId === studentId)
+    },
+
+    assignSectionRole(sectionId: string, studentId: string, role: SectionRoleType): SectionRole {
+      const newRole: SectionRole = {
+        id: `sr-${Date.now()}`,
+        sectionId,
+        studentId,
+        studentName: '',
+        role,
+        grantedBy: '',
+        grantedAt: new Date().toISOString(),
+      }
+      mockSectionRoles.push(newRole)
+      return newRole
+    },
+
+    removeSectionRole(sectionId: string, studentId: string, role: SectionRoleType): boolean {
+      const idx = mockSectionRoles.findIndex(
+        r => r.sectionId === sectionId && r.studentId === studentId && r.role === role
+      )
+      if (idx === -1) return false
+      mockSectionRoles.splice(idx, 1)
+      return true
+    },
+
+    // ========== Session Permissions Methods ==========
+    
+    getActiveSessionPermissions(sectionId: string): SessionPermission[] {
+      return mockSessionPermissions.filter(
+        p => p.sectionId === sectionId && p.isActive
+      )
+    },
+
+    checkSessionPermission(sectionId: string, studentId: string): boolean {
+      return mockSessionPermissions.some(
+        p => p.sectionId === sectionId && p.studentId === studentId && p.isActive
+      )
+    },
+
+    grantSessionPermission(sectionId: string, studentId: string): SessionPermission {
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString()
+      const permission: SessionPermission = {
+        id: `sp-${Date.now()}`,
+        sectionId,
+        studentId,
+        grantedBy: '',
+        grantedAt: now.toISOString(),
+        expiresAt,
+        isActive: true,
+      }
+      mockSessionPermissions.push(permission)
+      return permission
+    },
+
+    revokeSessionPermission(sectionId: string, studentId: string): boolean {
+      const permission = mockSessionPermissions.find(p => p.sectionId === sectionId && p.studentId === studentId && p.isActive)
+      if (!permission) return false
+      permission.isActive = false
+      return true
+    },
+
+    // ========== Proof of Class Methods ==========
+    
+    getProofsOfClass(sessionId?: string): ProofOfClass[] {
+      if (sessionId) {
+        return mockProofsOfClass.filter(p => p.sessionId === sessionId)
+      }
+      return mockProofsOfClass
+    },
+
+    uploadProofOfClass(data: { sessionId: string; sectionId: string; uploadedBy: string; uploadedByStudentName: string; photoData: string; description?: string }): ProofOfClass {
+      const proof: ProofOfClass = {
+        id: `poc-${Date.now()}`,
+        ...data,
+        uploadedAt: new Date().toISOString(),
+      }
+      mockProofsOfClass.push(proof)
+      return proof
+    },
+
+    deleteProofOfClass(proofId: string): boolean {
+      const idx = mockProofsOfClass.findIndex(p => p.id === proofId)
+      if (idx === -1) return false
+      mockProofsOfClass.splice(idx, 1)
+      return true
+    },
+
+    // ========== Additional Query Methods ==========
+    
+    getSectionSessions(sectionId: string): Session[] {
+      return mockSessions.filter(s => s.sectionId === sectionId)
+    },
+
+    getStudentSections(studentId: string): Section[] {
+      const enrolledSectionIds = mockEnrollments
+        .filter(e => e.studentId === studentId)
+        .map(e => e.sectionId)
+      return mockSections.filter(s => enrolledSectionIds.includes(s.id))
+    },
+
+    getAttendanceForStudent(studentId: string): AttendanceRecord[] {
+      return mockAttendanceRecords.filter(r => r.studentId === studentId)
+    },
+
+    addAttendanceRecord(record: AttendanceRecord): AttendanceRecord {
+      mockAttendanceRecords.push(record)
+      return record
+    },
+
+    // ========== Search Method ==========
+    
+    search(query: string): { students: Student[]; sections: Section[]; sessions: Session[] } {
+      if (!query.trim()) return { students: [], sections: [], sessions: [] }
+      const q = query.toLowerCase().trim()
+      const students = mockStudents.filter(
+        (s) => s.fullName.toLowerCase().includes(q) || s.studentId.toLowerCase().includes(q)
+      ).slice(0, 10)
+      const subjects = mockSubjects
+      const sections = mockSections.filter((s) => {
+        const subj = subjects.find((sub) => sub.id === s.subjectId)
+        return (
+          subj?.name.toLowerCase().includes(q) ||
+          subj?.code.toLowerCase().includes(q) ||
+          s.section.toLowerCase().includes(q) ||
+          s.room?.toLowerCase().includes(q)
+        )
+      }).slice(0, 8)
+      const sessions = mockSessions.filter((s) =>
+        s.subjectName.toLowerCase().includes(q) ||
+        s.date.includes(q)
+      ).slice(0, 8)
+      return { students, sections, sessions }
+    },
   }
 }
 

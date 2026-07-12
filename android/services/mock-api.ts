@@ -34,6 +34,13 @@ let currentUser: User | null = null
 // Create shared core API instance
 const coreApi = createMockApiCore()
 
+// Destructure out methods we override, keep the rest as fallback
+const {
+  loginStudent: _loginStudent,
+  loginFaculty: _loginFaculty,
+  ...coreMethods
+} = coreApi
+
 export const api = {
   async restoreSession(): Promise<User | null> {
     const u = await loadUserFromStore()
@@ -42,7 +49,7 @@ export const api = {
   },
 
   loginStudent(studentId: string, password?: string): User | null {
-    const user = coreApi.loginStudent(studentId, password)
+    const user = _loginStudent(studentId, password)
     if (user) {
       currentUser = user
       saveUserToStore(user)
@@ -51,7 +58,7 @@ export const api = {
   },
 
   loginFaculty(email: string, password?: string): User | null {
-    const user = coreApi.loginFaculty(email, password)
+    const user = _loginFaculty(email, password)
     if (user) {
       currentUser = user
       saveUserToStore(user)
@@ -73,4 +80,5 @@ export const api = {
   },
 
   // Delegate all other methods to the shared core API
-  ...coreApi,
+  ...coreMethods,
+}

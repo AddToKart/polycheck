@@ -47,6 +47,8 @@ polycheck/
 | Backend API | NestJS (Node.js) |
 | Database | PostgreSQL (via Prisma ORM) |
 | Local database | SQLite via expo-sqlite |
+| Real-time Updates | WebSockets (Socket.IO) |
+| Caching & Queues | Redis (WebSocket Adapter, Cache Store, BullMQ) |
 | Authentication | Better Auth (Next.js) + JWT (NestJS guards) |
 | Monorepo | pnpm workspaces + Turborepo |
 | Shared code | `@polycheck/shared` package |
@@ -150,6 +152,15 @@ Every synced record checked for:
 3. GPS coordinates within geofence
 4. No duplicate token+student pair
 Any failure → marked as `disputed`, surfaced to teacher
+
+### Real-Time Updates & Caching
+For real-time updates and low-latency validation during peak attendance check-in windows, the system utilizes WebSockets (via Socket.IO) and Redis:
+* **WebSockets**: Established between the NestJS backend and the teacher's dashboard (web/mobile). As students sync their locally generated attendance records to the backend, the backend pushes these successful check-ins instantly to the active session view.
+* **Redis**: Acts as an in-memory data store and event broker:
+  * *WebSocket Adapter*: Enables horizontal scaling of WebSocket connections. If multiple server instances are running behind a load balancer, Redis Pub/Sub coordinates and broadcasts WebSocket events across Server instances.
+  * *Active Session Caching*: Active geofence coordinates and QR token metadata are cached in Redis with a TTL matching the session's duration. The backend validates coordinates against the cache in microseconds without hitting the PostgreSQL database.
+  * *Rate Limiting*: Limits scan submission attempts per student/device ID using a Redis-backed rate limiter to prevent geofence-spoofing brute-force attacks.
+  * *Job Queues (BullMQ)*: Manages batch processing of offline sync payloads asynchronously, ensuring the main HTTP server thread remains unblocked.
 
 ## Design System
 
