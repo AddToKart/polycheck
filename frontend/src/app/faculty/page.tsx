@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/mock-api'
-import type { User, Section, Session, AttendanceRecord, CalendarEvent } from '@polycheck/shared'
+import type { User, Section, Session, Subject, AttendanceRecord, CalendarEvent, Enrollment } from '@polycheck/shared'
 import { formatTime } from '@polycheck/shared/utils'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -33,30 +33,80 @@ function TeacherDashboard({ user }: { user: User }) {
   const [sections, setSections] = useState<Section[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
+  const [allSubjects, setAllSubjects] = useState<Subject[]>([])
+  const [allSessions, setAllSessions] = useState<Session[]>([])
+  const [allSections, setAllSections] = useState<Section[]>([])
+  const [allEnrollments, setAllEnrollments] = useState<Enrollment[]>([])
+  const [allDisputes, setAllDisputes] = useState<AttendanceRecord[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const teacherSections = api.getSections().filter((s) => s.teacherId === user.id)
-    setSections(teacherSections)
-    const sectionIds = teacherSections.map((s) => s.id)
-    setRecords(api.getAttendanceRecords().filter((r) => sectionIds.includes(r.sectionId)))
-    
-    const todayStr = new Date().toISOString().slice(0, 10)
-    const evs = api.getCalendarEvents(user.id, todayStr, todayStr)
-      .sort((a, b) => a.startTime.localeCompare(b.startTime))
-    setTodayEvents(evs)
+    const fetchData = async () => {
+      const teacherSections = (await api.getSections()).filter((s) => s.teacherId === user.id)
+      setSections(teacherSections)
+      const sectionIds = teacherSections.map((s) => s.id)
 
-    setLoading(false)
+      const [attendanceRecords, subjects, sessions, allSects, enrollments, disputes] = await Promise.all([
+        api.getAttendanceRecords(),
+        api.getSubjects(),
+        api.getSessions(),
+        api.getSections(),
+        api.getEnrollments(),
+        api.getDisputedRecords(),
+      ])
+
+      setRecords(attendanceRecords.filter((r) => sectionIds.includes(r.sectionId)))
+      setAllSubjects(subjects)
+      setAllSessions(sessions)
+      setAllSections(allSects)
+      setAllEnrollments(enrollments)
+      setAllDisputes(disputes)
+
+      const todayStr = new Date().toISOString().slice(0, 10)
+      const evs = (await api.getCalendarEvents(user.id, todayStr, todayStr))
+        .sort((a, b) => a.startTime.localeCompare(b.startTime))
+      setTodayEvents(evs)
+
+      setLoading(false)
+    }
+    fetchData()
   }, [user.id])
 
-  const sessionsToday = api.getSessions().filter((s) => s.date === new Date().toISOString().slice(0, 10)).length
-  const studentsInSubjects = new Set(api.getEnrollments().filter(e => sections.map(s => s.id).includes(e.sectionId)).map(e => e.studentId)).size
+  const sessionsToday = allSessions.filter((s) => s.date === new Date().toISOString().slice(0, 10)).length
+  const studentsInSubjects = new Set(allEnrollments.filter(e => sections.map(s => s.id).includes(e.sectionId)).map(e => e.studentId)).size
   
+  const subjectMap = useMemo(() => {
+    const map = new Map<string, Subject>()
+    for (const s of allSubjects) map.set(s.id, s)
+    return map
+  }, [allSubjects])
+
+  const sectionMap = useMemo(() => {
+    const map = new Map<string, Section>()
+    for (const s of allSections) map.set(s.id, s)
+    return map
+  }, [allSections])
+
+  const sessionMap = useMemo(() => {
+    const map = new Map<string, Session>()
+    for (const s of allSessions) map.set(s.id, s)
+    return map
+  }, [allSessions])
+
+  const getSubjectNameForRecord = (r: AttendanceRecord) => {
+    const sess = sessionMap.get(r.sessionId)
+    if (!sess) return r.sectionId
+    const sec = sectionMap.get(sess.sectionId)
+    if (!sec) return r.sectionId
+    const subj = subjectMap.get(sec.subjectId)
+    return subj?.name ?? r.sectionId
+  }
+
   const statCards = [
     { label: 'My Subjects', value: sections.length, icon: BookOpen },
     { label: 'My Students', value: studentsInSubjects, icon: Users },
     { label: 'Sessions Today', value: sessionsToday, icon: CalendarCheck },
-    { label: 'Disputes', value: api.getDisputedRecords().length, icon: ClipboardList },
+    { label: 'Disputes', value: allDisputes.length, icon: ClipboardList },
   ]
 
   if (loading) return <LoadingSpinner className="min-h-[400px]" />
@@ -185,7 +235,7 @@ function TeacherDashboard({ user }: { user: User }) {
                     <div className="mt-auto pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between">
                       {isActive ? (
                         <Link href={(() => {
-                          const activeSession = api.getSessions().find(
+                          const activeSession = allSessions.find(
                             (sess) => sess.sectionId === ev.sectionId && sess.date === todayStr && sess.isActive
                           )
                           return activeSession ? `/faculty/sessions/${activeSession.id}` : '#'
@@ -231,7 +281,7 @@ function TeacherDashboard({ user }: { user: User }) {
           </CardHeader>
           <CardContent className="p-0">
             {sections.slice(0, 5).map((sec, i) => {
-              const subj = api.getSubject(sec.subjectId)
+              const subj = subjectMap.get(sec.subjectId)
               return (
               <Link key={sec.id} href={`/faculty/sections/${sec.id}`} className={`flex items-center justify-between p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group ${i !== 0 ? 'border-t border-zinc-200 dark:border-zinc-800' : ''}`}>
                 <div className="min-w-0 flex-1">
@@ -268,7 +318,7 @@ function TeacherDashboard({ user }: { user: User }) {
               <tbody>
                 {records.slice(0, 10).map((r) => (<tr key={r.id} className="border-b border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors">
                   <td className="px-6 py-4"><p className="font-bold text-foreground">{r.studentName}</p><p className="text-xs text-zinc-500">{new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p></td>
-                  <td className="px-6 py-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">{(() => { const sess = api.getSession(r.sessionId); if (!sess) return r.sectionId; const sec = api.getSection(sess.sectionId); if (!sec) return r.sectionId; const subj = api.getSubject(sec.subjectId); return subj?.name ?? r.sectionId; })()}</td>
+                  <td className="px-6 py-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">{getSubjectNameForRecord(r)}</td>
                   <td className="px-6 py-4 text-right"><StatusBadge status={r.status} /></td>
                 </tr>))}
                 {records.length === 0 && <tr><td colSpan={3} className="p-12 text-center text-sm font-bold text-zinc-400 uppercase tracking-widest">No recent activity</td></tr>}
@@ -288,14 +338,53 @@ function TeacherDashboard({ user }: { user: User }) {
 
 function SuperAdminDashboard({ user }: { user: User }) {
   const [loading, setLoading] = useState(true)
+  const [totalFaculty, setTotalFaculty] = useState(0)
+  const [totalStudents, setTotalStudents] = useState(0)
+  const [totalSubjects, setTotalSubjects] = useState(0)
+  const [weeklyTrends, setWeeklyTrends] = useState<{ day: string; present: number; late: number; absent: number }[]>([])
+  const [anomalies, setAnomalies] = useState<{ id: string; type: string; student: string; time: string; severity: string }[]>([])
 
   useEffect(() => {
-    setLoading(false)
-  }, [])
+    const fetchData = async () => {
+      const [teachers, students, subjects, allRecords, disputedRecords] = await Promise.all([
+        api.getTeachers(),
+        api.getStudents(),
+        api.getSubjects(),
+        api.getAttendanceRecords(),
+        api.getDisputedRecords(),
+      ])
+      setTotalFaculty(teachers.length)
+      setTotalStudents(students.length)
+      setTotalSubjects(subjects.length)
 
-  const totalFaculty = api.getTeachers().length
-  const totalStudents = api.getStudents().length
-  const totalSubjects = api.getSubjects().length
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+      const displayDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+      setWeeklyTrends(displayDays.map((dayName) => {
+        const dayRecords = allRecords.filter((r) => {
+          const d = new Date(r.timestamp)
+          return dayNames[d.getDay()] === dayName
+        })
+        const total = dayRecords.length || 1
+        return {
+          day: dayName,
+          present: Math.round((dayRecords.filter((r) => r.status === 'present').length / total) * 100),
+          late: Math.round((dayRecords.filter((r) => r.status === 'late').length / total) * 100),
+          absent: Math.round((dayRecords.filter((r) => r.status === 'absent').length / total) * 100),
+        }
+      }))
+
+      setAnomalies(disputedRecords.slice(0, 5).map((r) => ({
+        id: r.id,
+        type: r.disputeReason ?? 'Attendance Dispute',
+        student: r.studentName,
+        time: new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        severity: r.disputeReason?.toLowerCase().includes('geo') ? 'High' : 'Medium',
+      })))
+
+      setLoading(false)
+    }
+    fetchData()
+  }, [])
   
   const statCards = [
     { label: 'Total Faculty', value: totalFaculty, icon: Users },
@@ -305,34 +394,6 @@ function SuperAdminDashboard({ user }: { user: User }) {
   ]
 
   if (loading) return <LoadingSpinner className="min-h-[400px]" />
-  
-  // Compute weekly attendance trends from real data
-  const allRecords = api.getAttendanceRecords()
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-  const displayDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
-  const weeklyTrends = displayDays.map((dayName) => {
-    const dayRecords = allRecords.filter((r) => {
-      const d = new Date(r.timestamp)
-      return dayNames[d.getDay()] === dayName
-    })
-    const total = dayRecords.length || 1
-    return {
-      day: dayName,
-      present: Math.round((dayRecords.filter((r) => r.status === 'present').length / total) * 100),
-      late: Math.round((dayRecords.filter((r) => r.status === 'late').length / total) * 100),
-      absent: Math.round((dayRecords.filter((r) => r.status === 'absent').length / total) * 100),
-    }
-  })
-
-  // Real anomaly data from disputed records
-  const disputedRecords = api.getDisputedRecords().slice(0, 5)
-  const anomalies = disputedRecords.map((r) => ({
-    id: r.id,
-    type: r.disputeReason ?? 'Attendance Dispute',
-    student: r.studentName,
-    time: new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    severity: r.disputeReason?.toLowerCase().includes('geo') ? 'High' : 'Medium',
-  }))
   
   return (
     <>

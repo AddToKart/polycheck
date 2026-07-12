@@ -47,20 +47,23 @@ export default function StudentDetailPage() {
   }, [router])
 
   useEffect(() => {
-    if (!studentId) return
-    let secId = sectionId
-    if (!secId) {
-      const enrollments = api.getEnrollments()
-      const enr = enrollments.find((e) => e.studentId === studentId)
-      if (enr) secId = enr.sectionId
+    const init = async () => {
+      if (!studentId) return
+      let secId = sectionId
+      if (!secId) {
+        const enrollments = await api.getEnrollments()
+        const enr = enrollments.find((e) => e.studentId === studentId)
+        if (enr) secId = enr.sectionId
+      }
+      if (!secId) return
+      const s = await api.getStudent(studentId)
+      if (!s) { router.push('/faculty/subjects'); return }
+      setStudent(s)
+      setSessions(await api.getSectionSessions(secId))
+      setRecords(await api.getStudentAttendanceForSection(studentId, secId))
+      setReady(true)
     }
-    if (!secId) return
-    const s = api.getStudent(studentId)
-    if (!s) { router.push('/faculty/subjects'); return }
-    setStudent(s)
-    setSessions(api.getSectionSessions(secId))
-    setRecords(api.getStudentAttendanceForSection(studentId, secId))
-    setReady(true)
+    init()
   }, [studentId, sectionId, router])
 
   const handleLogout = () => {
@@ -68,24 +71,24 @@ export default function StudentDetailPage() {
     router.push('/')
   }
 
-  const handleRemove = () => {
+  const handleRemove = async () => {
     if (!sectionId || !studentId) return
     if (window.confirm(`Remove ${student?.fullName} from this subject? This cannot be undone.`)) {
-      api.removeStudentFromSection(sectionId, studentId)
+      await api.removeStudentFromSection(sectionId, studentId)
       router.push(`/faculty/sections/${sectionId}`)
     }
   }
 
-  const handleCycleStatus = (record: AttendanceRecord) => {
+  const handleCycleStatus = async (record: AttendanceRecord) => {
     const currentIdx = STATUS_CYCLE.indexOf(record.status)
     const nextStatus = STATUS_CYCLE[(currentIdx + 1) % STATUS_CYCLE.length]
-    api.updateAttendanceStatus(record.id, nextStatus)
+    await api.updateAttendanceStatus(record.id, nextStatus)
     setRecords((prev) =>
       prev.map((r) => (r.id === record.id ? { ...r, status: nextStatus } : r))
     )
   }
 
-  const handleAddAbsent = (session: Session) => {
+  const handleAddAbsent = async (session: Session) => {
     const existing = records.find((r) => r.sessionId === session.id)
     if (existing) return
     const newRecord: AttendanceRecord = {
@@ -101,7 +104,7 @@ export default function StudentDetailPage() {
       isSynced: false,
       notes: 'Manually marked by teacher',
     }
-    api.addAttendanceRecord(newRecord)
+    await api.addAttendanceRecord(newRecord)
     setRecords((prev) => [...prev, newRecord])
   }
 

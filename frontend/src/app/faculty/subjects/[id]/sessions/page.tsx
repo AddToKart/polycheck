@@ -27,6 +27,7 @@ function SubjectSessionsContent() {
   const [dayFilter, setDayFilter] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [activating, setActivating] = useState('')
+  const [allSessions, setAllSessions] = useState<Session[]>([])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -39,18 +40,25 @@ function SubjectSessionsContent() {
 
   useEffect(() => {
     if (!id) return
-    const subj = api.getSubject(id)
-    if (!subj) { router.push('/faculty/subjects'); return }
-    setSubject(subj)
-    let secs = api.getSections().filter((s) => s.subjectId === id)
-    if (user && user.role === 'teacher') {
-      secs = secs.filter((s) => s.teacherId === user.id)
+    const fn = async () => {
+      const subj = await api.getSubject(id)
+      if (!subj) { router.push('/faculty/subjects'); return }
+      setSubject(subj)
+      let secs = (await api.getSections()).filter((s) => s.subjectId === id)
+      if (user && user.role === 'teacher') {
+        secs = secs.filter((s) => s.teacherId === user.id)
+      }
+      setSubjectSections(secs)
     }
-    setSubjectSections(secs)
+    fn()
   }, [id, router, user])
 
-  const allSessions = useMemo(() => {
-    return api.getSessions()
+  useEffect(() => {
+    const fn = async () => {
+      const sessions = await api.getSessions()
+      setAllSessions(sessions)
+    }
+    fn()
   }, [])
 
   const filtered = useMemo(() => {

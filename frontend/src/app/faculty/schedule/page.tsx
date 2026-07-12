@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Plus, CalendarDays, Calendar, Clock, MapPin, User as UserIcon, CheckCircle, XCircle } from 'lucide-react'
 import { api } from '@/lib/mock-api'
-import type { User, AttendanceRecord } from '@polycheck/shared'
+import type { User, AttendanceRecord, Section, Session, Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -437,6 +437,9 @@ export default function FacultySchedulePage() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [currentYear, setCurrentYear] = useState(currentDate.getFullYear())
   const [currentMonth, setCurrentMonth] = useState(currentDate.getMonth())
+  const [allSections, setAllSections] = useState<Section[]>([])
+  const [allSessions, setAllSessions] = useState<Session[]>([])
+  const [allSubjects, setAllSubjects] = useState<Subject[]>([])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -452,29 +455,56 @@ export default function FacultySchedulePage() {
     router.push('/')
   }, [router])
 
+  useEffect(() => {
+    if (!user) return
+    const fetchData = async () => {
+      const [sections, sessions, subjects] = await Promise.all([
+        api.getSections(),
+        api.getSessions(),
+        api.getSubjects(),
+      ])
+      setAllSections(sections)
+      setAllSessions(sessions)
+      setAllSubjects(subjects)
+    }
+    fetchData()
+  }, [user])
+
+  const subjectMap = useMemo(() => {
+    const map = new Map<string, { name: string; code: string }>()
+    for (const s of allSubjects) {
+      map.set(s.id, { name: s.name, code: s.code })
+    }
+    return map
+  }, [allSubjects])
+
   const events = useMemo(() => {
     if (!user) return []
-    const sections = api.getSections().filter((s) => s.teacherId === user.id)
-    const allSessions = api.getSessions()
+    const sections = allSections.filter((s) => s.teacherId === user.id)
     const teacherSectionIds = new Set(sections.map((s) => s.id))
     const teacherSessions = allSessions.filter((s) => teacherSectionIds.has(s.sectionId))
     const range = getDateRangeForMonth(currentYear, currentMonth)
     return generateCalendarEvents(
       sections,
       teacherSessions,
-      (id) => {
-        const subj = api.getSubject(id)
-        return subj ? { name: subj.name, code: subj.code } : undefined
-      },
+      (id) => subjectMap.get(id),
       range.start,
       range.end,
     )
-  }, [user, currentYear, currentMonth])
+  }, [user, currentYear, currentMonth, allSections, allSessions, subjectMap])
 
-  const attendanceRecords = useMemo(() => {
-    if (!user) return []
-    return api.getAttendanceRecords() as AttendanceRecord[]
+  const [allAttendanceRecords, setAllAttendanceRecords] = useState<AttendanceRecord[]>([])
+
+  useEffect(() => {
+    if (!user) return
+    const fetchData = async () => {
+      const records = await api.getAttendanceRecords()
+      setAllAttendanceRecords(records as AttendanceRecord[])
+    }
+    fetchData()
   }, [user])
+
+  const attendanceRecords = allAttendanceRecords
 
   const goToPrev = useCallback(() => {
     if (view === 'month') {

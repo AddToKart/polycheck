@@ -71,12 +71,15 @@ function CreateSectionForm() {
 
   useEffect(() => {
     if (!subjectId) return
-    const subj = api.getSubject(subjectId)
-    if (!subj) {
-      router.push('/faculty/subjects')
-      return
+    const fn = async () => {
+      const subj = await api.getSubject(subjectId)
+      if (!subj) {
+        router.push('/faculty/subjects')
+        return
+      }
+      setSubject(subj)
     }
-    setSubject(subj)
+    fn()
   }, [subjectId, router])
 
   const enrollmentCode = useMemo(() => {
@@ -104,10 +107,10 @@ function CreateSectionForm() {
     setSchedule(schedule.filter((_, i) => i !== index))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!section || !room || !semester || schedule.length === 0) return
-    api.createSection({
+    await api.createSection({
       subjectId: subject.id,
       section,
       room,

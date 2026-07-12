@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   Gavel, 
@@ -20,7 +20,7 @@ import {
   Search
 } from 'lucide-react'
 import { api } from '@/lib/mock-api'
-import type { User, AttendanceRecord, DisputeReason, Subject } from '@polycheck/shared'
+import type { User, AttendanceRecord, DisputeReason, Subject, Section, Session } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -50,6 +50,9 @@ export default function DisputesPage() {
   const { addNotification } = useNotifications()
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
+  const [allSections, setAllSections] = useState<Section[]>([])
+  const [allSessions, setAllSessions] = useState<Session[]>([])
+  const [allDisputes, setAllDisputes] = useState<AttendanceRecord[]>([])
   const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null)
   
   // Filtering & Tab States
@@ -68,12 +71,29 @@ export default function DisputesPage() {
       return
     }
     setUser(cu)
-    setSubjects(api.getSubjects())
+    const fetchData = async () => {
+      const [subjectsData, sectionsData, sessionsData, disputesData] = await Promise.all([
+        api.getSubjects(),
+        api.getSections(),
+        api.getSessions(),
+        api.getDisputedRecords(),
+      ])
+      setSubjects(subjectsData)
+      setAllSections(sectionsData)
+      setAllSessions(sessionsData)
+      setAllDisputes(disputesData)
+    }
+    fetchData()
   }, [router])
 
-  const handleResolve = (resolution: 'accept' | 'reject' | 'override', newStatus?: 'present' | 'late' | 'absent') => {
+  const handleResolve = async (resolution: 'accept' | 'reject' | 'override', newStatus?: 'present' | 'late' | 'absent') => {
     if (!selectedRecord) return
-    api.resolveDispute(selectedRecord.id, resolution, newStatus)
+    await api.resolveDispute(selectedRecord.id, resolution, newStatus)
+    setAllDisputes(prev => prev.map(r =>
+      r.id === selectedRecord.id
+        ? { ...r, disputeResolved: true, status: newStatus || (resolution === 'accept' ? 'present' : 'absent') }
+        : r
+    ))
     setSelectedRecord(null)
 
     if (resolution === 'accept') {
@@ -100,26 +120,53 @@ export default function DisputesPage() {
     setExpandedSections((prev) => ({ ...prev, [secId]: !prev[secId] }))
   }
 
-  // Count active stats dynamically
-  const pendingCount = api.getDisputedRecords(undefined, { status: 'pending' }).length
-  const resolvedCount = api.getDisputedRecords(undefined, { status: 'resolved' }).length
+  // Lookup maps
+  const subjectMap = useMemo(() => {
+    const map = new Map<string, Subject>()
+    for (const s of subjects) map.set(s.id, s)
+    return map
+  }, [subjects])
 
-  // Query records with search and status filters
-  const allFilteredRecords = api.getDisputedRecords(undefined, {
-    search: searchQuery || undefined,
-    status: activeTab,
-  })
+  const sectionMap = useMemo(() => {
+    const map = new Map<string, Section>()
+    for (const s of allSections) map.set(s.id, s)
+    return map
+  }, [allSections])
 
-  // Apply client-side subject filter
-  const records = selectedSubjectId === 'all'
-    ? allFilteredRecords
-    : allFilteredRecords.filter(r => {
-        const sec = api.getSection(r.sectionId)
-        return sec && sec.subjectId === selectedSubjectId
-      })
+  const sessionMap = useMemo(() => {
+    const map = new Map<string, Session>()
+    for (const s of allSessions) map.set(s.id, s)
+    return map
+  }, [allSessions])
 
-  // Group disputes helper
-  const getGroupedDisputes = () => {
+  // Derived state
+  const pendingCount = allDisputes.filter(r => !r.disputeResolved).length
+  const resolvedCount = allDisputes.filter(r => r.disputeResolved).length
+
+  const filteredByTabAndSearch = useMemo(() =>
+    allDisputes.filter(r => {
+      if (activeTab === 'pending' && r.disputeResolved) return false
+      if (activeTab === 'resolved' && !r.disputeResolved) return false
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase()
+        if (!r.studentName.toLowerCase().includes(q) && !(r.studentId?.toLowerCase() || '').includes(q)) return false
+      }
+      return true
+    }),
+    [allDisputes, activeTab, searchQuery]
+  )
+
+  const records = useMemo(() =>
+    selectedSubjectId === 'all'
+      ? filteredByTabAndSearch
+      : filteredByTabAndSearch.filter(r => {
+          const sec = sectionMap.get(r.sectionId)
+          return sec && sec.subjectId === selectedSubjectId
+        }),
+    [filteredByTabAndSearch, selectedSubjectId, sectionMap]
+  )
+
+  const groupedDisputes = useMemo(() => {
     const groups: Record<
       string,
       {
@@ -146,9 +193,9 @@ export default function DisputesPage() {
     > = {}
 
     records.forEach((record) => {
-      const section = api.getSection(record.sectionId)
-      const subject = section ? api.getSubject(section.subjectId) : undefined
-      const session = api.getSession(record.sessionId)
+      const section = sectionMap.get(record.sectionId)
+      const subject = section ? subjectMap.get(section.subjectId) : undefined
+      const session = sessionMap.get(record.sessionId)
 
       const subjectId = subject ? subject.id : 'unknown'
       const subjectName = subject ? subject.name : 'Unknown Subject'
@@ -197,9 +244,7 @@ export default function DisputesPage() {
         sessions: Object.values(sectionGroup.sessions),
       })),
     }))
-  }
-
-  const groupedDisputes = getGroupedDisputes()
+  }, [records, sectionMap, subjectMap, sessionMap])
 
   if (!user) return null
 
@@ -435,9 +480,9 @@ export default function DisputesPage() {
             <p className="text-sm font-semibold text-[#7B1113] dark:text-[#FFDF00] text-center mb-4">{selectedRecord.studentName}</p>
 
             {(() => {
-              const rSec = api.getSection(selectedRecord.sectionId)
-              const rSubj = rSec ? api.getSubject(rSec.subjectId) : undefined
-              const rSess = api.getSession(selectedRecord.sessionId)
+              const rSec = sectionMap.get(selectedRecord.sectionId)
+              const rSubj = rSec ? subjectMap.get(rSec.subjectId) : undefined
+              const rSess = sessionMap.get(selectedRecord.sessionId)
               return (
                 <div className="bg-zinc-50 dark:bg-[#0A0A0C] border border-zinc-200 dark:border-zinc-800 p-4 mb-4 space-y-2 text-sm rounded-none">
                   {selectedRecord.disputeResolved && (

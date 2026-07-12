@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/mock-api'
-import type { Student, Section, AttendanceRecord, DisputeReason } from '@polycheck/shared'
+import type { Student, Section, AttendanceRecord, DisputeReason, Subject } from '@polycheck/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sidebar } from '@/components/layout/sidebar'
 import StatusBadge from '@/components/StatusBadge'
@@ -79,6 +79,7 @@ function StudentDashboardContent() {
   const [isIdModalOpen, setIsIdModalOpen] = useState(false)
   const [isIdFlipped, setIsIdFlipped] = useState(false)
   const [scheduleDate, setScheduleDate] = useState(new Date())
+  const [allSubjects, setAllSubjects] = useState<Subject[]>([])
   const [disputeRecord, setDisputeRecord] = useState<AttendanceRecord | null>(null)
   const [disputeReason, setDisputeReason] = useState('')
   const [disputeDescription, setDisputeDescription] = useState('')
@@ -104,7 +105,7 @@ function StudentDashboardContent() {
 
     setEnrollLoading(true)
 
-    const allSections = api.getSections()
+    const allSections = await api.getSections()
     const foundSection = allSections.find((s) => s.enrollmentCode === trimmed)
     if (!foundSection) {
       setEnrollError('Invalid enrollment code. Please check and try again.')
@@ -118,7 +119,7 @@ function StudentDashboardContent() {
       return
     }
 
-    const result = api.enrollStudent({
+    const result = await api.enrollStudent({
       sectionId: foundSection.id,
       studentId: user!.id,
       studentName: user!.fullName,
@@ -134,16 +135,16 @@ function StudentDashboardContent() {
     setEnrollCode('')
     setEnrollLoading(false)
     // Refresh student's enrolled subjects list
-    const updatedSections = api.getStudentSections(user!.id)
+    const updatedSections = await api.getStudentSections(user!.id)
     setSections(updatedSections)
-    const updatedRecords = api.getAttendanceForStudent(user!.id)
-    const updatedSessions = api.getSessions()
+    const updatedRecords = await api.getAttendanceForStudent(user!.id)
+    const updatedSessions = await api.getSessions()
     const todayStr = new Date().toISOString().slice(0, 10)
     const evs = generateStudentCalendarEvents(
       updatedSections,
       updatedSessions,
       updatedRecords,
-      (id) => { const s = api.getSubject(id); return s ? { name: s.name, code: s.code } : undefined },
+      (id) => subjectMap.get(id),
       todayStr,
       todayStr
     ).sort((a, b) => a.startTime.localeCompare(b.startTime))
@@ -151,33 +152,52 @@ function StudentDashboardContent() {
   }
 
   useEffect(() => {
-    const cu = api.getCurrentUser()
-    if (!cu || cu.role !== 'student') {
-      router.push('/')
-      return
-    }
-    setUser(cu as Student)
-    if (cu.studentId) {
-      const studentSections = api.getStudentSections(cu.id)
-      const studentRecords = api.getAttendanceForStudent(cu.id)
-      const allSessions = api.getSessions()
-      setSections(studentSections)
-      setRecords(studentRecords)
-      setSessions(allSessions)
+    const fn = async () => {
+      const cu = api.getCurrentUser()
+      if (!cu || cu.role !== 'student') {
+        router.push('/')
+        return
+      }
+      setUser(cu as Student)
+      if (cu.studentId) {
+        const studentSections = await api.getStudentSections(cu.id)
+        const studentRecords = await api.getAttendanceForStudent(cu.id)
+        const allSessions = await api.getSessions()
+        setSections(studentSections)
+        setRecords(studentRecords)
+        setSessions(allSessions)
 
-      const todayStr = new Date().toISOString().slice(0, 10)
-      const evs = generateStudentCalendarEvents(
-        studentSections,
-        allSessions,
-        studentRecords,
-        (id) => { const s = api.getSubject(id); return s ? { name: s.name, code: s.code } : undefined },
-        todayStr,
-        todayStr
-      ).sort((a, b) => a.startTime.localeCompare(b.startTime))
-      setTodayEvents(evs)
+        const todayStr = new Date().toISOString().slice(0, 10)
+        const evs = generateStudentCalendarEvents(
+          studentSections,
+          allSessions,
+          studentRecords,
+          (id) => subjectMap.get(id),
+          todayStr,
+          todayStr
+        ).sort((a, b) => a.startTime.localeCompare(b.startTime))
+        setTodayEvents(evs)
+      }
     }
+    fn()
   }, [router])
   
+  const subjectMap = useMemo(() => {
+    const map = new Map<string, { name: string; code: string }>()
+    for (const s of allSubjects) {
+      map.set(s.id, { name: s.name, code: s.code })
+    }
+    return map
+  }, [allSubjects])
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const subjects = await api.getSubjects()
+      setAllSubjects(subjects)
+    }
+    fetchData()
+  }, [])
+
   useEffect(() => {
     setAttendancePage(0)
   }, [activeTab])
@@ -190,16 +210,17 @@ function StudentDashboardContent() {
   const sectionSubjectName = (sectionId: string) => {
     const sec = sections.find((s) => s.id === sectionId)
     if (!sec) return sectionId
-    const subj = api.getSubject(sec.subjectId)
+    const subj = subjectMap.get(sec.subjectId)
     return subj?.name ?? sectionId
   }
 
-  const handleSubmitDispute = () => {
+  const handleSubmitDispute = async () => {
     if (!disputeRecord || !disputeReason) return
-    const result = api.submitDispute({ recordId: disputeRecord.id, reason: disputeReason as DisputeReason, description: disputeDescription })
+    const result = await api.submitDispute({ recordId: disputeRecord.id, reason: disputeReason as DisputeReason, description: disputeDescription })
     if (result) {
       setDisputeFeedback({ type: 'success', message: 'Dispute submitted successfully.' })
-      setRecords(api.getAttendanceForStudent(user!.id))
+      const updatedRecords = await api.getAttendanceForStudent(user!.id)
+      setRecords(updatedRecords)
     } else {
       setDisputeFeedback({ type: 'error', message: 'Failed to submit dispute.' })
     }
@@ -585,7 +606,7 @@ const ATTENDANCE_PAGE_SIZE = 8
             <>
               <div className="grid gap-6 sm:grid-cols-2">
               {sections.map((section) => {
-                const subj = api.getSubject(section.subjectId)
+                const subj = subjectMap.get(section.subjectId)
                 return (
                 <Link key={section.id} href={`/student/subjects/${section.id}`} className="block group">
                   <Card className="rounded-none border-zinc-300 dark:border-zinc-800 border-l-4 border-l-maroon dark:border-l-golden hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50 cursor-pointer flex flex-col h-full">
@@ -674,7 +695,7 @@ const ATTENDANCE_PAGE_SIZE = 8
                       sections,
                       sessions,
                       records,
-                      (id) => { const s = api.getSubject(id); return s ? { name: s.name, code: s.code } : undefined },
+                      (id) => subjectMap.get(id),
                       formatDate(weekRange.start),
                       formatDate(weekRange.end),
                     )

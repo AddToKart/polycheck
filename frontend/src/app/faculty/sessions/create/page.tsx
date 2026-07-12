@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { CalendarCheck, MapPin } from 'lucide-react'
 import { api } from '@/lib/mock-api'
-import type { User, Subject, Section } from '@polycheck/shared'
+import type { User, Subject, Section, Session } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import MapPicker from '@/components/MapPicker'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -41,17 +41,32 @@ export default function CreateSessionPage() {
   const [bulkDays, setBulkDays] = useState<string[]>([])
   const [isRescheduled, setIsRescheduled] = useState(false)
   const [rescheduledFromDate, setRescheduledFromDate] = useState('')
+  const [existingSessionOnDate, setExistingSessionOnDate] = useState<Session | null>(null)
   const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
   useEffect(() => {
-    const cu = api.getCurrentUser()
-    if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
-      router.push('/')
-      return
+    if (!bulkMode && sectionId && date) {
+      api.getSessions(sectionId).then((sessions) => {
+        setExistingSessionOnDate(sessions.find((s) => s.date === date) ?? null)
+      })
+    } else {
+      setExistingSessionOnDate(null)
     }
-    setUser(cu)
-    setSubjects(api.getSubjects())
-    setSections(api.getSections().filter((s) => s.teacherId === cu.id))
+  }, [bulkMode, sectionId, date])
+
+  useEffect(() => {
+    const init = async () => {
+      const cu = api.getCurrentUser()
+      if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
+        router.push('/')
+        return
+      }
+      setUser(cu)
+      setSubjects(await api.getSubjects())
+      const allSections = await api.getSections()
+      setSections(allSections.filter((s) => s.teacherId === cu.id))
+    }
+    init()
   }, [router])
 
   useEffect(() => {
@@ -61,10 +76,6 @@ export default function CreateSessionPage() {
   const selectedSection = sections.find((s) => s.id === sectionId)
   const selectedSubject = subjects.find((s) => s.id === subjectId)
 
-  // Issue 3: Duplicate session detection
-  const existingSessionOnDate = !bulkMode && sectionId && date
-    ? api.getSessions(sectionId).find((s) => s.date === date)
-    : null
   const hasDuplicateConflict = !!existingSessionOnDate && !isRescheduled
 
   useEffect(() => {
@@ -122,13 +133,13 @@ export default function CreateSessionPage() {
     return count
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedSection || !selectedSubject || !user) return
     if (bulkMode) {
       const count = calculateBulkCount()
       if (count === 0) return
-      api.createBulkSessions({
+      await api.createBulkSessions({
         sectionId: selectedSection.id,
         subjectName: selectedSubject.name,
         startDate: bulkStartDate,
@@ -148,7 +159,7 @@ export default function CreateSessionPage() {
       const replaceDates = getStandardReplaceDates()
       const selectedReplaceOption = replaceDates.find((d) => d.dateStr === rescheduledFromDate)
 
-      api.createSession({
+      await api.createSession({
         sectionId: selectedSection.id,
         subjectName: selectedSubject.name,
         date,

@@ -32,8 +32,10 @@ export default function SectionDetailPage() {
   const [sessionPermissions, setSessionPermissions] = useState<SessionPermission[]>([])
   const [presidentSelectOpen, setPresidentSelectOpen] = useState(false)
   const [qacSelectOpen, setQacSelectOpen] = useState(false)
+  const [allStudents, setAllStudents] = useState<Student[]>([])
+  const [subjectName, setSubjectName] = useState('')
+  const [subjectCode, setSubjectCode] = useState('')
 
-  const allStudents = api.getStudents()
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -43,22 +45,29 @@ export default function SectionDetailPage() {
       return
     }
     setUser(cu)
+    api.getStudents().then(setAllStudents)
   }, [router])
 
   useEffect(() => {
-    const cu = api.getCurrentUser()
-    if (!id) return
-    const sec = api.getSection(id)
-    if (!sec) { router.push('/faculty/subjects'); return }
-    if (cu && cu.role === 'teacher' && sec.teacherId !== cu.id) {
-      router.push('/faculty')
-      return
+    const init = async () => {
+      const cu = api.getCurrentUser()
+      if (!id) return
+      const sec = await api.getSection(id)
+      if (!sec) { router.push('/faculty/subjects'); return }
+      if (cu && cu.role === 'teacher' && sec.teacherId !== cu.id) {
+        router.push('/faculty')
+        return
+      }
+      setSection(sec)
+      setStudents(await api.getSectionStudents(id))
+      setSectionRoles(await api.getSectionRoles(id))
+      setSessionPermissions(await api.getActiveSessionPermissions(id))
+      const subj = await api.getSubject(sec.subjectId)
+      setSubjectName(subj?.name ?? '')
+      setSubjectCode(subj?.code ?? '')
+      setLoading(false)
     }
-    setSection(sec)
-    setStudents(api.getSectionStudents(id))
-    setSectionRoles(api.getSectionRoles(id))
-    setSessionPermissions(api.getActiveSessionPermissions(id))
-    setLoading(false)
+    init()
   }, [id, router])
 
   const handleLogout = () => {
@@ -88,30 +97,30 @@ export default function SectionDetailPage() {
     )
   }, [allStudents, enrollSearch, enrolledIds])
 
-  const handleEnrollStudent = (targetStudentId: string, targetStudentName: string) => {
-    const result = api.enrollStudent({ sectionId: id!, studentId: targetStudentId, studentName: targetStudentName })
+  const handleEnrollStudent = async (targetStudentId: string, targetStudentName: string) => {
+    const result = await api.enrollStudent({ sectionId: id!, studentId: targetStudentId, studentName: targetStudentName })
     if (result) {
       setEnrollSuccess(targetStudentName)
-      setStudents(api.getSectionStudents(id!))
-      const sec = api.getSection(id!)
+      setStudents(await api.getSectionStudents(id!))
+      const sec = await api.getSection(id!)
       if (sec) setSection({ ...sec })
       setTimeout(() => setEnrollSuccess(''), 3000)
     }
   }
 
-  const handleResetCode = () => {
+  const handleResetCode = async () => {
     if (!id) return
-    const code = api.resetEnrollmentCode(id)
-    const sec = api.getSection(id)
+    const code = await api.resetEnrollmentCode(id)
+    const sec = await api.getSection(id)
     if (sec) setSection({ ...sec })
     alert(`New enrollment code: ${code}`)
   }
 
-  const handleDisableCode = () => {
+  const handleDisableCode = async () => {
     if (!id) return
     if (window.confirm('Students will no longer be able to enroll using this code. Continue?')) {
-      api.disableEnrollmentCode(id)
-      const sec = api.getSection(id)
+      await api.disableEnrollmentCode(id)
+      const sec = await api.getSection(id)
       if (sec) setSection({ ...sec })
     }
   }
@@ -122,8 +131,6 @@ export default function SectionDetailPage() {
     </div>
   )
   if (!user || !section) return null
-
-  const subj = api.getSubject(section.subjectId)
 
   const totalPresent = students.reduce((sum, s) => sum + s.attendance.present, 0)
   const totalLate = students.reduce((sum, s) => sum + s.attendance.late, 0)
@@ -141,8 +148,8 @@ export default function SectionDetailPage() {
               <ArrowLeft className="w-4 h-4" /> Subject
             </Link>
             <div>
-              <h1 className="text-2xl font-heading font-bold text-maroon-dark dark:text-white">{subj?.name}</h1>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">{subj?.code} &middot; Section {section.section}</p>
+              <h1 className="text-2xl font-heading font-bold text-maroon-dark dark:text-white">{subjectName}</h1>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">{subjectCode} &middot; Section {section.section}</p>
             </div>
           </div>
 
@@ -337,23 +344,23 @@ export default function SectionDetailPage() {
                         </div>
                         <div className="flex gap-2">
                           {perm && !isExpired ? (
-                            <Button variant="outline" size="sm" className="text-red-500 border-red-500 text-xs" onClick={() => {
-                              api.revokeSessionPermission(id, pres.studentId)
-                              setSessionPermissions(api.getActiveSessionPermissions(id))
+                            <Button variant="outline" size="sm" className="text-red-500 border-red-500 text-xs" onClick={async () => {
+                              await api.revokeSessionPermission(id, pres.studentId)
+                              setSessionPermissions(await api.getActiveSessionPermissions(id))
                             }}>
                               <XCircle className="w-3 h-3 mr-1" /> Revoke
                             </Button>
                           ) : (
-                            <Button variant="default" size="sm" className="text-xs" onClick={() => {
-                              api.grantSessionPermission(id, pres.studentId)
-                              setSessionPermissions(api.getActiveSessionPermissions(id))
+                            <Button variant="default" size="sm" className="text-xs" onClick={async () => {
+                              await api.grantSessionPermission(id, pres.studentId)
+                              setSessionPermissions(await api.getActiveSessionPermissions(id))
                             }}>
                               <CheckCircle className="w-3 h-3 mr-1" /> Grant 24hr
                             </Button>
                           )}
-                          <Button variant="outline" size="sm" className="text-xs text-red-400 border-red-300" onClick={() => {
-                            api.removeSectionRole(id, pres.studentId, 'president')
-                            setSectionRoles(api.getSectionRoles(id))
+                          <Button variant="outline" size="sm" className="text-xs text-red-400 border-red-300" onClick={async () => {
+                            await api.removeSectionRole(id, pres.studentId, 'president')
+                            setSectionRoles(await api.getSectionRoles(id))
                           }}>Remove</Button>
                         </div>
                       </div>
@@ -369,9 +376,9 @@ export default function SectionDetailPage() {
                         {presidentSelectOpen && (
                           <div className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-lg z-10 max-h-48 overflow-y-auto">
                             {students.filter(s => !sectionRoles.find(r => r.studentId === s.id && r.role === 'president')).map((s) => (
-                              <button key={s.id} className="w-full text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center gap-2" onClick={() => {
-                                api.assignSectionRole(id, s.id, 'president')
-                                setSectionRoles(api.getSectionRoles(id))
+                              <button key={s.id} className="w-full text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center gap-2" onClick={async () => {
+                                await api.assignSectionRole(id, s.id, 'president')
+                                setSectionRoles(await api.getSectionRoles(id))
                                 setPresidentSelectOpen(false)
                               }}>
                                 <span className="text-[10px] font-bold text-zinc-500">{s.studentId}</span>
@@ -405,9 +412,9 @@ export default function SectionDetailPage() {
                           {qacs.map((qac) => (
                             <div key={qac.id} className="flex items-center gap-2 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border border-zinc-200 dark:border-zinc-800">
                               <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{qac.studentName}</span>
-                              <button className="text-red-400 hover:text-red-600" onClick={() => {
-                                api.removeSectionRole(id, qac.studentId, 'qac')
-                                setSectionRoles(api.getSectionRoles(id))
+                              <button className="text-red-400 hover:text-red-600" onClick={async () => {
+                                await api.removeSectionRole(id, qac.studentId, 'qac')
+                                setSectionRoles(await api.getSectionRoles(id))
                               }}>
                                 <XCircle className="w-3.5 h-3.5" />
                               </button>
@@ -424,9 +431,9 @@ export default function SectionDetailPage() {
                         {qacSelectOpen && (
                           <div className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-lg z-10 max-h-48 overflow-y-auto">
                             {students.filter(s => !sectionRoles.find(r => r.studentId === s.id && r.role === 'qac')).map((s) => (
-                              <button key={s.id} className="w-full text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center gap-2" onClick={() => {
-                                api.assignSectionRole(id, s.id, 'qac')
-                                setSectionRoles(api.getSectionRoles(id))
+                              <button key={s.id} className="w-full text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center gap-2" onClick={async () => {
+                                await api.assignSectionRole(id, s.id, 'qac')
+                                setSectionRoles(await api.getSectionRoles(id))
                                 setQacSelectOpen(false)
                               }}>
                                 <span className="text-[10px] font-bold text-zinc-500">{s.studentId}</span>

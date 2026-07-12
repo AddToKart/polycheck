@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, ArrowRight } from 'lucide-react'
@@ -15,6 +15,8 @@ function SessionsContent() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
+  const [allSubjects, setAllSubjects] = useState<Subject[]>([])
+  const [allSections, setAllSections] = useState<Section[]>([])
   const [activating, setActivating] = useState('')
 
   useEffect(() => {
@@ -24,25 +26,35 @@ function SessionsContent() {
       return
     }
     setUser(cu)
-    setSessions(api.getSessions())
+    const fetchData = async () => {
+      const [sessions, subjects, sections] = await Promise.all([
+        api.getSessions(),
+        api.getSubjects(),
+        api.getSections(),
+      ])
+      setSessions(sessions)
+      setAllSubjects(subjects)
+      setAllSections(sections)
+    }
+    fetchData()
   }, [router])
 
   if (!user) return null
 
-  const allSubjects = api.getSubjects()
-  const allSections = api.getSections()
-
   type GroupedSessions = Record<string, Session[]>
-  const grouped = sessions.reduce<Record<string, { subjectId: string; sessions: GroupedSessions }>>((acc, s) => {
-    const section = allSections.find(sec => sec.id === s.sectionId)
-    const subject = section ? allSubjects.find(sub => sub.id === section.subjectId) : undefined
-    const subjectName = subject?.name ?? s.subjectName
-    const subjectId = subject?.id ?? ''
-    if (!acc[subjectName]) acc[subjectName] = { subjectId, sessions: {} }
-    if (!acc[subjectName].sessions[s.sectionId]) acc[subjectName].sessions[s.sectionId] = []
-    acc[subjectName].sessions[s.sectionId].push(s)
-    return acc
-  }, {})
+  const grouped = useMemo(() =>
+    sessions.reduce<Record<string, { subjectId: string; sessions: GroupedSessions }>>((acc, s) => {
+      const section = allSections.find(sec => sec.id === s.sectionId)
+      const subject = section ? allSubjects.find(sub => sub.id === section.subjectId) : undefined
+      const subjectName = subject?.name ?? s.subjectName
+      const subjectId = subject?.id ?? ''
+      if (!acc[subjectName]) acc[subjectName] = { subjectId, sessions: {} }
+      if (!acc[subjectName].sessions[s.sectionId]) acc[subjectName].sessions[s.sectionId] = []
+      acc[subjectName].sessions[s.sectionId].push(s)
+      return acc
+    }, {}),
+    [sessions, allSubjects, allSections]
+  )
 
   const getSectionLabel = (sectionId: string) => {
     const sec = allSections.find(s => s.id === sectionId)

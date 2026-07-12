@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Calendar, BookOpen, CheckCircle, Clock, XCircle, CalendarDays, MapPin } from 'lucide-react'
 import { api } from '@/lib/mock-api'
-import type { Student, AttendanceRecord } from '@polycheck/shared'
+import type { Student, AttendanceRecord, Section, Session, Subject } from '@polycheck/shared'
 import { generateStudentCalendarEvents } from '@polycheck/shared/utils'
 import {
   formatDate,
@@ -450,18 +450,33 @@ function StudentScheduleContent() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [currentYear, setCurrentYear] = useState(currentDate.getFullYear())
   const [currentMonth, setCurrentMonth] = useState(currentDate.getMonth())
+  const [allSections, setAllSections] = useState<Section[]>([])
+  const [allSessions, setAllSessions] = useState<Session[]>([])
+  const [allSubjects, setAllSubjects] = useState<Subject[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
 
   useEffect(() => {
-    const cu = api.getCurrentUser()
-    if (!cu || cu.role !== 'student') {
-      router.push('/')
-      return
+    const fn = async () => {
+      const cu = api.getCurrentUser()
+      if (!cu || cu.role !== 'student') {
+        router.push('/')
+        return
+      }
+      setUser(cu as Student)
+      if (cu.studentId) {
+        const [studentRecords, sections, sessions, subjects] = await Promise.all([
+          api.getAttendanceForStudent(cu.id),
+          api.getStudentSections(cu.id),
+          api.getSessions(),
+          api.getSubjects(),
+        ])
+        setRecords(studentRecords)
+        setAllSections(sections)
+        setAllSessions(sessions)
+        setAllSubjects(subjects)
+      }
     }
-    setUser(cu as Student)
-    if (cu.studentId) {
-      setRecords(api.getAttendanceForStudent(cu.id))
-    }
+    fn()
   }, [router])
 
   const handleLogout = useCallback(() => {
@@ -471,32 +486,28 @@ function StudentScheduleContent() {
 
   const studentId = user?.id ?? ''
 
-  const sections = useMemo(() => {
-    if (!user) return []
-    return api.getStudentSections(user.id)
-  }, [user])
-
-  const sessions = useMemo(() => {
-    return api.getSessions()
-  }, [])
+  const subjectMap = useMemo(() => {
+    const map = new Map<string, { name: string; code: string }>()
+    for (const s of allSubjects) {
+      map.set(s.id, { name: s.name, code: s.code })
+    }
+    return map
+  }, [allSubjects])
 
   const events = useMemo(() => {
-    if (sections.length === 0 || !studentId) return []
+    if (allSections.length === 0 || !studentId) return []
     const range = view === 'month'
       ? getDateRangeForMonth(currentYear, currentMonth)
       : getDateRangeForWeek(currentDate)
     return generateStudentCalendarEvents(
-      sections,
-      sessions,
+      allSections,
+      allSessions,
       records,
-      (id) => {
-        const subj = api.getSubject(id)
-        return subj ? { name: subj.name, code: subj.code } : undefined
-      },
+      (id) => subjectMap.get(id),
       formatDate(range.start),
       formatDate(range.end),
     )
-  }, [sections, sessions, records, currentDate, currentYear, currentMonth, view, studentId])
+  }, [allSections, allSessions, records, currentDate, currentYear, currentMonth, view, studentId, subjectMap])
 
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate])
   const today = new Date()
@@ -600,7 +611,7 @@ function StudentScheduleContent() {
           </div>
 
           <div className="flex-1 min-h-0 flex flex-col md:overflow-hidden">
-            {sections.length === 0 ? (
+            {allSections.length === 0 ? (
               <div className="border border-dashed border-zinc-300 dark:border-zinc-700 p-16 text-center bg-zinc-50 dark:bg-zinc-900/20 shrink-0">
                 <BookOpen className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mx-auto mb-4" />
                 <p className="text-xl font-heading font-bold text-zinc-400 mb-2">NO ENROLLMENTS</p>

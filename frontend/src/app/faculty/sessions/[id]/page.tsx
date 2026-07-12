@@ -46,9 +46,9 @@ export default function SessionDetailPage() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const refreshData = useCallback(() => {
+  const refreshData = useCallback(async () => {
     if (!id) return
-    const s = api.getSession(id)
+    const s = await api.getSession(id)
     if (s) {
       setSession(s)
       if (s.qrToken) {
@@ -57,31 +57,42 @@ export default function SessionDetailPage() {
         setQrDataUrl(null)
       }
     }
-    setRecords(api.getAttendanceRecords(id))
-    setProofsOfClass(api.getProofsOfClass(id))
+    setRecords(await api.getAttendanceRecords(id))
+    setProofsOfClass(await api.getProofsOfClass(id))
     setLastUpdated(new Date())
   }, [id])
 
   useEffect(() => {
-    const cu = api.getCurrentUser()
-    if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
-      router.push('/')
-      return
-    }
-    setUser(cu)
-    refreshData()
-    if (id) {
-      const section = api.getSections().find((s) => api.getSectionSessions(s.id).some((se) => se.id === id))
-      if (section) {
-        if (cu.role === 'teacher' && section.teacherId !== cu.id) {
-          router.push('/faculty')
-          return
-        }
-        const students = api.getSectionStudents(section.id)
-        setEnrolledStudents(students as Student[])
+    const init = async () => {
+      const cu = api.getCurrentUser()
+      if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
+        router.push('/')
+        return
       }
+      setUser(cu)
+      await refreshData()
+      if (id) {
+        const sections = await api.getSections()
+        let foundSection = null
+        for (const s of sections) {
+          const ses = await api.getSectionSessions(s.id)
+          if (ses.some((se) => se.id === id)) {
+            foundSection = s
+            break
+          }
+        }
+        if (foundSection) {
+          if (cu.role === 'teacher' && foundSection.teacherId !== cu.id) {
+            router.push('/faculty')
+            return
+          }
+          const students = await api.getSectionStudents(foundSection.id)
+          setEnrolledStudents(students as Student[])
+        }
+      }
+      setLoading(false)
     }
-    setLoading(false)
+    init()
   }, [id, router, refreshData])
 
   useEffect(() => {
@@ -89,8 +100,8 @@ export default function SessionDetailPage() {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
       return
     }
-    pollRef.current = setInterval(() => {
-      setRecords(api.getAttendanceRecords(id))
+    pollRef.current = setInterval(async () => {
+      setRecords(await api.getAttendanceRecords(id))
       setLastUpdated(new Date())
     }, 10000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
@@ -139,35 +150,35 @@ export default function SessionDetailPage() {
   const pendingCount = records.filter((r) => r.status === 'pending').length
   const studentMap = new Map(records.map((r) => [r.studentId, r]))
 
-  const handleGenerateQr = () => {
+  const handleGenerateQr = async () => {
     const mins = parseInt(validityMinutes, 10)
     if (isNaN(mins) || mins < 1) return
-    api.generateQrCode(session.id, mins)
+    await api.generateQrCode(session.id, mins)
     setShowValidityPrompt(false)
-    refreshData()
+    await refreshData()
     addNotification('success', 'QR Code Generated', `Session activated with ${mins}min validity`)
   }
 
-  const handleEndSession = () => {
+  const handleEndSession = async () => {
     if (confirm('Mark all pending students as absent and end the session?')) {
-      api.endSession(session.id)
-      refreshData()
+      await api.endSession(session.id)
+      await refreshData()
       addNotification('info', 'Session Ended', 'All pending students marked as absent')
     }
   }
 
-  const handleManualOverride = (studentId: string, currentStatus: AttendanceStatus) => {
+  const handleManualOverride = async (studentId: string, currentStatus: AttendanceStatus) => {
     const idx = STATUS_CYCLE.indexOf(currentStatus)
     const nextStatus = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]
     const existing = records.find((r) => r.studentId === studentId && r.sessionId === session.id)
     if (existing) {
-      api.updateAttendanceStatus(existing.id, nextStatus)
-      const updated = api.getAttendanceRecords(session.id).find((r) => r.id === existing.id)
+      await api.updateAttendanceStatus(existing.id, nextStatus)
+      const updated = await api.getAttendanceRecords(session.id).then((rs) => rs.find((r) => r.id === existing.id))
       if (updated) Object.assign(updated, { manuallySet: true })
     } else {
       const student = enrolledStudents.find((s) => s.id === studentId)
       const now = new Date()
-      api.addAttendanceRecord({
+      await api.addAttendanceRecord({
         id: `a-manual-${records.length}`,
         sessionId: session.id,
         sectionId: session.sectionId,
@@ -182,7 +193,7 @@ export default function SessionDetailPage() {
         manuallySet: true,
       })
     }
-    refreshData()
+    await refreshData()
     addNotification('info', 'Status Updated', `Student marked as ${nextStatus}`)
   }
 
@@ -348,7 +359,7 @@ export default function SessionDetailPage() {
                       {poc.description && <p className="text-[10px] text-gray-500 mt-1 italic">&quot;{poc.description}&quot;</p>}
                       <button
                         className="mt-2 text-[10px] text-red-500 hover:text-red-700 flex items-center gap-1"
-                        onClick={() => { api.deleteProofOfClass(poc.id); setProofsOfClass(api.getProofsOfClass(id)) }}
+                        onClick={async () => { await api.deleteProofOfClass(poc.id); setProofsOfClass(await api.getProofsOfClass(id)) }}
                       >
                         <Trash2 className="w-3 h-3" /> Delete
                       </button>

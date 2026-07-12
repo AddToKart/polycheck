@@ -14,20 +14,30 @@ export default function SubjectsPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
+  const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({})
 
   useEffect(() => {
-    const cu = api.getCurrentUser()
-    if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
-      router.push('/')
-      return
+    const init = async () => {
+      const cu = api.getCurrentUser()
+      if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
+        router.push('/')
+        return
+      }
+      setUser(cu)
+      const allSections = await api.getSections()
+      const counts: Record<string, number> = {}
+      for (const sec of allSections) {
+        counts[sec.subjectId] = (counts[sec.subjectId] || 0) + 1
+      }
+      setSectionCounts(counts)
+      let all = await api.getSubjects()
+      if (cu.role === 'teacher') {
+        const teacherSectionIds = allSections.filter((s) => s.teacherId === cu.id).map((s) => s.subjectId)
+        all = all.filter((subj) => teacherSectionIds.includes(subj.id))
+      }
+      setSubjects(all)
     }
-    setUser(cu)
-    let all = api.getSubjects()
-    if (cu.role === 'teacher') {
-      const teacherSectionIds = api.getSections().filter((s) => s.teacherId === cu.id).map((s) => s.subjectId)
-      all = all.filter((subj) => teacherSectionIds.includes(subj.id))
-    }
-    setSubjects(all)
+    init()
   }, [router])
 
   if (!user) return null
@@ -73,7 +83,7 @@ export default function SubjectsPage() {
           {/* Subjects Grid */}
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {subjects.map((subject) => {
-              const sectionCount = api.getSections().filter((s) => s.subjectId === subject.id).length
+              const sectionCount = sectionCounts[subject.id] ?? 0
               return (
               <div
                 key={subject.id}

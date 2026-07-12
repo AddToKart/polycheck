@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Camera, Trash2, Upload, Clock, MapPin, Timer, Circle } from 'lucide-react'
 import { api } from '@/lib/mock-api'
-import type { User, Student, Session, Section, SectionRole, ProofOfClass } from '@polycheck/shared'
+import type { User, Student, Session, Section, SectionRole, ProofOfClass, Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -24,26 +24,40 @@ export default function StudentSessionDetailPage() {
   const [showUpload, setShowUpload] = useState(false)
   const [photoDescription, setPhotoDescription] = useState('')
   const [uploadedPhoto, setUploadedPhoto] = useState<string | null>(null)
+  const [subject, setSubject] = useState<{ name: string; code: string } | null>(null)
 
   useEffect(() => {
-    const cu = api.getCurrentUser()
-    if (!cu || cu.role !== 'student') { router.push('/'); return }
-    const student = cu as Student
-    setUser(student)
-    const roles = api.getStudentRoles(student.id)
-    setIsQac(roles.some(r => r.sectionId === sectionId && r.role === 'qac'))
+    const fn = async () => {
+      const cu = api.getCurrentUser()
+      if (!cu || cu.role !== 'student') { router.push('/'); return }
+      const student = cu as Student
+      setUser(student)
+      const roles = await api.getStudentRoles(student.id)
+      setIsQac(roles.some(r => r.sectionId === sectionId && r.role === 'qac'))
+    }
+    fn()
   }, [router, sectionId])
 
   useEffect(() => {
     if (!sessionId || !sectionId) return
-    setSession(api.getSession(sessionId) ?? null)
-    setSection(api.getSection(sectionId) ?? null)
-    setProofs(api.getProofsOfClass(sessionId))
+    const fn = async () => {
+      const sess = await api.getSession(sessionId)
+      setSession(sess ?? null)
+      const sec = await api.getSection(sectionId)
+      setSection(sec ?? null)
+      if (sec) {
+        const subj = await api.getSubject(sec.subjectId)
+        if (subj) setSubject({ name: subj.name, code: subj.code })
+      }
+      const p = await api.getProofsOfClass(sessionId)
+      setProofs(p)
+    }
+    fn()
   }, [sessionId, sectionId])
 
-  const handleUploadProof = () => {
+  const handleUploadProof = async () => {
     if (!user || !session) return
-    const poc = api.uploadProofOfClass({
+    await api.uploadProofOfClass({
       sectionId: session.sectionId,
       sessionId: session.id,
       photoData: uploadedPhoto ?? `proof-${Date.now()}`,
@@ -51,22 +65,22 @@ export default function StudentSessionDetailPage() {
       uploadedBy: user.id,
       uploadedByStudentName: user.fullName,
     })
-    setProofs(api.getProofsOfClass(sessionId))
+    const updatedProofs = await api.getProofsOfClass(sessionId)
+    setProofs(updatedProofs)
     setShowUpload(false)
     setPhotoDescription('')
     setUploadedPhoto(null)
   }
 
-  const handleDeleteProof = (proofId: string) => {
-    api.deleteProofOfClass(proofId)
-    setProofs(api.getProofsOfClass(sessionId))
+  const handleDeleteProof = async (proofId: string) => {
+    await api.deleteProofOfClass(proofId)
+    const updatedProofs = await api.getProofsOfClass(sessionId)
+    setProofs(updatedProofs)
   }
 
   const handleLogout = () => { api.logout(); router.push('/') }
 
   if (!session || !section) return null
-
-  const subj = api.getSubject(section.subjectId)
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
@@ -80,7 +94,7 @@ export default function StudentSessionDetailPage() {
             </Button>
           </div>
 
-          <h1 className="text-3xl font-heading font-bold text-foreground mb-2">{subj?.name}</h1>
+          <h1 className="text-3xl font-heading font-bold text-foreground mb-2">{subject?.name}</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-8">
             {new Date(session.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
             {' · '}{session.startTime} - {session.endTime}

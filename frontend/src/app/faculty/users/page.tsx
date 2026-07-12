@@ -16,6 +16,8 @@ export default function UsersPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('teachers')
+  const [teachers, setTeachers] = useState<Teacher[]>([])
+  const [students, setStudents] = useState<Student[]>([])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -26,10 +28,16 @@ export default function UsersPage() {
     setUser(cu)
   }, [router])
 
-  if (!user) return null
+  useEffect(() => {
+    const fetchData = async () => {
+      const [t, s] = await Promise.all([api.getTeachers(), api.getStudents()])
+      setTeachers(t)
+      setStudents(s)
+    }
+    fetchData()
+  }, [])
 
-  const teachers = api.getTeachers()
-  const students = api.getStudents()
+  if (!user) return null
 
   const handleLogout = () => {
     api.logout()

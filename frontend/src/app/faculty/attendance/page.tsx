@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/mock-api'
@@ -18,6 +18,7 @@ export default function AttendanceOverviewPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [summaries, setSummaries] = useState<AttendanceSummary[]>([])
+  const [filteredSummaries, setFilteredSummaries] = useState<AttendanceSummary[]>([])
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
 
@@ -28,30 +29,40 @@ export default function AttendanceOverviewPage() {
       return
     }
     setUser(cu)
-    setSummaries(api.getAttendanceSummaries(cu.id))
+    const fetch = async () => {
+      setSummaries(await api.getAttendanceSummaries(cu.id))
+    }
+    fetch()
   }, [router])
 
   // Filter summaries by date range using underlying attendance records
-  const filteredSummaries = useMemo(() => {
-    if (!fromDate && !toDate) return summaries
-    return summaries.map((s) => {
-      const allRecords = api.getAttendanceRecords()
-      const sectionSessionIds = api.getSessions(s.sectionId).map((sess) => sess.id)
-      const filtered = allRecords.filter((r) => {
-        if (!sectionSessionIds.includes(r.sessionId)) return false
-        const rDate = r.timestamp.slice(0, 10)
-        if (fromDate && rDate < fromDate) return false
-        if (toDate && rDate > toDate) return false
-        return true
-      })
-      return {
-        ...s,
-        present: filtered.filter((r) => r.status === 'present').length,
-        late: filtered.filter((r) => r.status === 'late').length,
-        absent: filtered.filter((r) => r.status === 'absent').length,
-        totalSessions: [...new Set(filtered.map((r) => r.sessionId))].length || s.totalSessions,
-      }
-    })
+  useEffect(() => {
+    if (!fromDate && !toDate) {
+      setFilteredSummaries(summaries)
+      return
+    }
+    const fetch = async () => {
+      const allRecords = await api.getAttendanceRecords()
+      const result = await Promise.all(summaries.map(async (s) => {
+        const sectionSessionIds = (await api.getSessions(s.sectionId)).map((sess) => sess.id)
+        const filtered = allRecords.filter((r) => {
+          if (!sectionSessionIds.includes(r.sessionId)) return false
+          const rDate = r.timestamp.slice(0, 10)
+          if (fromDate && rDate < fromDate) return false
+          if (toDate && rDate > toDate) return false
+          return true
+        })
+        return {
+          ...s,
+          present: filtered.filter((r) => r.status === 'present').length,
+          late: filtered.filter((r) => r.status === 'late').length,
+          absent: filtered.filter((r) => r.status === 'absent').length,
+          totalSessions: [...new Set(filtered.map((r) => r.sessionId))].length || s.totalSessions,
+        }
+      }))
+      setFilteredSummaries(result)
+    }
+    fetch()
   }, [summaries, fromDate, toDate])
 
   if (!user) return null
@@ -66,8 +77,8 @@ export default function AttendanceOverviewPage() {
     { totalSessions: 0, present: 0, late: 0, absent: 0 }
   )
 
-  const handleExport = () => {
-    const csv = api.exportAttendanceCsv()
+  const handleExport = async () => {
+    const csv = await api.exportAttendanceCsv()
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')

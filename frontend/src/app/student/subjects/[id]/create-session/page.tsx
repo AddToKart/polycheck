@@ -43,24 +43,29 @@ export default function StudentCreateSessionPage() {
 
   useEffect(() => {
     if (!id) return
-    const sec = api.getSection(id)
-    if (sec) {
-      setSection(sec)
-      setSubject(api.getSubject(sec.subjectId) ?? null)
-      setRoom(sec.room || '')
+    const fn = async () => {
+      const sec = await api.getSection(id)
+      if (sec) {
+        setSection(sec)
+        const subj = await api.getSubject(sec.subjectId)
+        setSubject(subj ?? null)
+        setRoom(sec.room || '')
+      }
     }
+    fn()
   }, [id])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!section || !subject || !user) return
 
-    if (!api.checkSessionPermission(id, user.id)) {
+    const hasPerm = await api.checkSessionPermission(id, user.id)
+    if (!hasPerm) {
       alert('Your session creation permission has expired. Ask your teacher to grant a new one.')
       return
     }
 
-    api.createSession({
+    await api.createSession({
       sectionId: section.id,
       subjectName: subject.name,
       date,

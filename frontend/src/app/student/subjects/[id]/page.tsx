@@ -20,33 +20,47 @@ export default function StudentSubjectDetailPage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [roles, setRoles] = useState<SectionRole[]>([])
   const [hasPermission, setHasPermission] = useState(false)
+  const [subject, setSubject] = useState<{ name: string; code: string } | null>(null)
 
   useEffect(() => {
-    const cu = api.getCurrentUser()
-    if (!cu || cu.role !== 'student') {
-      router.push('/')
-      return
+    const fn = async () => {
+      const cu = api.getCurrentUser()
+      if (!cu || cu.role !== 'student') {
+        router.push('/')
+        return
+      }
+      const student = cu as Student
+      setUser(student)
+      const studentRoles = await api.getStudentRoles(student.id)
+      setRoles(studentRoles)
+      if (studentRoles.find(r => r.sectionId === id && r.role === 'president')) {
+        const perm = await api.checkSessionPermission(id, student.id)
+        setHasPermission(perm)
+      }
     }
-    const student = cu as Student
-    setUser(student)
-    const studentRoles = api.getStudentRoles(student.id)
-    setRoles(studentRoles)
-    if (studentRoles.find(r => r.sectionId === id && r.role === 'president')) {
-      setHasPermission(api.checkSessionPermission(id, student.id))
-    }
+    fn()
   }, [router, id])
 
   useEffect(() => {
     if (!id) return
-    const sec = api.getSection(id)
-    if (sec) setSection(sec)
-    setSessions(api.getSectionSessions(id))
-    setHasPermission(api.checkSessionPermission(user?.id ?? '', id))
+    const fn = async () => {
+      const sec = await api.getSection(id)
+      if (sec) {
+        setSection(sec)
+        const subj = await api.getSubject(sec.subjectId)
+        if (subj) setSubject({ name: subj.name, code: subj.code })
+      }
+      const sess = await api.getSessions(id)
+      setSessions(sess)
+      if (user) {
+        const perm = await api.checkSessionPermission(user.id, id)
+        setHasPermission(perm)
+      }
+    }
+    fn()
   }, [id, user?.id])
 
   if (!user || !section) return null
-
-  const subj = api.getSubject(section.subjectId)
   const studentRoles = roles.filter(r => r.sectionId === id)
   const isPresident = studentRoles.some(r => r.role === 'president')
   const isQac = studentRoles.some(r => r.role === 'qac')
@@ -70,8 +84,8 @@ export default function StudentSubjectDetailPage() {
             </Button>
           </div>
 
-          <h1 className="text-3xl font-heading font-bold text-foreground mb-2">{subj?.name}</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">{subj?.code} &middot; Section {section.section}</p>
+          <h1 className="text-3xl font-heading font-bold text-foreground mb-2">{subject?.name}</h1>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">{subject?.code} &middot; Section {section.section}</p>
 
           {/* Role Badges */}
           {studentRoles.length > 0 && (

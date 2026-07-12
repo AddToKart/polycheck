@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Download, Filter } from 'lucide-react'
 import { api } from '@/lib/mock-api'
-import type { User, Subject, Section, Teacher } from '@polycheck/shared'
+import type { User, Subject, Section, Session, Teacher, AttendanceRecord } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,9 @@ export default function ReportsPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
+  const [allRecords, setAllRecords] = useState<AttendanceRecord[]>([])
+  const [sessionIdsBySection, setSessionIdsBySection] = useState<Map<string, Set<string>>>(new Map())
+
   useEffect(() => {
     const cu = api.getCurrentUser()
     if (!cu || cu.role !== 'super_admin') {
@@ -28,9 +31,27 @@ export default function ReportsPage() {
       return
     }
     setUser(cu)
-    setSubjects(api.getSubjects())
-    setSections(api.getSections())
-    setTeachers(api.getTeachers())
+    const fetchData = async () => {
+      const [subjectsData, sectionsData, teachersData, records, sessions] = await Promise.all([
+        api.getSubjects(),
+        api.getSections(),
+        api.getTeachers(),
+        api.getAttendanceRecords(),
+        api.getSessions(),
+      ])
+      setSubjects(subjectsData)
+      setSections(sectionsData)
+      setTeachers(teachersData)
+      setAllRecords(records)
+
+      const map = new Map<string, Set<string>>()
+      for (const s of sessions) {
+        if (!map.has(s.sectionId)) map.set(s.sectionId, new Set())
+        map.get(s.sectionId)!.add(s.id)
+      }
+      setSessionIdsBySection(map)
+    }
+    fetchData()
   }, [router])
 
   if (!user) return null
@@ -44,8 +65,6 @@ export default function ReportsPage() {
     if (!selectedTeacher) return null
     return new Set(sections.filter((s) => s.teacherId === selectedTeacher).map((s) => s.id))
   }, [selectedTeacher, sections])
-
-  const allRecords = useMemo(() => api.getAttendanceRecords(), [])
 
   const filteredRecords = useMemo(() => {
     return allRecords.filter((r) => {
@@ -75,16 +94,6 @@ export default function ReportsPage() {
     }
     return map
   }, [sections, subjectMap])
-
-  const sessionIdsBySection = useMemo(() => {
-    const map = new Map<string, Set<string>>()
-    const sessions = api.getSessions()
-    for (const s of sessions) {
-      if (!map.has(s.sectionId)) map.set(s.sectionId, new Set())
-      map.get(s.sectionId)!.add(s.id)
-    }
-    return map
-  }, [])
 
   const filteredSummaries = useMemo(() => {
     const grouped = new Map<string, { present: number; late: number; absent: number }>()
@@ -121,8 +130,8 @@ export default function ReportsPage() {
   const latePct = total.total > 0 ? Math.round((total.late / total.total) * 100) : 0
   const absentPct = total.total > 0 ? Math.round((total.absent / total.total) * 100) : 0
 
-  const handleExport = () => {
-    const csv = api.exportAttendanceCsv()
+  const handleExport = async () => {
+    const csv = await api.exportAttendanceCsv()
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')

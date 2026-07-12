@@ -31,10 +31,10 @@ export default function CreateSubjectPage() {
 
   if (!user) return null
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name || !code) return
-    const subj = api.createSubject({ name, code, description: description || undefined })
+    const subj = await api.createSubject({ name, code, description: description || undefined })
     router.push(`/faculty/subjects/${subj.id}`)
   }
 

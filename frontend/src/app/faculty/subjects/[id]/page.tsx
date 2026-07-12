@@ -30,14 +30,17 @@ export default function SubjectDetailPage() {
 
   useEffect(() => {
     if (!id) return
-    const subj = api.getSubject(id)
-    if (!subj) { router.push('/faculty/subjects'); return }
-    setSubject(subj)
-    let secs = api.getSections().filter((s) => s.subjectId === id)
-    if (user && user.role === 'teacher') {
-      secs = secs.filter((s) => s.teacherId === user.id)
+    const fn = async () => {
+      const subj = await api.getSubject(id)
+      if (!subj) { router.push('/faculty/subjects'); return }
+      setSubject(subj)
+      let secs = (await api.getSections()).filter((s) => s.subjectId === id)
+      if (user && user.role === 'teacher') {
+        secs = secs.filter((s) => s.teacherId === user.id)
+      }
+      setSections(secs)
     }
-    setSections(secs)
+    fn()
   }, [id, router, user])
 
   const handleLogout = () => {

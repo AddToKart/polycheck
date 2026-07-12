@@ -1,10 +1,10 @@
 'use client'
 
-import { Suspense, useEffect, useState, useMemo } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/mock-api'
-import type { User, Student, Section, Session } from '@polycheck/shared'
+import type { User, Student, Subject, Section, Session } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Input } from '@/components/ui/input'
 import { Search, Users, BookOpen, CalendarCheck, X } from 'lucide-react'
@@ -24,6 +24,7 @@ function SearchPageInner() {
   const [query, setQuery] = useState(initialQ)
   const [results, setResults] = useState<SearchResult>({ students: [], sections: [], sessions: [] })
   const [searched, setSearched] = useState(false)
+  const [subjects, setSubjects] = useState<Subject[]>([])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -32,17 +33,28 @@ function SearchPageInner() {
   }, [router])
 
   useEffect(() => {
+    const fn = async () => {
+      const s = await api.getSubjects()
+      setSubjects(s)
+    }
+    fn()
+  }, [])
+
+  useEffect(() => {
     if (initialQ) {
-      const r = api.search(initialQ)
-      setResults(r)
-      setSearched(true)
+      const fn = async () => {
+        const r = await api.search(initialQ)
+        setResults(r)
+        setSearched(true)
+      }
+      fn()
     }
   }, [initialQ])
 
-  const handleSearch = (q: string) => {
+  const handleSearch = async (q: string) => {
     setQuery(q)
     if (q.trim().length > 0) {
-      const r = api.search(q)
+      const r = await api.search(q)
       setResults(r)
       setSearched(true)
       router.replace(`/faculty/search?q=${encodeURIComponent(q)}`, { scroll: false })
@@ -51,8 +63,6 @@ function SearchPageInner() {
       setSearched(false)
     }
   }
-
-  const subjects = useMemo(() => api.getSubjects(), [])
 
   const totalResults = results.students.length + results.sections.length + results.sessions.length
 
