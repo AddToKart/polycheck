@@ -56,11 +56,11 @@ polycheck/
 ### Super Admin
 Department heads, program chairs, PUP officials. Highest access — sees data across all teachers and subjects. Manages teacher accounts, configures institution settings, generates reports. Does not manage day-to-day attendance.
 
-### Admin (Teacher / Instructor)
+### Teacher / Instructor
 Creates subjects, configures class schedules, generates QR codes per session, sets geofences, defines check-in time windows. Views attendance records for their classes. Flags anomalies.
 
 ### Student
-Primary interface is the mobile app. Has a digital student ID. Views class schedules. Checks in by scanning teacher's QR code. Views own attendance history. Receives feedback on denied check-ins.
+Primary interface is the mobile app, with a web dashboard for schedule and subject views. Has a digital student ID. Views class schedules. Checks in by scanning teacher's QR code. Views own attendance history. Can submit disputes and enroll via enrollment code. Student officers (President, QAC) can create sessions and upload proof of class.
 
 ## Core Features (v1)
 
@@ -95,6 +95,18 @@ Primary interface is the mobile app. Has a digital student ID. Views class sched
 - Super Admins see department-wide / institution-wide reports
 - Filters: subject, teacher, date range, student
 - Exportable records
+
+### Section Roles (President / QAC)
+- Teachers assign student officers per section: President and QAC (Quality Assurance Coordinator)
+- Presidents can create sessions and set geofences
+- QAC members can upload proof of class photos during sessions
+- Session permissions can be granted/revoked with 24-hour expiry
+
+### Proof of Class
+- QAC members and authorized students can upload classroom photos during a session
+- Photos timestamped and associated with the session for audit
+- Teachers can delete proof-of-class submissions
+- Serves as verification that a class meeting actually occurred
 
 ## Anti-Cheat System (v1)
 
@@ -249,7 +261,7 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 - Created student detail page `(faculty)/student/[id].tsx` (mobile) with flippable PUP ID card (front: maroon header + logo, photo, student details; back: magnetic stripe, conditions, emergency contact, QR), remove-from-subject with confirm, attendance-per-session list with 5‑per‑page pagination and tap-to-cycle status.
 - Created `/faculty/subjects/[id]` web page (subject detail: info card, enrollment code, stats, search, student list with pagination).
 - Created `/faculty/students/[id]` web page (student detail: PUP ID card, remove from subject, attendance-per-session with 5‑per‑page pagination and cycle buttons).
-- Added 5 new mock students (s-009 to s-013) enrolled in subj-001, 8 new sessions (sess-007 to sess-014), and ~30 new attendance records.
+- Mock student data contains 8 entries (s-001 to s-008) with 19 sessions and 55 attendance records.
 - Added 10 mock API methods to both mobile and web: `getSubjectStudents`, `getStudent`, `getSubjectSessions`, `getStudentAttendanceForSubject`, `updateAttendanceStatus`, `addAttendanceRecord`, `removeStudentFromSubject`, `resetEnrollmentCode`, `disableEnrollmentCode`, `createSubject`.
 - Fixed nested `<a>` hydration error on web subjects page (outer card changed from `<Link>` to `<div onClick={router.push(...)}>`, inner "View Sessions" changed from `<button onClick={router.push(...)}>` back to `<Link>` with `stopPropagation`).
 - Fixed hooks-order violation in web `StudentDetailPage` (moved `useMemo` calls above early return).
@@ -313,6 +325,27 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 - **Fixed `enrolledSubjectIds` → `enrolledSectionIds`** in mock student data (`shared/src/mock/users.ts`).
 - **Added 5 future sessions** (sess-015 to sess-019, July 8-20) for calendar view demo data.
 
+### Done (cont.)
+- **Login pages** (web): Created `/login`, `/login/faculty`, `/login/student` role selection pages with maroon branding and role cards. Created `/student` redirect page that routes to student dashboard.
+- **Calendar events enhancement**: Added `CalendarEvent` with `sectionId`, `location`, `type` fields to shared types. Updated both mock APIs and calendar pages on both platforms to include room/location.
+- **Map exports fix**: Changed shared package `map/index.ts` exports from `export { ... }` (type-only) to `export { ... } from ...` (re-exports) to fix `ERR_PACKAGE_PATH_NOT_EXPORTED` build errors.
+- **Web ID card flippable**: Made faculty student detail PUP ID card tap-to-flip on web (back face shows magnetic stripe, conditions of use, emergency contact, QR placeholder).
+- **Web Create Session page**: Created `/faculty/sessions/create/page.tsx` — form with qrValidity slider, section selector, geofence map. Wired to `api.createSession()`.
+- **Geofence module**: Created full-screen map mode, pin-drag (toggles `scrollEnabled` on parent ScrollView via measure), radius slider using `pageX` + `measureInWindow`. Geofence is included in `CreateSessionInput` and `BulkSessionInput`. Fixed `tsconfig.json` baseUrl/paths for module resolution.
+- **ScheduleDay.room on Session**: Extended `Session` type with optional `room` field. Updated validation, mock data, mock API `createSession`, and all display pages (session list, session detail) on both platforms to show session room.
+- **Backend Prisma schema section**: Added backend Prisma schema with User, Subject, Section, Session, AttendanceRecord, Enrollment, Dispute, ProofOfClass, CalendarEvent models and documentation to AGENTS.md.
+- **Backend plan**: Created `/documentation/BACKEND_PLAN.md` as a scaffold for NestJS backend implementation planning.
+- **Build fixes**: Fixed `ScheduleMap.tsx` naming (was `ScheduleMap.ts`), missing `EditGeofenceScreen` export in mobile `index.ts`, and `disputeReason` type cast in web student dashboard.
+- **Section Roles & Proof of Class docs**: Added documentation for student officer roles (President, QAC) and proof of class feature to AGENTS.md Core Features. Updated PUP_Attendance_System_Plan.md: `admin`→`teacher` role rename, student web portal description, student officer capabilities.
+
+### Done (cont.)
+- **Data audit & cleanup**: Fixed `enrolledSectionIds` from subject IDs (`subj-*`) to correct section IDs (`sec-*`) for all 8 mock students. Removed 5 phantom enrollment records referencing non-existent students (s-009 to s-013). Fixed section role names to match actual student names. Stale attendance summaries corrected (sec-001: 6→9, sec-003: 3→1, sec-004: 6→8, sec-005: 2→1).
+- **Mock API parity**: Added missing methods to both web and mobile mocks: `submitScan`, `getMyAttendance`, `getStudentsForSection`, `getEnrollments`, `submitAttendance`, `getAttendanceForStudent`. Renamed `getStudentSubjects`→`getMySubjects` in web mock.
+- **Return type consistency**: Fixed `submitAttendance`/`checkAttendance` return types to include both `reason` and `message` fields on both platforms.
+- **Validation cleanup**: Removed orphaned `tokenPayload` field from `AttendanceRecordSchema` (had no corresponding type definition).
+- **Route param cleanup**: Normalized `sectionId` query parameter (was mixed `subjectId`/`sectionId`) in student detail pages on both platforms.
+- **Docs cleanup**: Removed false claim about `addGeofence`/`editGeofence` methods from AGENTS.md (geofence is configured via `CreateSessionInput`/`BulkSessionInput`). Updated mock data counts.
+
 ### In Progress
 - (none)
 
@@ -341,7 +374,7 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 ## Critical Context
 - Android package: `edu.pup.polycheck`; iOS bundle: `edu.pup.polycheck`.
 - Permissions: camera (QR scan), location (geofence check) — already requested in `scan.tsx` via `useCameraPermissions` + `expo-location`.
-- Mock data: `mockStudents` has 13 entries (s-001 to s-013); `mockSubjects` has 4 parent entries (subj-001 to subj-004); `mockSections` has 5 sections (sec-001 to sec-005); `mockSessions` has 19 entries (sess-001 to sess-019); `mockAttendanceRecords` has 54 entries; `mockEnrollments` has 29 entries.
+- Mock data: `mockStudents` has 8 entries (s-001 to s-008); `mockSubjects` has 4 parent entries (subj-001 to subj-004); `mockSections` has 5 sections (sec-001 to sec-005); `mockSessions` has 19 entries (sess-001 to sess-019); `mockAttendanceRecords` has 55 entries; `mockEnrollments` has 24 entries.
 - `AttendanceRecord.status` now includes `'disputed'`. `AttendanceRecord` has optional `manuallySet?: boolean`. `AttendanceSummary` has `disputed: number`.
 - `Session` no longer has `tokenWindowSeconds`; replaced by `qrValidityMinutes: number`. `qrGeneratedAt?: string` tracks when QR was generated.
 - Mock API methods added: `generateQrCode`, `submitScan`, `endSession`, `getDisputedRecords`, `resolveDispute`.

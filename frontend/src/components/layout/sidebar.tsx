@@ -48,8 +48,13 @@ const teacherNav: NavItem[] = [
 // Navigation for super admins
 const superAdminNav: NavItem[] = [
   { label: 'Dashboard', href: '/faculty', icon: LayoutDashboard },
+  { label: 'My Subjects', href: '/faculty/subjects', icon: BookOpen },
+  { label: 'Class Sessions', href: '/faculty/sessions', icon: CalendarCheck },
+  { label: 'Attendance Log', href: '/faculty/attendance', icon: ClipboardList },
+  { label: 'Schedule', href: '/faculty/schedule', icon: Calendar },
+  { label: 'Disputes', href: '/faculty/disputes', icon: Gavel },
+  { label: 'Search', href: '/faculty/search', icon: Search },
   { label: 'User Management', href: '/faculty/users', icon: Users },
-  { label: 'Subject Management', href: '/faculty/subjects', icon: BookOpen },
   { label: 'System Reports', href: '/faculty/reports', icon: BarChart3 },
 ]
 

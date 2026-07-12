@@ -21,7 +21,7 @@ const SESSION_PAGE_SIZE = 5
 
 export default function StudentDetailScreen() {
   const { isDark } = useTheme()
-  const { id: studentId, subjectId } = useLocalSearchParams<{ id: string; subjectId: string }>()
+  const { id: studentId, sectionId } = useLocalSearchParams<{ id: string; sectionId: string }>()
   const [student, setStudent] = useState<Student | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
@@ -31,14 +31,21 @@ export default function StudentDetailScreen() {
   const flipAnim = useRef(new Animated.Value(0)).current
 
   const loadData = useCallback(() => {
-    if (!studentId || !subjectId) return
+    if (!studentId) return
+    let secId = sectionId
+    if (!secId) {
+      const enrollments = api.getEnrollments()
+      const enr = enrollments.find((e) => e.studentId === studentId)
+      if (enr) secId = enr.sectionId
+    }
+    if (!secId) { router.back(); return }
     const s = api.getStudent(studentId)
     if (!s) { router.back(); return }
     setStudent(s)
-    setSessions(api.getSectionSessions(subjectId))
-    setRecords(api.getStudentAttendanceForSection(studentId, subjectId))
+    setSessions(api.getSectionSessions(secId))
+    setRecords(api.getStudentAttendanceForSection(studentId, secId))
     setLoading(false)
-  }, [studentId, subjectId])
+  }, [studentId, sectionId])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -55,7 +62,7 @@ export default function StudentDetailScreen() {
   const backInterpolate = flipAnim.interpolate({ inputRange: [0, 180], outputRange: ['180deg', '360deg'] })
 
   const handleRemove = () => {
-    if (!subjectId || !studentId) return
+    if (!sectionId || !studentId) return
     Alert.alert(
       'Remove Student',
       `Remove ${student?.fullName} from this subject? This cannot be undone.`,
@@ -65,7 +72,7 @@ export default function StudentDetailScreen() {
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
-            api.removeStudentFromSection(subjectId, studentId)
+            api.removeStudentFromSection(sectionId, studentId)
             router.back()
           },
         },
@@ -88,7 +95,7 @@ export default function StudentDetailScreen() {
     const newRecord: AttendanceRecord = {
       id: `a-manual-${Date.now()}`,
       sessionId: session.id,
-      sectionId: subjectId!,
+      sectionId: sectionId!,
       studentId: studentId!,
       studentName: student?.fullName ?? '',
       studentProgram: student?.program,

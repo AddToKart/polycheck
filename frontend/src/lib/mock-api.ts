@@ -36,13 +36,33 @@ import type {
 
 import { isWithinGeofence, createQRTokenData } from '@polycheck/shared/utils'
 
-let currentUser: User | null = null
+const STORAGE_KEY = 'polycheck-user'
+
+function loadUser(): User | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as User
+  } catch { return null }
+}
+
+function saveUser(user: User | null) {
+  if (typeof window === 'undefined') return
+  try {
+    if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+    else localStorage.removeItem(STORAGE_KEY)
+  } catch { /* noop */ }
+}
+
+let currentUser: User | null = loadUser()
 
 export const api = {
   loginStudent(studentId: string, _password: string): Student | null {
     const student = mockStudents.find((s) => s.studentId === studentId)
     if (student) {
       currentUser = student
+      saveUser(student)
       return student
     }
     return null
@@ -52,10 +72,12 @@ export const api = {
     const teacher = mockTeachers.find((t) => t.email === email)
     if (teacher) {
       currentUser = teacher
+      saveUser(teacher)
       return teacher
     }
     if (email === mockSuperAdmin.email) {
       currentUser = mockSuperAdmin
+      saveUser(mockSuperAdmin)
       return mockSuperAdmin
     }
     return null
@@ -63,9 +85,11 @@ export const api = {
 
   logout() {
     currentUser = null
+    saveUser(null)
   },
 
   getCurrentUser(): User | null {
+    if (!currentUser) currentUser = loadUser()
     return currentUser
   },
 
@@ -232,6 +256,10 @@ export const api = {
     return mockAttendanceRecords.filter((r) => r.studentId === studentId)
   },
 
+  getMyAttendance(studentId: string): AttendanceRecord[] {
+    return this.getAttendanceForStudent(studentId)
+  },
+
   getStudentSections(studentId: string): Section[] {
     const enrolledSectionIds = mockEnrollments
       .filter((e) => e.studentId === studentId)
@@ -239,7 +267,7 @@ export const api = {
     return mockSections.filter((s) => enrolledSectionIds.includes(s.id))
   },
 
-  getStudentSubjects(studentId: string): Subject[] {
+  getMySubjects(studentId: string): Subject[] {
     const sections = this.getStudentSections(studentId)
     const subjectIds = [...new Set(sections.map((s) => s.subjectId))]
     return mockSubjects.filter((s) => subjectIds.includes(s.id))
@@ -370,6 +398,91 @@ export const api = {
     }
 
     return { success: true, status: 'present' }
+  },
+
+  checkAttendance(
+    sessionId: string,
+    studentId: string,
+    lat: number,
+    lon: number,
+  ): { success: boolean; status: AttendanceStatus; message?: string } {
+    const session = mockSessions.find((s) => s.id === sessionId)
+    if (!session)
+      return { success: false, status: 'absent', message: 'Session not found' }
+    if (!session.isActive)
+      return { success: false, status: 'absent', message: 'Session is not active' }
+
+    const inRange = isWithinGeofence(
+      lat,
+      lon,
+      session.geofence.latitude,
+      session.geofence.longitude,
+      session.geofence.radiusMeters,
+    )
+    if (!inRange)
+      return {
+        success: false,
+        status: 'absent',
+        message: `You are outside the ${session.geofence.radiusMeters}m geofence`,
+      }
+
+    if (!session.qrTokenExpiresAt) {
+      return { success: true, status: 'present', message: 'Check-in successful!' }
+    }
+
+    const qrExpiry = new Date(session.qrTokenExpiresAt).getTime()
+    const now = Date.now()
+    if (now <= qrExpiry) {
+      return { success: true, status: 'present', message: 'Check-in successful!' }
+    }
+
+    const graceEnd = qrExpiry + session.gracePeriodMinutes * 60 * 1000
+    if (now <= graceEnd) {
+      return { success: true, status: 'late', message: 'You are late but within grace period.' }
+    }
+
+    return { success: false, status: 'absent', message: 'QR token expired and grace period has passed.' }
+  },
+
+  submitScan(
+    sessionId: string,
+    studentId: string,
+    studentName: string,
+    lat: number,
+    lon: number,
+    deviceId: string,
+  ): AttendanceRecord | { error: string } {
+    const session = mockSessions.find((s) => s.id === sessionId)
+    if (!session) return { error: 'Session not found' }
+
+    const check = this.checkAttendance(sessionId, studentId, lat, lon)
+    if (!check.success) return { error: check.message ?? 'Check-in rejected' }
+
+    const existing = mockAttendanceRecords.find(
+      (r) => r.sessionId === sessionId && r.studentId === studentId
+    )
+    if (existing) {
+      existing.status = check.status
+      existing.timestamp = new Date().toISOString()
+      existing.coordinates = { latitude: lat, longitude: lon }
+      return existing
+    }
+
+    const record: AttendanceRecord = {
+      id: `a-${Date.now()}`,
+      sessionId,
+      sectionId: session.sectionId,
+      studentId,
+      studentName,
+      timestamp: new Date().toISOString(),
+      status: check.status,
+      coordinates: { latitude: lat, longitude: lon },
+      deviceId,
+      isSynced: true,
+      syncedAt: new Date().toISOString(),
+    }
+    mockAttendanceRecords.push(record)
+    return record
   },
 
   endSession(sessionId: string): Session | undefined {

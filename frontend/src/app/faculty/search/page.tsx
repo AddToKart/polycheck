@@ -27,7 +27,7 @@ function SearchPageInner() {
 
   useEffect(() => {
     const cu = api.getCurrentUser()
-    if (!cu) { router.push('/'); return }
+    if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) { router.push('/'); return }
     setUser(cu)
   }, [router])
 

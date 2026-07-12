@@ -49,7 +49,6 @@ export const AttendanceRecordSchema = z.object({
     longitude: z.number().min(-180).max(180),
   }),
   deviceId: z.string().optional(),
-  tokenPayload: z.string().optional(),
 })
 
 export const SectionRoleTypeEnum = z.enum(['president', 'qac'])

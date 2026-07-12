@@ -42,7 +42,7 @@ export default function StudentScheduleScreen() {
 
   useEffect(() => {
     const cu = api.getCurrentUser()
-    if (!cu || cu.role !== 'student') return
+    if (!cu || cu.role !== 'student') { router.replace('/'); return }
     setUser(cu)
     setSelectedDay(formatDate(new Date()))
     if (cu.studentId) {

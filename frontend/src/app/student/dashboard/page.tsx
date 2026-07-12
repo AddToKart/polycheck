@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/mock-api'
-import type { Student, Section, AttendanceRecord } from '@polycheck/shared'
+import type { Student, Section, AttendanceRecord, DisputeReason } from '@polycheck/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sidebar } from '@/components/layout/sidebar'
 import StatusBadge from '@/components/StatusBadge'
@@ -196,7 +196,7 @@ function StudentDashboardContent() {
 
   const handleSubmitDispute = () => {
     if (!disputeRecord || !disputeReason) return
-    const result = api.submitDispute({ recordId: disputeRecord.id, reason: disputeReason, description: disputeDescription })
+    const result = api.submitDispute({ recordId: disputeRecord.id, reason: disputeReason as DisputeReason, description: disputeDescription })
     if (result) {
       setDisputeFeedback({ type: 'success', message: 'Dispute submitted successfully.' })
       setRecords(api.getAttendanceForStudent(user!.id))

@@ -23,11 +23,11 @@ The current process relies on paper-based class monitoring forms. Students sign 
 ### Super Admin
 Super Admins are department heads and authorized PUP officials such as program chairs and administrators. They have the highest level of access in the system and can see data across all teachers and subjects within their department or the entire institution depending on their scope. They do not manage day-to-day attendance but oversee the system, generate reports, manage teacher accounts, and configure institution-level settings.
 
-### Admin (Teacher / Instructor)
-Admins are teachers and instructors. Each teacher manages only their own subjects and classes. They create subjects, configure class schedules, generate QR codes for each session, set the geofence for their classroom, and define the time window during which students may check in. They can view attendance records for their classes and flag anomalies.
+### Teacher / Instructor
+Teachers are the primary session managers. Each teacher manages only their own subjects and classes. They create subjects, configure class schedules, generate QR codes for each session, set the geofence for their classroom, and define the time window during which students may check in. They can view attendance records for their classes and flag anomalies. Teachers can also assign student officers (President, QAC) per section.
 
 ### Student
-Students use the mobile app as their primary interface. They have a digital student ID within the app, can view their class schedules, and check in to classes by scanning the teacher's QR code. Their attendance history is visible to them, and they receive feedback when a check-in is denied and why.
+Students use the mobile app as their primary interface, with a web dashboard available for schedule and detail views. They have a digital student ID within the app, can view their class schedules, and check in to classes by scanning the teacher's QR code. Their attendance history is visible to them, and they can submit disputes. Student officers (President, QAC) can create sessions and upload proof of class.
 
 ---
 
@@ -87,7 +87,7 @@ A student saves a QR code from a previous session and tries to use it in a futur
 ## Tech Stack
 
 ### Web Dashboard
-The web dashboard is built with Next.js and serves the Teacher (Admin) and Super Admin interfaces. Teachers use it to create subjects, configure sessions, generate QR codes, and review attendance. Super Admins use it for user management, reporting, and system configuration. The web dashboard shares the same design system, type definitions, and API client logic as the mobile app through a monorepo structure.
+The web dashboard is built with Next.js and serves the Teacher, Super Admin, and Student interfaces. Teachers use it to create subjects, configure sessions, generate QR codes, and review attendance. Super Admins use it for user management, reporting, and system configuration. Students can view their schedule, subjects, attendance history, and submit disputes. The web dashboard shares the same design system, type definitions, and API client logic as the mobile app through a monorepo structure.
 
 ### Mobile App
 The mobile app is built with React Native using the Expo framework. It is the primary interface for students and is also available to teachers who prefer to generate and display QR codes from their phone. Expo provides access to native device capabilities required by the system — GPS via expo-location, camera and QR scanning via expo-camera, and biometric authentication via expo-local-authentication. The app targets both iOS and Android.
@@ -99,7 +99,7 @@ The backend is built with NestJS running on Node.js. NestJS is chosen for its mo
 The system uses a two-layer database architecture to support offline-first operation. On each device, a local SQLite database (via expo-sqlite on mobile) stores all data the app needs to function without internet — enrolled subjects, session tokens, geofence configurations, student profile data, and a queue of attendance records pending sync. This local database is the source of truth during class. The cloud database is PostgreSQL, accessed via Prisma ORM through the NestJS backend, and serves as the permanent system of record. Data access policies are enforced at the API layer through NestJS guards using a role-based access control (RBAC) system — a student can only read their own records, a teacher can only read records for their subjects, and a Super Admin can read all records within their scope. For real-time updates to the teacher's dashboard as synced records arrive, the NestJS backend exposes WebSocket endpoints (via Socket.IO or native WebSockets) that push live updates to connected clients.
 
 ### Authentication
-Better Auth handles session management, JWT issuance, and user account lifecycle. User roles (super_admin, admin, student) are stored in the user profile and attached to every session token. NestJS guards read the role from the token on every protected route and enforce access accordingly. The single active session per account constraint described in the Anti-Cheat section is enforced here at the Better Auth configuration level — it is one mechanism, not two.
+Better Auth handles session management, JWT issuance, and user account lifecycle. User roles (super_admin, teacher, student) are stored in the user profile and attached to every session token. NestJS guards read the role from the token on every protected route and enforce access accordingly. The single active session per account constraint described in the Anti-Cheat section is enforced here at the Better Auth configuration level — it is one mechanism, not two.
 
 ### Monorepo Structure
 The project is organized as a Turborepo monorepo. Shared code — TypeScript types, API client functions, validation schemas, and utility functions — lives in shared packages consumed by both the Next.js web app and the Expo mobile app. This ensures the two frontends stay in sync on data contracts and reduces duplicated logic.

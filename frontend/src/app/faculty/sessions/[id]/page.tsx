@@ -73,6 +73,10 @@ export default function SessionDetailPage() {
     if (id) {
       const section = api.getSections().find((s) => api.getSectionSessions(s.id).some((se) => se.id === id))
       if (section) {
+        if (cu.role === 'teacher' && section.teacherId !== cu.id) {
+          router.push('/faculty')
+          return
+        }
         const students = api.getSectionStudents(section.id)
         setEnrolledStudents(students as Student[])
       }

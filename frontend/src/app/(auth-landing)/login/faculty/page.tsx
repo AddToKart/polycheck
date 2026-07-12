@@ -98,8 +98,9 @@ export default function FacultyLoginPage() {
         
         <div className="mt-12 pt-8 border-t border-zinc-200 dark:border-zinc-800">
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Demo Credentials: Use any email (e.g.{' '}
-            <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 text-foreground">admin@pup.edu.ph</span>)
+            Demo Credentials: Use{' '}
+            <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 text-foreground">jmdelacruz@pup.edu.ph</span> (Teacher) or{' '}
+            <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 text-foreground">mcreyes@pup.edu.ph</span> (Super Admin)
           </p>
         </div>
       </div>

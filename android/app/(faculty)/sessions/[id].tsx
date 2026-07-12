@@ -43,17 +43,18 @@ export default function SessionDetailScreen() {
     const cu = api.getCurrentUser()
     if (!cu) { router.replace('/'); return }
     setUser(cu)
-    refreshData()
-    if (id && session) {
-      const section = api.getSection(session.sectionId)
-      if (section) {
-        const students = api.getSectionStudents(section.id)
-        setEnrolledStudents(students.map((s) => {
-          const { attendance, ...student } = s
-          return student
-        }))
+    if (id) {
+      const s = api.getSession(id)
+      if (s) {
+        const section = api.getSection(s.sectionId)
+        if (section) {
+          if (cu.role === 'teacher' && section.teacherId !== cu.id) { router.replace('/'); return }
+          const students = api.getSectionStudents(section.id)
+          setEnrolledStudents(students.map(({ attendance, ...student }) => student))
+        }
       }
     }
+    refreshData()
   }, [id])
 
   useEffect(() => {
@@ -109,6 +110,11 @@ export default function SessionDetailScreen() {
   }, [lastUpdated])
 
   if (!user || !session) return null
+
+  const border = isDark ? 'rgba(245, 168, 0, 0.15)' : '#EEE'
+  const textPrimary = isDark ? '#FFFFFF' : '#333'
+  const textSecondary = isDark ? 'rgba(255,255,255,0.5)' : '#888'
+  const textTertiary = isDark ? 'rgba(255,255,255,0.5)' : '#999'
 
   const filteredRecords = filter === 'all' ? records : records.filter((r) => r.status === filter)
   const presentCount = records.filter((r) => r.status === 'present').length

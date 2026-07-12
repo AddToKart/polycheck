@@ -27,8 +27,10 @@ export default function SectionDetailScreen() {
 
   useEffect(() => {
     if (!id) return
+    const cu = api.getCurrentUser()
     const s = api.getSection(id)
     if (!s) { router.back(); return }
+    if (cu && cu.role === 'teacher' && s.teacherId !== cu.id) { router.replace('/'); return }
     setSection(s)
     setStudents(api.getSectionStudents(id))
     setSectionRoles(api.getSectionRoles(id))
@@ -474,7 +476,7 @@ export default function SectionDetailScreen() {
           return (
             <Pressable
               key={student.id}
-              onPress={() => router.push({ pathname: '/(faculty)/student/[id]', params: { id: student.id, subjectId: id } })}
+              onPress={() => router.push({ pathname: '/(faculty)/student/[id]', params: { id: student.id, sectionId: id } })}
               className="active:opacity-70"
             >
               <View className="flex-row justify-between p-3.5 mb-2 border" style={{ backgroundColor: surface, borderColor: border }}>

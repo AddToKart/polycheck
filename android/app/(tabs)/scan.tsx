@@ -102,7 +102,7 @@ export default function ScanScreen() {
     }
   }, [showResult])
 
-  if (!cameraPermission) {
+  if (!cameraPermission || !cameraPermission.granted) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
@@ -163,7 +163,7 @@ export default function ScanScreen() {
           <Text style={[styles.checkInText, isDark && styles.checkInTextDark]}>Enter Code Manually</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.cancelBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.cancelBtn} onPress={() => router.replace('/(tabs)/dashboard')}>
           <MaterialIcons name="arrow-back" size={18} color={isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)'} />
           <Text style={[styles.cancelText, isDark && styles.cancelTextDark]}>Cancel</Text>
         </TouchableOpacity>

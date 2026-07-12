@@ -46,9 +46,14 @@ export default function SectionDetailPage() {
   }, [router])
 
   useEffect(() => {
+    const cu = api.getCurrentUser()
     if (!id) return
     const sec = api.getSection(id)
     if (!sec) { router.push('/faculty/subjects'); return }
+    if (cu && cu.role === 'teacher' && sec.teacherId !== cu.id) {
+      router.push('/faculty')
+      return
+    }
     setSection(sec)
     setStudents(api.getSectionStudents(id))
     setSectionRoles(api.getSectionRoles(id))
@@ -489,7 +494,7 @@ export default function SectionDetailPage() {
                 return (
                   <Link
                     key={student.id}
-                    href={`/faculty/students/${student.id}?subjectId=${id}`}
+                    href={`/faculty/students/${student.id}?sectionId=${id}`}
                     className="block bg-white dark:bg-zinc-900 border border-zinc-300/80 dark:border-zinc-800 hover:border-maroon/30 dark:hover:border-golden/30 transition-colors shadow-[0_2px_8px_rgba(123,17,19,0.02)] hover:shadow-md"
                   >
                     <div className="p-4 flex items-center gap-4">

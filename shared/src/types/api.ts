@@ -1,4 +1,4 @@
-import type { User, Student, Teacher, Subject, Section, Session, AttendanceRecord, AttendanceSummary, AttendanceStatus, Enrollment, SectionRole, SectionRoleType, SessionPermission, ProofOfClass } from './index'
+import type { User, Student, Teacher, Subject, Section, Session, AttendanceRecord, AttendanceSummary, AttendanceStatus, DisputeReason, Enrollment, SectionRole, SectionRoleType, SessionPermission, ProofOfClass } from './index'
 
 export interface CreateSubjectInput {
   name: string
@@ -42,7 +42,7 @@ export interface SubmitAttendanceResult {
 
 export interface DisputeInput {
   recordId: string
-  reason: string
+  reason: DisputeReason
   description: string
 }
 

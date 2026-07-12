@@ -255,7 +255,7 @@ export const mockAttendanceSummaries: AttendanceSummary[] = [
   {
     sectionId: 'sec-001',
     subjectName: 'Software Engineering',
-    totalSessions: 6,
+    totalSessions: 9,
     present: 24,
     late: 6,
     absent: 2,
@@ -264,7 +264,7 @@ export const mockAttendanceSummaries: AttendanceSummary[] = [
   {
     sectionId: 'sec-003',
     subjectName: 'Data Structures and Algorithms',
-    totalSessions: 3,
+    totalSessions: 1,
     present: 12,
     late: 2,
     absent: 1,
@@ -273,7 +273,7 @@ export const mockAttendanceSummaries: AttendanceSummary[] = [
   {
     sectionId: 'sec-004',
     subjectName: 'Human-Computer Interaction',
-    totalSessions: 6,
+    totalSessions: 8,
     present: 16,
     late: 4,
     absent: 2,
@@ -282,7 +282,7 @@ export const mockAttendanceSummaries: AttendanceSummary[] = [
   {
     sectionId: 'sec-005',
     subjectName: 'Programming Languages',
-    totalSessions: 2,
+    totalSessions: 1,
     present: 5,
     late: 0,
     absent: 1,

@@ -26,6 +26,7 @@ export interface AttendanceRecord {
   syncedAt?: string
   disputeReason?: DisputeReason
   disputeResolved?: boolean
+  disputeDescription?: string
   manuallySet?: boolean
   notes?: string
 }

@@ -1,3 +1,31 @@
+import { Platform } from 'react-native'
+
+const STORAGE_KEY = 'polycheck-user'
+
+let SecureStoreModule: typeof import('expo-secure-store') | null = null
+if (Platform.OS !== 'web') {
+  try {
+    SecureStoreModule = require('expo-secure-store')
+  } catch { /* noop */ }
+}
+
+async function loadUserFromStore(): Promise<User | null> {
+  if (!SecureStoreModule) return null
+  try {
+    const raw = await SecureStoreModule.getItemAsync(STORAGE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as User
+  } catch { return null }
+}
+
+async function saveUserToStore(user: User | null) {
+  if (!SecureStoreModule) return
+  try {
+    if (user) await SecureStoreModule.setItemAsync(STORAGE_KEY, JSON.stringify(user))
+    else await SecureStoreModule.deleteItemAsync(STORAGE_KEY)
+  } catch { /* noop */ }
+}
+
 import {
   mockUsers,
   mockSubjects,
@@ -24,6 +52,7 @@ import type {
   AttendanceSummary,
   AttendanceStatus,
   Enrollment,
+  SubmitAttendanceResult,
   CalendarEvent,
   BulkSessionInput,
   DisputeInput,
@@ -36,10 +65,17 @@ import type {
 let currentUser: User | null = null
 
 export const api = {
+  async restoreSession(): Promise<User | null> {
+    const u = await loadUserFromStore()
+    if (u) currentUser = u
+    return u
+  },
+
   loginStudent(studentId: string): User | null {
     const user = mockStudents.find((s) => s.studentId === studentId)
     if (user) {
       currentUser = user
+      saveUserToStore(user)
       return user
     }
     return null
@@ -49,6 +85,7 @@ export const api = {
     const user = mockUsers.find((u) => u.email === email && (u.role === 'teacher' || u.role === 'super_admin'))
     if (user) {
       currentUser = user
+      saveUserToStore(user)
       return user
     }
     return null
@@ -60,6 +97,7 @@ export const api = {
 
   logout() {
     currentUser = null
+    saveUserToStore(null)
   },
 
   getCurrentUser(): User | null {
@@ -137,6 +175,18 @@ export const api = {
           },
         }
       })
+  },
+
+  getStudentsForSection(sectionId: string): Student[] {
+    const enrolledIds = mockEnrollments
+      .filter((e) => e.sectionId === sectionId)
+      .map((e) => e.studentId)
+    return mockStudents.filter((s) => enrolledIds.includes(s.id))
+  },
+
+  getEnrollments(sectionId?: string): Enrollment[] {
+    if (sectionId) return mockEnrollments.filter((e) => e.sectionId === sectionId)
+    return [...mockEnrollments]
   },
 
   resetEnrollmentCode(sectionId: string): string {
@@ -225,6 +275,10 @@ export const api = {
 
   getMyAttendance(studentId: string): AttendanceRecord[] {
     return mockAttendanceRecords.filter((r) => r.studentId === studentId)
+  },
+
+  getAttendanceForStudent(studentId: string): AttendanceRecord[] {
+    return this.getMyAttendance(studentId)
   },
 
   getMySubjects(studentId: string): Subject[] {
@@ -345,6 +399,61 @@ export const api = {
     }
 
     return { success: false, status: 'absent', message: 'QR token expired and grace period has passed.' }
+  },
+
+  submitAttendance(
+    sessionId: string,
+    _sectionId: string,
+    studentId: string,
+    coordinates: { latitude: number; longitude: number },
+    _deviceId: string,
+  ): SubmitAttendanceResult {
+    const session = mockSessions.find((s) => s.id === sessionId)
+    if (!session) return { success: false, status: 'absent', reason: 'session_not_found', message: 'Session not found' }
+
+    if (session.geofence) {
+      const inRange = isWithinGeofence(
+        coordinates.latitude,
+        coordinates.longitude,
+        session.geofence.latitude,
+        session.geofence.longitude,
+        session.geofence.radiusMeters,
+      )
+      if (!inRange) {
+        return {
+          success: false,
+          status: 'absent',
+          reason: 'out_of_bounds',
+          message: `You are outside the ${session.geofence.radiusMeters}m geofence`,
+        }
+      }
+    }
+
+    const record = mockAttendanceRecords.find(
+      (r) => r.sessionId === sessionId && r.studentId === studentId
+    )
+    if (record) {
+      record.status = 'present'
+      record.coordinates = coordinates
+      record.timestamp = new Date().toISOString()
+      return { success: true, status: 'present' }
+    }
+
+    const newRecord: AttendanceRecord = {
+      id: `a-${Date.now()}`,
+      sessionId,
+      sectionId: _sectionId,
+      studentId,
+      studentName: mockStudents.find((s) => s.id === studentId)?.fullName ?? 'Unknown',
+      timestamp: new Date().toISOString(),
+      status: 'present',
+      coordinates,
+      deviceId: _deviceId,
+      isSynced: true,
+      syncedAt: new Date().toISOString(),
+    }
+    mockAttendanceRecords.push(newRecord)
+    return { success: true, status: 'present' }
   },
 
   submitScan(

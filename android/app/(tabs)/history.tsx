@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, TextInput, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
+import { router } from 'expo-router'
 import { api } from '../../services/mock-api'
 import { useTheme } from '../../theme/ThemeContext'
 import type { AttendanceStatus, AttendanceRecord } from '@polycheck/shared'
@@ -76,6 +77,7 @@ export default function HistoryScreen() {
 
   const handleLogout = () => {
     api.logout()
+    router.replace('/')
   }
 
   return (

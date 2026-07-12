@@ -28,7 +28,7 @@ export default function StudentDetailPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const studentId = params.id as string
-  const sectionId = searchParams.get('subjectId') || ''
+  const sectionId = searchParams.get('sectionId') || ''
   const [user, setUser] = useState<User | null>(null)
   const [student, setStudent] = useState<Student | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
@@ -47,12 +47,19 @@ export default function StudentDetailPage() {
   }, [router])
 
   useEffect(() => {
-    if (!studentId || !sectionId) return
+    if (!studentId) return
+    let secId = sectionId
+    if (!secId) {
+      const enrollments = api.getEnrollments()
+      const enr = enrollments.find((e) => e.studentId === studentId)
+      if (enr) secId = enr.sectionId
+    }
+    if (!secId) return
     const s = api.getStudent(studentId)
     if (!s) { router.push('/faculty/subjects'); return }
     setStudent(s)
-    setSessions(api.getSectionSessions(sectionId))
-    setRecords(api.getStudentAttendanceForSection(studentId, sectionId))
+    setSessions(api.getSectionSessions(secId))
+    setRecords(api.getStudentAttendanceForSection(studentId, secId))
     setReady(true)
   }, [studentId, sectionId, router])
 
