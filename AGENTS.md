@@ -345,6 +345,9 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 - **Validation cleanup**: Removed orphaned `tokenPayload` field from `AttendanceRecordSchema` (had no corresponding type definition).
 - **Route param cleanup**: Normalized `sectionId` query parameter (was mixed `subjectId`/`sectionId`) in student detail pages on both platforms.
 - **Docs cleanup**: Removed false claim about `addGeofence`/`editGeofence` methods from AGENTS.md (geofence is configured via `CreateSessionInput`/`BulkSessionInput`). Updated mock data counts.
+- **ApiClient interface**: Added `search()` method that was mock-only. Validation schemas brought in sync with input types (`SessionCreateSchema` gains `geofence`, `subjectName`, `teacherId`, `isRescheduled`; `SectionCreateSchema` gains `teacherId`, `teacherName`; `endTime` no longer optional; `GeofenceConfigSchema` is now used by `SessionCreateSchema`).
+- **Return type consistency**: Fixed web mock `submitAttendance` to include `message` field. Both mocks' `submitDispute` now writes `disputeDescription` instead of `notes`.
+- **Import cleanup**: Removed unused `isTokenInValidityWindow` and `decodeTokenPayload` from mobile mock imports. Added missing `DisputeReason`, `SubmitAttendanceResult` type imports to both mocks.
 
 ### In Progress
 - (none)
