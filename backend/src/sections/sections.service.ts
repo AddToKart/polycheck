@@ -1,0 +1,343 @@
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common'
+import { PrismaService } from '../prisma/prisma.service'
+import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { CreateSectionDto } from './dto/create-section.dto'
+import type { UpdateSectionDto } from './dto/update-section.dto'
+
+@Injectable()
+export class SectionsService {
+  constructor(private prisma: PrismaService) {}
+
+  async findAll(user: RequestUser) {
+    if (user.role === 'super_admin') {
+      return this.prisma.section.findMany({
+        include: {
+          subject: { select: { id: true, name: true, code: true } },
+          teacher: { select: { id: true, fullName: true } },
+          _count: { select: { enrollments: true } },
+        },
+        orderBy: [{ semester: 'desc' }, { section: 'asc' }],
+      })
+    }
+
+    if (user.role === 'teacher') {
+      return this.prisma.section.findMany({
+        where: { teacherId: user.id },
+        include: {
+          subject: { select: { id: true, name: true, code: true } },
+          _count: { select: { enrollments: true } },
+        },
+        orderBy: [{ semester: 'desc' }, { section: 'asc' }],
+      })
+    }
+
+    // student — enrolled sections only
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: { studentId: user.id },
+      select: { sectionId: true },
+    })
+    const sectionIds = enrollments.map((e) => e.sectionId)
+
+    return this.prisma.section.findMany({
+      where: { id: { in: sectionIds } },
+      include: {
+        subject: { select: { id: true, name: true, code: true } },
+        teacher: { select: { id: true, fullName: true } },
+      },
+      orderBy: [{ semester: 'desc' }, { section: 'asc' }],
+    })
+  }
+
+  async findOne(id: string, user: RequestUser) {
+    const section = await this.prisma.section.findUnique({
+      where: { id },
+      include: {
+        subject: { select: { id: true, name: true, code: true } },
+        teacher: { select: { id: true, fullName: true } },
+        schedule: true,
+      },
+    })
+    if (!section) throw new NotFoundException('Section not found')
+
+    // Students can only view sections they're enrolled in
+    if (user.role === 'student') {
+      const enrollment = await this.prisma.enrollment.findUnique({
+        where: { studentId_sectionId: { studentId: user.id, sectionId: id } },
+      })
+      if (!enrollment) throw new ForbiddenException('You are not enrolled in this section')
+    }
+
+    return section
+  }
+
+  async create(dto: CreateSectionDto, user: RequestUser) {
+    // Verify teacher exists
+    const teacher = await this.prisma.user.findUnique({ where: { id: dto.teacherId } })
+    if (!teacher || teacher.role !== 'teacher') {
+      throw new BadRequestException('Invalid teacher')
+    }
+
+    // Verify subject exists
+    const subject = await this.prisma.subject.findUnique({ where: { id: dto.subjectId } })
+    if (!subject) throw new BadRequestException('Subject not found')
+
+    const { schedule, ...sectionData } = dto
+
+    return this.prisma.section.create({
+      data: {
+        ...sectionData,
+        room: dto.room,
+        enrollmentCode: this.generateEnrollmentCode(),
+        enrollmentCodeExpiry: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 2 weeks
+        schedule: {
+          create: schedule.map((s) => ({
+            day: s.day as any,
+            startTime: s.startTime,
+            endTime: s.endTime,
+            room: s.room,
+          })),
+        },
+      },
+      include: {
+        subject: { select: { id: true, name: true, code: true } },
+        teacher: { select: { id: true, fullName: true } },
+        schedule: true,
+      },
+    })
+  }
+
+  async update(id: string, dto: UpdateSectionDto, user: RequestUser) {
+    const section = await this.findOne(id, user)
+
+    if (user.role === 'teacher' && section.teacherId !== user.id) {
+      throw new ForbiddenException('You can only update your own sections')
+    }
+
+    const { schedule, ...sectionData } = dto
+
+    if (schedule) {
+      // Delete existing schedule and recreate
+      await this.prisma.scheduleDay.deleteMany({ where: { sectionId: id } })
+      await this.prisma.scheduleDay.createMany({
+        data: schedule.map((s) => ({
+          sectionId: id,
+          day: s.day as any,
+          startTime: s.startTime!,
+          endTime: s.endTime!,
+          room: s.room,
+        })),
+      })
+    }
+
+    return this.prisma.section.update({
+      where: { id },
+      data: sectionData,
+      include: {
+        subject: { select: { id: true, name: true, code: true } },
+        teacher: { select: { id: true, fullName: true } },
+        schedule: true,
+      },
+    })
+  }
+
+  async remove(id: string, user: RequestUser) {
+    const section = await this.findOne(id, user)
+
+    if (user.role === 'teacher' && section.teacherId !== user.id) {
+      throw new ForbiddenException('You can only delete your own sections')
+    }
+
+    await this.prisma.scheduleDay.deleteMany({ where: { sectionId: id } })
+    await this.prisma.enrollment.deleteMany({ where: { sectionId: id } })
+    await this.prisma.section.delete({ where: { id } })
+
+    return { message: 'Section deleted' }
+  }
+
+  async getStudents(sectionId: string, user: RequestUser) {
+    const section = await this.findOne(sectionId, user)
+
+    if (user.role === 'teacher' && section.teacherId !== user.id) {
+      throw new ForbiddenException('You can only view students in your own sections')
+    }
+
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: { sectionId },
+      include: {
+        student: {
+          select: {
+            id: true,
+            studentId: true,
+            fullName: true,
+            email: true,
+            program: true,
+            yearLevel: true,
+            photoUrl: true,
+          },
+        },
+      },
+      orderBy: { student: { fullName: 'asc' } },
+    })
+
+    // For each student, calculate attendance counts
+    const result: any[] = []
+    for (const enrollment of enrollments) {
+      const records = await this.prisma.attendanceRecord.findMany({
+        where: { studentId: enrollment.studentId, sectionId },
+        select: { status: true },
+      })
+
+      const attendance = {
+        present: records.filter((r) => r.status === 'present').length,
+        late: records.filter((r) => r.status === 'late').length,
+        absent: records.filter((r) => r.status === 'absent').length,
+        disputed: records.filter((r) => r.status === 'disputed').length,
+      }
+
+      result.push({ ...enrollment.student, attendance })
+    }
+
+    return result
+  }
+
+  async enrollViaCode(sectionId: string, studentId: string, enrollmentCode: string) {
+    const section = await this.prisma.section.findUnique({ where: { id: sectionId } })
+    if (!section) throw new NotFoundException('Section not found')
+
+    if (!section.enrollmentCode || section.enrollmentCode !== enrollmentCode) {
+      throw new BadRequestException('Invalid enrollment code')
+    }
+
+    if (section.enrollmentCodeExpiry && section.enrollmentCodeExpiry < new Date()) {
+      throw new BadRequestException('Enrollment code has expired')
+    }
+
+    // Check if already enrolled
+    const existing = await this.prisma.enrollment.findUnique({
+      where: { studentId_sectionId: { studentId, sectionId } },
+    })
+    if (existing) throw new ConflictException('Already enrolled in this section')
+
+    const enrollment = await this.prisma.enrollment.create({
+      data: { studentId, sectionId },
+    })
+
+    await this.prisma.section.update({
+      where: { id: sectionId },
+      data: { studentCount: { increment: 1 } },
+    })
+
+    return enrollment
+  }
+
+  async enrollStudent(sectionId: string, teacherId: string, studentId: string, studentName: string) {
+    const section = await this.prisma.section.findUnique({ where: { id: sectionId } })
+    if (!section) throw new NotFoundException('Section not found')
+
+    if (section.teacherId !== teacherId) {
+      throw new ForbiddenException('You can only enroll students in your own sections')
+    }
+
+    const student = await this.prisma.user.findUnique({ where: { id: studentId } })
+    if (!student || student.role !== 'student') {
+      throw new BadRequestException('Invalid student')
+    }
+
+    const existing = await this.prisma.enrollment.findUnique({
+      where: { studentId_sectionId: { studentId, sectionId } },
+    })
+    if (existing) throw new ConflictException('Student is already enrolled')
+
+    const enrollment = await this.prisma.enrollment.create({
+      data: { studentId, sectionId },
+    })
+
+    await this.prisma.section.update({
+      where: { id: sectionId },
+      data: { studentCount: { increment: 1 } },
+    })
+
+    return enrollment
+  }
+
+  async removeStudent(sectionId: string, teacherId: string, studentId: string) {
+    const section = await this.prisma.section.findUnique({ where: { id: sectionId } })
+    if (!section) throw new NotFoundException('Section not found')
+
+    if (section.teacherId !== teacherId) {
+      throw new ForbiddenException('You can only remove students from your own sections')
+    }
+
+    const enrollment = await this.prisma.enrollment.findUnique({
+      where: { studentId_sectionId: { studentId, sectionId } },
+    })
+    if (!enrollment) throw new NotFoundException('Student is not enrolled in this section')
+
+    await this.prisma.enrollment.delete({
+      where: { studentId_sectionId: { studentId, sectionId } },
+    })
+
+    await this.prisma.section.update({
+      where: { id: sectionId },
+      data: { studentCount: { decrement: 1 } },
+    })
+
+    return { message: 'Student removed from section' }
+  }
+
+  async resetEnrollmentCode(sectionId: string, teacherId: string) {
+    const section = await this.prisma.section.findUnique({ where: { id: sectionId } })
+    if (!section) throw new NotFoundException('Section not found')
+    if (section.teacherId !== teacherId) throw new ForbiddenException()
+
+    const newCode = this.generateEnrollmentCode()
+    await this.prisma.section.update({
+      where: { id: sectionId },
+      data: {
+        enrollmentCode: newCode,
+        enrollmentCodeExpiry: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+      },
+    })
+
+    return { enrollmentCode: newCode }
+  }
+
+  async disableEnrollmentCode(sectionId: string, teacherId: string) {
+    const section = await this.prisma.section.findUnique({ where: { id: sectionId } })
+    if (!section) throw new NotFoundException('Section not found')
+    if (section.teacherId !== teacherId) throw new ForbiddenException()
+
+    await this.prisma.section.update({
+      where: { id: sectionId },
+      data: { enrollmentCode: null, enrollmentCodeExpiry: null },
+    })
+
+    return { message: 'Enrollment code disabled' }
+  }
+
+  async getEnrollments(sectionId: string, user: RequestUser) {
+    const section = await this.findOne(sectionId, user)
+    if (user.role === 'teacher' && section.teacherId !== user.id) {
+      throw new ForbiddenException()
+    }
+
+    return this.prisma.enrollment.findMany({
+      where: { sectionId },
+      include: {
+        student: {
+          select: { id: true, studentId: true, fullName: true, program: true, yearLevel: true },
+        },
+      },
+      orderBy: { enrolledAt: 'asc' },
+    })
+  }
+
+  private generateEnrollmentCode(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    let code = ''
+    for (let i = 0; i < 7; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)]
+    }
+    return code
+  }
+}
