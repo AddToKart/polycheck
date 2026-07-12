@@ -7,7 +7,7 @@
 ---
 
 [![PUP Brand](https://img.shields.io/badge/PUP-Maroon%20%26%20Gold-7B1113?style=for-the-badge)](https://www.pup.edu.ph/)
-[![Stack](https://img.shields.io/badge/Tech_Stack-Next.js_15_|_React_Native_|_NestJS_|_Supabase-blue?style=for-the-badge&logo=typescript)](https://typescriptlang.org)
+[![Stack](https://img.shields.io/badge/Tech_Stack-Next.js_15_|_React_Native_|_NestJS_|_PostgreSQL-blue?style=for-the-badge&logo=typescript)](https://typescriptlang.org)
 [![Turborepo](https://img.shields.io/badge/Monorepo-Turborepo_|_pnpm-EF4444?style=for-the-badge&logo=turborepo)](https://turbo.build/)
 
 ---
@@ -44,7 +44,7 @@ sequenceDiagram
     actor Student
     actor Teacher
     participant LocalDB as Local Device SQLite
-    participant Server as Supabase Cloud & NestJS API
+    participant Server as PostgreSQL & NestJS API
 
     Note over Teacher, LocalDB: Before Session: Connected Setup
     Teacher->>Server: Configure Subject & Geofence Coordinates

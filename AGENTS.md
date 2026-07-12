@@ -45,7 +45,7 @@ polycheck/
 | Web dashboard | Next.js 15 (App Router), shadcn/ui, Tailwind CSS |
 | Mobile app | Expo SDK 52+, Expo Router, NativeWind, react-native-reusables |
 | Backend API | NestJS (Node.js) |
-| Cloud database | PostgreSQL on Supabase |
+| Database | PostgreSQL (via Prisma ORM) |
 | Local database | SQLite via expo-sqlite |
 | Authentication | Better Auth (Next.js) + JWT (NestJS guards) |
 | Monorepo | pnpm workspaces + Turborepo |
@@ -182,7 +182,7 @@ Any failure → marked as `disputed`, surfaced to teacher
 ## Data & Privacy
 
 - Full audit trail: who, which device, GPS, timestamp, outcome
-- Supabase RLS enforces role-based access:
+- NestJS guards enforce role-based access (via Casl / custom RBAC):
   - Students: own records only
   - Teachers: their subjects only
   - Super Admins: all records in scope
