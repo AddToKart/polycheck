@@ -25,8 +25,8 @@ export interface Section {
   semester: string
   teacherId: string
   teacherName: string
-  enrollmentCode: string
-  enrollmentCodeExpiry: string
+  enrollmentCode?: string
+  enrollmentCodeExpiry?: string
   studentCount: number
   createdAt: string
   updatedAt: string

@@ -181,6 +181,9 @@ export const api = {
   getEnrollments(sectionId?: string): Promise<Enrollment[]> {
     return sectionId ? get(`/sections/${sectionId}/enrollments`) : get('/enrollments')
   },
+  enrollByCode(enrollmentCode: string): Promise<Enrollment> {
+    return post('/sections/enroll-by-code', { enrollmentCode })
+  },
 
   // ── Sessions ──
   getSessions(sectionId?: string): Promise<Session[]> {

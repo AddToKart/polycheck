@@ -1,8 +1,9 @@
-import { IsString, MinLength, IsArray, ValidateNested, IsOptional } from 'class-validator'
+import { IsString, MinLength, IsArray, ValidateNested, IsOptional, IsIn } from 'class-validator'
 import { Type } from 'class-transformer'
 
 class ScheduleDayDto {
   @IsString()
+  @IsIn(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
   day: string
 
   @IsString()
@@ -38,11 +39,4 @@ export class CreateSectionDto {
   @MinLength(1)
   semester: string
 
-  @IsString()
-  @MinLength(1)
-  teacherId: string
-
-  @IsString()
-  @MinLength(1)
-  teacherName: string
 }

@@ -12,8 +12,6 @@ export interface CreateSectionInput {
   room: string
   schedule: { day: string; startTime: string; endTime: string; room?: string }[]
   semester: string
-  teacherId: string
-  teacherName: string
 }
 
 export interface CreateSessionInput {

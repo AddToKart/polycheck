@@ -145,7 +145,7 @@ export default function SubjectDetailPage() {
                         <div className="flex items-center gap-2">
                           <span className="font-mono bg-zinc-200 dark:bg-zinc-800 px-2 py-1 text-foreground">{section.enrollmentCode}</span>
                           <button
-                            onClick={(e) => { e.stopPropagation(); handleCopy(section.enrollmentCode, section.id) }}
+                            onClick={(e) => { e.stopPropagation(); handleCopy(section.enrollmentCode!, section.id) }}
                             className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-500 transition-colors"
                             title="Copy Code"
                           >

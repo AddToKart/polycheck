@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Request, HttpCode, HttpStatus } from '@nestjs/common'
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Request, HttpCode, HttpStatus } from '@nestjs/common'
 import { SectionsService } from './sections.service'
 import { Roles } from '../common/decorators/roles.decorator'
 import type { CreateSectionDto } from './dto/create-section.dto'
@@ -11,8 +11,8 @@ export class SectionsController {
   constructor(private sections: SectionsService) {}
 
   @Get()
-  findAll(@Request() req) {
-    return this.sections.findAll(req.user)
+  findAll(@Request() req, @Query('subjectId') subjectId?: string) {
+    return this.sections.findAll(req.user, subjectId)
   }
 
   @Get(':id')
@@ -24,6 +24,12 @@ export class SectionsController {
   @Roles('teacher')
   create(@Body() dto: CreateSectionDto, @Request() req) {
     return this.sections.create(dto, req.user)
+  }
+
+  @Post('enroll-by-code')
+  @Roles('student')
+  enrollByCode(@Body() dto: EnrollViaCodeDto, @Request() req) {
+    return this.sections.enrollByCode(req.user.id, dto.enrollmentCode)
   }
 
   @Patch(':id')

@@ -27,30 +27,10 @@ export default function EnrollScreen() {
 
     setLoading(true)
 
-    const sections = api.getSections()
-    const section = sections.find((s) => s.enrollmentCode === trimmed)
-
-    if (!section) {
-      Alert.alert('Invalid Code', 'Invalid enrollment code. Please check and try again.')
-      setLoading(false)
-      return
-    }
-
-    if (new Date(section.enrollmentCodeExpiry) < new Date()) {
-      Alert.alert('Expired Code', 'This enrollment code has expired.')
-      setLoading(false)
-      return
-    }
-
-    const user = api.getCurrentUser()
-    const result = api.enrollStudent({
-      sectionId: section.id,
-      studentId: user!.id,
-      studentName: user!.fullName,
-    })
-
-    if (!result) {
-      Alert.alert('Already Enrolled', 'You are already enrolled in this section.')
+    try {
+      await api.enrollByCode(trimmed)
+    } catch (error) {
+      Alert.alert('Unable to Enroll', error instanceof Error ? error.message : 'Please try again.')
       setLoading(false)
       return
     }

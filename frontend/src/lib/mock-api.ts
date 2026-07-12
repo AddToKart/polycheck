@@ -91,7 +91,8 @@ export const api = {
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: 'Login failed' }))
-      throw new Error(err.message || 'Login failed')
+      const msg = Array.isArray(err.message) ? err.message.join('. ') : (err.message || 'Login failed')
+      throw new Error(msg)
     }
     const data = await res.json()
     currentUser = data.user as User
@@ -108,7 +109,8 @@ export const api = {
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: 'Login failed' }))
-      throw new Error(err.message || 'Login failed')
+      const msg = Array.isArray(err.message) ? err.message.join('. ') : (err.message || 'Login failed')
+      throw new Error(msg)
     }
     const data = await res.json()
     currentUser = data.user as User
@@ -163,6 +165,9 @@ export const api = {
   },
   getEnrollments(sectionId?: string): Promise<Enrollment[]> {
     return sectionId ? get(`/sections/${sectionId}/enrollments`) : get('/enrollments')
+  },
+  enrollByCode(enrollmentCode: string): Promise<Enrollment> {
+    return post('/sections/enroll-by-code', { enrollmentCode })
   },
 
   // ── Sessions ──

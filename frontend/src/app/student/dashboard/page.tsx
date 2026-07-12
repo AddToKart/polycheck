@@ -105,28 +105,10 @@ function StudentDashboardContent() {
 
     setEnrollLoading(true)
 
-    const allSections = await api.getSections()
-    const foundSection = allSections.find((s) => s.enrollmentCode === trimmed)
-    if (!foundSection) {
-      setEnrollError('Invalid enrollment code. Please check and try again.')
-      setEnrollLoading(false)
-      return
-    }
-
-    if (new Date(foundSection.enrollmentCodeExpiry) < new Date()) {
-      setEnrollError('This enrollment code has expired.')
-      setEnrollLoading(false)
-      return
-    }
-
-    const result = await api.enrollStudent({
-      sectionId: foundSection.id,
-      studentId: user!.id,
-      studentName: user!.fullName,
-    })
-
-    if (!result) {
-      setEnrollError('You are already enrolled in this section.')
+    try {
+      await api.enrollByCode(trimmed)
+    } catch (error) {
+      setEnrollError(error instanceof Error ? error.message : 'Unable to enroll in this section.')
       setEnrollLoading(false)
       return
     }

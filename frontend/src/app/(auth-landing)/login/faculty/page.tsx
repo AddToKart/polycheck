@@ -22,13 +22,18 @@ export default function FacultyLoginPage() {
     e.preventDefault()
     setError('')
     setLoading(true)
-    const user = await api.loginFaculty(email, password)
-    if (user) {
-      router.push('/faculty')
-    } else {
-      setError('Invalid email or password.')
+    try {
+      const user = await api.loginFaculty(email, password)
+      if (user) {
+        router.push('/faculty')
+      } else {
+        setError('Invalid email or password.')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Invalid email or password.')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (

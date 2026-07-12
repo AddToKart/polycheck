@@ -196,6 +196,7 @@ export default function SectionDetailPage() {
                 <div className="flex items-center gap-4 mb-3 flex-wrap">
                   <span className="text-2xl font-mono font-bold text-maroon dark:text-golden tracking-wider">{section.enrollmentCode}</span>
                   {(() => {
+                    if (!section.enrollmentCodeExpiry) return null
                     const expiry = new Date(section.enrollmentCodeExpiry)
                     const now = new Date()
                     const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))

@@ -4,31 +4,33 @@ import type { RequestUser } from '../auth/strategies/jwt.strategy'
 import type { CreateSectionDto } from './dto/create-section.dto'
 import type { UpdateSectionDto } from './dto/update-section.dto'
 
+const sectionInclude = {
+  subject: { select: { id: true, name: true, code: true } },
+  teacher: { select: { id: true, fullName: true } },
+  schedule: true,
+} as const
+
 @Injectable()
 export class SectionsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(user: RequestUser) {
+  async findAll(user: RequestUser, subjectId?: string) {
     if (user.role === 'super_admin') {
-      return this.prisma.section.findMany({
-        include: {
-          subject: { select: { id: true, name: true, code: true } },
-          teacher: { select: { id: true, fullName: true } },
-          _count: { select: { enrollments: true } },
-        },
+      const sections = await this.prisma.section.findMany({
+        where: subjectId ? { subjectId } : undefined,
+        include: sectionInclude,
         orderBy: [{ semester: 'desc' }, { section: 'asc' }],
       })
+      return sections.map((section) => this.presentSection(section))
     }
 
     if (user.role === 'teacher') {
-      return this.prisma.section.findMany({
-        where: { teacherId: user.id },
-        include: {
-          subject: { select: { id: true, name: true, code: true } },
-          _count: { select: { enrollments: true } },
-        },
+      const sections = await this.prisma.section.findMany({
+        where: { teacherId: user.id, ...(subjectId ? { subjectId } : {}) },
+        include: sectionInclude,
         orderBy: [{ semester: 'desc' }, { section: 'asc' }],
       })
+      return sections.map((section) => this.presentSection(section))
     }
 
     // student — enrolled sections only
@@ -38,24 +40,18 @@ export class SectionsService {
     })
     const sectionIds = enrollments.map((e) => e.sectionId)
 
-    return this.prisma.section.findMany({
-      where: { id: { in: sectionIds } },
-      include: {
-        subject: { select: { id: true, name: true, code: true } },
-        teacher: { select: { id: true, fullName: true } },
-      },
+    const sections = await this.prisma.section.findMany({
+      where: { id: { in: sectionIds }, ...(subjectId ? { subjectId } : {}) },
+      include: sectionInclude,
       orderBy: [{ semester: 'desc' }, { section: 'asc' }],
     })
+    return sections.map((section) => this.presentSection(section, false))
   }
 
   async findOne(id: string, user: RequestUser) {
     const section = await this.prisma.section.findUnique({
       where: { id },
-      include: {
-        subject: { select: { id: true, name: true, code: true } },
-        teacher: { select: { id: true, fullName: true } },
-        schedule: true,
-      },
+      include: sectionInclude,
     })
     if (!section) throw new NotFoundException('Section not found')
 
@@ -67,26 +63,23 @@ export class SectionsService {
       if (!enrollment) throw new ForbiddenException('You are not enrolled in this section')
     }
 
-    return section
+    return this.presentSection(section, user.role !== 'student')
   }
 
   async create(dto: CreateSectionDto, user: RequestUser) {
-    // Verify teacher exists
-    const teacher = await this.prisma.user.findUnique({ where: { id: dto.teacherId } })
-    if (!teacher || teacher.role !== 'teacher') {
-      throw new BadRequestException('Invalid teacher')
-    }
-
     // Verify subject exists
     const subject = await this.prisma.subject.findUnique({ where: { id: dto.subjectId } })
     if (!subject) throw new BadRequestException('Subject not found')
 
-    const { schedule, ...sectionData } = dto
+    const { schedule, subjectId, section, room, semester } = dto
 
-    return this.prisma.section.create({
+    const created = await this.prisma.section.create({
       data: {
-        ...sectionData,
-        room: dto.room,
+        subjectId,
+        section,
+        room,
+        semester,
+        teacherId: user.id,
         enrollmentCode: this.generateEnrollmentCode(),
         enrollmentCodeExpiry: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 2 weeks
         schedule: {
@@ -98,12 +91,9 @@ export class SectionsService {
           })),
         },
       },
-      include: {
-        subject: { select: { id: true, name: true, code: true } },
-        teacher: { select: { id: true, fullName: true } },
-        schedule: true,
-      },
+      include: sectionInclude,
     })
+    return this.presentSection(created)
   }
 
   async update(id: string, dto: UpdateSectionDto, user: RequestUser) {
@@ -129,15 +119,12 @@ export class SectionsService {
       })
     }
 
-    return this.prisma.section.update({
+    const updated = await this.prisma.section.update({
       where: { id },
       data: sectionData,
-      include: {
-        subject: { select: { id: true, name: true, code: true } },
-        teacher: { select: { id: true, fullName: true } },
-        schedule: true,
-      },
+      include: sectionInclude,
     })
+    return this.presentSection(updated)
   }
 
   async remove(id: string, user: RequestUser) {
@@ -215,7 +202,7 @@ export class SectionsService {
     const section = await this.prisma.section.findUnique({ where: { id: sectionId } })
     if (!section) throw new NotFoundException('Section not found')
 
-    if (!section.enrollmentCode || section.enrollmentCode !== enrollmentCode) {
+    if (!section.enrollmentCode || section.enrollmentCode !== enrollmentCode.trim().toUpperCase()) {
       throw new BadRequestException('Invalid enrollment code')
     }
 
@@ -229,16 +216,17 @@ export class SectionsService {
     })
     if (existing) throw new ConflictException('Already enrolled in this section')
 
-    const enrollment = await this.prisma.enrollment.create({
-      data: { studentId, sectionId },
-    })
+    return this.createEnrollment(studentId, sectionId)
+  }
 
-    await this.prisma.section.update({
-      where: { id: sectionId },
-      data: { studentCount: { increment: 1 } },
-    })
-
-    return enrollment
+  async enrollByCode(studentId: string, enrollmentCode: string) {
+    const normalizedCode = enrollmentCode.trim().toUpperCase()
+    const section = await this.prisma.section.findUnique({ where: { enrollmentCode: normalizedCode } })
+    if (!section || !section.enrollmentCode) throw new BadRequestException('Invalid enrollment code')
+    if (section.enrollmentCodeExpiry && section.enrollmentCodeExpiry < new Date()) {
+      throw new BadRequestException('Enrollment code has expired')
+    }
+    return this.createEnrollment(studentId, section.id)
   }
 
   async enrollStudent(sectionId: string, teacherId: string, studentId: string, studentName: string) {
@@ -254,21 +242,7 @@ export class SectionsService {
       throw new BadRequestException('Invalid student')
     }
 
-    const existing = await this.prisma.enrollment.findUnique({
-      where: { studentId_sectionId: { studentId, sectionId } },
-    })
-    if (existing) throw new ConflictException('Student is already enrolled')
-
-    const enrollment = await this.prisma.enrollment.create({
-      data: { studentId, sectionId },
-    })
-
-    await this.prisma.section.update({
-      where: { id: sectionId },
-      data: { studentCount: { increment: 1 } },
-    })
-
-    return enrollment
+    return this.createEnrollment(studentId, sectionId)
   }
 
   async removeStudent(sectionId: string, teacherId: string, studentId: string) {
@@ -350,5 +324,38 @@ export class SectionsService {
       code += chars[Math.floor(Math.random() * chars.length)]
     }
     return code
+  }
+
+  private async createEnrollment(studentId: string, sectionId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.enrollment.findUnique({
+        where: { studentId_sectionId: { studentId, sectionId } },
+      })
+      if (existing) throw new ConflictException('Already enrolled in this section')
+
+      const enrollment = await tx.enrollment.create({ data: { studentId, sectionId } })
+      await tx.section.update({ where: { id: sectionId }, data: { studentCount: { increment: 1 } } })
+      return enrollment
+    })
+  }
+
+  private presentSection(section: any, includeEnrollmentCode = true) {
+    return {
+      id: section.id,
+      subjectId: section.subjectId,
+      section: section.section,
+      room: section.room,
+      schedule: section.schedule,
+      semester: section.semester,
+      teacherId: section.teacherId,
+      teacherName: section.teacher.fullName,
+      ...(includeEnrollmentCode ? {
+        enrollmentCode: section.enrollmentCode ?? undefined,
+        enrollmentCodeExpiry: section.enrollmentCodeExpiry ?? undefined,
+      } : {}),
+      studentCount: section.studentCount,
+      createdAt: section.createdAt,
+      updatedAt: section.updatedAt,
+    }
   }
 }

@@ -18,15 +18,30 @@ export class UsersService {
   }
 
   async findOne(id: string, user: RequestUser) {
-    const target = await this.prisma.user.findUnique({ where: { id } })
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      include: { enrollments: { select: { sectionId: true } } },
+    })
     if (!target) throw new NotFoundException('User not found')
 
-    if (user.role !== 'super_admin' && user.id !== id) {
-      throw new ForbiddenException('Cannot access other user profiles')
+    const canAccessOwnProfile = user.id === id
+    const canAccessAsSuperAdmin = user.role === 'super_admin'
+    const canAccessStudentInOwnSection = user.role === 'teacher' && target.role === 'student'
+      ? await this.prisma.enrollment.findFirst({
+          where: { studentId: id, section: { teacherId: user.id } },
+          select: { id: true },
+        })
+      : null
+
+    if (!canAccessOwnProfile && !canAccessAsSuperAdmin && !canAccessStudentInOwnSection) {
+      throw new ForbiddenException('Cannot access this user profile')
     }
 
-    const { password, teacherPublicKey, ...rest } = target
-    return rest
+    const { password, teacherPublicKey, enrollments, ...rest } = target
+    return {
+      ...rest,
+      ...(target.role === 'student' ? { enrolledSectionIds: enrollments.map((enrollment) => enrollment.sectionId) } : {}),
+    }
   }
 
   async findTeachers(user: RequestUser) {

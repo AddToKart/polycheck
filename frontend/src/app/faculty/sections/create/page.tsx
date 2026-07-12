@@ -121,8 +121,6 @@ function CreateSectionForm() {
         room: s.room || undefined,
       })),
       semester,
-      teacherId: user.id,
-      teacherName: user.fullName,
     })
     router.push('/faculty/subjects/' + subject.id)
   }

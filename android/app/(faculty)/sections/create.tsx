@@ -136,18 +136,16 @@ export default function CreateSectionScreen() {
     setScheduleEntries(scheduleEntries.filter((_, i) => i !== index))
   }
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!section || !room || !semester || scheduleEntries.length === 0) return
-    const newSection = api.createSection({
+    const newSection = await api.createSection({
       subjectId,
       section,
       room,
       schedule: scheduleEntries.map((s) => ({ day: s.day, startTime: s.startTime, endTime: s.endTime, room: s.room })),
       semester,
-      teacherId: user.id,
-      teacherName: user.fullName,
     })
-    api.resetEnrollmentCode(newSection.id)
+    await api.resetEnrollmentCode(newSection.id)
     router.back()
   }
 

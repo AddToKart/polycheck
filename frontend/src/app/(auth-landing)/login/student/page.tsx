@@ -22,13 +22,18 @@ export default function StudentLoginPage() {
     e.preventDefault()
     setError('')
     setLoading(true)
-    const user = await api.loginStudent(studentId, password)
-    if (user) {
-      router.push('/student/dashboard')
-    } else {
-      setError('Invalid student ID or password.')
+    try {
+      const user = await api.loginStudent(studentId, password)
+      if (user) {
+        router.push('/student/dashboard')
+      } else {
+        setError('Invalid student ID or password.')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Invalid student ID or password.')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (
