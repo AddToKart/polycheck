@@ -438,7 +438,7 @@ const ATTENDANCE_PAGE_SIZE = 8
                     <CardHeader className="border-b border-zinc-200 dark:border-zinc-800 p-6 flex flex-row items-center justify-between space-y-0 bg-zinc-50 dark:bg-zinc-900/50">
                       <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-maroon dark:text-golden" />
-                        Today's Schedule
+                        Today&apos;s Schedule
                       </CardTitle>
                       <button 
                         onClick={() => router.push('?tab=schedule')}

@@ -175,7 +175,7 @@ export default function StudentSessionDetailPage() {
                       </div>
                       <p className="text-xs font-medium text-foreground truncate">{poc.uploadedByStudentName}</p>
                       <p className="text-[10px] text-zinc-500">{new Date(poc.uploadedAt).toLocaleString()}</p>
-                      {poc.description && <p className="text-[10px] text-zinc-400 mt-1 italic">"{poc.description}"</p>}
+                      {poc.description && <p className="text-[10px] text-zinc-400 mt-1 italic">&quot;{poc.description}&quot;</p>}
                       {isQac && user?.id === poc.uploadedBy && (
                         <button className="mt-2 text-[10px] text-red-500 hover:text-red-700 flex items-center gap-1" onClick={() => handleDeleteProof(poc.id)}>
                           <Trash2 className="w-3 h-3" /> Delete

@@ -348,7 +348,7 @@ export default function CreateSessionPage() {
                               ))}
                             </select>
                             <p className="text-xs text-zinc-500 mt-1">
-                              The selected standard slot will be visually marked as "MOVED" for students.
+                              The selected standard slot will be visually marked as &quot;MOVED&quot; for students.
                             </p>
                           </div>
                         )}

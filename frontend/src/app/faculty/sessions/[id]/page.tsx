@@ -345,7 +345,7 @@ export default function SessionDetailPage() {
                       </div>
                       <p className="text-xs font-medium dark:text-white truncate">{poc.uploadedByStudentName}</p>
                       <p className="text-[10px] text-gray-400">{new Date(poc.uploadedAt).toLocaleString()}</p>
-                      {poc.description && <p className="text-[10px] text-gray-500 mt-1 italic">"{poc.description}"</p>}
+                      {poc.description && <p className="text-[10px] text-gray-500 mt-1 italic">&quot;{poc.description}&quot;</p>}
                       <button
                         className="mt-2 text-[10px] text-red-500 hover:text-red-700 flex items-center gap-1"
                         onClick={() => { api.deleteProofOfClass(poc.id); setProofsOfClass(api.getProofsOfClass(id)) }}

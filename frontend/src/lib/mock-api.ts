@@ -60,7 +60,7 @@ function saveUser(user: User | null) {
 let currentUser: User | null = loadUser()
 
 export const api = {
-  loginStudent(studentId: string, _password: string): Student | null {
+  loginStudent(studentId: string, _password?: string): Student | null {
     const student = mockStudents.find((s) => s.studentId === studentId)
     if (student) {
       currentUser = student
@@ -70,7 +70,7 @@ export const api = {
     return null
   },
 
-  loginFaculty(email: string, _password: string): User | null {
+  loginFaculty(email: string, _password?: string): User | null {
     const teacher = mockTeachers.find((t) => t.email === email)
     if (teacher) {
       currentUser = teacher
@@ -408,12 +408,12 @@ export const api = {
     studentId: string,
     lat: number,
     lon: number,
-  ): { success: boolean; status: AttendanceStatus; message?: string } {
+  ): SubmitAttendanceResult {
     const session = mockSessions.find((s) => s.id === sessionId)
     if (!session)
-      return { success: false, status: 'absent', message: 'Session not found' }
+      return { success: false, status: 'absent', reason: 'session_not_found', message: 'Session not found' }
     if (!session.isActive)
-      return { success: false, status: 'absent', message: 'Session is not active' }
+      return { success: false, status: 'absent', reason: 'session_inactive', message: 'Session is not active' }
 
     const inRange = isWithinGeofence(
       lat,
@@ -426,6 +426,7 @@ export const api = {
       return {
         success: false,
         status: 'absent',
+        reason: 'out_of_bounds',
         message: `You are outside the ${session.geofence.radiusMeters}m geofence`,
       }
 
@@ -441,10 +442,10 @@ export const api = {
 
     const graceEnd = qrExpiry + session.gracePeriodMinutes * 60 * 1000
     if (now <= graceEnd) {
-      return { success: true, status: 'late', message: 'You are late but within grace period.' }
+      return { success: true, status: 'late', reason: 'grace_period', message: 'You are late but within grace period.' }
     }
 
-    return { success: false, status: 'absent', message: 'QR token expired and grace period has passed.' }
+    return { success: false, status: 'absent', reason: 'token_expired', message: 'QR token expired and grace period has passed.' }
   },
 
   submitScan(
@@ -649,7 +650,7 @@ export const api = {
       const date = r.timestamp.split('T')[0]
       const time = r.timestamp.split('T')[1]?.slice(0, 5) ?? ''
       const section = mockSections.find(s => s.id === r.sectionId)
-      return `${r.id},"${r.studentName}",${r.studentId},${date},${time},${r.status},${section?.section ?? ''},${r.sessionId},${r.status === 'disputed' ? 'Yes' : 'No'},"${r.notes ?? ''}"`
+      return `${r.id},"${r.studentName}",${r.studentId},${date},${time},${r.status},${section?.section ?? ''},${r.sessionId},${r.status === 'disputed' ? 'Yes' : 'No'},"${r.disputeDescription ?? ''}"`
     })
 
     return [header, ...rows].join('\n')

@@ -131,7 +131,7 @@ function TeacherDashboard({ user }: { user: User }) {
       <div className="mb-12">
         <div className="flex items-center gap-2 mb-6">
           <div className="w-1.5 h-1.5 bg-maroon dark:bg-golden" />
-          <h2 className="text-lg font-heading font-bold uppercase tracking-wider">Today's Schedule</h2>
+          <h2 className="text-lg font-heading font-bold uppercase tracking-wider">Today&apos;s Schedule</h2>
         </div>
         {todayEvents.length === 0 ? (
           <div className="border border-zinc-300 dark:border-zinc-800 p-8 text-center bg-zinc-50/50 dark:bg-zinc-900/20 shadow-[0_4px_20px_rgba(123,17,19,0.015)]">
