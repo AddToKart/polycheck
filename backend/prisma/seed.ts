@@ -1,3 +1,25 @@
+import * as fs from 'fs'
+import * as path from 'path'
+
+try {
+  const envPath = path.join(__dirname, '../.env')
+  if (fs.existsSync(envPath)) {
+    const envFile = fs.readFileSync(envPath, 'utf-8')
+    envFile.split('\n').forEach(line => {
+      const parts = line.split('=')
+      if (parts.length >= 2) {
+        const key = parts[0].trim()
+        const value = parts.slice(1).join('=').trim().replace(/^['"]|['"]$/g, '')
+        if (key && !key.startsWith('#')) {
+          process.env[key] = value
+        }
+      }
+    })
+  }
+} catch (e) {
+  console.warn('Failed to load local .env file:', e)
+}
+
 import { PrismaClient, UserRole, DayOfWeek, AttendanceStatus, SectionRoleType } from '@prisma/client'
 import { hashSync } from 'bcryptjs'
 
