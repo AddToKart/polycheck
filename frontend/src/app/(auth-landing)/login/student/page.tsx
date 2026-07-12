@@ -21,8 +21,7 @@ export default function StudentLoginPage() {
     e.preventDefault()
     setError('')
     setLoading(true)
-    await new Promise(resolve => setTimeout(resolve, 500))
-    const user = api.loginStudent(studentId, password)
+    const user = await api.loginStudent(studentId, password)
     if (user) {
       router.push('/student/dashboard')
     } else {

@@ -21,8 +21,7 @@ export default function FacultyLoginPage() {
     e.preventDefault()
     setError('')
     setLoading(true)
-    await new Promise(resolve => setTimeout(resolve, 500))
-    const user = api.loginFaculty(email, password)
+    const user = await api.loginFaculty(email, password)
     if (user) {
       router.push('/faculty')
     } else {
