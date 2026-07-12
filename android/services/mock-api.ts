@@ -72,7 +72,7 @@ export const api = {
     return u
   },
 
-  loginStudent(studentId: string): User | null {
+  loginStudent(studentId: string, _password?: string): User | null {
     const user = mockStudents.find((s) => s.studentId === studentId)
     if (user) {
       currentUser = user
@@ -82,7 +82,7 @@ export const api = {
     return null
   },
 
-  loginFaculty(email: string): User | null {
+  loginFaculty(email: string, _password?: string): User | null {
     const user = mockUsers.find((u) => u.email === email && (u.role === 'teacher' || u.role === 'super_admin'))
     if (user) {
       currentUser = user
@@ -363,12 +363,12 @@ export const api = {
     studentId: string,
     lat: number,
     lon: number,
-  ): { success: boolean; status: AttendanceStatus; message?: string } {
+  ): SubmitAttendanceResult {
     const session = mockSessions.find((s) => s.id === sessionId)
     if (!session)
-      return { success: false, status: 'absent', message: 'Session not found' }
+      return { success: false, status: 'absent', reason: 'session_not_found', message: 'Session not found' }
     if (!session.isActive)
-      return { success: false, status: 'absent', message: 'Session is not active' }
+      return { success: false, status: 'absent', reason: 'session_inactive', message: 'Session is not active' }
 
     const inRange = isWithinGeofence(
       lat,
@@ -381,6 +381,7 @@ export const api = {
       return {
         success: false,
         status: 'absent',
+        reason: 'out_of_bounds',
         message: `You are outside the ${session.geofence.radiusMeters}m geofence`,
       }
 
@@ -396,10 +397,10 @@ export const api = {
 
     const graceEnd = qrExpiry + session.gracePeriodMinutes * 60 * 1000
     if (now <= graceEnd) {
-      return { success: true, status: 'late', message: 'You are late but within grace period.' }
+      return { success: true, status: 'late', reason: 'grace_period', message: 'You are late but within grace period.' }
     }
 
-    return { success: false, status: 'absent', message: 'QR token expired and grace period has passed.' }
+    return { success: false, status: 'absent', reason: 'token_expired', message: 'QR token expired and grace period has passed.' }
   },
 
   submitAttendance(
@@ -546,14 +547,14 @@ export const api = {
 
     if (resolution === 'accept') {
       record.status = 'present'
-      record.notes = record.notes ? `${record.notes}; Dispute accepted` : 'Dispute accepted'
+      record.disputeDescription = record.disputeDescription ? `${record.disputeDescription}; Dispute accepted` : 'Dispute accepted'
     } else if (resolution === 'reject') {
       record.status = 'absent'
-      record.notes = record.notes ? `${record.notes}; Dispute rejected` : 'Dispute rejected'
+      record.disputeDescription = record.disputeDescription ? `${record.disputeDescription}; Dispute rejected` : 'Dispute rejected'
     } else if (resolution === 'override' && newStatus) {
       record.status = newStatus
       record.manuallySet = true
-      record.notes = record.notes ? `${record.notes}; Dispute overridden to ${newStatus}` : `Dispute overridden to ${newStatus}`
+      record.disputeDescription = record.disputeDescription ? `${record.disputeDescription}; Dispute overridden to ${newStatus}` : `Dispute overridden to ${newStatus}`
     }
     return record
   },
@@ -662,7 +663,7 @@ export const api = {
       const date = r.timestamp.split('T')[0]
       const time = r.timestamp.split('T')[1]?.slice(0, 5) ?? ''
       const section = mockSections.find(s => s.id === r.sectionId)
-      return `${r.id},"${r.studentName}",${r.studentId},${date},${time},${r.status},${section?.section ?? ''},${r.sessionId},${r.status === 'disputed' ? 'Yes' : 'No'},"${r.notes ?? ''}"`
+      return `${r.id},"${r.studentName}",${r.studentId},${date},${time},${r.status},${section?.section ?? ''},${r.sessionId},${r.status === 'disputed' ? 'Yes' : 'No'},"${r.disputeDescription ?? ''}"`
     })
 
     return [header, ...rows].join('\n')

@@ -5,7 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { api } from '../../services/mock-api'
 import { useTheme } from '../../theme/ThemeContext'
-import type { AttendanceStatus, AttendanceRecord } from '@polycheck/shared'
+import type { AttendanceStatus, AttendanceRecord, DisputeReason } from '@polycheck/shared'
 
 type FilterTab = 'all' | AttendanceStatus
 
@@ -63,7 +63,7 @@ export default function HistoryScreen() {
     }
     const result = api.submitDispute({
       recordId: selectedRecord.id,
-      reason: disputeReason,
+      reason: disputeReason as DisputeReason,
       description: disputeDescription,
     })
     if (result) {
