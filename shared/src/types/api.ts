@@ -155,4 +155,5 @@ export interface ApiClient {
   getCalendarEvents(userId: string, startDate: string, endDate: string): CalendarEvent[]
   createBulkSessions(data: BulkSessionInput): Session[]
   exportAttendanceCsv(sectionId?: string, sessionId?: string): string
+  search(query: string): { students: Student[]; sections: Section[]; sessions: Session[] }
 }

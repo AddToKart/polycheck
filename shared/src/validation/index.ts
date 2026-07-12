@@ -27,16 +27,25 @@ export const SectionCreateSchema = z.object({
   room: z.string().min(1, 'Room is required'),
   schedule: z.array(ScheduleDaySchema).min(1, 'At least one schedule day required'),
   semester: z.string().min(1, 'Semester is required'),
+  teacherId: z.string().min(1, 'Teacher is required'),
+  teacherName: z.string().min(1, 'Teacher name is required'),
 })
 
 export const SessionCreateSchema = z.object({
   sectionId: z.string().min(1),
+  subjectName: z.string().min(1, 'Subject name is required'),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD format'),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Must be HH:mm format'),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Must be HH:mm format').optional(),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Must be HH:mm format'),
   room: z.string().optional(),
   qrValidityMinutes: z.number().min(1).max(180).default(20),
   gracePeriodMinutes: z.number().min(0).max(120).default(15),
+  geofence: GeofenceConfigSchema,
+  teacherId: z.string().min(1, 'Teacher is required'),
+  isRescheduled: z.boolean().optional(),
+  rescheduledFromDate: z.string().optional(),
+  originalScheduleTime: z.string().optional(),
+  originalRoom: z.string().optional(),
 })
 
 export const AttendanceRecordSchema = z.object({

@@ -28,6 +28,8 @@ import type {
   CalendarEvent,
   BulkSessionInput,
   DisputeInput,
+  DisputeReason,
+  SubmitAttendanceResult,
   SectionRole,
   SectionRoleType,
   SessionPermission,
@@ -364,10 +366,10 @@ export const api = {
     studentId: string,
     coordinates: { latitude: number; longitude: number },
     _deviceId: string
-  ): { success: boolean; status: AttendanceStatus; reason?: string } {
+  ): SubmitAttendanceResult {
     const session = mockSessions.find((s) => s.id === sessionId)
-    if (!session) return { success: false, status: 'absent', reason: 'Session not found' }
-    if (!session.isActive) return { success: false, status: 'absent', reason: 'Session is not active' }
+    if (!session) return { success: false, status: 'absent', reason: 'session_not_found', message: 'Session not found' }
+    if (!session.isActive) return { success: false, status: 'absent', reason: 'session_inactive', message: 'Session is not active' }
 
     const inRange = isWithinGeofence(
       coordinates.latitude,
@@ -380,7 +382,8 @@ export const api = {
       return {
         success: false,
         status: 'absent',
-        reason: `Outside geofence (${session.geofence.radiusMeters}m from classroom)`,
+        reason: 'out_of_bounds',
+        message: `Outside geofence (${session.geofence.radiusMeters}m from classroom)`,
       }
     }
 
@@ -388,16 +391,16 @@ export const api = {
       const qrExpiry = new Date(session.qrTokenExpiresAt).getTime()
       const now = Date.now()
       if (now <= qrExpiry) {
-        return { success: true, status: 'present' }
+        return { success: true, status: 'present', message: 'Check-in successful!' }
       }
       const graceEnd = qrExpiry + session.gracePeriodMinutes * 60 * 1000
       if (now <= graceEnd) {
-        return { success: true, status: 'late', reason: 'You are late but within grace period.' }
+        return { success: true, status: 'late', reason: 'grace_period', message: 'You are late but within grace period.' }
       }
-      return { success: false, status: 'absent', reason: 'QR token expired and grace period has passed.' }
+      return { success: false, status: 'absent', reason: 'token_expired', message: 'QR token expired and grace period has passed.' }
     }
 
-    return { success: true, status: 'present' }
+    return { success: true, status: 'present', message: 'Check-in successful!' }
   },
 
   checkAttendance(
@@ -657,8 +660,8 @@ export const api = {
     if (!record) return undefined
     if (record.status === 'disputed') return record
     record.status = 'disputed'
-    record.disputeReason = data.reason as any
-    record.notes = data.description
+    record.disputeReason = data.reason
+    record.disputeDescription = data.description
     return record
   },
 

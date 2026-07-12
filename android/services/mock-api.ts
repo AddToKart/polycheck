@@ -40,7 +40,7 @@ import {
   mockSessionPermissions,
   mockProofsOfClass,
 } from '@polycheck/shared/mock'
-import { isWithinGeofence, isTokenInValidityWindow, createQRTokenData, decodeTokenPayload } from '@polycheck/shared/utils'
+import { isWithinGeofence, createQRTokenData } from '@polycheck/shared/utils'
 import type {
   User,
   Student,
@@ -56,6 +56,7 @@ import type {
   CalendarEvent,
   BulkSessionInput,
   DisputeInput,
+  DisputeReason,
   SectionRole,
   SectionRoleType,
   SessionPermission,
@@ -672,8 +673,8 @@ export const api = {
     if (!record) return undefined
     if (record.status === 'disputed') return record
     record.status = 'disputed'
-    record.disputeReason = data.reason as any
-    record.notes = data.description
+    record.disputeReason = data.reason
+    record.disputeDescription = data.description
     return record
   },
 
