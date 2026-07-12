@@ -147,8 +147,19 @@ export class SectionsService {
       throw new ForbiddenException('You can only delete your own sections')
     }
 
+    // Guard against deleting sections that have active session history
+    const sessionCount = await this.prisma.session.count({ where: { sectionId: id } })
+    if (sessionCount > 0) {
+      throw new BadRequestException('Cannot delete a section with existing session history')
+    }
+
+    // Clean up all related tables that don't have DB cascade
     await this.prisma.scheduleDay.deleteMany({ where: { sectionId: id } })
     await this.prisma.enrollment.deleteMany({ where: { sectionId: id } })
+    await this.prisma.sectionRole.deleteMany({ where: { sectionId: id } })
+    await this.prisma.sessionPermission.deleteMany({ where: { sectionId: id } })
+    await this.prisma.proofOfClass.deleteMany({ where: { sectionId: id } })
+
     await this.prisma.section.delete({ where: { id } })
 
     return { message: 'Section deleted' }
@@ -279,7 +290,7 @@ export class SectionsService {
 
     await this.prisma.section.update({
       where: { id: sectionId },
-      data: { studentCount: { decrement: 1 } },
+      data: { studentCount: Math.max(0, section.studentCount - 1) },
     })
 
     return { message: 'Student removed from section' }
