@@ -9,6 +9,8 @@ import { fonts } from '../../../theme/typography'
 import { useTheme } from '../../../theme/ThemeContext'
 import MapView, { type StudentMapPin } from '../../../components/MapView'
 import type { User, Session, AttendanceRecord, AttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
+import { subscribeToSession } from '../../../services/realtime'
+import QRCode from 'react-native-qrcode-svg'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 
@@ -27,35 +29,40 @@ export default function SessionDetailScreen() {
   const [countdown, setCountdown] = useState('')
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
   const [refreshLabel, setRefreshLabel] = useState('Updated just now')
+  const [realtimeConnected, setRealtimeConnected] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const refreshData = useCallback(() => {
+  const refreshData = useCallback(async () => {
     if (!id) return
-    const s = api.getSession(id)
-    if (s) setSession(s)
-    setRecords(api.getAttendanceRecords(id))
-    setProofsOfClass(api.getProofsOfClass(id))
-    setLastUpdated(new Date())
+    try {
+      const [nextSession, nextRecords, nextProofs] = await Promise.all([
+        api.getSession(id),
+        api.getAttendanceRecords(id),
+        api.getProofsOfClass(id),
+      ])
+      setSession(nextSession)
+      setRecords(nextRecords)
+      setProofsOfClass(nextProofs)
+      setLastUpdated(new Date())
+    } catch {
+      Alert.alert('Unable to refresh session', 'Please check your connection and try again.')
+    }
   }, [id])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
     if (!cu) { router.replace('/'); return }
     setUser(cu)
-    if (id) {
-      const s = api.getSession(id)
-      if (s) {
-        const section = api.getSection(s.sectionId)
-        if (section) {
-          if (cu.role === 'teacher' && section.teacherId !== cu.id) { router.replace('/'); return }
-          const students = api.getSectionStudents(section.id)
-          setEnrolledStudents(students.map(({ attendance, ...student }) => student))
-        }
-      }
-    }
-    refreshData()
-  }, [id])
+    if (!id) return
+    void api.getSession(id).then(async (nextSession) => {
+      const section = await api.getSection(nextSession.sectionId)
+      if (cu.role === 'teacher' && section.teacherId !== cu.id) { router.replace('/'); return }
+      const students = await api.getSectionStudents(section.id)
+      setEnrolledStudents(students.map(({ attendance: _attendance, ...student }) => student))
+      await refreshData()
+    }).catch(() => router.replace('/'))
+  }, [id, refreshData])
 
   useEffect(() => {
     if (!session || !session.isActive || !session.qrTokenExpiresAt) {
@@ -86,18 +93,19 @@ export default function SessionDetailScreen() {
   }, [session])
 
   useEffect(() => {
+    if (!id) return
+    return subscribeToSession(id, () => { void refreshData() }, setRealtimeConnected)
+  }, [id, refreshData])
+
+  useEffect(() => {
     if (!session?.isActive) {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
       return
     }
-    pollRef.current = setInterval(() => {
-      if (id) {
-        setRecords(api.getAttendanceRecords(id))
-        setLastUpdated(new Date())
-      }
-    }, 10000)
+    if (realtimeConnected) return
+    pollRef.current = setInterval(() => { void refreshData() }, 10000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [session?.isActive, id])
+  }, [session?.isActive, id, realtimeConnected, refreshData])
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -137,32 +145,34 @@ export default function SessionDetailScreen() {
       deviceId: r.deviceId,
     }))
 
-  const handleGenerateQr = () => {
+  const handleGenerateQr = async () => {
     const mins = parseInt(validityMinutes, 10)
     if (isNaN(mins) || mins < 1) return
-    api.generateQrCode(session.id, mins)
-    setShowValidityPrompt(false)
-    refreshData()
+    try {
+      await api.generateQrCode(session.id, mins)
+      setShowValidityPrompt(false)
+      await refreshData()
+    } catch (error) {
+      Alert.alert('Unable to generate QR code', error instanceof Error ? error.message : 'Please try again.')
+    }
   }
 
   const handleEndSession = () => {
     Alert.alert('End Session', 'Mark all pending students as absent and end the session?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'End Session', style: 'destructive', onPress: () => { api.endSession(session.id); refreshData() } },
+      { text: 'End Session', style: 'destructive', onPress: () => { void api.endSession(session.id).then(refreshData) } },
     ])
   }
 
-  const handleManualOverride = (studentId: string, currentStatus: AttendanceStatus) => {
+  const handleManualOverride = async (studentId: string, currentStatus: AttendanceStatus) => {
     const idx = STATUS_CYCLE.indexOf(currentStatus)
     const nextStatus = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]
     const existing = records.find((r) => r.studentId === studentId && r.sessionId === session.id)
     if (existing) {
-      api.updateAttendanceStatus(existing.id, nextStatus)
-      const updated = api.getAttendanceRecords(session.id).find((r) => r.id === existing.id)
-      if (updated) updated.manuallySet = true
+      await api.updateAttendanceStatus(existing.id, nextStatus)
     } else {
       const student = enrolledStudents.find((s) => s.id === studentId)
-      api.addAttendanceRecord({
+      await api.addAttendanceRecord({
         id: `a-${Date.now()}`,
         sessionId: session.id,
         sectionId: session.sectionId,
@@ -177,7 +187,7 @@ export default function SessionDetailScreen() {
         manuallySet: true,
       })
     }
-    refreshData()
+    await refreshData()
   }
 
   const handleShare = async () => {
@@ -188,28 +198,7 @@ export default function SessionDetailScreen() {
   }
 
   const handleRefresh = () => {
-    refreshData()
-  }
-
-  function MockQr({ token, size = 140 }: { token: string; size?: number }) {
-    const cells = 11
-    const cellSize = size / cells
-    const seed = token.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
-    const filled: boolean[][] = []
-    for (let r = 0; r < cells; r++) {
-      filled[r] = []
-      for (let c = 0; c < cells; c++) {
-        const idx = r * cells + c
-        filled[r][c] = (r < 3 && c < 3) || (seed * (idx + 1) * 7) % 3 !== 0
-      }
-    }
-    return (
-      <View style={{ width: size, height: size, flexDirection: 'row', flexWrap: 'wrap', borderWidth: 2, borderColor: '#ccc', borderStyle: 'dashed', borderRadius: 4, overflow: 'hidden' }}>
-        {filled.flat().map((f, i) => (
-          <View key={i} style={{ width: cellSize, height: cellSize, backgroundColor: f ? '#7B1113' : '#fff' }} />
-        ))}
-      </View>
-    )
+    void refreshData()
   }
 
   return (
@@ -241,7 +230,7 @@ export default function SessionDetailScreen() {
             {session.qrToken ? (
               <>
                 <TouchableOpacity onPress={() => setShowQrModal(true)} style={styles.qrContainer}>
-                  <MockQr token={session.qrToken} size={140} />
+                  <QRCode value={session.qrToken} size={140} quietZone={10} backgroundColor="#FFFFFF" color="#0A0A0A" />
                 </TouchableOpacity>
                 {countdown ? (
                   <Text style={[styles.countdown, isDark && styles.textWhite70]}>
@@ -350,8 +339,7 @@ export default function SessionDetailScreen() {
                   <TouchableOpacity
                     style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}
                     onPress={() => {
-                      api.deleteProofOfClass(poc.id)
-                      setProofsOfClass(api.getProofsOfClass(id))
+                      void api.deleteProofOfClass(poc.id).then(refreshData)
                     }}
                     accessibilityRole="button"
                   >
@@ -484,7 +472,7 @@ export default function SessionDetailScreen() {
         <TouchableOpacity style={[styles.overlay, { justifyContent: 'center', backgroundColor: isDark ? 'rgba(0,0,0,0.95)' : 'rgba(255,255,255,0.95)' }]} activeOpacity={1} onPress={() => setShowQrModal(false)}>
           <View style={{ alignItems: 'center' }}>
             {session?.qrToken && (
-              <MockQr token={session.qrToken} size={260} />
+              <QRCode value={session.qrToken} size={260} quietZone={14} backgroundColor="#FFFFFF" color="#0A0A0A" />
             )}
             <Text style={[styles.fullscreenHint, isDark && styles.textWhite50]}>Tap anywhere to close</Text>
             <TouchableOpacity style={[styles.qrActionBtn, isDark && styles.qrActionBtnDark, { marginTop: 16 }]} onPress={handleShare}>

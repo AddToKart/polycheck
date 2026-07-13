@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import { ConflictException } from '@nestjs/common'
+import { hashSync } from 'bcryptjs'
+import type { CreateTeacherDto } from './dto/manage-user.dto'
 
 @Injectable()
 export class UsersService {
@@ -11,7 +14,6 @@ export class UsersService {
       throw new ForbiddenException('Only super admins can list all users')
     }
     return this.prisma.user.findMany({
-      where: { isActive: true },
       select: { id: true, studentId: true, fullName: true, email: true, role: true, program: true, yearLevel: true, department: true, photoUrl: true, isActive: true, createdAt: true, updatedAt: true },
       orderBy: { fullName: 'asc' },
     })
@@ -49,8 +51,8 @@ export class UsersService {
       throw new ForbiddenException('Only super admins can list teachers')
     }
     return this.prisma.user.findMany({
-      where: { role: 'teacher', isActive: true },
-      select: { id: true, fullName: true, email: true, department: true, photoUrl: true, createdAt: true, updatedAt: true },
+      where: { role: 'teacher' },
+      select: { id: true, fullName: true, email: true, role: true, department: true, photoUrl: true, isActive: true, createdAt: true, updatedAt: true },
       orderBy: { fullName: 'asc' },
     })
   }
@@ -59,10 +61,34 @@ export class UsersService {
     if (user.role === 'student') {
       throw new ForbiddenException('Students cannot list other students')
     }
-    return this.prisma.user.findMany({
-      where: { role: 'student', isActive: true },
-      select: { id: true, studentId: true, fullName: true, email: true, program: true, yearLevel: true, photoUrl: true, createdAt: true, updatedAt: true },
+    const students = await this.prisma.user.findMany({
+      where: { role: 'student', ...(user.role === 'super_admin' ? {} : { isActive: true }) },
+      select: { id: true, studentId: true, fullName: true, email: true, role: true, program: true, yearLevel: true, photoUrl: true, isActive: true, createdAt: true, updatedAt: true, enrollments: { select: { sectionId: true } } },
       orderBy: { fullName: 'asc' },
+    })
+    return students.map(({ enrollments, ...student }) => ({
+      ...student,
+      enrolledSectionIds: enrollments.map((enrollment) => enrollment.sectionId),
+    }))
+  }
+
+  async createTeacher(dto: CreateTeacherDto) {
+    const exists = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase() }, select: { id: true } })
+    if (exists) throw new ConflictException('A user with this email already exists')
+    return this.prisma.user.create({
+      data: { fullName: dto.fullName.trim(), email: dto.email.toLowerCase(), password: hashSync(dto.password, 10), department: dto.department?.trim(), role: 'teacher' },
+      select: { id: true, fullName: true, email: true, role: true, department: true, photoUrl: true, isActive: true, createdAt: true, updatedAt: true },
+    })
+  }
+
+  async setStatus(id: string, isActive: boolean) {
+    const target = await this.prisma.user.findUnique({ where: { id }, select: { id: true, role: true } })
+    if (!target) throw new NotFoundException('User not found')
+    if (target.role === 'super_admin') throw new ForbiddenException('Super Admin accounts cannot be disabled here')
+    return this.prisma.user.update({
+      where: { id },
+      data: { isActive, authVersion: { increment: 1 } },
+      select: { id: true, fullName: true, email: true, role: true, department: true, program: true, yearLevel: true, studentId: true, photoUrl: true, isActive: true, createdAt: true, updatedAt: true },
     })
   }
 }

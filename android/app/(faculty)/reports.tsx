@@ -6,7 +6,7 @@ import { router } from 'expo-router'
 import { api } from '../../services/mock-api'
 import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
-import type { User, Subject, Teacher, AttendanceSummary } from '@polycheck/shared'
+import type { User, Subject, Teacher, AttendanceSummary, Section } from '@polycheck/shared'
 
 export default function FacultyReportsScreen() {
   const { isDark, toggle } = useTheme()
@@ -14,6 +14,7 @@ export default function FacultyReportsScreen() {
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [summaries, setSummaries] = useState<AttendanceSummary[]>([])
+  const [sections, setSections] = useState<Section[]>([])
   
   // Filters
   const [selectedSubject, setSelectedSubject] = useState('')
@@ -23,9 +24,12 @@ export default function FacultyReportsScreen() {
     const cu = api.getCurrentUser()
     if (cu && cu.role === 'super_admin') {
       setCurrentUser(cu)
-      setSubjects(api.getSubjects())
-      setTeachers(api.getTeachers())
-      setSummaries(api.getAttendanceSummaries())
+      void Promise.all([api.getSubjects(), api.getTeachers(), api.getAttendanceSummaries(), api.getSections()]).then(([nextSubjects, nextTeachers, nextSummaries, nextSections]) => {
+        setSubjects(nextSubjects)
+        setTeachers(nextTeachers)
+        setSummaries(nextSummaries)
+        setSections(nextSections)
+      })
     } else {
       router.replace('/(faculty)/dashboard')
     }
@@ -35,7 +39,7 @@ export default function FacultyReportsScreen() {
 
   const filteredSummaries = summaries.filter((s) => {
     if (selectedSubject) {
-      const sectionIds = api.getSections(selectedSubject).map(sec => sec.id)
+      const sectionIds = sections.filter((section) => section.subjectId === selectedSubject).map((section) => section.id)
       if (!sectionIds.includes(s.sectionId)) return false
     }
     return true

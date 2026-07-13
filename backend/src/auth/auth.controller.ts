@@ -34,7 +34,7 @@ export class AuthController {
   }
 
   @Post('logout')
-  logout() {
-    return this.auth.logout()
+  logout(@Request() req) {
+    return this.auth.logout(req.user.id)
   }
 }

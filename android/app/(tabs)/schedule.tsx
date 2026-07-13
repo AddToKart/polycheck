@@ -7,7 +7,7 @@ import { api } from '../../services/mock-api'
 import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
 import { getWeekDays, formatTime, getMonthName, getDayName, formatDate, generateStudentCalendarEvents, getMonthDays, getDateRangeForMonth } from '@polycheck/shared/utils'
-import type { User, Section, CalendarEvent, AttendanceRecord } from '@polycheck/shared'
+import type { User, Subject, Section, CalendarEvent, AttendanceRecord, Session } from '@polycheck/shared'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
 const WEEK_COL_WIDTH = 140
@@ -38,6 +38,9 @@ export default function StudentScheduleScreen() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [records, setRecords] = useState<AttendanceRecord[]>([])
+  const [sections, setSections] = useState<Section[]>([])
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [subjects, setSubjects] = useState<Record<string, Subject>>({})
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
 
   useEffect(() => {
@@ -45,17 +48,20 @@ export default function StudentScheduleScreen() {
     if (!cu || cu.role !== 'student') { router.replace('/'); return }
     setUser(cu)
     setSelectedDay(formatDate(new Date()))
-    if (cu.studentId) {
-      setRecords(api.getMyAttendance(cu.id))
-    }
+    void Promise.all([api.getMyAttendance(cu.id), api.getStudentSections(cu.id), api.getSessions(), api.getSubjects()]).then(([nextRecords, nextSections, nextSessions, subjectList]) => {
+      setRecords(nextRecords)
+      setSections(nextSections)
+      setSessions(nextSessions)
+      setSubjects(Object.fromEntries(subjectList.map((subject) => [subject.id, subject])))
+    })
   }, [])
 
   const student = user && 'studentId' in user
     ? (user as typeof user & { studentId: string; program: string; yearLevel: number })
     : null
 
-  const mySections: Section[] = student ? api.getStudentSections(student.id) : []
-  const allSessions = api.getSessions()
+  const mySections = student ? sections : []
+  const allSessions = sessions
 
   const monthDays = useMemo(() => {
     if (viewMode !== 'month') return []
@@ -82,13 +88,13 @@ export default function StudentScheduleScreen() {
       allSessions,
       records,
       (id) => {
-        const subj = api.getSubject(id)
+        const subj = subjects[id]
         return subj ? { name: subj.name, code: subj.code } : undefined
       },
       start,
       end,
     )
-  }, [mySections, allSessions, records, weekDays, student, viewMode, currentDate])
+  }, [mySections, allSessions, records, subjects, weekDays, student, viewMode, currentDate])
 
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>()

@@ -12,15 +12,17 @@ export default function StudentLoginScreen() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setLoading(true)
-    const user = api.loginStudent(studentId)
-    if (user) {
+    try {
+      const user = await api.loginStudent(studentId, password)
+      if (!user) throw new Error('Invalid credentials')
       router.replace('/(tabs)/dashboard')
-    } else {
-      Alert.alert('Invalid credentials', 'Please check your student number and password.')
+    } catch (error) {
+      Alert.alert('Invalid credentials', error instanceof Error ? error.message : 'Please check your student number and password.')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (

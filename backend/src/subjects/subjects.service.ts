@@ -2,14 +2,15 @@ import { Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import type { CreateSubjectDto } from './dto/create-subject.dto'
 import type { UpdateSubjectDto } from './dto/update-subject.dto'
+import type { RequestUser } from '../auth/strategies/jwt.strategy'
 
 @Injectable()
 export class SubjectsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
+  async findAll(user: RequestUser) {
     return this.prisma.subject.findMany({
-      include: { _count: { select: { sections: true } } },
+      where: this.subjectScope(user),
       orderBy: { code: 'asc' },
     })
   }
@@ -31,8 +32,8 @@ export class SubjectsService {
     return subject
   }
 
-  async create(dto: CreateSubjectDto) {
-    return this.prisma.subject.create({ data: dto })
+  async create(dto: CreateSubjectDto, teacherId: string) {
+    return this.prisma.subject.create({ data: { ...dto, createdById: teacherId } })
   }
 
   async update(id: string, dto: UpdateSubjectDto) {
@@ -44,5 +45,20 @@ export class SubjectsService {
     await this.findOne(id)
     await this.prisma.subject.delete({ where: { id } })
     return { message: 'Subject deleted' }
+  }
+
+  private subjectScope(user: RequestUser) {
+    if (user.role === 'super_admin') return undefined
+    if (user.role === 'teacher') {
+      return {
+        OR: [
+          { createdById: user.id },
+          { sections: { some: { teacherId: user.id } } },
+          // Legacy parent subjects created before ownership was recorded remain available to configure.
+          { sections: { none: {} } },
+        ],
+      }
+    }
+    return { sections: { some: { enrollments: { some: { studentId: user.id } } } } }
   }
 }

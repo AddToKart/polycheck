@@ -154,7 +154,7 @@ export default function FacultyLayout() {
           headerShown: false,
           tabBarActiveTintColor: isDark ? '#4A0A0B' : '#FFDF00',
           tabBarInactiveTintColor: isDark ? 'rgba(74, 10, 11, 0.4)' : 'rgba(255, 223, 0, 0.55)',
-          tabBarStyle: route.name === 'sessions/create' || route.name === 'sessions/[id]' || route.name === 'subjects/create' || route.name === 'subjects/[id]' || route.name === 'subjects/[id]/sessions' || route.name === 'sections/create' || route.name === 'sections/[id]' || route.name === 'student/[id]' ? { display: 'none' } : tabStyle,
+          tabBarStyle: route.name === 'sessions/create' || route.name === 'sessions/[id]' || route.name === 'subjects/create' || route.name === 'subjects/[id]' || route.name === 'subjects/[id]/sessions' || route.name === 'sections/create' || route.name === 'sections/[id]' || route.name === 'student/[id]' || route.name === 'settings' ? { display: 'none' } : tabStyle,
           tabBarLabelStyle: labelStyle,
           tabBarIconStyle: { marginTop: 4 },
           tabBarIcon: ({ focused, color }) => {
@@ -203,6 +203,7 @@ export default function FacultyLayout() {
         <Tabs.Screen name="sections/[id]" options={{ href: null }} />
         <Tabs.Screen name="student/[id]" options={{ href: null }} />
         <Tabs.Screen name="search" options={{ href: null }} />
+        <Tabs.Screen name="settings" options={{ href: null }} />
         {/* Attendance + Schedule hidden from tab bar — accessible via More sheet */}
         <Tabs.Screen name="attendance" options={{ href: null }} />
         <Tabs.Screen name="schedule" options={{ href: null }} />

@@ -7,7 +7,7 @@ import { api } from '../../services/mock-api'
 import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
 import { formatDate, formatTime, getMonthDays, getMonthName, getDayName, getWeekDays, getDateRangeForMonth, isSameDay } from '@polycheck/shared/utils'
-import type { User, CalendarEvent } from '@polycheck/shared'
+import type { User, AttendanceRecord, CalendarEvent } from '@polycheck/shared'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
 const DAY_CELL_SIZE = Math.floor((SCREEN_WIDTH - 40) / 7)
@@ -19,6 +19,7 @@ export default function FacultyScheduleScreen() {
   const [viewMode, setViewMode] = useState<'month' | 'week'>('month')
   const [currentDate, setCurrentDate] = useState(new Date())
   const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
 
@@ -44,7 +45,10 @@ export default function FacultyScheduleScreen() {
       start = week[0].date
       end = week[6].date
     }
-    setEvents(api.getCalendarEvents(user.id, start, end))
+    void Promise.all([api.getCalendarEvents(user.id, start, end), api.getAttendanceRecords()]).then(([nextEvents, nextRecords]) => {
+      setEvents(nextEvents)
+      setAttendanceRecords(nextRecords)
+    })
   }, [user, currentDate, viewMode])
 
   const now = new Date()
@@ -74,10 +78,6 @@ export default function FacultyScheduleScreen() {
     if (!selectedDay) return []
     return eventsByDate.get(selectedDay) || []
   }, [selectedDay, eventsByDate])
-
-  const attendanceRecords = useMemo(() => {
-    return api.getAttendanceRecords()
-  }, [])
 
   const selectedEventCounts = useMemo(() => {
     if (!selectedEvent || selectedEvent.type !== 'session') return null

@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar'
 import { useCallback, useEffect, useState } from 'react'
 import * as SplashScreen from 'expo-splash-screen'
 import { useFonts } from 'expo-font'
-import { View } from 'react-native'
+import { AppState, View } from 'react-native'
 import { ThemeProvider, useTheme } from '../theme/ThemeContext'
 import { api } from '../services/mock-api'
 
@@ -22,7 +22,20 @@ function RootLayoutInner() {
   })
 
   useEffect(() => {
-    api.restoreSession().then(() => setSessionReady(true))
+    let mounted = true
+    void api.restoreSession()
+      .then(() => api.preSyncOfflineData())
+      .finally(() => { if (mounted) setSessionReady(true) })
+
+    const interval = setInterval(() => { void api.preSyncOfflineData() }, 30_000)
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void api.preSyncOfflineData()
+    })
+    return () => {
+      mounted = false
+      clearInterval(interval)
+      subscription.remove()
+    }
   }, [])
 
   const onLayoutRootView = useCallback(async () => {

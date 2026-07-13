@@ -22,6 +22,7 @@ export interface AttendanceRecord {
     longitude: number
   }
   deviceId?: string
+  tokenSnapshot?: string
   isSynced: boolean
   syncedAt?: string
   disputeReason?: DisputeReason

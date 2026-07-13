@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
 import { api } from '../../services/mock-api'
 import { useTheme } from '../../theme/ThemeContext'
+import type { AttendanceRecord, ScheduleDay, Section, Subject } from '@polycheck/shared'
 
 export default function DashboardScreen() {
   const { isDark, toggle } = useTheme()
@@ -13,8 +14,21 @@ export default function DashboardScreen() {
   const student = user && 'studentId' in user
     ? (user as typeof user & { studentId: string; program: string; yearLevel: number })
     : null
-  const mySections = student ? api.getStudentSections(student.id) : []
-  const myAttendance = student ? api.getMyAttendance(student.id) : []
+  const [mySections, setMySections] = useState<Section[]>([])
+  const [myAttendance, setMyAttendance] = useState<AttendanceRecord[]>([])
+  const [subjects, setSubjects] = useState<Record<string, Subject>>({})
+
+  const loadDashboard = useCallback(async () => {
+    if (!student) return
+    const [sections, attendance, allSubjects] = await Promise.all([
+      api.getStudentSections(student.id), api.getMyAttendance(student.id), api.getSubjects(),
+    ])
+    setMySections(sections)
+    setMyAttendance(attendance)
+    setSubjects(Object.fromEntries(allSubjects.map((subject) => [subject.id, subject])))
+  }, [student?.id])
+
+  useEffect(() => { loadDashboard().catch(() => undefined) }, [loadDashboard])
 
   const present = myAttendance.filter((r) => r.status === 'present').length
   const late = myAttendance.filter((r) => r.status === 'late').length
@@ -25,13 +39,13 @@ export default function DashboardScreen() {
   const todaySchedule = useMemo(() => {
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     const todayName = dayNames[new Date().getDay()]
-    return mySections.filter((s) => s.schedule.some((sd) => sd.day === todayName))
+    return mySections.filter((section) => section.schedule.some((scheduleDay: ScheduleDay) => scheduleDay.day === todayName))
   }, [mySections])
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true)
-    setTimeout(() => setRefreshing(false), 1000)
-  }, [])
+    try { await loadDashboard() } finally { setRefreshing(false) }
+  }, [loadDashboard])
 
   const greeting = () => {
     const hour = new Date().getHours()
@@ -138,9 +152,9 @@ export default function DashboardScreen() {
           </View>
         ) : (
           todaySchedule.map((section) => {
-            const parent = api.getSubject(section.subjectId)
+            const parent = subjects[section.subjectId]
             const todaySD = section.schedule.find(
-              (sd) => sd.day === ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date().getDay()],
+              (scheduleDay: ScheduleDay) => scheduleDay.day === ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date().getDay()],
             )
             const status = myAttendance.find((r) => r.sectionId === section.id)?.status ?? 'pending'
             
@@ -200,7 +214,7 @@ export default function DashboardScreen() {
           </View>
         ) : (
           mySections.slice(0, 4).map((section) => {
-            const parent = api.getSubject(section.subjectId)
+            const parent = subjects[section.subjectId]
             const presentCount = myAttendance.filter((r) => r.sectionId === section.id && r.status === 'present').length
             return (
               <TouchableOpacity
@@ -227,7 +241,7 @@ export default function DashboardScreen() {
                     <View style={styles.allSubjDetailRow}>
                       <MaterialIcons name="calendar-today" size={12} color="#888" />
                       <Text style={[styles.allSubjDetailText, isDark && styles.textWhite50]}>
-                        {section.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')}
+                        {section.schedule.map((scheduleDay: ScheduleDay) => `${scheduleDay.day} ${scheduleDay.startTime}-${scheduleDay.endTime}`).join(', ')}
                       </Text>
                     </View>
                   </View>

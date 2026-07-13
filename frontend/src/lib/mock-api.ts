@@ -1,4 +1,5 @@
-import type { User, Subject, Section, Session, AttendanceRecord, AttendanceSummary, AttendanceStatus, Student, Teacher, Enrollment, DisputeReason, SectionRole, SectionRoleType, SessionPermission, ProofOfClass, CalendarEvent, CreateSubjectInput, CreateSectionInput, CreateSessionInput, SubmitAttendanceResult, EnrollStudentInput, BulkSessionInput } from '@polycheck/shared'
+import { signQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type DisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput } from '@polycheck/shared'
+import { getOrCreateTeacherSigningKey } from './signing-key'
 
 const STORAGE_KEY = 'polycheck-user'
 const TOKEN_KEY = 'polycheck-token'
@@ -68,6 +69,15 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 async function patch<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'PATCH',
+    headers: await authHeaders(),
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+  return handleResponse<T>(res)
+}
+
+async function put<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'PUT',
     headers: await authHeaders(),
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
@@ -175,9 +185,26 @@ export const api = {
     return get(`/sessions${sectionId ? `?sectionId=${sectionId}` : ''}`)
   },
   getSession(id: string): Promise<Session> { return get(`/sessions/${id}`) },
-  createSession(data: CreateSessionInput): Promise<Session> { return post('/sessions', data) },
-  generateQrCode(sessionId: string, validityMinutes: number): Promise<Session> {
-    return post(`/sessions/${sessionId}/activate`, { validityMinutes })
+  createSession(data: CreateSessionInput): Promise<Session> {
+    const { teacherId: _teacherId, ...body } = data
+    return post('/sessions', body)
+  },
+  async generateQrCode(sessionId: string, validityMinutes: number): Promise<Session> {
+    const [session, key] = await Promise.all([get<Session>(`/sessions/${sessionId}`), Promise.resolve(getOrCreateTeacherSigningKey())])
+    const user = this.getCurrentUser()
+    if (!user || user.role !== 'teacher') throw new Error('A teacher account is required to sign QR tokens')
+    await post('/auth/provision-key', { publicKey: key.publicKey })
+    const token = signQRToken({
+      version: 1,
+      sessionId: session.id,
+      sectionId: session.sectionId,
+      teacherId: user.id,
+      teacherName: user.fullName,
+      issuedAt: Date.now(),
+      validityMinutes,
+      gracePeriodMinutes: session.gracePeriodMinutes,
+    }, key.secretKey)
+    return post(`/sessions/${sessionId}/activate`, { validityMinutes, token })
   },
   endSession(sessionId: string): Promise<Session> { return post(`/sessions/${sessionId}/end`) },
   getSectionSessions(sectionId: string): Promise<Session[]> {
@@ -198,19 +225,21 @@ export const api = {
     return get(`/attendance/student/${studentId}?sectionId=${sectionId}`)
   },
   addAttendanceRecord(record: AttendanceRecord): Promise<AttendanceRecord> {
-    return post('/attendance', record)
+    return post('/attendance', { sessionId: record.sessionId, sectionId: record.sectionId, studentId: record.studentId, status: record.status })
   },
   updateAttendanceStatus(recordId: string, status: AttendanceStatus): Promise<AttendanceRecord> {
     return patch(`/attendance/${recordId}/status`, { status })
   },
-  submitAttendance(sessionId: string, sectionId: string, studentId: string, coordinates: { latitude: number; longitude: number }, deviceId: string): Promise<SubmitAttendanceResult> {
-    return post('/attendance/submit', { sessionId, sectionId, studentId, coordinates, deviceId })
+  async submitAttendance(sessionId: string, sectionId: string, _studentId: string, coordinates: { latitude: number; longitude: number }, deviceId: string): Promise<SubmitAttendanceResult> {
+    const session = await get<Session>(`/sessions/${sessionId}`)
+    if (!session.qrToken) throw new Error('Session has no active QR token')
+    return post('/attendance/submit', { sessionId, sectionId, latitude: coordinates.latitude, longitude: coordinates.longitude, deviceId, qrToken: session.qrToken, scannedAt: new Date().toISOString() })
   },
-  submitScan(sessionId: string, studentId: string, studentName: string, lat: number, lon: number, deviceId: string): Promise<AttendanceRecord | { error: string }> {
-    return post('/attendance/scan', { sessionId, studentId, studentName, lat, lon, deviceId })
+  submitScan(sessionId: string, _studentId: string, _studentName: string, lat: number, lon: number, deviceId: string, qrToken?: string, scannedAt?: string): Promise<AttendanceRecord | { error: string }> {
+    return post('/attendance/scan', { sessionId, lat, lon, deviceId, qrToken, scannedAt })
   },
-  checkAttendance(sessionId: string, studentId: string, lat: number, lon: number): Promise<SubmitAttendanceResult> {
-    return post('/attendance/check', { sessionId, studentId, lat, lon })
+  checkAttendance(sessionId: string, studentId: string, lat: number, lon: number, qrToken?: string, scannedAt?: string): Promise<SubmitAttendanceResult> {
+    return post('/attendance/check', { sessionId, lat, lon, qrToken, scannedAt })
   },
 
   // ── Disputes ──
@@ -235,6 +264,18 @@ export const api = {
   getStudents(): Promise<Student[]> { return get('/users/students') },
   getStudent(id: string): Promise<Student> { return get(`/users/${id}`) },
   getTeachers(): Promise<Teacher[]> { return get('/users/teachers') },
+  createTeacher(data: { fullName: string; email: string; password: string; department?: string }): Promise<Teacher> {
+    return post('/users/teachers', data)
+  },
+  setUserStatus(id: string, isActive: boolean): Promise<User> {
+    return patch(`/users/${id}/status`, { isActive })
+  },
+  getSettings(): Promise<{ key: string; value: string; updatedAt: string }[]> {
+    return get('/settings')
+  },
+  setSetting(key: string, value: string): Promise<{ key: string; value: string; updatedAt: string }> {
+    return put(`/settings/${encodeURIComponent(key)}`, { value })
+  },
   getMyAttendance(studentId: string): Promise<AttendanceRecord[]> {
     return get(`/attendance/student/${studentId}`)
   },
@@ -268,7 +309,8 @@ export const api = {
 
   // ── Proof of Class ──
   uploadProofOfClass(data: { sectionId: string; sessionId: string; photoData: string; description?: string; uploadedBy: string; uploadedByStudentName: string }): Promise<ProofOfClass> {
-    return post('/proofs', data)
+    const { uploadedBy: _uploadedBy, uploadedByStudentName: _uploadedByStudentName, ...body } = data
+    return post('/proofs', body)
   },
   getProofsOfClass(sessionId: string): Promise<ProofOfClass[]> { return get(`/proofs/${sessionId}`) },
   deleteProofOfClass(proofId: string): Promise<boolean> { return del(`/proofs/${proofId}`) },
@@ -280,7 +322,10 @@ export const api = {
   getCalendarEvents(userId: string, startDate: string, endDate: string): Promise<CalendarEvent[]> {
     return get(`/calendar/events?startDate=${startDate}&endDate=${endDate}`)
   },
-  createBulkSessions(data: BulkSessionInput): Promise<Session[]> { return post('/sessions/bulk', data) },
+  createBulkSessions(data: BulkSessionInput): Promise<Session[]> {
+    const { teacherId: _teacherId, ...body } = data
+    return post('/sessions/bulk', body)
+  },
   async exportAttendanceCsv(sectionId?: string, sessionId?: string): Promise<string> {
     let path = '/reports/export'
     const params = new URLSearchParams()

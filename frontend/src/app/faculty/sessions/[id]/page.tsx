@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/badge'
 import { LoadingSpinner } from '@/lib/hooks'
 import { useNotifications } from '@/lib/notifications'
 import CampusMap from '@/components/CampusMap'
+import { subscribeToSession } from '@/lib/realtime'
+import QRCode from 'qrcode'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 
@@ -43,6 +45,7 @@ export default function SessionDetailPage() {
   const [countdown, setCountdown] = useState('')
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
   const [refreshLabel, setRefreshLabel] = useState('Updated just now')
+  const [realtimeConnected, setRealtimeConnected] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -52,7 +55,12 @@ export default function SessionDetailPage() {
     if (s) {
       setSession(s)
       if (s.qrToken) {
-        setQrDataUrl(s.qrToken)
+        setQrDataUrl(await QRCode.toDataURL(s.qrToken, {
+          width: 1024,
+          margin: 3,
+          errorCorrectionLevel: 'M',
+          color: { dark: '#0A0A0A', light: '#FFFFFF' },
+        }))
       } else {
         setQrDataUrl(null)
       }
@@ -96,16 +104,22 @@ export default function SessionDetailPage() {
   }, [id, router, refreshData])
 
   useEffect(() => {
+    if (!id) return
+    return subscribeToSession(id, () => { void refreshData() }, setRealtimeConnected)
+  }, [id, refreshData])
+
+  useEffect(() => {
     if (!session?.isActive) {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
       return
     }
+    if (realtimeConnected) return
     pollRef.current = setInterval(async () => {
       setRecords(await api.getAttendanceRecords(id))
       setLastUpdated(new Date())
     }, 10000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [session?.isActive, id])
+  }, [session?.isActive, id, realtimeConnected, refreshData])
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -204,28 +218,6 @@ export default function SessionDetailPage() {
     }
   }
 
-  function MockQr({ token, size = 180 }: { token: string; size?: number }) {
-    const cells = 11
-    const cellSize = size / cells
-    const seed = token.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
-    const filled: boolean[][] = []
-    for (let r = 0; r < cells; r++) {
-      filled[r] = []
-      for (let c = 0; c < cells; c++) {
-        const idx = r * cells + c
-        const isEdge = r < 3 && c < 3
-        filled[r][c] = isEdge || (seed * (idx + 1) * 7) % 3 !== 0
-      }
-    }
-    return (
-      <div style={{ width: size, height: size, display: 'grid', gridTemplateColumns: `repeat(${cells}, ${cellSize}px)`, gap: 0, border: '2px dashed #ccc', borderRadius: 4 }}>
-        {filled.flat().map((f, i) => (
-          <div key={i} style={{ width: cellSize, height: cellSize, backgroundColor: f ? '#7B1113' : '#fff' }} />
-        ))}
-      </div>
-    )
-  }
-
   const handleLogout = () => { api.logout(); router.push('/') }
 
   return (
@@ -263,7 +255,7 @@ export default function SessionDetailPage() {
                 {qrDataUrl ? (
                   <>
                     <div className="cursor-pointer" onClick={() => setShowQrModal(true)}>
-                      <MockQr token={qrDataUrl} size={180} />
+                      <img src={qrDataUrl} width={180} height={180} alt="Scannable session QR code" />
                     </div>
                     {countdown && (
                       <p className={`text-sm mt-2 ${countdown === 'Grace ended' ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
@@ -482,7 +474,7 @@ export default function SessionDetailPage() {
       {showQrModal && qrDataUrl && (
         <div className="fixed inset-0 bg-white dark:bg-black z-50 flex items-center justify-center" onClick={() => setShowQrModal(false)}>
           <div className="text-center">
-            <MockQr token={qrDataUrl} size={320} />
+            <img src={qrDataUrl} width={320} height={320} alt="Scannable session QR code" />
             <p className="text-sm text-gray-400 dark:text-gray-500 mt-6">Tap anywhere to close</p>
             <Button variant="outline" className="mt-4" onClick={(e) => { e.stopPropagation(); handleShare() }}>
               <Share2 className="w-4 h-4 mr-2" /> Copy Token

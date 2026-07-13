@@ -7,13 +7,15 @@ import * as Clipboard from 'expo-clipboard'
 import { api } from '../../services/mock-api'
 import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
-import type { User, AttendanceSummary } from '@polycheck/shared'
+import type { User, AttendanceRecord, AttendanceSummary, Session } from '@polycheck/shared'
 import DatePickerModal from '../../components/DatePickerModal'
 
 export default function FacultyAttendanceScreen() {
   const { isDark, toggle } = useTheme()
   const [user, setUser] = useState<User | null>(null)
   const [summaries, setSummaries] = useState<AttendanceSummary[]>([])
+  const [records, setRecords] = useState<AttendanceRecord[]>([])
+  const [sessions, setSessions] = useState<Session[]>([])
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [fromPickerVisible, setFromPickerVisible] = useState(false)
@@ -23,7 +25,15 @@ export default function FacultyAttendanceScreen() {
     const cu = api.getCurrentUser()
     if (cu) {
       setUser(cu)
-      setSummaries(api.getAttendanceSummaries(cu.id))
+      void Promise.all([
+        api.getAttendanceSummaries(cu.id),
+        api.getAttendanceRecords(),
+        api.getSessions(),
+      ]).then(([nextSummaries, nextRecords, nextSessions]) => {
+        setSummaries(nextSummaries)
+        setRecords(nextRecords)
+        setSessions(nextSessions)
+      }).catch(() => Alert.alert('Unable to load attendance', 'Please check your connection and try again.'))
     }
   }, [])
 
@@ -31,9 +41,8 @@ export default function FacultyAttendanceScreen() {
   const filteredSummaries = useMemo(() => {
     if (!fromDate && !toDate) return summaries
     return summaries.map((s) => {
-      const allRecords = api.getAttendanceRecords()
-      const sectionSessionIds = api.getSessions(s.sectionId).map((sess) => sess.id)
-      const filtered = allRecords.filter((r) => {
+      const sectionSessionIds = sessions.filter((session) => session.sectionId === s.sectionId).map((session) => session.id)
+      const filtered = records.filter((r) => {
         if (!sectionSessionIds.includes(r.sessionId)) return false
         const rDate = r.timestamp.slice(0, 10)
         if (fromDate && rDate < fromDate) return false
@@ -47,7 +56,7 @@ export default function FacultyAttendanceScreen() {
         absent: filtered.filter((r) => r.status === 'absent').length,
       }
     })
-  }, [summaries, fromDate, toDate])
+  }, [summaries, records, sessions, fromDate, toDate])
 
   if (!user) return null
 
@@ -62,7 +71,7 @@ export default function FacultyAttendanceScreen() {
   )
 
   const handleExport = async () => {
-    const csv = api.exportAttendanceCsv()
+    const csv = await api.exportAttendanceCsv()
     await Clipboard.setStringAsync(csv)
     Alert.alert('Exported', 'Attendance data copied to clipboard. You can paste it into a spreadsheet.')
   }

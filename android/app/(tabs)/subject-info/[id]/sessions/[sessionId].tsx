@@ -6,7 +6,7 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { api } from '../../../../../services/mock-api'
 import { fonts } from '../../../../../theme/typography'
 import { useTheme } from '../../../../../theme/ThemeContext'
-import type { Student, Session, Section, ProofOfClass } from '@polycheck/shared'
+import type { Student, Subject, Session, Section, ProofOfClass } from '@polycheck/shared'
 
 export default function StudentSessionDetailScreen() {
   const { isDark } = useTheme()
@@ -15,6 +15,7 @@ export default function StudentSessionDetailScreen() {
   const [session, setSession] = useState<Session | null>(null)
   const [section, setSection] = useState<Section | null>(null)
   const [proofs, setProofs] = useState<ProofOfClass[]>([])
+  const [subject, setSubject] = useState<Subject | null>(null)
   const [isQac, setIsQac] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [photoDescription, setPhotoDescription] = useState('')
@@ -25,20 +26,22 @@ export default function StudentSessionDetailScreen() {
     if (!cu || cu.role !== 'student') { router.replace('/'); return }
     const student = cu as Student
     setUser(student)
-    const roles = api.getStudentRoles(student.id)
-    setIsQac(roles.some(r => r.sectionId === sectionId && r.role === 'qac'))
+    void api.getStudentRoles(student.id).then((roles) => setIsQac(roles.some((role) => role.sectionId === sectionId && role.role === 'qac')))
   }, [sectionId])
 
   useEffect(() => {
     if (!sessionId || !sectionId) return
-    setSession(api.getSession(sessionId) ?? null)
-    setSection(api.getSection(sectionId) ?? null)
-    setProofs(api.getProofsOfClass(sessionId))
+    void Promise.all([api.getSession(sessionId), api.getSection(sectionId), api.getProofsOfClass(sessionId)]).then(async ([nextSession, nextSection, nextProofs]) => {
+      setSession(nextSession)
+      setSection(nextSection)
+      setProofs(nextProofs)
+      setSubject(await api.getSubject(nextSection.subjectId))
+    }).catch(() => router.back())
   }, [sessionId, sectionId])
 
-  const handleUploadProof = () => {
+  const handleUploadProof = async () => {
     if (!user || !session) return
-    api.uploadProofOfClass({
+    await api.uploadProofOfClass({
       sectionId: session.sectionId,
       sessionId: session.id,
       photoData: uploadedPhoto ?? `proof-${Date.now()}`,
@@ -46,20 +49,19 @@ export default function StudentSessionDetailScreen() {
       uploadedBy: user.id,
       uploadedByStudentName: user.fullName,
     })
-    setProofs(api.getProofsOfClass(sessionId))
+    setProofs(await api.getProofsOfClass(sessionId))
     setShowUpload(false)
     setPhotoDescription('')
     setUploadedPhoto(null)
   }
 
-  const handleDeleteProof = (proofId: string) => {
-    api.deleteProofOfClass(proofId)
-    setProofs(api.getProofsOfClass(sessionId))
+  const handleDeleteProof = async (proofId: string) => {
+    await api.deleteProofOfClass(proofId)
+    setProofs(await api.getProofsOfClass(sessionId))
   }
 
   if (!session || !section) return null
 
-  const subj = api.getSubject(section.subjectId)
   const bg = isDark ? '#0A0A0C' : '#F5F5F5'
   const surface = isDark ? '#121215' : '#FFFFFF'
   const border = isDark ? 'rgba(245, 168, 0, 0.15)' : '#DDD'
@@ -75,7 +77,7 @@ export default function StudentSessionDetailScreen() {
           <MaterialIcons name="arrow-back" size={22} color={iconColor} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text className="text-lg font-heading font-bold" style={{ color: isDark ? '#FFDF00' : '#4A0A0B' }} numberOfLines={1}>{subj?.name ?? ''}</Text>
+          <Text className="text-lg font-heading font-bold" style={{ color: isDark ? '#FFDF00' : '#4A0A0B' }} numberOfLines={1}>{subject?.name ?? ''}</Text>
           <Text className="text-xs mt-0.5" style={{ color: textSecondary }}>
             {new Date(session.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
           </Text>

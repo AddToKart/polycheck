@@ -16,10 +16,12 @@ export interface Session {
   gracePeriodMinutes: number
   geofence: GeofenceConfig
   isActive: boolean
+  endedAt?: string
   qrToken?: string
   qrTokenExpiresAt?: string
   qrGeneratedAt?: string
   teacherId: string
+  teacherPublicKey?: string
   createdAt: string
   isRescheduled?: boolean
   rescheduledFromDate?: string
@@ -28,6 +30,7 @@ export interface Session {
 }
 
 export interface QRTokenPayload {
+  version: 1
   sessionId: string
   sectionId: string
   issuedAt: number

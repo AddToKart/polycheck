@@ -26,12 +26,12 @@ export default function ScanScreen() {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scannedRef = useRef(false)
 
-  const [activeSession, setActiveSession] = useState(() => api.getSessions().find((s) => s.isActive))
+  const [activeSession, setActiveSession] = useState<any>(null)
 
   // Refresh active session whenever the screen is focused
   useFocusEffect(
     useCallback(() => {
-      setActiveSession(api.getSessions().find((s) => s.isActive))
+      api.getSessions().then((sessions) => setActiveSession(sessions.find((session) => session.isActive) ?? null)).catch(() => setActiveSession(null))
     }, [])
   )
 
@@ -57,26 +57,29 @@ export default function ScanScreen() {
       return
     }
 
-    const session = api.getSession(payload.sessionId)
+    const session = await api.getSession(payload.sessionId)
     if (!session) {
       showResult('absent', 'Session not found')
       return
     }
 
-    let lat = session.geofence.latitude
-    let lon = session.geofence.longitude
+    let lat: number
+    let lon: number
     try {
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
       lat = loc.coords.latitude
       lon = loc.coords.longitude
     } catch {
-      // fallback to session center
+      showResult('absent', 'Unable to verify your location')
+      return
     }
 
-    const result = api.checkAttendance(session.id, user.id, lat, lon)
+    const scannedAt = new Date().toISOString()
+    const result = await api.checkAttendance(session.id, user.id, lat, lon, token, scannedAt)
     if (result.success) {
-      api.submitScan(session.id, user.id, user.fullName, lat, lon, 'device-mobile')
-      showResult(result.status === 'late' ? 'late' : 'present', result.message ?? 'Check-in successful!')
+      const submitted = await api.submitScan(session.id, user.id, user.fullName, lat, lon, 'device-mobile', token, scannedAt)
+      if ('error' in submitted) showResult('absent', submitted.error)
+      else showResult(result.status === 'late' ? 'late' : 'present', submitted.isSynced ? (result.message ?? 'Check-in successful!') : 'Check-in saved offline and queued for sync.')
     } else {
       showResult('absent', result.message ?? 'Check-in rejected')
     }
@@ -86,24 +89,38 @@ export default function ScanScreen() {
     handleScanResult(data)
   }, [handleScanResult])
 
-  const handleManualCode = useCallback(() => {
+  const handleManualCode = useCallback(async () => {
     setShowManual(false)
     const user = api.getCurrentUser()
     if (!user || !('studentId' in user)) return
 
-    const sessions = api.getSessions().filter((s) => s.isActive)
+    const sessions = (await api.getSessions()).filter((session) => session.isActive)
     if (sessions.length === 0) {
       showResult('absent', 'No active sessions available')
       return
     }
 
     const session = sessions[0]
-    let lat = session.geofence.latitude
-    let lon = session.geofence.longitude
-    const res = api.checkAttendance(session.id, user.id, lat, lon)
+    if (!session.qrToken) {
+      showResult('absent', 'This session has no active QR token')
+      return
+    }
+    let lat: number
+    let lon: number
+    try {
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
+      lat = loc.coords.latitude
+      lon = loc.coords.longitude
+    } catch {
+      showResult('absent', 'Unable to verify your location')
+      return
+    }
+    const scannedAt = new Date().toISOString()
+    const res = await api.checkAttendance(session.id, user.id, lat, lon, session.qrToken, scannedAt)
     if (res.success) {
-      api.submitScan(session.id, user.id, user.fullName, lat, lon, 'device-mobile')
-      showResult(res.status === 'late' ? 'late' : 'present', res.message ?? 'Check-in successful!')
+      const submitted = await api.submitScan(session.id, user.id, user.fullName, lat, lon, 'device-mobile', session.qrToken, scannedAt)
+      if ('error' in submitted) showResult('absent', submitted.error)
+      else showResult(res.status === 'late' ? 'late' : 'present', submitted.isSynced ? (res.message ?? 'Check-in successful!') : 'Check-in saved offline and queued for sync.')
     } else {
       showResult('absent', res.message ?? 'Check-in rejected')
     }

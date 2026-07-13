@@ -1,10 +1,10 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Request, HttpCode, HttpStatus } from '@nestjs/common'
 import { SectionsService } from './sections.service'
 import { Roles } from '../common/decorators/roles.decorator'
-import type { CreateSectionDto } from './dto/create-section.dto'
-import type { UpdateSectionDto } from './dto/update-section.dto'
-import type { EnrollViaCodeDto } from './dto/enroll-via-code.dto'
-import type { EnrollStudentDto } from './dto/enroll-student.dto'
+import { CreateSectionDto } from './dto/create-section.dto'
+import { UpdateSectionDto } from './dto/update-section.dto'
+import { EnrollViaCodeDto } from './dto/enroll-via-code.dto'
+import { EnrollStudentDto } from './dto/enroll-student.dto'
 
 @Controller('sections')
 export class SectionsController {

@@ -92,6 +92,14 @@ function StudentDashboardContent() {
   const [enrollSuccess, setEnrollSuccess] = useState(false)
   const [enrollError, setEnrollError] = useState('')
 
+  const subjectMap = useMemo(() => {
+    const map = new Map<string, { name: string; code: string }>()
+    for (const subject of allSubjects) {
+      map.set(subject.id, { name: subject.name, code: subject.code })
+    }
+    return map
+  }, [allSubjects])
+
   const handleEnrollSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setEnrollError('')
@@ -162,15 +170,7 @@ function StudentDashboardContent() {
       }
     }
     fn()
-  }, [router])
-  
-  const subjectMap = useMemo(() => {
-    const map = new Map<string, { name: string; code: string }>()
-    for (const s of allSubjects) {
-      map.set(s.id, { name: s.name, code: s.code })
-    }
-    return map
-  }, [allSubjects])
+  }, [router, subjectMap])
 
   useEffect(() => {
     const fetchData = async () => {

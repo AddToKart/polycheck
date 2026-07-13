@@ -22,17 +22,12 @@ export default function SubjectSessionsScreen() {
 
   useEffect(() => {
     if (!id) return
-    const subj = api.getSubject(id)
-    if (!subj) { router.back(); return }
-    setSubject(subj)
-    const subjectSections = api.getSections(id)
-    setSections(subjectSections)
-    const allSessions: Session[] = []
-    for (const sec of subjectSections) {
-      allSessions.push(...api.getSectionSessions(sec.id))
-    }
-    allSessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    setSessions(allSessions)
+    void Promise.all([api.getSubject(id), api.getSections(id)]).then(async ([nextSubject, subjectSections]) => {
+      const sessionGroups = await Promise.all(subjectSections.map((section) => api.getSectionSessions(section.id)))
+      setSubject(nextSubject)
+      setSections(subjectSections)
+      setSessions(sessionGroups.flat().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))
+    }).catch(() => router.back())
   }, [id])
 
   useEffect(() => {

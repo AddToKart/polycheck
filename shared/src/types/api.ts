@@ -130,6 +130,10 @@ export interface ApiClient {
   getStudents(): Student[]
   getStudent(id: string): Student | undefined
   getTeachers(): Teacher[]
+  createTeacher(data: { fullName: string; email: string; password: string; department?: string }): Teacher
+  setUserStatus(id: string, isActive: boolean): User
+  getSettings(): { key: string; value: string; updatedAt: string }[]
+  setSetting(key: string, value: string): { key: string; value: string; updatedAt: string }
   getMyAttendance(studentId: string): AttendanceRecord[]
   getMySubjects(studentId: string): Subject[]
 

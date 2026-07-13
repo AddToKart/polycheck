@@ -30,20 +30,23 @@ export default function StudentDetailScreen() {
   const [isFlipped, setIsFlipped] = useState(false)
   const flipAnim = useRef(new Animated.Value(0)).current
 
-  const loadData = useCallback(() => {
+  const loadData = useCallback(async () => {
     if (!studentId) return
     let secId = sectionId
     if (!secId) {
-      const enrollments = api.getEnrollments()
+      const enrollments = await api.getEnrollments()
       const enr = enrollments.find((e) => e.studentId === studentId)
       if (enr) secId = enr.sectionId
     }
     if (!secId) { router.back(); return }
-    const s = api.getStudent(studentId)
-    if (!s) { router.back(); return }
-    setStudent(s)
-    setSessions(api.getSectionSessions(secId))
-    setRecords(api.getStudentAttendanceForSection(studentId, secId))
+    try {
+      const [nextStudent, nextSessions, nextRecords] = await Promise.all([
+        api.getStudent(studentId), api.getSectionSessions(secId), api.getStudentAttendanceForSection(studentId, secId),
+      ])
+      setStudent(nextStudent)
+      setSessions(nextSessions)
+      setRecords(nextRecords)
+    } catch { router.back(); return }
     setLoading(false)
   }, [studentId, sectionId])
 
@@ -72,24 +75,23 @@ export default function StudentDetailScreen() {
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
-            api.removeStudentFromSection(sectionId, studentId)
-            router.back()
+            void api.removeStudentFromSection(sectionId, studentId).then(() => router.back())
           },
         },
       ],
     )
   }
 
-  const handleCycleStatus = (record: AttendanceRecord) => {
+  const handleCycleStatus = async (record: AttendanceRecord) => {
     const currentIdx = STATUS_CYCLE.indexOf(record.status)
     const nextStatus = STATUS_CYCLE[(currentIdx + 1) % STATUS_CYCLE.length]
-    api.updateAttendanceStatus(record.id, nextStatus)
+    await api.updateAttendanceStatus(record.id, nextStatus)
     setRecords((prev) =>
       prev.map((r) => (r.id === record.id ? { ...r, status: nextStatus } : r))
     )
   }
 
-  const handleAddAbsent = (session: Session) => {
+  const handleAddAbsent = async (session: Session) => {
     const existing = records.find((r) => r.sessionId === session.id)
     if (existing) return
     const newRecord: AttendanceRecord = {
@@ -105,7 +107,7 @@ export default function StudentDetailScreen() {
       isSynced: false,
       notes: 'Manually marked by teacher',
     }
-    api.addAttendanceRecord(newRecord)
+    await api.addAttendanceRecord(newRecord)
     setRecords((prev) => [...prev, newRecord])
   }
 

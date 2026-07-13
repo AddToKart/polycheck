@@ -9,6 +9,9 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 type Tab = 'teachers' | 'students'
 
@@ -18,6 +21,17 @@ export default function UsersPage() {
   const [activeTab, setActiveTab] = useState<Tab>('teachers')
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [students, setStudents] = useState<Student[]>([])
+  const [showCreateTeacher, setShowCreateTeacher] = useState(false)
+  const [busyUserId, setBusyUserId] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const [teacherForm, setTeacherForm] = useState({ fullName: '', email: '', password: '', department: '' })
+
+  const fetchData = async () => {
+    const [t, s] = await Promise.all([api.getTeachers(), api.getStudents()])
+    setTeachers(t)
+    setStudents(s)
+  }
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -29,12 +43,7 @@ export default function UsersPage() {
   }, [router])
 
   useEffect(() => {
-    const fetchData = async () => {
-      const [t, s] = await Promise.all([api.getTeachers(), api.getStudents()])
-      setTeachers(t)
-      setStudents(s)
-    }
-    fetchData()
+    void fetchData()
   }, [])
 
   if (!user) return null
@@ -42,6 +51,35 @@ export default function UsersPage() {
   const handleLogout = () => {
     api.logout()
     router.push('/')
+  }
+
+  const handleCreateTeacher = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setSubmitting(true)
+    setError('')
+    try {
+      await api.createTeacher(teacherForm)
+      await fetchData()
+      setTeacherForm({ fullName: '', email: '', password: '', department: '' })
+      setShowCreateTeacher(false)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to create teacher account')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleSetStatus = async (target: User) => {
+    setBusyUserId(target.id)
+    setError('')
+    try {
+      await api.setUserStatus(target.id, !target.isActive)
+      await fetchData()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to update account')
+    } finally {
+      setBusyUserId(null)
+    }
   }
 
   return (
@@ -52,11 +90,13 @@ export default function UsersPage() {
         <div className="p-8 max-w-5xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <h1 className="text-3xl font-heading font-bold text-maroon dark:text-white">User Management</h1>
-            <Button>
+            <Button onClick={() => { setError(''); setShowCreateTeacher(true) }}>
               <Plus className="w-4 h-4" />
-              Add User
+              Add Teacher
             </Button>
           </div>
+
+          {error && <p role="alert" className="mb-4 border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{error}</p>}
 
           <div className="flex items-center gap-2 mb-6">
             <Button
@@ -86,6 +126,7 @@ export default function UsersPage() {
                       <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Department</th>
                       <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Role</th>
                       <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Status</th>
+                      <th className="text-right px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -104,6 +145,11 @@ export default function UsersPage() {
                           <Badge variant={t.isActive ? 'active' : 'inactive'}>
                             {t.isActive ? 'Active' : 'Inactive'}
                           </Badge>
+                        </td>
+                        <td className="px-6 py-3 text-right">
+                          <Button variant="outline" size="sm" disabled={busyUserId === t.id} onClick={() => void handleSetStatus(t)}>
+                            {busyUserId === t.id ? 'Saving…' : t.isActive ? 'Disable' : 'Enable'}
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -125,6 +171,7 @@ export default function UsersPage() {
                       <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Year Level</th>
                       <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Role</th>
                       <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Status</th>
+                      <th className="text-right px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -145,6 +192,11 @@ export default function UsersPage() {
                             {s.isActive ? 'Active' : 'Inactive'}
                           </Badge>
                         </td>
+                        <td className="px-6 py-3 text-right">
+                          <Button variant="outline" size="sm" disabled={busyUserId === s.id} onClick={() => void handleSetStatus(s)}>
+                            {busyUserId === s.id ? 'Saving…' : s.isActive ? 'Disable' : 'Enable'}
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -154,6 +206,38 @@ export default function UsersPage() {
           )}
         </div>
       </main>
+
+      <Dialog open={showCreateTeacher} onOpenChange={setShowCreateTeacher}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create teacher account</DialogTitle>
+            <DialogDescription>The teacher can sign in immediately using this email and temporary password.</DialogDescription>
+          </DialogHeader>
+          <form className="mt-5 space-y-4" onSubmit={handleCreateTeacher}>
+            <div className="space-y-2">
+              <Label htmlFor="teacher-name">Full name</Label>
+              <Input id="teacher-name" value={teacherForm.fullName} onChange={(e) => setTeacherForm((form) => ({ ...form, fullName: e.target.value }))} minLength={2} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="teacher-email">PUP email</Label>
+              <Input id="teacher-email" type="email" value={teacherForm.email} onChange={(e) => setTeacherForm((form) => ({ ...form, email: e.target.value }))} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="teacher-department">Department</Label>
+              <Input id="teacher-department" value={teacherForm.department} onChange={(e) => setTeacherForm((form) => ({ ...form, department: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="teacher-password">Temporary password</Label>
+              <Input id="teacher-password" type="password" value={teacherForm.password} onChange={(e) => setTeacherForm((form) => ({ ...form, password: e.target.value }))} minLength={8} required />
+            </div>
+            {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+            <div className="flex justify-end gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={() => setShowCreateTeacher(false)}>Cancel</Button>
+              <Button type="submit" disabled={submitting}>{submitting ? 'Creating…' : 'Create Teacher'}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -33,6 +33,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "tweetnacl": "^1.0.3",
     "zod": "^3.24.0"
   },
   "devDependencies": {

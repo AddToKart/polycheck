@@ -7,7 +7,7 @@ import { api } from '../../../services/mock-api'
 import { fonts } from '../../../theme/typography'
 import { useTheme } from '../../../theme/ThemeContext'
 import MapView from '../../../components/MapView'
-import type { User, Subject, Section } from '@polycheck/shared'
+import type { User, Subject, Section, Session } from '@polycheck/shared'
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const MINUTES = [0, 15, 30, 45]
@@ -98,6 +98,7 @@ export default function CreateSessionScreen() {
   const [mapFocus, setMapFocus] = useState(false)
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [sections, setSections] = useState<Section[]>([])
+  const [sectionSessions, setSectionSessions] = useState<Session[]>([])
   const [selectedSubjectId, setSelectedSubjectId] = useState('')
   const [sectionId, setSectionId] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
@@ -128,19 +129,21 @@ export default function CreateSessionScreen() {
     const cu = api.getCurrentUser()
     if (cu) {
       setUser(cu)
-      setSubjects(api.getSubjects())
+      void api.getSubjects().then(setSubjects)
     }
   }, [])
 
   useEffect(() => {
     if (selectedSubjectId) {
-      setSections(api.getSections(selectedSubjectId).filter((s) => s.teacherId === user?.id))
+      void api.getSections(selectedSubjectId).then((nextSections) => {
+        setSections(nextSections.filter((section) => section.teacherId === user?.id))
+      })
       setSectionId('')
     } else {
       setSections([])
       setSectionId('')
     }
-  }, [selectedSubjectId])
+  }, [selectedSubjectId, user?.id])
 
   const filteredSections = selectedSubjectId
     ? sections.filter(s => s.subjectId === selectedSubjectId)
@@ -152,7 +155,7 @@ export default function CreateSessionScreen() {
 
   // Issue 3: Duplicate session detection
   const existingSessionOnDate = !bulkMode && sectionId && date
-    ? api.getSessions(sectionId).find((s) => s.date === date)
+    ? sectionSessions.find((session) => session.date === date)
     : null
   const hasDuplicateConflict = !!existingSessionOnDate && !isRescheduled
 
@@ -164,6 +167,14 @@ export default function CreateSessionScreen() {
       setRescheduledFromDate('')
     }
   }, [selectedSection])
+
+  useEffect(() => {
+    if (!sectionId) {
+      setSectionSessions([])
+      return
+    }
+    void api.getSessions(sectionId).then(setSectionSessions)
+  }, [sectionId])
 
   if (!user) return null
 
@@ -210,12 +221,13 @@ export default function CreateSessionScreen() {
     return count
   }
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!sectionId || !selectedSection) return
     if (bulkMode) {
       const count = calculateBulkCount()
       if (count === 0) return
-      api.createBulkSessions({
+      try {
+        await api.createBulkSessions({
         sectionId,
         subjectName: selectedParentSubject?.name ?? '',
         startDate: bulkStartDate,
@@ -228,14 +240,18 @@ export default function CreateSessionScreen() {
         gracePeriodMinutes: gracePeriod,
         geofence: { latitude, longitude, radiusMeters: radius },
         teacherId: user.id,
-      })
-      Alert.alert('Sessions Created', `${count} session${count !== 1 ? 's' : ''} created successfully.`)
-      router.back()
+        })
+        Alert.alert('Sessions Created', `${count} session${count !== 1 ? 's' : ''} created successfully.`)
+        router.back()
+      } catch (error) {
+        Alert.alert('Unable to create sessions', error instanceof Error ? error.message : 'Please try again.')
+      }
     } else {
       const replaceDates = getStandardReplaceDates()
       const selectedReplaceOption = replaceDates.find((d) => d.dateStr === rescheduledFromDate)
 
-      api.createSession({
+      try {
+        await api.createSession({
         sectionId,
         subjectName: selectedParentSubject?.name ?? '',
         date,
@@ -250,8 +266,11 @@ export default function CreateSessionScreen() {
         rescheduledFromDate: isRescheduled ? rescheduledFromDate : undefined,
         originalScheduleTime: isRescheduled ? selectedReplaceOption?.scheduleTime : undefined,
         originalRoom: isRescheduled ? selectedReplaceOption?.room : undefined,
-      })
-      router.back()
+        })
+        router.back()
+      } catch (error) {
+        Alert.alert('Unable to create session', error instanceof Error ? error.message : 'Please try again.')
+      }
     }
   }
 

@@ -1,9 +1,14 @@
 import { NestFactory } from '@nestjs/core'
 import { ValidationPipe } from '@nestjs/common'
 import { AppModule } from './app.module'
+import { RedisIoAdapter } from './infrastructure/redis-io.adapter'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
+  const socketAdapter = new RedisIoAdapter(app)
+  await socketAdapter.connect(process.env.REDIS_URL)
+  app.useWebSocketAdapter(socketAdapter)
+  app.enableShutdownHooks()
 
   const frontendUrl = process.env.FRONTEND_URL
   app.enableCors({

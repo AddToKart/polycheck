@@ -16,10 +16,10 @@ export default function SubjectDetailScreen() {
 
   useEffect(() => {
     if (!id) return
-    const subj = api.getSubject(id)
-    if (!subj) { router.back(); return }
-    setSubject(subj)
-    setSections(api.getSections().filter((s) => s.subjectId === id))
+    void Promise.all([api.getSubject(id), api.getSections(id)]).then(([nextSubject, nextSections]) => {
+      setSubject(nextSubject)
+      setSections(nextSections)
+    }).catch(() => router.back())
   }, [id])
 
   if (!subject) return null

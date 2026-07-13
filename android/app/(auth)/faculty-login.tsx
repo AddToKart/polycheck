@@ -12,15 +12,17 @@ export default function FacultyLoginScreen() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setLoading(true)
-    const user = api.loginFaculty(email)
-    if (user) {
+    try {
+      const user = await api.loginFaculty(email, password)
+      if (!user) throw new Error('Invalid credentials')
       router.replace('/(faculty)/dashboard')
-    } else {
-      Alert.alert('Invalid credentials', 'Please check your email and password.')
+    } catch (error) {
+      Alert.alert('Invalid credentials', error instanceof Error ? error.message : 'Please check your email and password.')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (

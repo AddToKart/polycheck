@@ -6,7 +6,7 @@ import { router } from 'expo-router'
 import { api } from '../../services/mock-api'
 import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
-import type { User, AttendanceRecord, DisputeReason, Subject } from '@polycheck/shared'
+import type { User, AttendanceRecord, DisputeReason, Section, Session, Subject } from '@polycheck/shared'
 
 const DISPUTE_LABELS: Record<DisputeReason, string> = {
   outside_geofence: 'Outside Geofence',
@@ -30,6 +30,9 @@ export default function DisputesScreen() {
   const { isDark } = useTheme()
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
+  const [disputes, setDisputes] = useState<AttendanceRecord[]>([])
+  const [sections, setSections] = useState<Record<string, Section>>({})
+  const [sessions, setSessions] = useState<Record<string, Session>>({})
   
   // Filtering & Tab States
   const [activeTab, setActiveTab] = useState<'pending' | 'resolved'>('pending')
@@ -48,33 +51,46 @@ export default function DisputesScreen() {
       return
     }
     setUser(cu)
-    setSubjects(api.getSubjects())
+    void Promise.all([
+      api.getSubjects(), api.getDisputedRecords(undefined, { status: 'all' }), api.getSections(), api.getSessions(),
+    ]).then(([nextSubjects, nextDisputes, sectionList, sessionList]) => {
+      setSubjects(nextSubjects)
+      setDisputes(nextDisputes)
+      setSections(Object.fromEntries(sectionList.map((section) => [section.id, section])))
+      setSessions(Object.fromEntries(sessionList.map((session) => [session.id, session])))
+    })
   }, [])
 
   if (!user) return null
 
   // Fetch disputes count dynamically
-  const pendingCount = api.getDisputedRecords(undefined, { status: 'pending' }).length
-  const resolvedCount = api.getDisputedRecords(undefined, { status: 'resolved' }).length
+  const pendingCount = disputes.filter((record) => record.status === 'disputed').length
+  const resolvedCount = disputes.filter((record) => record.disputeResolved).length
 
   // Query records with search and status filters
-  const allFilteredRecords = api.getDisputedRecords(undefined, {
-    search: searchQuery || undefined,
-    status: activeTab,
+  const allFilteredRecords = disputes.filter((record) => {
+    if (activeTab === 'pending' && record.status !== 'disputed') return false
+    if (activeTab === 'resolved' && !record.disputeResolved) return false
+    return !searchQuery || record.studentName.toLowerCase().includes(searchQuery.toLowerCase())
   })
 
   // Apply client-side subject filter
   const records = selectedSubjectId === 'all'
     ? allFilteredRecords
-    : allFilteredRecords.filter(r => {
-        const sec = api.getSection(r.sectionId)
-        return sec && sec.subjectId === selectedSubjectId
+    : allFilteredRecords.filter((record) => {
+        const section = sections[record.sectionId]
+        return section?.subjectId === selectedSubjectId
       })
 
-  const handleResolve = (resolution: 'accept' | 'reject' | 'override', newStatus?: 'present' | 'late' | 'absent') => {
+  const handleResolve = async (resolution: 'accept' | 'reject' | 'override', newStatus?: 'present' | 'late' | 'absent') => {
     if (!selectedRecord) return
-    api.resolveDispute(selectedRecord.id, resolution, newStatus)
-    setSelectedRecord(null)
+    try {
+      const updated = await api.resolveDispute(selectedRecord.id, resolution, newStatus)
+      setDisputes((previous) => previous.map((record) => record.id === updated.id ? updated : record))
+      setSelectedRecord(null)
+    } catch (error) {
+      Alert.alert('Unable to resolve dispute', error instanceof Error ? error.message : 'Please try again.')
+    }
   }
 
   const confirmReject = () => {
@@ -120,9 +136,9 @@ export default function DisputesScreen() {
     > = {}
 
     records.forEach((record) => {
-      const section = api.getSection(record.sectionId)
-      const subject = section ? api.getSubject(section.subjectId) : undefined
-      const session = api.getSession(record.sessionId)
+      const section = sections[record.sectionId]
+      const subject = section ? subjects.find((item) => item.id === section.subjectId) : undefined
+      const session = sessions[record.sessionId]
 
       const subjectId = subject ? subject.id : 'unknown'
       const subjectName = subject ? subject.name : 'Unknown Subject'
@@ -493,9 +509,9 @@ export default function DisputesScreen() {
                   </View>
                 </View>
                 {(() => {
-                  const rSec = api.getSection(selectedRecord.sectionId)
-                  const rSubj = rSec ? api.getSubject(rSec.subjectId) : undefined
-                  const rSess = api.getSession(selectedRecord.sessionId)
+                  const rSec = sections[selectedRecord.sectionId]
+                  const rSubj = rSec ? subjects.find((subject) => subject.id === rSec.subjectId) : undefined
+                  const rSess = sessions[selectedRecord.sessionId]
                   return (
                     <>
                       <View style={styles.reviewRow}>

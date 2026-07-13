@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, TextInput, Alert, ActivityIndicator } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -14,11 +14,24 @@ export default function FacultyUsersScreen() {
   const { isDark, toggle } = useTheme()
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('teachers')
+  const [teachers, setTeachers] = useState<Teacher[]>([])
+  const [students, setStudents] = useState<Student[]>([])
+  const [showCreateTeacher, setShowCreateTeacher] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [busyUserId, setBusyUserId] = useState<string | null>(null)
+  const [teacherForm, setTeacherForm] = useState({ fullName: '', email: '', department: '', password: '' })
+
+  const refreshUsers = async () => {
+    const [nextTeachers, nextStudents] = await Promise.all([api.getTeachers(), api.getStudents()])
+    setTeachers(nextTeachers)
+    setStudents(nextStudents)
+  }
 
   useEffect(() => {
     const cu = api.getCurrentUser()
     if (cu && cu.role === 'super_admin') {
       setCurrentUser(cu)
+      void refreshUsers().catch((error) => Alert.alert('Unable to load users', error instanceof Error ? error.message : 'Please try again.'))
     } else {
       router.replace('/(faculty)/dashboard')
     }
@@ -26,12 +39,49 @@ export default function FacultyUsersScreen() {
 
   if (!currentUser) return null
 
-  const teachers = api.getTeachers()
-  const students = api.getStudents()
-
   const handleLogout = () => {
     api.logout()
     router.replace('/')
+  }
+
+  const handleCreateTeacher = async () => {
+    if (teacherForm.fullName.trim().length < 2 || !teacherForm.email.includes('@') || teacherForm.password.length < 8) {
+      Alert.alert('Check the form', 'Enter a name, valid email, and a password with at least 8 characters.')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await api.createTeacher(teacherForm)
+      await refreshUsers()
+      setTeacherForm({ fullName: '', email: '', department: '', password: '' })
+      setShowCreateTeacher(false)
+      Alert.alert('Teacher created', 'The new account can sign in immediately.')
+    } catch (error) {
+      Alert.alert('Unable to create teacher', error instanceof Error ? error.message : 'Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const confirmStatusChange = (target: User) => {
+    Alert.alert(
+      target.isActive ? 'Disable account?' : 'Enable account?',
+      target.isActive ? `${target.fullName} will be signed out and unable to log in.` : `${target.fullName} will be allowed to log in again.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: target.isActive ? 'Disable' : 'Enable',
+          style: target.isActive ? 'destructive' : 'default',
+          onPress: () => {
+            setBusyUserId(target.id)
+            void api.setUserStatus(target.id, !target.isActive)
+              .then(refreshUsers)
+              .catch((error) => Alert.alert('Unable to update account', error instanceof Error ? error.message : 'Please try again.'))
+              .finally(() => setBusyUserId(null))
+          },
+        },
+      ],
+    )
   }
 
   const getStatusBadgeStyle = (isActive: boolean) => {
@@ -53,6 +103,12 @@ export default function FacultyUsersScreen() {
       <View style={[styles.header, isDark && styles.headerDark]}>
         <Text style={[styles.heading, isDark && styles.textGolden]}>User Management</Text>
         <View style={styles.headerRight}>
+          <TouchableOpacity onPress={() => router.push('/(faculty)/settings' as any)} style={styles.iconBtn} accessibilityLabel="Institution settings">
+            <MaterialIcons name="settings" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowCreateTeacher(true)} style={styles.iconBtn} accessibilityLabel="Add teacher">
+            <MaterialIcons name="person-add" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
             <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
@@ -103,9 +159,9 @@ export default function FacultyUsersScreen() {
                     <Text style={[styles.userName, isDark && styles.textWhite]}>{t.fullName}</Text>
                     <Text style={[styles.userMeta, isDark && styles.textWhite50]}>{t.email}</Text>
                   </View>
-                  <View style={[styles.statusBadge, { backgroundColor: badgeStyle.bg }]}>
-                    <Text style={[styles.badgeText, { color: badgeStyle.text }]}>{t.isActive ? 'Active' : 'Inactive'}</Text>
-                  </View>
+                  <TouchableOpacity disabled={busyUserId === t.id} onPress={() => confirmStatusChange(t)} style={[styles.statusBadge, { backgroundColor: badgeStyle.bg }]} accessibilityLabel={`${t.isActive ? 'Disable' : 'Enable'} ${t.fullName}`}>
+                    {busyUserId === t.id ? <ActivityIndicator size="small" color={badgeStyle.text} /> : <Text style={[styles.badgeText, { color: badgeStyle.text }]}>{t.isActive ? 'Active' : 'Inactive'}</Text>}
+                  </TouchableOpacity>
                 </View>
                 <View style={[styles.cardDetails, isDark && styles.cardDetailsDark]}>
                   <View style={styles.detailRow}>
@@ -131,9 +187,9 @@ export default function FacultyUsersScreen() {
                     <Text style={[styles.userName, isDark && styles.textWhite]}>{s.fullName}</Text>
                     <Text style={[styles.userMeta, isDark && styles.textWhite50]}>{s.email}</Text>
                   </View>
-                  <View style={[styles.statusBadge, { backgroundColor: badgeStyle.bg }]}>
-                    <Text style={[styles.badgeText, { color: badgeStyle.text }]}>{s.isActive ? 'Active' : 'Inactive'}</Text>
-                  </View>
+                  <TouchableOpacity disabled={busyUserId === s.id} onPress={() => confirmStatusChange(s)} style={[styles.statusBadge, { backgroundColor: badgeStyle.bg }]} accessibilityLabel={`${s.isActive ? 'Disable' : 'Enable'} ${s.fullName}`}>
+                    {busyUserId === s.id ? <ActivityIndicator size="small" color={badgeStyle.text} /> : <Text style={[styles.badgeText, { color: badgeStyle.text }]}>{s.isActive ? 'Active' : 'Inactive'}</Text>}
+                  </TouchableOpacity>
                 </View>
                 <View style={[styles.cardDetails, isDark && styles.cardDetailsDark]}>
                   <View style={styles.detailRow}>
@@ -152,6 +208,47 @@ export default function FacultyUsersScreen() {
           })
         )}
       </ScrollView>
+
+      <Modal visible={showCreateTeacher} transparent animationType="fade" onRequestClose={() => setShowCreateTeacher(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, isDark && styles.cardDark]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, isDark && styles.textWhite]}>Create Teacher</Text>
+              <TouchableOpacity onPress={() => setShowCreateTeacher(false)} accessibilityLabel="Close">
+                <MaterialIcons name="close" size={22} color={isDark ? '#FFFFFF' : '#333333'} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.modalHint, isDark && styles.textWhite50]}>The teacher can sign in immediately using the email and temporary password.</Text>
+            {([
+              ['Full name', 'fullName', 'default'],
+              ['PUP email', 'email', 'email-address'],
+              ['Department', 'department', 'default'],
+              ['Temporary password', 'password', 'default'],
+            ] as const).map(([label, key, keyboardType]) => (
+              <View key={key} style={styles.fieldGroup}>
+                <Text style={[styles.fieldLabel, isDark && styles.textWhite70]}>{label}</Text>
+                <TextInput
+                  value={teacherForm[key]}
+                  onChangeText={(value) => setTeacherForm((form) => ({ ...form, [key]: value }))}
+                  keyboardType={keyboardType}
+                  secureTextEntry={key === 'password'}
+                  autoCapitalize={key === 'email' ? 'none' : 'words'}
+                  style={[styles.fieldInput, isDark && styles.fieldInputDark]}
+                  placeholderTextColor={isDark ? 'rgba(255,255,255,0.35)' : '#999999'}
+                />
+              </View>
+            ))}
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.secondaryButton, isDark && styles.secondaryButtonDark]} onPress={() => setShowCreateTeacher(false)}>
+                <Text style={[styles.secondaryButtonText, isDark && styles.textGolden]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity disabled={submitting} style={[styles.primaryButton, isDark && styles.primaryButtonDark]} onPress={() => void handleCreateTeacher()}>
+                {submitting ? <ActivityIndicator color={isDark ? '#4A0A0B' : '#FFFFFF'} /> : <Text style={[styles.primaryButtonText, isDark && styles.primaryButtonTextDark]}>Create</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -194,4 +291,22 @@ const styles = StyleSheet.create({
   cardDetailsDark: { borderTopColor: 'rgba(255,255,255,0.05)' },
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   detailText: { fontSize: 12, fontFamily: fonts.body, color: '#666' },
+  textWhite70: { color: 'rgba(255,255,255,0.7)' },
+  modalOverlay: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.65)' },
+  modalCard: { padding: 20, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EEEEEE' },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  modalTitle: { fontSize: 22, fontFamily: fonts.heading, fontWeight: '700', color: '#4A0A0B' },
+  modalHint: { marginTop: 6, marginBottom: 18, fontSize: 12, lineHeight: 18, fontFamily: fonts.body, color: '#666666' },
+  fieldGroup: { gap: 6, marginBottom: 14 },
+  fieldLabel: { fontSize: 12, fontFamily: fonts.bodySemiBold, fontWeight: '600', color: '#444444' },
+  fieldInput: { height: 46, borderWidth: 1, borderColor: '#D4D4D8', paddingHorizontal: 12, color: '#222222', backgroundColor: '#FFFFFF', fontFamily: fonts.body },
+  fieldInputDark: { borderColor: '#3F3F46', color: '#FFFFFF', backgroundColor: '#18181B' },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
+  secondaryButton: { minWidth: 96, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#7B1113' },
+  secondaryButtonDark: { borderColor: '#FFDF00' },
+  secondaryButtonText: { color: '#7B1113', fontFamily: fonts.bodySemiBold, fontWeight: '600' },
+  primaryButton: { minWidth: 112, height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: '#7B1113' },
+  primaryButtonDark: { backgroundColor: '#FFDF00' },
+  primaryButtonText: { color: '#FFFFFF', fontFamily: fonts.bodyBold, fontWeight: '700' },
+  primaryButtonTextDark: { color: '#4A0A0B' },
 })

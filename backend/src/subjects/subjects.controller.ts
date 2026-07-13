@@ -1,16 +1,16 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, HttpCode, HttpStatus } from '@nestjs/common'
+import { Controller, Get, Post, Patch, Delete, Body, Param, Request, HttpCode, HttpStatus } from '@nestjs/common'
 import { SubjectsService } from './subjects.service'
 import { Roles } from '../common/decorators/roles.decorator'
-import type { CreateSubjectDto } from './dto/create-subject.dto'
-import type { UpdateSubjectDto } from './dto/update-subject.dto'
+import { CreateSubjectDto } from './dto/create-subject.dto'
+import { UpdateSubjectDto } from './dto/update-subject.dto'
 
 @Controller('subjects')
 export class SubjectsController {
   constructor(private subjects: SubjectsService) {}
 
   @Get()
-  findAll() {
-    return this.subjects.findAll()
+  findAll(@Request() req) {
+    return this.subjects.findAll(req.user)
   }
 
   @Get(':id')
@@ -20,8 +20,8 @@ export class SubjectsController {
 
   @Post()
   @Roles('teacher', 'super_admin')
-  create(@Body() dto: CreateSubjectDto) {
-    return this.subjects.create(dto)
+  create(@Body() dto: CreateSubjectDto, @Request() req) {
+    return this.subjects.create(dto, req.user.id)
   }
 
   @Patch(':id')

@@ -19,6 +19,10 @@ export interface AuthResult {
     yearLevel?: number | null
     department?: string | null
     photoUrl?: string | null
+    scope?: string | null
+    isActive: boolean
+    createdAt: Date
+    updatedAt: Date
   }
 }
 
@@ -45,7 +49,7 @@ export class AuthService {
       throw new ForbiddenException('Account is disabled')
     }
 
-    return this.generateAuthResult(user)
+    return this.generateAuthResult(await this.beginSession(user.id))
   }
 
   async loginFaculty(email: string, password: string): Promise<AuthResult> {
@@ -63,7 +67,7 @@ export class AuthService {
       throw new ForbiddenException('Account is disabled')
     }
 
-    return this.generateAuthResult(user)
+    return this.generateAuthResult(await this.beginSession(user.id))
   }
 
   async getProfile(userId: string) {
@@ -84,9 +88,8 @@ export class AuthService {
     return { message: 'Public key provisioned successfully' }
   }
 
-  async logout() {
-    // Stateless JWT logout is handled on client-side by deleting the token.
-    // In production/v2, you can maintain a token blocklist in Redis.
+  async logout(userId: string) {
+    await this.prisma.user.update({ where: { id: userId }, data: { authVersion: { increment: 1 } } })
     return { message: 'Logged out successfully' }
   }
 
@@ -96,11 +99,16 @@ export class AuthService {
       role: user.role,
       email: user.email,
       studentId: user.studentId,
+      sessionVersion: user.authVersion,
     }
 
     const token = this.jwt.sign(payload)
 
     return { token, user: this.sanitizeUser(user) }
+  }
+
+  private beginSession(userId: string) {
+    return this.prisma.user.update({ where: { id: userId }, data: { authVersion: { increment: 1 } } })
   }
 
   private sanitizeUser(user: User) {
@@ -114,6 +122,10 @@ export class AuthService {
       yearLevel: user.yearLevel,
       department: user.department,
       photoUrl: user.photoUrl,
+      scope: user.scope,
+      isActive: user.isActive,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
     }
   }
 }

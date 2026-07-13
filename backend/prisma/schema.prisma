@@ -50,6 +50,7 @@ model User {
   scope            String?
   teacherPublicKey String?
   isActive         Boolean  @default(true)
+  authVersion      Int      @default(0)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -59,10 +60,20 @@ model User {
   sectionRoles       SectionRole[]
   sessionPermissions SessionPermission[]
   proofsOfClass      ProofOfClass[]
+  createdSubjects    Subject[]           @relation("SubjectCreator")
+  scanAttempts       ScanAttempt[]
 
   @@index([role])
   @@index([studentId])
   @@index([email])
+}
+
+model InstitutionSetting {
+  key       String   @id
+  value     String
+  updatedBy String
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
 }
 
 model Subject {
@@ -70,12 +81,15 @@ model Subject {
   name        String
   code        String
   description String?
+  createdById String?
+  createdBy   User?    @relation("SubjectCreator", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   sections Section[]
 
   @@index([code])
+  @@index([createdById])
 }
 
 model Section {
@@ -146,6 +160,7 @@ model Session {
   geofenceLongitude    Float
   geofenceRadiusMeters Int
   isActive             Boolean   @default(false)
+  endedAt              DateTime?
   qrToken              String?
   qrTokenExpiresAt     DateTime?
   qrGeneratedAt        DateTime?
@@ -156,12 +171,34 @@ model Session {
   createdAt            DateTime  @default(now())
 
   attendanceRecords AttendanceRecord[]
+  scanAttempts      ScanAttempt[]
   proofsOfClass     ProofOfClass[]
 
   @@index([sectionId])
   @@index([teacherId])
   @@index([date])
   @@index([isActive])
+}
+
+model ScanAttempt {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id])
+  studentId String
+  student   User     @relation(fields: [studentId], references: [id])
+  timestamp DateTime
+  latitude  Float
+  longitude Float
+  deviceId  String?
+  outcome   String
+  reason    String?
+  message   String?
+  tokenHash String?
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, timestamp])
+  @@index([studentId, timestamp])
+  @@index([deviceId])
 }
 
 model AttendanceRecord {

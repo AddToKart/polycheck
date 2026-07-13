@@ -29,21 +29,21 @@ export default function StudentCreateSessionScreen() {
 
   useEffect(() => {
     if (!sectionId) return
-    const sec = api.getSection(sectionId)
-    if (sec) {
-      setSection(sec)
-      setSubject(api.getSubject(sec.subjectId) ?? null)
-      setRoom(sec.room || '')
-    }
+    void api.getSection(sectionId).then(async (nextSection) => {
+      setSection(nextSection)
+      setSubject(await api.getSubject(nextSection.subjectId))
+      setRoom(nextSection.room || '')
+    })
   }, [sectionId])
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!section || !subject || !user) return
-    if (!api.checkSessionPermission(sectionId, user.id)) {
+    if (!await api.checkSessionPermission(sectionId, user.id)) {
       Alert.alert('Permission Expired', 'Your session creation permission has expired. Ask your teacher to grant a new one.')
       return
     }
-    api.createSession({
+    try {
+      await api.createSession({
       sectionId: section.id,
       subjectName: subject.name,
       date,
@@ -54,9 +54,12 @@ export default function StudentCreateSessionScreen() {
       gracePeriodMinutes: gracePeriod,
       geofence: { latitude: 14.5863, longitude: 120.9777, radiusMeters: 40 },
       teacherId: section.teacherId,
-    })
-    Alert.alert('Session Created', 'Session created successfully!')
-    router.back()
+      })
+      Alert.alert('Session Created', 'Session created successfully!')
+      router.back()
+    } catch (error) {
+      Alert.alert('Unable to create session', error instanceof Error ? error.message : 'Please try again.')
+    }
   }
 
   if (!section) return null

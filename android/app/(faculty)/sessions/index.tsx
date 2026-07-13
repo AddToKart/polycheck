@@ -19,9 +19,11 @@ export default function FacultySessionsScreen() {
     const cu = api.getCurrentUser()
     if (cu) {
       setUser(cu)
-      setSessions(api.getSessions())
-      setSubjects(api.getSubjects())
-      setAllSections(api.getSections())
+      void Promise.all([api.getSessions(), api.getSubjects(), api.getSections()]).then(([nextSessions, nextSubjects, nextSections]) => {
+        setSessions(nextSessions)
+        setSubjects(nextSubjects)
+        setAllSections(nextSections)
+      })
     }
   }, [])
 

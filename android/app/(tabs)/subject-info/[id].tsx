@@ -5,7 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import { api } from '../../../services/mock-api'
 import { useTheme } from '../../../theme/ThemeContext'
-import type { Section, Session, SectionRole } from '@polycheck/shared'
+import type { Section, Session, SectionRole, Subject } from '@polycheck/shared'
 
 export default function StudentSubjectInfoScreen() {
   const { isDark } = useTheme()
@@ -14,23 +14,23 @@ export default function StudentSubjectInfoScreen() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [roles, setRoles] = useState<SectionRole[]>([])
   const [hasPermission, setHasPermission] = useState(false)
+  const [parentSubject, setParentSubject] = useState<Subject | null>(null)
 
   useEffect(() => {
     if (!id) return
-    const s = api.getSection(id)
-    setSection(s ?? null)
-    setSessions(api.getSectionSessions(id))
     const cu = api.getCurrentUser()
-    if (cu) {
-      const studentRoles = api.getStudentRoles(cu.id)
+    if (!cu) return
+    void Promise.all([api.getSection(id), api.getSectionSessions(id), api.getStudentRoles(cu.id)]).then(async ([nextSection, nextSessions, studentRoles]) => {
+      setSection(nextSection)
+      setSessions(nextSessions)
       setRoles(studentRoles)
-      if (studentRoles.find(r => r.sectionId === id && r.role === 'president')) {
-        setHasPermission(api.checkSessionPermission(id, cu.id))
+      setParentSubject(await api.getSubject(nextSection.subjectId))
+      if (studentRoles.some((role) => role.sectionId === id && role.role === 'president')) {
+        setHasPermission(await api.checkSessionPermission(id, cu.id))
       }
-    }
+    }).catch(() => setSection(null))
   }, [id])
 
-  const parentSubject = section ? api.getSubject(section.subjectId) : undefined
   const studentRoles = roles.filter(r => r.sectionId === id)
   const isPresident = studentRoles.some(r => r.role === 'president')
   const isQac = studentRoles.some(r => r.role === 'qac')
@@ -38,7 +38,7 @@ export default function StudentSubjectInfoScreen() {
   const handleCreateSession = () => {
     const cu = api.getCurrentUser()
     if (!cu || !section) return
-    if (!api.checkSessionPermission(id, cu.id)) {
+    if (!hasPermission) {
       Alert.alert('Permission Expired', 'Your session creation permission has expired. Ask your teacher to grant a new one.')
       return
     }

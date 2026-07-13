@@ -7,25 +7,40 @@ import { api } from '../../services/mock-api'
 import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
 import { formatTime } from '@polycheck/shared/utils'
-import type { User, Section, AttendanceRecord, CalendarEvent } from '@polycheck/shared'
+import type { User, Section, CalendarEvent, Session, Subject } from '@polycheck/shared'
 
 export default function FacultyDashboardScreen() {
   const { isDark, toggle } = useTheme()
   const [user, setUser] = useState<User | null>(null)
   const [sections, setSections] = useState<Section[]>([])
-  const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [subjects, setSubjects] = useState<Record<string, Subject>>({})
+  const [studentCount, setStudentCount] = useState(0)
+  const [disputeCount, setDisputeCount] = useState(0)
 
   useEffect(() => {
     const cu = api.getCurrentUser()
     if (cu) {
       setUser(cu)
-      setSections(api.getSections().filter((s) => s.teacherId === cu.id))
-      setRecords(api.getAttendanceRecords())
       const todayStr = new Date().toISOString().slice(0, 10)
-      const evs = api.getCalendarEvents(cu.id, todayStr, todayStr)
-        .sort((a, b) => a.startTime.localeCompare(b.startTime))
-      setTodayEvents(evs)
+      void Promise.all([
+        api.getSections(),
+        api.getCalendarEvents(cu.id, todayStr, todayStr),
+        api.getSessions(),
+        api.getSubjects(),
+        api.getDisputedRecords(),
+      ]).then(async ([nextSections, events, nextSessions, subjectList, disputes]) => {
+        const ownSections = nextSections.filter((section) => section.teacherId === cu.id || cu.role === 'super_admin')
+        const rosters = await Promise.all(ownSections.map((section) => api.getSectionStudents(section.id)))
+        const studentIds = new Set(rosters.flat().map((student) => student.id))
+        setSections(ownSections)
+        setTodayEvents(events.sort((a, b) => a.startTime.localeCompare(b.startTime)))
+        setSessions(nextSessions)
+        setSubjects(Object.fromEntries(subjectList.map((subject) => [subject.id, subject])))
+        setStudentCount(studentIds.size)
+        setDisputeCount(disputes.filter((record) => ownSections.some((section) => section.id === record.sectionId)).length)
+      })
     }
   }, [])
 
@@ -34,22 +49,11 @@ export default function FacultyDashboardScreen() {
   const isSuper = user.role === 'super_admin'
   const teacherSectionIds = sections.map((s) => s.id)
 
-  const teacherStudentCount = (() => {
-    const studentIds = new Set<string>()
-    sections.forEach((sec) => {
-      const roster = api.getSectionStudents(sec.id)
-      roster.forEach((st) => studentIds.add(st.id))
-    })
-    return studentIds.size
-  })()
-
-  const sessionsToday = api.getSessions().filter((s) => 
+  const sessionsToday = sessions.filter((s) =>
     s.date === new Date().toISOString().slice(0, 10) && teacherSectionIds.includes(s.sectionId)
   ).length
 
-  const pendingDisputes = api.getDisputedRecords().filter((r) => 
-    teacherSectionIds.includes(r.sectionId)
-  ).length
+  const pendingDisputes = disputeCount
 
   const handleLogout = () => {
     api.logout()
@@ -101,7 +105,7 @@ export default function FacultyDashboardScreen() {
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
             <MaterialIcons name="people" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
-            <Text style={[styles.statNumber, isDark && styles.textGolden]}>{teacherStudentCount}</Text>
+            <Text style={[styles.statNumber, isDark && styles.textGolden]}>{studentCount}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Students</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
@@ -151,7 +155,7 @@ export default function FacultyDashboardScreen() {
                   <TouchableOpacity
                     style={styles.activeBtn}
                     onPress={() => {
-                      const activeSession = api.getSessions().find(
+                      const activeSession = sessions.find(
                         (sess) => sess.sectionId === ev.sectionId && sess.date === todayStr && sess.isActive
                       )
                       if (activeSession) {
@@ -188,7 +192,7 @@ export default function FacultyDashboardScreen() {
 
         <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginTop: 12 }]}>My Subjects</Text>
         {sections.map((s) => {
-          const parent = api.getSubject(s.subjectId)
+          const parent = subjects[s.subjectId]
           return (
           <TouchableOpacity
             key={s.id}

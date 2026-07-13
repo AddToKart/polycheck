@@ -19,6 +19,7 @@ import {
   X,
   Clock,
   Search,
+  Settings,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -56,6 +57,7 @@ const superAdminNav: NavItem[] = [
   { label: 'Search', href: '/faculty/search', icon: Search },
   { label: 'User Management', href: '/faculty/users', icon: Users },
   { label: 'System Reports', href: '/faculty/reports', icon: BarChart3 },
+  { label: 'Institution Settings', href: '/faculty/settings', icon: Settings },
 ]
 
 interface SidebarProps {

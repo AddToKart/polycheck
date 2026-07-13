@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { View, Text, TextInput, ScrollView, TouchableOpacity, Pressable, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import { api } from '../../../services/mock-api'
 import { useTheme } from '../../../theme/ThemeContext'
-import type { Section, Student, SectionRole, SessionPermission } from '@polycheck/shared'
+import type { Section, Student, Subject, SectionRole, SessionPermission } from '@polycheck/shared'
 
 const PAGE_SIZE = 10
 
@@ -13,7 +13,9 @@ export default function SectionDetailScreen() {
   const { isDark } = useTheme()
   const { id } = useLocalSearchParams<{ id: string }>()
   const [section, setSection] = useState<Section | null>(null)
-  const [students, setStudents] = useState<(Student & { attendance: { present: number; late: number; absent: number } })[]>([])
+  const [students, setStudents] = useState<(Student & { attendance: { present: number; late: number; absent: number; disputed: number } })[]>([])
+  const [allStudents, setAllStudents] = useState<Student[]>([])
+  const [parentSubject, setParentSubject] = useState<Subject | null>(null)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
   const [isEnrollOpen, setIsEnrollOpen] = useState(false)
@@ -23,18 +25,30 @@ export default function SectionDetailScreen() {
   const [presSelectOpen, setPresSelectOpen] = useState(false)
   const [qacSelectOpen, setQacSelectOpen] = useState(false)
 
-  const allStudents = api.getStudents()
+  const refreshRoster = useCallback(async () => {
+    if (id) setStudents(await api.getSectionStudents(id))
+  }, [id])
+  const refreshRoles = useCallback(async () => {
+    if (id) setSectionRoles(await api.getSectionRoles(id))
+  }, [id])
+  const refreshPermissions = useCallback(async () => {
+    if (id) setSessionPermissions(await api.getActiveSessionPermissions(id))
+  }, [id])
 
   useEffect(() => {
     if (!id) return
     const cu = api.getCurrentUser()
-    const s = api.getSection(id)
-    if (!s) { router.back(); return }
-    if (cu && cu.role === 'teacher' && s.teacherId !== cu.id) { router.replace('/'); return }
-    setSection(s)
-    setStudents(api.getSectionStudents(id))
-    setSectionRoles(api.getSectionRoles(id))
-    setSessionPermissions(api.getActiveSessionPermissions(id))
+    void Promise.all([
+      api.getSection(id), api.getSectionStudents(id), api.getSectionRoles(id), api.getActiveSessionPermissions(id), api.getStudents(),
+    ]).then(async ([nextSection, nextStudents, nextRoles, nextPermissions, nextAllStudents]) => {
+      if (cu && cu.role === 'teacher' && nextSection.teacherId !== cu.id) { router.replace('/'); return }
+      setSection(nextSection)
+      setStudents(nextStudents)
+      setSectionRoles(nextRoles)
+      setSessionPermissions(nextPermissions)
+      setAllStudents(nextAllStudents)
+      setParentSubject(await api.getSubject(nextSection.subjectId))
+    }).catch(() => router.back())
   }, [id])
 
   const enrolledIds = new Set(students.map((s) => s.id))
@@ -46,16 +60,15 @@ export default function SectionDetailScreen() {
     )
   }, [allStudents, enrollSearch, enrolledIds])
 
-  const handleEnrollStudent = (targetId: string, targetName: string) => {
-    const result = api.enrollStudent({ sectionId: id!, studentId: targetId, studentName: targetName })
-    if (result) {
-      setStudents(api.getSectionStudents(id!))
-      const sec = api.getSection(id!)
-      if (sec) setSection({ ...sec })
+  const handleEnrollStudent = async (targetId: string, targetName: string) => {
+    try {
+      await api.enrollStudent({ sectionId: id!, studentId: targetId, studentName: targetName })
+      await refreshRoster()
+      setSection(await api.getSection(id!))
       Alert.alert('Enrolled', `${targetName} has been enrolled successfully.`)
       setEnrollSearch('')
-    } else {
-      Alert.alert('Already Enrolled', `${targetName} is already enrolled in this section.`)
+    } catch (error) {
+      Alert.alert('Unable to enroll', error instanceof Error ? error.message : 'Please try again.')
     }
   }
 
@@ -72,14 +85,11 @@ export default function SectionDetailScreen() {
 
   useEffect(() => { setPage(0) }, [search])
 
-  const parentSubject = section ? api.getSubject(section.subjectId) : undefined
-
-  const handleResetCode = () => {
+  const handleResetCode = async () => {
     if (!id) return
-    api.resetEnrollmentCode(id)
-    const s = api.getSection(id)
-    if (s) setSection({ ...s })
-    Alert.alert('Code Reset', `New enrollment code: ${s?.enrollmentCode}`)
+    const { enrollmentCode } = await api.resetEnrollmentCode(id)
+    setSection(await api.getSection(id))
+    Alert.alert('Code Reset', `New enrollment code: ${enrollmentCode}`)
   }
 
   const handleDisableCode = () => {
@@ -93,9 +103,7 @@ export default function SectionDetailScreen() {
           text: 'Disable',
           style: 'destructive',
           onPress: () => {
-            api.disableEnrollmentCode(id)
-            const s = api.getSection(id)
-            if (s) setSection({ ...s })
+            void api.disableEnrollmentCode(id).then(async () => setSection(await api.getSection(id)))
           },
         },
       ],
@@ -170,7 +178,8 @@ export default function SectionDetailScreen() {
               <>
                 <Text className="text-xl font-[monospace] font-bold tracking-[2px]" style={{ color: isDark ? '#FFDF00' : '#7B1113' }}>{section.enrollmentCode}</Text>
                 {(() => {
-                  const expiry = new Date(section.enrollmentCodeExpiry)
+                  const expiry = section.enrollmentCodeExpiry ? new Date(section.enrollmentCodeExpiry) : null
+                  if (!expiry) return <Text className="text-[11px]" style={{ color: textSecondary }}>No expiry set</Text>
                   const now = new Date()
                   const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
                   if (daysLeft < 0) {
@@ -315,22 +324,19 @@ export default function SectionDetailScreen() {
                     <View className="flex-row gap-2">
                       {perm && !isExpired ? (
                         <TouchableOpacity className="px-3 py-1.5 border" style={{ borderColor: '#EF4444' }} onPress={() => {
-                          api.revokeSessionPermission(id, pres.studentId)
-                          setSessionPermissions(api.getActiveSessionPermissions(id))
+                          void api.revokeSessionPermission(id, pres.studentId).then(refreshPermissions)
                         }} accessibilityRole="button">
                           <Text className="text-xs font-sans-semibold text-red-500">Revoke</Text>
                         </TouchableOpacity>
                       ) : (
                         <TouchableOpacity className="px-3 py-1.5" style={{ backgroundColor: isDark ? '#FFDF00' : '#7B1113' }} onPress={() => {
-                          api.grantSessionPermission(id, pres.studentId)
-                          setSessionPermissions(api.getActiveSessionPermissions(id))
+                          void api.grantSessionPermission(id, pres.studentId).then(refreshPermissions)
                         }} accessibilityRole="button">
                           <Text className="text-xs font-sans-semibold" style={{ color: isDark ? '#4A0A0B' : '#FFF' }}>Grant 24hr</Text>
                         </TouchableOpacity>
                       )}
                       <TouchableOpacity className="px-3 py-1.5 border" style={{ borderColor: '#FCA5A5' }} onPress={() => {
-                        api.removeSectionRole(id, pres.studentId, 'president')
-                        setSectionRoles(api.getSectionRoles(id))
+                        void api.removeSectionRole(id, pres.studentId, 'president').then(refreshRoles)
                       }} accessibilityRole="button">
                         <Text className="text-xs font-sans-semibold text-red-400">Remove</Text>
                       </TouchableOpacity>
@@ -351,8 +357,7 @@ export default function SectionDetailScreen() {
                         <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
                           {students.filter(s => !sectionRoles.find(r => r.studentId === s.id && r.role === 'president')).map((s) => (
                             <TouchableOpacity key={s.id} className="px-3 py-2 flex-row items-center gap-2" style={{ borderBottomWidth: 1, borderBottomColor: border }} onPress={() => {
-                              api.assignSectionRole(id, s.id, 'president')
-                              setSectionRoles(api.getSectionRoles(id))
+                              void api.assignSectionRole(id, s.id, 'president').then(refreshRoles)
                               setPresSelectOpen(false)
                             }} accessibilityRole="button">
                               <Text className="text-[10px] font-sans-medium" style={{ color: textSecondary }}>{s.studentId}</Text>
@@ -388,8 +393,7 @@ export default function SectionDetailScreen() {
                         <View key={qac.id} className="flex-row items-center gap-1.5 px-2.5 py-1 border" style={{ backgroundColor: isDark ? '#0A0A0C' : '#F9F9F9', borderColor: border }}>
                           <Text className="text-xs font-sans-medium" style={{ color: textPrimary }}>{qac.studentName}</Text>
                           <TouchableOpacity onPress={() => {
-                            api.removeSectionRole(id, qac.studentId, 'qac')
-                            setSectionRoles(api.getSectionRoles(id))
+                            void api.removeSectionRole(id, qac.studentId, 'qac').then(refreshRoles)
                           }} accessibilityRole="button">
                             <MaterialIcons name="close" size={14} color="#EF4444" />
                           </TouchableOpacity>
@@ -409,8 +413,7 @@ export default function SectionDetailScreen() {
                         <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
                           {students.filter(s => !sectionRoles.find(r => r.studentId === s.id && r.role === 'qac')).map((s) => (
                             <TouchableOpacity key={s.id} className="px-3 py-2 flex-row items-center gap-2" style={{ borderBottomWidth: 1, borderBottomColor: border }} onPress={() => {
-                              api.assignSectionRole(id, s.id, 'qac')
-                              setSectionRoles(api.getSectionRoles(id))
+                              void api.assignSectionRole(id, s.id, 'qac').then(refreshRoles)
                               setQacSelectOpen(false)
                             }} accessibilityRole="button">
                               <Text className="text-[10px] font-sans-medium" style={{ color: textSecondary }}>{s.studentId}</Text>

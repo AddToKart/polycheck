@@ -30,12 +30,7 @@ export default function SubjectsPage() {
         counts[sec.subjectId] = (counts[sec.subjectId] || 0) + 1
       }
       setSectionCounts(counts)
-      let all = await api.getSubjects()
-      if (cu.role === 'teacher') {
-        const teacherSectionIds = allSections.filter((s) => s.teacherId === cu.id).map((s) => s.subjectId)
-        all = all.filter((subj) => teacherSectionIds.includes(subj.id))
-      }
-      setSubjects(all)
+      setSubjects(await api.getSubjects())
     }
     init()
   }, [router])

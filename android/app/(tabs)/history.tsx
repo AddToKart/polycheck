@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, TextInput, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -17,8 +17,6 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
   { key: 'disputed', label: 'Disputed' },
 ]
 
-const sectionsMap = new Map(api.getSections().map((s) => [s.id, s]))
-
 export default function HistoryScreen() {
   const { isDark, toggle } = useTheme()
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all')
@@ -28,10 +26,24 @@ export default function HistoryScreen() {
     ? (user as typeof user & { studentId: string })
     : null
 
-  const allRecords = useMemo(
-    () => (student ? api.getMyAttendance(student.id) : []),
-    [student],
-  )
+  const [allRecords, setAllRecords] = useState<AttendanceRecord[]>([])
+  const [sectionsMap, setSectionsMap] = useState<Map<string, { id: string; subjectId: string }>>(new Map())
+  const [subjects, setSubjects] = useState<Record<string, { id: string; name: string }>>({})
+
+  useEffect(() => {
+    if (!student) {
+      setAllRecords([])
+      return
+    }
+
+    void Promise.all([api.getMyAttendance(student.id), api.getSections(), api.getSubjects()])
+      .then(([records, sections, subjectList]) => {
+        setAllRecords(records)
+        setSectionsMap(new Map(sections.map((section) => [section.id, section])))
+        setSubjects(Object.fromEntries(subjectList.map((subject) => [subject.id, subject])))
+      })
+      .catch(() => Alert.alert('Unable to load history', 'Please check your connection and try again.'))
+  }, [student?.id])
 
   const filteredRecords = useMemo(
     () => activeFilter === 'all' ? allRecords : allRecords.filter((r) => r.status === activeFilter),
@@ -56,19 +68,22 @@ export default function HistoryScreen() {
     setTimeout(() => setDisputeModalVisible(true), 300)
   }
 
-  const handleSubmitDispute = () => {
+  const handleSubmitDispute = async () => {
     if (!selectedRecord || !disputeReason) {
       Alert.alert('Error', 'Please select a reason.')
       return
     }
-    const result = api.submitDispute({
-      recordId: selectedRecord.id,
-      reason: disputeReason as DisputeReason,
-      description: disputeDescription,
-    })
-    if (result) {
+    try {
+      await api.submitDispute({
+        recordId: selectedRecord.id,
+        reason: disputeReason as DisputeReason,
+        description: disputeDescription,
+      })
+      if (student) {
+        setAllRecords(await api.getMyAttendance(student.id))
+      }
       Alert.alert('Submitted', 'Your dispute has been recorded.')
-    } else {
+    } catch {
       Alert.alert('Error', 'Failed to submit dispute.')
     }
     setDisputeModalVisible(false)
@@ -149,7 +164,7 @@ export default function HistoryScreen() {
         ) : (
           filteredRecords.map((record) => {
             const section = sectionsMap.get(record.sectionId)
-            const subject = section ? api.getSubject(section.subjectId) : undefined
+            const subject = section ? subjects[section.subjectId] : undefined
             const statusIcon = record.status === 'present' ? 'check-circle' : record.status === 'late' ? 'warning' : record.status === 'absent' ? 'cancel' : record.status === 'disputed' ? 'gavel' : 'help'
             const iconColor = record.status === 'present' ? '#FFDF00' : record.status === 'late' ? (isDark ? '#FFDF00' : '#7B1113') : record.status === 'disputed' ? '#FFDF00' : (isDark ? '#EF4444' : '#4A0A0B')
             return (
@@ -189,7 +204,7 @@ export default function HistoryScreen() {
               <>
                 <Text style={[styles.modalLabel, isDark && styles.textWhite50]}>Subject</Text>
                 <Text style={[styles.modalValue, isDark && styles.textWhite]}>
-                  {(() => { const sec = sectionsMap.get(selectedRecord.sectionId); const subj = sec ? api.getSubject(sec.subjectId) : undefined; return subj?.name ?? selectedRecord.sectionId })()}
+                  {(() => { const sec = sectionsMap.get(selectedRecord.sectionId); const subj = sec ? subjects[sec.subjectId] : undefined; return subj?.name ?? selectedRecord.sectionId })()}
                 </Text>
 
                 <Text style={[styles.modalLabel, isDark && styles.textWhite50]}>Date</Text>

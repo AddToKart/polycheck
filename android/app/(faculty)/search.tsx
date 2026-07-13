@@ -19,18 +19,21 @@ export default function FacultySearchScreen() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Results>({ students: [], sections: [], sessions: [] })
   const [searched, setSearched] = useState(false)
-  const subjects = useMemo(() => api.getSubjects(), [])
+  const [subjects, setSubjects] = useState<Subject[]>([])
   const inputRef = useRef<TextInput>(null)
 
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 200)
+    void api.getSubjects().then(setSubjects)
   }, [])
 
   const handleSearch = (q: string) => {
     setQuery(q)
     if (q.trim().length > 0) {
-      setResults(api.search(q))
-      setSearched(true)
+      void api.search(q).then((nextResults) => {
+        setResults(nextResults)
+        setSearched(true)
+      })
     } else {
       setResults({ students: [], sections: [], sessions: [] })
       setSearched(false)

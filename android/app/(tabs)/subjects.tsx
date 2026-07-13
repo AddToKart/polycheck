@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -16,14 +16,26 @@ export default function StudentSubjectsListScreen() {
     ? (user as typeof user & { studentId: string })
     : null
 
-  const mySections = student ? api.getStudentSections(student.id) : []
-  const myAttendance = student ? api.getMyAttendance(student.id) : []
+  const [mySections, setMySections] = useState<Section[]>([])
+  const [myAttendance, setMyAttendance] = useState<any[]>([])
+  const [subjects, setSubjects] = useState<Record<string, any>>({})
+
+  useEffect(() => {
+    if (!student) return
+    Promise.all([api.getStudentSections(student.id), api.getMyAttendance(student.id), api.getSubjects()])
+      .then(([sections, attendance, allSubjects]) => {
+        setMySections(sections)
+        setMyAttendance(attendance)
+        setSubjects(Object.fromEntries(allSubjects.map((subject) => [subject.id, subject])))
+      })
+      .catch(() => undefined)
+  }, [student?.id])
 
   const filteredSections = useMemo(() => {
     if (!searchQuery.trim()) return mySections
     const q = searchQuery.toLowerCase()
     return mySections.filter((section) => {
-      const parent = api.getSubject(section.subjectId)
+      const parent = subjects[section.subjectId]
       return (
         parent?.name.toLowerCase().includes(q) ||
         parent?.code.toLowerCase().includes(q) ||
@@ -31,7 +43,7 @@ export default function StudentSubjectsListScreen() {
         section.room.toLowerCase().includes(q)
       )
     })
-  }, [mySections, searchQuery])
+  }, [mySections, searchQuery, subjects])
 
   const handleSubjectTap = (sectionId: string) => {
     router.push(`/(tabs)/subject-info/${sectionId}`)
@@ -83,7 +95,7 @@ export default function StudentSubjectsListScreen() {
           </View>
         ) : (
           filteredSections.map((section) => {
-            const parent = api.getSubject(section.subjectId)
+            const parent = subjects[section.subjectId]
             const presentCount = myAttendance.filter((r) => r.sectionId === section.id && r.status === 'present').length
             return (
               <TouchableOpacity

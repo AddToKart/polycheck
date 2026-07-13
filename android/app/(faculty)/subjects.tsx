@@ -6,18 +6,22 @@ import { router } from 'expo-router'
 import { api } from '../../services/mock-api'
 import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
-import type { User, Subject } from '@polycheck/shared'
+import type { User, Section, Subject } from '@polycheck/shared'
 
 export default function FacultySubjectsScreen() {
   const { isDark, toggle } = useTheme()
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
+  const [sections, setSections] = useState<Section[]>([])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
     if (cu) {
       setUser(cu)
-      setSubjects(api.getSubjects())
+      void Promise.all([api.getSubjects(), api.getSections()]).then(([nextSubjects, nextSections]) => {
+        setSubjects(nextSubjects)
+        setSections(nextSections)
+      })
     }
   }, [])
 
@@ -47,7 +51,7 @@ export default function FacultySubjectsScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         {subjects.map((subject) => {
-          const sectionCount = api.getSections().filter((s) => s.subjectId === subject.id).length
+          const sectionCount = sections.filter((section) => section.subjectId === subject.id).length
           return (
           <Pressable
             key={subject.id}

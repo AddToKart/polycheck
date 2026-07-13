@@ -119,8 +119,7 @@ export default function CreateSectionScreen() {
     const cu = api.getCurrentUser()
     if (cu) setUser(cu)
     if (subjectId) {
-      const subj = api.getSubject(subjectId)
-      if (subj) setSubject(subj)
+      void api.getSubject(subjectId).then(setSubject).catch(() => router.back())
     }
   }, [subjectId])
 
