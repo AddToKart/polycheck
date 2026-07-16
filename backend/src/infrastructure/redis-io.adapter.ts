@@ -25,17 +25,19 @@ export class RedisIoAdapter extends IoAdapter {
       this.adapterConstructor = createAdapter(this.publisher, this.subscriber)
       this.logger.log('Socket.IO Redis adapter enabled')
     } catch (error) {
-      this.logger.warn(`Socket.IO Redis adapter unavailable; using the in-process adapter: ${error instanceof Error ? error.message : 'unknown error'}`)
+      this.logger.warn(
+        `Socket.IO Redis adapter unavailable; using the in-process adapter: ${error instanceof Error ? error.message : 'unknown error'}`,
+      )
     }
   }
 
-  createIOServer(port: number, options?: Record<string, unknown>) {
+  override createIOServer(port: number, options?: Record<string, unknown>) {
     const server = super.createIOServer(port, options)
     if (this.adapterConstructor) server.adapter(this.adapterConstructor)
     return server
   }
 
-  async close(server: Parameters<IoAdapter['close']>[0]) {
+  override async close(server: Parameters<IoAdapter['close']>[0]) {
     await super.close(server)
     if (this.subscriber?.isOpen) await this.subscriber.quit()
     if (this.publisher?.isOpen) await this.publisher.quit()

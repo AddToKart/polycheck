@@ -1,16 +1,16 @@
-import { IsString, MinLength, IsArray, ValidateNested, IsOptional, IsIn } from 'class-validator'
 import { Type } from 'class-transformer'
+import { IsArray, IsIn, IsOptional, IsString, MinLength, ValidateNested } from 'class-validator'
 
 class ScheduleDayDto {
   @IsString()
   @IsIn(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
-  day: string
+  day!: string
 
   @IsString()
-  startTime: string
+  startTime!: string
 
   @IsString()
-  endTime: string
+  endTime!: string
 
   @IsString()
   @IsOptional()
@@ -20,23 +20,22 @@ class ScheduleDayDto {
 export class CreateSectionDto {
   @IsString()
   @MinLength(1)
-  subjectId: string
+  subjectId!: string
 
   @IsString()
   @MinLength(1)
-  section: string
+  section!: string
 
   @IsString()
   @MinLength(1)
-  room: string
+  room!: string
 
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ScheduleDayDto)
-  schedule: ScheduleDayDto[]
+  schedule!: ScheduleDayDto[]
 
   @IsString()
   @MinLength(1)
-  semester: string
-
+  semester!: string
 }

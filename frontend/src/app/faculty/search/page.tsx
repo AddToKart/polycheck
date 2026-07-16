@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { api } from '@/lib/mock-api'
+import { api } from '@/lib/api-client'
 import type { User, Student, Subject, Section, Session } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Input } from '@/components/ui/input'

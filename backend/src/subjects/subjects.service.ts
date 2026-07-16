@@ -51,12 +51,7 @@ export class SubjectsService {
     if (user.role === 'super_admin') return undefined
     if (user.role === 'teacher') {
       return {
-        OR: [
-          { createdById: user.id },
-          { sections: { some: { teacherId: user.id } } },
-          // Legacy parent subjects created before ownership was recorded remain available to configure.
-          { sections: { none: {} } },
-        ],
+        OR: [{ createdById: user.id }, { sections: { some: { teacherId: user.id } } }],
       }
     }
     return { sections: { some: { enrollments: { some: { studentId: user.id } } } } }

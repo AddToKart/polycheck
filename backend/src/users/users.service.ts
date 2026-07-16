@@ -9,14 +9,39 @@ import type { CreateTeacherDto } from './dto/manage-user.dto'
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(user: RequestUser) {
+  async findAll(user: RequestUser, pagination?: { limit: number; offset: number }) {
     if (user.role !== 'super_admin') {
       throw new ForbiddenException('Only super admins can list all users')
     }
-    return this.prisma.user.findMany({
-      select: { id: true, studentId: true, fullName: true, email: true, role: true, program: true, yearLevel: true, department: true, photoUrl: true, isActive: true, createdAt: true, updatedAt: true },
-      orderBy: { fullName: 'asc' },
-    })
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        select: {
+          id: true,
+          studentId: true,
+          fullName: true,
+          email: true,
+          role: true,
+          program: true,
+          yearLevel: true,
+          department: true,
+          photoUrl: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { fullName: 'asc' },
+        take: pagination?.limit ?? 100,
+        skip: pagination?.offset ?? 0,
+      }),
+      this.prisma.user.count(),
+    ])
+    return {
+      data: users,
+      total,
+      limit: pagination?.limit ?? 100,
+      offset: pagination?.offset ?? 0,
+      hasMore: (pagination?.offset ?? 0) + users.length < total,
+    }
   }
 
   async findOne(id: string, user: RequestUser) {
@@ -28,21 +53,24 @@ export class UsersService {
 
     const canAccessOwnProfile = user.id === id
     const canAccessAsSuperAdmin = user.role === 'super_admin'
-    const canAccessStudentInOwnSection = user.role === 'teacher' && target.role === 'student'
-      ? await this.prisma.enrollment.findFirst({
-          where: { studentId: id, section: { teacherId: user.id } },
-          select: { id: true },
-        })
-      : null
+    const canAccessStudentInOwnSection =
+      user.role === 'teacher' && target.role === 'student'
+        ? await this.prisma.enrollment.findFirst({
+            where: { studentId: id, section: { teacherId: user.id } },
+            select: { id: true },
+          })
+        : null
 
     if (!canAccessOwnProfile && !canAccessAsSuperAdmin && !canAccessStudentInOwnSection) {
       throw new ForbiddenException('Cannot access this user profile')
     }
 
-    const { password, teacherPublicKey, enrollments, ...rest } = target
+    const { password: _password, teacherPublicKey: _teacherPublicKey, enrollments, ...rest } = target
     return {
       ...rest,
-      ...(target.role === 'student' ? { enrolledSectionIds: enrollments.map((enrollment) => enrollment.sectionId) } : {}),
+      ...(target.role === 'student'
+        ? { enrolledSectionIds: enrollments.map((enrollment) => enrollment.sectionId) }
+        : {}),
     }
   }
 
@@ -52,7 +80,17 @@ export class UsersService {
     }
     return this.prisma.user.findMany({
       where: { role: 'teacher' },
-      select: { id: true, fullName: true, email: true, role: true, department: true, photoUrl: true, isActive: true, createdAt: true, updatedAt: true },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        role: true,
+        department: true,
+        photoUrl: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
       orderBy: { fullName: 'asc' },
     })
   }
@@ -63,7 +101,20 @@ export class UsersService {
     }
     const students = await this.prisma.user.findMany({
       where: { role: 'student', ...(user.role === 'super_admin' ? {} : { isActive: true }) },
-      select: { id: true, studentId: true, fullName: true, email: true, role: true, program: true, yearLevel: true, photoUrl: true, isActive: true, createdAt: true, updatedAt: true, enrollments: { select: { sectionId: true } } },
+      select: {
+        id: true,
+        studentId: true,
+        fullName: true,
+        email: true,
+        role: true,
+        program: true,
+        yearLevel: true,
+        photoUrl: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        enrollments: { select: { sectionId: true } },
+      },
       orderBy: { fullName: 'asc' },
     })
     return students.map(({ enrollments, ...student }) => ({
@@ -73,11 +124,30 @@ export class UsersService {
   }
 
   async createTeacher(dto: CreateTeacherDto) {
-    const exists = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase() }, select: { id: true } })
+    const exists = await this.prisma.user.findUnique({
+      where: { email: dto.email.toLowerCase() },
+      select: { id: true },
+    })
     if (exists) throw new ConflictException('A user with this email already exists')
     return this.prisma.user.create({
-      data: { fullName: dto.fullName.trim(), email: dto.email.toLowerCase(), password: hashSync(dto.password, 10), department: dto.department?.trim(), role: 'teacher' },
-      select: { id: true, fullName: true, email: true, role: true, department: true, photoUrl: true, isActive: true, createdAt: true, updatedAt: true },
+      data: {
+        fullName: dto.fullName.trim(),
+        email: dto.email.toLowerCase(),
+        password: hashSync(dto.password, 10),
+        department: dto.department?.trim(),
+        role: 'teacher',
+      },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        role: true,
+        department: true,
+        photoUrl: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     })
   }
 
@@ -88,7 +158,20 @@ export class UsersService {
     return this.prisma.user.update({
       where: { id },
       data: { isActive, authVersion: { increment: 1 } },
-      select: { id: true, fullName: true, email: true, role: true, department: true, program: true, yearLevel: true, studentId: true, photoUrl: true, isActive: true, createdAt: true, updatedAt: true },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        role: true,
+        department: true,
+        program: true,
+        yearLevel: true,
+        studentId: true,
+        photoUrl: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     })
   }
 }

@@ -1,14 +1,23 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common'
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/strategies/jwt.strategy'
 import type { CreateSectionDto } from './dto/create-section.dto'
 import type { UpdateSectionDto } from './dto/update-section.dto'
+import { DayOfWeek, type Prisma } from '@prisma/client'
 
 const sectionInclude = {
   subject: { select: { id: true, name: true, code: true } },
   teacher: { select: { id: true, fullName: true } },
   schedule: true,
 } as const
+
+type SectionWithIncludes = Prisma.SectionGetPayload<{ include: typeof sectionInclude }>
 
 @Injectable()
 export class SectionsService {
@@ -84,7 +93,7 @@ export class SectionsService {
         enrollmentCodeExpiry: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 2 weeks
         schedule: {
           create: schedule.map((s) => ({
-            day: s.day as any,
+            day: s.day as DayOfWeek,
             startTime: s.startTime,
             endTime: s.endTime,
             room: s.room,
@@ -111,7 +120,7 @@ export class SectionsService {
       await this.prisma.scheduleDay.createMany({
         data: schedule.map((s) => ({
           sectionId: id,
-          day: s.day as any,
+          day: s.day as DayOfWeek,
           startTime: s.startTime!,
           endTime: s.endTime!,
           room: s.room,
@@ -140,14 +149,15 @@ export class SectionsService {
       throw new BadRequestException('Cannot delete a section with existing session history')
     }
 
-    // Clean up all related tables that don't have DB cascade
-    await this.prisma.scheduleDay.deleteMany({ where: { sectionId: id } })
-    await this.prisma.enrollment.deleteMany({ where: { sectionId: id } })
-    await this.prisma.sectionRole.deleteMany({ where: { sectionId: id } })
-    await this.prisma.sessionPermission.deleteMany({ where: { sectionId: id } })
-    await this.prisma.proofOfClass.deleteMany({ where: { sectionId: id } })
-
-    await this.prisma.section.delete({ where: { id } })
+    // Clean up all related tables in a transaction
+    await this.prisma.$transaction([
+      this.prisma.scheduleDay.deleteMany({ where: { sectionId: id } }),
+      this.prisma.enrollment.deleteMany({ where: { sectionId: id } }),
+      this.prisma.sectionRole.deleteMany({ where: { sectionId: id } }),
+      this.prisma.sessionPermission.deleteMany({ where: { sectionId: id } }),
+      this.prisma.proofOfClass.deleteMany({ where: { sectionId: id } }),
+      this.prisma.section.delete({ where: { id } }),
+    ])
 
     return { message: 'Section deleted' }
   }
@@ -177,23 +187,27 @@ export class SectionsService {
       orderBy: { student: { fullName: 'asc' } },
     })
 
-    // For each student, calculate attendance counts
-    const result: any[] = []
-    for (const enrollment of enrollments) {
-      const records = await this.prisma.attendanceRecord.findMany({
-        where: { studentId: enrollment.studentId, sectionId },
-        select: { status: true },
-      })
+    // Single grouped query for attendance counts (eliminates N+1)
+    const attendanceCounts = await this.prisma.attendanceRecord.groupBy({
+      by: ['studentId', 'status'],
+      where: { sectionId },
+      _count: { status: true },
+    })
 
-      const attendance = {
-        present: records.filter((r) => r.status === 'present').length,
-        late: records.filter((r) => r.status === 'late').length,
-        absent: records.filter((r) => r.status === 'absent').length,
-        disputed: records.filter((r) => r.status === 'disputed').length,
-      }
-
-      result.push({ ...enrollment.student, attendance })
+    const attendanceMap = new Map<string, { present: number; late: number; absent: number; disputed: number }>()
+    for (const count of attendanceCounts) {
+      const entry = attendanceMap.get(count.studentId) ?? { present: 0, late: 0, absent: 0, disputed: 0 }
+      if (count.status === 'present') entry.present += count._count.status
+      else if (count.status === 'late') entry.late += count._count.status
+      else if (count.status === 'absent') entry.absent += count._count.status
+      else if (count.status === 'disputed') entry.disputed += count._count.status
+      attendanceMap.set(count.studentId, entry)
     }
+
+    const result = enrollments.map((enrollment) => ({
+      ...enrollment.student,
+      attendance: attendanceMap.get(enrollment.studentId) ?? { present: 0, late: 0, absent: 0, disputed: 0 },
+    }))
 
     return result
   }
@@ -229,7 +243,7 @@ export class SectionsService {
     return this.createEnrollment(studentId, section.id)
   }
 
-  async enrollStudent(sectionId: string, teacherId: string, studentId: string, studentName: string) {
+  async enrollStudent(sectionId: string, teacherId: string, studentId: string, _studentName?: string) {
     const section = await this.prisma.section.findUnique({ where: { id: sectionId } })
     if (!section) throw new NotFoundException('Section not found')
 
@@ -339,7 +353,7 @@ export class SectionsService {
     })
   }
 
-  private presentSection(section: any, includeEnrollmentCode = true) {
+  private presentSection(section: SectionWithIncludes, includeEnrollmentCode = true) {
     return {
       id: section.id,
       subjectId: section.subjectId,
@@ -349,10 +363,12 @@ export class SectionsService {
       semester: section.semester,
       teacherId: section.teacherId,
       teacherName: section.teacher.fullName,
-      ...(includeEnrollmentCode ? {
-        enrollmentCode: section.enrollmentCode ?? undefined,
-        enrollmentCodeExpiry: section.enrollmentCodeExpiry ?? undefined,
-      } : {}),
+      ...(includeEnrollmentCode
+        ? {
+            enrollmentCode: section.enrollmentCode ?? undefined,
+            enrollmentCodeExpiry: section.enrollmentCodeExpiry ?? undefined,
+          }
+        : {}),
       studentCount: section.studentCount,
       createdAt: section.createdAt,
       updatedAt: section.updatedAt,

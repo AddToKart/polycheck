@@ -23,7 +23,10 @@ interface JwtPayload {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(config: ConfigService, private readonly prisma: PrismaService) {
+  constructor(
+    config: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -32,7 +35,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload): Promise<RequestUser> {
-    const account = await this.prisma.user.findUnique({ where: { id: payload.sub }, select: { isActive: true, authVersion: true } })
+    const account = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { isActive: true, authVersion: true },
+    })
     if (!account?.isActive || account.authVersion !== payload.sessionVersion) {
       throw new UnauthorizedException('This session was replaced by a newer login')
     }

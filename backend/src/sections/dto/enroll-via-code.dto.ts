@@ -5,5 +5,5 @@ export class EnrollViaCodeDto {
   @MinLength(1)
   @MaxLength(8)
   @Matches(/^[A-Za-z0-9]+$/)
-  enrollmentCode: string
+  enrollmentCode!: string
 }

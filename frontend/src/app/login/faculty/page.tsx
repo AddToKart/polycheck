@@ -6,8 +6,8 @@ import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { api } from '@/lib/mock-api'
-import { useLanding } from '../../layout'
+import { api } from '@/lib/api-client'
+import { useLanding } from '../../(auth-landing)/layout'
 
 export default function FacultyLoginPage() {
   const router = useRouter()
@@ -108,13 +108,6 @@ export default function FacultyLoginPage() {
           </div>
         </form>
         
-        <div className="mt-12 pt-8 border-t border-zinc-200 dark:border-zinc-800">
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Demo Credentials: Use{' '}
-            <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 text-foreground">jmdelacruz@pup.edu.ph</span> (Teacher) or{' '}
-            <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 text-foreground">mcreyes@pup.edu.ph</span> (Super Admin)
-          </p>
-        </div>
       </div>
     </div>
   )

@@ -1,11 +1,22 @@
-import { Injectable, UnauthorizedException, NotFoundException, ForbiddenException } from '@nestjs/common'
+import {
+  Injectable,
+  UnauthorizedException,
+  NotFoundException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { compareSync } from 'bcryptjs'
 import { PrismaService } from '../prisma/prisma.service'
+import { RedisService } from '../infrastructure/redis.service'
 import type { User } from '@prisma/client'
 
 const DUMMY_HASH = '$2a$10$R9h/lIPzMRgGq1V468UTuOr.164R5.h2.4yXG5Wv4Jz/aGv1Vv8a.'
+const LOGIN_RATE_LIMIT = 10
+const LOGIN_IP_RATE_LIMIT = 30
+const LOGIN_RATE_WINDOW = 60
 
 export interface AuthResult {
   token: string
@@ -32,9 +43,12 @@ export class AuthService {
     private prisma: PrismaService,
     private jwt: JwtService,
     private config: ConfigService,
+    private redis: RedisService,
   ) {}
 
-  async loginStudent(studentId: string, password: string): Promise<AuthResult> {
+  async loginStudent(studentId: string, password: string, clientAddress = 'unknown'): Promise<AuthResult> {
+    await this.assertLoginWithinLimit('student', studentId, clientAddress)
+
     const user = await this.prisma.user.findUnique({ where: { studentId } })
     const isValidPassword = user ? compareSync(password, user.password) : compareSync(password, DUMMY_HASH)
 
@@ -52,8 +66,11 @@ export class AuthService {
     return this.generateAuthResult(await this.beginSession(user.id))
   }
 
-  async loginFaculty(email: string, password: string): Promise<AuthResult> {
-    const user = await this.prisma.user.findUnique({ where: { email } })
+  async loginFaculty(email: string, password: string, clientAddress = 'unknown'): Promise<AuthResult> {
+    const normalizedEmail = email.toLowerCase()
+    await this.assertLoginWithinLimit('faculty', normalizedEmail, clientAddress)
+
+    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } })
     const isValidPassword = user ? compareSync(password, user.password) : compareSync(password, DUMMY_HASH)
 
     if (!user || !isValidPassword) {
@@ -109,6 +126,21 @@ export class AuthService {
 
   private beginSession(userId: string) {
     return this.prisma.user.update({ where: { id: userId }, data: { authVersion: { increment: 1 } } })
+  }
+
+  private async assertLoginWithinLimit(kind: 'student' | 'faculty', identifier: string, clientAddress: string) {
+    const address = clientAddress || 'unknown'
+    const [identityAllowed, addressAllowed] = await Promise.all([
+      this.redis.consumeRateLimit(
+        `login:${kind}:identity:${identifier}:${address}`,
+        LOGIN_RATE_LIMIT,
+        LOGIN_RATE_WINDOW,
+      ),
+      this.redis.consumeRateLimit(`login:${kind}:ip:${address}`, LOGIN_IP_RATE_LIMIT, LOGIN_RATE_WINDOW),
+    ])
+    if (!identityAllowed || !addressAllowed) {
+      throw new HttpException('Too many login attempts. Try again shortly.', HttpStatus.TOO_MANY_REQUESTS)
+    }
   }
 
   private sanitizeUser(user: User) {

@@ -6,8 +6,8 @@ import { IdCard, Lock, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { api } from '@/lib/mock-api'
-import { useLanding } from '../../layout'
+import { api } from '@/lib/api-client'
+import { useLanding } from '../../(auth-landing)/layout'
 
 export default function StudentLoginPage() {
   const router = useRouter()
@@ -108,12 +108,6 @@ export default function StudentLoginPage() {
           </div>
         </form>
         
-        <div className="mt-12 pt-8 border-t border-zinc-200 dark:border-zinc-800">
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Demo Credentials: Use any ID (e.g.{' '}
-            <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 text-foreground">2024-00123-MN-0</span>)
-          </p>
-        </div>
       </div>
     </div>
   )

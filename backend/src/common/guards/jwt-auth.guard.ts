@@ -9,14 +9,14 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     super()
   }
 
-  handleRequest(err: any, user: any) {
+  override handleRequest<TUser = any>(err: unknown, user: TUser): TUser {
     if (err || !user) {
       throw err || new UnauthorizedException('Invalid or expired token')
     }
     return user
   }
 
-  canActivate(context: any) {
+  override canActivate(context: any) {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),

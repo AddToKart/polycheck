@@ -1,0 +1,25 @@
+export const ErrorCode = {
+  SESSION_NOT_FOUND: 'session_not_found',
+  NOT_ENROLLED: 'not_enrolled',
+  INVALID_SIGNATURE: 'invalid_signature',
+  TOKEN_MISMATCH: 'token_mismatch',
+  SESSION_INACTIVE: 'session_inactive',
+  INVALID_TIMESTAMP: 'invalid_timestamp',
+  OUTSIDE_GEOFENCE: 'outside_geofence',
+  RATE_LIMITED: 'rate_limited',
+  DUPLICATE: 'duplicate',
+  SUSPICIOUS_COORDINATES: 'suspicious_coordinates',
+  SECTION_NOT_FOUND: 'section_not_found',
+  SUBJECT_NOT_FOUND: 'subject_not_found',
+  USER_NOT_FOUND: 'user_not_found',
+  ATTENDANCE_RECORD_NOT_FOUND: 'attendance_record_not_found',
+  INVALID_ENROLLMENT_CODE: 'invalid_enrollment_code',
+  ENROLLMENT_CODE_EXPIRED: 'enrollment_code_expired',
+  ALREADY_ENROLLED: 'already_enrolled',
+  FORBIDDEN: 'forbidden',
+  UNAUTHORIZED: 'unauthorized',
+  VALIDATION_FAILED: 'validation_failed',
+  IDEMPOTENCY_REPLAY: 'idempotency_replay',
+} as const
+
+export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode]

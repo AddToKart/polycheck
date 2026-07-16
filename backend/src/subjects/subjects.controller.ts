@@ -3,13 +3,14 @@ import { SubjectsService } from './subjects.service'
 import { Roles } from '../common/decorators/roles.decorator'
 import { CreateSubjectDto } from './dto/create-subject.dto'
 import { UpdateSubjectDto } from './dto/update-subject.dto'
+import type { AuthenticatedRequest } from '../common/types/authenticated-request'
 
 @Controller('subjects')
 export class SubjectsController {
   constructor(private subjects: SubjectsService) {}
 
   @Get()
-  findAll(@Request() req) {
+  findAll(@Request() req: AuthenticatedRequest) {
     return this.subjects.findAll(req.user)
   }
 
@@ -20,7 +21,7 @@ export class SubjectsController {
 
   @Post()
   @Roles('teacher', 'super_admin')
-  create(@Body() dto: CreateSubjectDto, @Request() req) {
+  create(@Body() dto: CreateSubjectDto, @Request() req: AuthenticatedRequest) {
     return this.subjects.create(dto, req.user.id)
   }
 

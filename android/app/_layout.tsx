@@ -6,7 +6,7 @@ import * as SplashScreen from 'expo-splash-screen'
 import { useFonts } from 'expo-font'
 import { AppState, View } from 'react-native'
 import { ThemeProvider, useTheme } from '../theme/ThemeContext'
-import { api } from '../services/mock-api'
+import { api } from '../services/api-client'
 
 SplashScreen.preventAutoHideAsync()
 

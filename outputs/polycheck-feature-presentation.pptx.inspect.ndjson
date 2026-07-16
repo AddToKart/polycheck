@@ -1,0 +1,265 @@
+{"kind":"deck","id":"pr/ceqamv","name":"Deck"}
+{"kind":"layout","layoutId":"e9000990-2a2f-4c80-b64e-c640f5565930","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"7780eb7d-4130-4e9f-ba08-567b2186acb3","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/543niz","slide":1,"title":"Polycheck","textShapes":12}
+{"kind":"shape","id":"sh/bi1g32dc","slide":1,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/cjuhw7ux","slide":1,"bbox":[0,0,24,720]}
+{"kind":"textbox","id":"sh/xk3y5cvi","slide":1,"text":"Polycheck","textPreview":"Polycheck","textChars":9,"textLines":1,"bbox":[88,92,700,108]}
+{"kind":"textbox","id":"sh/2dsfqxcv","slide":1,"text":"A full attendance system for QR check-ins, location verification, and offline-first sync.","textPreview":"A full attendance system for QR check-ins, location verification, and offline-first sync.","textChars":89,"textLines":1,"bbox":[92,194,690,110]}
+{"kind":"textbox","id":"sh/ne1gz2d0","slide":1,"text":"QR","textPreview":"QR","textChars":2,"textLines":1,"bbox":[92,336,116,34]}
+{"kind":"textbox","id":"sh/ofahsnul","slide":1,"text":"GEOLOCATION","textPreview":"GEOLOCATION","textChars":11,"textLines":1,"bbox":[220,336,146,34]}
+{"kind":"textbox","id":"sh/pgjy1sv6","slide":1,"text":"OFFLINE-FIRST","textPreview":"OFFLINE-FIRST","textChars":13,"textLines":1,"bbox":[378,336,168,34]}
+{"kind":"shape","id":"sh/ep8fmdcj","slide":1,"bbox":[812,106,372,470]}
+{"kind":"textbox","id":"sh/fqhgvid4","slide":1,"text":"WHAT IT DOES","textPreview":"WHAT IT DOES","textChars":12,"textLines":1,"bbox":[844,136,126,30]}
+{"kind":"textbox","id":"sh/nqxwrmto","slide":1,"text":"Captures attendance on the spot, even when the internet is unreliable.","textPreview":"Captures attendance on the spot, even when the internet is unreliable.","textChars":70,"textLines":1,"bbox":[844,190,290,72]}
+{"kind":"shape","id":"sh/mpofihs3","slide":1,"bbox":[844,286,298,1]}
+{"kind":"shape","id":"sh/9cfetcbu","slide":1,"bbox":[844,315,18,18]}
+{"kind":"textbox","id":"sh/8r6xk7a9","slide":1,"name":"hero-bullet-1","text":"Teachers create a session and generate a signed QR code.","textPreview":"Teachers create a session and generate a signed QR code.","textChars":56,"textLines":1,"bbox":[872,312,252,24]}
+{"kind":"shape","id":"sh/vexwvmt0","slide":1,"bbox":[844,361,18,18]}
+{"kind":"textbox","id":"sh/udofmhsf","slide":1,"name":"hero-bullet-2","text":"Students scan only when the token is valid and the phone is in range.","textPreview":"Students scan only when the token is valid and the phone is in range.","textChars":69,"textLines":1,"bbox":[872,358,252,24]}
+{"kind":"shape","id":"sh/hgzexwbq","slide":1,"bbox":[844,407,18,18]}
+{"kind":"textbox","id":"sh/wf6xoral","slide":1,"name":"hero-bullet-3","text":"Records are stored locally first, then synchronized to the server.","textPreview":"Records are stored locally first, then synchronized to the server.","textChars":66,"textLines":1,"bbox":[872,404,252,24]}
+{"kind":"textbox","id":"sh/bidwj2tg","slide":1,"name":"footer-label","text":"Overview presentation","textPreview":"Overview presentation","textChars":21,"textLines":1,"bbox":[72,666,260,20]}
+{"kind":"textbox","id":"sh/qh4vaxsb","slide":1,"name":"footer-brand","text":"Polycheck","textPreview":"Polycheck","textChars":9,"textLines":1,"bbox":[1038,666,170,20]}
+{"kind":"notes","id":"nt/543niz","slide":1,"text":""}
+{"kind":"slide","id":"sl/4oy4hc","slide":2,"title":"Why attendance needed a better system","textShapes":14}
+{"kind":"textbox","id":"sh/1sr2x8fq","slide":2,"name":"slide-title","text":"Why attendance needed a better system","textPreview":"Why attendance needed a better system","textChars":37,"textLines":1,"bbox":[72,56,860,86]}
+{"kind":"textbox","id":"sh/ep0jmdgz","slide":2,"name":"slide-subtitle","text":"Polycheck is designed to reduce friction, improve trust, and keep class records usable later.","textPreview":"Polycheck is designed to reduce friction, improve trust, and keep class records usable later.","textChars":93,"textLines":1,"bbox":[72,142,980,48]}
+{"kind":"textbox","id":"sh/zq9kvixk","slide":2,"name":"footer-label","text":"Problem statement","textPreview":"Problem statement","textChars":17,"textLines":1,"bbox":[72,666,260,20]}
+{"kind":"textbox","id":"sh/ov2lsne1","slide":2,"name":"footer-brand","text":"Polycheck","textPreview":"Polycheck","textChars":9,"textLines":1,"bbox":[1038,666,170,20]}
+{"kind":"shape","id":"sh/9wb21sfm","slide":2,"bbox":[72,176,312,316]}
+{"kind":"shape","id":"sh/mtkjqdwb","slide":2,"bbox":[72,176,312,10]}
+{"kind":"textbox","id":"sh/nutkzixw","slide":2,"text":"Manual roll call","textPreview":"Manual roll call","textChars":16,"textLines":1,"bbox":[100,210,250,44]}
+{"kind":"textbox","id":"sh/wj2lw7ed","slide":2,"text":"Slow at the start of class, easy to miss, and hard to audit after the fact.","textPreview":"Slow at the start of class, easy to miss, and hard to audit after the fact.","textChars":75,"textLines":1,"bbox":[100,276,252,112]}
+{"kind":"textbox","id":"sh/xkb2psfy","slide":2,"text":"BAD FIT","textPreview":"BAD FIT","textChars":7,"textLines":1,"bbox":[100,412,122,30]}
+{"kind":"shape","id":"sh/1w7i50ni","slide":2,"bbox":[456,176,312,316]}
+{"kind":"shape","id":"sh/gvyhcv6x","slide":2,"bbox":[456,176,312,10]}
+{"kind":"textbox","id":"sh/fup03q5c","slide":2,"text":"Proxy check-ins","textPreview":"Proxy check-ins","textChars":15,"textLines":1,"bbox":[484,210,250,44]}
+{"kind":"textbox","id":"sh/etgzalor","slide":2,"text":"A screenshot or forwarded QR should not be enough to mark a student present.","textPreview":"A screenshot or forwarded QR should not be enough to mark a student present.","textChars":76,"textLines":1,"bbox":[484,276,252,112]}
+{"kind":"textbox","id":"sh/pkri9kne","slide":2,"text":"BAD FIT","textPreview":"BAD FIT","textChars":7,"textLines":1,"bbox":[484,412,122,30]}
+{"kind":"shape","id":"sh/ojihgf6t","slide":2,"bbox":[840,176,312,316]}
+{"kind":"shape","id":"sh/3y907a58","slide":2,"bbox":[840,176,312,10]}
+{"kind":"textbox","id":"sh/2x0ze5on","slide":2,"text":"Scattered records","textPreview":"Scattered records","textChars":17,"textLines":1,"bbox":[868,210,250,44]}
+{"kind":"textbox","id":"sh/5onixg7a","slide":2,"text":"If attendance stays in notebooks and chats, reporting and dispute review become painful.","textPreview":"If attendance stays in notebooks and chats, reporting and dispute review become painful.","textChars":88,"textLines":1,"bbox":[868,276,252,112]}
+{"kind":"textbox","id":"sh/4neh4b6p","slide":2,"text":"BAD FIT","textPreview":"BAD FIT","textChars":7,"textLines":1,"bbox":[868,412,122,30]}
+{"kind":"shape","id":"sh/w7ihkbel","slide":2,"bbox":[72,538,1088,72]}
+{"kind":"textbox","id":"sh/x8ridgf6","slide":2,"text":"Polycheck replaces a manual snapshot with a verified, auditable attendance workflow.","textPreview":"Polycheck replaces a manual snapshot with a verified, auditable attendance workflow.","textChars":84,"textLines":1,"bbox":[104,556,1000,28]}
+{"kind":"notes","id":"nt/4oy4hc","slide":2,"text":""}
+{"kind":"slide","id":"sl/0n0bv4","slide":3,"title":"One system, three connected experiences","textShapes":19}
+{"kind":"textbox","id":"sh/gvylo3i5","slide":3,"name":"slide-title","text":"One system, three connected experiences","textPreview":"One system, three connected experiences","textChars":39,"textLines":1,"bbox":[72,56,860,86]}
+{"kind":"textbox","id":"sh/fupkfy1k","slide":3,"name":"slide-subtitle","text":"Teachers work in the web dashboard, students use the mobile app, and both connect through the same backend and shared data model.","textPreview":"Teachers work in the web dashboard, students use the mobile app, and both connect through the same backend and shared data model.","textChars":129,"textLines":1,"bbox":[72,142,980,48]}
+{"kind":"textbox","id":"sh/utw3mtkz","slide":3,"name":"footer-label","text":"System overview","textPreview":"System overview","textChars":15,"textLines":1,"bbox":[72,666,260,20]}
+{"kind":"textbox","id":"sh/pk7ml8jm","slide":3,"name":"footer-brand","text":"Polycheck","textPreview":"Polycheck","textChars":9,"textLines":1,"bbox":[1038,666,170,20]}
+{"kind":"shape","id":"sh/4jyls3ih","slide":3,"bbox":[72,190,312,332]}
+{"kind":"shape","id":"sh/3ypkji1w","slide":3,"bbox":[72,190,312,12]}
+{"kind":"textbox","id":"sh/2xg3qd0b","slide":3,"text":"Web dashboard","textPreview":"Web dashboard","textChars":13,"textLines":1,"bbox":[98,218,250,36]}
+{"kind":"textbox","id":"sh/dormpsjy","slide":3,"text":"For teachers and super admins","textPreview":"For teachers and super admins","textChars":29,"textLines":1,"bbox":[98,258,250,28]}
+{"kind":"shape","id":"sh/cnilwnid","slide":3,"bbox":[98,307,18,18]}
+{"kind":"textbox","id":"sh/atojm5cr","slide":3,"name":"Web dashboard-bullet-1","text":"Create subjects and sections","textPreview":"Create subjects and sections","textChars":28,"textLines":1,"bbox":[126,304,230,24]}
+{"kind":"shape","id":"sh/bux0vatw","slide":3,"bbox":[98,355,18,18]}
+{"kind":"textbox","id":"sh/wvq1ofuh","slide":3,"name":"Web dashboard-bullet-2","text":"Schedule sessions and geofences","textPreview":"Schedule sessions and geofences","textChars":31,"textLines":1,"bbox":[126,352,230,24]}
+{"kind":"shape","id":"sh/xwzixkb2","slide":3,"bbox":[98,403,18,18]}
+{"kind":"textbox","id":"sh/yx8jqpsn","slide":3,"name":"Web dashboard-bullet-3","text":"Review reports, disputes, and exports","textPreview":"Review reports, disputes, and exports","textChars":37,"textLines":1,"bbox":[126,400,230,24]}
+{"kind":"shape","id":"sh/jyh0zat8","slide":3,"bbox":[456,190,312,332]}
+{"kind":"shape","id":"sh/kzq1sfat","slide":3,"bbox":[456,190,312,12]}
+{"kind":"textbox","id":"sh/l0zi1kbe","slide":3,"text":"Mobile app","textPreview":"Mobile app","textChars":10,"textLines":1,"bbox":[482,218,250,36]}
+{"kind":"textbox","id":"sh/e14zelcj","slide":3,"text":"For students and class officers","textPreview":"For students and class officers","textChars":31,"textLines":1,"bbox":[482,258,250,28]}
+{"kind":"shape","id":"sh/z2d0nqt4","slide":3,"bbox":[482,307,18,18]}
+{"kind":"textbox","id":"sh/36tgfm9w","slide":3,"name":"Mobile app-bullet-1","text":"Scan QR codes","textPreview":"Scan QR codes","textChars":13,"textLines":1,"bbox":[510,304,230,24]}
+{"kind":"shape","id":"sh/25kfmhsb","slide":3,"bbox":[482,355,18,18]}
+{"kind":"textbox","id":"sh/p8byhwrm","slide":3,"name":"Mobile app-bullet-2","text":"View schedules and attendance","textPreview":"View schedules and attendance","textChars":29,"textLines":1,"bbox":[510,352,230,24]}
+{"kind":"shape","id":"sh/472xora1","slide":3,"bbox":[482,403,18,18]}
+{"kind":"textbox","id":"sh/f29wb29k","slide":3,"name":"Mobile app-bullet-3","text":"Check digital student ID","textPreview":"Check digital student ID","textChars":24,"textLines":1,"bbox":[510,400,230,24]}
+{"kind":"shape","id":"sh/u10fihsz","slide":3,"bbox":[840,190,312,332]}
+{"kind":"shape","id":"sh/h4bedcrq","slide":3,"bbox":[840,190,312,12]}
+{"kind":"textbox","id":"sh/g3ixk7a5","slide":3,"text":"Shared backend","textPreview":"Shared backend","textChars":14,"textLines":1,"bbox":[866,218,250,36]}
+{"kind":"textbox","id":"sh/zydgn69o","slide":3,"text":"Sync, rules, and audit trail","textPreview":"Sync, rules, and audit trail","textChars":28,"textLines":1,"bbox":[866,258,250,28]}
+{"kind":"shape","id":"sh/ex4fu1sj","slide":3,"bbox":[866,307,18,18]}
+{"kind":"textbox","id":"sh/wjedo3q1","slide":3,"name":"Shared backend-bullet-1","text":"Verify token signatures","textPreview":"Verify token signatures","textChars":23,"textLines":1,"bbox":[894,304,230,24]}
+{"kind":"shape","id":"sh/xknuh876","slide":3,"bbox":[866,355,18,18]}
+{"kind":"textbox","id":"sh/ahwbmt8v","slide":3,"name":"Shared backend-bullet-2","text":"Re-check GPS and duplicates","textPreview":"Re-check GPS and duplicates","textChars":27,"textLines":1,"bbox":[894,352,230,24]}
+{"kind":"shape","id":"sh/bi5cfypg","slide":3,"bbox":[866,403,18,18]}
+{"kind":"textbox","id":"sh/k7yds3qx","slide":3,"name":"Shared backend-bullet-3","text":"Push live updates through WebSockets","textPreview":"Push live updates through WebSockets","textChars":36,"textLines":1,"bbox":[894,400,230,24]}
+{"kind":"notes","id":"nt/0n0bv4","slide":3,"text":""}
+{"kind":"slide","id":"sl/1dyc3k","slide":4,"title":"The check-in flow is simple on purpose","textShapes":17}
+{"kind":"textbox","id":"sh/ru1c7a1s","slide":4,"name":"slide-title","text":"The check-in flow is simple on purpose","textPreview":"The check-in flow is simple on purpose","textChars":38,"textLines":1,"bbox":[72,56,860,86]}
+{"kind":"textbox","id":"sh/svud0f2x","slide":4,"name":"slide-subtitle","text":"Every step is designed to work in class first, then sync later.","textPreview":"Every step is designed to work in class first, then sync later.","textChars":63,"textLines":1,"bbox":[72,142,980,48]}
+{"kind":"textbox","id":"sh/tw3u9kji","slide":4,"name":"footer-label","text":"Attendance flow","textPreview":"Attendance flow","textChars":15,"textLines":1,"bbox":[72,666,260,20]}
+{"kind":"textbox","id":"sh/i5svu5kv","slide":4,"name":"footer-brand","text":"Polycheck","textPreview":"Polycheck","textChars":9,"textLines":1,"bbox":[1038,666,170,20]}
+{"kind":"shape","id":"sh/jq1c3a1g","slide":4,"bbox":[72,208,236,296]}
+{"kind":"textbox","id":"sh/4radwf21","slide":4,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[92,228,38,38]}
+{"kind":"textbox","id":"sh/5sju50jm","slide":4,"text":"Teacher starts the session","textPreview":"Teacher starts the session","textChars":26,"textLines":1,"bbox":[92,286,190,72]}
+{"kind":"textbox","id":"sh/u18bqlkz","slide":4,"text":"A signed QR token is generated with the session's validity window.","textPreview":"A signed QR token is generated with the session's validity window.","textChars":66,"textLines":1,"bbox":[92,380,190,100]}
+{"kind":"shape","id":"sh/v2hczq1k","slide":4,"bbox":[312,335,28,28]}
+{"kind":"shape","id":"sh/7alw3qdc","slide":4,"bbox":[340,208,236,296]}
+{"kind":"textbox","id":"sh/69cfulcr","slide":4,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[360,228,38,38]}
+{"kind":"textbox","id":"sh/tcne50v2","slide":4,"text":"Students pre-sync before class","textPreview":"Students pre-sync before class","textChars":30,"textLines":1,"bbox":[360,286,190,72]}
+{"kind":"textbox","id":"sh/sbexwvuh","slide":4,"text":"Subject data and geofence rules are cached on the phone before attendance begins.","textPreview":"Subject data and geofence rules are cached on the phone before attendance begins.","textChars":81,"textLines":1,"bbox":[360,380,190,100]}
+{"kind":"shape","id":"sh/fe5w7qd8","slide":4,"bbox":[580,335,28,28]}
+{"kind":"shape","id":"sh/udwfy5cn","slide":4,"bbox":[608,208,236,296]}
+{"kind":"textbox","id":"sh/h0ne90ve","slide":4,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[628,228,38,38]}
+{"kind":"textbox","id":"sh/gzex0vut","slide":4,"text":"Scan happens at the door","textPreview":"Scan happens at the door","textChars":24,"textLines":1,"bbox":[628,286,190,72]}
+{"kind":"textbox","id":"sh/bi1wv6d4","slide":4,"text":"The phone checks the QR window and the location gate locally at scan time.","textPreview":"The phone checks the QR window and the location gate locally at scan time.","textChars":74,"textLines":1,"bbox":[628,380,190,100]}
+{"kind":"shape","id":"sh/ahsvm1cj","slide":4,"bbox":[848,335,28,28]}
+{"kind":"shape","id":"sh/ex0zu9w7","slide":4,"bbox":[876,208,236,296]}
+{"kind":"textbox","id":"sh/zy903exc","slide":4,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[896,228,38,38]}
+{"kind":"textbox","id":"sh/0zihwjex","slide":4,"text":"Records sync to the server","textPreview":"Records sync to the server","textChars":26,"textLines":1,"bbox":[896,286,190,72]}
+{"kind":"textbox","id":"sh/10ri5ofi","slide":4,"text":"Attendance is verified again and teachers see the result in the live class view.","textPreview":"Attendance is verified again and teachers see the result in the live class view.","textChars":80,"textLines":1,"bbox":[896,380,190,100]}
+{"kind":"shape","id":"sh/qtgzqpwv","slide":4,"bbox":[72,548,1088,54]}
+{"kind":"textbox","id":"sh/rupgzuxg","slide":4,"text":"If the internet is unreliable, the class still runs. Sync comes after the lesson, not before it.","textPreview":"If the internet is unreliable, the class still runs. Sync comes after the lesson, not before it.","textChars":96,"textLines":1,"bbox":[100,562,1036,24]}
+{"kind":"notes","id":"nt/1dyc3k","slide":4,"text":""}
+{"kind":"slide","id":"sl/9c6mla","slide":5,"title":"Polycheck checks more than one thing before marking a student present","textShapes":14}
+{"kind":"textbox","id":"sh/ofals7u1","slide":5,"name":"slide-title","text":"Polycheck checks more than one thing before marking a student present","textPreview":"Polycheck checks more than one thing before marking a student present","textChars":69,"textLines":1,"bbox":[72,56,860,86]}
+{"kind":"textbox","id":"sh/nu1kz2dg","slide":5,"name":"slide-subtitle","text":"The system combines cryptographic proof, proximity validation, and duplicate protection.","textPreview":"The system combines cryptographic proof, proximity validation, and duplicate protection.","textChars":88,"textLines":1,"bbox":[72,142,980,48]}
+{"kind":"textbox","id":"sh/2ts3qxcb","slide":5,"name":"footer-label","text":"Verification model","textPreview":"Verification model","textChars":18,"textLines":1,"bbox":[72,666,260,20]}
+{"kind":"textbox","id":"sh/xk3m5cby","slide":5,"name":"footer-brand","text":"Polycheck","textPreview":"Polycheck","textChars":9,"textLines":1,"bbox":[1038,666,170,20]}
+{"kind":"shape","id":"sh/cjulw7ud","slide":5,"bbox":[72,198,312,320]}
+{"kind":"textbox","id":"sh/bil43mds","slide":5,"text":"CORE CHECK","textPreview":"CORE CHECK","textChars":10,"textLines":1,"bbox":[96,224,150,30]}
+{"kind":"textbox","id":"sh/ahc3uhc7","slide":5,"text":"Signed QR token","textPreview":"Signed QR token","textChars":15,"textLines":1,"bbox":[96,276,252,54]}
+{"kind":"textbox","id":"sh/doz2tsve","slide":5,"text":"The QR is not a static image. It carries a signed issued time so the system can tell whether the token was valid when it was scanned.","textPreview":"The QR is not a static image. It carries a signed issued time so the system can tell whether the token was valid when it was scanned.","textChars":133,"textLines":1,"bbox":[96,350,252,122]}
+{"kind":"shape","id":"sh/snqlknut","slide":5,"bbox":[456,198,312,320]}
+{"kind":"textbox","id":"sh/a14redkf","slide":5,"text":"CORE CHECK","textPreview":"CORE CHECK","textChars":10,"textLines":1,"bbox":[480,224,150,30]}
+{"kind":"textbox","id":"sh/b2d8ny10","slide":5,"text":"Geolocation gate","textPreview":"Geolocation gate","textChars":16,"textLines":1,"bbox":[480,276,252,54]}
+{"kind":"textbox","id":"sh/w3m9g32l","slide":5,"text":"The student device checks the configured geofence locally and rejects scans that happen outside the allowed area.","textPreview":"The student device checks the configured geofence locally and rejects scans that happen outside the allowed area.","textChars":113,"textLines":1,"bbox":[480,350,252,122]}
+{"kind":"shape","id":"sh/x4vqp8j6","slide":5,"bbox":[840,198,312,320]}
+{"kind":"textbox","id":"sh/y54ridkr","slide":5,"text":"CORE CHECK","textPreview":"CORE CHECK","textChars":10,"textLines":1,"bbox":[864,224,150,30]}
+{"kind":"textbox","id":"sh/j6d8ri1c","slide":5,"text":"No double counting","textPreview":"No double counting","textChars":18,"textLines":1,"bbox":[864,276,252,54]}
+{"kind":"textbox","id":"sh/k7m9kn2h","slide":5,"text":"The server rejects duplicate token and student pairs so one scan cannot be reused to inflate attendance.","textPreview":"The server rejects duplicate token and student pairs so one scan cannot be reused to inflate attendance.","textChars":104,"textLines":1,"bbox":[864,350,252,122]}
+{"kind":"shape","id":"sh/l8fatsj2","slide":5,"bbox":[220,568,840,1]}
+{"kind":"textbox","id":"sh/69ormxkn","slide":5,"text":"Device clock alone does not decide validity. The signed payload and server-side recheck do.","textPreview":"Device clock alone does not decide validity. The signed payload and server-side recheck do.","textChars":91,"textLines":1,"bbox":[220,586,840,28]}
+{"kind":"notes","id":"nt/9c6mla","slide":5,"text":""}
+{"kind":"slide","id":"sl/9c0ug1","slide":6,"title":"Offline-first is not a slogan here. It is the operating model.","textShapes":15}
+{"kind":"textbox","id":"sh/jqd8fq18","slide":6,"name":"slide-title","text":"Offline-first is not a slogan here. It is the operating model.","textPreview":"Offline-first is not a slogan here. It is the operating model.","textChars":62,"textLines":1,"bbox":[72,56,860,86]}
+{"kind":"textbox","id":"sh/4bmpobit","slide":6,"name":"slide-subtitle","text":"Polycheck keeps the classroom usable without internet and uses sync only when the network is available.","textPreview":"Polycheck keeps the classroom usable without internet and uses sync only when the network is available.","textChars":103,"textLines":1,"bbox":[72,142,980,48]}
+{"kind":"textbox","id":"sh/5cvqhgje","slide":6,"name":"footer-label","text":"Offline-first architecture","textPreview":"Offline-first architecture","textChars":26,"textLines":1,"bbox":[72,666,260,20]}
+{"kind":"textbox","id":"sh/ulk7i10r","slide":6,"name":"footer-brand","text":"Polycheck","textPreview":"Polycheck","textChars":9,"textLines":1,"bbox":[1038,666,170,20]}
+{"kind":"shape","id":"sh/vmtob61c","slide":6,"bbox":[72,190,500,372]}
+{"kind":"shape","id":"sh/wn2pkbix","slide":6,"bbox":[708,190,500,372]}
+{"kind":"textbox","id":"sh/hobqdgji","slide":6,"text":"DURING CLASS","textPreview":"DURING CLASS","textChars":12,"textLines":1,"bbox":[100,220,128,30]}
+{"kind":"textbox","id":"sh/mh07e10v","slide":6,"text":"AFTER CONNECTIVITY","textPreview":"AFTER CONNECTIVITY","textChars":18,"textLines":1,"bbox":[736,220,164,30]}
+{"kind":"textbox","id":"sh/7i9o761g","slide":6,"text":"Local device becomes the source of truth","textPreview":"Local device becomes the source of truth","textChars":40,"textLines":1,"bbox":[100,272,420,44]}
+{"kind":"shape","id":"sh/j6tkvql4","slide":6,"bbox":[100,333,18,18]}
+{"kind":"textbox","id":"sh/y5k325kj","slide":6,"name":"offline-left-1","text":"Session config is cached in advance.","textPreview":"Session config is cached in advance.","textChars":36,"textLines":1,"bbox":[128,330,392,24]}
+{"kind":"shape","id":"sh/lsb2x03u","slide":6,"bbox":[100,385,18,18]}
+{"kind":"textbox","id":"sh/kr2l4v29","slide":6,"name":"offline-left-2","text":"QR scanning, geofence checks, and status assignment happen on the device.","textPreview":"QR scanning, geofence checks, and status assignment happen on the device.","textChars":73,"textLines":1,"bbox":[128,382,392,24]}
+{"kind":"shape","id":"sh/7utkzal0","slide":6,"bbox":[100,437,18,18]}
+{"kind":"textbox","id":"sh/6tk365kf","slide":6,"name":"offline-left-3","text":"Attendance is stored in local SQLite first.","textPreview":"Attendance is stored in local SQLite first.","textChars":43,"textLines":1,"bbox":[128,434,392,24]}
+{"kind":"textbox","id":"sh/twv21k36","slide":6,"text":"Sync confirms and reconciles records","textPreview":"Sync confirms and reconciles records","textChars":36,"textLines":1,"bbox":[736,272,420,44]}
+{"kind":"shape","id":"sh/8v2l8f2l","slide":6,"bbox":[736,333,18,18]}
+{"kind":"textbox","id":"sh/ny9kn6lw","slide":6,"name":"offline-right-1","text":"The server revalidates signatures and timestamps.","textPreview":"The server revalidates signatures and timestamps.","textChars":49,"textLines":1,"bbox":[764,330,392,24]}
+{"kind":"shape","id":"sh/mx0julkb","slide":6,"bbox":[736,385,18,18]}
+{"kind":"textbox","id":"sh/qton2t4z","slide":6,"name":"offline-right-2","text":"GPS and duplicate rules are checked again on upload.","textPreview":"GPS and duplicate rules are checked again on upload.","textChars":52,"textLines":1,"bbox":[764,382,392,24]}
+{"kind":"shape","id":"sh/ruxove5k","slide":6,"bbox":[736,437,18,18]}
+{"kind":"textbox","id":"sh/sv654jmp","slide":6,"name":"offline-right-3","text":"Any failure becomes a disputed record for review.","textPreview":"Any failure becomes a disputed record for review.","textChars":49,"textLines":1,"bbox":[764,434,392,24]}
+{"kind":"shape","id":"sh/dwz6xona","slide":6,"bbox":[548,322,180,5]}
+{"kind":"shape","id":"sh/ipony94n","slide":6,"bbox":[590,300,96,84]}
+{"kind":"shape","id":"sh/3qx4re58","slide":6,"bbox":[72,582,1136,44]}
+{"kind":"textbox","id":"sh/4r650jmt","slide":6,"text":"Students must pre-sync before class day, which is an acceptable tradeoff for reliable in-room attendance.","textPreview":"Students must pre-sync before class day, which is an acceptable tradeoff for reliable in-room attendance.","textChars":105,"textLines":1,"bbox":[100,593,1078,20]}
+{"kind":"notes","id":"nt/9c0ug1","slide":6,"text":""}
+{"kind":"slide","id":"sl/6l6smu","slide":7,"title":"Different roles see different power","textShapes":20}
+{"kind":"textbox","id":"sh/7uh4fu18","slide":7,"name":"slide-title","text":"Different roles see different power","textPreview":"Different roles see different power","textChars":35,"textLines":1,"bbox":[72,56,860,86]}
+{"kind":"textbox","id":"sh/svq5oz2t","slide":7,"name":"slide-subtitle","text":"Polycheck is built around clear responsibilities so access stays easy to understand and hard to misuse.","textPreview":"Polycheck is built around clear responsibilities so access stays easy to understand and hard to misuse.","textChars":103,"textLines":1,"bbox":[72,142,980,48]}
+{"kind":"textbox","id":"sh/twzmh4jy","slide":7,"name":"footer-label","text":"Roles and permissions","textPreview":"Roles and permissions","textChars":21,"textLines":1,"bbox":[72,666,260,20]}
+{"kind":"textbox","id":"sh/ux8nq9kj","slide":7,"name":"footer-brand","text":"Polycheck","textPreview":"Polycheck","textChars":9,"textLines":1,"bbox":[1038,666,170,20]}
+{"kind":"shape","id":"sh/fy14je14","slide":7,"bbox":[72,198,312,330]}
+{"kind":"shape","id":"sh/gza5sj2p","slide":7,"bbox":[72,198,312,12]}
+{"kind":"textbox","id":"sh/h0jmloja","slide":7,"text":"Super Admin","textPreview":"Super Admin","textChars":11,"textLines":1,"bbox":[96,224,250,42]}
+{"kind":"textbox","id":"sh/21snu9kv","slide":7,"text":"Institution-wide oversight","textPreview":"Institution-wide oversight","textChars":26,"textLines":1,"bbox":[96,264,250,24]}
+{"kind":"shape","id":"sh/3214ne1g","slide":7,"bbox":[96,311,18,18]}
+{"kind":"textbox","id":"sh/f218vupw","slide":7,"name":"Super Admin-role-1","text":"Sees data across teachers and subjects","textPreview":"Sees data across teachers and subjects","textChars":38,"textLines":1,"bbox":[124,308,220,24]}
+{"kind":"shape","id":"sh/u1srmpor","slide":7,"bbox":[96,355,18,18]}
+{"kind":"textbox","id":"sh/h4jqx472","slide":7,"name":"Super Admin-role-2","text":"Manages teacher accounts and settings","textPreview":"Manages teacher accounts and settings","textChars":37,"textLines":1,"bbox":[124,352,220,24]}
+{"kind":"shape","id":"sh/g3a9oz6h","slide":7,"bbox":[96,399,18,18]}
+{"kind":"textbox","id":"sh/7yh8rap0","slide":7,"name":"Super Admin-role-3","text":"Generates reports and reviews trends","textPreview":"Generates reports and reviews trends","textChars":36,"textLines":1,"bbox":[124,396,220,24]}
+{"kind":"shape","id":"sh/6x87ip8f","slide":7,"bbox":[456,198,312,330]}
+{"kind":"shape","id":"sh/t0jqtk76","slide":7,"bbox":[456,198,312,12]}
+{"kind":"textbox","id":"sh/szq9kfql","slide":7,"text":"Teacher / Instructor","textPreview":"Teacher / Instructor","textChars":20,"textLines":1,"bbox":[480,224,250,42]}
+{"kind":"textbox","id":"sh/bul83ep4","slide":7,"text":"Day-to-day attendance control","textPreview":"Day-to-day attendance control","textChars":29,"textLines":1,"bbox":[480,264,250,24]}
+{"kind":"shape","id":"sh/qtcru9oj","slide":7,"bbox":[480,311,18,18]}
+{"kind":"textbox","id":"sh/mpwbmd8r","slide":7,"name":"Teacher / Instructor-role-1","text":"Creates subjects and sections","textPreview":"Creates subjects and sections","textChars":29,"textLines":1,"bbox":[508,308,220,24]}
+{"kind":"shape","id":"sh/nq5cvi9c","slide":7,"bbox":[480,355,18,18]}
+{"kind":"textbox","id":"sh/8rytonqx","slide":7,"name":"Teacher / Instructor-role-2","text":"Starts sessions and sets geofences","textPreview":"Starts sessions and sets geofences","textChars":34,"textLines":1,"bbox":[508,352,220,24]}
+{"kind":"shape","id":"sh/9s7uxsri","slide":7,"bbox":[480,399,18,18]}
+{"kind":"textbox","id":"sh/atgbqd83","slide":7,"name":"Teacher / Instructor-role-3","text":"Reviews attendance, disputes, and exports","textPreview":"Reviews attendance, disputes, and exports","textChars":41,"textLines":1,"bbox":[508,396,220,24]}
+{"kind":"shape","id":"sh/vupczi9o","slide":7,"bbox":[840,198,312,330]}
+{"kind":"shape","id":"sh/wfytsnq9","slide":7,"bbox":[840,198,312,12]}
+{"kind":"textbox","id":"sh/xg7u1sru","slide":7,"text":"Student","textPreview":"Student","textChars":7,"textLines":1,"bbox":[864,224,250,42]}
+{"kind":"textbox","id":"sh/qxcbetsz","slide":7,"text":"Fast check-in and personal history","textPreview":"Fast check-in and personal history","textChars":34,"textLines":1,"bbox":[864,264,250,24]}
+{"kind":"shape","id":"sh/bylsny94","slide":7,"bbox":[864,311,18,18]}
+{"kind":"textbox","id":"sh/tov690fy","slide":7,"name":"Student-role-1","text":"Scans the QR code in the mobile app","textPreview":"Scans the QR code in the mobile app","textChars":35,"textLines":1,"bbox":[892,308,220,24]}
+{"kind":"shape","id":"sh/snm5gved","slide":7,"bbox":[864,355,18,18]}
+{"kind":"textbox","id":"sh/rmto7qx8","slide":7,"name":"Student-role-2","text":"Views schedule and attendance history","textPreview":"Views schedule and attendance history","textChars":37,"textLines":1,"bbox":[892,352,220,24]}
+{"kind":"shape","id":"sh/6lknelwn","slide":7,"bbox":[864,399,18,18]}
+{"kind":"textbox","id":"sh/1sv6d0fa","slide":7,"name":"Student-role-3","text":"Submits disputes when something is wrong","textPreview":"Submits disputes when something is wrong","textChars":40,"textLines":1,"bbox":[892,396,220,24]}
+{"kind":"shape","id":"sh/grm5kvep","slide":7,"bbox":[72,560,1136,44]}
+{"kind":"textbox","id":"sh/fqdobqx4","slide":7,"text":"Teachers can also assign section officers such as Presidents and QAC members for approved session actions.","textPreview":"Teachers can also assign section officers such as Presidents and QAC members for approved session actions.","textChars":106,"textLines":1,"bbox":[100,571,1078,20]}
+{"kind":"notes","id":"nt/6l6smu","slide":7,"text":""}
+{"kind":"slide","id":"sl/5w9hz7","slide":8,"title":"Attendance becomes a record, not just a count","textShapes":16}
+{"kind":"textbox","id":"sh/83ytcbyl","slide":8,"name":"slide-title","text":"Attendance becomes a record, not just a count","textPreview":"Attendance becomes a record, not just a count","textChars":45,"textLines":1,"bbox":[72,56,860,86]}
+{"kind":"textbox","id":"sh/n2pc36h0","slide":8,"name":"slide-subtitle","text":"Reporting is built in, so teachers and administrators can review what happened without rebuilding the story from scratch.","textPreview":"Reporting is built in, so teachers and administrators can review what happened without rebuilding the story from scratch.","textChars":121,"textLines":1,"bbox":[72,142,980,48]}
+{"kind":"textbox","id":"sh/m1gba1gf","slide":8,"name":"footer-label","text":"Reports and review","textPreview":"Reports and review","textChars":18,"textLines":1,"bbox":[72,666,260,20]}
+{"kind":"textbox","id":"sh/l07u1gzu","slide":8,"name":"footer-brand","text":"Polycheck","textPreview":"Polycheck","textChars":9,"textLines":1,"bbox":[1038,666,170,20]}
+{"kind":"shape","id":"sh/0zyt8by9","slide":8,"bbox":[72,198,426,326]}
+{"kind":"shape","id":"sh/zypcz6h4","slide":8,"bbox":[528,198,680,326]}
+{"kind":"textbox","id":"sh/yxgb61gj","slide":8,"text":"What the dashboard shows","textPreview":"What the dashboard shows","textChars":24,"textLines":1,"bbox":[100,226,280,34]}
+{"kind":"shape","id":"sh/5wbud0ze","slide":8,"bbox":[100,289,18,18]}
+{"kind":"textbox","id":"sh/4v2dkvyt","slide":8,"name":"reports-left-1","text":"Present, late, absent, and disputed totals","textPreview":"Present, late, absent, and disputed totals","textChars":42,"textLines":1,"bbox":[128,286,322,24]}
+{"kind":"shape","id":"sh/ip43mp8b","slide":8,"bbox":[100,343,18,18]}
+{"kind":"textbox","id":"sh/jqdkfupw","slide":8,"name":"reports-left-2","text":"Filters by subject, teacher, date range, and student","textPreview":"Filters by subject, teacher, date range, and student","textChars":52,"textLines":1,"bbox":[128,340,322,24]}
+{"kind":"shape","id":"sh/krmlozqh","slide":8,"bbox":[100,397,18,18]}
+{"kind":"textbox","id":"sh/5sv2hk72","slide":8,"name":"reports-left-3","text":"Exportable attendance records","textPreview":"Exportable attendance records","textChars":29,"textLines":1,"bbox":[128,394,322,24]}
+{"kind":"textbox","id":"sh/a1kji58f","slide":8,"text":"How a dispute is handled","textPreview":"How a dispute is handled","textChars":24,"textLines":1,"bbox":[560,226,300,34]}
+{"kind":"textbox","id":"sh/vmtkba90","slide":8,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[560,292,38,38]}
+{"kind":"textbox","id":"sh/wn2lkfql","slide":8,"text":"Student flags an issue with a reason and description.","textPreview":"Student flags an issue with a reason and description.","textChars":53,"textLines":1,"bbox":[560,346,160,112]}
+{"kind":"shape","id":"sh/xob2dk7q","slide":8,"bbox":[710,302,24,24]}
+{"kind":"textbox","id":"sh/uxo3u98j","slide":8,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[760,292,38,38]}
+{"kind":"textbox","id":"sh/fixknep4","slide":8,"text":"Teacher reviews the record and the supporting context.","textPreview":"Teacher reviews the record and the supporting context.","textChars":54,"textLines":1,"bbox":[760,346,160,112]}
+{"kind":"shape","id":"sh/b2p0f6pg","slide":8,"bbox":[910,302,24,24]}
+{"kind":"textbox","id":"sh/q1gz61ov","slide":8,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[960,292,38,38]}
+{"kind":"textbox","id":"sh/d47ihw7m","slide":8,"text":"Teacher accepts, rejects, or overrides the status.","textPreview":"Teacher accepts, rejects, or overrides the status.","textChars":50,"textLines":1,"bbox":[960,346,160,112]}
+{"kind":"shape","id":"sh/c3yh8b61","slide":8,"bbox":[560,430,568,72]}
+{"kind":"textbox","id":"sh/z690j65s","slide":8,"text":"Live updates keep the teacher view current during busy attendance windows.","textPreview":"Live updates keep the teacher view current during busy attendance windows.","textChars":74,"textLines":1,"bbox":[588,450,512,26]}
+{"kind":"notes","id":"nt/5w9hz7","slide":8,"text":""}
+{"kind":"slide","id":"sl/bofmge","slide":9,"title":"Polycheck fits the devices people already use","textShapes":15}
+{"kind":"textbox","id":"sh/gbilw76l","slide":9,"name":"slide-title","text":"Polycheck fits the devices people already use","textPreview":"Polycheck fits the devices people already use","textChars":45,"textLines":1,"bbox":[72,56,860,86]}
+{"kind":"textbox","id":"sh/fa9k32pg","slide":9,"name":"slide-subtitle","text":"The web dashboard carries administration work, while the mobile app keeps student check-in fast and familiar.","textPreview":"The web dashboard carries administration work, while the mobile app keeps student check-in fast and familiar.","textChars":109,"textLines":1,"bbox":[72,142,980,48]}
+{"kind":"textbox","id":"sh/u903uhov","slide":9,"name":"footer-label","text":"Web and mobile experience","textPreview":"Web and mobile experience","textChars":25,"textLines":1,"bbox":[72,666,260,20]}
+{"kind":"textbox","id":"sh/t8721c7a","slide":9,"name":"footer-brand","text":"Polycheck","textPreview":"Polycheck","textChars":9,"textLines":1,"bbox":[1038,666,170,20]}
+{"kind":"shape","id":"sh/s7yls7qp","slide":9,"bbox":[72,198,540,346]}
+{"kind":"shape","id":"sh/7mpkz2p4","slide":9,"bbox":[668,198,540,346]}
+{"kind":"textbox","id":"sh/6lg3qx8j","slide":9,"text":"WEB","textPreview":"WEB","textChars":3,"textLines":1,"bbox":[100,226,122,30]}
+{"kind":"textbox","id":"sh/lk72xs7y","slide":9,"text":"MOBILE","textPreview":"MOBILE","textChars":6,"textLines":1,"bbox":[696,226,144,30]}
+{"kind":"textbox","id":"sh/kjylonqd","slide":9,"text":"Teacher dashboard","textPreview":"Teacher dashboard","textChars":17,"textLines":1,"bbox":[100,278,454,36]}
+{"kind":"shape","id":"sh/ed4bmtgr","slide":9,"bbox":[100,341,18,18]}
+{"kind":"textbox","id":"sh/fexcvyhc","slide":9,"name":"web-features-1","text":"Manage subjects, sections, schedules, and sessions","textPreview":"Manage subjects, sections, schedules, and sessions","textChars":50,"textLines":1,"bbox":[128,338,426,24]}
+{"kind":"shape","id":"sh/0f6to3yx","slide":9,"bbox":[100,389,18,18]}
+{"kind":"textbox","id":"sh/1gfux8zi","slide":9,"name":"web-features-2","text":"See summaries, filters, and exports at a glance","textPreview":"See summaries, filters, and exports at a glance","textChars":47,"textLines":1,"bbox":[128,386,426,24]}
+{"kind":"shape","id":"sh/q94bi90v","slide":9,"bbox":[100,437,18,18]}
+{"kind":"textbox","id":"sh/radcrehg","slide":9,"name":"web-features-3","text":"Review disputes and session history in one place","textPreview":"Review disputes and session history in one place","textChars":48,"textLines":1,"bbox":[128,434,426,24]}
+{"kind":"textbox","id":"sh/sbmtkjy1","slide":9,"text":"Student app","textPreview":"Student app","textChars":11,"textLines":1,"bbox":[696,278,454,36]}
+{"kind":"shape","id":"sh/dcvutozm","slide":9,"bbox":[696,341,18,18]}
+{"kind":"textbox","id":"sh/ilkbu90z","slide":9,"name":"mobile-features-1","text":"Scan QR codes from a clean camera view","textPreview":"Scan QR codes from a clean camera view","textChars":38,"textLines":1,"bbox":[724,338,426,24]}
+{"kind":"shape","id":"sh/3mdsneh4","slide":9,"bbox":[696,389,18,18]}
+{"kind":"textbox","id":"sh/nep0f6t0","slide":9,"name":"mobile-features-2","text":"View schedules, attendance history, and a digital ID","textPreview":"View schedules, attendance history, and a digital ID","textChars":52,"textLines":1,"bbox":[724,386,426,24]}
+{"kind":"shape","id":"sh/mdgz61cf","slide":9,"bbox":[696,437,18,18]}
+{"kind":"textbox","id":"sh/9g7i1gbq","slide":9,"name":"mobile-features-3","text":"Use the app for the everyday class routine","textPreview":"Use the app for the everyday class routine","textChars":42,"textLines":1,"bbox":[724,434,426,24]}
+{"kind":"shape","id":"sh/8fyh8bal","slide":9,"bbox":[72,578,1136,34]}
+{"kind":"textbox","id":"sh/vi903qtw","slide":9,"text":"The experience changes by role, but the source of truth stays the same.","textPreview":"The experience changes by role, but the source of truth stays the same.","textChars":71,"textLines":1,"bbox":[100,586,1078,18]}
+{"kind":"notes","id":"nt/bofmge","slide":9,"text":""}
+{"kind":"slide","id":"sl/5qcrho","slide":10,"title":"What Polycheck changes","textShapes":12}
+{"kind":"textbox","id":"sh/wf2p43u1","slide":10,"text":"What Polycheck changes","textPreview":"What Polycheck changes","textChars":22,"textLines":1,"bbox":[72,82,980,82]}
+{"kind":"textbox","id":"sh/vetovydg","slide":10,"text":"It turns attendance into a verified process that works in the room, survives poor connectivity, and leaves a useful trail afterward.","textPreview":"It turns attendance into a verified process that works in the room, survives poor connectivity, and leaves a useful trail afterward.","textChars":132,"textLines":1,"bbox":[72,162,920,60]}
+{"kind":"shape","id":"sh/adk72dcv","slide":10,"bbox":[72,272,312,232]}
+{"kind":"textbox","id":"sh/9cb6t8va","slide":10,"text":"RESULT","textPreview":"RESULT","textChars":6,"textLines":1,"bbox":[96,298,144,30]}
+{"kind":"textbox","id":"sh/8b2p03up","slide":10,"text":"Faster classes","textPreview":"Faster classes","textChars":14,"textLines":1,"bbox":[96,348,248,36]}
+{"kind":"textbox","id":"sh/natoryd4","slide":10,"text":"Less time spent on manual roll call and fewer delays at the start of session.","textPreview":"Less time spent on manual roll call and fewer delays at the start of session.","textChars":77,"textLines":1,"bbox":[96,396,248,92]}
+{"kind":"shape","id":"sh/m907ytcj","slide":10,"bbox":[456,272,312,232]}
+{"kind":"textbox","id":"sh/l8r6pove","slide":10,"text":"RESULT","textPreview":"RESULT","textChars":6,"textLines":1,"bbox":[480,298,144,30]}
+{"kind":"textbox","id":"sh/0nipwjut","slide":10,"text":"Stronger integrity","textPreview":"Stronger integrity","textChars":18,"textLines":1,"bbox":[480,348,248,36]}
+{"kind":"textbox","id":"sh/i5gn25kf","slide":10,"text":"QR signing, geolocation checks, and duplicate protection reduce proxy attendance.","textPreview":"QR signing, geolocation checks, and duplicate protection reduce proxy attendance.","textChars":81,"textLines":1,"bbox":[480,396,248,92]}
+{"kind":"shape","id":"sh/j6pova10","slide":10,"bbox":[840,272,312,232]}
+{"kind":"textbox","id":"sh/k7y54v2l","slide":10,"text":"RESULT","textPreview":"RESULT","textChars":6,"textLines":1,"bbox":[864,298,144,30]}
+{"kind":"textbox","id":"sh/5876x0j6","slide":10,"text":"Better visibility","textPreview":"Better visibility","textChars":17,"textLines":1,"bbox":[864,348,248,36]}
+{"kind":"textbox","id":"sh/ahwnylk3","slide":10,"text":"Attendance data, disputes, and exports are available when teachers and admins need them.","textPreview":"Attendance data, disputes, and exports are available when teachers and admins need them.","textChars":88,"textLines":1,"bbox":[864,396,248,92]}
+{"kind":"textbox","id":"sh/vi5orq1o","slide":10,"text":"Polycheck is attendance infrastructure, not just a QR code.","textPreview":"Polycheck is attendance infrastructure, not just a QR code.","textChars":59,"textLines":1,"bbox":[72,564,1136,28]}
+{"kind":"notes","id":"nt/5qcrho","slide":10,"text":""}

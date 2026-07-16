@@ -1,8 +1,8 @@
 import { io, type Socket } from 'socket.io-client'
 import * as SecureStore from 'expo-secure-store'
+import { API_BASE } from './api-config'
 
 const TOKEN_KEY = 'polycheck-token'
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000/api'
 const REALTIME_URL = `${API_BASE.replace(/\/api\/?$/, '')}/attendance`
 
 export function subscribeToSession(

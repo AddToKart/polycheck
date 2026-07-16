@@ -1,5 +1,5 @@
-import { IsString, MinLength, IsArray, ValidateNested, IsOptional } from 'class-validator'
 import { Type } from 'class-transformer'
+import { IsArray, IsOptional, IsString, MinLength, ValidateNested } from 'class-validator'
 
 class ScheduleDayDto {
   @IsString()

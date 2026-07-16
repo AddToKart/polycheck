@@ -26,27 +26,34 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     if (!redisUrl) return
     const connection = this.connectionOptions(redisUrl)
     this.queue = new Queue<AttendanceBatchJob>('polycheck-attendance-sync', { connection })
-    this.worker = new Worker<AttendanceBatchJob>(
-      'polycheck-attendance-sync',
-      (job) => this.process(job),
-      { connection, concurrency: 4 },
+    this.worker = new Worker<AttendanceBatchJob>('polycheck-attendance-sync', (job) => this.process(job), {
+      connection,
+      concurrency: 4,
+    })
+    this.worker.on('failed', (job, error) =>
+      this.logger.error(`Attendance sync job ${job?.id ?? 'unknown'} failed: ${error.message}`),
     )
-    this.worker.on('failed', (job, error) => this.logger.error(`Attendance sync job ${job?.id ?? 'unknown'} failed: ${error.message}`))
     this.logger.log('BullMQ attendance sync worker enabled')
   }
 
   async submit(user: RequestUser, records: ScanAttendanceDto[]) {
     if (this.queue) {
       try {
-        const job = await this.queue.add('attendance-batch', { user, records }, {
-          attempts: 5,
-          backoff: { type: 'exponential', delay: 1_000 },
-          removeOnComplete: { count: 1_000 },
-          removeOnFail: { count: 1_000 },
-        })
+        const job = await this.queue.add(
+          'attendance-batch',
+          { user, records },
+          {
+            attempts: 5,
+            backoff: { type: 'exponential', delay: 1_000 },
+            removeOnComplete: { count: 1_000 },
+            removeOnFail: { count: 1_000 },
+          },
+        )
         return { queued: true, jobId: String(job.id), count: records.length }
       } catch (error) {
-        this.logger.warn(`BullMQ enqueue failed; processing synchronously: ${error instanceof Error ? error.message : 'unknown error'}`)
+        this.logger.warn(
+          `BullMQ enqueue failed; processing synchronously: ${error instanceof Error ? error.message : 'unknown error'}`,
+        )
       }
     }
     return { queued: false, results: await this.processRecords(user, records) }

@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
-import { api } from '../../../../services/mock-api'
+import { api } from '../../../../services/api-client'
 import { fonts } from '../../../../theme/typography'
 import { useTheme } from '../../../../theme/ThemeContext'
 import type { Subject, Section, Session } from '@polycheck/shared'

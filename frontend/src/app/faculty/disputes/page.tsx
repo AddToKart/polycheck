@@ -19,7 +19,7 @@ import {
   ChevronUp,
   Search
 } from 'lucide-react'
-import { api } from '@/lib/mock-api'
+import { api } from '@/lib/api-client'
 import type { User, AttendanceRecord, DisputeReason, Subject, Section, Session } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'

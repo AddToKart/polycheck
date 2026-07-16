@@ -14,18 +14,16 @@ import type { RequestUser } from '../auth/strategies/jwt.strategy'
 
 type SocketUser = RequestUser & { email?: string; studentId?: string }
 
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:8081',
-  process.env.FRONTEND_URL,
-].filter((origin): origin is string => Boolean(origin))
+const allowedOrigins = ['http://localhost:3000', 'http://localhost:8081', process.env.FRONTEND_URL].filter(
+  (origin): origin is string => Boolean(origin),
+)
 
 @WebSocketGateway({
   namespace: '/attendance',
   cors: { origin: allowedOrigins, credentials: true },
 })
 export class AttendanceGateway implements OnGatewayInit {
-  @WebSocketServer() server: Server
+  @WebSocketServer() server!: Server
 
   constructor(
     private readonly jwt: JwtService,
@@ -40,9 +38,19 @@ export class AttendanceGateway implements OnGatewayInit {
         const token = typeof supplied === 'string' ? supplied.replace(/^Bearer\s+/i, '') : ''
         if (!token) return next(new Error('Authentication required'))
 
-        const payload = await this.jwt.verifyAsync<{ sub: string; role: string; email?: string; studentId?: string; sessionVersion: number }>(token)
-        const account = await this.prisma.user.findUnique({ where: { id: payload.sub }, select: { isActive: true, authVersion: true } })
-        if (!account?.isActive || account.authVersion !== payload.sessionVersion) return next(new Error('Session was replaced or the account is inactive'))
+        const payload = await this.jwt.verifyAsync<{
+          sub: string
+          role: string
+          email?: string
+          studentId?: string
+          sessionVersion: number
+        }>(token)
+        const account = await this.prisma.user.findUnique({
+          where: { id: payload.sub },
+          select: { isActive: true, authVersion: true },
+        })
+        if (!account?.isActive || account.authVersion !== payload.sessionVersion)
+          return next(new Error('Session was replaced or the account is inactive'))
 
         socket.data.user = {
           id: payload.sub,
@@ -58,13 +66,13 @@ export class AttendanceGateway implements OnGatewayInit {
   }
 
   @SubscribeMessage('session:join')
-  async joinSession(
-    @ConnectedSocket() socket: Socket,
-    @MessageBody() body: { sessionId?: string },
-  ) {
+  async joinSession(@ConnectedSocket() socket: Socket, @MessageBody() body: { sessionId?: string }) {
     const sessionId = body?.sessionId?.trim()
     if (!sessionId) throw new WsException('sessionId is required')
-    const session = await this.prisma.session.findUnique({ where: { id: sessionId }, select: { id: true, sectionId: true, teacherId: true } })
+    const session = await this.prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { id: true, sectionId: true, teacherId: true },
+    })
     if (!session) throw new WsException('Session not found')
     await this.assertSessionAccess(socket.data.user as SocketUser, session)
     await socket.join(this.sessionRoom(session.id))
@@ -73,10 +81,7 @@ export class AttendanceGateway implements OnGatewayInit {
   }
 
   @SubscribeMessage('session:leave')
-  async leaveSession(
-    @ConnectedSocket() socket: Socket,
-    @MessageBody() body: { sessionId?: string },
-  ) {
+  async leaveSession(@ConnectedSocket() socket: Socket, @MessageBody() body: { sessionId?: string }) {
     const sessionId = body?.sessionId?.trim()
     if (!sessionId) throw new WsException('sessionId is required')
     await socket.leave(this.sessionRoom(sessionId))
@@ -88,15 +93,24 @@ export class AttendanceGateway implements OnGatewayInit {
     this.server.to(this.sessionRoom(session.id)).to(this.sectionRoom(session.sectionId)).emit('session:state', payload)
   }
 
-  emitAttendanceUpdated(record: { id: string; sessionId: string; sectionId: string; studentId: string; status: string }) {
-    this.server.to(this.sessionRoom(record.sessionId)).to(this.sectionRoom(record.sectionId)).emit('attendance:updated', {
-      recordId: record.id,
-      sessionId: record.sessionId,
-      sectionId: record.sectionId,
-      studentId: record.studentId,
-      status: record.status,
-      timestamp: new Date().toISOString(),
-    })
+  emitAttendanceUpdated(record: {
+    id: string
+    sessionId: string
+    sectionId: string
+    studentId: string
+    status: string
+  }) {
+    this.server
+      .to(this.sessionRoom(record.sessionId))
+      .to(this.sectionRoom(record.sectionId))
+      .emit('attendance:updated', {
+        recordId: record.id,
+        sessionId: record.sessionId,
+        sectionId: record.sectionId,
+        studentId: record.studentId,
+        status: record.status,
+        timestamp: new Date().toISOString(),
+      })
   }
 
   private async assertSessionAccess(user: SocketUser, session: { sectionId: string; teacherId: string }) {
@@ -112,6 +126,10 @@ export class AttendanceGateway implements OnGatewayInit {
     throw new WsException('You cannot access this session')
   }
 
-  private sessionRoom(sessionId: string) { return `session:${sessionId}` }
-  private sectionRoom(sectionId: string) { return `section:${sectionId}` }
+  private sessionRoom(sessionId: string) {
+    return `session:${sessionId}`
+  }
+  private sectionRoom(sectionId: string) {
+    return `section:${sectionId}`
+  }
 }

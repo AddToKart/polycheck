@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { api } from '@/lib/mock-api'
+import { api } from '@/lib/api-client'
 
 const fields = [
   { key: 'institution_name', label: 'Institution name', defaultValue: 'Polytechnic University of the Philippines', type: 'text' },

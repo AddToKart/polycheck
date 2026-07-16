@@ -16,11 +16,6 @@
       "import": "./dist/utils/index.mjs",
       "require": "./dist/utils/index.js"
     },
-    "./mock": {
-      "types": "./dist/mock/index.d.ts",
-      "import": "./dist/mock/index.mjs",
-      "require": "./dist/mock/index.js"
-    },
     "./map": {
       "types": "./dist/map/index.d.ts",
       "import": "./dist/map/index.mjs",

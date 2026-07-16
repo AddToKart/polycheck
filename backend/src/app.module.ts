@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
-import { APP_FILTER, APP_GUARD } from '@nestjs/core'
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
+import { ScheduleModule } from '@nestjs/schedule'
+import { LoggerModule } from 'nestjs-pino'
 import { PrismaModule } from './prisma/prisma.module'
 import { AuthModule } from './auth/auth.module'
 import { UsersModule } from './users/users.module'
@@ -22,11 +24,35 @@ import { RealtimeModule } from './realtime/realtime.module'
 import { InfrastructureModule } from './infrastructure/infrastructure.module'
 import { SyncModule } from './sync/sync.module'
 import { SettingsModule } from './settings/settings.module'
+import { MaintenanceModule } from './common/services/maintenance.module'
+import { validateEnv } from './common/config/env-validation'
+import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor'
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: '.env',
+      validate: validateEnv,
+    }),
+    LoggerModule.forRoot({
+      pinoHttp: {
+        autoLogging: true,
+        serializers: {
+          req: (req) => ({
+            id: req.id,
+            method: req.method,
+            url: req.url,
+          }),
+        },
+      },
+    }),
+    ScheduleModule.forRoot(),
+    ThrottlerModule.forRoot([
+      { name: 'default', ttl: 60_000, limit: 120 },
+      { name: 'login', ttl: 60_000, limit: 10 },
+      { name: 'scan', ttl: 60_000, limit: 30 },
+    ]),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -43,6 +69,7 @@ import { SettingsModule } from './settings/settings.module'
     InfrastructureModule,
     SyncModule,
     SettingsModule,
+    MaintenanceModule,
   ],
   providers: [
     {
@@ -60,6 +87,10 @@ import { SettingsModule } from './settings/settings.module'
     {
       provide: APP_FILTER,
       useClass: AllExceptionsFilter,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: IdempotencyInterceptor,
     },
   ],
   controllers: [HealthController],

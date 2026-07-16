@@ -1,11 +1,11 @@
 import { Platform } from 'react-native'
 import { isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type DisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput } from '@polycheck/shared'
+import { API_BASE } from './api-config'
 import { getOrCreateTeacherSigningKey } from './signing-key'
 import { cacheSections, cacheSessions, drainOfflineQueue, enqueueOfflineOperation, getCachedSection, getCachedSections, getCachedSession, getCachedSessions, initializeOfflineStore, type OfflineOperationKind } from './offline-store'
 
 const STORAGE_KEY = 'polycheck-user'
 const TOKEN_KEY = 'polycheck-token'
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000/api'
 
 let SecureStoreModule: typeof import('expo-secure-store') | null = null
 if (Platform.OS !== 'web') {

@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, Modal, StyleSheet, Dimensions
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { api } from '../../services/mock-api'
+import { api } from '../../services/api-client'
 import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
 import { formatDate, formatTime, getMonthDays, getMonthName, getDayName, getWeekDays, getDateRangeForMonth, isSameDay } from '@polycheck/shared/utils'

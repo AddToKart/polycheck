@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { api } from '@/lib/mock-api'
+import { api } from '@/lib/api-client'
 import type { Student, Section, AttendanceRecord, DisputeReason, Subject } from '@polycheck/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sidebar } from '@/components/layout/sidebar'

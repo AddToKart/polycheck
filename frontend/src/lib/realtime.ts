@@ -1,6 +1,5 @@
 import { io } from 'socket.io-client'
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api'
+import { API_BASE } from './api-config'
 
 function realtimeUrl() {
   if (API_BASE.startsWith('/')) return `${window.location.origin}/attendance`

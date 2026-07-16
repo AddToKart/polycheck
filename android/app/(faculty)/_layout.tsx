@@ -3,7 +3,7 @@ import { Animated, Modal, Platform, Pressable, Text, TouchableOpacity, View } fr
 import { Tabs, router } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { api } from '../../services/mock-api'
+import { api } from '../../services/api-client'
 import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
 

@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, P
 import { router } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
-import { api } from '../../services/mock-api'
+import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 
 export default function StudentLoginScreen() {

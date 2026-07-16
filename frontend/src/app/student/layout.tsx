@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { api } from '@/lib/mock-api'
+import { api } from '@/lib/api-client'
 import type { User } from '@polycheck/shared'
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {

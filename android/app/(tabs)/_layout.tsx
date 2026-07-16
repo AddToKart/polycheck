@@ -3,7 +3,7 @@ import { Platform, View } from 'react-native'
 import { router, Tabs } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { api } from '../../services/mock-api'
+import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 
 const iconMap: Record<string, keyof typeof MaterialIcons.glyphMap> = {

@@ -8,5 +8,5 @@ export class SyncAttendanceBatchDto {
   @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => ScanAttendanceDto)
-  records: ScanAttendanceDto[]
+  records!: ScanAttendanceDto[]
 }

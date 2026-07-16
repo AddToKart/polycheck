@@ -3,7 +3,7 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity, StyleSheet } 
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
-import { api } from '../../services/mock-api'
+import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 import type { AttendanceRecord, ScheduleDay, Section, Subject } from '@polycheck/shared'
 

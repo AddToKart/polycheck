@@ -223,7 +223,7 @@ For real-time updates and low-latency validation during peak attendance check-in
 ## Development Conventions
 
 ### Package naming
-- `@polycheck/shared` — shared types, utils, mock data
+- `@polycheck/shared` — shared types, validation, and utilities
 - `@polycheck/frontend` — web dashboard
 - `@polycheck/android` — mobile app
 
@@ -243,14 +243,13 @@ For real-time updates and low-latency validation during peak attendance check-in
 ```typescript
 import { User, Subject, Session } from '@polycheck/shared'
 import { haversineDistance } from '@polycheck/shared/utils'
-import { mockStudents, mockSubjects } from '@polycheck/shared/mock'
 ```
 
 ### API Client Pattern (both apps)
 ```typescript
-// In development, import mock data directly
-// In production, call the NestJS API
-const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
+// Web: NEXT_PUBLIC_API_URL=http://localhost:4000/api
+// Mobile: EXPO_PUBLIC_API_URL must be reachable from the device.
+// Both clients always call the NestJS API; offline mobile reads use SQLite cache.
 ```
 
 ### Git commit style
@@ -360,6 +359,9 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 - **Return type consistency**: Fixed web mock `submitAttendance` to include `message` field. Both mocks' `submitDispute` now writes `disputeDescription` instead of `notes`.
 - **Import cleanup**: Removed unused `isTokenInValidityWindow` and `decodeTokenPayload` from mobile mock imports. Added missing `DisputeReason`, `SubmitAttendanceResult` type imports to both mocks.
 - **Lint errors cleared**: Fixed unescaped quotes/apostrophes in frontend pages (faculty dashboard, session create, session detail, student dashboard, student session detail). Fixed `checkAttendance` return type in web mock to `SubmitAttendanceResult`. Made `loginStudent`/`loginFaculty` password param optional in both mocks (matches interface).
+- **Real API cutover**: Removed the shared runtime mock dataset and `@polycheck/shared/mock` package export. Renamed both application clients to `api-client.ts`; web and mobile now always call NestJS, with SQLite retained only as the mobile offline cache.
+- **Login routing**: Consolidated `/login/student` and `/login/faculty` under the root login route tree to eliminate Next.js development 404s. Both routes use the real NestJS authentication endpoints.
+- **Deployment API configuration**: Added documented web/mobile API environment variables. Android derives the Expo development host and uses `10.0.2.2` for an emulator fallback; non-development builds require `EXPO_PUBLIC_API_URL`.
 
 ### In Progress
 - (none)
@@ -372,14 +374,12 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 - `Pressable` replaces `TouchableOpacity` for clickable list items to avoid scroll-touch interference.
 - Timeline for session activation: Teacher generates QR (sets validity N minutes) → scans within N min → Present; after expiry → scans are Late; teacher presses End Session → all remaining Pending → Absent. Grace period is not a separate timer — it's the post-QR-expiry period until End Session.
 - `gracePeriodMinutes` on Session is metadata/display; the grace period ends only when the teacher manually ends the session. No auto-absent on grace expiry.
-- `MockQr` deterministic visual component used on both mobile (with `react-native-svg`) and web (with `svg`). Replaced `react-native-qrcode-svg` and `qrcode` npm packages to avoid native module build issues and dependency conflicts.
-- `expo-sharing` + `react-native-svg` ref for sharing QR image on mobile; clipboard copy for token.
+- QR rendering uses `react-native-qrcode-svg` on mobile and `qrcode` on web so generated attendance tokens are scanner-compatible.
+- `expo-sharing` + `react-native-svg` ref are used for sharing the QR image on mobile; web also supports token copy/download.
 
 ## Next Steps
 - Connect sessions page to section context when navigated from section detail.
 - Add dispute notification badge on faculty sidebar/tab bar.
-- Wire `isTokenInValidityWindow` util into mock API's `checkAttendance` for proper signed-timestamp validation.
-- Implement real NestJS backend with all API endpoints.
 - Add offline sync engine for mobile (SQLite + background sync).
 - Implement push notifications (Expo Notifications / web push).
 - Add leave/excuse request workflow.
@@ -389,10 +389,10 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 ## Critical Context
 - Android package: `edu.pup.polycheck`; iOS bundle: `edu.pup.polycheck`.
 - Permissions: camera (QR scan), location (geofence check) — already requested in `scan.tsx` via `useCameraPermissions` + `expo-location`.
-- Mock data: `mockStudents` has 8 entries (s-001 to s-008); `mockSubjects` has 4 parent entries (subj-001 to subj-004); `mockSections` has 5 sections (sec-001 to sec-005); `mockSessions` has 19 entries (sess-001 to sess-019); `mockAttendanceRecords` has 55 entries; `mockEnrollments` has 24 entries.
+- Runtime mock data has been removed. Web and mobile use the NestJS API; mobile retains only its SQLite offline cache and sync queue.
 - `AttendanceRecord.status` now includes `'disputed'`. `AttendanceRecord` has optional `manuallySet?: boolean`. `AttendanceSummary` has `disputed: number`.
 - `Session` no longer has `tokenWindowSeconds`; replaced by `qrValidityMinutes: number`. `qrGeneratedAt?: string` tracks when QR was generated.
-- Mock API methods added: `generateQrCode`, `submitScan`, `endSession`, `getDisputedRecords`, `resolveDispute`.
+- API client methods include `generateQrCode`, `submitScan`, `endSession`, `getDisputedRecords`, and `resolveDispute`.
 - `createQRTokenData` signature changed: `(sessionId, subjectId, teacherId, teacherName, validityMinutes, gracePeriodMinutes)`. Note: `subjectId` param is actually `sectionId` in the new model; kept as `subjectId` for token backward compat.
 - `isTokenInValidityWindow(payload, serverTimeMs?)` returns `{ valid: boolean, inGrace: boolean }`.
 - Mobile QR rendering uses `MockQr` deterministic visual component (replaced `react-native-qrcode-svg`); web uses same `MockQr` component (replaced `qrcode` npm package).
@@ -405,10 +405,10 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 - `shared/src/types/attendance.ts` — AttendanceStatus includes `'disputed'`; AttendanceRecord has `manuallySet?`; AttendanceSummary has `disputed`
 - `shared/src/validation/index.ts` — SessionCreateSchema uses `qrValidityMinutes` (1–180), drops `tokenWindowSeconds`, adds optional `endTime`/`room`
 - `shared/src/utils/token.ts` — `isTokenInValidityWindow` replaces `isTokenExpired`; `createQRTokenData` takes `validityMinutes` + `gracePeriodMinutes`
-- `shared/src/mock/sessions.ts` — all sessions updated with `qrValidityMinutes`
-- `shared/src/mock/attendance.ts` — 3 new records (2 disputed, 1 manuallySet); summaries include `disputed`
-- `android/services/mock-api.ts` — added `generateQrCode`, `submitScan`, `endSession`, `getDisputedRecords`, `resolveDispute`; updated `checkAttendance`, `createSession`; added Subject CRUD + Section CRUD
-- `frontend/src/lib/mock-api.ts` — same additions as mobile mock API
+- `android/services/api-client.ts` — real NestJS HTTP client with SQLite-backed offline behavior
+- `android/services/api-config.ts` — device-safe backend URL resolution
+- `frontend/src/lib/api-client.ts` — real NestJS HTTP client
+- `frontend/src/lib/api-config.ts` — browser backend URL configuration
 - `android/app/(faculty)/sessions/[id].tsx` — full overhaul: QR gen, student roster, manual override, end session, countdown
 - `android/app/(tabs)/scan.tsx` — wired `CameraView` QR scanning + manual code entry
 - `android/app/(faculty)/disputes.tsx` — new dispute review screen with accept/reject/override

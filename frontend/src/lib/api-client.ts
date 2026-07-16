@@ -1,9 +1,9 @@
 import { signQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type DisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput } from '@polycheck/shared'
 import { getOrCreateTeacherSigningKey } from './signing-key'
+import { API_BASE } from './api-config'
 
 const STORAGE_KEY = 'polycheck-user'
 const TOKEN_KEY = 'polycheck-token'
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api'
 
 function loadUser(): User | null {
   if (typeof window === 'undefined') return null

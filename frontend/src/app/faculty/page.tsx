@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { api } from '@/lib/mock-api'
+import { api } from '@/lib/api-client'
 import type { User, Section, Session, Subject, AttendanceRecord, CalendarEvent, Enrollment } from '@polycheck/shared'
 import { formatTime } from '@polycheck/shared/utils'
 

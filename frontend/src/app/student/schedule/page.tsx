@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useCallback, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Calendar, BookOpen, CheckCircle, Clock, XCircle, CalendarDays, MapPin } from 'lucide-react'
-import { api } from '@/lib/mock-api'
+import { api } from '@/lib/api-client'
 import type { Student, AttendanceRecord, Section, Session, Subject } from '@polycheck/shared'
 import { generateStudentCalendarEvents } from '@polycheck/shared/utils'
 import {

@@ -3,11 +3,11 @@ import { IsString, MinLength, IsOptional } from 'class-validator'
 export class CreateSubjectDto {
   @IsString()
   @MinLength(1)
-  name: string
+  name!: string
 
   @IsString()
   @MinLength(1)
-  code: string
+  code!: string
 
   @IsString()
   @IsOptional()

@@ -3,7 +3,7 @@ import { View, Text, ScrollView, Pressable, Alert, ActivityIndicator, Animated, 
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
-import { api } from '../../../services/mock-api'
+import { api } from '../../../services/api-client'
 import { useTheme } from '../../../theme/ThemeContext'
 import type { Student, Session, AttendanceRecord, AttendanceStatus } from '@polycheck/shared'
 

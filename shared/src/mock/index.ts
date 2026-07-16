@@ -1,7 +1,0 @@
-export * from './users'
-export * from './subjects'
-export * from './sections'
-export * from './sessions'
-export * from './attendance'
-export * from './section-roles'
-export * from './mock-api-core'
