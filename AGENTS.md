@@ -375,6 +375,9 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - **Web student QR scan**: Built `ScanQrModal` component (camera via `@zxing/browser` + image upload + manual code entry) wired to student dashboard for QR-based attendance check-in with geolocation validation.
 - **Map camera stability**: Removed recurring web `fitBounds`/controlled viewport resets, stopped mobile WebView map reloads on overlay changes, and made explicit location recentering preserve the user's current zoom.
 - **Web/mobile session parity**: Mobile student officers now configure the same geofence and current-location flow as web; offline QR activation uses cached sessions; mobile scanning requests location permission and handles network errors; web fallback polling refreshes full session state.
+- **Mobile QR image upload**: Student scanning now supports selecting a QR image from the photo library, decoding it with Expo Camera, and passing the token through the same live-GPS and server validation flow as camera/manual scans.
+- **Mobile scan UX and geofence diagnostics**: Rebuilt the scan screen as a stable camera viewport with compact fallback controls and modal manual entry. Mobile now requests best-navigation GPS, rejects low-accuracy fixes, and reports measured distance/radius plus emulator setup coordinates when outside the geofence.
+- **Mobile hooks-order fix**: Moved session map pin memoization above the faculty session detail early return to eliminate the `Rendered more hooks than during the previous render` crash.
 
 ### In Progress
 - (none)

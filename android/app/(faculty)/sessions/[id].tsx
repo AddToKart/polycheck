@@ -122,6 +122,19 @@ export default function SessionDetailScreen() {
     return () => clearInterval(timer)
   }, [lastUpdated])
 
+  const studentPins: StudentMapPin[] = useMemo(() => records
+      .filter((r) => r.coordinates && (r.coordinates.latitude !== 0 || r.coordinates.longitude !== 0))
+      .map((r) => ({
+        id: r.studentId,
+        latitude: r.coordinates.latitude,
+        longitude: r.coordinates.longitude,
+        label: r.studentName,
+        program: r.studentProgram,
+        status: r.status,
+        timestamp: r.timestamp,
+        deviceId: r.deviceId,
+      })), [records])
+
   if (!user || !session) return null
   const isTeacher = user.role === 'teacher'
 
@@ -137,19 +150,6 @@ export default function SessionDetailScreen() {
   const pendingCount = records.filter((r) => r.status === 'pending').length
 
   const studentMap = new Map(records.map((r) => [r.studentId, r]))
-
-  const studentPins: StudentMapPin[] = useMemo(() => records
-      .filter((r) => r.coordinates && (r.coordinates.latitude !== 0 || r.coordinates.longitude !== 0))
-      .map((r) => ({
-        id: r.studentId,
-        latitude: r.coordinates.latitude,
-        longitude: r.coordinates.longitude,
-        label: r.studentName,
-        program: r.studentProgram,
-        status: r.status,
-        timestamp: r.timestamp,
-        deviceId: r.deviceId,
-      })), [records])
 
   const handleGenerateQr = async () => {
     const mins = parseInt(validityMinutes, 10)
