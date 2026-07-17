@@ -18,8 +18,6 @@ export default function StudentCreateSessionScreen() {
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')
   const [room, setRoom] = useState('')
-  const [gracePeriod, setGracePeriod] = useState(15)
-  const [qrValidity, setQrValidity] = useState(20)
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -50,9 +48,7 @@ export default function StudentCreateSessionScreen() {
       startTime,
       endTime,
       room: room || undefined,
-      qrValidityMinutes: qrValidity,
-      gracePeriodMinutes: gracePeriod,
-      geofence: { latitude: 14.5863, longitude: 120.9777, radiusMeters: 40 },
+      geofence: { latitude: 14.8697, longitude: 120.9991, radiusMeters: 40 },
       teacherId: section.teacherId,
       })
       Alert.alert('Session Created', 'Session created successfully!')
@@ -136,31 +132,6 @@ export default function StudentCreateSessionScreen() {
             />
           </View>
 
-          <View className="mb-3">
-            <Text className="text-[10px] font-sans-medium uppercase tracking-[0.5px] mb-1" style={{ color: textSecondary }}>Grace Period: {gracePeriod} min</Text>
-            <View className="flex-row items-center gap-2">
-              <Text className="text-[10px]" style={{ color: textSecondary }}>0</Text>
-              <View style={{ flex: 1, height: 20, justifyContent: 'center' }}>
-                <View style={{ height: 4, backgroundColor: isDark ? '#333' : '#DDD', borderRadius: 2 }}>
-                  <View style={{ width: `${(gracePeriod / 30) * 100}%`, height: 4, backgroundColor: iconColor, borderRadius: 2 }} />
-                </View>
-              </View>
-              <Text className="text-[10px]" style={{ color: textSecondary }}>30</Text>
-            </View>
-          </View>
-
-          <View className="mb-3">
-            <Text className="text-[10px] font-sans-medium uppercase tracking-[0.5px] mb-1" style={{ color: textSecondary }}>QR Validity: {qrValidity} min</Text>
-            <View className="flex-row items-center gap-2">
-              <Text className="text-[10px]" style={{ color: textSecondary }}>5</Text>
-              <View style={{ flex: 1, height: 20, justifyContent: 'center' }}>
-                <View style={{ height: 4, backgroundColor: isDark ? '#333' : '#DDD', borderRadius: 2 }}>
-                  <View style={{ width: `${((qrValidity - 5) / 55) * 100}%`, height: 4, backgroundColor: iconColor, borderRadius: 2 }} />
-                </View>
-              </View>
-              <Text className="text-[10px]" style={{ color: textSecondary }}>60</Text>
-            </View>
-          </View>
         </View>
 
         <TouchableOpacity

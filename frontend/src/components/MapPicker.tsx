@@ -2,12 +2,12 @@
 
 import { useState, useCallback, useRef } from 'react'
 import { Map, MapMarker, MarkerContent, MapControls } from '@/components/ui/map'
-import { MapPin, Maximize, Minimize } from 'lucide-react'
+import { MapPin, Maximize, Minimize, Loader2 } from 'lucide-react'
 import GeofenceCircle from '@/components/GeofenceCircle'
 
 export default function MapPicker({
-  latitude = 14.5863,
-  longitude = 120.9777,
+  latitude = 14.8697,
+  longitude = 120.9991,
   radius = 40,
   onChange,
 }: {
@@ -19,7 +19,31 @@ export default function MapPicker({
   const [center, setCenter] = useState<[number, number]>([longitude, latitude])
   const [rad, setRad] = useState(radius)
   const [fullscreen, setFullscreen] = useState(false)
+  const [locating, setLocating] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  const handleUseMyLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser.')
+      return
+    }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false)
+        const lat = pos.coords.latitude
+        const lng = pos.coords.longitude
+        const newCenter: [number, number] = [lng, lat]
+        setCenter(newCenter)
+        onChange?.(lat, lng, rad)
+      },
+      () => {
+        setLocating(false)
+        alert('Unable to retrieve your location. Make sure GPS access is enabled.')
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }, [rad, onChange])
 
   const handleMove = useCallback(
     (pos: { lng: number; lat: number }) => {
@@ -82,6 +106,20 @@ export default function MapPicker({
 
       <div className="flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
         <span>Drag the pin to set location</span>
+        <span className="text-zinc-300 dark:text-zinc-600">|</span>
+        <button
+          type="button"
+          disabled={locating}
+          onClick={handleUseMyLocation}
+          className="flex items-center gap-1 text-xs text-maroon dark:text-amber-400 hover:underline disabled:opacity-55"
+        >
+          {locating ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <MapPin className="size-3.5" />
+          )}
+          {locating ? 'Locating…' : 'Use My Location'}
+        </button>
         <span className="text-zinc-300 dark:text-zinc-600">|</span>
         <span className="font-mono text-xs">
           {center[1].toFixed(4)}, {center[0].toFixed(4)}

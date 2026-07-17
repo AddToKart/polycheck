@@ -179,10 +179,11 @@ export const api = {
     void teacherId
     return post('/sessions', body)
   },
-  async generateQrCode(sessionId: string, validityMinutes: number): Promise<Session> {
+  async generateQrCode(sessionId: string, validityMinutes: number, gracePeriodMinutes?: number): Promise<Session> {
     const [session, key] = await Promise.all([get<Session>(`/sessions/${sessionId}`), getOrCreateTeacherSigningKey()])
     const user = this.getCurrentUser()
     if (!user || user.role !== 'teacher') throw new Error('A teacher account is required to sign QR tokens')
+    const effectiveGrace = gracePeriodMinutes ?? session.gracePeriodMinutes
     await post('/auth/provision-key', { publicKey: key.publicKey })
     const token = signQRToken({
       version: 1,
@@ -192,9 +193,9 @@ export const api = {
       teacherName: user.fullName,
       issuedAt: Date.now(),
       validityMinutes,
-      gracePeriodMinutes: session.gracePeriodMinutes,
+      gracePeriodMinutes: effectiveGrace,
     }, key.secretKey)
-    return post(`/sessions/${sessionId}/activate`, { validityMinutes, token })
+    return post(`/sessions/${sessionId}/activate`, { validityMinutes, gracePeriodMinutes: effectiveGrace, token })
   },
   endSession(sessionId: string): Promise<Session> { return post(`/sessions/${sessionId}/end`) },
   getSectionSessions(sectionId: string): Promise<Session[]> {

@@ -22,6 +22,7 @@ interface MapViewProps {
   longitude: number
   radius: number
   interactive?: boolean
+  recenterSignal?: number
   onLocationChange?: (lat: number, lng: number) => void
   onRadiusChange?: (r: number) => void
   studentPins?: StudentMapPin[]
@@ -217,24 +218,31 @@ function html(
 </html>`
 }
 
-export default function MapView({ latitude, longitude, radius, interactive, onLocationChange, onRadiusChange, studentPins = [] }: MapViewProps) {
+export default function MapView({ latitude, longitude, radius, interactive, recenterSignal, onLocationChange, onRadiusChange, studentPins = [] }: MapViewProps) {
   const { isDark } = useTheme()
   const webRef = useRef<WebView>(null)
-  const prevRadiusRef = useRef(radius)
   const [fullscreen, setFullscreen] = useState(false)
   const sliderRef = useRef<View>(null)
   const sliderWidthRef = useRef(0)
   const sliderLeftRef = useRef(0)
 
   useEffect(() => {
-    if (prevRadiusRef.current !== radius && webRef.current) {
+    if (webRef.current) {
       webRef.current.injectJavaScript(`
         update(${latitude}, ${longitude}, ${radius});
         true;
       `)
-      prevRadiusRef.current = radius
     }
-  }, [radius, latitude, longitude])
+  }, [latitude, longitude, radius])
+
+  useEffect(() => {
+    if (recenterSignal && webRef.current) {
+      webRef.current.injectJavaScript(`
+        map.setView([${latitude}, ${longitude}], Math.max(map.getZoom(), 17));
+        true;
+      `)
+    }
+  }, [recenterSignal])
 
   const measureSlider = useCallback(() => {
     sliderRef.current?.measureInWindow((x) => {

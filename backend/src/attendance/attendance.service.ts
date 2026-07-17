@@ -575,7 +575,8 @@ export class AttendanceService {
     if (
       payload.validityMinutes < 1 ||
       payload.validityMinutes > 180 ||
-      payload.gracePeriodMinutes !== session.gracePeriodMinutes
+      payload.gracePeriodMinutes < 0 ||
+      payload.gracePeriodMinutes > 180
     )
       return
     if (!Number.isFinite(payload.issuedAt) || payload.issuedAt > Date.now() + 5 * 60_000) return
@@ -591,6 +592,7 @@ export class AttendanceService {
           qrGeneratedAt: issuedAt,
           qrTokenExpiresAt: expiresAt,
           qrValidityMinutes: payload.validityMinutes,
+          gracePeriodMinutes: payload.gracePeriodMinutes,
         },
       })
       if (!claimed.count) return null

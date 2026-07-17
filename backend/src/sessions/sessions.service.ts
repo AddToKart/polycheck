@@ -62,12 +62,15 @@ export class SessionsService {
   async create(dto: CreateSessionDto, user: RequestUser) {
     const { teacherId, subjectName } = await this.authorizeCreator(dto.sectionId, user)
     this.assertTimeRange(dto.startTime, dto.endTime)
-    const { geofence, subjectName: _ignoredSubjectName, ...data } = dto
+    const { geofence, subjectName: _ignoredSubjectName, qrValidityMinutes, gracePeriodMinutes, ...data } = dto
     const session = await this.prisma.session.create({
       data: {
         ...data,
         subjectName,
         teacherId,
+        // Timing defaults — the authoritative values are set at QR generation time
+        qrValidityMinutes: qrValidityMinutes ?? 20,
+        gracePeriodMinutes: gracePeriodMinutes ?? 15,
         geofenceLatitude: geofence.latitude,
         geofenceLongitude: geofence.longitude,
         geofenceRadiusMeters: geofence.radiusMeters,
@@ -119,8 +122,9 @@ export class SessionsService {
             startTime: dto.startTime,
             endTime: dto.endTime,
             room: dto.room,
-            qrValidityMinutes: dto.qrValidityMinutes,
-            gracePeriodMinutes: dto.gracePeriodMinutes,
+            // Timing defaults — the authoritative values are set at QR generation time
+            qrValidityMinutes: dto.qrValidityMinutes ?? 20,
+            gracePeriodMinutes: dto.gracePeriodMinutes ?? 15,
             teacherId: user.id,
             geofenceLatitude: dto.geofence.latitude,
             geofenceLongitude: dto.geofence.longitude,
@@ -146,7 +150,9 @@ export class SessionsService {
     if (payload.sessionId !== session.id || payload.sectionId !== session.sectionId || payload.teacherId !== user.id) {
       throw new BadRequestException('QR token does not belong to this session')
     }
-    if (payload.validityMinutes !== dto.validityMinutes || payload.gracePeriodMinutes !== session.gracePeriodMinutes) {
+    // Grace period is configurable at generation time; fall back to the session default
+    const gracePeriodMinutes = dto.gracePeriodMinutes ?? session.gracePeriodMinutes
+    if (payload.validityMinutes !== dto.validityMinutes || payload.gracePeriodMinutes !== gracePeriodMinutes) {
       throw new BadRequestException('QR token timing does not match the session')
     }
     if (!Number.isFinite(payload.issuedAt) || payload.issuedAt > Date.now() + 5 * 60_000) {
@@ -165,6 +171,7 @@ export class SessionsService {
           qrGeneratedAt: issuedAt,
           qrTokenExpiresAt: expiresAt,
           qrValidityMinutes: dto.validityMinutes,
+          gracePeriodMinutes,
         },
       })
       const enrollments = await tx.enrollment.findMany({

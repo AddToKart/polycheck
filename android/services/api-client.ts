@@ -264,11 +264,12 @@ export const api = {
     const { teacherId: _teacherId, ...body } = data
     return post('/sessions', body)
   },
-  async generateQrCode(sessionId: string, validityMinutes: number): Promise<Session> {
+  async generateQrCode(sessionId: string, validityMinutes: number, gracePeriodMinutes?: number): Promise<Session> {
     const [session, key] = await Promise.all([get<Session>(`/sessions/${sessionId}`), getOrCreateTeacherSigningKey()])
     const user = this.getCurrentUser()
     if (!user || user.role !== 'teacher') throw new Error('A teacher account is required to sign QR tokens')
     const issuedAt = new Date(await this.getTrustedTimestamp()).getTime()
+    const effectiveGrace = gracePeriodMinutes ?? session.gracePeriodMinutes
     const token = signQRToken({
       version: 1,
       sessionId: session.id,
@@ -277,11 +278,11 @@ export const api = {
       teacherName: user.fullName,
       issuedAt,
       validityMinutes,
-      gracePeriodMinutes: session.gracePeriodMinutes,
+      gracePeriodMinutes: effectiveGrace,
     }, key.secretKey)
     try {
       await post('/auth/provision-key', { publicKey: key.publicKey })
-      const activated = await post<Session>(`/sessions/${sessionId}/activate`, { validityMinutes, token })
+      const activated = await post<Session>(`/sessions/${sessionId}/activate`, { validityMinutes, gracePeriodMinutes: effectiveGrace, token })
       await cacheSessions([activated])
       return activated
     } catch (error) {
@@ -293,9 +294,10 @@ export const api = {
         qrGeneratedAt: new Date(issuedAt).toISOString(),
         qrTokenExpiresAt: new Date(issuedAt + validityMinutes * 60_000).toISOString(),
         qrValidityMinutes: validityMinutes,
+        gracePeriodMinutes: effectiveGrace,
         teacherPublicKey: key.publicKey,
       }
-      await enqueueOfflineOperation('session_activation', { sessionId, validityMinutes, token })
+      await enqueueOfflineOperation('session_activation', { sessionId, validityMinutes, gracePeriodMinutes: effectiveGrace, token })
       await cacheSessions([activated])
       return activated
     }
@@ -511,7 +513,7 @@ export const api = {
       }
       const sessionId = String(payload.sessionId)
       if (kind === 'session_activation') {
-        await post(`/sessions/${sessionId}/activate`, { validityMinutes: payload.validityMinutes, token: payload.token })
+        await post(`/sessions/${sessionId}/activate`, { validityMinutes: payload.validityMinutes, gracePeriodMinutes: payload.gracePeriodMinutes, token: payload.token })
         return
       }
       await post(`/sessions/${sessionId}/end`)
