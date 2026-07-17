@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, TextInput, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -26,6 +26,7 @@ export default function SessionDetailScreen() {
   const [showQrModal, setShowQrModal] = useState(false)
   const [showValidityPrompt, setShowValidityPrompt] = useState(false)
   const [validityMinutes, setValidityMinutes] = useState('20')
+  const [graceMinutes, setGraceMinutes] = useState('15')
   const [countdown, setCountdown] = useState('')
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
   const [refreshLabel, setRefreshLabel] = useState('Updated just now')
@@ -42,6 +43,10 @@ export default function SessionDetailScreen() {
         api.getProofsOfClass(id),
       ])
       setSession(nextSession)
+      if (nextSession) {
+        setValidityMinutes(String(nextSession.qrValidityMinutes || 20))
+        setGraceMinutes(String(nextSession.gracePeriodMinutes || 15))
+      }
       setRecords(nextRecords)
       setProofsOfClass(nextProofs)
       setLastUpdated(new Date())
@@ -117,6 +122,19 @@ export default function SessionDetailScreen() {
     return () => clearInterval(timer)
   }, [lastUpdated])
 
+  const studentPins: StudentMapPin[] = useMemo(() => records
+      .filter((r) => r.coordinates && (r.coordinates.latitude !== 0 || r.coordinates.longitude !== 0))
+      .map((r) => ({
+        id: r.studentId,
+        latitude: r.coordinates.latitude,
+        longitude: r.coordinates.longitude,
+        label: r.studentName,
+        program: r.studentProgram,
+        status: r.status,
+        timestamp: r.timestamp,
+        deviceId: r.deviceId,
+      })), [records])
+
   if (!user || !session) return null
   const isTeacher = user.role === 'teacher'
 
@@ -133,24 +151,12 @@ export default function SessionDetailScreen() {
 
   const studentMap = new Map(records.map((r) => [r.studentId, r]))
 
-  const studentPins: StudentMapPin[] = records
-    .filter((r) => r.coordinates && (r.coordinates.latitude !== 0 || r.coordinates.longitude !== 0))
-    .map((r) => ({
-      id: r.studentId,
-      latitude: r.coordinates.latitude,
-      longitude: r.coordinates.longitude,
-      label: r.studentName,
-      program: r.studentProgram,
-      status: r.status,
-      timestamp: r.timestamp,
-      deviceId: r.deviceId,
-    }))
-
   const handleGenerateQr = async () => {
     const mins = parseInt(validityMinutes, 10)
-    if (isNaN(mins) || mins < 1) return
+    const grace = parseInt(graceMinutes, 10)
+    if (isNaN(mins) || mins < 1 || isNaN(grace) || grace < 0) return
     try {
-      await api.generateQrCode(session.id, mins)
+      await api.generateQrCode(session.id, mins, grace)
       setShowValidityPrompt(false)
       await refreshData()
     } catch (error) {
@@ -444,21 +450,43 @@ export default function SessionDetailScreen() {
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowValidityPrompt(false)}>
           <View style={[styles.promptSheet, isDark && styles.promptSheetDark]} onStartShouldSetResponder={() => true}>
             <MaterialIcons name="timer" size={32} color={isDark ? '#FFDF00' : '#7B1113'} />
-            <Text style={[styles.promptTitle, isDark && styles.promptTitleDark]}>QR Validity Duration</Text>
+            <Text style={[styles.promptTitle, isDark && styles.promptTitleDark]}>QR Settings</Text>
             <Text style={[styles.promptHint, isDark && styles.textWhite50]}>
-              How many minutes should the QR code be valid?{'\n'}After it expires, students who scan will be marked Late.
+              Set the duration parameters for this session's QR code.
             </Text>
-            <View style={[styles.promptInputRow, isDark && styles.promptInputRowDark]}>
-              <TextInput
-                style={[styles.promptInput, isDark && styles.promptInputDark]}
-                value={validityMinutes}
-                onChangeText={setValidityMinutes}
-                keyboardType="number-pad"
-                placeholder="20"
-                placeholderTextColor="#AAA"
-              />
-              <Text style={[styles.promptUnit, isDark && styles.textWhite70]}>minutes</Text>
+            
+            <View style={{ width: '100%', gap: 12, marginBottom: 16 }}>
+              <View>
+                <Text style={{ fontSize: 11, fontWeight: '700', textTransform: 'uppercase', color: isDark ? 'rgba(255,255,255,0.5)' : '#888', marginBottom: 4 }}>QR Validity</Text>
+                <View style={[styles.promptInputRow, isDark && styles.promptInputRowDark, { width: '100%' }]}>
+                  <TextInput
+                    style={[styles.promptInput, isDark && styles.promptInputDark, { flex: 1, textAlign: 'center' }]}
+                    value={validityMinutes}
+                    onChangeText={setValidityMinutes}
+                    keyboardType="number-pad"
+                    placeholder="20"
+                    placeholderTextColor="#AAA"
+                  />
+                  <Text style={[styles.promptUnit, isDark && styles.textWhite70]}>minutes</Text>
+                </View>
+              </View>
+
+              <View>
+                <Text style={{ fontSize: 11, fontWeight: '700', textTransform: 'uppercase', color: isDark ? 'rgba(255,255,255,0.5)' : '#888', marginBottom: 4 }}>Grace Period</Text>
+                <View style={[styles.promptInputRow, isDark && styles.promptInputRowDark, { width: '100%' }]}>
+                  <TextInput
+                    style={[styles.promptInput, isDark && styles.promptInputDark, { flex: 1, textAlign: 'center' }]}
+                    value={graceMinutes}
+                    onChangeText={setGraceMinutes}
+                    keyboardType="number-pad"
+                    placeholder="15"
+                    placeholderTextColor="#AAA"
+                  />
+                  <Text style={[styles.promptUnit, isDark && styles.textWhite70]}>minutes</Text>
+                </View>
+              </View>
             </View>
+
             <View style={styles.promptActions}>
               <TouchableOpacity style={[styles.promptCancelBtn, isDark && styles.promptCancelBtnDark]} onPress={() => setShowValidityPrompt(false)}>
                 <Text style={[styles.promptCancelText, isDark && styles.promptCancelTextDark]}>Cancel</Text>

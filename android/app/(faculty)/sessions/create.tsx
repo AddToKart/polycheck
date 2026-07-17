@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Modal, View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native'
+import { Modal, View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
+import * as Location from 'expo-location'
 import { api } from '../../../services/api-client'
 import { fonts } from '../../../theme/typography'
 import { useTheme } from '../../../theme/ThemeContext'
@@ -11,8 +12,6 @@ import type { User, Subject, Section, Session } from '@polycheck/shared'
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const MINUTES = [0, 15, 30, 45]
-const GRACE_OPTIONS = [0, 5, 10, 15, 20, 25, 30]
-const VALIDITY_OPTIONS = [5, 10, 15, 20, 25, 30, 45, 60]
 
 function pad(n: number) { return n.toString().padStart(2, '0') }
 
@@ -105,11 +104,32 @@ export default function CreateSessionScreen() {
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')
   const [room, setRoom] = useState('')
-  const [gracePeriod, setGracePeriod] = useState(15)
-  const [qrValidity, setQrValidity] = useState(20)
-  const [latitude, setLatitude] = useState(14.5863)
-  const [longitude, setLongitude] = useState(120.9777)
+  const [latitude, setLatitude] = useState(14.8697)
+  const [longitude, setLongitude] = useState(120.9991)
   const [radius, setRadius] = useState(40)
+  const [recenterKey, setRecenterKey] = useState(0)
+  const [locating, setLocating] = useState(false)
+
+  const handleUseMyLocation = async () => {
+    setLocating(true)
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync()
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Location permissions are required to pin your current coordinates.')
+        setLocating(false)
+        return
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
+      setLatitude(loc.coords.latitude)
+      setLongitude(loc.coords.longitude)
+      setRecenterKey((prev) => prev + 1)
+    } catch (err) {
+      Alert.alert('Error', 'Unable to fetch your current GPS coordinates. Make sure location is turned on.')
+    } finally {
+      setLocating(false)
+    }
+  }
+
   const [showSubjectPicker, setShowSubjectPicker] = useState(false)
   const [showSectionPicker, setShowSectionPicker] = useState(false)
   const [showStartTime, setShowStartTime] = useState(false)
@@ -238,8 +258,6 @@ export default function CreateSessionScreen() {
         startTime,
         endTime,
         room: room || undefined,
-        qrValidityMinutes: qrValidity,
-        gracePeriodMinutes: gracePeriod,
         geofence: { latitude, longitude, radiusMeters: radius },
         teacherId: user.id,
         })
@@ -260,8 +278,6 @@ export default function CreateSessionScreen() {
         startTime,
         endTime,
         room: room || undefined,
-        qrValidityMinutes: qrValidity,
-        gracePeriodMinutes: gracePeriod,
         geofence: { latitude, longitude, radiusMeters: radius },
         teacherId: user.id,
         isRescheduled: isRescheduled || undefined,
@@ -570,64 +586,24 @@ export default function CreateSessionScreen() {
           />
         </View>
 
-        {/* Grace Period + QR Validity as selector rows */}
-        <View style={styles.row}>
-          <View style={styles.half}>
-            <Text style={[styles.label, isDark && styles.labelDark]}>Grace Period</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionRow}>
-              {GRACE_OPTIONS.map((g) => {
-                const isActive = gracePeriod === g
-                return (
-                  <TouchableOpacity
-                    key={g}
-                    style={[
-                      styles.optChip,
-                      isDark && styles.optChipDark,
-                      isActive && styles.optChipActive,
-                      isActive && isDark && styles.optChipActiveDark
-                    ]}
-                    onPress={() => setGracePeriod(g)}
-                  >
-                    <Text style={[
-                      styles.optChipText,
-                      isDark && styles.optChipTextDark,
-                      isActive && styles.optChipTextActive
-                    ]}>{g} min</Text>
-                  </TouchableOpacity>
-                )
-              })}
-            </ScrollView>
-          </View>
-          <View style={styles.half}>
-            <Text style={[styles.label, isDark && styles.labelDark]}>QR Validity (default)</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionRow}>
-              {VALIDITY_OPTIONS.map((t) => {
-                const isActive = qrValidity === t
-                return (
-                  <TouchableOpacity
-                    key={t}
-                    style={[
-                      styles.optChip,
-                      isDark && styles.optChipDark,
-                      isActive && styles.optChipActive,
-                      isActive && isDark && styles.optChipActiveDark
-                    ]}
-                    onPress={() => setQrValidity(t)}
-                  >
-                    <Text style={[
-                      styles.optChipText,
-                      isDark && styles.optChipTextDark,
-                      isActive && styles.optChipTextActive
-                    ]}>{t} min</Text>
-                  </TouchableOpacity>
-                )
-              })}
-            </ScrollView>
-          </View>
-        </View>
-
         {/* Geofence */}
-        <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>Geofence</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 2 }}>
+          <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark, { marginTop: 0 }]}>Geofence</Text>
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, opacity: locating ? 0.6 : 1 }}
+            onPress={handleUseMyLocation}
+            disabled={locating}
+          >
+            {locating ? (
+              <ActivityIndicator size="small" color={isDark ? '#FFDF00' : '#7B1113'} />
+            ) : (
+              <MaterialIcons name="my-location" size={16} color={isDark ? '#FFDF00' : '#7B1113'} />
+            )}
+            <Text style={{ fontSize: 13, fontWeight: '700', fontFamily: fonts.bodyBold, color: isDark ? '#FFDF00' : '#7B1113', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              {locating ? 'Locating…' : 'Use My Location'}
+            </Text>
+          </TouchableOpacity>
+        </View>
         <Text style={[styles.hint, isDark && styles.hintDark]}>Pan and zoom the map. Drag the pin or tap anywhere to set the attendance location.</Text>
         <View
           onTouchStart={() => setMapFocus(true)}
@@ -639,6 +615,7 @@ export default function CreateSessionScreen() {
             longitude={longitude}
             radius={radius}
             interactive
+            recenterSignal={recenterKey}
             onLocationChange={(lat, lng) => { setLatitude(lat); setLongitude(lng) }}
             onRadiusChange={setRadius}
           />

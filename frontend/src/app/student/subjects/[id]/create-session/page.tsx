@@ -26,10 +26,8 @@ export default function StudentCreateSessionPage() {
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')
   const [room, setRoom] = useState('')
-  const [gracePeriod, setGracePeriod] = useState(15)
-  const [qrValidity, setQrValidity] = useState(20)
-  const [latitude, setLatitude] = useState(14.5863)
-  const [longitude, setLongitude] = useState(120.9777)
+  const [latitude, setLatitude] = useState(14.8697)
+  const [longitude, setLongitude] = useState(120.9991)
   const [radius, setRadius] = useState(40)
 
   useEffect(() => {
@@ -72,8 +70,6 @@ export default function StudentCreateSessionPage() {
       startTime,
       endTime,
       room: room || undefined,
-      qrValidityMinutes: qrValidity,
-      gracePeriodMinutes: gracePeriod,
       geofence: { latitude, longitude, radiusMeters: radius },
       teacherId: section.teacherId,
     })
@@ -125,46 +121,9 @@ export default function StudentCreateSessionPage() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                 <div className="space-y-2">
                   <Label htmlFor="room">Room</Label>
                   <Input id="room" value={room} onChange={(e) => setRoom(e.target.value)} placeholder="e.g. CCIS Lab 3" />
-                </div>
-
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="gracePeriod">Grace Period</Label>
-                      <Badge variant="default">{gracePeriod} min</Badge>
-                    </div>
-                    <input
-                      id="gracePeriod"
-                      type="range" min={0} max={30} step={5}
-                      value={gracePeriod}
-                      onChange={(e) => setGracePeriod(Number(e.target.value))}
-                      className="w-full accent-maroon"
-                    />
-                    <div className="flex justify-between text-xs text-zinc-400">
-                      <span>0 min</span>
-                      <span>30 min</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="qrValidity">QR Validity</Label>
-                      <Badge variant="default">{qrValidity} min</Badge>
-                    </div>
-                    <input
-                      id="qrValidity"
-                      type="range" min={5} max={60} step={5}
-                      value={qrValidity}
-                      onChange={(e) => setQrValidity(Number(e.target.value))}
-                      className="w-full accent-maroon"
-                    />
-                    <div className="flex justify-between text-xs text-zinc-400">
-                      <span>5 min</span>
-                      <span>60 min</span>
-                    </div>
-                  </div>
                 </div>
               </CardContent>
             </Card>

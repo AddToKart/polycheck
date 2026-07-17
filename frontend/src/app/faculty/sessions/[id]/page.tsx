@@ -43,6 +43,7 @@ export default function SessionDetailPage() {
   const [showQrModal, setShowQrModal] = useState(false)
   const [showValidityPrompt, setShowValidityPrompt] = useState(false)
   const [validityMinutes, setValidityMinutes] = useState('20')
+  const [graceMinutes, setGraceMinutes] = useState('15')
   const [countdown, setCountdown] = useState('')
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
   const [refreshLabel, setRefreshLabel] = useState('Updated just now')
@@ -55,6 +56,8 @@ export default function SessionDetailPage() {
     const s = await api.getSession(id)
     if (s) {
       setSession(s)
+      setValidityMinutes(String(s.qrValidityMinutes || 20))
+      setGraceMinutes(String(s.gracePeriodMinutes || 15))
       if (s.qrToken) {
         setQrDataUrl(await QRCode.toDataURL(s.qrToken, {
           width: 1024,
@@ -116,8 +119,7 @@ export default function SessionDetailPage() {
     }
     if (realtimeConnected) return
     pollRef.current = setInterval(async () => {
-      setRecords(await api.getAttendanceRecords(id))
-      setLastUpdated(new Date())
+      await refreshData()
     }, 10000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [session?.isActive, id, realtimeConnected, refreshData])
@@ -168,11 +170,12 @@ export default function SessionDetailPage() {
 
   const handleGenerateQr = async () => {
     const mins = parseInt(validityMinutes, 10)
-    if (isNaN(mins) || mins < 1) return
-    await api.generateQrCode(session.id, mins)
+    const grace = parseInt(graceMinutes, 10)
+    if (isNaN(mins) || mins < 1 || isNaN(grace) || grace < 0) return
+    await api.generateQrCode(session.id, mins, grace)
     setShowValidityPrompt(false)
     await refreshData()
-    addNotification('success', 'QR Code Generated', `Session activated with ${mins}min validity`)
+    addNotification('success', 'QR Code Generated', `Session activated with ${mins}min validity and ${grace}min grace`)
   }
 
   const handleEndSession = async () => {
@@ -453,19 +456,37 @@ export default function SessionDetailPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowValidityPrompt(false)}>
           <div className="bg-white dark:bg-[#121215] dark:border dark:border-[rgba(245,168,0,0.15)] p-8 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
             <Timer className="w-10 h-10 text-[#7B1113] dark:text-[#FFDF00] mx-auto mb-3" />
-            <h3 className="text-lg font-heading font-bold text-center dark:text-white mb-2">QR Validity Duration</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-6">
-              How many minutes should the QR code be valid? After it expires, students who scan will be marked Late.
+            <h3 className="text-lg font-heading font-bold text-center dark:text-white mb-2">QR Settings</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 text-center mb-6">
+              Set the duration for this session. After validity expires, scans are marked Late. After the grace period ends, scans are blocked.
             </p>
-            <div className="flex items-center justify-center gap-2 mb-6">
-              <Input
-                type="number"
-                className="w-20 text-center text-2xl font-bold"
-                value={validityMinutes}
-                onChange={(e) => setValidityMinutes(e.target.value)}
-                min={1}
-              />
-              <span className="text-gray-500 dark:text-gray-400">minutes</span>
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">QR Validity</label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    className="w-full text-center font-bold"
+                    value={validityMinutes}
+                    onChange={(e) => setValidityMinutes(e.target.value)}
+                    min={1}
+                  />
+                  <span className="text-sm text-gray-500 dark:text-gray-400">minutes</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Grace Period</label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    className="w-full text-center font-bold"
+                    value={graceMinutes}
+                    onChange={(e) => setGraceMinutes(e.target.value)}
+                    min={0}
+                  />
+                  <span className="text-sm text-gray-500 dark:text-gray-400">minutes</span>
+                </div>
+              </div>
             </div>
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setShowValidityPrompt(false)}>Cancel</Button>

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import { api } from '../../../../../services/api-client'
 import { useTheme } from '../../../../../theme/ThemeContext'
+import MapView from '../../../../../components/MapView'
 import type { Student, Section, Subject } from '@polycheck/shared'
+import * as Location from 'expo-location'
 
 export default function StudentCreateSessionScreen() {
   const { isDark } = useTheme()
@@ -18,8 +20,31 @@ export default function StudentCreateSessionScreen() {
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')
   const [room, setRoom] = useState('')
-  const [gracePeriod, setGracePeriod] = useState(15)
-  const [qrValidity, setQrValidity] = useState(20)
+  const [latitude, setLatitude] = useState(14.8697)
+  const [longitude, setLongitude] = useState(120.9991)
+  const [radius, setRadius] = useState(40)
+  const [recenterSignal, setRecenterSignal] = useState(0)
+  const [locating, setLocating] = useState(false)
+  const [mapFocus, setMapFocus] = useState(false)
+
+  const handleUseMyLocation = async () => {
+    setLocating(true)
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync()
+      if (permission.status !== 'granted') {
+        Alert.alert('Permission Denied', 'Location permission is required to set the attendance location.')
+        return
+      }
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
+      setLatitude(location.coords.latitude)
+      setLongitude(location.coords.longitude)
+      setRecenterSignal((value) => value + 1)
+    } catch {
+      Alert.alert('Location Error', 'Unable to retrieve your location. Make sure GPS is enabled.')
+    } finally {
+      setLocating(false)
+    }
+  }
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -44,16 +69,14 @@ export default function StudentCreateSessionScreen() {
     }
     try {
       await api.createSession({
-      sectionId: section.id,
-      subjectName: subject.name,
-      date,
-      startTime,
-      endTime,
-      room: room || undefined,
-      qrValidityMinutes: qrValidity,
-      gracePeriodMinutes: gracePeriod,
-      geofence: { latitude: 14.5863, longitude: 120.9777, radiusMeters: 40 },
-      teacherId: section.teacherId,
+        sectionId: section.id,
+        subjectName: subject.name,
+        date,
+        startTime,
+        endTime,
+        room: room || undefined,
+        geofence: { latitude, longitude, radiusMeters: radius },
+        teacherId: section.teacherId,
       })
       Alert.alert('Session Created', 'Session created successfully!')
       router.back()
@@ -83,7 +106,7 @@ export default function StudentCreateSessionScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
+      <ScrollView scrollEnabled={!mapFocus} contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
         <View style={{ backgroundColor: surface, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: border }}>
           <Text className="text-sm font-sans-bold mb-4" style={{ color: textPrimary }}>Session Details</Text>
 
@@ -136,30 +159,27 @@ export default function StudentCreateSessionScreen() {
             />
           </View>
 
-          <View className="mb-3">
-            <Text className="text-[10px] font-sans-medium uppercase tracking-[0.5px] mb-1" style={{ color: textSecondary }}>Grace Period: {gracePeriod} min</Text>
-            <View className="flex-row items-center gap-2">
-              <Text className="text-[10px]" style={{ color: textSecondary }}>0</Text>
-              <View style={{ flex: 1, height: 20, justifyContent: 'center' }}>
-                <View style={{ height: 4, backgroundColor: isDark ? '#333' : '#DDD', borderRadius: 2 }}>
-                  <View style={{ width: `${(gracePeriod / 30) * 100}%`, height: 4, backgroundColor: iconColor, borderRadius: 2 }} />
-                </View>
-              </View>
-              <Text className="text-[10px]" style={{ color: textSecondary }}>30</Text>
-            </View>
-          </View>
+        </View>
 
-          <View className="mb-3">
-            <Text className="text-[10px] font-sans-medium uppercase tracking-[0.5px] mb-1" style={{ color: textSecondary }}>QR Validity: {qrValidity} min</Text>
-            <View className="flex-row items-center gap-2">
-              <Text className="text-[10px]" style={{ color: textSecondary }}>5</Text>
-              <View style={{ flex: 1, height: 20, justifyContent: 'center' }}>
-                <View style={{ height: 4, backgroundColor: isDark ? '#333' : '#DDD', borderRadius: 2 }}>
-                  <View style={{ width: `${((qrValidity - 5) / 55) * 100}%`, height: 4, backgroundColor: iconColor, borderRadius: 2 }} />
-                </View>
-              </View>
-              <Text className="text-[10px]" style={{ color: textSecondary }}>60</Text>
-            </View>
+        <View style={{ backgroundColor: surface, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: border }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text className="text-sm font-sans-bold" style={{ color: textPrimary }}>Geofence</Text>
+            <TouchableOpacity onPress={handleUseMyLocation} disabled={locating} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, opacity: locating ? 0.6 : 1 }}>
+              {locating ? <ActivityIndicator size="small" color={iconColor} /> : <MaterialIcons name="my-location" size={16} color={iconColor} />}
+              <Text className="text-xs font-sans-bold" style={{ color: iconColor }}>{locating ? 'Locating...' : 'Use My Location'}</Text>
+            </TouchableOpacity>
+          </View>
+          <Text className="text-xs mb-3" style={{ color: textSecondary }}>Drag the pin or tap the map to set the attendance location.</Text>
+          <View onTouchStart={() => setMapFocus(true)} onTouchEnd={() => setMapFocus(false)} onTouchCancel={() => setMapFocus(false)}>
+            <MapView
+              latitude={latitude}
+              longitude={longitude}
+              radius={radius}
+              interactive
+              recenterSignal={recenterSignal}
+              onLocationChange={(lat, lng) => { setLatitude(lat); setLongitude(lng) }}
+              onRadiusChange={setRadius}
+            />
           </View>
         </View>
 

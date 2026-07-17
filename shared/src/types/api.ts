@@ -43,8 +43,10 @@ export interface CreateSessionInput {
   startTime: string
   endTime: string
   room?: string
-  qrValidityMinutes: number
-  gracePeriodMinutes: number
+  /** Optional — set at QR generation time. Defaults to 20 if omitted. */
+  qrValidityMinutes?: number
+  /** Optional — set at QR generation time. Defaults to 15 if omitted. */
+  gracePeriodMinutes?: number
   geofence: { latitude: number; longitude: number; radiusMeters: number }
   teacherId: string
   isRescheduled?: boolean
@@ -81,8 +83,10 @@ export interface BulkSessionInput {
   startTime: string
   endTime: string
   room?: string
-  qrValidityMinutes: number
-  gracePeriodMinutes: number
+  /** Optional — set at QR generation time. Defaults to 20 if omitted. */
+  qrValidityMinutes?: number
+  /** Optional — set at QR generation time. Defaults to 15 if omitted. */
+  gracePeriodMinutes?: number
   geofence: { latitude: number; longitude: number; radiusMeters: number }
   teacherId: string
 }
@@ -132,7 +136,7 @@ export interface ApiClient {
   getSessions(sectionId?: string): Session[]
   getSession(id: string): Session | undefined
   createSession(data: CreateSessionInput): Session
-  generateQrCode(sessionId: string, validityMinutes: number): Session | undefined
+  generateQrCode(sessionId: string, validityMinutes: number, gracePeriodMinutes?: number): Session | undefined
   endSession(sessionId: string): Session | undefined
 
   getAttendanceRecords(sessionId?: string): AttendanceRecord[]

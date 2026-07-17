@@ -365,6 +365,20 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - **Login routing**: Consolidated `/login/student` and `/login/faculty` under the root login route tree to eliminate Next.js development 404s. Both routes use the real NestJS authentication endpoints.
 - **Deployment API configuration**: Added documented web/mobile API environment variables. Android derives the Expo development host and uses `10.0.2.2` for an emulator fallback; non-development builds require `EXPO_PUBLIC_API_URL`.
 
+### Done (cont.)
+- **QR flow redesign**: Made `qrValidityMinutes` and `gracePeriodMinutes` optional in `CreateSessionInput`/`BulkSessionInput` shared types. Removed QR validity and grace period sliders from all create-session forms (web faculty, web student, mobile faculty, mobile student). Backend applies defaults (20/15) when omitted. `ActivateSessionDto` accepts optional `gracePeriodMinutes`; both online activate and offline `ensureOfflineActivation` store generation-time grace on the session record.
+- **Default campus coordinates**: Changed all default geofence coordinates from PUP Sta. Mesa (14.5863, 120.9777) to PUP Santa Maria, Bulacan (14.8697, 120.9991) across web MapPicker, mobile create screens, and mobile subject-info create-session.
+- **Use My Location button**: Added "Use My Location" button to web MapPicker (`navigator.geolocation`) and mobile faculty create session screen (`expo-location`).
+- **MapView recenterSignal**: Added `recenterSignal` prop to mobile `MapView` component — programmatically pans the map viewport on location acquisition. Two effects: one updates marker on lat/lng/radius change, the other recenters viewport on signal.
+- **Faculty student ID flip card**: Rewrote the faculty student detail flip card on web to use the same CSS 3D flip animation (`perspective-[2000px]`, `[transform-style:preserve-3d]`, `[backface-visibility:hidden]`) as the student dashboard, replacing the previous implementation.
+- **Auto-expiry cron**: Backend `@Cron(CronExpression.EVERY_MINUTE)` marks stale pending attendance records as absent and ends expired sessions automatically.
+- **Web student QR scan**: Built `ScanQrModal` component (camera via `@zxing/browser` + image upload + manual code entry) wired to student dashboard for QR-based attendance check-in with geolocation validation.
+- **Map camera stability**: Removed recurring web `fitBounds`/controlled viewport resets, stopped mobile WebView map reloads on overlay changes, and made explicit location recentering preserve the user's current zoom.
+- **Web/mobile session parity**: Mobile student officers now configure the same geofence and current-location flow as web; offline QR activation uses cached sessions; mobile scanning requests location permission and handles network errors; web fallback polling refreshes full session state.
+- **Mobile QR image upload**: Student scanning now supports selecting a QR image from the photo library, decoding it with Expo Camera, and passing the token through the same live-GPS and server validation flow as camera/manual scans.
+- **Mobile scan UX and geofence diagnostics**: Rebuilt the scan screen as a stable camera viewport with compact fallback controls and modal manual entry. Mobile now requests best-navigation GPS, rejects low-accuracy fixes, and reports measured distance/radius plus emulator setup coordinates when outside the geofence.
+- **Mobile hooks-order fix**: Moved session map pin memoization above the faculty session detail early return to eliminate the `Rendered more hooks than during the previous render` crash.
+
 ### In Progress
 - (none)
 
@@ -420,5 +434,14 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - `frontend/src/app/faculty/sessions/[id]/page.tsx` — new session activation page (QR gen, student roster, end session)
 - `frontend/src/app/faculty/disputes/page.tsx` — new dispute review page
 - `frontend/src/components/layout/sidebar.tsx` — added "Disputes" nav item with `Gavel` icon
-- `frontend/src/app/faculty/sessions/create/page.tsx` — `qrValidity` slider (5–60 min) replaces `tokenWindow`
+- `frontend/src/app/faculty/sessions/create/page.tsx` — removed grace/validity sliders, Santa Maria defaults
 - `frontend/src/app/faculty/page.tsx` — disputes count now uses `api.getDisputedRecords().length`
+- `frontend/src/components/MapPicker.tsx` — Santa Maria default, "Use My Location" button
+- `frontend/src/components/ScanQrModal.tsx` — full student QR scan (camera/upload/manual)
+- `frontend/src/app/faculty/students/[id]/page.tsx` — 3D ID flip card rewrite
+- `android/app/(faculty)/sessions/create.tsx` — removed sliders, Santa Maria defaults, use-my-location
+- `android/app/(faculty)/sessions/[id].tsx` — expanded QR prompt, state prefill with grace/validity
+- `android/components/MapView.tsx` — recenterSignal prop, marker/viewport effects
+- `backend/src/sessions/dto/create-session.dto.ts` — DTO field optionality, ActivateSessionDto grace param
+- `backend/src/sessions/sessions.service.ts` — defaults on create, grace storage at activate, auto-expiry cron
+- `backend/src/attendance/attendance.service.ts` — ensureOfflineActivation relaxed grace check

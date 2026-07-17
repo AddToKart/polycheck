@@ -51,11 +51,13 @@ export default function GeofenceCircle({
     }),
     [latitude, longitude, radiusMeters],
   )
-
   useEffect(() => {
     if (!isLoaded || !map) return
 
-    map.addSource(sourceId, { type: 'geojson', data: geojson })
+    map.addSource(sourceId, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    })
 
     map.addLayer({
       id: fillLayerId,
@@ -89,7 +91,7 @@ export default function GeofenceCircle({
         /* ignore */
       }
     }
-  }, [fillLayerId, geojson, isLoaded, map, outlineLayerId, sourceId])
+  }, [fillLayerId, isLoaded, map, outlineLayerId, sourceId])
 
   useEffect(() => {
     if (!isLoaded || !map) return

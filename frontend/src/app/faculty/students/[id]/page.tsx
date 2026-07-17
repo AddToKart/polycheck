@@ -140,92 +140,94 @@ export default function StudentDetailPage() {
           </div>
 
           {/* Flippable Virtual ID Card */}
-          <div className="mb-6">
-            <button
+          <div className="mb-8 flex flex-col items-center">
+            {/* Flip Card Container */}
+            <div
+              className="relative w-full max-w-xl aspect-[1.586/1] cursor-pointer group perspective-[2000px]"
               onClick={() => setFlipped(!flipped)}
-              className="w-full text-left cursor-pointer"
-              type="button"
             >
-              <Card className={`overflow-hidden border-2 transition-all duration-300 ${flipped ? 'border-maroon-dark/60 dark:border-golden/40' : 'border-maroon dark:border-golden'}`}>
-                {/* PUP Header */}
-                <div className="bg-maroon px-5 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-golden tracking-wider">POLYTECHNIC UNIVERSITY</p>
-                    <p className="text-[10px] font-medium text-white/80 tracking-[3px] mt-0.5">OF THE PHILIPPINES</p>
+              <div className={`w-full h-full relative transition-transform duration-700 [transform-style:preserve-3d] ${flipped ? '[transform:rotateY(180deg)]' : ''}`}>
+                
+                {/* Front Face */}
+                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] bg-white border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
+                  {/* PUP Header */}
+                  <div className="bg-maroon px-5 py-3 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800">
+                    <div>
+                      <p className="text-xs font-bold text-golden tracking-wider">POLYTECHNIC UNIVERSITY</p>
+                      <p className="text-[10px] font-medium text-white/80 tracking-[3px] mt-0.5">OF THE PHILIPPINES</p>
+                    </div>
+                    <div className="w-9 h-9 bg-white/15 rounded-full flex items-center justify-center">
+                      <School className="w-5 h-5 text-white" />
+                    </div>
                   </div>
-                  <div className="w-9 h-9 bg-white/15 rounded-full flex items-center justify-center">
-                    <School className="w-5 h-5 text-white" />
-                  </div>
-                </div>
 
-                {!flipped ? (
-                  /* FRONT FACE */
-                  <CardContent className="p-6 flex gap-6">
-                    <div className="w-24 h-32 bg-maroon dark:bg-golden flex items-center justify-center shrink-0">
+                  {/* Body */}
+                  <div className="flex-1 flex p-5 items-center gap-6 relative bg-[#fdfbf7] dark:bg-[#1a1a1a]">
+                    <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]" style={{ backgroundImage: 'url(/pup-logo.png)', backgroundPosition: 'center', backgroundSize: 'contain', backgroundRepeat: 'no-repeat' }}></div>
+                    <div className="w-24 h-32 bg-maroon dark:bg-golden flex items-center justify-center shrink-0 border-2 border-zinc-300 dark:border-zinc-800 shadow-md relative z-10">
                       <span className="text-2xl font-heading font-bold text-white dark:text-maroon-dark">
                         {student.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                       </span>
                     </div>
-                    <div className="flex-1 flex flex-col justify-center">
-                      <h2 className="text-lg font-heading font-bold text-zinc-800 dark:text-white">{student.fullName}</h2>
-                      <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">{student.studentId}</p>
+                    <div className="flex-1 flex flex-col justify-center relative z-10">
+                      <h2 className="text-lg font-heading font-bold text-zinc-900 dark:text-white leading-tight uppercase">{student.fullName}</h2>
+                      <p className="text-sm font-mono font-bold text-maroon dark:text-golden mt-1">{student.studentId}</p>
                       <hr className="my-3 border-zinc-200 dark:border-zinc-700" />
-                      <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                      <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Program</p>
-                          <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">{student.program}</p>
+                          <p className="text-[8px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Program</p>
+                          <p className="text-xs font-bold text-zinc-900 dark:text-white">{student.program}</p>
                         </div>
                         <div>
-                          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Year Level</p>
-                          <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">{student.yearLevel}</p>
+                          <p className="text-[8px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Year Level</p>
+                          <p className="text-xs font-bold text-zinc-900 dark:text-white">Year {student.yearLevel}</p>
                         </div>
                         <div>
-                          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Student No.</p>
-                          <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">{student.studentId}</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Validity</p>
-                          <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">2026-2027</p>
+                          <p className="text-[8px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Validity</p>
+                          <p className="text-xs font-bold text-zinc-900 dark:text-white">2026-2027</p>
                         </div>
                       </div>
                     </div>
-                  </CardContent>
-                ) : (
-                  /* BACK FACE */
-                  <CardContent className="p-6 space-y-5">
-                    {/* Magnetic Stripe */}
-                    <div className="h-8 bg-zinc-800 dark:bg-black rounded" />
-
-                    {/* Conditions of Use */}
-                    <div className="space-y-1.5">
-                      <p className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider">Conditions of Use</p>
-                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                        This ID is the property of the Polytechnic University of the Philippines. It is non-transferable and must be surrendered to the OSA upon request. Lost IDs must be reported immediately. Present this ID upon entry to university premises and when accessing university services.
-                      </p>
-                    </div>
-
-                    {/* Emergency Contact */}
-                    <div className="space-y-1">
-                      <p className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider">In case of emergency, contact:</p>
-                      <div className="h-5 border-b border-dashed border-zinc-300 dark:border-zinc-600" />
-                      <div className="h-5 border-b border-dashed border-zinc-300 dark:border-zinc-600" />
-                    </div>
-
-                    {/* QR Code Placeholder */}
-                    <div className="flex justify-center">
-                      <div className="w-20 h-20 border-2 border-dashed border-zinc-300 dark:border-zinc-600 flex items-center justify-center">
-                        <QrCode className="w-8 h-8 text-zinc-300 dark:text-zinc-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                )}
-
-                {/* Flip hint */}
-                <div className="px-6 pb-3 text-center">
-                  <span className="text-[10px] text-zinc-400 dark:text-zinc-500">Tap card to flip</span>
+                  </div>
                 </div>
-              </Card>
-            </button>
+
+                {/* Back Face */}
+                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] bg-white border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
+                  {/* Magnetic Stripe */}
+                  <div className="bg-zinc-950 h-10 w-full mt-5"></div>
+                  
+                  {/* Content */}
+                  <div className="flex-1 p-5 flex text-zinc-950 dark:text-zinc-50 gap-4 bg-[#fdfbf7] dark:bg-[#1a1a1a]">
+                    <div className="w-2/3 flex flex-col justify-between">
+                      <div>
+                        <p className="text-[10px] font-bold text-maroon dark:text-golden uppercase tracking-wider mb-1">Conditions of Use</p>
+                        <p className="text-[8px] text-zinc-600 dark:text-zinc-400 leading-relaxed text-justify">
+                          This ID card is non-transferable and must be presented upon entry to the university premises. The finder of this lost card is requested to surrender it to the Office of Student Affairs.
+                        </p>
+                      </div>
+                      <div className="mt-auto">
+                        <p className="text-[8px] uppercase tracking-widest text-zinc-500 font-bold mb-1">In case of emergency, contact:</p>
+                        <div className="border-b border-zinc-300 dark:border-zinc-700 h-5 mt-0.5"></div>
+                        <div className="border-b border-zinc-300 dark:border-zinc-700 h-5 mt-1"></div>
+                      </div>
+                    </div>
+
+                    <div className="w-1/3 flex flex-col items-center justify-center border-l-2 border-dashed border-zinc-300 dark:border-zinc-700 pl-4">
+                      <div className="w-full aspect-square bg-white border border-zinc-300 dark:border-zinc-700 flex items-center justify-center p-1.5 shadow-sm">
+                        <div className="grid grid-cols-5 grid-rows-5 w-full h-full gap-[1px]" aria-hidden="true">
+                          {Array.from({ length: 25 }).map((_, i) => (
+                            <div key={i} className={`bg-zinc-950 ${(i * 17 + 5) % 3 === 0 ? 'opacity-100' : 'opacity-0'}`}></div>
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-[7px] font-mono mt-2 text-zinc-400 dark:text-zinc-500 text-center tracking-widest uppercase">SCAN TO VERIFY</p>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+            <p className="text-center text-xs text-zinc-500 font-bold uppercase tracking-widest mt-4 animate-pulse">Click card to flip</p>
           </div>
 
           {/* Remove from Subject */}

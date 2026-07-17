@@ -1,8 +1,7 @@
 'use client'
 
-import { useEffect, useId, useRef, useState } from 'react'
-import MapLibreGL from 'maplibre-gl'
-import { Map, useMap, MapMarker, MarkerContent, MarkerPopup, type MapRef } from '@/components/ui/map'
+import { useEffect, useId } from 'react'
+import { Map, useMap, MapMarker, MarkerContent, MarkerPopup } from '@/components/ui/map'
 import GeofenceCircle from '@/components/GeofenceCircle'
 import { pupSantaMaria, type CampusConfig } from '@polycheck/shared/map'
 import type { Session, AttendanceRecord, AttendanceStatus } from '@polycheck/shared'
@@ -157,36 +156,9 @@ interface CampusMapProps {
 }
 
 export default function CampusMap({ session, records, isActive, refreshLabel }: CampusMapProps) {
-  const mapRef = useRef<MapRef>(null)
-  const [mapReady, setMapReady] = useState(false)
-  const initialViewport = {
-    center: [session.geofence.longitude, session.geofence.latitude] as [number, number],
-    zoom: 17,
-    bearing: 0,
-    pitch: 0,
-  }
-
   const recordsWithCoords = records.filter(
     (r) => r.coordinates && (r.coordinates.latitude !== 0 || r.coordinates.longitude !== 0)
   )
-
-  useEffect(() => {
-    if (!mapRef.current || !mapReady) return
-    if (!session.geofence) return
-
-    const bounds = new MapLibreGL.LngLatBounds()
-    bounds.extend([session.geofence.longitude, session.geofence.latitude])
-
-    for (const r of recordsWithCoords) {
-      bounds.extend([r.coordinates.longitude, r.coordinates.latitude])
-    }
-
-    try {
-      mapRef.current.fitBounds(bounds, { padding: 60, maxZoom: 18, duration: 800 })
-    } catch {
-      /* ignore if bounds are invalid */
-    }
-  }, [mapReady, recordsWithCoords, session.geofence])
 
   return (
     <div className="space-y-3">
@@ -202,11 +174,8 @@ export default function CampusMap({ session, records, isActive, refreshLabel }: 
 
       <div className="h-[420px] rounded-lg overflow-hidden border border-gray-200 dark:border-[rgba(245,168,0,0.15)]">
         <Map
-          ref={mapRef}
-          viewport={initialViewport}
-          onViewportChange={() => {
-            if (!mapReady) setMapReady(true)
-          }}
+          center={[session.geofence.longitude, session.geofence.latitude]}
+          zoom={17}
           className="w-full h-full"
         >
           <CampusBuildingsLayer campus={pupSantaMaria} />
