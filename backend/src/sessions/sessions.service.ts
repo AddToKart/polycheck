@@ -3,8 +3,10 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common'
+import { Cron, CronExpression } from '@nestjs/schedule'
 import { verifyQRToken } from '@polycheck/shared'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/strategies/jwt.strategy'
@@ -212,6 +214,58 @@ export class SessionsService {
     this.realtime.emitSessionState(ended, 'ended')
     await this.redis.delete(`active-session:${ended.id}`)
     return this.present(ended, await this.teacherPublicKey(session.teacherId), true)
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async autoEndExpiredSessions() {
+    try {
+      const activeSessions = await this.prisma.session.findMany({
+        where: {
+          isActive: true,
+          qrTokenExpiresAt: { not: null },
+        },
+      })
+
+      const now = new Date()
+      const expired = activeSessions.filter((session) => {
+        if (!session.qrTokenExpiresAt) return false
+        const graceEnd = new Date(
+          session.qrTokenExpiresAt.getTime() + session.gracePeriodMinutes * 60 * 1000,
+        )
+        return now > graceEnd
+      })
+
+      for (const session of expired) {
+        const ended = await this.prisma.$transaction(async (tx) => {
+          await tx.attendanceRecord.updateMany({
+            where: { sessionId: session.id, status: 'pending' },
+            data: { status: 'absent', timestamp: now, manuallySet: false },
+          })
+
+          const updated = await tx.session.update({
+            where: { id: session.id },
+            data: {
+              isActive: false,
+              endedAt: now,
+              qrToken: null,
+              qrTokenExpiresAt: null,
+              qrGeneratedAt: null,
+            },
+          })
+
+          return updated
+        })
+
+        this.realtime.emitSessionState(ended, 'ended')
+        await this.redis.delete(`active-session:${ended.id}`)
+        Logger.log(`Automatically ended expired session ${session.id} (${session.subjectName})`, 'SessionsService')
+      }
+    } catch (error) {
+      Logger.error(
+        `Failed to auto-end expired sessions: ${error instanceof Error ? error.message : 'unknown'}`,
+        'SessionsService',
+      )
+    }
   }
 
   private async sessionScope(user: RequestUser, sectionId?: string) {
