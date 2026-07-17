@@ -443,8 +443,8 @@ export default function FacultySchedulePage() {
 
   useEffect(() => {
     const cu = api.getCurrentUser()
-    if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
-      router.push('/')
+    if (!cu || cu.role !== 'teacher') {
+      router.push(cu?.role === 'super_admin' ? '/faculty' : '/')
       return
     }
     setUser(cu)

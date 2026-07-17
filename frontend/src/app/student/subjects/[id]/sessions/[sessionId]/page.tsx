@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Camera, Trash2, Upload, Clock, MapPin, Timer, Circle } from 'lucide-react'
+import { ArrowLeft, Camera, Upload } from 'lucide-react'
 import { api } from '@/lib/api-client'
-import type { User, Student, Session, Section, SectionRole, ProofOfClass, Subject } from '@polycheck/shared'
+import type { Student, Session, Section, ProofOfClass } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -56,11 +56,11 @@ export default function StudentSessionDetailPage() {
   }, [sessionId, sectionId])
 
   const handleUploadProof = async () => {
-    if (!user || !session) return
+    if (!user || !session || !uploadedPhoto) return
     await api.uploadProofOfClass({
       sectionId: session.sectionId,
       sessionId: session.id,
-      photoData: uploadedPhoto ?? `proof-${Date.now()}`,
+      photoData: uploadedPhoto,
       description: photoDescription || undefined,
       uploadedBy: user.id,
       uploadedByStudentName: user.fullName,
@@ -72,10 +72,20 @@ export default function StudentSessionDetailPage() {
     setUploadedPhoto(null)
   }
 
-  const handleDeleteProof = async (proofId: string) => {
-    await api.deleteProofOfClass(proofId)
-    const updatedProofs = await api.getProofsOfClass(sessionId)
-    setProofs(updatedProofs)
+  const handlePhotoSelect = (file?: File) => {
+    if (!file) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      window.alert('Choose a JPEG, PNG, or WebP image.')
+      return
+    }
+    if (file.size > 5_000_000) {
+      window.alert('Proof images must be 5 MB or smaller.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => setUploadedPhoto(typeof reader.result === 'string' ? reader.result : null)
+    reader.onerror = () => window.alert('The selected image could not be read.')
+    reader.readAsDataURL(file)
   }
 
   const handleLogout = () => { api.logout(); router.push('/') }
@@ -145,9 +155,13 @@ export default function StudentSessionDetailPage() {
                   {showUpload && (
                     <div className="mt-3 p-4 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
                       <div className="mb-3">
-                        <div className="w-full aspect-video bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center border-2 border-dashed border-zinc-300 dark:border-zinc-600 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors" onClick={() => {
-                          setUploadedPhoto(`proof-${Date.now()}`)
-                        }}>
+                        <label className="relative w-full aspect-video bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center border-2 border-dashed border-zinc-300 dark:border-zinc-600 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="sr-only"
+                            onChange={(event) => handlePhotoSelect(event.target.files?.[0])}
+                          />
                           {uploadedPhoto ? (
                             <div className="text-center">
                               <Camera className="w-8 h-8 text-green-500 mx-auto mb-1" />
@@ -159,7 +173,7 @@ export default function StudentSessionDetailPage() {
                               <p className="text-xs text-zinc-500">Tap to capture / upload photo</p>
                             </div>
                           )}
-                        </div>
+                        </label>
                       </div>
                       <Input
                         placeholder="Add a description (optional)"
@@ -190,11 +204,6 @@ export default function StudentSessionDetailPage() {
                       <p className="text-xs font-medium text-foreground truncate">{poc.uploadedByStudentName}</p>
                       <p className="text-[10px] text-zinc-500">{new Date(poc.uploadedAt).toLocaleString()}</p>
                       {poc.description && <p className="text-[10px] text-zinc-400 mt-1 italic">&quot;{poc.description}&quot;</p>}
-                      {isQac && user?.id === poc.uploadedBy && (
-                        <button className="mt-2 text-[10px] text-red-500 hover:text-red-700 flex items-center gap-1" onClick={() => handleDeleteProof(poc.id)}>
-                          <Trash2 className="w-3 h-3" /> Delete
-                        </button>
-                      )}
                     </div>
                   ))}
                 </div>

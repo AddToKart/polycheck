@@ -10,10 +10,11 @@ import type { RequestUser } from '../auth/strategies/jwt.strategy'
 import type { CreateSectionDto } from './dto/create-section.dto'
 import type { UpdateSectionDto } from './dto/update-section.dto'
 import { DayOfWeek, type Prisma } from '@prisma/client'
+import { randomInt } from 'crypto'
 
 const sectionInclude = {
   subject: { select: { id: true, name: true, code: true } },
-  teacher: { select: { id: true, fullName: true } },
+  teacher: { select: { id: true, fullName: true, department: true } },
   schedule: true,
 } as const
 
@@ -26,11 +27,14 @@ export class SectionsService {
   async findAll(user: RequestUser, subjectId?: string) {
     if (user.role === 'super_admin') {
       const sections = await this.prisma.section.findMany({
-        where: subjectId ? { subjectId } : undefined,
+        where: {
+          ...(subjectId ? { subjectId } : {}),
+          ...this.superAdminSectionScope(user),
+        },
         include: sectionInclude,
         orderBy: [{ semester: 'desc' }, { section: 'asc' }],
       })
-      return sections.map((section) => this.presentSection(section))
+      return sections.map((section) => this.presentSection(section, false))
     }
 
     if (user.role === 'teacher') {
@@ -64,6 +68,17 @@ export class SectionsService {
     })
     if (!section) throw new NotFoundException('Section not found')
 
+    if (user.role === 'teacher' && section.teacherId !== user.id) {
+      throw new ForbiddenException('You can only view your own sections')
+    }
+    if (
+      user.role === 'super_admin' &&
+      user.scope !== 'institution' &&
+      (!user.department || section.teacher.department !== user.department)
+    ) {
+      throw new ForbiddenException('This section is outside your administrative scope')
+    }
+
     // Students can only view sections they're enrolled in
     if (user.role === 'student') {
       const enrollment = await this.prisma.enrollment.findUnique({
@@ -72,15 +87,17 @@ export class SectionsService {
       if (!enrollment) throw new ForbiddenException('You are not enrolled in this section')
     }
 
-    return this.presentSection(section, user.role !== 'student')
+    return this.presentSection(section, user.role === 'teacher')
   }
 
   async create(dto: CreateSectionDto, user: RequestUser) {
+    if (user.role !== 'teacher') throw new ForbiddenException('Only teachers can create sections')
     // Verify subject exists
     const subject = await this.prisma.subject.findUnique({ where: { id: dto.subjectId } })
     if (!subject) throw new BadRequestException('Subject not found')
 
     const { schedule, subjectId, section, room, semester } = dto
+    this.assertScheduleRanges(schedule)
 
     const created = await this.prisma.section.create({
       data: {
@@ -108,30 +125,27 @@ export class SectionsService {
   async update(id: string, dto: UpdateSectionDto, user: RequestUser) {
     const section = await this.findOne(id, user)
 
-    if (user.role === 'teacher' && section.teacherId !== user.id) {
+    if (user.role !== 'teacher' || section.teacherId !== user.id) {
       throw new ForbiddenException('You can only update your own sections')
     }
 
     const { schedule, ...sectionData } = dto
+    if (schedule) this.assertScheduleRanges(schedule)
 
-    if (schedule) {
-      // Delete existing schedule and recreate
-      await this.prisma.scheduleDay.deleteMany({ where: { sectionId: id } })
-      await this.prisma.scheduleDay.createMany({
-        data: schedule.map((s) => ({
-          sectionId: id,
-          day: s.day as DayOfWeek,
-          startTime: s.startTime!,
-          endTime: s.endTime!,
-          room: s.room,
-        })),
-      })
-    }
-
-    const updated = await this.prisma.section.update({
-      where: { id },
-      data: sectionData,
-      include: sectionInclude,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (schedule) {
+        await tx.scheduleDay.deleteMany({ where: { sectionId: id } })
+        await tx.scheduleDay.createMany({
+          data: schedule.map((s) => ({
+            sectionId: id,
+            day: s.day as DayOfWeek,
+            startTime: s.startTime!,
+            endTime: s.endTime!,
+            room: s.room,
+          })),
+        })
+      }
+      return tx.section.update({ where: { id }, data: sectionData, include: sectionInclude })
     })
     return this.presentSection(updated)
   }
@@ -139,7 +153,7 @@ export class SectionsService {
   async remove(id: string, user: RequestUser) {
     const section = await this.findOne(id, user)
 
-    if (user.role === 'teacher' && section.teacherId !== user.id) {
+    if (user.role !== 'teacher' || section.teacherId !== user.id) {
       throw new ForbiddenException('You can only delete your own sections')
     }
 
@@ -272,13 +286,10 @@ export class SectionsService {
     })
     if (!enrollment) throw new NotFoundException('Student is not enrolled in this section')
 
-    await this.prisma.enrollment.delete({
-      where: { studentId_sectionId: { studentId, sectionId } },
-    })
-
-    await this.prisma.section.update({
-      where: { id: sectionId },
-      data: { studentCount: Math.max(0, section.studentCount - 1) },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.enrollment.delete({ where: { studentId_sectionId: { studentId, sectionId } } })
+      const studentCount = await tx.enrollment.count({ where: { sectionId } })
+      await tx.section.update({ where: { id: sectionId }, data: { studentCount } })
     })
 
     return { message: 'Student removed from section' }
@@ -335,7 +346,7 @@ export class SectionsService {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
     let code = ''
     for (let i = 0; i < 7; i++) {
-      code += chars[Math.floor(Math.random() * chars.length)]
+      code += chars[randomInt(chars.length)]
     }
     return code
   }
@@ -348,7 +359,8 @@ export class SectionsService {
       if (existing) throw new ConflictException('Already enrolled in this section')
 
       const enrollment = await tx.enrollment.create({ data: { studentId, sectionId } })
-      await tx.section.update({ where: { id: sectionId }, data: { studentCount: { increment: 1 } } })
+      const studentCount = await tx.enrollment.count({ where: { sectionId } })
+      await tx.section.update({ where: { id: sectionId }, data: { studentCount } })
       return enrollment
     })
   }
@@ -372,6 +384,17 @@ export class SectionsService {
       studentCount: section.studentCount,
       createdAt: section.createdAt,
       updatedAt: section.updatedAt,
+    }
+  }
+
+  private superAdminSectionScope(user: RequestUser) {
+    if (user.scope === 'institution') return {}
+    return user.department ? { teacher: { department: user.department } } : { id: { in: [] as string[] } }
+  }
+
+  private assertScheduleRanges(schedule: Array<{ startTime?: string; endTime?: string }>) {
+    if (schedule.some((item) => !item.startTime || !item.endTime || item.endTime <= item.startTime)) {
+      throw new BadRequestException('Every schedule endTime must be after startTime')
     }
   }
 }

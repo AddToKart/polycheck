@@ -9,14 +9,22 @@ const config: Config = {
   transform: {
     '^.+\\.ts$': ['ts-jest', { tsconfig: { strict: true, module: 'commonjs', target: 'ES2021', experimentalDecorators: true, emitDecoratorMetadata: true, esModuleInterop: true } }],
   },
-  collectCoverageFrom: ['src/**/*.ts', '!src/main.ts', '!src/**/*.module.ts', '!src/**/*.dto.ts', '!src/common/decorators/**', '!src/common/types/**'],
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/main.ts',
+    '!src/**/*.module.ts',
+    '!src/**/*.dto.ts',
+    '!src/**/*.controller.ts',
+    '!src/common/decorators/**',
+    '!src/common/types/**',
+  ],
   coverageDirectory: './coverage',
   coverageThreshold: {
     global: {
-      branches: 35,
-      functions: 25,
-      lines: 30,
-      statements: 30,
+      branches: 45,
+      functions: 60,
+      lines: 60,
+      statements: 60,
     },
   },
   moduleNameMapper: {

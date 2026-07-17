@@ -8,7 +8,7 @@ import { api } from '@/lib/api-client'
 import type { User, Session, Subject, Section } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 
 function SessionsContent() {
@@ -17,7 +17,6 @@ function SessionsContent() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [allSubjects, setAllSubjects] = useState<Subject[]>([])
   const [allSections, setAllSections] = useState<Section[]>([])
-  const [activating, setActivating] = useState('')
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -84,12 +83,14 @@ function SessionsContent() {
                 {sessions.length} session{sessions.length !== 1 ? 's' : ''}
               </p>
             </div>
-            <Button asChild>
-              <Link href="/faculty/sessions/create">
-                <Plus className="w-4 h-4" />
-                New Session
-              </Link>
-            </Button>
+            {user.role === 'teacher' && (
+              <Button asChild>
+                <Link href="/faculty/sessions/create">
+                  <Plus className="w-4 h-4" />
+                  New Session
+                </Link>
+              </Button>
+            )}
           </div>
 
           {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([subjectName, group]) => {
@@ -155,9 +156,8 @@ function SessionsContent() {
                                   e.stopPropagation()
                                   handleActivate(session.id)
                                 }}
-                                disabled={activating === session.id}
                               >
-                                {activating === session.id ? '...' : 'Activate'}
+                                Activate
                               </Button>
                             )}
                           </td>

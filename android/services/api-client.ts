@@ -1,8 +1,8 @@
 import { Platform } from 'react-native'
-import { isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type DisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput } from '@polycheck/shared'
+import { isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult } from '@polycheck/shared'
 import { API_BASE } from './api-config'
 import { getOrCreateTeacherSigningKey } from './signing-key'
-import { cacheSections, cacheSessions, drainOfflineQueue, enqueueOfflineOperation, getCachedSection, getCachedSections, getCachedSession, getCachedSessions, initializeOfflineStore, type OfflineOperationKind } from './offline-store'
+import { cacheSections, cacheSessions, drainOfflineQueue, enqueueOfflineOperation, getCachedSection, getCachedSections, getCachedSession, getCachedSessions, getServerClockOffset, initializeOfflineStore, setServerClockOffset, type OfflineOperationKind } from './offline-store'
 
 const STORAGE_KEY = 'polycheck-user'
 const TOKEN_KEY = 'polycheck-token'
@@ -32,13 +32,16 @@ async function saveUserToStore(user: User | null) {
 }
 
 async function getTokenFromStore(): Promise<string | null> {
+  if (tokenCache !== undefined) return tokenCache
   if (!SecureStoreModule) return null
   try {
-    return await SecureStoreModule.getItemAsync(TOKEN_KEY)
+    tokenCache = await SecureStoreModule.getItemAsync(TOKEN_KEY)
+    return tokenCache
   } catch { return null }
 }
 
 async function setTokenInStore(token: string | null) {
+  tokenCache = token
   if (!SecureStoreModule) return
   try {
     if (token) await SecureStoreModule.setItemAsync(TOKEN_KEY, token)
@@ -47,6 +50,7 @@ async function setTokenInStore(token: string | null) {
 }
 
 let currentUser: User | null = null
+let tokenCache: string | null | undefined
 
 class ApiRequestError extends Error {
   constructor(message: string, readonly status: number) {
@@ -173,6 +177,10 @@ export const api = {
   getCurrentUser(): User | null {
     return currentUser
   },
+  async getTrustedTimestamp(): Promise<string> {
+    const offset = await getServerClockOffset()
+    return new Date(Date.now() + (offset ?? 0)).toISOString()
+  },
 
   // ── Subjects ──
   getSubjects(): Promise<Subject[]> { return get('/subjects') },
@@ -260,13 +268,14 @@ export const api = {
     const [session, key] = await Promise.all([get<Session>(`/sessions/${sessionId}`), getOrCreateTeacherSigningKey()])
     const user = this.getCurrentUser()
     if (!user || user.role !== 'teacher') throw new Error('A teacher account is required to sign QR tokens')
+    const issuedAt = new Date(await this.getTrustedTimestamp()).getTime()
     const token = signQRToken({
       version: 1,
       sessionId: session.id,
       sectionId: session.sectionId,
       teacherId: user.id,
       teacherName: user.fullName,
-      issuedAt: Date.now(),
+      issuedAt,
       validityMinutes,
       gracePeriodMinutes: session.gracePeriodMinutes,
     }, key.secretKey)
@@ -281,8 +290,8 @@ export const api = {
         ...session,
         isActive: true,
         qrToken: token,
-        qrGeneratedAt: new Date().toISOString(),
-        qrTokenExpiresAt: new Date(Date.now() + validityMinutes * 60_000).toISOString(),
+        qrGeneratedAt: new Date(issuedAt).toISOString(),
+        qrTokenExpiresAt: new Date(issuedAt + validityMinutes * 60_000).toISOString(),
         qrValidityMinutes: validityMinutes,
         teacherPublicKey: key.publicKey,
       }
@@ -299,8 +308,9 @@ export const api = {
     } catch (error) {
       if (!isNetworkError(error)) throw error
       const session = await getCachedSession(sessionId)
+      const clockOffset = await getServerClockOffset()
       if (!session) throw new Error('Session is not available offline')
-      const ended = { ...session, isActive: false, endedAt: new Date().toISOString() }
+      const ended = { ...session, isActive: false, endedAt: new Date(Date.now() + (clockOffset ?? 0)).toISOString() }
       await enqueueOfflineOperation('session_end', { sessionId })
       await cacheSessions([ended])
       return ended
@@ -330,9 +340,8 @@ export const api = {
     return patch(`/attendance/${recordId}/status`, { status })
   },
   async submitAttendance(sessionId: string, sectionId: string, _studentId: string, coordinates: { latitude: number; longitude: number }, deviceId: string): Promise<SubmitAttendanceResult> {
-    const session = await get<Session>(`/sessions/${sessionId}`)
-    if (!session.qrToken) throw new Error('Session has no active QR token')
-    return post('/attendance/submit', { sessionId, sectionId, latitude: coordinates.latitude, longitude: coordinates.longitude, deviceId, qrToken: session.qrToken, scannedAt: new Date().toISOString() })
+    void sessionId; void sectionId; void coordinates; void deviceId
+    throw new Error('Attendance requires a freshly scanned, signed QR token')
   },
   async submitScan(sessionId: string, studentId: string, studentName: string, lat: number, lon: number, deviceId: string, qrToken?: string, scannedAt?: string): Promise<AttendanceRecord | { error: string }> {
     const payload = { sessionId, lat, lon, deviceId, qrToken, scannedAt: scannedAt ?? new Date().toISOString() }
@@ -343,8 +352,14 @@ export const api = {
       if (!qrToken) return { error: 'QR token is required' }
       const tokenPayload = verifyQRToken(qrToken, (await getCachedSession(sessionId))?.teacherPublicKey ?? '')
       if (!tokenPayload) return { error: 'QR token signature is invalid' }
-      await enqueueOfflineOperation('attendance_scan', payload)
       const timestamp = payload.scannedAt
+      const capturedAt = new Date(timestamp).getTime()
+      const validityEnd = tokenPayload.issuedAt + tokenPayload.validityMinutes * 60_000
+      const graceEnd = validityEnd + tokenPayload.gracePeriodMinutes * 60_000
+      if (!Number.isFinite(capturedAt) || capturedAt < tokenPayload.issuedAt - 30_000 || capturedAt > graceEnd) {
+        return { error: 'The QR attendance window has expired' }
+      }
+      await enqueueOfflineOperation('attendance_scan', payload)
       return {
         id: `offline:${sessionId}:${studentId}`,
         sessionId,
@@ -352,7 +367,7 @@ export const api = {
         studentId,
         studentName,
         timestamp,
-        status: new Date(timestamp).getTime() <= tokenPayload.issuedAt + tokenPayload.validityMinutes * 60_000 ? 'present' : 'late',
+        status: capturedAt <= validityEnd ? 'present' : 'late',
         coordinates: { latitude: lat, longitude: lon },
         deviceId,
         tokenSnapshot: qrToken,
@@ -366,11 +381,12 @@ export const api = {
     } catch (error) {
       if (!isNetworkError(error)) throw error
       const session = await getCachedSession(sessionId)
+      const clockOffset = await getServerClockOffset()
       const queueDenied = async (result: SubmitAttendanceResult) => {
         await enqueueOfflineOperation('scan_attempt', { sessionId, lat, lon, deviceId: 'device-mobile', qrToken, scannedAt })
         return result
       }
-      if (!session || !qrToken || !session.teacherPublicKey) return queueDenied({ success: false, status: 'absent', reason: 'not_synced', message: 'Session security data is not available offline. Sync before class.' })
+      if (!session || !qrToken || !session.teacherPublicKey || clockOffset === null) return queueDenied({ success: false, status: 'absent', reason: 'not_synced', message: 'Session security time and class data are not available offline. Sync before class.' })
       const payload = verifyQRToken(qrToken, session.teacherPublicKey)
       if (!payload || payload.sessionId !== session.id || payload.sectionId !== session.sectionId || payload.teacherId !== session.teacherId) {
         return queueDenied({ success: false, status: 'disputed', reason: 'invalid_signature', message: 'QR token signature is invalid' })
@@ -380,7 +396,12 @@ export const api = {
       }
       const capturedAt = new Date(scannedAt ?? Date.now()).getTime()
       if (session.endedAt && capturedAt > new Date(session.endedAt).getTime()) return queueDenied({ success: false, status: 'absent', reason: 'session_inactive', message: 'Session was not active at scan time' })
-      const status = capturedAt <= payload.issuedAt + payload.validityMinutes * 60_000 ? 'present' : 'late'
+      const validityEnd = payload.issuedAt + payload.validityMinutes * 60_000
+      const graceEnd = validityEnd + payload.gracePeriodMinutes * 60_000
+      if (!Number.isFinite(capturedAt) || capturedAt < payload.issuedAt - 30_000 || capturedAt > graceEnd) {
+        return queueDenied({ success: false, status: 'absent', reason: 'qr_expired', message: 'The QR attendance window has expired' })
+      }
+      const status = capturedAt <= validityEnd ? 'present' : 'late'
       return { success: true, status, message: status === 'present' ? 'Check-in saved offline and queued for sync.' : 'Late check-in saved offline and queued for sync.' }
     }
   },
@@ -399,7 +420,7 @@ export const api = {
   resolveDispute(recordId: string, resolution: 'accept' | 'reject' | 'override', newStatus?: AttendanceStatus): Promise<AttendanceRecord> {
     return post(`/disputes/${recordId}/resolve`, { resolution, newStatus })
   },
-  submitDispute(data: { recordId: string; reason: DisputeReason; description: string }): Promise<AttendanceRecord> {
+  submitDispute(data: { recordId: string; reason: StudentDisputeReason; description: string }): Promise<AttendanceRecord> {
     return post('/disputes', data)
   },
 
@@ -407,8 +428,14 @@ export const api = {
   getStudents(): Promise<Student[]> { return get('/users/students') },
   getStudent(id: string): Promise<Student> { return get(`/users/${id}`) },
   getTeachers(): Promise<Teacher[]> { return get('/users/teachers') },
-  createTeacher(data: { fullName: string; email: string; password: string; department?: string }): Promise<Teacher> {
+  createTeacher(data: CreateTeacherInput): Promise<Teacher> {
     return post('/users/teachers', data)
+  },
+  createStudent(data: CreateStudentInput): Promise<Student> {
+    return post('/users/students', data)
+  },
+  resetUserPassword(id: string, password: string): Promise<ResetUserPasswordResult> {
+    return patch(`/users/${id}/password`, { password })
   },
   setUserStatus(id: string, isActive: boolean): Promise<User> {
     return patch(`/users/${id}/status`, { isActive })
@@ -473,7 +500,9 @@ export const api = {
     await initializeOfflineStore()
     await drainOfflineQueue(async (kind: OfflineOperationKind, payload) => {
       if (kind === 'attendance_scan') {
-        await post('/sync/attendance', { records: [payload] })
+        const response = await post<{ queued: false; results: Array<{ error?: string }> }>('/sync/attendance', { records: [payload] })
+        const error = response.results[0]?.error
+        if (error) throw new Error(error)
         return
       }
       if (kind === 'scan_attempt') {
@@ -492,6 +521,11 @@ export const api = {
     await initializeOfflineStore()
     if (!this.getCurrentUser()) return
     try {
+      const startedAt = Date.now()
+      const health = await get<{ timestamp: string }>('/health')
+      const completedAt = Date.now()
+      const serverTime = new Date(health.timestamp).getTime()
+      if (Number.isFinite(serverTime)) await setServerClockOffset(serverTime - (startedAt + completedAt) / 2)
       await this.syncOfflineQueue()
       await Promise.all([this.getSections(), this.getSessions()])
     } catch (error) {

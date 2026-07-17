@@ -144,6 +144,7 @@ export default function StudentDetailScreen() {
       </SafeAreaView>
     )
   }
+  const isTeacher = api.getCurrentUser()?.role === 'teacher'
 
   const getRecordForSession = (sessionId: string) =>
     records.find((r) => r.sessionId === sessionId)
@@ -276,19 +277,21 @@ export default function StudentDetailScreen() {
         </Text>
 
         {/* Remove from Subject */}
-        <Pressable
-          className="flex-row items-center justify-center gap-2 border py-3 mb-6 active:opacity-70"
-          style={{ borderColor: '#EF4444', backgroundColor: isDark ? 'rgba(239, 68, 68, 0.08)' : 'transparent' }}
-          onPress={handleRemove}
-        >
-          <MaterialIcons name="person-remove" size={18} color="#EF4444" />
-          <Text className="text-red-500 text-sm font-sans-semibold">Remove from Subject</Text>
-        </Pressable>
+        {isTeacher && (
+          <Pressable
+            className="flex-row items-center justify-center gap-2 border py-3 mb-6 active:opacity-70"
+            style={{ borderColor: '#EF4444', backgroundColor: isDark ? 'rgba(239, 68, 68, 0.08)' : 'transparent' }}
+            onPress={handleRemove}
+          >
+            <MaterialIcons name="person-remove" size={18} color="#EF4444" />
+            <Text className="text-red-500 text-sm font-sans-semibold">Remove from Subject</Text>
+          </Pressable>
+        )}
 
         {/* Attendance Manipulation */}
         <Text className="text-base font-sans-bold mb-1" style={{ color: textPrimary }}>Attendance per Session</Text>
         <Text className="text-[11px] mb-3" style={{ color: textSecondary }}>
-          Tap a status badge to cycle between Present → Late → Absent
+          {isTeacher ? 'Tap a status badge to cycle between Present, Late, and Absent.' : 'Read-only attendance history.'}
         </Text>
 
         {sessions.length === 0 ? (
@@ -316,8 +319,9 @@ export default function StudentDetailScreen() {
                     <View className="ml-3">
                       {record ? (
                         <Pressable
-                          onPress={() => handleCycleStatus(record)}
-                          className="flex-row items-center gap-1 px-2.5 py-1.5 active:opacity-70"
+                          onPress={() => { if (isTeacher) handleCycleStatus(record) }}
+                          disabled={!isTeacher}
+                          className={`flex-row items-center gap-1 px-2.5 py-1.5 ${isTeacher ? 'active:opacity-70' : ''}`}
                           style={{
                             backgroundColor: getBadgeStyle(record.status).bg,
                             borderWidth: getBadgeStyle(record.status).border ? 1 : 0,
@@ -330,12 +334,13 @@ export default function StudentDetailScreen() {
                           >
                             {statusLabel[record.status]}
                           </Text>
-                          <MaterialIcons name="sync" size={14} color={getBadgeStyle(record.status).text} />
+                          {isTeacher && <MaterialIcons name="sync" size={14} color={getBadgeStyle(record.status).text} />}
                         </Pressable>
                       ) : (
                         <Pressable
-                          onPress={() => handleAddAbsent(session)}
-                          className="flex-row items-center gap-1 px-2.5 py-1.5 active:opacity-70"
+                          onPress={() => { if (isTeacher) handleAddAbsent(session) }}
+                          disabled={!isTeacher}
+                          className={`flex-row items-center gap-1 px-2.5 py-1.5 ${isTeacher ? 'active:opacity-70' : ''}`}
                           style={{
                             backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#F0F0F0',
                             borderWidth: isDark ? 1 : 0,
@@ -343,7 +348,7 @@ export default function StudentDetailScreen() {
                           }}
                         >
                           <Text className="text-xs font-sans-semibold" style={{ color: isDark ? 'rgba(255,255,255,0.5)' : '#4A0A0B' }}>No Record</Text>
-                          <MaterialIcons name="add" size={14} color={isDark ? 'rgba(255,255,255,0.5)' : '#4A0A0B'} />
+                          {isTeacher && <MaterialIcons name="add" size={14} color={isDark ? 'rgba(255,255,255,0.5)' : '#4A0A0B'} />}
                         </Pressable>
                       )}
                     </View>

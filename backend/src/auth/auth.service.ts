@@ -7,8 +7,7 @@ import {
   HttpStatus,
 } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
-import { ConfigService } from '@nestjs/config'
-import { compareSync } from 'bcryptjs'
+import { compare } from 'bcryptjs'
 import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import type { User } from '@prisma/client'
@@ -42,7 +41,6 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
-    private config: ConfigService,
     private redis: RedisService,
   ) {}
 
@@ -50,7 +48,7 @@ export class AuthService {
     await this.assertLoginWithinLimit('student', studentId, clientAddress)
 
     const user = await this.prisma.user.findUnique({ where: { studentId } })
-    const isValidPassword = user ? compareSync(password, user.password) : compareSync(password, DUMMY_HASH)
+    const isValidPassword = await compare(password, user?.password ?? DUMMY_HASH)
 
     if (!user || !isValidPassword) {
       throw new UnauthorizedException('Invalid student ID or password')
@@ -71,7 +69,7 @@ export class AuthService {
     await this.assertLoginWithinLimit('faculty', normalizedEmail, clientAddress)
 
     const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } })
-    const isValidPassword = user ? compareSync(password, user.password) : compareSync(password, DUMMY_HASH)
+    const isValidPassword = await compare(password, user?.password ?? DUMMY_HASH)
 
     if (!user || !isValidPassword) {
       throw new UnauthorizedException('Invalid email or password')

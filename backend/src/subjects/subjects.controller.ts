@@ -15,26 +15,26 @@ export class SubjectsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.subjects.findOne(id)
+  findOne(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+    return this.subjects.findOne(id, req.user)
   }
 
   @Post()
-  @Roles('teacher', 'super_admin')
+  @Roles('teacher')
   create(@Body() dto: CreateSubjectDto, @Request() req: AuthenticatedRequest) {
-    return this.subjects.create(dto, req.user.id)
+    return this.subjects.create(dto, req.user)
   }
 
   @Patch(':id')
-  @Roles('teacher', 'super_admin')
-  update(@Param('id') id: string, @Body() dto: UpdateSubjectDto) {
-    return this.subjects.update(id, dto)
+  @Roles('teacher')
+  update(@Param('id') id: string, @Body() dto: UpdateSubjectDto, @Request() req: AuthenticatedRequest) {
+    return this.subjects.update(id, dto, req.user)
   }
 
   @Delete(':id')
-  @Roles('super_admin')
+  @Roles('teacher')
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id') id: string) {
-    return this.subjects.remove(id)
+  remove(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+    return this.subjects.remove(id, req.user)
   }
 }

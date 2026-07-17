@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Request } from '@nestjs/common'
 import { UsersService } from './users.service'
 import { Roles } from '../common/decorators/roles.decorator'
-import { CreateTeacherDto, SetUserStatusDto } from './dto/manage-user.dto'
+import { CreateStudentDto, CreateTeacherDto, ResetPasswordDto, SetUserStatusDto } from './dto/manage-user.dto'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
 import { parsePagination } from '../common/utils/pagination'
 
@@ -34,13 +34,25 @@ export class UsersController {
 
   @Post('teachers')
   @Roles('super_admin')
-  createTeacher(@Body() dto: CreateTeacherDto) {
-    return this.users.createTeacher(dto)
+  createTeacher(@Body() dto: CreateTeacherDto, @Request() req: AuthenticatedRequest) {
+    return this.users.createTeacher(dto, req.user)
+  }
+
+  @Post('students')
+  @Roles('super_admin')
+  createStudent(@Body() dto: CreateStudentDto, @Request() req: AuthenticatedRequest) {
+    return this.users.createStudent(dto, req.user)
+  }
+
+  @Patch(':id/password')
+  @Roles('super_admin')
+  resetPassword(@Param('id') id: string, @Body() dto: ResetPasswordDto, @Request() req: AuthenticatedRequest) {
+    return this.users.resetPassword(id, dto.password, req.user)
   }
 
   @Patch(':id/status')
   @Roles('super_admin')
-  setStatus(@Param('id') id: string, @Body() dto: SetUserStatusDto) {
-    return this.users.setStatus(id, dto.isActive)
+  setStatus(@Param('id') id: string, @Body() dto: SetUserStatusDto, @Request() req: AuthenticatedRequest) {
+    return this.users.setStatus(id, dto.isActive, req.user)
   }
 }

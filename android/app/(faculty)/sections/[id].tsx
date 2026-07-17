@@ -24,6 +24,7 @@ export default function SectionDetailScreen() {
   const [sessionPermissions, setSessionPermissions] = useState<SessionPermission[]>([])
   const [presSelectOpen, setPresSelectOpen] = useState(false)
   const [qacSelectOpen, setQacSelectOpen] = useState(false)
+  const isTeacher = api.getCurrentUser()?.role === 'teacher'
 
   const refreshRoster = useCallback(async () => {
     if (id) setStudents(await api.getSectionStudents(id))
@@ -38,17 +39,21 @@ export default function SectionDetailScreen() {
   useEffect(() => {
     if (!id) return
     const cu = api.getCurrentUser()
-    void Promise.all([
-      api.getSection(id), api.getSectionStudents(id), api.getSectionRoles(id), api.getActiveSessionPermissions(id), api.getStudents(),
-    ]).then(async ([nextSection, nextStudents, nextRoles, nextPermissions, nextAllStudents]) => {
-      if (cu && cu.role === 'teacher' && nextSection.teacherId !== cu.id) { router.replace('/'); return }
+    void (async () => {
+      const [nextSection, nextStudents] = await Promise.all([api.getSection(id), api.getSectionStudents(id)])
+      if (cu?.role === 'teacher' && nextSection.teacherId !== cu.id) { router.replace('/'); return }
       setSection(nextSection)
       setStudents(nextStudents)
-      setSectionRoles(nextRoles)
-      setSessionPermissions(nextPermissions)
-      setAllStudents(nextAllStudents)
+      if (cu?.role === 'teacher') {
+        const [nextRoles, nextPermissions, nextAllStudents] = await Promise.all([
+          api.getSectionRoles(id), api.getActiveSessionPermissions(id), api.getStudents(),
+        ])
+        setSectionRoles(nextRoles)
+        setSessionPermissions(nextPermissions)
+        setAllStudents(nextAllStudents)
+      }
       setParentSubject(await api.getSubject(nextSection.subjectId))
-    }).catch(() => router.back())
+    })().catch(() => router.back())
   }, [id])
 
   const enrolledIds = new Set(students.map((s) => s.id))
@@ -167,6 +172,7 @@ export default function SectionDetailScreen() {
           </View>
         </View>
 
+        {isTeacher && <>
         {/* Enrollment Code Card */}
         <View style={{ backgroundColor: surface, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: border }}>
           <View className="flex-row items-center gap-1.5 mb-2.5">
@@ -432,6 +438,7 @@ export default function SectionDetailScreen() {
             })()}
           </View>
         </View>
+        </>}
 
         {/* Attendance Overview */}
         <View className="flex-row mb-3" style={{ backgroundColor: surface, borderWidth: 1, borderColor: border }}>

@@ -56,9 +56,11 @@ export default function FacultySessionsScreen() {
       <View style={[styles.header, isDark && styles.headerDark]}>
         <Text style={[styles.heading, isDark && styles.textGolden]}>Sessions</Text>
         <View style={styles.headerRight}>
-          <TouchableOpacity onPress={() => router.push('/(faculty)/sessions/create')} style={styles.iconBtn} accessibilityLabel="Create session">
-            <MaterialIcons name="add" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
-          </TouchableOpacity>
+          {user.role === 'teacher' && (
+            <TouchableOpacity onPress={() => router.push('/(faculty)/sessions/create')} style={styles.iconBtn} accessibilityLabel="Create session">
+              <MaterialIcons name="add" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={handleLogout} style={styles.iconBtn} accessibilityLabel="Sign out">
             <MaterialIcons name="logout" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>

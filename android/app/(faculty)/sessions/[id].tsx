@@ -118,6 +118,7 @@ export default function SessionDetailScreen() {
   }, [lastUpdated])
 
   if (!user || !session) return null
+  const isTeacher = user.role === 'teacher'
 
   const border = isDark ? 'rgba(245, 168, 0, 0.15)' : '#EEE'
   const textPrimary = isDark ? '#FFFFFF' : '#333'
@@ -221,7 +222,7 @@ export default function SessionDetailScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* QR Code Card */}
-        <View style={[styles.card, isDark && styles.cardDark]}>
+        {isTeacher && <View style={[styles.card, isDark && styles.cardDark]}>
           <View style={styles.cardHeader}>
             <MaterialIcons name="qr-code" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.cardTitle, isDark && styles.textWhite]}>QR Code</Text>
@@ -264,7 +265,7 @@ export default function SessionDetailScreen() {
               </>
             )}
           </View>
-        </View>
+        </View>}
 
         {/* Session Info */}
         <View style={[styles.card, isDark && styles.cardDark]}>
@@ -336,16 +337,18 @@ export default function SessionDetailScreen() {
                   <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: textPrimary }}>{poc.uploadedByStudentName}</Text>
                   <Text style={{ fontSize: 9, color: textSecondary }}>{new Date(poc.uploadedAt).toLocaleString()}</Text>
                   {poc.description && <Text style={{ fontSize: 9, color: textTertiary, marginTop: 2, fontStyle: 'italic' }}>"{poc.description}"</Text>}
-                  <TouchableOpacity
-                    style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                    onPress={() => {
-                      void api.deleteProofOfClass(poc.id).then(refreshData)
-                    }}
-                    accessibilityRole="button"
-                  >
-                    <MaterialIcons name="delete" size={12} color="#EF4444" />
-                    <Text style={{ fontSize: 9, color: '#EF4444', fontWeight: '600' }}>Delete</Text>
-                  </TouchableOpacity>
+                  {isTeacher && (
+                    <TouchableOpacity
+                      style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                      onPress={() => {
+                        void api.deleteProofOfClass(poc.id).then(refreshData)
+                      }}
+                      accessibilityRole="button"
+                    >
+                      <MaterialIcons name="delete" size={12} color="#EF4444" />
+                      <Text style={{ fontSize: 9, color: '#EF4444', fontWeight: '600' }}>Delete</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               ))}
             </View>
@@ -406,7 +409,8 @@ export default function SessionDetailScreen() {
                 <TouchableOpacity
                   key={student.id}
                   style={[styles.rosterRow, isDark && styles.rosterRowDark]}
-                  onPress={() => handleManualOverride(student.id, status)}
+                  onPress={() => { if (isTeacher) handleManualOverride(student.id, status) }}
+                  disabled={!isTeacher}
                   activeOpacity={0.6}
                 >
                   <View style={styles.rosterLeft}>
@@ -418,7 +422,7 @@ export default function SessionDetailScreen() {
                       <MaterialIcons name="edit" size={14} color={isDark ? '#FFDF00' : '#7B1113'} style={{ marginRight: 4 }} />
                     )}
                     <RosterStatusBadge status={status} isDark={isDark} />
-                    <MaterialIcons name="chevron-right" size={18} color={isDark ? 'rgba(255,255,255,0.2)' : '#CCC'} />
+                    {isTeacher && <MaterialIcons name="chevron-right" size={18} color={isDark ? 'rgba(255,255,255,0.2)' : '#CCC'} />}
                   </View>
                 </TouchableOpacity>
               )
@@ -427,7 +431,7 @@ export default function SessionDetailScreen() {
         </View>
 
         {/* End Session Button */}
-        {session.isActive && (
+        {isTeacher && session.isActive && (
           <TouchableOpacity style={[styles.endSessionBtn, isDark && styles.endSessionBtnDark]} onPress={handleEndSession} accessibilityRole="button">
             <MaterialIcons name="stop" size={18} color="#FFFFFF" />
             <Text style={styles.endSessionText}>End Session</Text>
@@ -436,7 +440,7 @@ export default function SessionDetailScreen() {
       </ScrollView>
 
       {/* Validity Prompt Modal */}
-      <Modal visible={showValidityPrompt} transparent animationType="fade" onRequestClose={() => setShowValidityPrompt(false)}>
+      <Modal visible={isTeacher && showValidityPrompt} transparent animationType="fade" onRequestClose={() => setShowValidityPrompt(false)}>
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowValidityPrompt(false)}>
           <View style={[styles.promptSheet, isDark && styles.promptSheetDark]} onStartShouldSetResponder={() => true}>
             <MaterialIcons name="timer" size={32} color={isDark ? '#FFDF00' : '#7B1113'} />
@@ -468,7 +472,7 @@ export default function SessionDetailScreen() {
       </Modal>
 
       {/* Full Screen QR Modal */}
-      <Modal visible={showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}>
+      <Modal visible={isTeacher && showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}>
         <TouchableOpacity style={[styles.overlay, { justifyContent: 'center', backgroundColor: isDark ? 'rgba(0,0,0,0.95)' : 'rgba(255,255,255,0.95)' }]} activeOpacity={1} onPress={() => setShowQrModal(false)}>
           <View style={{ alignItems: 'center' }}>
             {session?.qrToken && (

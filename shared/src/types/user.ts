@@ -8,6 +8,7 @@ export interface User {
   role: UserRole
   program?: string
   yearLevel?: number
+  department?: string
   photoUrl?: string
   isActive: boolean
   createdAt: string

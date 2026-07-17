@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { ArrowLeft, QrCode, Timer, Play, StopCircle, Share2, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2 } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Session, AttendanceRecord, AttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
@@ -157,6 +158,7 @@ export default function SessionDetailPage() {
     </div>
   )
   if (!user || !session) return null
+  const isTeacher = user.role === 'teacher'
 
   const presentCount = records.filter((r) => r.status === 'present').length
   const lateCount = records.filter((r) => r.status === 'late').length
@@ -245,7 +247,7 @@ export default function SessionDetailPage() {
 
         <div className="p-6 space-y-6 max-w-4xl mx-auto">
           {/* QR Code Card */}
-          <Card className="dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215]">
+          {isTeacher && <Card className="dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215]">
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-4">
                 <QrCode className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
@@ -255,7 +257,7 @@ export default function SessionDetailPage() {
                 {qrDataUrl ? (
                   <>
                     <div className="cursor-pointer" onClick={() => setShowQrModal(true)}>
-                      <img src={qrDataUrl} width={180} height={180} alt="Scannable session QR code" />
+                      <Image src={qrDataUrl} width={180} height={180} unoptimized alt="Scannable session QR code" />
                     </div>
                     {countdown && (
                       <p className={`text-sm mt-2 ${countdown === 'Grace ended' ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
@@ -283,7 +285,7 @@ export default function SessionDetailPage() {
                 )}
               </div>
             </CardContent>
-          </Card>
+          </Card>}
 
           {/* Session Info */}
           <Card className="dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215]">
@@ -349,12 +351,14 @@ export default function SessionDetailPage() {
                       <p className="text-xs font-medium dark:text-white truncate">{poc.uploadedByStudentName}</p>
                       <p className="text-[10px] text-gray-400">{new Date(poc.uploadedAt).toLocaleString()}</p>
                       {poc.description && <p className="text-[10px] text-gray-500 mt-1 italic">&quot;{poc.description}&quot;</p>}
-                      <button
-                        className="mt-2 text-[10px] text-red-500 hover:text-red-700 flex items-center gap-1"
-                        onClick={async () => { await api.deleteProofOfClass(poc.id); setProofsOfClass(await api.getProofsOfClass(id)) }}
-                      >
-                        <Trash2 className="w-3 h-3" /> Delete
-                      </button>
+                      {isTeacher && (
+                        <button
+                          className="mt-2 text-[10px] text-red-500 hover:text-red-700 flex items-center gap-1"
+                          onClick={async () => { await api.deleteProofOfClass(poc.id); setProofsOfClass(await api.getProofsOfClass(id)) }}
+                        >
+                          <Trash2 className="w-3 h-3" /> Delete
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -412,8 +416,9 @@ export default function SessionDetailPage() {
                     return (
                       <button
                         key={student.id}
-                        className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-[#1C1C21] border-b border-gray-100 dark:border-[#222] text-left"
-                        onClick={() => handleManualOverride(student.id, status)}
+                        className={`w-full flex items-center justify-between px-3 py-2.5 border-b border-gray-100 dark:border-[#222] text-left ${isTeacher ? 'hover:bg-gray-50 dark:hover:bg-[#1C1C21]' : 'cursor-default'}`}
+                        onClick={() => { if (isTeacher) handleManualOverride(student.id, status) }}
+                        disabled={!isTeacher}
                       >
                         <div>
                           <p className="text-sm font-medium dark:text-white">{student.fullName}</p>
@@ -424,7 +429,7 @@ export default function SessionDetailPage() {
                           <span className={`px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[status] || STATUS_STYLES.pending}`}>
                             {status.charAt(0).toUpperCase() + status.slice(1)}
                           </span>
-                          <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
+                          {isTeacher && <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />}
                         </div>
                       </button>
                     )
@@ -435,7 +440,7 @@ export default function SessionDetailPage() {
           </Card>
 
           {/* End Session */}
-          {session.isActive && (
+          {isTeacher && session.isActive && (
             <Button className="w-full bg-red-500 hover:bg-red-600 text-white flex items-center gap-2 py-6" onClick={handleEndSession}>
               <StopCircle className="w-5 h-5" /> End Session
             </Button>
@@ -444,7 +449,7 @@ export default function SessionDetailPage() {
       </div>
 
       {/* Validity Prompt Modal */}
-      {showValidityPrompt && (
+      {isTeacher && showValidityPrompt && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowValidityPrompt(false)}>
           <div className="bg-white dark:bg-[#121215] dark:border dark:border-[rgba(245,168,0,0.15)] p-8 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
             <Timer className="w-10 h-10 text-[#7B1113] dark:text-[#FFDF00] mx-auto mb-3" />
@@ -471,10 +476,10 @@ export default function SessionDetailPage() {
       )}
 
       {/* Full Screen QR Modal */}
-      {showQrModal && qrDataUrl && (
+      {isTeacher && showQrModal && qrDataUrl && (
         <div className="fixed inset-0 bg-white dark:bg-black z-50 flex items-center justify-center" onClick={() => setShowQrModal(false)}>
           <div className="text-center">
-            <img src={qrDataUrl} width={320} height={320} alt="Scannable session QR code" />
+            <Image src={qrDataUrl} width={320} height={320} unoptimized alt="Scannable session QR code" />
             <p className="text-sm text-gray-400 dark:text-gray-500 mt-6">Tap anywhere to close</p>
             <Button variant="outline" className="mt-4" onClick={(e) => { e.stopPropagation(); handleShare() }}>
               <Share2 className="w-4 h-4 mr-2" /> Copy Token

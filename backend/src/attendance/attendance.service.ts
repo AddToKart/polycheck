@@ -6,6 +6,13 @@ import type { CreateManualAttendanceDto, ScanAttendanceDto, SubmitAttendanceDto 
 import { AttendanceGateway } from '../realtime/attendance.gateway'
 import { RedisService } from '../infrastructure/redis.service'
 import { createHash } from 'crypto'
+import type { AttendanceRecord, Session } from '@prisma/client'
+
+type CachedSession = Omit<Session, 'endedAt' | 'qrTokenExpiresAt'> & {
+  endedAt: string | null
+  qrTokenExpiresAt: string | null
+  teacherPublicKey?: string
+}
 
 @Injectable()
 export class AttendanceService {
@@ -56,6 +63,17 @@ export class AttendanceService {
         })
         if (!allowed) throw new ForbiddenException('You cannot view this student attendance')
       }
+    }
+    if (user.role === 'super_admin' && user.scope !== 'institution') {
+      const allowed = await this.prisma.enrollment.findFirst({
+        where: {
+          studentId,
+          ...(sectionId ? { sectionId } : {}),
+          section: { teacher: { department: user.department ?? '__no_department__' } },
+        },
+        select: { id: true },
+      })
+      if (!allowed) throw new ForbiddenException('This student is outside your administrative scope')
     }
     const records = await this.prisma.attendanceRecord.findMany({
       where: { studentId, ...(sectionId ? { sectionId } : {}) },
@@ -149,7 +167,8 @@ export class AttendanceService {
         message: 'Too many scan attempts. Try again shortly.',
       }
     }
-    const validation = await this.validateScan(user, dto.sessionId, dto.lat, dto.lon, dto.qrToken, dto.scannedAt)
+    await this.ensureOfflineActivation(dto.sessionId, dto.qrToken)
+    const validation = await this.validateScan(user, dto.sessionId, dto.lat, dto.lon, dto.qrToken, undefined, false)
     if (!validation.success) {
       await this.recordScanAttempt(
         user,
@@ -158,7 +177,7 @@ export class AttendanceService {
         dto.lon,
         dto.deviceId,
         dto.qrToken,
-        dto.scannedAt,
+        undefined,
         'denied',
         validation.reason,
         validation.message,
@@ -175,7 +194,8 @@ export class AttendanceService {
       dto.longitude,
       dto.deviceId,
       dto.qrToken,
-      dto.scannedAt,
+      undefined,
+      false,
     )
   }
 
@@ -187,9 +207,28 @@ export class AttendanceService {
       dto.lon,
       dto.deviceId,
       dto.qrToken,
-      dto.scannedAt,
+      undefined,
+      false,
     )
     if (!result.success || !('record' in result)) return { error: result.message ?? 'Check-in rejected' }
+    return result.record
+  }
+
+  async syncScan(user: RequestUser, dto: ScanAttendanceDto) {
+    if (!dto.scannedAt) {
+      return { error: 'Offline attendance records require the original scan timestamp' }
+    }
+    const result = await this.processScanSubmission(
+      user,
+      dto.sessionId,
+      dto.lat,
+      dto.lon,
+      dto.deviceId,
+      dto.qrToken,
+      dto.scannedAt,
+      true,
+    )
+    if (!result.success || !('record' in result)) return { error: result.message ?? 'Offline check-in rejected' }
     return result.record
   }
 
@@ -201,6 +240,7 @@ export class AttendanceService {
     deviceId: string | undefined,
     qrToken: string,
     scannedAt?: string,
+    offline = false,
   ) {
     const withinLimit = await this.redis.consumeRateLimit(
       `scan:${user.id}:${sessionId}:${deviceId ?? 'unknown'}`,
@@ -228,7 +268,7 @@ export class AttendanceService {
       }
     }
     await this.ensureOfflineActivation(sessionId, qrToken)
-    const validation = await this.validateScan(user, sessionId, latitude, longitude, qrToken, scannedAt)
+    const validation = await this.validateScan(user, sessionId, latitude, longitude, qrToken, scannedAt, offline)
     if (!validation.success) {
       await this.recordScanAttempt(
         user,
@@ -258,11 +298,19 @@ export class AttendanceService {
       where: { sessionId_studentId: { sessionId, studentId: user.id } },
     })
     if (!existing) throw new NotFoundException('Attendance roster entry not found')
-    const suspiciousCoordinates = await this.hasSuspiciousCoordinates(user.id, sessionId, deviceId, latitude, longitude)
+    const suspiciousCoordinates =
+      validation.status !== 'disputed' &&
+      (await this.hasSuspiciousCoordinates(user.id, sessionId, deviceId, latitude, longitude))
+    const disputed = suspiciousCoordinates || validation.status === 'disputed'
     const updated = await this.prisma.attendanceRecord.updateMany({
-      where: { id: existing.id, status: 'pending', tokenSnapshot: null },
+      where: {
+        id: existing.id,
+        status: { in: ['pending', 'absent'] },
+        manuallySet: false,
+        tokenSnapshot: null,
+      },
       data: {
-        status: suspiciousCoordinates ? 'disputed' : validation.status,
+        status: disputed ? 'disputed' : validation.status,
         timestamp: validation.scannedAt,
         latitude,
         longitude,
@@ -270,10 +318,12 @@ export class AttendanceService {
         tokenSnapshot: qrToken,
         isSynced: true,
         syncedAt: new Date(),
-        ...(suspiciousCoordinates
+        ...(disputed
           ? {
-              disputeReason: 'suspicious_coordinates',
-              disputeDescription: 'Coordinates were implausibly identical across multiple sessions and require review.',
+              disputeReason: suspiciousCoordinates ? 'suspicious_coordinates' : validation.reason,
+              disputeDescription: suspiciousCoordinates
+                ? 'Coordinates were implausibly identical across multiple sessions and require review.'
+                : validation.message,
             }
           : {}),
       },
@@ -307,8 +357,8 @@ export class AttendanceService {
       deviceId,
       qrToken,
       scannedAt,
-      suspiciousCoordinates ? 'flagged' : validation.status,
-      suspiciousCoordinates ? 'suspicious_coordinates' : undefined,
+      disputed ? 'flagged' : validation.status,
+      suspiciousCoordinates ? 'suspicious_coordinates' : validation.reason,
       validation.message,
     )
     this.realtime.emitAttendanceUpdated(record)
@@ -316,12 +366,14 @@ export class AttendanceService {
   }
 
   async updateStatus(user: RequestUser, id: string, status: 'present' | 'late' | 'absent' | 'pending' | 'disputed') {
-    if (user.role !== 'teacher' && user.role !== 'super_admin') {
-      throw new ForbiddenException('Only teachers and super admins can update attendance statuses')
+    if (user.role !== 'teacher') {
+      throw new ForbiddenException('Only teachers can update attendance statuses')
     }
     const record = await this.prisma.attendanceRecord.findUnique({
       where: { id },
-      include: { session: { select: { teacherId: true } } },
+      include: {
+        session: { select: { teacherId: true, section: { select: { teacher: { select: { department: true } } } } } },
+      },
     })
     if (!record) throw new NotFoundException('Attendance record not found')
     if (user.role === 'teacher' && record.session.teacherId !== user.id)
@@ -332,8 +384,8 @@ export class AttendanceService {
   }
 
   async createManual(user: RequestUser, dto: CreateManualAttendanceDto) {
-    if (user.role !== 'teacher' && user.role !== 'super_admin') {
-      throw new ForbiddenException('Only teachers and super admins can create attendance records')
+    if (user.role !== 'teacher') {
+      throw new ForbiddenException('Only teachers can create attendance records')
     }
     const session = await this.prisma.session.findUnique({ where: { id: dto.sessionId } })
     if (!session) throw new NotFoundException('Session not found')
@@ -375,8 +427,9 @@ export class AttendanceService {
     longitude: number,
     qrToken: string,
     scannedAtInput?: string,
+    offline = false,
   ) {
-    const cached = await this.redis.getJson<any>(`active-session:${sessionId}`)
+    const cached = await this.redis.getJson<CachedSession>(`active-session:${sessionId}`)
     const session = cached
       ? {
           ...cached,
@@ -386,7 +439,16 @@ export class AttendanceService {
       : await this.prisma.session.findUnique({ where: { id: sessionId } })
     if (!session)
       return { success: false, status: 'absent' as const, reason: 'session_not_found', message: 'Session not found' }
-    const scannedAt = scannedAtInput ? new Date(scannedAtInput) : new Date()
+    const receivedAt = new Date()
+    const scannedAt = offline && scannedAtInput ? new Date(scannedAtInput) : receivedAt
+    if (Number.isNaN(scannedAt.getTime())) {
+      return {
+        success: false,
+        status: 'disputed' as const,
+        reason: 'invalid_timestamp',
+        message: 'Scan timestamp is invalid',
+      }
+    }
     const enrollment = await this.prisma.enrollment.findUnique({
       where: { studentId_sectionId: { studentId: user.id, sectionId: session.sectionId } },
     })
@@ -429,6 +491,13 @@ export class AttendanceService {
         message: 'QR token does not match this session',
       }
     }
+    if (!session.isActive && !offline)
+      return {
+        success: false,
+        status: 'absent' as const,
+        reason: 'session_inactive',
+        message: 'Session is not active',
+      }
     if (!session.isActive && session.endedAt && scannedAt > session.endedAt)
       return {
         success: false,
@@ -436,7 +505,7 @@ export class AttendanceService {
         reason: 'session_inactive',
         message: 'Session was not active at scan time',
       }
-    if (scannedAt.getTime() < payload.issuedAt - 30_000 || scannedAt.getTime() > Date.now() + 5 * 60_000) {
+    if (scannedAt.getTime() < payload.issuedAt - 30_000 || scannedAt.getTime() > receivedAt.getTime() + 5 * 60_000) {
       return {
         success: false,
         status: 'disputed' as const,
@@ -460,6 +529,24 @@ export class AttendanceService {
         message: 'You are outside the session geofence',
       }
     const validityEnd = payload.issuedAt + payload.validityMinutes * 60_000
+    const graceEnd = validityEnd + payload.gracePeriodMinutes * 60_000
+    if (scannedAt.getTime() > graceEnd) {
+      return {
+        success: false,
+        status: 'absent' as const,
+        reason: 'qr_expired',
+        message: 'The QR attendance window has expired',
+      }
+    }
+    if (offline && receivedAt.getTime() > graceEnd) {
+      return {
+        success: true,
+        status: 'disputed' as const,
+        reason: 'delayed_offline_sync',
+        scannedAt,
+        message: 'Offline check-in arrived after the attendance window and requires teacher review.',
+      }
+    }
     const status = scannedAt.getTime() > validityEnd ? ('late' as const) : ('present' as const)
     return {
       success: true,
@@ -646,13 +733,26 @@ export class AttendanceService {
   }
 
   private async recordScope(user: RequestUser, sessionId?: string) {
-    if (user.role === 'super_admin') return sessionId ? { sessionId } : {}
+    if (user.role === 'super_admin') {
+      const adminScope =
+        user.scope === 'institution'
+          ? {}
+          : user.department
+            ? { session: { section: { teacher: { department: user.department } } } }
+            : { id: { in: [] as string[] } }
+      return { ...adminScope, ...(sessionId ? { sessionId } : {}) }
+    }
     if (user.role === 'teacher') return { session: { teacherId: user.id }, ...(sessionId ? { sessionId } : {}) }
     return { studentId: user.id, ...(sessionId ? { sessionId } : {}) }
   }
 
   private async sessionScope(user: RequestUser) {
-    if (user.role === 'super_admin') return {}
+    if (user.role === 'super_admin') {
+      if (user.scope === 'institution') return {}
+      return user.department
+        ? { section: { teacher: { department: user.department } } }
+        : { id: { in: [] as string[] } }
+    }
     if (user.role === 'teacher') return { teacherId: user.id }
     const enrollments = await this.prisma.enrollment.findMany({
       where: { studentId: user.id },
@@ -661,7 +761,7 @@ export class AttendanceService {
     return { sectionId: { in: enrollments.map((item) => item.sectionId) } }
   }
 
-  private present(record: any) {
+  private present(record: AttendanceRecord) {
     return { ...record, coordinates: { latitude: record.latitude, longitude: record.longitude } }
   }
 }

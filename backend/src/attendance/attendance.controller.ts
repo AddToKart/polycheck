@@ -68,13 +68,13 @@ export class AttendanceController {
   }
 
   @Post()
-  @Roles('teacher', 'super_admin')
+  @Roles('teacher')
   createManual(@Request() req: AuthenticatedRequest, @Body() dto: CreateManualAttendanceDto) {
     return this.attendance.createManual(req.user, dto)
   }
 
   @Patch(':id/status')
-  @Roles('teacher', 'super_admin')
+  @Roles('teacher')
   updateStatus(@Request() req: AuthenticatedRequest, @Param('id') id: string, @Body() dto: UpdateAttendanceStatusDto) {
     return this.attendance.updateStatus(req.user, id, dto.status)
   }

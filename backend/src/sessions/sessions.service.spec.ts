@@ -17,7 +17,7 @@ const mockedVerifyQRToken = verifyQRToken as jest.MockedFunction<typeof verifyQR
 
 const studentUser: RequestUser = { id: 'stu-1', role: 'student', studentId: 'S-1' }
 const teacherUser: RequestUser = { id: 'teacher-1', role: 'teacher' }
-const adminUser: RequestUser = { id: 'admin-1', role: 'super_admin' }
+const adminUser: RequestUser = { id: 'admin-1', role: 'super_admin', scope: 'institution' }
 
 function makeSession(overrides: any = {}) {
   return {
@@ -69,7 +69,7 @@ describe('SessionsService', () => {
         findUniqueOrThrow: jest.fn(),
       },
       user: { findMany: jest.fn(), findUnique: jest.fn() },
-      section: { findUnique: jest.fn() },
+      section: { findUnique: jest.fn(), findFirst: jest.fn() },
       enrollment: { findMany: jest.fn(), findUnique: jest.fn() },
       attendanceRecord: { createMany: jest.fn(), updateMany: jest.fn() },
       sectionRole: { findUnique: jest.fn() },
@@ -175,11 +175,12 @@ describe('SessionsService', () => {
     })
 
     it('allows enrolled student', async () => {
-      prisma.session.findUnique.mockResolvedValue(makeSession())
+      prisma.session.findUnique.mockResolvedValue(makeSession({ qrToken: 'secret-qr-token' }))
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
       const result = await service.findOne('sess-1', studentUser)
       expect(result.id).toBe('sess-1')
+      expect(result.qrToken).toBeUndefined()
     })
   })
 
@@ -197,7 +198,7 @@ describe('SessionsService', () => {
     }
 
     it('creates a session for teacher who owns the section', async () => {
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       prisma.session.create.mockResolvedValue(makeSession())
       prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
       const result = await service.create(dto, teacherUser)
@@ -211,7 +212,7 @@ describe('SessionsService', () => {
     })
 
     it('forbids teacher who does not own the section', async () => {
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-other' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-other', subject: { name: 'CS 101' } })
       await expect(service.create(dto, teacherUser)).rejects.toThrow(ForbiddenException)
     })
 
@@ -221,7 +222,7 @@ describe('SessionsService', () => {
     })
 
     it('allows student with president role and active session permission', async () => {
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       prisma.sectionRole.findUnique.mockResolvedValue({ id: 'role-1' })
       prisma.sessionPermission.findFirst.mockResolvedValue({ id: 'perm-1' })
       prisma.session.create.mockResolvedValue(makeSession())
@@ -232,14 +233,14 @@ describe('SessionsService', () => {
     })
 
     it('forbids student without president role or permission', async () => {
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       prisma.sectionRole.findUnique.mockResolvedValue(null)
       prisma.sessionPermission.findFirst.mockResolvedValue(null)
       await expect(service.create(dto, studentUser)).rejects.toThrow(ForbiddenException)
     })
 
     it('forbids student with role but inactive permission', async () => {
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       prisma.sectionRole.findUnique.mockResolvedValue({ id: 'role-1' })
       prisma.sessionPermission.findFirst.mockResolvedValue(null)
       await expect(service.create(dto, studentUser)).rejects.toThrow(ForbiddenException)
@@ -257,20 +258,20 @@ describe('SessionsService', () => {
 
     it('forbids teacher who does not own the section', async () => {
       prisma.session.findUnique.mockResolvedValue(makeSession())
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-other' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-other', subject: { name: 'CS 101' } })
       await expect(service.activate('sess-1', dto, teacherUser)).rejects.toThrow(ForbiddenException)
     })
 
     it('throws BadRequest when teacher has no signing key', async () => {
       prisma.session.findUnique.mockResolvedValue(makeSession())
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: null })
       await expect(service.activate('sess-1', dto, teacherUser)).rejects.toThrow(BadRequestException)
     })
 
     it('throws BadRequest when token signature is invalid', async () => {
       prisma.session.findUnique.mockResolvedValue(makeSession())
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
       mockedVerifyQRToken.mockReturnValue(null)
       await expect(service.activate('sess-1', dto, teacherUser)).rejects.toThrow(BadRequestException)
@@ -278,7 +279,7 @@ describe('SessionsService', () => {
 
     it('throws BadRequest when token does not match session', async () => {
       prisma.session.findUnique.mockResolvedValue(makeSession())
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
       mockedVerifyQRToken.mockReturnValue({
         version: 1,
@@ -295,7 +296,7 @@ describe('SessionsService', () => {
 
     it('throws BadRequest when validity minutes mismatch', async () => {
       prisma.session.findUnique.mockResolvedValue(makeSession())
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
       mockedVerifyQRToken.mockReturnValue({
         version: 1,
@@ -313,7 +314,7 @@ describe('SessionsService', () => {
     it('activates session, seeds pending attendance records, caches, and emits state', async () => {
       const session = makeSession()
       prisma.session.findUnique.mockResolvedValue(session)
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
       mockedVerifyQRToken.mockReturnValue({
         version: 1,
@@ -361,14 +362,14 @@ describe('SessionsService', () => {
 
     it('forbids teacher who does not own the section', async () => {
       prisma.session.findUnique.mockResolvedValue(makeSession())
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-other' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-other', subject: { name: 'CS 101' } })
       await expect(service.end('sess-1', teacherUser)).rejects.toThrow(ForbiddenException)
     })
 
     it('ends session, marks pending records absent, deletes redis cache', async () => {
       const session = makeSession({ isActive: true })
       prisma.session.findUnique.mockResolvedValue(session)
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       const tx = {
         attendanceRecord: {
           updateMany: jest.fn().mockResolvedValue({ count: 3 }),
@@ -395,7 +396,7 @@ describe('SessionsService', () => {
 
     it('throws ConflictException when session is not active (optimistic concurrency guard)', async () => {
       prisma.session.findUnique.mockResolvedValue(makeSession({ isActive: false }))
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       const tx = {
         attendanceRecord: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         session: {
@@ -424,14 +425,14 @@ describe('SessionsService', () => {
     }
 
     it('throws BadRequestException when end date precedes start date', async () => {
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       await expect(
         service.createBulk({ ...dto, startDate: '2026-07-15', endDate: '2026-07-13' }, teacherUser),
       ).rejects.toThrow(BadRequestException)
     })
 
     it('throws BadRequestException when date range exceeds 366 days', async () => {
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       await expect(
         service.createBulk(
           { ...dto, startDate: '2026-01-01', endDate: '2028-01-01', daysOfWeek: ['Mon'] },
@@ -442,7 +443,7 @@ describe('SessionsService', () => {
 
     it('throws BadRequestException when no dates match selected daysOfWeek', async () => {
       // 2026-07-13..2026-07-15 spans Mon–Wed; asking for Sun yields no dates
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       prisma.session.findMany.mockResolvedValue([])
       await expect(service.createBulk({ ...dto, daysOfWeek: ['Sun'] }, teacherUser)).rejects.toThrow(
         BadRequestException,
@@ -450,14 +451,14 @@ describe('SessionsService', () => {
     })
 
     it('throws ConflictException when sessions already exist on matching dates', async () => {
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       prisma.session.findMany.mockResolvedValue([{ date: '2026-07-13' }])
       await expect(service.createBulk(dto, teacherUser)).rejects.toThrow(ConflictException)
     })
 
     it('creates one session per matching date and emits state per session', async () => {
       // Range Sun–Tue contains exactly one Monday (2026-07-14)
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       prisma.session.findMany.mockResolvedValue([])
       const sessions = [makeSession({ id: 's1', date: '2026-07-14' })]
       prisma.$transaction.mockImplementation(async (ops: any) => Promise.all(ops.map((op: any) => op)))
@@ -471,7 +472,7 @@ describe('SessionsService', () => {
     })
 
     it('forbids teacher who does not own the section', async () => {
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-other' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-other', subject: { name: 'CS 101' } })
       await expect(service.createBulk(dto, teacherUser)).rejects.toThrow(ForbiddenException)
     })
   })

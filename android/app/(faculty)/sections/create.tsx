@@ -117,7 +117,11 @@ export default function CreateSectionScreen() {
 
   useEffect(() => {
     const cu = api.getCurrentUser()
-    if (cu) setUser(cu)
+    if (!cu || cu.role !== 'teacher') {
+      router.replace('/(faculty)/dashboard')
+      return
+    }
+    setUser(cu)
     if (subjectId) {
       void api.getSubject(subjectId).then(setSubject).catch(() => router.back())
     }

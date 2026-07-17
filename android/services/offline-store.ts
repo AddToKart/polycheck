@@ -40,6 +40,11 @@ async function database() {
           last_error TEXT,
           created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS sync_metadata (
+          key TEXT PRIMARY KEY NOT NULL,
+          value TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
       `)
       return db
     })
@@ -157,4 +162,26 @@ export async function getPendingSyncCount() {
   if (!db) return 0
   const row = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM sync_queue')
   return row?.count ?? 0
+}
+
+export async function setServerClockOffset(offsetMs: number) {
+  const db = await database()
+  if (!db) return
+  await db.runAsync(
+    `INSERT INTO sync_metadata (key, value, updated_at) VALUES ('server_clock_offset_ms', ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    String(Math.round(offsetMs)),
+    new Date().toISOString(),
+  )
+}
+
+export async function getServerClockOffset(): Promise<number | null> {
+  const db = await database()
+  if (!db) return null
+  const row = await db.getFirstAsync<{ value: string; updated_at: string }>(
+    "SELECT value, updated_at FROM sync_metadata WHERE key = 'server_clock_offset_ms'",
+  )
+  if (!row || Date.now() - new Date(row.updated_at).getTime() > 7 * 24 * 60 * 60 * 1000) return null
+  const value = Number(row.value)
+  return Number.isFinite(value) ? value : null
 }

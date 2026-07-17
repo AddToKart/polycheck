@@ -74,7 +74,7 @@ export default function ScanScreen() {
       return
     }
 
-    const scannedAt = new Date().toISOString()
+    const scannedAt = await api.getTrustedTimestamp()
     const result = await api.checkAttendance(session.id, user.id, lat, lon, token, scannedAt)
     if (result.success) {
       const submitted = await api.submitScan(session.id, user.id, user.fullName, lat, lon, 'device-mobile', token, scannedAt)
@@ -88,43 +88,6 @@ export default function ScanScreen() {
   const handleBarCodeScanned = useCallback(({ data }: { data: string }) => {
     handleScanResult(data)
   }, [handleScanResult])
-
-  const handleManualCode = useCallback(async () => {
-    setShowManual(false)
-    const user = api.getCurrentUser()
-    if (!user || !('studentId' in user)) return
-
-    const sessions = (await api.getSessions()).filter((session) => session.isActive)
-    if (sessions.length === 0) {
-      showResult('absent', 'No active sessions available')
-      return
-    }
-
-    const session = sessions[0]
-    if (!session.qrToken) {
-      showResult('absent', 'This session has no active QR token')
-      return
-    }
-    let lat: number
-    let lon: number
-    try {
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
-      lat = loc.coords.latitude
-      lon = loc.coords.longitude
-    } catch {
-      showResult('absent', 'Unable to verify your location')
-      return
-    }
-    const scannedAt = new Date().toISOString()
-    const res = await api.checkAttendance(session.id, user.id, lat, lon, session.qrToken, scannedAt)
-    if (res.success) {
-      const submitted = await api.submitScan(session.id, user.id, user.fullName, lat, lon, 'device-mobile', session.qrToken, scannedAt)
-      if ('error' in submitted) showResult('absent', submitted.error)
-      else showResult(res.status === 'late' ? 'late' : 'present', submitted.isSynced ? (res.message ?? 'Check-in successful!') : 'Check-in saved offline and queued for sync.')
-    } else {
-      showResult('absent', res.message ?? 'Check-in rejected')
-    }
-  }, [showResult])
 
   if (!cameraPermission || !cameraPermission.granted) {
     return (

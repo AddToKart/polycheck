@@ -11,6 +11,7 @@ import type { RequestUser } from '../auth/strategies/jwt.strategy'
 import type { ActivateSessionDto, CreateBulkSessionsDto, CreateSessionDto } from './dto/create-session.dto'
 import { AttendanceGateway } from '../realtime/attendance.gateway'
 import { RedisService } from '../infrastructure/redis.service'
+import type { Session } from '@prisma/client'
 
 @Injectable()
 export class SessionsService {
@@ -26,7 +27,7 @@ export class SessionsService {
       where,
       orderBy: [{ date: 'desc' }, { startTime: 'desc' }],
     })
-    return this.presentMany(sessions)
+    return this.presentMany(sessions, user)
   }
 
   async findPage(user: RequestUser, sectionId: string | undefined, pagination: { limit: number; offset: number }) {
@@ -41,7 +42,7 @@ export class SessionsService {
       this.prisma.session.count({ where }),
     ])
     return {
-      data: await this.presentMany(sessions),
+      data: await this.presentMany(sessions, user),
       total,
       limit: pagination.limit,
       offset: pagination.offset,
@@ -53,15 +54,17 @@ export class SessionsService {
     const session = await this.prisma.session.findUnique({ where: { id } })
     if (!session) throw new NotFoundException('Session not found')
     await this.assertAccess(session.sectionId, user, session.teacherId)
-    return this.present(session, await this.teacherPublicKey(session.teacherId))
+    return this.present(session, await this.teacherPublicKey(session.teacherId), user.role === 'teacher')
   }
 
   async create(dto: CreateSessionDto, user: RequestUser) {
-    const teacherId = await this.authorizeCreator(dto.sectionId, user)
-    const { geofence, ...data } = dto
+    const { teacherId, subjectName } = await this.authorizeCreator(dto.sectionId, user)
+    this.assertTimeRange(dto.startTime, dto.endTime)
+    const { geofence, subjectName: _ignoredSubjectName, ...data } = dto
     const session = await this.prisma.session.create({
       data: {
         ...data,
+        subjectName,
         teacherId,
         geofenceLatitude: geofence.latitude,
         geofenceLongitude: geofence.longitude,
@@ -69,11 +72,12 @@ export class SessionsService {
       },
     })
     this.realtime.emitSessionState(session, 'created')
-    return this.present(session, await this.teacherPublicKey(teacherId))
+    return this.present(session, await this.teacherPublicKey(teacherId), user.role !== 'student')
   }
 
   async createBulk(dto: CreateBulkSessionsDto, user: RequestUser) {
-    await this.assertTeacherOwnsSection(dto.sectionId, user.id)
+    const section = await this.assertTeacherOwnsSection(dto.sectionId, user.id)
+    this.assertTimeRange(dto.startTime, dto.endTime)
     const start = new Date(`${dto.startDate}T00:00:00.000Z`)
     const end = new Date(`${dto.endDate}T00:00:00.000Z`)
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
@@ -108,7 +112,7 @@ export class SessionsService {
         this.prisma.session.create({
           data: {
             sectionId: dto.sectionId,
-            subjectName: dto.subjectName,
+            subjectName: section.subject.name,
             date,
             startTime: dto.startTime,
             endTime: dto.endTime,
@@ -125,7 +129,7 @@ export class SessionsService {
     )
     for (const session of sessions) this.realtime.emitSessionState(session, 'created')
     const publicKey = await this.teacherPublicKey(user.id)
-    return sessions.map((session) => this.present(session, publicKey))
+    return sessions.map((session) => this.present(session, publicKey, true))
   }
 
   async activate(id: string, dto: ActivateSessionDto, user: RequestUser) {
@@ -185,7 +189,7 @@ export class SessionsService {
     })
     this.realtime.emitSessionState(activated, 'activated')
     await this.cacheActiveSession(activated, teacher.teacherPublicKey)
-    return this.present(activated, teacher.teacherPublicKey)
+    return this.present(activated, teacher.teacherPublicKey, true)
   }
 
   async end(id: string, user: RequestUser) {
@@ -207,11 +211,19 @@ export class SessionsService {
     })
     this.realtime.emitSessionState(ended, 'ended')
     await this.redis.delete(`active-session:${ended.id}`)
-    return this.present(ended, await this.teacherPublicKey(session.teacherId))
+    return this.present(ended, await this.teacherPublicKey(session.teacherId), true)
   }
 
   private async sessionScope(user: RequestUser, sectionId?: string) {
-    if (user.role === 'super_admin') return sectionId ? { sectionId } : {}
+    if (user.role === 'super_admin') {
+      const adminScope =
+        user.scope === 'institution'
+          ? {}
+          : user.department
+            ? { section: { teacher: { department: user.department } } }
+            : { id: { in: [] as string[] } }
+      return { ...adminScope, ...(sectionId ? { sectionId } : {}) }
+    }
     if (user.role === 'teacher') return { teacherId: user.id, ...(sectionId ? { sectionId } : {}) }
     const sections = await this.prisma.enrollment.findMany({
       where: { studentId: user.id },
@@ -221,7 +233,16 @@ export class SessionsService {
   }
 
   private async assertAccess(sectionId: string, user: RequestUser, teacherId: string) {
-    if (user.role === 'super_admin' || (user.role === 'teacher' && teacherId === user.id)) return
+    if (user.role === 'super_admin') {
+      if (user.scope === 'institution') return
+      const section = await this.prisma.section.findFirst({
+        where: { id: sectionId, teacher: { department: user.department ?? '__no_department__' } },
+        select: { id: true },
+      })
+      if (section) return
+      throw new ForbiddenException('This session is outside your administrative scope')
+    }
+    if (user.role === 'teacher' && teacherId === user.id) return
     const enrollment = await this.prisma.enrollment.findUnique({
       where: { studentId_sectionId: { studentId: user.id, sectionId } },
     })
@@ -229,19 +250,26 @@ export class SessionsService {
   }
 
   private async assertTeacherOwnsSection(sectionId: string, teacherId: string) {
-    const section = await this.prisma.section.findUnique({ where: { id: sectionId }, select: { teacherId: true } })
+    const section = await this.prisma.section.findUnique({
+      where: { id: sectionId },
+      select: { teacherId: true, subject: { select: { name: true } } },
+    })
     if (!section) throw new NotFoundException('Section not found')
     if (section.teacherId !== teacherId)
       throw new ForbiddenException('You can only manage sessions in your own sections')
+    return section
   }
 
-  private async authorizeCreator(sectionId: string, user: RequestUser): Promise<string> {
-    const section = await this.prisma.section.findUnique({ where: { id: sectionId }, select: { teacherId: true } })
+  private async authorizeCreator(sectionId: string, user: RequestUser) {
+    const section = await this.prisma.section.findUnique({
+      where: { id: sectionId },
+      select: { teacherId: true, subject: { select: { name: true } } },
+    })
     if (!section) throw new NotFoundException('Section not found')
     if (user.role === 'teacher') {
       if (section.teacherId !== user.id)
         throw new ForbiddenException('You can only manage sessions in your own sections')
-      return user.id
+      return { teacherId: user.id, subjectName: section.subject.name }
     }
     if (user.role !== 'student') throw new ForbiddenException('You cannot create sessions')
     const [officerRole, permission] = await Promise.all([
@@ -253,7 +281,11 @@ export class SessionsService {
       }),
     ])
     if (!officerRole || !permission) throw new ForbiddenException('An active president session permission is required')
-    return section.teacherId
+    return { teacherId: section.teacherId, subjectName: section.subject.name }
+  }
+
+  private assertTimeRange(startTime: string, endTime: string) {
+    if (endTime <= startTime) throw new BadRequestException('endTime must be after startTime')
   }
 
   private async teacherPublicKey(teacherId: string) {
@@ -263,28 +295,30 @@ export class SessionsService {
     )
   }
 
-  private async presentMany(sessions: Array<{ teacherId: string } & Record<string, unknown>>) {
+  private async presentMany<T extends Session>(sessions: T[], user: RequestUser) {
     const teachers = await this.prisma.user.findMany({
       where: { id: { in: [...new Set(sessions.map((session) => session.teacherId))] } },
       select: { id: true, teacherPublicKey: true },
     })
     const keys = new Map(teachers.map((teacher) => [teacher.id, teacher.teacherPublicKey]))
-    return sessions.map((session) => this.present(session, keys.get(session.teacherId)))
+    return sessions.map((session) => this.present(session, keys.get(session.teacherId), user.role === 'teacher'))
   }
 
-  private async cacheActiveSession(session: any, teacherPublicKey: string) {
+  private async cacheActiveSession(session: Session, teacherPublicKey: string) {
     const ttlSeconds = Math.max(300, (session.qrValidityMinutes + session.gracePeriodMinutes) * 60)
     await this.redis.setJson(`active-session:${session.id}`, { ...session, teacherPublicKey }, ttlSeconds)
   }
 
-  private present(session: any, teacherPublicKey?: string | null) {
+  private present<T extends Session>(session: T, teacherPublicKey?: string | null, includeQrToken = false) {
+    const { qrToken, geofenceLatitude, geofenceLongitude, geofenceRadiusMeters, ...safeSession } = session
     return {
-      ...session,
+      ...safeSession,
+      ...(includeQrToken && qrToken ? { qrToken } : {}),
       teacherPublicKey: teacherPublicKey ?? undefined,
       geofence: {
-        latitude: session.geofenceLatitude,
-        longitude: session.geofenceLongitude,
-        radiusMeters: session.geofenceRadiusMeters,
+        latitude: geofenceLatitude,
+        longitude: geofenceLongitude,
+        radiusMeters: geofenceRadiusMeters,
       },
     }
   }

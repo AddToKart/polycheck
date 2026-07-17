@@ -23,6 +23,8 @@ The current process relies on paper-based class monitoring forms. Students sign 
 ### Super Admin
 Super Admins are department heads and authorized PUP officials such as program chairs and administrators. They have the highest level of access in the system and can see data across all teachers and subjects within their department or the entire institution depending on their scope. They do not manage day-to-day attendance but oversee the system, generate reports, manage teacher accounts, and configure institution-level settings.
 
+Super Admin access is administrative and observational, not a substitute for a teacher account. Within their authorized department or institution scope, Super Admins may view subject, section, session, attendance, dispute, proof-of-class, and anomaly data; generate/export reports; search the institutional directory; create and manage teacher/student accounts; reset account passwords; and configure institution settings. They cannot create, edit, or delete subjects, sections, or class sessions; activate/end sessions or access live QR tokens; manage enrollment codes or rosters; assign section officers; change attendance statuses; resolve disputes; or delete proof-of-class submissions. Those classroom operations remain with the assigned teacher, with the separately documented limited student-officer permissions.
+
 ### Teacher / Instructor
 Teachers are the primary session managers. Each teacher manages only their own subjects and classes. They create subjects, configure class schedules, generate QR codes for each session, set the geofence for their classroom, and define the time window during which students may check in. They can view attendance records for their classes and flag anomalies. Teachers can also assign student officers (President, QAC) per section.
 
@@ -225,4 +227,4 @@ Also out of scope for v1: integration with PUP's existing student information sy
 
 ---
 
-*Prepared based on project discussions — Cayla, June 2026*
+*Prepared based on project discussions, June 2026*

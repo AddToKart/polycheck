@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import type { CreateSubjectDto } from './dto/create-subject.dto'
 import type { UpdateSubjectDto } from './dto/update-subject.dto'
@@ -15,11 +15,17 @@ export class SubjectsService {
     })
   }
 
-  async findOne(id: string) {
-    const subject = await this.prisma.subject.findUnique({
-      where: { id },
+  async findOne(id: string, user: RequestUser) {
+    const subject = await this.prisma.subject.findFirst({
+      where: { id, ...this.subjectScope(user) },
       include: {
         sections: {
+          where:
+            user.role === 'teacher'
+              ? { teacherId: user.id }
+              : user.role === 'student'
+                ? { enrollments: { some: { studentId: user.id } } }
+                : undefined,
           include: {
             teacher: { select: { id: true, fullName: true, email: true } },
             _count: { select: { enrollments: true } },
@@ -29,26 +35,53 @@ export class SubjectsService {
       },
     })
     if (!subject) throw new NotFoundException('Subject not found')
+    if (user.role === 'student') {
+      return {
+        ...subject,
+        sections: subject.sections.map(
+          ({ enrollmentCode: _code, enrollmentCodeExpiry: _expiry, ...section }) => section,
+        ),
+      }
+    }
     return subject
   }
 
-  async create(dto: CreateSubjectDto, teacherId: string) {
-    return this.prisma.subject.create({ data: { ...dto, createdById: teacherId } })
+  async create(dto: CreateSubjectDto, user: RequestUser) {
+    if (user.role !== 'teacher') throw new ForbiddenException('Only teachers can create subjects')
+    return this.prisma.subject.create({ data: { ...dto, createdById: user.id } })
   }
 
-  async update(id: string, dto: UpdateSubjectDto) {
-    await this.findOne(id)
+  async update(id: string, dto: UpdateSubjectDto, user: RequestUser) {
+    const subject = await this.prisma.subject.findUnique({ where: { id }, select: { createdById: true } })
+    if (!subject) throw new NotFoundException('Subject not found')
+    if (user.role !== 'teacher' || subject.createdById !== user.id) {
+      throw new ForbiddenException('You can only update subjects you created')
+    }
     return this.prisma.subject.update({ where: { id }, data: dto })
   }
 
-  async remove(id: string) {
-    await this.findOne(id)
+  async remove(id: string, user: RequestUser) {
+    const subject = await this.prisma.subject.findUnique({ where: { id }, select: { createdById: true } })
+    if (!subject) throw new NotFoundException('Subject not found')
+    if (user.role !== 'teacher' || subject.createdById !== user.id) {
+      throw new ForbiddenException('You can only delete subjects you created')
+    }
     await this.prisma.subject.delete({ where: { id } })
     return { message: 'Subject deleted' }
   }
 
   private subjectScope(user: RequestUser) {
-    if (user.role === 'super_admin') return undefined
+    if (user.role === 'super_admin') {
+      if (user.scope === 'institution') return undefined
+      return user.department
+        ? {
+            OR: [
+              { createdBy: { department: user.department } },
+              { sections: { some: { teacher: { department: user.department } } } },
+            ],
+          }
+        : { id: { in: [] as string[] } }
+    }
     if (user.role === 'teacher') {
       return {
         OR: [{ createdById: user.id }, { sections: { some: { teacherId: user.id } } }],

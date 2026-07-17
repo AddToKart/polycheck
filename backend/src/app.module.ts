@@ -27,6 +27,7 @@ import { SettingsModule } from './settings/settings.module'
 import { MaintenanceModule } from './common/services/maintenance.module'
 import { validateEnv } from './common/config/env-validation'
 import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor'
+import { AuditInterceptor } from './common/interceptors/audit.interceptor'
 
 @Module({
   imports: [
@@ -48,11 +49,7 @@ import { IdempotencyInterceptor } from './common/interceptors/idempotency.interc
       },
     }),
     ScheduleModule.forRoot(),
-    ThrottlerModule.forRoot([
-      { name: 'default', ttl: 60_000, limit: 120 },
-      { name: 'login', ttl: 60_000, limit: 10 },
-      { name: 'scan', ttl: 60_000, limit: 30 },
-    ]),
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -91,6 +88,10 @@ import { IdempotencyInterceptor } from './common/interceptors/idempotency.interc
     {
       provide: APP_INTERCEPTOR,
       useClass: IdempotencyInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
     },
   ],
   controllers: [HealthController],

@@ -7,7 +7,6 @@ import {
   formatTime as sharedFormatTime,
   isSameDay as sharedIsSameDay,
 } from '@polycheck/shared/utils'
-import type { Section, Session } from '@polycheck/shared'
 
 export interface CalendarEvent {
   id: string

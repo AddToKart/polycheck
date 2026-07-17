@@ -35,11 +35,13 @@ export default function FacultySubjectsScreen() {
   return (
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <View style={[styles.header, isDark && styles.headerDark]}>
-        <Text style={[styles.heading, isDark && styles.textGolden]}>My Subjects</Text>
+        <Text style={[styles.heading, isDark && styles.textGolden]}>{user.role === 'super_admin' ? 'Subject Directory' : 'My Subjects'}</Text>
         <View style={styles.headerRight}>
-          <TouchableOpacity onPress={() => router.push('/(faculty)/subjects/create')} style={styles.iconBtn} accessibilityLabel="Create subject">
-            <MaterialIcons name="add" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
-          </TouchableOpacity>
+          {user.role === 'teacher' && (
+            <TouchableOpacity onPress={() => router.push('/(faculty)/subjects/create')} style={styles.iconBtn} accessibilityLabel="Create subject">
+              <MaterialIcons name="add" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
             <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>

@@ -16,7 +16,7 @@ function TabIcon({ name, focused, color }: { name: keyof typeof MaterialIcons.gl
 }
 
 // Bottom sheet for "More" — reveals Schedule + Attendance
-function MoreSheet({ visible, onClose, isDark }: { visible: boolean; onClose: () => void; isDark: boolean }) {
+function MoreSheet({ visible, onClose, isDark, isSuper }: { visible: boolean; onClose: () => void; isDark: boolean; isSuper: boolean }) {
   const insets = useSafeAreaInsets()
   const slideAnim = useRef(new Animated.Value(300)).current
 
@@ -35,10 +35,19 @@ function MoreSheet({ visible, onClose, isDark }: { visible: boolean; onClose: ()
   const textColor = isDark ? '#FFFFFF' : '#1A1A1A'
   const subText = isDark ? 'rgba(255,255,255,0.5)' : '#888888'
 
-  const items = [
-    { icon: 'calendar-today' as const, label: 'Schedule', sub: 'Weekly class schedule', route: '/(faculty)/schedule' },
-    { icon: 'assignment' as const, label: 'Attendance', sub: 'Overview & export', route: '/(faculty)/attendance' },
-  ]
+  const items = isSuper
+    ? [
+        { icon: 'event' as const, label: 'Session Monitoring', sub: 'Observe institution sessions', route: '/(faculty)/sessions' },
+        { icon: 'assignment' as const, label: 'Attendance Monitoring', sub: 'Read-only logs and export', route: '/(faculty)/attendance' },
+        { icon: 'gavel' as const, label: 'Dispute Monitoring', sub: 'Track teacher resolution', route: '/(faculty)/disputes' },
+        { icon: 'search' as const, label: 'Global Search', sub: 'Find users and sections', route: '/(faculty)/search' },
+        { icon: 'settings' as const, label: 'Institution Settings', sub: 'Configure institution defaults', route: '/(faculty)/settings' },
+      ]
+    : [
+        { icon: 'calendar-today' as const, label: 'Schedule', sub: 'Weekly class schedule', route: '/(faculty)/schedule' },
+        { icon: 'assignment' as const, label: 'Attendance', sub: 'Overview & export', route: '/(faculty)/attendance' },
+        { icon: 'search' as const, label: 'Search', sub: 'Find students and sections', route: '/(faculty)/search' },
+      ]
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -176,8 +185,8 @@ export default function FacultyLayout() {
       >
         <Tabs.Screen name="dashboard" options={{ title: 'Dashboard', tabBarLabel: 'Dashboard' }} />
         <Tabs.Screen name="subjects" options={{ title: 'Subjects', tabBarLabel: 'Subjects' }} />
-        <Tabs.Screen name="sessions" options={{ title: 'Sessions', tabBarLabel: 'Sessions' }} />
-        <Tabs.Screen name="disputes" options={{ title: 'Disputes', tabBarLabel: 'Disputes' }} />
+        <Tabs.Screen name="sessions" options={{ title: 'Sessions', tabBarLabel: 'Sessions', href: isSuper ? null : undefined }} />
+        <Tabs.Screen name="disputes" options={{ title: 'Disputes', tabBarLabel: 'Disputes', href: isSuper ? null : undefined }} />
         {/* More tab — opens bottom sheet instead of navigating */}
         <Tabs.Screen
           name="more-tab"
@@ -217,7 +226,7 @@ export default function FacultyLayout() {
         />
       </Tabs>
 
-      <MoreSheet visible={moreVisible} onClose={() => setMoreVisible(false)} isDark={isDark} />
+      <MoreSheet visible={moreVisible} onClose={() => setMoreVisible(false)} isDark={isDark} isSuper={isSuper} />
     </>
   )
 }

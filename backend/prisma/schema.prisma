@@ -79,7 +79,7 @@ model InstitutionSetting {
 model Subject {
   id          String   @id @default(cuid())
   name        String
-  code        String
+  code        String   @unique
   description String?
   createdById String?
   createdBy   User?    @relation("SubjectCreator", fields: [createdById], references: [id])
@@ -88,7 +88,6 @@ model Subject {
 
   sections Section[]
 
-  @@index([code])
   @@index([createdById])
 }
 
@@ -113,10 +112,12 @@ model Section {
   sectionRoles       SectionRole[]
   sessionPermissions SessionPermission[]
   proofsOfClass      ProofOfClass[]
+  attendanceRecords AttendanceRecord[]
 
   @@index([teacherId])
   @@index([subjectId])
   @@index([enrollmentCode])
+  @@unique([subjectId, section, semester, teacherId])
 }
 
 model ScheduleDay {
@@ -178,6 +179,8 @@ model Session {
   @@index([teacherId])
   @@index([date])
   @@index([isActive])
+  @@index([teacherId, date])
+  @@index([sectionId, date])
 }
 
 model ScanAttempt {
@@ -206,6 +209,7 @@ model AttendanceRecord {
   sessionId          String
   session            Session          @relation(fields: [sessionId], references: [id])
   sectionId          String
+  section            Section          @relation(fields: [sectionId], references: [id])
   studentId          String
   student            User             @relation(fields: [studentId], references: [id])
   studentName        String
@@ -264,6 +268,7 @@ model SessionPermission {
   @@index([sectionId])
   @@index([studentId])
   @@index([isActive, expiresAt])
+  @@unique([sectionId, studentId])
 }
 
 model ProofOfClass {
@@ -281,4 +286,19 @@ model ProofOfClass {
 
   @@index([sessionId])
   @@index([sectionId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  actorRole  String
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([action, createdAt])
 }

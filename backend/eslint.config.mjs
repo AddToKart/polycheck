@@ -40,6 +40,9 @@ export default [
         jest: 'readonly',
       },
     },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
   },
   {
     files: ['prisma/**/*.ts'],

@@ -3,23 +3,20 @@
 import React, { useEffect, useState, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { api } from '@/lib/api-client'
-import type { Student, Section, AttendanceRecord, DisputeReason, Subject } from '@polycheck/shared'
+import type { Student, Section, AttendanceRecord, StudentDisputeReason, Subject } from '@polycheck/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sidebar } from '@/components/layout/sidebar'
 import StatusBadge from '@/components/StatusBadge'
-import ThemeToggle from '@/components/ThemeToggle'
 import {
-  LayoutDashboard,
   BookOpen,
   Clock,
   User,
-  LogOut,
   GraduationCap,
   Calendar,
   MapPin,
   X,
-  Menu,
   Flag,
   AlertTriangle,
   CheckCircle,
@@ -42,13 +39,6 @@ import type { CalendarEvent } from '@polycheck/shared'
 import { generateStudentCalendarEvents } from '@polycheck/shared/utils'
 
 type NavTab = 'dashboard' | 'subjects' | 'schedule' | 'attendance'
-
-const navItems = [
-  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { key: 'subjects', label: 'My Subjects', icon: BookOpen },
-  { key: 'schedule', label: 'Schedule', icon: Calendar },
-  { key: 'attendance', label: 'Attendance History', icon: Clock },
-] as const
 
 const statCards = [
   { key: 'present', label: 'Present', color: 'text-golden' },
@@ -198,7 +188,7 @@ function StudentDashboardContent() {
 
   const handleSubmitDispute = async () => {
     if (!disputeRecord || !disputeReason) return
-    const result = await api.submitDispute({ recordId: disputeRecord.id, reason: disputeReason as DisputeReason, description: disputeDescription })
+    const result = await api.submitDispute({ recordId: disputeRecord.id, reason: disputeReason as StudentDisputeReason, description: disputeDescription })
     if (result) {
       setDisputeFeedback({ type: 'success', message: 'Dispute submitted successfully.' })
       const updatedRecords = await api.getAttendanceForStudent(user!.id)
@@ -280,7 +270,7 @@ const ATTENDANCE_PAGE_SIZE = 8
                 <Card className="lg:col-span-1 lg:sticky lg:top-8 rounded-none border-zinc-300 dark:border-zinc-800 shadow-none overflow-hidden flex flex-col relative bg-zinc-50 dark:bg-zinc-900/50">
                   <div className="h-24 bg-maroon flex items-center justify-center relative overflow-hidden">
                     <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at center, #FFDF00 2px, transparent 2px)', backgroundSize: '16px 16px' }}></div>
-                    <img src="/pup-logo.png" alt="PUP Logo" className="w-16 h-16 absolute right-4 bottom-4 opacity-20 filter grayscale contrast-200" />
+                    <Image src="/pup-logo.png" width={64} height={64} alt="PUP Logo" className="w-16 h-16 absolute right-4 bottom-4 opacity-20 filter grayscale contrast-200" />
                   </div>
                   <div className="absolute top-12 left-6 w-24 h-24 bg-zinc-200 dark:bg-zinc-800 border-4 border-background flex items-center justify-center overflow-hidden">
                      {/* Placeholder for actual photo */}
@@ -339,7 +329,7 @@ const ATTENDANCE_PAGE_SIZE = 8
                             {/* Header */}
                             <div className="bg-maroon p-3 flex justify-between items-center border-b-2 border-zinc-300 dark:border-zinc-700">
                               <div className="flex items-center gap-3">
-                                <img src="/pup-logo.png" alt="PUP Logo" className="w-8 h-8" />
+                                <Image src="/pup-logo.png" width={32} height={32} alt="PUP Logo" className="w-8 h-8" />
                                 <div>
                                   <h3 className="text-[9px] font-heading font-bold text-golden uppercase tracking-widest leading-none mb-1">Republic of the Philippines</h3>
                                   <h2 className="text-xs sm:text-sm font-heading font-bold text-white uppercase tracking-wider leading-none">Polytechnic University of the Philippines</h2>
@@ -458,7 +448,6 @@ const ATTENDANCE_PAGE_SIZE = 8
                       ) : (
                         <div className="grid md:grid-cols-2 gap-4">
                           {todayEvents.map((ev) => {
-                            const isGhost = ev.type === 'schedule'
                             const isSessionActive = ev.status === 'active'
                             const studentStatus = ev.studentStatus
 

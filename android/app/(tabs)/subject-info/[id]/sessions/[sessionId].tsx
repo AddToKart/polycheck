@@ -7,6 +7,7 @@ import { api } from '../../../../../services/api-client'
 import { fonts } from '../../../../../theme/typography'
 import { useTheme } from '../../../../../theme/ThemeContext'
 import type { Student, Subject, Session, Section, ProofOfClass } from '@polycheck/shared'
+import * as ImagePicker from 'expo-image-picker'
 
 export default function StudentSessionDetailScreen() {
   const { isDark } = useTheme()
@@ -40,11 +41,11 @@ export default function StudentSessionDetailScreen() {
   }, [sessionId, sectionId])
 
   const handleUploadProof = async () => {
-    if (!user || !session) return
+    if (!user || !session || !uploadedPhoto) return
     await api.uploadProofOfClass({
       sectionId: session.sectionId,
       sessionId: session.id,
-      photoData: uploadedPhoto ?? `proof-${Date.now()}`,
+      photoData: uploadedPhoto,
       description: photoDescription || undefined,
       uploadedBy: user.id,
       uploadedByStudentName: user.fullName,
@@ -55,9 +56,28 @@ export default function StudentSessionDetailScreen() {
     setUploadedPhoto(null)
   }
 
-  const handleDeleteProof = async (proofId: string) => {
-    await api.deleteProofOfClass(proofId)
-    setProofs(await api.getProofsOfClass(sessionId))
+  const captureProofPhoto = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync()
+    if (!permission.granted) {
+      Alert.alert('Camera required', 'Camera permission is required to capture proof of class.')
+      return
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 0.7,
+      base64: true,
+    })
+    const asset = result.canceled ? undefined : result.assets[0]
+    if (!asset?.base64) return
+    const mimeType = asset.mimeType && ['image/jpeg', 'image/png', 'image/webp'].includes(asset.mimeType)
+      ? asset.mimeType
+      : 'image/jpeg'
+    if (asset.base64.length * 0.75 > 5_000_000) {
+      Alert.alert('Photo too large', 'Proof photos must be 5 MB or smaller.')
+      return
+    }
+    setUploadedPhoto(`data:${mimeType};base64,${asset.base64}`)
   }
 
   if (!session || !section) return null
@@ -128,7 +148,7 @@ export default function StudentSessionDetailScreen() {
                 <View style={{ backgroundColor: isDark ? '#0A0A0C' : '#F9F9F9', padding: 12, borderWidth: 1, borderColor: border }}>
                   <TouchableOpacity
                     style={{ width: '100%', aspectRatio: 16 / 9, borderWidth: 2, borderStyle: 'dashed', borderColor: isDark ? 'rgba(245,168,0,0.3)' : '#CCC', alignItems: 'center', justifyContent: 'center', marginBottom: 10, backgroundColor: isDark ? '#121215' : '#F5F5F5' }}
-                    onPress={() => setUploadedPhoto(`proof-${Date.now()}`)}
+                    onPress={() => void captureProofPhoto()}
                   >
                     {uploadedPhoto ? (
                       <View className="items-center">
@@ -181,12 +201,6 @@ export default function StudentSessionDetailScreen() {
                   <Text numberOfLines={1} className="text-xs font-sans-semibold" style={{ color: textPrimary }}>{poc.uploadedByStudentName}</Text>
                   <Text className="text-[9px]" style={{ color: textSecondary }}>{new Date(poc.uploadedAt).toLocaleString()}</Text>
                   {poc.description && <Text className="text-[9px] italic mt-0.5" style={{ color: textTertiary }}>"{poc.description}"</Text>}
-                  {isQac && user?.id === poc.uploadedBy && (
-                    <TouchableOpacity className="flex-row items-center gap-1 mt-1.5" onPress={() => handleDeleteProof(poc.id)} accessibilityRole="button">
-                      <MaterialIcons name="delete" size={12} color="#EF4444" />
-                      <Text style={{ fontSize: 9, color: '#EF4444', fontWeight: '600' }}>Delete</Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
               ))}
             </View>

@@ -1,12 +1,14 @@
-import { Injectable } from '@nestjs/common'
+import { BadRequestException, Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { Prisma } from '@prisma/client'
 
 @Injectable()
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
   async events(user: RequestUser, startDate: string, endDate: string) {
+    this.assertDateRange(startDate, endDate)
     const sessions = await this.prisma.session.findMany({
       where: { ...(await this.sessionScope(user)), date: { gte: startDate, lte: endDate } },
       include: {
@@ -35,16 +37,23 @@ export class DashboardService {
   }
 
   async exportCsv(user: RequestUser, sectionId?: string, sessionId?: string) {
+    const where = {
+      ...(await this.recordScope(user)),
+      ...(sectionId ? { sectionId } : {}),
+      ...(sessionId ? { sessionId } : {}),
+    }
+    const total = await this.prisma.attendanceRecord.count({ where })
+    if (total > 50_000) throw new BadRequestException('Export is limited to 50,000 records; narrow the filters')
     const records = await this.prisma.attendanceRecord.findMany({
-      where: {
-        ...(await this.recordScope(user)),
-        ...(sectionId ? { sectionId } : {}),
-        ...(sessionId ? { sessionId } : {}),
-      },
+      where,
       include: { session: { select: { date: true, startTime: true, subjectName: true } } },
       orderBy: { timestamp: 'asc' },
     })
-    const escape = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`
+    const escape = (value: unknown) => {
+      const text = String(value ?? '')
+      const formulaSafe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text
+      return `"${formulaSafe.replaceAll('"', '""')}"`
+    }
     const rows = [
       ['Student', 'Student ID', 'Subject', 'Date', 'Start time', 'Status', 'Checked in at', 'Latitude', 'Longitude'],
       ...records.map((record) => [
@@ -108,17 +117,28 @@ export class DashboardService {
         : await this.prisma.user.findMany({
             where: {
               role: 'student',
+              ...(user.role === 'teacher' ? { enrollments: { some: { section: { teacherId: user.id } } } } : {}),
               OR: [
                 { fullName: { contains: query, mode: 'insensitive' } },
                 { studentId: { contains: query, mode: 'insensitive' } },
               ],
+            },
+            select: {
+              id: true,
+              studentId: true,
+              fullName: true,
+              email: true,
+              program: true,
+              yearLevel: true,
+              photoUrl: true,
+              isActive: true,
             },
             take: 10,
           })
     return {
       students,
       sections: sections.map((section) => ({ ...section, teacherName: section.teacher.fullName })),
-      sessions: sessions.map((session) => ({
+      sessions: sessions.map(({ qrToken: _qrToken, ...session }) => ({
         ...session,
         geofence: {
           latitude: session.geofenceLatitude,
@@ -129,8 +149,11 @@ export class DashboardService {
     }
   }
 
-  private async sectionScope(user: RequestUser): Promise<any> {
-    if (user.role === 'super_admin') return {}
+  private async sectionScope(user: RequestUser): Promise<Prisma.SectionWhereInput> {
+    if (user.role === 'super_admin') {
+      if (user.scope === 'institution') return {}
+      return user.department ? { teacher: { department: user.department } } : { id: { in: [] } }
+    }
     if (user.role === 'teacher') return { teacherId: user.id }
     const enrollments = await this.prisma.enrollment.findMany({
       where: { studentId: user.id },
@@ -139,8 +162,11 @@ export class DashboardService {
     return { id: { in: enrollments.map((item) => item.sectionId) } }
   }
 
-  private async sessionScope(user: RequestUser): Promise<any> {
-    if (user.role === 'super_admin') return {}
+  private async sessionScope(user: RequestUser): Promise<Prisma.SessionWhereInput> {
+    if (user.role === 'super_admin') {
+      if (user.scope === 'institution') return {}
+      return user.department ? { section: { teacher: { department: user.department } } } : { id: { in: [] } }
+    }
     if (user.role === 'teacher') return { teacherId: user.id }
     const enrollments = await this.prisma.enrollment.findMany({
       where: { studentId: user.id },
@@ -149,9 +175,23 @@ export class DashboardService {
     return { sectionId: { in: enrollments.map((item) => item.sectionId) } }
   }
 
-  private async recordScope(user: RequestUser): Promise<any> {
-    if (user.role === 'super_admin') return {}
+  private async recordScope(user: RequestUser): Promise<Prisma.AttendanceRecordWhereInput> {
+    if (user.role === 'super_admin') {
+      if (user.scope === 'institution') return {}
+      return user.department
+        ? { session: { section: { teacher: { department: user.department } } } }
+        : { id: { in: [] } }
+    }
     if (user.role === 'teacher') return { session: { teacherId: user.id } }
     return { studentId: user.id }
+  }
+
+  private assertDateRange(startDate: string, endDate: string) {
+    const start = new Date(`${startDate}T00:00:00.000Z`)
+    const end = new Date(`${endDate}T00:00:00.000Z`)
+    if (end < start) throw new BadRequestException('endDate must be on or after startDate')
+    if (end.getTime() - start.getTime() > 366 * 86_400_000) {
+      throw new BadRequestException('Calendar ranges are limited to one year')
+    }
   }
 }

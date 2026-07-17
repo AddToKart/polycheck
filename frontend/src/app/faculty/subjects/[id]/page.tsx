@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Users, CalendarDays, Key, Copy, ArrowRight, Plus } from 'lucide-react'
+import { ArrowLeft, Users, CalendarDays, Copy, Plus } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Subject, Section } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -99,11 +99,13 @@ export default function SubjectDetailPage() {
               <Users className="w-4 h-4 text-maroon dark:text-golden" />
               Sections
             </h2>
-            <Button variant="default" size="sm" className="text-[10px] font-bold uppercase tracking-widest rounded-none h-9" asChild>
-              <Link href={`/faculty/sections/create?subjectId=${id}`}>
-                <Plus className="w-4 h-4 mr-1" /> Add Section
-              </Link>
-            </Button>
+            {user.role === 'teacher' && (
+              <Button variant="default" size="sm" className="text-[10px] font-bold uppercase tracking-widest rounded-none h-9" asChild>
+                <Link href={`/faculty/sections/create?subjectId=${id}`}>
+                  <Plus className="w-4 h-4 mr-1" /> Add Section
+                </Link>
+              </Button>
+            )}
           </div>
 
           {sections.length === 0 ? (

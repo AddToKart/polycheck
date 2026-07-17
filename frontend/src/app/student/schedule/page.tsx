@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useCallback, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, Calendar, BookOpen, CheckCircle, Clock, XCircle, CalendarDays, MapPin } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Calendar, BookOpen, Clock, CalendarDays, MapPin } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { Student, AttendanceRecord, Section, Session, Subject } from '@polycheck/shared'
 import { generateStudentCalendarEvents } from '@polycheck/shared/utils'
@@ -12,7 +12,6 @@ import {
   formatTime,
   getWeekDays,
   getDayName,
-  getDayNameFull,
   isSameDay,
   getDateRangeForWeek,
   getMonthDays,
@@ -24,49 +23,10 @@ import {
 } from '@/lib/calendar-utils'
 import type { CalendarEvent } from '@polycheck/shared'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Sidebar } from '@/components/layout/sidebar'
-
-const STATUS_BORDER_COLORS: Record<string, string> = {
-  present: 'border-l-green-500 bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-950/50',
-  late: 'border-l-yellow-500 bg-yellow-50 dark:bg-yellow-950/30 hover:bg-yellow-100 dark:hover:bg-yellow-950/50',
-  absent: 'border-l-red-500 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50',
-}
-
-const STATUS_TEXT_COLORS: Record<string, string> = {
-  present: 'text-green-700 dark:text-green-300',
-  late: 'text-yellow-700 dark:text-yellow-300',
-  absent: 'text-red-700 dark:text-red-300',
-}
-
-const STATUS_ICONS: Record<string, React.ReactNode> = {
-  present: <CheckCircle className="w-3 h-3 text-green-600" />,
-  late: <Clock className="w-3 h-3 text-yellow-600" />,
-  absent: <XCircle className="w-3 h-3 text-red-600" />,
-}
-
-function StatusBlock({ event }: { event: CalendarEvent }) {
-  if (event.type === 'schedule') return null
-  const color = event.studentStatus ? STATUS_TEXT_COLORS[event.studentStatus] || '' : 'text-zinc-400 dark:text-zinc-500'
-  const icon = event.studentStatus ? STATUS_ICONS[event.studentStatus] || null : null
-  const label = event.studentStatus ? event.studentStatus.charAt(0).toUpperCase() + event.studentStatus.slice(1) : 'Pending'
-  return (
-    <div className="flex flex-col gap-1">
-      <div className={`flex items-center gap-1 mt-1 text-[9px] font-bold uppercase tracking-widest ${color}`}>
-        {icon}
-        {label}
-      </div>
-      {event.isRescheduled && (
-        <span className="inline-flex self-start px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider bg-yellow-500 text-black font-bold">
-          Time Moved
-        </span>
-      )}
-    </div>
-  )
-}
 
 function getStudentEventStyle(event: CalendarEvent): string {
   if (event.status === 'moved') return 'border-l-zinc-300 bg-zinc-50/50 dark:bg-zinc-900/10 border-dashed opacity-60'
@@ -510,9 +470,6 @@ function StudentScheduleContent() {
   }, [allSections, allSessions, records, currentDate, currentYear, currentMonth, view, studentId, subjectMap])
 
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate])
-  const today = new Date()
-
-
   const goToPrev = useCallback(() => {
     if (view === 'month') {
       if (currentMonth === 0) {

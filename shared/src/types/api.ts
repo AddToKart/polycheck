@@ -1,9 +1,31 @@
-import type { User, Student, Teacher, Subject, Section, Session, AttendanceRecord, AttendanceSummary, AttendanceStatus, DisputeReason, Enrollment, SectionRole, SectionRoleType, SessionPermission, ProofOfClass } from './index'
+import type { User, Student, Teacher, Subject, Section, Session, AttendanceRecord, AttendanceSummary, AttendanceStatus, StudentDisputeReason, Enrollment, SectionRole, SectionRoleType, SessionPermission, ProofOfClass } from './index'
 
 export interface CreateSubjectInput {
   name: string
   code: string
   description?: string
+}
+
+export interface CreateTeacherInput {
+  fullName: string
+  email: string
+  password: string
+  department?: string
+}
+
+export interface CreateStudentInput {
+  fullName: string
+  studentId: string
+  email?: string
+  password: string
+  program: string
+  yearLevel: number
+  department: string
+}
+
+export interface ResetUserPasswordResult {
+  message: string
+  userId: string
 }
 
 export interface CreateSectionInput {
@@ -40,7 +62,7 @@ export interface SubmitAttendanceResult {
 
 export interface DisputeInput {
   recordId: string
-  reason: DisputeReason
+  reason: StudentDisputeReason
   description: string
 }
 
@@ -130,7 +152,9 @@ export interface ApiClient {
   getStudents(): Student[]
   getStudent(id: string): Student | undefined
   getTeachers(): Teacher[]
-  createTeacher(data: { fullName: string; email: string; password: string; department?: string }): Teacher
+  createTeacher(data: CreateTeacherInput): Teacher
+  createStudent(data: CreateStudentInput): Student
+  resetUserPassword(id: string, password: string): ResetUserPasswordResult
   setUserStatus(id: string, isActive: boolean): User
   getSettings(): { key: string; value: string; updatedAt: string }[]
   setSetting(key: string, value: string): { key: string; value: string; updatedAt: string }

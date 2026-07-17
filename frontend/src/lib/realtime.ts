@@ -12,11 +12,8 @@ export function subscribeToSession(
   onConnectionChange?: (connected: boolean) => void,
 ) {
   if (typeof window === 'undefined') return () => undefined
-  const token = localStorage.getItem('polycheck-token')
-  if (!token) return () => undefined
-
   const socket = io(realtimeUrl(), {
-    auth: { token },
+    withCredentials: true,
     transports: ['websocket'],
     reconnection: true,
     reconnectionAttempts: 8,

@@ -127,10 +127,12 @@ export default function CreateSessionScreen() {
 
   useEffect(() => {
     const cu = api.getCurrentUser()
-    if (cu) {
-      setUser(cu)
-      void api.getSubjects().then(setSubjects)
+    if (!cu || cu.role !== 'teacher') {
+      router.replace('/(faculty)/dashboard')
+      return
     }
+    setUser(cu)
+    void api.getSubjects().then(setSubjects)
   }, [])
 
   useEffect(() => {

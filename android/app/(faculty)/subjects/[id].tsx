@@ -13,6 +13,7 @@ export default function SubjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const [subject, setSubject] = useState<Subject | null>(null)
   const [sections, setSections] = useState<Section[]>([])
+  const isTeacher = api.getCurrentUser()?.role === 'teacher'
 
   useEffect(() => {
     if (!id) return
@@ -54,15 +55,17 @@ export default function SubjectDetailScreen() {
           <Text style={[styles.sectionTitle, isDark && styles.textGolden]}>
             Sections ({sections.length})
           </Text>
-          <TouchableOpacity
-            onPress={() => router.push({ pathname: '/(faculty)/sections/create', params: { subjectId: id } })}
-            style={[styles.addSectionBtn, isDark && styles.addSectionBtnDark]}
-            accessibilityRole="button"
-            accessibilityLabel="Add section"
-          >
-            <MaterialIcons name="add" size={16} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
-            <Text style={[styles.addSectionBtnText, isDark && styles.addSectionBtnTextDark]}>Add Section</Text>
-          </TouchableOpacity>
+          {isTeacher && (
+            <TouchableOpacity
+              onPress={() => router.push({ pathname: '/(faculty)/sections/create', params: { subjectId: id } })}
+              style={[styles.addSectionBtn, isDark && styles.addSectionBtnDark]}
+              accessibilityRole="button"
+              accessibilityLabel="Add section"
+            >
+              <MaterialIcons name="add" size={16} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
+              <Text style={[styles.addSectionBtnText, isDark && styles.addSectionBtnTextDark]}>Add Section</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {sections.map((section) => (
@@ -113,7 +116,7 @@ export default function SubjectDetailScreen() {
         ))}
 
         {sections.length === 0 && (
-          <Text style={[styles.empty, isDark && styles.textWhite50]}>No sections for this subject. Create sections to get started.</Text>
+          <Text style={[styles.empty, isDark && styles.textWhite50]}>{isTeacher ? 'No sections for this subject. Create sections to get started.' : 'No sections for this subject.'}</Text>
         )}
       </ScrollView>
     </SafeAreaView>

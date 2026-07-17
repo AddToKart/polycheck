@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useSearchParams } from 'next/navigation'
 import type { User } from '@polycheck/shared'
 import {
@@ -49,12 +50,11 @@ const teacherNav: NavItem[] = [
 // Navigation for super admins
 const superAdminNav: NavItem[] = [
   { label: 'Dashboard', href: '/faculty', icon: LayoutDashboard },
-  { label: 'My Subjects', href: '/faculty/subjects', icon: BookOpen },
-  { label: 'Class Sessions', href: '/faculty/sessions', icon: CalendarCheck },
-  { label: 'Attendance Log', href: '/faculty/attendance', icon: ClipboardList },
-  { label: 'Schedule', href: '/faculty/schedule', icon: Calendar },
-  { label: 'Disputes', href: '/faculty/disputes', icon: Gavel },
-  { label: 'Search', href: '/faculty/search', icon: Search },
+  { label: 'Subject Directory', href: '/faculty/subjects', icon: BookOpen },
+  { label: 'Session Monitoring', href: '/faculty/sessions', icon: CalendarCheck },
+  { label: 'Attendance Monitoring', href: '/faculty/attendance', icon: ClipboardList },
+  { label: 'Dispute Monitoring', href: '/faculty/disputes', icon: Gavel },
+  { label: 'Global Search', href: '/faculty/search', icon: Search },
   { label: 'User Management', href: '/faculty/users', icon: Users },
   { label: 'System Reports', href: '/faculty/reports', icon: BarChart3 },
   { label: 'Institution Settings', href: '/faculty/settings', icon: Settings },
@@ -101,7 +101,7 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <img src="/pup-logo.png" alt="PUP Logo" className="w-8 h-8 shrink-0 object-contain" />
+          <Image src="/pup-logo.png" width={32} height={32} alt="PUP Logo" className="w-8 h-8 shrink-0 object-contain" />
           <button
             onClick={() => setIsOpen(false)}
             className="md:hidden p-1 rounded-none hover:bg-white/10 text-white dark:text-maroon-dark transition-colors"
@@ -220,7 +220,7 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
       {/* Mobile Top Navigation Header */}
       <div className="md:hidden sticky top-0 z-30 w-full h-16 bg-maroon dark:bg-zinc-950 text-white dark:text-golden border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between px-6 shrink-0 select-none">
         <div className="flex items-center gap-3">
-          <img src="/pup-logo.png" alt="PUP Logo" className="w-6 h-6 shrink-0 object-contain" />
+          <Image src="/pup-logo.png" width={24} height={24} alt="PUP Logo" className="w-6 h-6 shrink-0 object-contain" />
           <span className="font-heading font-bold text-lg tracking-tight">Polycheck</span>
         </div>
         <button 

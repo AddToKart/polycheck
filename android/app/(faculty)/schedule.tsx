@@ -25,8 +25,8 @@ export default function FacultyScheduleScreen() {
 
   useEffect(() => {
     const cu = api.getCurrentUser()
-    if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
-      router.replace('/')
+    if (!cu || cu.role !== 'teacher') {
+      router.replace(cu?.role === 'super_admin' ? '/(faculty)/dashboard' : '/')
       return
     }
     setUser(cu)

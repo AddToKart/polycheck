@@ -9,7 +9,7 @@ interface UseApiState<T> {
 }
 
 export function useApi<T>(
-  apiFn: (...args: any[]) => T | null,
+  apiFn: (...args: any[]) => T | null | Promise<T | null>,
   ...args: any[]
 ): UseApiState<T> {
   const [data, setData] = useState<T | null>(null)
@@ -20,16 +20,7 @@ export function useApi<T>(
     setLoading(true)
     setError(null)
     try {
-      const result = await new Promise<T | null>((resolve) => {
-        setTimeout(() => {
-          try {
-            const res = apiFn(...(executeArgs.length ? executeArgs : args))
-            resolve(res)
-          } catch (e) {
-            throw e
-          }
-        }, 200)
-      })
+      const result = await apiFn(...(executeArgs.length ? executeArgs : args))
       setData(result)
       return result
     } catch (err) {

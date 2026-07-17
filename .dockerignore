@@ -1,0 +1,13 @@
+.git
+.github
+.agents
+.codex
+**/node_modules
+**/.next
+**/dist
+**/.expo
+**/coverage
+**/.env*
+uploads
+backend/uploads
+*.log

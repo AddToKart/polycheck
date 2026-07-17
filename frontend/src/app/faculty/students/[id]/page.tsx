@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, UserX, RefreshCw, School, QrCode } from 'lucide-react'
@@ -9,7 +9,6 @@ import type { User, Student, Session, AttendanceRecord, AttendanceStatus } from 
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 
@@ -120,6 +119,7 @@ export default function StudentDetailPage() {
   const pagedSessions = sortedSessions.slice(sessionPage * SESSION_PAGE_SIZE, (sessionPage + 1) * SESSION_PAGE_SIZE)
 
   if (!user || !ready || !student) return null
+  const isTeacher = user.role === 'teacher'
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
@@ -229,16 +229,18 @@ export default function StudentDetailPage() {
           </div>
 
           {/* Remove from Subject */}
-          <div className="flex justify-center mb-8">
-            <Button variant="outline" className="text-red-500 border-red-500 hover:bg-red-50 dark:hover:bg-red-950" onClick={handleRemove}>
-              <UserX className="w-4 h-4 mr-2" /> Remove from Subject
-            </Button>
-          </div>
+          {isTeacher && (
+            <div className="flex justify-center mb-8">
+              <Button variant="outline" className="text-red-500 border-red-500 hover:bg-red-50 dark:hover:bg-red-950" onClick={handleRemove}>
+                <UserX className="w-4 h-4 mr-2" /> Remove from Subject
+              </Button>
+            </div>
+          )}
 
           {/* Attendance per Session */}
           <h2 className="text-lg font-bold text-zinc-800 dark:text-zinc-100 mb-1">Attendance per Session</h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-            Tap a status badge to cycle between Present &rarr; Late &rarr; Absent
+            {isTeacher ? 'Tap a status badge to cycle between Present, Late, and Absent.' : 'Read-only attendance history.'}
           </p>
 
           {sortedSessions.length === 0 ? (
@@ -265,18 +267,20 @@ export default function StudentDetailPage() {
                       <div>
                         {record ? (
                           <button
-                            onClick={() => handleCycleStatus(record)}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none cursor-pointer transition-opacity hover:opacity-80 ${config.bg} ${config.text}`}
+                            onClick={() => { if (isTeacher) handleCycleStatus(record) }}
+                            disabled={!isTeacher}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none ${isTeacher ? 'cursor-pointer transition-opacity hover:opacity-80' : 'cursor-default'} ${config.bg} ${config.text}`}
                           >
                             {config.label}
-                            <RefreshCw className="w-3 h-3" />
+                            {isTeacher && <RefreshCw className="w-3 h-3" />}
                           </button>
                         ) : (
                           <button
-                            onClick={() => handleAddAbsent(session)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none cursor-pointer bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:opacity-80 transition-opacity"
+                            onClick={() => { if (isTeacher) handleAddAbsent(session) }}
+                            disabled={!isTeacher}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 ${isTeacher ? 'cursor-pointer hover:opacity-80 transition-opacity' : 'cursor-default'}`}
                           >
-                            No Record <span className="text-lg leading-none">+</span>
+                            No Record {isTeacher && <span className="text-lg leading-none">+</span>}
                           </button>
                         )}
                       </div>

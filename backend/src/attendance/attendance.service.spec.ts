@@ -18,7 +18,7 @@ const mockedIsWithinGeofence = isWithinGeofence as jest.MockedFunction<typeof is
 
 const studentUser: RequestUser = { id: 'stu-1', role: 'student', studentId: 'S-1' }
 const teacherUser: RequestUser = { id: 'teacher-1', role: 'teacher' }
-const adminUser: RequestUser = { id: 'admin-1', role: 'super_admin' }
+const adminUser: RequestUser = { id: 'admin-1', role: 'super_admin', scope: 'institution' }
 
 const VALID_TOKEN = 't'.repeat(100)
 const ISSUED_AT = Date.now() - 30_000 // 30 seconds ago
@@ -258,6 +258,22 @@ describe('AttendanceService', () => {
       expect(result.status).toBe('late')
       expect(result.message).toContain('late')
     })
+
+    it('rejects scans after both validity and grace windows expire', async () => {
+      const issuedAtExpired = Date.now() - 16 * 60_000
+      redis.getJson.mockResolvedValue(cachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(validPayload({ issuedAt: issuedAtExpired }))
+      mockedIsWithinGeofence.mockReturnValue(true)
+
+      const result = await service.check(studentUser, {
+        ...checkArgs,
+        scannedAt: new Date(issuedAtExpired + 60_000).toISOString(),
+      })
+
+      expect(result.success).toBe(false)
+      expect(result.reason).toBe('qr_expired')
+    })
   })
 
   describe('check (rate limit)', () => {
@@ -402,6 +418,31 @@ describe('AttendanceService', () => {
 
       await expect(service.submit(studentUser, submitArgs)).rejects.toThrow(NotFoundException)
     })
+
+    it('marks a valid but delayed offline sync as disputed', async () => {
+      const issuedAt = Date.now() - 20 * 60_000
+      const scannedAt = new Date(issuedAt + 2 * 60_000).toISOString()
+      prisma.session.findUnique.mockResolvedValue(cachedSession({ isActive: false, endedAt: new Date() }))
+      redis.getJson.mockResolvedValue(cachedSession({ isActive: false, endedAt: new Date() }))
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(validPayload({ issuedAt }))
+      mockedIsWithinGeofence.mockReturnValue(true)
+      prisma.attendanceRecord.findUnique.mockResolvedValue(makeRosterRecord({ status: 'absent' }))
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(
+        makeRosterRecord({ status: 'disputed', disputeReason: 'delayed_offline_sync' }),
+      )
+
+      const result = await service.syncScan(studentUser, { ...submitArgs, lat: 14.6, lon: 121, scannedAt })
+
+      expect('error' in result).toBe(false)
+      expect(prisma.attendanceRecord.updateMany.mock.calls[0][0].data).toEqual(
+        expect.objectContaining({ status: 'disputed', disputeReason: 'delayed_offline_sync' }),
+      )
+      expect(prisma.attendanceRecord.updateMany.mock.calls[0][0].where.status).toEqual({
+        in: ['pending', 'absent'],
+      })
+    })
   })
 
   describe('updateStatus', () => {
@@ -434,14 +475,10 @@ describe('AttendanceService', () => {
       await expect(service.updateStatus(teacherUser, 'missing', 'present')).rejects.toThrow(NotFoundException)
     })
 
-    it('allows super_admin to update any record', async () => {
-      prisma.attendanceRecord.findUnique.mockResolvedValue({
-        ...makeRosterRecord(),
-        session: { teacherId: 'teacher-other' },
-      })
-      prisma.attendanceRecord.update.mockResolvedValue(makeRosterRecord({ status: 'late' }))
-      const result = await service.updateStatus(adminUser, 'rec-1', 'late')
-      expect(result.status).toBe('late')
+    it('forbids super_admin from changing day-to-day attendance', async () => {
+      await expect(service.updateStatus(adminUser, 'rec-1', 'late')).rejects.toThrow(ForbiddenException)
+      expect(prisma.attendanceRecord.findUnique).not.toHaveBeenCalled()
+      expect(prisma.attendanceRecord.update).not.toHaveBeenCalled()
     })
 
     it('forbids students even when the service is called outside the controller', async () => {
@@ -457,6 +494,12 @@ describe('AttendanceService', () => {
       studentId: 'stu-2',
       status: 'present' as const,
     }
+
+    it('forbids super_admin from creating manual attendance', async () => {
+      await expect(service.createManual(adminUser, dto)).rejects.toThrow(ForbiddenException)
+      expect(prisma.session.findUnique).not.toHaveBeenCalled()
+      expect(prisma.attendanceRecord.upsert).not.toHaveBeenCalled()
+    })
 
     it('forbids students even when the service is called outside the controller', async () => {
       await expect(service.createManual(studentUser, dto)).rejects.toThrow(ForbiddenException)

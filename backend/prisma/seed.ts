@@ -1,11 +1,18 @@
 import 'dotenv/config'
 import { PrismaClient, UserRole, DayOfWeek, AttendanceStatus, SectionRoleType } from '@prisma/client'
-import { hashSync } from 'bcryptjs'
+import { hash } from 'bcryptjs'
 
 const prisma = new PrismaClient()
 
 async function main() {
-  const password = hashSync('password123', 10)
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
+    throw new Error('Production seeding is disabled. Set ALLOW_PRODUCTION_SEED=true only for an intentional bootstrap.')
+  }
+  const seedPassword = process.env.SEED_PASSWORD
+  if (!seedPassword || seedPassword.length < 12) {
+    throw new Error('SEED_PASSWORD must be set to at least 12 characters')
+  }
+  const password = await hash(seedPassword, 12)
 
   // ── Users ──
   const users = [
@@ -117,7 +124,8 @@ async function main() {
   ]
 
   for (const user of users) {
-    await prisma.user.upsert({ where: { id: user.id }, update: user, create: user })
+    const { password: _password, ...profile } = user
+    await prisma.user.upsert({ where: { id: user.id }, update: profile, create: user })
   }
 
   // ── Subjects ──
@@ -232,9 +240,8 @@ async function main() {
     { sectionId: 'sec-005', day: DayOfWeek.Fri, startTime: '13:00', endTime: '14:30', room: 'Room 205' },
   ]
 
-  for (const s of schedules) {
-    await prisma.scheduleDay.create({ data: s })
-  }
+  await prisma.scheduleDay.deleteMany({ where: { sectionId: { in: sections.map((section) => section.id) } } })
+  await prisma.scheduleDay.createMany({ data: schedules })
 
   // ── Sessions ──
   const sessions = [

@@ -88,9 +88,9 @@ export default function FacultyDashboardScreen() {
           >
             <MaterialIcons name="gavel" size={20} color={isDark ? '#FCA5A5' : '#991B1B'} />
             <View style={{ flex: 1 }}>
-              <Text style={[styles.alertTitle, isDark && styles.alertTitleDark]}>Disputes Pending Review</Text>
+              <Text style={[styles.alertTitle, isDark && styles.alertTitleDark]}>{isSuper ? 'Disputes Awaiting Teacher Action' : 'Disputes Pending Review'}</Text>
               <Text style={[styles.alertDesc, isDark && styles.alertDescDark]}>
-                You have {pendingDisputes} dispute{pendingDisputes > 1 ? 's' : ''} waiting for resolution.
+                {pendingDisputes} dispute{pendingDisputes > 1 ? 's are' : ' is'} awaiting resolution.
               </Text>
             </View>
             <MaterialIcons name="chevron-right" size={20} color={isDark ? '#FCA5A5' : '#991B1B'} />
@@ -122,7 +122,7 @@ export default function FacultyDashboardScreen() {
           </View>
         </View>
 
-        <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginTop: 8 }]}>Today's Schedule</Text>
+        <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginTop: 8 }]}>{isSuper ? "Today's Sessions" : "Today's Schedule"}</Text>
         {todayEvents.map((ev) => {
           const isActive = ev.status === 'active'
           const isCompleted = ev.status === 'completed'
@@ -169,6 +169,8 @@ export default function FacultyDashboardScreen() {
                   <Text style={[styles.badgeText, isDark ? styles.textWhite50 : { color: '#888' }]}>Completed</Text>
                 ) : isMoved ? (
                   <Text style={[styles.badgeText, { color: '#EF4444' }]}>Moved</Text>
+                ) : isSuper ? (
+                  <Text style={[styles.badgeText, isDark ? styles.textWhite50 : { color: '#888' }]}>Scheduled</Text>
                 ) : (
                   <TouchableOpacity
                     style={[styles.activateBtn, isDark && styles.activateBtnDark]}
@@ -190,7 +192,7 @@ export default function FacultyDashboardScreen() {
           </View>
         )}
 
-        <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginTop: 12 }]}>My Subjects</Text>
+        <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginTop: 12 }]}>{isSuper ? 'Subject Directory' : 'My Subjects'}</Text>
         {sections.map((s) => {
           const parent = subjects[s.subjectId]
           return (

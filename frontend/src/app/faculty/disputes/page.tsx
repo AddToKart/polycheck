@@ -9,6 +9,7 @@ import {
   AlertTriangle, 
   MapPin, 
   Timer, 
+  Clock,
   Copy, 
   Fingerprint, 
   Smartphone,
@@ -34,6 +35,13 @@ const DISPUTE_LABELS: Record<DisputeReason, string> = {
   invalid_signature: 'Invalid Signature',
   device_mismatch: 'Device Mismatch',
   suspicious_coordinates: 'Suspicious GPS',
+  delayed_offline_sync: 'Delayed Offline Sync',
+  invalid_timestamp: 'Invalid Timestamp',
+  token_mismatch: 'QR Token Mismatch',
+  session_inactive: 'Inactive Session',
+  not_enrolled: 'Not Enrolled',
+  qr_expired: 'QR Expired',
+  rate_limited: 'Rate Limited',
 }
 
 const DISPUTE_ICONS: Record<DisputeReason, React.ElementType> = {
@@ -43,6 +51,13 @@ const DISPUTE_ICONS: Record<DisputeReason, React.ElementType> = {
   invalid_signature: Fingerprint,
   device_mismatch: Smartphone,
   suspicious_coordinates: AlertTriangle,
+  delayed_offline_sync: Clock,
+  invalid_timestamp: Clock,
+  token_mismatch: Fingerprint,
+  session_inactive: Timer,
+  not_enrolled: AlertTriangle,
+  qr_expired: Timer,
+  rate_limited: AlertTriangle,
 }
 
 export default function DisputesPage() {
@@ -519,7 +534,7 @@ export default function DisputesPage() {
               )
             })()}
 
-            {!selectedRecord.disputeResolved ? (
+            {!selectedRecord.disputeResolved && user.role === 'teacher' ? (
               <>
                 <p className="text-xs uppercase tracking-[0.5px] text-gray-400 dark:text-gray-500 mb-3">What would you like to do?</p>
 
@@ -542,7 +557,9 @@ export default function DisputesPage() {
               </>
             ) : (
               <div className="text-center py-3 bg-zinc-100 dark:bg-[#0A0A0C] border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400 mb-4 rounded-none">
-                This dispute has been resolved and logged in history.
+                {selectedRecord.disputeResolved
+                  ? 'This dispute has been resolved and logged in history.'
+                  : 'This dispute is awaiting action from the assigned teacher.'}
               </div>
             )}
 

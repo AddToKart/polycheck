@@ -14,9 +14,11 @@ import { InfrastructureModule } from '../infrastructure/infrastructure.module'
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET'),
+        secret: config.getOrThrow<string>('JWT_SECRET'),
         signOptions: {
           expiresIn: config.get<string>('JWT_EXPIRES_IN') ?? '15m',
+          issuer: config.getOrThrow<string>('JWT_ISSUER'),
+          audience: config.getOrThrow<string>('JWT_AUDIENCE'),
         },
       }),
     }),

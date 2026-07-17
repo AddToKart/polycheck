@@ -58,6 +58,8 @@ polycheck/
 ### Super Admin
 Department heads, program chairs, PUP officials. Highest access — sees data across all teachers and subjects. Manages teacher accounts, configures institution settings, generates reports. Does not manage day-to-day attendance.
 
+Super Admin capabilities are limited to scoped oversight, reports/exports, global search, user account administration (including teacher/student creation, status changes, and password resets), and institution settings. Super Admins have read-only access to classroom resources and must not create/update/delete subjects, sections, sessions, attendance, disputes, enrollment codes/rosters, section roles, QR tokens, or proof-of-class records.
+
 ### Teacher / Instructor
 Creates subjects, configures class schedules, generates QR codes per session, sets geofences, defines check-in time windows. Views attendance records for their classes. Flags anomalies.
 

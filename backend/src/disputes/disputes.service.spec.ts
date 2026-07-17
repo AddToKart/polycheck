@@ -18,7 +18,7 @@ describe('DisputesService', () => {
 
   const studentUser: RequestUser = { id: 'stu-1', role: 'student', studentId: 'S-1' }
   const teacherUser: RequestUser = { id: 'teacher-1', role: 'teacher' }
-  const adminUser: RequestUser = { id: 'admin-1', role: 'super_admin' }
+  const adminUser: RequestUser = { id: 'admin-1', role: 'super_admin', scope: 'institution' }
 
   const baseRecord = {
     id: 'rec-1',
@@ -118,7 +118,7 @@ describe('DisputesService', () => {
 
   describe('submit', () => {
     it('allows student to submit dispute for own attendance record', async () => {
-      prisma.attendanceRecord.findUnique.mockResolvedValue(baseRecord)
+      prisma.attendanceRecord.findUnique.mockResolvedValue({ ...baseRecord, status: 'absent', disputeResolved: true })
       const updated = { ...baseRecord, status: 'disputed', disputeReason: 'gps_inaccuracy' }
       prisma.attendanceRecord.update.mockResolvedValue(updated)
       const result = await service.submit(studentUser, {
@@ -215,14 +215,10 @@ describe('DisputesService', () => {
       expect(prisma.attendanceRecord.update).not.toHaveBeenCalled()
     })
 
-    it('super_admin can resolve any dispute', async () => {
-      prisma.attendanceRecord.findUnique.mockResolvedValue({
-        ...baseRecord,
-        session: { teacherId: 'teacher-9' },
-      })
-      prisma.attendanceRecord.update.mockResolvedValue({ ...baseRecord, status: 'present', disputeResolved: true })
-      await service.resolve(adminUser, 'rec-1', 'accept')
-      expect(prisma.attendanceRecord.update).toHaveBeenCalled()
+    it('forbids super_admin from resolving day-to-day disputes', async () => {
+      await expect(service.resolve(adminUser, 'rec-1', 'accept')).rejects.toThrow(ForbiddenException)
+      expect(prisma.attendanceRecord.findUnique).not.toHaveBeenCalled()
+      expect(prisma.attendanceRecord.update).not.toHaveBeenCalled()
     })
 
     it('throws NotFoundException when record does not exist', async () => {

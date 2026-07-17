@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Search, Key, RefreshCw, Ban, Users, CalendarDays, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle } from 'lucide-react'
+import { ArrowLeft, Search, Key, RefreshCw, Ban, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Section, Student, SectionRole, SessionPermission } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -45,7 +45,7 @@ export default function SectionDetailPage() {
       return
     }
     setUser(cu)
-    api.getStudents().then(setAllStudents)
+    if (cu.role === 'teacher') api.getStudents().then(setAllStudents)
   }, [router])
 
   useEffect(() => {
@@ -60,8 +60,10 @@ export default function SectionDetailPage() {
       }
       setSection(sec)
       setStudents(await api.getSectionStudents(id))
-      setSectionRoles(await api.getSectionRoles(id))
-      setSessionPermissions(await api.getActiveSessionPermissions(id))
+      if (cu?.role === 'teacher') {
+        setSectionRoles(await api.getSectionRoles(id))
+        setSessionPermissions(await api.getActiveSessionPermissions(id))
+      }
       const subj = await api.getSubject(sec.subjectId)
       setSubjectName(subj?.name ?? '')
       setSubjectCode(subj?.code ?? '')
@@ -88,7 +90,7 @@ export default function SectionDetailPage() {
 
   useEffect(() => { setPage(0) }, [search])
 
-  const enrolledIds = new Set(students.map((s) => s.id))
+  const enrolledIds = useMemo(() => new Set(students.map((s) => s.id)), [students])
   const enrollCandidates = useMemo(() => {
     if (!enrollSearch.trim()) return []
     const q = enrollSearch.toLowerCase()
@@ -183,6 +185,7 @@ export default function SectionDetailPage() {
             </CardContent>
           </Card>
 
+          {user.role === 'teacher' && <>
           {/* Enrollment Code */}
           <Card className="mb-6 border-t-4 border-t-maroon dark:border-t-golden">
             <CardHeader>
@@ -453,6 +456,7 @@ export default function SectionDetailPage() {
               </div>
             </CardContent>
           </Card>
+          </>}
 
           {/* Attendance Overview */}
           <div className="grid grid-cols-3 gap-4 mb-6">

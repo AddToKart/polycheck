@@ -34,13 +34,13 @@ export class SectionsController {
   }
 
   @Patch(':id')
-  @Roles('teacher', 'super_admin')
+  @Roles('teacher')
   update(@Param('id') id: string, @Body() dto: UpdateSectionDto, @Request() req: AuthenticatedRequest) {
     return this.sections.update(id, dto, req.user)
   }
 
   @Delete(':id')
-  @Roles('teacher', 'super_admin')
+  @Roles('teacher')
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
     return this.sections.remove(id, req.user)

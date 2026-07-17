@@ -57,8 +57,8 @@ export default function CreateSessionPage() {
   useEffect(() => {
     const init = async () => {
       const cu = api.getCurrentUser()
-      if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
-        router.push('/')
+    if (!cu || cu.role !== 'teacher') {
+      router.push(cu?.role === 'super_admin' ? '/faculty/sessions' : '/')
         return
       }
       setUser(cu)

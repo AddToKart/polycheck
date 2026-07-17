@@ -15,6 +15,13 @@ const DISPUTE_LABELS: Record<DisputeReason, string> = {
   invalid_signature: 'Invalid Signature',
   device_mismatch: 'Device Mismatch',
   suspicious_coordinates: 'Suspicious GPS',
+  delayed_offline_sync: 'Delayed Offline Sync',
+  invalid_timestamp: 'Invalid Timestamp',
+  token_mismatch: 'QR Token Mismatch',
+  session_inactive: 'Inactive Session',
+  not_enrolled: 'Not Enrolled',
+  qr_expired: 'QR Expired',
+  rate_limited: 'Rate Limited',
 }
 
 const DISPUTE_ICONS: Record<DisputeReason, keyof typeof MaterialIcons.glyphMap> = {
@@ -24,6 +31,13 @@ const DISPUTE_ICONS: Record<DisputeReason, keyof typeof MaterialIcons.glyphMap> 
   invalid_signature: 'fingerprint',
   device_mismatch: 'devices',
   suspicious_coordinates: 'gps-fixed',
+  delayed_offline_sync: 'cloud-off',
+  invalid_timestamp: 'access-time',
+  token_mismatch: 'fingerprint',
+  session_inactive: 'timer-off',
+  not_enrolled: 'person-off',
+  qr_expired: 'timer-off',
+  rate_limited: 'speed',
 }
 
 export default function DisputesScreen() {
@@ -447,7 +461,7 @@ export default function DisputesScreen() {
                                         </View>
                                         <View style={styles.recordFooter}>
                                           <Text style={[styles.tapHint, isDark && styles.textWhite50]}>
-                                            {activeTab === 'pending' ? 'Tap to review' : 'View resolved details'}
+                                            {activeTab === 'pending' && user.role === 'teacher' ? 'Tap to review' : 'View details'}
                                           </Text>
                                           <MaterialIcons
                                             name="chevron-right"
@@ -543,7 +557,7 @@ export default function DisputesScreen() {
                 )}
               </View>
 
-              {!selectedRecord.disputeResolved ? (
+              {!selectedRecord.disputeResolved && user.role === 'teacher' ? (
                 <>
                   <Text style={[styles.reviewActionsLabel, isDark && styles.textWhite50]}>What would you like to do?</Text>
 
@@ -577,7 +591,9 @@ export default function DisputesScreen() {
               ) : (
                 <View style={styles.resolvedBanner}>
                   <Text style={[styles.resolvedBannerText, isDark && styles.textWhite70]}>
-                    This dispute has been resolved and logged in history.
+                    {selectedRecord.disputeResolved
+                      ? 'This dispute has been resolved and logged in history.'
+                      : 'This dispute is awaiting action from the assigned teacher.'}
                   </Text>
                 </View>
               )}
