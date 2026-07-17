@@ -38,8 +38,6 @@ function SessionsContent() {
     fetchData()
   }, [router])
 
-  if (!user) return null
-
   type GroupedSessions = Record<string, Session[]>
   const grouped = useMemo(() =>
     sessions.reduce<Record<string, { subjectId: string; sessions: GroupedSessions }>>((acc, s) => {
@@ -69,6 +67,8 @@ function SessionsContent() {
     api.logout()
     router.push('/')
   }
+
+  if (!user) return null
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
@@ -149,7 +149,7 @@ function SessionsContent() {
                             </Badge>
                           </td>
                           <td className="px-6 py-3 text-right">
-                            {!session.isActive && (
+                            {user.role === 'teacher' && !session.isActive && (
                               <Button
                                 size="sm"
                                 onClick={(e) => {

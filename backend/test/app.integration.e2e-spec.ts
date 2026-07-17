@@ -27,6 +27,10 @@ describe('Application integration (e2e)', () => {
     await request(app.getHttpServer()).get('/api/subjects').expect(401)
   })
 
+  it('registers and protects the account-scoped enrollment resource', async () => {
+    await request(app.getHttpServer()).get('/api/enrollments').expect(401)
+  })
+
   it.each([
     ['post', '/api/users/students'],
     ['patch', '/api/users/student-1/password'],

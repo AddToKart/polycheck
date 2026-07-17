@@ -59,4 +59,45 @@ describe('SectionsService', () => {
     expect(tx.scheduleDay.deleteMany).toHaveBeenCalled()
     expect(tx.section.update).toHaveBeenCalled()
   })
+
+  it('limits the enrollment list to sections owned by the teacher', async () => {
+    const prisma = { enrollment: { findMany: jest.fn().mockResolvedValue([]) } }
+    const service = new SectionsService(prisma as never)
+
+    await service.findEnrollments({ id: 'teacher-1', role: 'teacher' })
+
+    expect(prisma.enrollment.findMany).toHaveBeenCalledWith({
+      where: { section: { teacherId: 'teacher-1' } },
+      orderBy: { enrolledAt: 'asc' },
+    })
+  })
+
+  it('limits the enrollment list to the authenticated student', async () => {
+    const prisma = { enrollment: { findMany: jest.fn().mockResolvedValue([]) } }
+    const service = new SectionsService(prisma as never)
+
+    await service.findEnrollments({ id: 'student-1', role: 'student' })
+
+    expect(prisma.enrollment.findMany).toHaveBeenCalledWith({
+      where: { studentId: 'student-1' },
+      orderBy: { enrolledAt: 'asc' },
+    })
+  })
+
+  it('limits department administrators to enrollments in their department', async () => {
+    const prisma = { enrollment: { findMany: jest.fn().mockResolvedValue([]) } }
+    const service = new SectionsService(prisma as never)
+
+    await service.findEnrollments({
+      id: 'admin-1',
+      role: 'super_admin',
+      scope: 'department',
+      department: 'CCIS',
+    })
+
+    expect(prisma.enrollment.findMany).toHaveBeenCalledWith({
+      where: { section: { teacher: { department: 'CCIS' } } },
+      orderBy: { enrolledAt: 'asc' },
+    })
+  })
 })

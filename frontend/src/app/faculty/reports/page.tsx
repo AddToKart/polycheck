@@ -54,8 +54,6 @@ export default function ReportsPage() {
     fetchData()
   }, [router])
 
-  if (!user) return null
-
   const subjectSectionIds = useMemo(() => {
     if (!selectedSubject) return null
     return new Set(sections.filter((s) => s.subjectId === selectedSubject).map((s) => s.id))
@@ -145,6 +143,8 @@ export default function ReportsPage() {
     api.logout()
     router.push('/')
   }
+
+  if (!user) return null
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">

@@ -342,6 +342,27 @@ export class SectionsService {
     })
   }
 
+  async findEnrollments(user: RequestUser) {
+    let where: Prisma.EnrollmentWhereInput
+
+    if (user.role === 'student') {
+      where = { studentId: user.id }
+    } else if (user.role === 'teacher') {
+      where = { section: { teacherId: user.id } }
+    } else if (user.scope === 'institution') {
+      where = {}
+    } else {
+      where = user.department
+        ? { section: { teacher: { department: user.department } } }
+        : { id: { in: [] } }
+    }
+
+    return this.prisma.enrollment.findMany({
+      where,
+      orderBy: { enrolledAt: 'asc' },
+    })
+  }
+
   private generateEnrollmentCode(): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
     let code = ''
