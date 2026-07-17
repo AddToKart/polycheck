@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { BookOpen, MapPin, CalendarDays, Plus, X } from 'lucide-react'
-import { api } from '@/lib/mock-api'
+import { api } from '@/lib/api-client'
 import type { User, Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -62,8 +62,8 @@ function CreateSectionForm() {
 
   useEffect(() => {
     const cu = api.getCurrentUser()
-    if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
-      router.push('/')
+    if (!cu || cu.role !== 'teacher') {
+      router.push(cu?.role === 'super_admin' ? '/faculty/subjects' : '/')
       return
     }
     setUser(cu)
@@ -71,12 +71,15 @@ function CreateSectionForm() {
 
   useEffect(() => {
     if (!subjectId) return
-    const subj = api.getSubject(subjectId)
-    if (!subj) {
-      router.push('/faculty/subjects')
-      return
+    const fn = async () => {
+      const subj = await api.getSubject(subjectId)
+      if (!subj) {
+        router.push('/faculty/subjects')
+        return
+      }
+      setSubject(subj)
     }
-    setSubject(subj)
+    fn()
   }, [subjectId, router])
 
   const enrollmentCode = useMemo(() => {
@@ -104,10 +107,10 @@ function CreateSectionForm() {
     setSchedule(schedule.filter((_, i) => i !== index))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!section || !room || !semester || schedule.length === 0) return
-    api.createSection({
+    await api.createSection({
       subjectId: subject.id,
       section,
       room,
@@ -118,8 +121,6 @@ function CreateSectionForm() {
         room: s.room || undefined,
       })),
       semester,
-      teacherId: user.id,
-      teacherName: user.fullName,
     })
     router.push('/faculty/subjects/' + subject.id)
   }
@@ -130,7 +131,7 @@ function CreateSectionForm() {
   }
 
   return (
-    <div className="min-h-screen flex bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
       <Sidebar
         user={user}
         onLogout={handleLogout}
@@ -220,7 +221,7 @@ function CreateSectionForm() {
               </CardHeader>
               <CardContent className="space-y-5">
                 {/* Schedule Entry Form */}
-                <div className="grid grid-cols-[1fr_1fr_1fr_1fr] gap-3 items-end">
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 items-end">
                   <div className="space-y-2">
                     <Label>Day</Label>
                     <select
@@ -241,7 +242,7 @@ function CreateSectionForm() {
                     <Label>End</Label>
                     <Input type="time" value={currentEndTime} onChange={(e) => setCurrentEndTime(e.target.value)} />
                   </div>
-                  <Button type="button" variant="default" size="sm" className="rounded-none h-10" onClick={handleAddSchedule}>
+                  <Button type="button" variant="default" size="sm" className="rounded-none h-10 w-full col-span-3 sm:col-span-1" onClick={handleAddSchedule}>
                     <Plus className="w-4 h-4 mr-1" /> Add
                   </Button>
                 </div>

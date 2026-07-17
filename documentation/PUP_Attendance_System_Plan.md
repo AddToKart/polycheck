@@ -23,18 +23,20 @@ The current process relies on paper-based class monitoring forms. Students sign 
 ### Super Admin
 Super Admins are department heads and authorized PUP officials such as program chairs and administrators. They have the highest level of access in the system and can see data across all teachers and subjects within their department or the entire institution depending on their scope. They do not manage day-to-day attendance but oversee the system, generate reports, manage teacher accounts, and configure institution-level settings.
 
-### Admin (Teacher / Instructor)
-Admins are teachers and instructors. Each teacher manages only their own subjects and classes. They create subjects, configure class schedules, generate QR codes for each session, set the geofence for their classroom, and define the time window during which students may check in. They can view attendance records for their classes and flag anomalies.
+Super Admin access is administrative and observational, not a substitute for a teacher account. Within their authorized department or institution scope, Super Admins may view subject, section, session, attendance, dispute, proof-of-class, and anomaly data; generate/export reports; search the institutional directory; create and manage teacher/student accounts; reset account passwords; and configure institution settings. They cannot create, edit, or delete subjects, sections, or class sessions; activate/end sessions or access live QR tokens; manage enrollment codes or rosters; assign section officers; change attendance statuses; resolve disputes; or delete proof-of-class submissions. Those classroom operations remain with the assigned teacher, with the separately documented limited student-officer permissions.
+
+### Teacher / Instructor
+Teachers are the primary session managers. Each teacher manages only their own subjects and classes. They create subjects, configure class schedules, generate QR codes for each session, set the geofence for their classroom, and define the time window during which students may check in. They can view attendance records for their classes and flag anomalies. Teachers can also assign student officers (President, QAC) per section.
 
 ### Student
-Students use the mobile app as their primary interface. They have a digital student ID within the app, can view their class schedules, and check in to classes by scanning the teacher's QR code. Their attendance history is visible to them, and they receive feedback when a check-in is denied and why.
+Students use the mobile app as their primary interface, with a web dashboard available for schedule and detail views. They have a digital student ID within the app, can view their class schedules, and check in to classes by scanning the teacher's QR code. Their attendance history is visible to them, and they can submit disputes. Student officers (President, QAC) can create sessions and upload proof of class.
 
 ---
 
 ## Core Features
 
 ### QR Code Attendance
-Each class session requires the teacher to generate a fresh QR code directly in the system. The QR code is not a static image — it is a cryptographically signed token that is unique to that session and expires after a teacher-configured time window (typically two to five minutes). Tokens are signed locally on the teacher's device using a private key that was provisioned to the device during the initial connected setup phase. The server retains the corresponding public key and uses it to verify token signatures when records sync. This asymmetric key model means token signing is fully trustworthy without requiring a server connection at the moment of generation. The session data is queued for sync to Supabase whenever connectivity is available. Once the time window closes, the token is considered expired and any scan attempt is rejected. When records sync, the server re-validates all token signatures and timestamps.
+Each class session requires the teacher to generate a fresh QR code directly in the system. The QR code is not a static image — it is a cryptographically signed token that is unique to that session and expires after a teacher-configured time window (typically two to five minutes). Tokens are signed locally on the teacher's device using a private key that was provisioned to the device during the initial connected setup phase. The server retains the corresponding public key and uses it to verify token signatures when records sync. This asymmetric key model means token signing is fully trustworthy without requiring a server connection at the moment of generation. The session data is queued for sync to the server whenever connectivity is available. Once the time window closes, the token is considered expired and any scan attempt is rejected. When records sync, the server re-validates all token signatures and timestamps.
 
 ### Geolocation Attendance Gating
 When a teacher creates a session, they configure a geofence — a circular area defined by GPS coordinates and a radius (typically 30 to 50 meters centered on the classroom). This geofence is stored locally on the teacher's device and pre-synced to enrolled students' devices so it is available without internet. When a student submits a QR scan, the app performs the Haversine distance calculation locally on the device using the cached geofence data. If the student's current GPS coordinates fall outside the defined radius, the check-in is rejected immediately and the student is informed they are outside the allowed area. The GPS coordinates, outcome, and timestamp are all recorded locally and included in the sync payload when connectivity returns. Upon sync, the server re-validates all submitted coordinates against the stored geofence as a secondary check to catch any local tampering.
@@ -87,7 +89,7 @@ A student saves a QR code from a previous session and tries to use it in a futur
 ## Tech Stack
 
 ### Web Dashboard
-The web dashboard is built with Next.js and serves the Teacher (Admin) and Super Admin interfaces. Teachers use it to create subjects, configure sessions, generate QR codes, and review attendance. Super Admins use it for user management, reporting, and system configuration. The web dashboard shares the same design system, type definitions, and API client logic as the mobile app through a monorepo structure.
+The web dashboard is built with Next.js and serves the Teacher, Super Admin, and Student interfaces. Teachers use it to create subjects, configure sessions, generate QR codes, and review attendance. Super Admins use it for user management, reporting, and system configuration. Students can view their schedule, subjects, attendance history, and submit disputes. The web dashboard shares the same design system, type definitions, and API client logic as the mobile app through a monorepo structure.
 
 ### Mobile App
 The mobile app is built with React Native using the Expo framework. It is the primary interface for students and is also available to teachers who prefer to generate and display QR codes from their phone. Expo provides access to native device capabilities required by the system — GPS via expo-location, camera and QR scanning via expo-camera, and biometric authentication via expo-local-authentication. The app targets both iOS and Android.
@@ -96,10 +98,19 @@ The mobile app is built with React Native using the Expo framework. It is the pr
 The backend is built with NestJS running on Node.js. NestJS is chosen for its module-based architecture, which maps cleanly to the system's distinct functional areas: authentication and session management, QR token generation and validation, geolocation validation, attendance recording, subject and schedule management, and reporting. Each module is independently testable and maintainable. The API is RESTful with JWT-based authentication.
 
 ### Database
-The system uses a two-layer database architecture to support offline-first operation. On each device, a local SQLite database (via expo-sqlite on mobile) stores all data the app needs to function without internet — enrolled subjects, session tokens, geofence configurations, student profile data, and a queue of attendance records pending sync. This local database is the source of truth during class. The cloud database is PostgreSQL hosted on Supabase, which is the permanent system of record. Supabase is chosen for its Row Level Security (RLS) feature, which enforces data access policies at the database level — a student can only read their own records, a teacher can only read records for their subjects, and a Super Admin can read all records within their scope. Supabase also provides realtime subscriptions, which update the teacher's dashboard live as synced records arrive.
+The system uses a two-layer database architecture to support offline-first operation. On each device, a local SQLite database (via expo-sqlite on mobile) stores all data the app needs to function without internet — enrolled subjects, session tokens, geofence configurations, student profile data, and a queue of attendance records pending sync. This local database is the source of truth during class. The cloud database is PostgreSQL, accessed via Prisma ORM through the NestJS backend, and serves as the permanent system of record. Data access policies are enforced at the API layer through NestJS guards using a role-based access control (RBAC) system — a student can only read their own records, a teacher can only read records for their subjects, and a Super Admin can read all records within their scope. For real-time updates to the teacher's dashboard and low-latency request processing, the NestJS backend integrates WebSocket endpoints and a Redis cache (see Real-Time & Caching Infrastructure).
+
+### Real-Time & Caching Infrastructure (WebSockets & Redis)
+For real-time updates and low-latency validation during peak attendance check-in windows, the system utilizes WebSockets (via Socket.IO) and Redis:
+* **WebSockets**: Established between the NestJS backend and the teacher's dashboard (web/mobile). As students sync their locally generated attendance records to the backend, the backend pushes these successful check-ins instantly to the active session view.
+* **Redis**: Acts as an in-memory data store and event broker:
+  * *WebSocket Adapter*: Enables horizontal scaling of WebSocket connections. If multiple server instances are running behind a load balancer, Redis Pub/Sub coordinates and broadcasts WebSocket events across Server instances.
+  * *Active Session Caching*: Active geofence coordinates and QR token metadata are cached in Redis with a TTL matching the session's duration. The backend validates coordinates against the cache in microseconds without hitting the PostgreSQL database.
+  * *Rate Limiting*: Limits scan submission attempts per student/device ID using a Redis-backed rate limiter to prevent geofence-spoofing brute-force attacks.
+  * *Job Queues (BullMQ)*: Manages batch processing of offline sync payloads asynchronously, ensuring the main HTTP server thread remains unblocked.
 
 ### Authentication
-Better Auth handles session management, JWT issuance, and user account lifecycle. User roles (super_admin, admin, student) are stored in the user profile and attached to every session token. NestJS guards read the role from the token on every protected route and enforce access accordingly. The single active session per account constraint described in the Anti-Cheat section is enforced here at the Better Auth configuration level — it is one mechanism, not two.
+Better Auth handles session management, JWT issuance, and user account lifecycle. User roles (super_admin, teacher, student) are stored in the user profile and attached to every session token. NestJS guards read the role from the token on every protected route and enforce access accordingly. The single active session per account constraint described in the Anti-Cheat section is enforced here at the Better Auth configuration level — it is one mechanism, not two.
 
 ### Monorepo Structure
 The project is organized as a Turborepo monorepo. Shared code — TypeScript types, API client functions, validation schemas, and utility functions — lives in shared packages consumed by both the Next.js web app and the Expo mobile app. This ensures the two frontends stay in sync on data contracts and reduces duplicated logic.
@@ -116,7 +127,7 @@ Both the teacher app and the student app maintain a local SQLite database on the
 
 During the initial connected setup phase, the server provisions a signing key pair to each teacher's device. The private key is stored in the device's secure enclave or keystore and never leaves the device. The server retains the corresponding public key. All QR tokens generated offline are signed with this private key, and the server verifies them using the stored public key when records sync. This is the same asymmetric signing model used by systems like SSH and hardware security keys — the server does not need to be present at signing time for the signature to be trustworthy.
 
-When internet becomes available on any device — whether the teacher's mobile data turns on, a student walks into an area with WiFi, or anyone gets home — the app's background sync queue drains automatically. Pending attendance records, newly created sessions, and any profile updates are pushed to Supabase. The sync is opportunistic and silent; users do not need to do anything to trigger it.
+When internet becomes available on any device — whether the teacher's mobile data turns on, a student walks into an area with WiFi, or anyone gets home — the app's background sync queue drains automatically. Pending attendance records, newly created sessions, and any profile updates are pushed to the server via the NestJS API. The sync is opportunistic and silent; users do not need to do anything to trigger it.
 
 ### Session Configuration vs Session Activation
 
@@ -127,6 +138,16 @@ Session configuration is the act of creating a subject, defining its geofence, s
 Session activation is the act of opening an already-configured subject and generating the QR code for that specific class meeting. This works completely offline. The teacher taps to start the session, the app generates and signs the token locally using the pre-configured subject data, and the QR is displayed. Students already have the geofence cached from their pre-session sync. The only thing they receive in the classroom is the QR token itself, which they get by physically scanning the screen — no internet needed for any part of that exchange.
 
 This separation means the system's offline capability is real and complete for the actual classroom experience, while still requiring a one-time connected setup that any teacher can do at home or on mobile data before the semester starts.
+
+### Retroactive Session Management & Expiry Buffers
+
+While check-in tokens (QR codes) expire in a short window of 2 to 5 minutes to prevent visual code sharing, the administrative state of a session remains open and activate-able by instructors even days or weeks after the scheduled date. This design decision is critical for several real-world administrative and technical reasons:
+
+1. **Roster Sync Buffer (Offline Sync Delays)**: In an offline-first environment, students might not have mobile data or campus Wi-Fi to sync their local check-in records to the cloud database immediately. A student who checked in successfully on a Monday might only connect to Wi-Fi to sync on Friday. Until then, the cloud database marks them as absent. Instructors auditing class records 7+ days later need the ability to open the session to review the synced check-ins once all student queues have cleared.
+2. **Batch Review of Attendance Disputes**: Students are typically granted a grace window (often 3 to 7 days) to submit attendance disputes for technical issues like GPS drift or camera errors. Instructors review and resolve these disputes in weekly batches, requiring the administrative state of past sessions to remain active for manual adjustment and roster overrides.
+3. **Make-up Classes and Rescheduling**: Real-world academic schedules are dynamic. If a lecture is suspended due to holidays, bad weather, or school suspensions, instructors can activate the planned session retroactively on the make-up day without needing to manually reconstruct schedules.
+4. **Instructor Administrative Authority**: Instructors serve as the final authority over their grade books. Imposing hard software blocks or cutoffs on past sessions would make the system too rigid, locking teachers out of editing their rosters when students present valid retroactive doctor notes or university excuse slips.
+
 
 ### Pre-Session Sync Expectation
 
@@ -163,7 +184,7 @@ The dominant brand color and the backbone of the entire UI. Used for primary but
 **Primary Dark — Deep Maroon** `#4A0A0B`
 Used for hover and pressed states on maroon elements, sidebar backgrounds, deep surface layers, and as the primary background color in dark mode. This is the dark counterpart that keeps the maroon family cohesive without introducing a foreign color.
 
-**Accent — Golden Yellow** `#F5A800`
+**Accent — Golden Yellow** `#FFDF00`
 The sole accent color, derived directly from the star in the PUP logo. Used for highlights, active navigation indicators, important badges, call-to-action emphasis, and any element that needs to stand out against a maroon or dark surface. It is never used as a background for large surfaces — only as an accent.
 
 **Light Mode Base — White** `#FFFFFF`
@@ -192,7 +213,7 @@ Both the web dashboard and the mobile app support dark mode. In dark mode, black
 
 ## Data and Privacy
 
-All attendance records are stored with full audit information — who checked in, from which device, at what GPS coordinates, at what time, and whether it was approved or denied. This data is accessible only to authorized roles as defined by Supabase RLS. Students see only their own records. Teachers see only records for their subjects. Super Admins see all records within their authorized scope.
+All attendance records are stored with full audit information — who checked in, from which device, at what GPS coordinates, at what time, and whether it was approved or denied. This data is accessible only to authorized roles as enforced by NestJS guards via a role-based access control (RBAC) system. Students see only their own records. Teachers see only records for their subjects. Super Admins see all records within their authorized scope.
 
 GPS coordinates submitted during check-in are stored for audit and anomaly detection purposes. Students are informed of this at onboarding and must consent. Device fingerprints are stored securely and used only for session binding and anti-cheat validation.
 
@@ -206,4 +227,4 @@ Also out of scope for v1: integration with PUP's existing student information sy
 
 ---
 
-*Prepared based on project discussions — Cayla, June 2026*
+*Prepared based on project discussions, June 2026*

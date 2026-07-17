@@ -2,6 +2,7 @@
 
 import { Map, MapMarker, MarkerContent } from '@/components/ui/map'
 import { MapPin } from 'lucide-react'
+import GeofenceCircle from '@/components/GeofenceCircle'
 
 export default function MapView({
   latitude,
@@ -22,6 +23,7 @@ export default function MapView({
             <MapPin className="fill-maroon stroke-white" size={28} />
           </MarkerContent>
         </MapMarker>
+        <GeofenceCircle latitude={latitude} longitude={longitude} radiusMeters={radius} />
       </Map>
     </div>
   )

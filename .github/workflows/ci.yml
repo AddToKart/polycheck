@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: polycheck_test
+          POSTGRES_USER: polycheck
+          POSTGRES_PASSWORD: polycheck-test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U polycheck -d polycheck_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://polycheck:polycheck-test-password@localhost:5432/polycheck_test?schema=public
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: ci-only-secret-that-is-at-least-32-characters
+      JWT_ISSUER: polycheck-api
+      JWT_AUDIENCE: polycheck-clients
+      CORS_ORIGINS: http://localhost:3000
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+      EXPO_PUBLIC_API_URL: http://localhost:4000/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod --audit-level high
+      - run: pnpm --filter @polycheck/backend prisma:generate
+      - run: pnpm --filter @polycheck/backend prisma:migrate:deploy
+      - run: pnpm --filter @polycheck/backend format:check
+      - run: pnpm --filter @polycheck/backend lint:check
+      - run: pnpm --dir frontend lint
+      - run: pnpm --dir frontend test
+      - run: pnpm --filter @polycheck/shared build
+      - run: pnpm --filter @polycheck/backend build
+      - run: pnpm --filter @polycheck/backend test:ci
+      - run: pnpm --filter @polycheck/backend test:e2e
+      - run: pnpm --dir frontend build
+      - run: pnpm --dir android typecheck
+
+  containers:
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.backend
+          push: false
+          load: true
+          tags: polycheck-backend:ci
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.frontend
+          push: false
+          load: true
+          tags: polycheck-frontend:ci
+          build-args: NEXT_PUBLIC_API_URL=https://api.example.test/api
+      - uses: aquasecurity/trivy-action@0.32.0
+        with:
+          image-ref: polycheck-backend:ci
+          format: table
+          exit-code: 1
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+      - uses: aquasecurity/trivy-action@0.32.0
+        with:
+          image-ref: polycheck-frontend:ci
+          format: table
+          exit-code: 1
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL

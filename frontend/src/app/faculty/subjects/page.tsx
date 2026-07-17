@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, ArrowRight } from 'lucide-react'
-import { api } from '@/lib/mock-api'
+import { api } from '@/lib/api-client'
 import type { User, Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,20 +14,25 @@ export default function SubjectsPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
+  const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({})
 
   useEffect(() => {
-    const cu = api.getCurrentUser()
-    if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
-      router.push('/')
-      return
+    const init = async () => {
+      const cu = api.getCurrentUser()
+      if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
+        router.push('/')
+        return
+      }
+      setUser(cu)
+      const allSections = await api.getSections()
+      const counts: Record<string, number> = {}
+      for (const sec of allSections) {
+        counts[sec.subjectId] = (counts[sec.subjectId] || 0) + 1
+      }
+      setSectionCounts(counts)
+      setSubjects(await api.getSubjects())
     }
-    setUser(cu)
-    let all = api.getSubjects()
-    if (cu.role === 'teacher') {
-      const teacherSectionIds = api.getSections().filter((s) => s.teacherId === cu.id).map((s) => s.subjectId)
-      all = all.filter((subj) => teacherSectionIds.includes(subj.id))
-    }
-    setSubjects(all)
+    init()
   }, [router])
 
   if (!user) return null
@@ -40,7 +45,7 @@ export default function SubjectsPage() {
   }
 
   return (
-    <div className="min-h-screen flex bg-background selection:bg-golden selection:text-maroon">
+    <div className="min-h-screen flex flex-col md:flex-row bg-background selection:bg-golden selection:text-maroon">
       <Sidebar user={user} onLogout={handleLogout} />
 
       <main className="flex-1 overflow-y-auto">
@@ -73,42 +78,40 @@ export default function SubjectsPage() {
           {/* Subjects Grid */}
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {subjects.map((subject) => {
-              const sectionCount = api.getSections().filter((s) => s.subjectId === subject.id).length
+              const sectionCount = sectionCounts[subject.id] ?? 0
               return (
               <div
                 key={subject.id}
                 onClick={() => router.push(`/faculty/subjects/${subject.id}`)}
                 className="block group cursor-pointer"
               >
-                <Card className="rounded-none border-zinc-200 dark:border-zinc-800 shadow-none hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50">
-                  <div className="border-l-4 border-maroon dark:border-golden h-full flex flex-col">
-                    <CardHeader className="pb-4 pt-6 px-6">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">
-                          {subject.code}
-                        </span>
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-                          {sectionCount} Section{sectionCount !== 1 ? 's' : ''}
-                        </span>
-                      </div>
-                      <CardTitle className="text-xl font-heading font-bold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors line-clamp-2 leading-tight">
-                        {subject.name}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="px-6 pb-6 flex-1 flex flex-col">
-                      {subject.description && (
-                        <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6 flex-1 leading-relaxed line-clamp-3">
-                          {subject.description}
-                        </p>
-                      )}
+                <Card className="rounded-none border-zinc-300/80 dark:border-zinc-800 border-l-4 border-l-maroon dark:border-l-golden hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50 flex flex-col h-full">
+                  <CardHeader className="pb-4 pt-6 px-6">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">
+                        {subject.code}
+                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                        {sectionCount} Section{sectionCount !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <CardTitle className="text-xl font-heading font-bold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors line-clamp-2 leading-tight">
+                      {subject.name}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-6 pb-6 flex-1 flex flex-col">
+                    {subject.description && (
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6 flex-1 leading-relaxed line-clamp-3">
+                        {subject.description}
+                      </p>
+                    )}
 
-                      <div className="mt-auto">
-                        <span className="w-full h-10 text-xs font-bold uppercase tracking-widest border border-zinc-300 dark:border-zinc-700 group-hover:bg-maroon group-hover:text-white group-hover:border-maroon dark:group-hover:bg-golden dark:group-hover:text-maroon dark:group-hover:border-golden transition-all flex items-center justify-center gap-2 rounded-none">
-                          View Sections <ArrowRight className="w-3 h-3" />
-                        </span>
-                      </div>
-                    </CardContent>
-                  </div>
+                    <div className="mt-auto">
+                      <span className="w-full h-10 text-xs font-bold uppercase tracking-widest border border-zinc-300 dark:border-zinc-700 group-hover:bg-maroon group-hover:text-white group-hover:border-maroon dark:group-hover:bg-golden dark:group-hover:text-maroon dark:group-hover:border-golden transition-all flex items-center justify-center gap-2 rounded-none">
+                        View Sections <ArrowRight className="w-3 h-3" />
+                      </span>
+                    </div>
+                  </CardContent>
                 </Card>
               </div>
             )})}

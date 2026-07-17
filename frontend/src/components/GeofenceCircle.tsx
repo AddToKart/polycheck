@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId } from 'react'
+import { useEffect, useId, useMemo } from 'react'
 import type MapLibreGL from 'maplibre-gl'
 import { useMap } from '@/components/ui/map'
 
@@ -40,16 +40,17 @@ export default function GeofenceCircle({
   const fillLayerId = `geofence-fill-${id}`
   const outlineLayerId = `geofence-outline-${id}`
 
-  const coords = computeCirclePoints(latitude, longitude, radiusMeters)
-
-  const geojson: GeoJSON.Feature<GeoJSON.Polygon> = {
-    type: 'Feature',
-    properties: {},
-    geometry: {
-      type: 'Polygon',
-      coordinates: [coords],
-    },
-  }
+  const geojson = useMemo<GeoJSON.Feature<GeoJSON.Polygon>>(
+    () => ({
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [computeCirclePoints(latitude, longitude, radiusMeters)],
+      },
+    }),
+    [latitude, longitude, radiusMeters],
+  )
 
   useEffect(() => {
     if (!isLoaded || !map) return
@@ -88,14 +89,13 @@ export default function GeofenceCircle({
         /* ignore */
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, map])
+  }, [fillLayerId, geojson, isLoaded, map, outlineLayerId, sourceId])
 
   useEffect(() => {
     if (!isLoaded || !map) return
     const source = map.getSource(sourceId) as MapLibreGL.GeoJSONSource | undefined
     if (source) source.setData(geojson)
-  }, [isLoaded, map, sourceId, latitude, longitude, radiusMeters])
+  }, [geojson, isLoaded, map, sourceId])
 
   return null
 }

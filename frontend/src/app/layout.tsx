@@ -1,11 +1,6 @@
 import type { Metadata } from "next";
-import { DM_Sans } from "next/font/google";
 import "./globals.css";
-
-const dmSans = DM_Sans({
-  variable: "--font-body",
-  subsets: ["latin"],
-});
+import { NotificationProvider } from "@/lib/notifications";
 
 export const metadata: Metadata = {
   title: "Polycheck",
@@ -40,11 +35,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${dmSans.variable} h-full antialiased`} suppressHydrationWarning>
+    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <head>
         <ThemeScript />
       </head>
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="min-h-full flex flex-col font-sans">
+        <NotificationProvider>{children}</NotificationProvider>
+      </body>
     </html>
   );
 }

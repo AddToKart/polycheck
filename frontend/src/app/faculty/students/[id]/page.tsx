@@ -1,15 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, UserX, RefreshCw, School, QrCode } from 'lucide-react'
-import { api } from '@/lib/mock-api'
+import { api } from '@/lib/api-client'
 import type { User, Student, Session, AttendanceRecord, AttendanceStatus } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 
@@ -28,7 +27,7 @@ export default function StudentDetailPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const studentId = params.id as string
-  const sectionId = searchParams.get('subjectId') || ''
+  const sectionId = searchParams.get('sectionId') || ''
   const [user, setUser] = useState<User | null>(null)
   const [student, setStudent] = useState<Student | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
@@ -47,13 +46,23 @@ export default function StudentDetailPage() {
   }, [router])
 
   useEffect(() => {
-    if (!studentId || !sectionId) return
-    const s = api.getStudent(studentId)
-    if (!s) { router.push('/faculty/subjects'); return }
-    setStudent(s)
-    setSessions(api.getSectionSessions(sectionId))
-    setRecords(api.getStudentAttendanceForSection(studentId, sectionId))
-    setReady(true)
+    const init = async () => {
+      if (!studentId) return
+      let secId = sectionId
+      if (!secId) {
+        const enrollments = await api.getEnrollments()
+        const enr = enrollments.find((e) => e.studentId === studentId)
+        if (enr) secId = enr.sectionId
+      }
+      if (!secId) return
+      const s = await api.getStudent(studentId)
+      if (!s) { router.push('/faculty/subjects'); return }
+      setStudent(s)
+      setSessions(await api.getSectionSessions(secId))
+      setRecords(await api.getStudentAttendanceForSection(studentId, secId))
+      setReady(true)
+    }
+    init()
   }, [studentId, sectionId, router])
 
   const handleLogout = () => {
@@ -61,24 +70,24 @@ export default function StudentDetailPage() {
     router.push('/')
   }
 
-  const handleRemove = () => {
+  const handleRemove = async () => {
     if (!sectionId || !studentId) return
     if (window.confirm(`Remove ${student?.fullName} from this subject? This cannot be undone.`)) {
-      api.removeStudentFromSection(sectionId, studentId)
+      await api.removeStudentFromSection(sectionId, studentId)
       router.push(`/faculty/sections/${sectionId}`)
     }
   }
 
-  const handleCycleStatus = (record: AttendanceRecord) => {
+  const handleCycleStatus = async (record: AttendanceRecord) => {
     const currentIdx = STATUS_CYCLE.indexOf(record.status)
     const nextStatus = STATUS_CYCLE[(currentIdx + 1) % STATUS_CYCLE.length]
-    api.updateAttendanceStatus(record.id, nextStatus)
+    await api.updateAttendanceStatus(record.id, nextStatus)
     setRecords((prev) =>
       prev.map((r) => (r.id === record.id ? { ...r, status: nextStatus } : r))
     )
   }
 
-  const handleAddAbsent = (session: Session) => {
+  const handleAddAbsent = async (session: Session) => {
     const existing = records.find((r) => r.sessionId === session.id)
     if (existing) return
     const newRecord: AttendanceRecord = {
@@ -94,7 +103,7 @@ export default function StudentDetailPage() {
       isSynced: false,
       notes: 'Manually marked by teacher',
     }
-    api.addAttendanceRecord(newRecord)
+    await api.addAttendanceRecord(newRecord)
     setRecords((prev) => [...prev, newRecord])
   }
 
@@ -110,9 +119,10 @@ export default function StudentDetailPage() {
   const pagedSessions = sortedSessions.slice(sessionPage * SESSION_PAGE_SIZE, (sessionPage + 1) * SESSION_PAGE_SIZE)
 
   if (!user || !ready || !student) return null
+  const isTeacher = user.role === 'teacher'
 
   return (
-    <div className="min-h-screen flex bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
       <Sidebar
         user={user}
         onLogout={handleLogout}
@@ -219,16 +229,18 @@ export default function StudentDetailPage() {
           </div>
 
           {/* Remove from Subject */}
-          <div className="flex justify-center mb-8">
-            <Button variant="outline" className="text-red-500 border-red-500 hover:bg-red-50 dark:hover:bg-red-950" onClick={handleRemove}>
-              <UserX className="w-4 h-4 mr-2" /> Remove from Subject
-            </Button>
-          </div>
+          {isTeacher && (
+            <div className="flex justify-center mb-8">
+              <Button variant="outline" className="text-red-500 border-red-500 hover:bg-red-50 dark:hover:bg-red-950" onClick={handleRemove}>
+                <UserX className="w-4 h-4 mr-2" /> Remove from Subject
+              </Button>
+            </div>
+          )}
 
           {/* Attendance per Session */}
           <h2 className="text-lg font-bold text-zinc-800 dark:text-zinc-100 mb-1">Attendance per Session</h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-            Tap a status badge to cycle between Present &rarr; Late &rarr; Absent
+            {isTeacher ? 'Tap a status badge to cycle between Present, Late, and Absent.' : 'Read-only attendance history.'}
           </p>
 
           {sortedSessions.length === 0 ? (
@@ -255,18 +267,20 @@ export default function StudentDetailPage() {
                       <div>
                         {record ? (
                           <button
-                            onClick={() => handleCycleStatus(record)}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none cursor-pointer transition-opacity hover:opacity-80 ${config.bg} ${config.text}`}
+                            onClick={() => { if (isTeacher) handleCycleStatus(record) }}
+                            disabled={!isTeacher}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none ${isTeacher ? 'cursor-pointer transition-opacity hover:opacity-80' : 'cursor-default'} ${config.bg} ${config.text}`}
                           >
                             {config.label}
-                            <RefreshCw className="w-3 h-3" />
+                            {isTeacher && <RefreshCw className="w-3 h-3" />}
                           </button>
                         ) : (
                           <button
-                            onClick={() => handleAddAbsent(session)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none cursor-pointer bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:opacity-80 transition-opacity"
+                            onClick={() => { if (isTeacher) handleAddAbsent(session) }}
+                            disabled={!isTeacher}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 ${isTeacher ? 'cursor-pointer hover:opacity-80 transition-opacity' : 'cursor-default'}`}
                           >
-                            No Record <span className="text-lg leading-none">+</span>
+                            No Record {isTeacher && <span className="text-lg leading-none">+</span>}
                           </button>
                         )}
                       </div>

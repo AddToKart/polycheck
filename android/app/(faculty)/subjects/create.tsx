@@ -3,7 +3,7 @@ import { View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet } from 
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { api } from '../../../services/mock-api'
+import { api } from '../../../services/api-client'
 import { fonts } from '../../../theme/typography'
 import { useTheme } from '../../../theme/ThemeContext'
 import type { User } from '@polycheck/shared'
@@ -17,7 +17,11 @@ export default function CreateSubjectScreen() {
 
   useEffect(() => {
     const cu = api.getCurrentUser()
-    if (cu) setUser(cu)
+    if (!cu || cu.role !== 'teacher') {
+      router.replace('/(faculty)/dashboard')
+      return
+    }
+    setUser(cu)
   }, [])
 
   const handleCreate = () => {
@@ -32,7 +36,7 @@ export default function CreateSubjectScreen() {
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <View style={[styles.header, isDark && styles.headerDark]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Go back">
-          <MaterialIcons name="arrow-back" size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+          <MaterialIcons name="arrow-back" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
         </TouchableOpacity>
         <Text style={[styles.heading, isDark && styles.headingDark]}>Create Subject</Text>
       </View>
@@ -94,7 +98,7 @@ const styles = StyleSheet.create({
   headerDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
   backBtn: { padding: 4, marginRight: 12 },
   heading: { flex: 1, fontSize: 22, fontWeight: '700', fontFamily: fonts.heading, color: '#1A1A1A' },
-  headingDark: { color: '#F5A800' },
+  headingDark: { color: '#FFDF00' },
   content: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 100 },
   label: { fontSize: 12, fontFamily: fonts.bodyMedium, color: '#888', marginBottom: 6, marginTop: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
   labelDark: { color: 'rgba(255,255,255,0.5)' },
@@ -102,7 +106,7 @@ const styles = StyleSheet.create({
   inputDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215', color: '#FFF' },
   textArea: { borderWidth: 1, borderColor: '#DDD', paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, fontFamily: fonts.body, color: '#333', backgroundColor: '#FFFFFF', minHeight: 100 },
   createBtn: { backgroundColor: '#7B1113', paddingVertical: 14, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 32 },
-  createBtnDark: { backgroundColor: '#F5A800' },
+  createBtnDark: { backgroundColor: '#FFDF00' },
   createBtnDisabled: { opacity: 0.5 },
   createBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600', fontFamily: fonts.bodySemiBold },
   createBtnTextDark: { color: '#4A0A0B' },

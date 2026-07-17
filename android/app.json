@@ -41,6 +41,13 @@
         {
           "locationWhenInUsePermission": "Location is used to verify you are inside the classroom."
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Camera is used to capture proof-of-class photos during active sessions.",
+          "photosPermission": "Photo access is used to select proof-of-class images."
+        }
       ]
     ]
   }

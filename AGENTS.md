@@ -45,8 +45,10 @@ polycheck/
 | Web dashboard | Next.js 15 (App Router), shadcn/ui, Tailwind CSS |
 | Mobile app | Expo SDK 52+, Expo Router, NativeWind, react-native-reusables |
 | Backend API | NestJS (Node.js) |
-| Cloud database | PostgreSQL on Supabase |
+| Database | PostgreSQL (via Prisma ORM) |
 | Local database | SQLite via expo-sqlite |
+| Real-time Updates | WebSockets (Socket.IO) |
+| Caching & Queues | Redis (WebSocket Adapter, Cache Store, BullMQ) |
 | Authentication | Better Auth (Next.js) + JWT (NestJS guards) |
 | Monorepo | pnpm workspaces + Turborepo |
 | Shared code | `@polycheck/shared` package |
@@ -56,11 +58,13 @@ polycheck/
 ### Super Admin
 Department heads, program chairs, PUP officials. Highest access — sees data across all teachers and subjects. Manages teacher accounts, configures institution settings, generates reports. Does not manage day-to-day attendance.
 
-### Admin (Teacher / Instructor)
+Super Admin capabilities are limited to scoped oversight, reports/exports, global search, user account administration (including teacher/student creation, status changes, and password resets), and institution settings. Super Admins have read-only access to classroom resources and must not create/update/delete subjects, sections, sessions, attendance, disputes, enrollment codes/rosters, section roles, QR tokens, or proof-of-class records.
+
+### Teacher / Instructor
 Creates subjects, configures class schedules, generates QR codes per session, sets geofences, defines check-in time windows. Views attendance records for their classes. Flags anomalies.
 
 ### Student
-Primary interface is the mobile app. Has a digital student ID. Views class schedules. Checks in by scanning teacher's QR code. Views own attendance history. Receives feedback on denied check-ins.
+Primary interface is the mobile app, with a web dashboard for schedule and subject views. Has a digital student ID. Views class schedules. Checks in by scanning teacher's QR code. Views own attendance history. Can submit disputes and enroll via enrollment code. Student officers (President, QAC) can create sessions and upload proof of class.
 
 ## Core Features (v1)
 
@@ -95,6 +99,18 @@ Primary interface is the mobile app. Has a digital student ID. Views class sched
 - Super Admins see department-wide / institution-wide reports
 - Filters: subject, teacher, date range, student
 - Exportable records
+
+### Section Roles (President / QAC)
+- Teachers assign student officers per section: President and QAC (Quality Assurance Coordinator)
+- Presidents can create sessions and set geofences
+- QAC members can upload proof of class photos during sessions
+- Session permissions can be granted/revoked with 24-hour expiry
+
+### Proof of Class
+- QAC members and authorized students can upload classroom photos during a session
+- Photos timestamped and associated with the session for audit
+- Teachers can delete proof-of-class submissions
+- Serves as verification that a class meeting actually occurred
 
 ## Anti-Cheat System (v1)
 
@@ -139,6 +155,15 @@ Every synced record checked for:
 4. No duplicate token+student pair
 Any failure → marked as `disputed`, surfaced to teacher
 
+### Real-Time Updates & Caching
+For real-time updates and low-latency validation during peak attendance check-in windows, the system utilizes WebSockets (via Socket.IO) and Redis:
+* **WebSockets**: Established between the NestJS backend and the teacher's dashboard (web/mobile). As students sync their locally generated attendance records to the backend, the backend pushes these successful check-ins instantly to the active session view.
+* **Redis**: Acts as an in-memory data store and event broker:
+  * *WebSocket Adapter*: Enables horizontal scaling of WebSocket connections. If multiple server instances are running behind a load balancer, Redis Pub/Sub coordinates and broadcasts WebSocket events across Server instances.
+  * *Active Session Caching*: Active geofence coordinates and QR token metadata are cached in Redis with a TTL matching the session's duration. The backend validates coordinates against the cache in microseconds without hitting the PostgreSQL database.
+  * *Rate Limiting*: Limits scan submission attempts per student/device ID using a Redis-backed rate limiter to prevent geofence-spoofing brute-force attacks.
+  * *Job Queues (BullMQ)*: Manages batch processing of offline sync payloads asynchronously, ensuring the main HTTP server thread remains unblocked.
+
 ## Design System
 
 ### Color Palette
@@ -146,7 +171,7 @@ Any failure → marked as `disputed`, surfaced to teacher
 |---|---|---|
 | Maroon (Primary) | `#7B1113` | Buttons, nav bars, headers, active states |
 | Deep Maroon (Dark) | `#4A0A0B` | Hover/pressed states, sidebar, dark mode surfaces |
-| Golden Yellow (Accent) | `#F5A800` | Highlights, badges, CTA emphasis, icons |
+| Golden Yellow (Accent) | `#FFDF00` | Highlights, badges, CTA emphasis, icons |
 | White (Light base) | `#FFFFFF` | Background, cards, text (light mode) |
 | Black (Dark base) | `#0A0A0A` | Background (dark mode) |
 
@@ -182,7 +207,7 @@ Any failure → marked as `disputed`, surfaced to teacher
 ## Data & Privacy
 
 - Full audit trail: who, which device, GPS, timestamp, outcome
-- Supabase RLS enforces role-based access:
+- NestJS guards enforce role-based access (via Casl / custom RBAC):
   - Students: own records only
   - Teachers: their subjects only
   - Super Admins: all records in scope
@@ -200,7 +225,7 @@ Any failure → marked as `disputed`, surfaced to teacher
 ## Development Conventions
 
 ### Package naming
-- `@polycheck/shared` — shared types, utils, mock data
+- `@polycheck/shared` — shared types, validation, and utilities
 - `@polycheck/frontend` — web dashboard
 - `@polycheck/android` — mobile app
 
@@ -220,14 +245,13 @@ Any failure → marked as `disputed`, surfaced to teacher
 ```typescript
 import { User, Subject, Session } from '@polycheck/shared'
 import { haversineDistance } from '@polycheck/shared/utils'
-import { mockStudents, mockSubjects } from '@polycheck/shared/mock'
 ```
 
 ### API Client Pattern (both apps)
 ```typescript
-// In development, import mock data directly
-// In production, call the NestJS API
-const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
+// Web: NEXT_PUBLIC_API_URL=http://localhost:4000/api
+// Mobile: EXPO_PUBLIC_API_URL must be reachable from the device.
+// Both clients always call the NestJS API; offline mobile reads use SQLite cache.
 ```
 
 ### Git commit style
@@ -249,7 +273,7 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 - Created student detail page `(faculty)/student/[id].tsx` (mobile) with flippable PUP ID card (front: maroon header + logo, photo, student details; back: magnetic stripe, conditions, emergency contact, QR), remove-from-subject with confirm, attendance-per-session list with 5‑per‑page pagination and tap-to-cycle status.
 - Created `/faculty/subjects/[id]` web page (subject detail: info card, enrollment code, stats, search, student list with pagination).
 - Created `/faculty/students/[id]` web page (student detail: PUP ID card, remove from subject, attendance-per-session with 5‑per‑page pagination and cycle buttons).
-- Added 5 new mock students (s-009 to s-013) enrolled in subj-001, 8 new sessions (sess-007 to sess-014), and ~30 new attendance records.
+- Mock student data contains 8 entries (s-001 to s-008) with 19 sessions and 55 attendance records.
 - Added 10 mock API methods to both mobile and web: `getSubjectStudents`, `getStudent`, `getSubjectSessions`, `getStudentAttendanceForSubject`, `updateAttendanceStatus`, `addAttendanceRecord`, `removeStudentFromSubject`, `resetEnrollmentCode`, `disableEnrollmentCode`, `createSubject`.
 - Fixed nested `<a>` hydration error on web subjects page (outer card changed from `<Link>` to `<div onClick={router.push(...)}>`, inner "View Sessions" changed from `<button onClick={router.push(...)}>` back to `<Link>` with `stopPropagation`).
 - Fixed hooks-order violation in web `StudentDetailPage` (moved `useMemo` calls above early return).
@@ -292,6 +316,55 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 - **Validation**: Removed `latitude`, `longitude`, `geofenceRadiusMeters` from `SectionCreateSchema`. Geofence stays exclusively on `Session` type and `SessionCreateSchema`.
 - **Mock APIs**: `createSection` already accepted no geofence params — no changes needed. `createSubject` already accepted name/code/description — no changes needed.
 
+### Done (cont.)
+- **API client interface** (`shared/src/types/api.ts`): Defined complete `ApiClient` interface with 30+ methods covering auth, subjects, sections, sessions, attendance, disputes, enrollment, calendar, export, and bulk operations. Added `CalendarEvent`, `BulkSessionInput`, `DisputeInput`, `EnrollStudentInput` types.
+- **Mock API methods (both)**: Added `enrollStudent`, `getCalendarEvents`, `createBulkSessions`, `exportAttendanceCsv`, `submitDispute`. Fixed `getSections()` signature to accept optional `sectionId`.
+- **Web calendar view** (`frontend/src/app/faculty/schedule/page.tsx`): Full Month/Week toggle calendar with Prev/Next/Today navigation. Month view: 7-column date grid with event dots and popover details. Week view: time-slot columns with positioned event blocks. Color-coded: blue=scheduled, green=active, gray=completed. Legend at bottom.
+- **Student web schedule** (`frontend/src/app/student/schedule/page.tsx`): Weekly timetable based on enrolled sections, current day highlighted, class cards with subject/room/time/instructor.
+- **Mobile faculty schedule** (`android/app/(faculty)/schedule.tsx`): Month grid with event dots, week columns, tap-to-view event detail modal with View Session navigation. Added as tab in faculty layout.
+- **Mobile student schedule** (`android/app/(tabs)/schedule.tsx`): Weekly class schedule from enrolled sections, detail modal. Added as tab in student tab layout between Dashboard and Scan.
+- **Calendar utility** (`shared/src/utils/calendar.ts`): `getWeekDays`, `getMonthDays`, `formatDate`, `formatTime`, `getDayName`, `getMonthName`, `isSameDay`, `generateCalendarEvents`, `getDateRangeForMonth`, `getWeeksInMonth`.
+- **Student self-enrollment** (both): New `/student/enroll` page (web) and `enroll.tsx` screen (mobile) — enter enrollment code, validates against section data, calls `api.enrollStudent()`. Added "Enroll in Subject" button on both student dashboards.
+- **Teacher manual enrollment** (both): Added collapsible "Enroll Student" section to section detail pages (both platforms). Search input filters all students by name/ID, tap-to-enroll with instant feedback, auto-refreshes student roster.
+- **Student dispute submission** (both): Web — added "Report Issue" button to attendance records with full dispute modal (reason dropdown, description textarea). Mobile — made records tappable with dispute detail modal and reason picker. Calls `api.submitDispute()`.
+- **Attendance CSV export** (both): Web Export button on Reports and Attendance pages now generates downloadable CSV file. Mobile copies CSV to clipboard via expo-clipboard with confirmation Alert.
+- **Charts/analytics** (both): Web Reports page — SVG donut chart (Present/Late/Absent colored arcs) and attendance rate bar. Mobile Reports — View-based segmented donut chart and rate bar.
+- **Loading states & error handling** (web): Created `frontend/src/lib/hooks/use-api.tsx` with `useApi` hook, `LoadingSpinner`, `ErrorDisplay` components. Applied loading states to faculty dashboard, section detail, and session activation pages.
+- **Real-time polling**: Added 10s auto-refresh interval to session activation pages (both platforms) when session is active. Shows "Updated Xs ago" label with live countdown timer.
+- **In-app notifications** (web): Created `NotificationProvider` context with auto-dismiss toasts (success/error/info/warning) at top-right. Wrapped root layout. Added notifications for QR generation, session end, manual overrides, dispute resolution.
+- **Bulk session creation** (both): Added "Create recurring sessions" toggle to session create forms. Shows start/end date, day-of-week checkboxes (pre-selected from section schedule), session count calculation. Calls `api.createBulkSessions()`.
+- **Fixed disputed badge** (both): Web student dashboard — added 4th "Disputed" stat card. Mobile history — added 'disputed' to filter tabs, badge config map (deep maroon bg + golden text/border), and stats row.
+- **Fixed `enrolledSubjectIds` → `enrolledSectionIds`** in mock student data (`shared/src/mock/users.ts`).
+- **Added 5 future sessions** (sess-015 to sess-019, July 8-20) for calendar view demo data.
+
+### Done (cont.)
+- **Login pages** (web): Created `/login`, `/login/faculty`, `/login/student` role selection pages with maroon branding and role cards. Created `/student` redirect page that routes to student dashboard.
+- **Calendar events enhancement**: Added `CalendarEvent` with `sectionId`, `location`, `type` fields to shared types. Updated both mock APIs and calendar pages on both platforms to include room/location.
+- **Map exports fix**: Changed shared package `map/index.ts` exports from `export { ... }` (type-only) to `export { ... } from ...` (re-exports) to fix `ERR_PACKAGE_PATH_NOT_EXPORTED` build errors.
+- **Web ID card flippable**: Made faculty student detail PUP ID card tap-to-flip on web (back face shows magnetic stripe, conditions of use, emergency contact, QR placeholder).
+- **Web Create Session page**: Created `/faculty/sessions/create/page.tsx` — form with qrValidity slider, section selector, geofence map. Wired to `api.createSession()`.
+- **Geofence module**: Created full-screen map mode, pin-drag (toggles `scrollEnabled` on parent ScrollView via measure), radius slider using `pageX` + `measureInWindow`. Geofence is included in `CreateSessionInput` and `BulkSessionInput`. Fixed `tsconfig.json` baseUrl/paths for module resolution.
+- **ScheduleDay.room on Session**: Extended `Session` type with optional `room` field. Updated validation, mock data, mock API `createSession`, and all display pages (session list, session detail) on both platforms to show session room.
+- **Backend Prisma schema section**: Added backend Prisma schema with User, Subject, Section, Session, AttendanceRecord, Enrollment, Dispute, ProofOfClass, CalendarEvent models and documentation to AGENTS.md.
+- **Backend plan**: Created `/documentation/BACKEND_PLAN.md` as a scaffold for NestJS backend implementation planning.
+- **Build fixes**: Fixed `ScheduleMap.tsx` naming (was `ScheduleMap.ts`), missing `EditGeofenceScreen` export in mobile `index.ts`, and `disputeReason` type cast in web student dashboard.
+- **Section Roles & Proof of Class docs**: Added documentation for student officer roles (President, QAC) and proof of class feature to AGENTS.md Core Features. Updated PUP_Attendance_System_Plan.md: `admin`→`teacher` role rename, student web portal description, student officer capabilities.
+
+### Done (cont.)
+- **Data audit & cleanup**: Fixed `enrolledSectionIds` from subject IDs (`subj-*`) to correct section IDs (`sec-*`) for all 8 mock students. Removed 5 phantom enrollment records referencing non-existent students (s-009 to s-013). Fixed section role names to match actual student names. Stale attendance summaries corrected (sec-001: 6→9, sec-003: 3→1, sec-004: 6→8, sec-005: 2→1).
+- **Mock API parity**: Added missing methods to both web and mobile mocks: `submitScan`, `getMyAttendance`, `getStudentsForSection`, `getEnrollments`, `submitAttendance`, `getAttendanceForStudent`. Renamed `getStudentSubjects`→`getMySubjects` in web mock.
+- **Return type consistency**: Fixed `submitAttendance`/`checkAttendance` return types to include both `reason` and `message` fields on both platforms.
+- **Validation cleanup**: Removed orphaned `tokenPayload` field from `AttendanceRecordSchema` (had no corresponding type definition).
+- **Route param cleanup**: Normalized `sectionId` query parameter (was mixed `subjectId`/`sectionId`) in student detail pages on both platforms.
+- **Docs cleanup**: Removed false claim about `addGeofence`/`editGeofence` methods from AGENTS.md (geofence is configured via `CreateSessionInput`/`BulkSessionInput`). Updated mock data counts.
+- **ApiClient interface**: Added `search()` method that was mock-only. Validation schemas brought in sync with input types (`SessionCreateSchema` gains `geofence`, `subjectName`, `teacherId`, `isRescheduled`; `SectionCreateSchema` gains `teacherId`, `teacherName`; `endTime` no longer optional; `GeofenceConfigSchema` is now used by `SessionCreateSchema`).
+- **Return type consistency**: Fixed web mock `submitAttendance` to include `message` field. Both mocks' `submitDispute` now writes `disputeDescription` instead of `notes`.
+- **Import cleanup**: Removed unused `isTokenInValidityWindow` and `decodeTokenPayload` from mobile mock imports. Added missing `DisputeReason`, `SubmitAttendanceResult` type imports to both mocks.
+- **Lint errors cleared**: Fixed unescaped quotes/apostrophes in frontend pages (faculty dashboard, session create, session detail, student dashboard, student session detail). Fixed `checkAttendance` return type in web mock to `SubmitAttendanceResult`. Made `loginStudent`/`loginFaculty` password param optional in both mocks (matches interface).
+- **Real API cutover**: Removed the shared runtime mock dataset and `@polycheck/shared/mock` package export. Renamed both application clients to `api-client.ts`; web and mobile now always call NestJS, with SQLite retained only as the mobile offline cache.
+- **Login routing**: Consolidated `/login/student` and `/login/faculty` under the root login route tree to eliminate Next.js development 404s. Both routes use the real NestJS authentication endpoints.
+- **Deployment API configuration**: Added documented web/mobile API environment variables. Android derives the Expo development host and uses `10.0.2.2` for an emulator fallback; non-development builds require `EXPO_PUBLIC_API_URL`.
+
 ### In Progress
 - (none)
 
@@ -303,25 +376,25 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 - `Pressable` replaces `TouchableOpacity` for clickable list items to avoid scroll-touch interference.
 - Timeline for session activation: Teacher generates QR (sets validity N minutes) → scans within N min → Present; after expiry → scans are Late; teacher presses End Session → all remaining Pending → Absent. Grace period is not a separate timer — it's the post-QR-expiry period until End Session.
 - `gracePeriodMinutes` on Session is metadata/display; the grace period ends only when the teacher manually ends the session. No auto-absent on grace expiry.
-- `MockQr` deterministic visual component used on both mobile (with `react-native-svg`) and web (with `svg`). Replaced `react-native-qrcode-svg` and `qrcode` npm packages to avoid native module build issues and dependency conflicts.
-- `expo-sharing` + `react-native-svg` ref for sharing QR image on mobile; clipboard copy for token.
+- QR rendering uses `react-native-qrcode-svg` on mobile and `qrcode` on web so generated attendance tokens are scanner-compatible.
+- `expo-sharing` + `react-native-svg` ref are used for sharing the QR image on mobile; web also supports token copy/download.
 
 ## Next Steps
-- Add session list to section detail page (link or inline view connecting `sections/[id]` to `sessions/[id]`).
 - Connect sessions page to section context when navigated from section detail.
-- Implement enrollment management page for teachers to manually add/remove students via search.
-- Add student self-enrollment flow (enter enrollment code).
 - Add dispute notification badge on faculty sidebar/tab bar.
-- Wire `isTokenInValidityWindow` util into mock API's `checkAttendance` for proper signed-timestamp validation.
-- Add `disputed` badge styling to shared `StatusBadge` components on both platforms.
+- Add offline sync engine for mobile (SQLite + background sync).
+- Implement push notifications (Expo Notifications / web push).
+- Add leave/excuse request workflow.
+- Add academic calendar integration (semester dates, holidays).
+- Add dark mode support parity across all pages.
 
 ## Critical Context
 - Android package: `edu.pup.polycheck`; iOS bundle: `edu.pup.polycheck`.
 - Permissions: camera (QR scan), location (geofence check) — already requested in `scan.tsx` via `useCameraPermissions` + `expo-location`.
-- Mock data: `mockStudents` has 13 entries (s-001 to s-013); `mockSubjects` has 4 parent entries (subj-001 to subj-004); `mockSections` has 5 sections (sec-001 to sec-005); `mockSessions` has 14 entries (sess-001 to sess-014); `mockAttendanceRecords` has 54 entries; `mockEnrollments` has 29 entries.
+- Runtime mock data has been removed. Web and mobile use the NestJS API; mobile retains only its SQLite offline cache and sync queue.
 - `AttendanceRecord.status` now includes `'disputed'`. `AttendanceRecord` has optional `manuallySet?: boolean`. `AttendanceSummary` has `disputed: number`.
 - `Session` no longer has `tokenWindowSeconds`; replaced by `qrValidityMinutes: number`. `qrGeneratedAt?: string` tracks when QR was generated.
-- Mock API methods added: `generateQrCode`, `submitScan`, `endSession`, `getDisputedRecords`, `resolveDispute`.
+- API client methods include `generateQrCode`, `submitScan`, `endSession`, `getDisputedRecords`, and `resolveDispute`.
 - `createQRTokenData` signature changed: `(sessionId, subjectId, teacherId, teacherName, validityMinutes, gracePeriodMinutes)`. Note: `subjectId` param is actually `sectionId` in the new model; kept as `subjectId` for token backward compat.
 - `isTokenInValidityWindow(payload, serverTimeMs?)` returns `{ valid: boolean, inGrace: boolean }`.
 - Mobile QR rendering uses `MockQr` deterministic visual component (replaced `react-native-qrcode-svg`); web uses same `MockQr` component (replaced `qrcode` npm package).
@@ -334,10 +407,10 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 - `shared/src/types/attendance.ts` — AttendanceStatus includes `'disputed'`; AttendanceRecord has `manuallySet?`; AttendanceSummary has `disputed`
 - `shared/src/validation/index.ts` — SessionCreateSchema uses `qrValidityMinutes` (1–180), drops `tokenWindowSeconds`, adds optional `endTime`/`room`
 - `shared/src/utils/token.ts` — `isTokenInValidityWindow` replaces `isTokenExpired`; `createQRTokenData` takes `validityMinutes` + `gracePeriodMinutes`
-- `shared/src/mock/sessions.ts` — all sessions updated with `qrValidityMinutes`
-- `shared/src/mock/attendance.ts` — 3 new records (2 disputed, 1 manuallySet); summaries include `disputed`
-- `android/services/mock-api.ts` — added `generateQrCode`, `submitScan`, `endSession`, `getDisputedRecords`, `resolveDispute`; updated `checkAttendance`, `createSession`; added Subject CRUD + Section CRUD
-- `frontend/src/lib/mock-api.ts` — same additions as mobile mock API
+- `android/services/api-client.ts` — real NestJS HTTP client with SQLite-backed offline behavior
+- `android/services/api-config.ts` — device-safe backend URL resolution
+- `frontend/src/lib/api-client.ts` — real NestJS HTTP client
+- `frontend/src/lib/api-config.ts` — browser backend URL configuration
 - `android/app/(faculty)/sessions/[id].tsx` — full overhaul: QR gen, student roster, manual override, end session, countdown
 - `android/app/(tabs)/scan.tsx` — wired `CameraView` QR scanning + manual code entry
 - `android/app/(faculty)/disputes.tsx` — new dispute review screen with accept/reject/override

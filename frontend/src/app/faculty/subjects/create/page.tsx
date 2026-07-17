@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { BookOpen } from 'lucide-react'
-import { api } from '@/lib/mock-api'
+import { api } from '@/lib/api-client'
 import type { User } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -22,8 +22,8 @@ export default function CreateSubjectPage() {
 
   useEffect(() => {
     const cu = api.getCurrentUser()
-    if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
-      router.push('/')
+    if (!cu || cu.role !== 'teacher') {
+      router.push(cu?.role === 'super_admin' ? '/faculty/subjects' : '/')
       return
     }
     setUser(cu)
@@ -31,10 +31,10 @@ export default function CreateSubjectPage() {
 
   if (!user) return null
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name || !code) return
-    const subj = api.createSubject({ name, code, description: description || undefined })
+    const subj = await api.createSubject({ name, code, description: description || undefined })
     router.push(`/faculty/subjects/${subj.id}`)
   }
 
@@ -44,7 +44,7 @@ export default function CreateSubjectPage() {
   }
 
   return (
-    <div className="min-h-screen flex bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
       <Sidebar user={user} onLogout={handleLogout} backHref="/faculty/subjects" backLabel="Back to Subjects" />
 
       <main className="flex-1 overflow-y-auto">

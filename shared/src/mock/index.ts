@@ -1,5 +1,0 @@
-export * from './users'
-export * from './subjects'
-export * from './sections'
-export * from './sessions'
-export * from './attendance'

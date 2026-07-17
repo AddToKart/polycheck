@@ -3,10 +3,10 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput } from 
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { api } from '../../services/mock-api'
+import { api } from '../../services/api-client'
 import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
-import type { User, Subject, Teacher, AttendanceSummary } from '@polycheck/shared'
+import type { User, Subject, Teacher, AttendanceSummary, Section } from '@polycheck/shared'
 
 export default function FacultyReportsScreen() {
   const { isDark, toggle } = useTheme()
@@ -14,6 +14,7 @@ export default function FacultyReportsScreen() {
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [summaries, setSummaries] = useState<AttendanceSummary[]>([])
+  const [sections, setSections] = useState<Section[]>([])
   
   // Filters
   const [selectedSubject, setSelectedSubject] = useState('')
@@ -23,9 +24,12 @@ export default function FacultyReportsScreen() {
     const cu = api.getCurrentUser()
     if (cu && cu.role === 'super_admin') {
       setCurrentUser(cu)
-      setSubjects(api.getSubjects())
-      setTeachers(api.getTeachers())
-      setSummaries(api.getAttendanceSummaries())
+      void Promise.all([api.getSubjects(), api.getTeachers(), api.getAttendanceSummaries(), api.getSections()]).then(([nextSubjects, nextTeachers, nextSummaries, nextSections]) => {
+        setSubjects(nextSubjects)
+        setTeachers(nextTeachers)
+        setSummaries(nextSummaries)
+        setSections(nextSections)
+      })
     } else {
       router.replace('/(faculty)/dashboard')
     }
@@ -35,7 +39,7 @@ export default function FacultyReportsScreen() {
 
   const filteredSummaries = summaries.filter((s) => {
     if (selectedSubject) {
-      const sectionIds = api.getSections(selectedSubject).map(sec => sec.id)
+      const sectionIds = sections.filter((section) => section.subjectId === selectedSubject).map((section) => section.id)
       if (!sectionIds.includes(s.sectionId)) return false
     }
     return true
@@ -68,10 +72,10 @@ export default function FacultyReportsScreen() {
         <Text style={[styles.heading, isDark && styles.textGolden]}>Reports</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
-            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleLogout} style={styles.iconBtn} accessibilityLabel="Sign out">
-            <MaterialIcons name="logout" size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="logout" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
         </View>
       </View>
@@ -80,7 +84,7 @@ export default function FacultyReportsScreen() {
         {/* Filters Card */}
         <View style={[styles.filterCard, isDark && styles.cardDark]}>
           <View style={styles.filterHeader}>
-            <MaterialIcons name="filter-list" size={18} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="filter-list" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.filterTitle, isDark && styles.textWhite]}>Filters</Text>
           </View>
 
@@ -93,7 +97,7 @@ export default function FacultyReportsScreen() {
               <Text style={[styles.dropdownSelectorText, isDark && styles.textWhite]}>
                 {selectedSubjectObj ? `${selectedSubjectObj.name} (${selectedSubjectObj.code})` : 'All Subjects'}
               </Text>
-              <MaterialIcons name={showSubjectDropdown ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color={isDark ? '#F5A800' : '#888'} />
+              <MaterialIcons name={showSubjectDropdown ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color={isDark ? '#FFDF00' : '#888'} />
             </TouchableOpacity>
             
             {showSubjectDropdown && (
@@ -127,7 +131,7 @@ export default function FacultyReportsScreen() {
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Total Attendance</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <Text style={[styles.statNumber, { color: '#F5A800' }]}>{presentPct}%</Text>
+            <Text style={[styles.statNumber, { color: '#FFDF00' }]}>{presentPct}%</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Present Rate</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
@@ -137,6 +141,56 @@ export default function FacultyReportsScreen() {
           <View style={[styles.statCard, isDark && styles.cardDark]}>
             <Text style={[styles.statNumber, { color: isDark ? '#FF4F5A' : '#4A0A0B' }]}>{absentPct}%</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Absent Rate</Text>
+          </View>
+        </View>
+
+        {/* Charts */}
+        <View style={styles.chartsRow}>
+          {/* Donut Chart */}
+          <View style={[styles.chartCard, isDark && styles.cardDark]}>
+            <Text style={[styles.chartTitle, isDark && styles.textWhite]}>Distribution</Text>
+            <View style={styles.donutContainer}>
+              {total.total > 0 ? (
+                <>
+                  <View style={styles.donut}>
+                    <View style={[styles.donutSlice, { backgroundColor: '#4A0A0B', zIndex: 1, flex: total.absent || 1 }]} />
+                    <View style={[styles.donutSlice, { backgroundColor: '#7B1113', zIndex: 2, flex: total.late || 1 }]} />
+                    <View style={[styles.donutSlice, { backgroundColor: '#FFDF00', zIndex: 3, flex: total.present || 1 }]} />
+                    <View style={styles.donutHole}>
+                      <Text style={styles.donutCount}>{total.total}</Text>
+                      <Text style={styles.donutLabel}>total</Text>
+                    </View>
+                  </View>
+                  <View style={styles.legend}>
+                    {[
+                      { label: 'Present', count: total.present, pct: presentPct, color: '#FFDF00' },
+                      { label: 'Late', count: total.late, pct: latePct, color: '#7B1113' },
+                      { label: 'Absent', count: total.absent, pct: absentPct, color: '#4A0A0B' },
+                    ].map((item) => (
+                      <View key={item.label} style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                        <Text style={[styles.legendText, isDark && styles.textWhite]}>{item.label}</Text>
+                        <Text style={[styles.legendCount, { color: item.color }]}>{item.count} ({item.pct}%)</Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              ) : (
+                <Text style={[styles.empty, isDark && styles.textWhite50]}>No data</Text>
+              )}
+            </View>
+          </View>
+
+          {/* Attendance Rate Bar */}
+          <View style={[styles.chartCard, isDark && styles.cardDark]}>
+            <Text style={[styles.chartTitle, isDark && styles.textWhite]}>Attendance Rate</Text>
+            <Text style={styles.ratePercent}>{presentPct}%</Text>
+            <View style={styles.barTrack}>
+              <View style={[styles.barFill, { width: `${presentPct}%` as any }]} />
+            </View>
+            <Text style={[styles.rateLabel, isDark && styles.textWhite50]}>
+              {total.present} of {total.total} present
+            </Text>
           </View>
         </View>
 
@@ -151,7 +205,7 @@ export default function FacultyReportsScreen() {
                 <Text style={[styles.gridValue, isDark && styles.textWhite]}>{s.totalSessions}</Text>
               </View>
               <View style={styles.gridCell}>
-                <Text style={[styles.gridLabel, { color: '#F5A800' }]}>Present</Text>
+                <Text style={[styles.gridLabel, { color: '#FFDF00' }]}>Present</Text>
                 <Text style={[styles.gridValue, isDark && styles.textWhite]}>{s.present}</Text>
               </View>
               <View style={styles.gridCell}>
@@ -184,7 +238,7 @@ const styles = StyleSheet.create({
   headerRight: { flexDirection: 'row', gap: 8 },
   textWhite: { color: '#FFFFFF' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   filterCard: { backgroundColor: '#FFFFFF', borderRadius: 0, padding: 16, marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
   cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
@@ -212,4 +266,31 @@ const styles = StyleSheet.create({
   gridLabel: { fontSize: 11, fontWeight: '600', fontFamily: fonts.bodySemiBold },
   gridValue: { fontSize: 14, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#333', marginTop: 2 },
   empty: { textAlign: 'center', fontFamily: fonts.body, paddingVertical: 60, color: '#BBB' },
+
+  chartsRow: { flexDirection: 'column', gap: 12, marginBottom: 20 },
+  chartCard: { backgroundColor: '#FFFFFF', borderRadius: 0, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
+  chartTitle: { fontSize: 13, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#333', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 },
+  donutContainer: { flexDirection: 'row', alignItems: 'center', gap: 20 },
+  donut: {
+    width: 100, height: 100, borderRadius: 50,
+    flexDirection: 'row', overflow: 'hidden',
+    borderWidth: 3, borderColor: '#E4E4E7',
+    position: 'relative', justifyContent: 'center', alignItems: 'center',
+  },
+  donutSlice: { height: '100%' },
+  donutHole: {
+    position: 'absolute', width: 60, height: 60, borderRadius: 30,
+    backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center',
+  },
+  donutCount: { fontSize: 18, fontWeight: '700', fontFamily: fonts.bodyBold, color: '#333' },
+  donutLabel: { fontSize: 8, fontFamily: fonts.body, color: '#999', textTransform: 'uppercase', letterSpacing: 1 },
+  legend: { flex: 1, gap: 8 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendDot: { width: 10, height: 10 },
+  legendText: { fontSize: 11, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#333', flex: 1 },
+  legendCount: { fontSize: 11, fontWeight: '700', fontFamily: fonts.bodyBold },
+  ratePercent: { fontSize: 32, fontWeight: '700', fontFamily: fonts.heading, color: '#FFDF00', marginBottom: 8 },
+  barTrack: { width: '100%', height: 10, backgroundColor: '#E4E4E7', overflow: 'hidden' },
+  barFill: { height: '100%', backgroundColor: '#FFDF00' },
+  rateLabel: { fontSize: 11, fontFamily: fonts.body, color: '#999', marginTop: 6, textTransform: 'uppercase', letterSpacing: 1 },
 })

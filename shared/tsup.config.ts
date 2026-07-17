@@ -17,8 +17,8 @@ export default defineConfig([
     clean: false,
   },
   {
-    entry: ['src/mock/index.ts'],
-    outDir: 'dist/mock',
+    entry: ['src/map/index.ts'],
+    outDir: 'dist/map',
     format: ['cjs', 'esm'],
     dts: true,
     sourcemap: true,

@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
-import { api } from '../../../../services/mock-api'
+import { api } from '../../../../services/api-client'
 import { fonts } from '../../../../theme/typography'
 import { useTheme } from '../../../../theme/ThemeContext'
 import type { Subject, Section, Session } from '@polycheck/shared'
@@ -22,17 +22,12 @@ export default function SubjectSessionsScreen() {
 
   useEffect(() => {
     if (!id) return
-    const subj = api.getSubject(id)
-    if (!subj) { router.back(); return }
-    setSubject(subj)
-    const subjectSections = api.getSections(id)
-    setSections(subjectSections)
-    const allSessions: Session[] = []
-    for (const sec of subjectSections) {
-      allSessions.push(...api.getSectionSessions(sec.id))
-    }
-    allSessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    setSessions(allSessions)
+    void Promise.all([api.getSubject(id), api.getSections(id)]).then(async ([nextSubject, subjectSections]) => {
+      const sessionGroups = await Promise.all(subjectSections.map((section) => api.getSectionSessions(section.id)))
+      setSubject(nextSubject)
+      setSections(subjectSections)
+      setSessions(sessionGroups.flat().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))
+    }).catch(() => router.back())
   }, [id])
 
   useEffect(() => {
@@ -40,8 +35,6 @@ export default function SubjectSessionsScreen() {
       setSelectedSectionId(paramSectionId)
     }
   }, [paramSectionId])
-
-  if (!subject) return null
 
   const filtered = useMemo(() => {
     let result = sessions
@@ -54,6 +47,8 @@ export default function SubjectSessionsScreen() {
     }
     return result
   }, [sessions, selectedSectionId, selectedDayFilter])
+
+  if (!subject) return null
 
   const groupedBySection: Record<string, Session[]> = {}
   for (const session of filtered) {
@@ -73,7 +68,7 @@ export default function SubjectSessionsScreen() {
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <View style={[styles.header, isDark && styles.headerDark]}>
         <TouchableOpacity onPress={() => router.push(`/(faculty)/subjects/${id}`)} style={styles.backBtn} accessibilityLabel="Go back">
-          <MaterialIcons name="arrow-back" size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+          <MaterialIcons name="arrow-back" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
         </TouchableOpacity>
         <View style={styles.headerText}>
           <Text style={[styles.heading, isDark && styles.textGolden]} numberOfLines={1}>{subject.name}</Text>
@@ -86,11 +81,11 @@ export default function SubjectSessionsScreen() {
           style={[styles.sectionFilterChip, isDark && styles.filterChipDark, selectedSectionId && (isDark ? styles.filterChipActiveDark : styles.filterChipActive)]}
           onPress={() => setShowSectionPicker(true)}
         >
-          <MaterialIcons name="filter-list" size={16} color={selectedSectionId ? '#FFF' : (isDark ? '#F5A800' : '#888')} />
+          <MaterialIcons name="filter-list" size={16} color={selectedSectionId ? '#FFF' : (isDark ? '#FFDF00' : '#888')} />
           <Text style={[styles.sectionFilterText, isDark && styles.filterChipTextDark, selectedSectionId && styles.filterChipTextActive]} numberOfLines={1}>
             {selectedSection ? `Sec ${selectedSection.section}` : 'All Sections'}
           </Text>
-          <MaterialIcons name="arrow-drop-down" size={18} color={selectedSectionId ? '#FFF' : (isDark ? '#F5A800' : '#888')} />
+          <MaterialIcons name="arrow-drop-down" size={18} color={selectedSectionId ? '#FFF' : (isDark ? '#FFDF00' : '#888')} />
         </TouchableOpacity>
         {filterCount > 0 && (
           <View style={[styles.filterCountBadge, isDark && styles.filterCountBadgeDark]}>
@@ -126,7 +121,7 @@ export default function SubjectSessionsScreen() {
                 <Text style={[styles.sheetOptionText, isDark && styles.sheetOptionTextDark, !selectedSectionId && (isDark ? styles.sheetOptionTextActiveDark : styles.sheetOptionTextActive)]}>
                   All Sections
                 </Text>
-                {!selectedSectionId && <MaterialIcons name="check" size={18} color={isDark ? '#F5A800' : '#7B1113'} />}
+                {!selectedSectionId && <MaterialIcons name="check" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />}
               </TouchableOpacity>
               {filteredSections.map((s) => (
                 <TouchableOpacity
@@ -137,7 +132,7 @@ export default function SubjectSessionsScreen() {
                   <Text style={[styles.sheetOptionText, isDark && styles.sheetOptionTextDark, s.id === selectedSectionId && (isDark ? styles.sheetOptionTextActiveDark : styles.sheetOptionTextActive)]}>
                     Section {s.section} — {s.room}
                   </Text>
-                  {s.id === selectedSectionId && <MaterialIcons name="check" size={18} color={isDark ? '#F5A800' : '#7B1113'} />}
+                  {s.id === selectedSectionId && <MaterialIcons name="check" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />}
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -212,7 +207,7 @@ const styles = StyleSheet.create({
   headerText: { flex: 1 },
   heading: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#4A0A0B' },
   subheading: { fontSize: 12, fontFamily: fonts.body, color: '#888', marginTop: 1 },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
   textWhite: { color: '#FFFFFF' },
   textWhite70: { color: 'rgba(255,255,255,0.7)' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
@@ -221,12 +216,12 @@ const styles = StyleSheet.create({
   sectionFilterChip: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#DDD', paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#FFFFFF' },
   filterChipDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215' },
   filterChipActive: { borderColor: '#7B1113', backgroundColor: '#7B1113' },
-  filterChipActiveDark: { borderColor: '#F5A800', backgroundColor: '#F5A800' },
+  filterChipActiveDark: { borderColor: '#FFDF00', backgroundColor: '#FFDF00' },
   sectionFilterText: { fontSize: 13, fontFamily: fonts.bodyMedium, color: '#666', flex: 1 },
   filterChipTextDark: { color: 'rgba(255,255,255,0.7)' },
   filterChipTextActive: { color: '#FFFFFF' },
   filterCountBadge: { backgroundColor: '#7B1113', borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
-  filterCountBadgeDark: { backgroundColor: '#F5A800' },
+  filterCountBadgeDark: { backgroundColor: '#FFDF00' },
   filterCountText: { fontSize: 10, fontWeight: '700', fontFamily: fonts.bodySemiBold, color: '#FFFFFF' },
   dayFilterRow: { backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
   dayFilterRowDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
@@ -234,7 +229,7 @@ const styles = StyleSheet.create({
   dayChip: { paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: '#DDD', backgroundColor: '#FFFFFF' },
   dayChipDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215' },
   dayChipActive: { borderColor: '#7B1113', backgroundColor: '#7B1113' },
-  dayChipActiveDark: { borderColor: '#F5A800', backgroundColor: '#F5A800' },
+  dayChipActiveDark: { borderColor: '#FFDF00', backgroundColor: '#FFDF00' },
   dayChipText: { fontSize: 12, fontFamily: fonts.bodyMedium, color: '#666' },
   dayChipTextDark: { color: 'rgba(255,255,255,0.7)' },
   dayChipTextActive: { color: '#FFFFFF' },
@@ -250,7 +245,7 @@ const styles = StyleSheet.create({
   sheetOptionText: { fontSize: 15, fontFamily: fonts.body, color: '#333', flex: 1 },
   sheetOptionTextDark: { color: '#FFF' },
   sheetOptionTextActive: { fontFamily: fonts.bodySemiBold, color: '#7B1113' },
-  sheetOptionTextActiveDark: { fontFamily: fonts.bodySemiBold, color: '#F5A800' },
+  sheetOptionTextActiveDark: { fontFamily: fonts.bodySemiBold, color: '#FFDF00' },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   group: { marginBottom: 24 },
   sectionLabel: { fontSize: 14, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#4A0A0B', marginBottom: 8 },
@@ -270,7 +265,7 @@ const styles = StyleSheet.create({
   badgeTextInactive: { color: '#666' },
   badgeTextInactiveDark: { color: 'rgba(255,255,255,0.5)' },
   activateBtn: { backgroundColor: '#7B1113', borderRadius: 0, paddingHorizontal: 14, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  activateBtnDark: { backgroundColor: '#F5A800' },
+  activateBtnDark: { backgroundColor: '#FFDF00' },
   activateText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600', fontFamily: fonts.bodySemiBold },
   activateTextDark: { color: '#4A0A0B' },
   empty: { textAlign: 'center', fontFamily: fonts.body, paddingVertical: 60, color: '#BBB' },

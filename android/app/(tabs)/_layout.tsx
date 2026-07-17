@@ -3,11 +3,12 @@ import { Platform, View } from 'react-native'
 import { router, Tabs } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { api } from '../../services/mock-api'
+import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 
 const iconMap: Record<string, keyof typeof MaterialIcons.glyphMap> = {
   dashboard: 'dashboard',
+  schedule: 'calendar-today',
   scan: 'qr-code-scanner',
   'id-card': 'badge',
   history: 'history',
@@ -26,19 +27,20 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      key={isDark ? 'dark' : 'light'}
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: isDark ? '#4A0A0B' : '#F5A800',
-        tabBarInactiveTintColor: isDark ? 'rgba(74, 10, 11, 0.5)' : 'rgba(255, 255, 255, 0.5)',
+        tabBarActiveTintColor: isDark ? '#4A0A0B' : '#FFDF00',
+        tabBarInactiveTintColor: isDark ? 'rgba(74, 10, 11, 0.4)' : 'rgba(255, 223, 0, 0.55)',
         tabBarStyle: {
           position: 'absolute',
           bottom: insets.bottom + 12,
           left: 24,
           right: 24,
-          backgroundColor: isDark ? '#F5A800' : '#7B1113',
+          backgroundColor: isDark ? '#FFDF00' : '#7B1113',
           borderTopWidth: 0,
-          borderWidth: isDark ? 1 : 0,
-          borderColor: isDark ? 'rgba(74, 10, 11, 0.2)' : 'transparent',
+          borderWidth: 1,
+          borderColor: isDark ? 'rgba(74, 10, 11, 0.15)' : 'rgba(255, 223, 0, 0.15)',
           borderRadius: 28,
           height: 64,
           paddingBottom: 0,
@@ -65,7 +67,7 @@ export default function TabLayout() {
         tabBarIconStyle: {
           marginTop: 4,
         },
-        tabBarIcon: ({ focused }) => {
+        tabBarIcon: ({ focused, color }) => {
           const iconName = iconMap[route.name]
           if (!iconName) return null
           return (
@@ -73,7 +75,7 @@ export default function TabLayout() {
               <MaterialIcons
                 name={iconName}
                 size={24}
-                color={focused ? (isDark ? '#4A0A0B' : '#F5A800') : (isDark ? 'rgba(74, 10, 11, 0.5)' : 'rgba(255,255,255,0.5)')}
+                color={color}
               />
             </View>
           )
@@ -81,10 +83,15 @@ export default function TabLayout() {
       })}
     >
       <Tabs.Screen name="dashboard" options={{ title: 'Home', tabBarLabel: 'Home' }} />
+      <Tabs.Screen name="schedule" options={{ title: 'Schedule', tabBarLabel: 'Schedule' }} />
+      <Tabs.Screen name="enroll" options={{ href: null }} />
       <Tabs.Screen name="scan" options={{ title: 'Scan', tabBarLabel: 'Scan' }} />
       <Tabs.Screen name="id-card" options={{ title: 'ID Card', tabBarLabel: 'ID Card' }} />
       <Tabs.Screen name="history" options={{ title: 'Audit', tabBarLabel: 'Audit' }} />
       <Tabs.Screen name="subject-info/[id]" options={{ href: null }} />
+      <Tabs.Screen name="subject-info/[id]/create-session" options={{ href: null }} />
+      <Tabs.Screen name="subject-info/[id]/sessions/[sessionId]" options={{ href: null }} />
+      <Tabs.Screen name="subjects" options={{ href: null }} />
     </Tabs>
   )
 }

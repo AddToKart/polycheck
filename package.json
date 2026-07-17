@@ -5,7 +5,11 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
-    "clean": "turbo clean"
+    "clean": "turbo clean",
+    "docker:local:up": "docker compose -f docker-compose.local.yml --env-file .env.docker.local up -d --build",
+    "docker:local:seed": "docker compose -f docker-compose.local.yml --env-file .env.docker.local --profile tools run --rm seed",
+    "docker:local:logs": "docker compose -f docker-compose.local.yml --env-file .env.docker.local logs -f",
+    "docker:local:down": "docker compose -f docker-compose.local.yml --env-file .env.docker.local down"
   },
   "devDependencies": {
     "turbo": "^2.4.0",

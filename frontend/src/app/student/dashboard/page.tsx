@@ -1,61 +1,178 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import React, { useEffect, useState, useMemo, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { api } from '@/lib/mock-api'
-import type { Student, Section, AttendanceRecord } from '@polycheck/shared'
+import Image from 'next/image'
+import { api } from '@/lib/api-client'
+import type { Student, Section, AttendanceRecord, StudentDisputeReason, Subject } from '@polycheck/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { Sidebar } from '@/components/layout/sidebar'
 import StatusBadge from '@/components/StatusBadge'
-import ThemeToggle from '@/components/ThemeToggle'
 import {
-  LayoutDashboard,
   BookOpen,
   Clock,
   User,
-  LogOut,
   GraduationCap,
-  CalendarDays,
+  Calendar,
   MapPin,
   X,
+  Flag,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogClose,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { getWeekDays, getDayName, getDayNameFull, formatDate, formatTime, isSameDay, getDateRangeForWeek } from '@/lib/calendar-utils'
+import type { CalendarEvent } from '@polycheck/shared'
+import { generateStudentCalendarEvents } from '@polycheck/shared/utils'
 
-type NavTab = 'dashboard' | 'subjects' | 'attendance'
-
-const navItems = [
-  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { key: 'subjects', label: 'My Subjects', icon: BookOpen },
-  { key: 'attendance', label: 'Attendance History', icon: Clock },
-] as const
+type NavTab = 'dashboard' | 'subjects' | 'schedule' | 'attendance'
 
 const statCards = [
   { key: 'present', label: 'Present', color: 'text-golden' },
   { key: 'late', label: 'Late', color: 'text-maroon' },
   { key: 'absent', label: 'Absent', color: 'text-maroon-dark' },
+  { key: 'disputed', label: 'Disputed', color: 'text-maroon-dark dark:text-golden' },
 ] as const
 
-export default function StudentDashboardPage() {
+function StudentDashboardContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [user, setUser] = useState<Student | null>(null)
   const [sections, setSections] = useState<Section[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
+  const [sessions, setSessions] = useState<any[]>([])
+  const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard')
-  const [isIdModalOpen, setIsIdModalOpen] = useState(false)
-  const [isIdFlipped, setIsIdFlipped] = useState(false)
 
   useEffect(() => {
-    const cu = api.getCurrentUser()
-    if (!cu || cu.role !== 'student') {
-      router.push('/')
+    const tab = searchParams.get('tab')
+    if (tab && ['dashboard', 'subjects', 'schedule', 'attendance'].includes(tab)) {
+      setActiveTab(tab as NavTab)
+    } else {
+      setActiveTab('dashboard')
+    }
+  }, [searchParams])
+  const [attendancePage, setAttendancePage] = useState(0)
+  const [isIdModalOpen, setIsIdModalOpen] = useState(false)
+  const [isIdFlipped, setIsIdFlipped] = useState(false)
+  const [scheduleDate, setScheduleDate] = useState(new Date())
+  const [allSubjects, setAllSubjects] = useState<Subject[]>([])
+  const [disputeRecord, setDisputeRecord] = useState<AttendanceRecord | null>(null)
+  const [disputeReason, setDisputeReason] = useState('')
+  const [disputeDescription, setDisputeDescription] = useState('')
+  const [disputeFeedback, setDisputeFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  // Enrollment Modal States
+  const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false)
+  const [enrollCode, setEnrollCode] = useState('')
+  const [enrollLoading, setEnrollLoading] = useState(false)
+  const [enrollSuccess, setEnrollSuccess] = useState(false)
+  const [enrollError, setEnrollError] = useState('')
+
+  const subjectMap = useMemo(() => {
+    const map = new Map<string, { name: string; code: string }>()
+    for (const subject of allSubjects) {
+      map.set(subject.id, { name: subject.name, code: subject.code })
+    }
+    return map
+  }, [allSubjects])
+
+  const handleEnrollSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setEnrollError('')
+    setEnrollSuccess(false)
+
+    const trimmed = enrollCode.trim()
+    if (!trimmed) {
+      setEnrollError('Please enter an enrollment code.')
       return
     }
-    setUser(cu as Student)
-    if (cu.studentId) {
-      setSections(api.getStudentSections(cu.id))
-      setRecords(api.getAttendanceForStudent(cu.id))
+
+    setEnrollLoading(true)
+
+    try {
+      await api.enrollByCode(trimmed)
+    } catch (error) {
+      setEnrollError(error instanceof Error ? error.message : 'Unable to enroll in this section.')
+      setEnrollLoading(false)
+      return
     }
-  }, [router])
+
+    setEnrollSuccess(true)
+    setEnrollCode('')
+    setEnrollLoading(false)
+    // Refresh student's enrolled subjects list
+    const updatedSections = await api.getStudentSections(user!.id)
+    setSections(updatedSections)
+    const updatedRecords = await api.getAttendanceForStudent(user!.id)
+    const updatedSessions = await api.getSessions()
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const evs = generateStudentCalendarEvents(
+      updatedSections,
+      updatedSessions,
+      updatedRecords,
+      (id) => subjectMap.get(id),
+      todayStr,
+      todayStr
+    ).sort((a, b) => a.startTime.localeCompare(b.startTime))
+    setTodayEvents(evs)
+  }
+
+  useEffect(() => {
+    const fn = async () => {
+      const cu = api.getCurrentUser()
+      if (!cu || cu.role !== 'student') {
+        router.push('/')
+        return
+      }
+      setUser(cu as Student)
+      if (cu.studentId) {
+        const studentSections = await api.getStudentSections(cu.id)
+        const studentRecords = await api.getAttendanceForStudent(cu.id)
+        const allSessions = await api.getSessions()
+        setSections(studentSections)
+        setRecords(studentRecords)
+        setSessions(allSessions)
+
+        const todayStr = new Date().toISOString().slice(0, 10)
+        const evs = generateStudentCalendarEvents(
+          studentSections,
+          allSessions,
+          studentRecords,
+          (id) => subjectMap.get(id),
+          todayStr,
+          todayStr
+        ).sort((a, b) => a.startTime.localeCompare(b.startTime))
+        setTodayEvents(evs)
+      }
+    }
+    fn()
+  }, [router, subjectMap])
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const subjects = await api.getSubjects()
+      setAllSubjects(subjects)
+    }
+    fetchData()
+  }, [])
+
+  useEffect(() => {
+    setAttendancePage(0)
+  }, [activeTab])
 
   const handleLogout = () => {
     api.logout()
@@ -65,9 +182,36 @@ export default function StudentDashboardPage() {
   const sectionSubjectName = (sectionId: string) => {
     const sec = sections.find((s) => s.id === sectionId)
     if (!sec) return sectionId
-    const subj = api.getSubject(sec.subjectId)
+    const subj = subjectMap.get(sec.subjectId)
     return subj?.name ?? sectionId
   }
+
+  const handleSubmitDispute = async () => {
+    if (!disputeRecord || !disputeReason) return
+    const result = await api.submitDispute({ recordId: disputeRecord.id, reason: disputeReason as StudentDisputeReason, description: disputeDescription })
+    if (result) {
+      setDisputeFeedback({ type: 'success', message: 'Dispute submitted successfully.' })
+      const updatedRecords = await api.getAttendanceForStudent(user!.id)
+      setRecords(updatedRecords)
+    } else {
+      setDisputeFeedback({ type: 'error', message: 'Failed to submit dispute.' })
+    }
+    setTimeout(() => setDisputeFeedback(null), 3000)
+    setDisputeRecord(null)
+    setDisputeReason('')
+    setDisputeDescription('')
+  }
+
+const ATTENDANCE_PAGE_SIZE = 8
+  const sortedRecords = useMemo(
+    () => [...records].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+    [records]
+  )
+  const attendancePageCount = Math.max(1, Math.ceil(sortedRecords.length / ATTENDANCE_PAGE_SIZE))
+  const pagedRecords = useMemo(
+    () => sortedRecords.slice(attendancePage * ATTENDANCE_PAGE_SIZE, (attendancePage + 1) * ATTENDANCE_PAGE_SIZE),
+    [sortedRecords, attendancePage]
+  )
 
   if (!user) return null
 
@@ -75,76 +219,13 @@ export default function StudentDashboardPage() {
     present: records.filter((r) => r.status === 'present').length,
     late: records.filter((r) => r.status === 'late').length,
     absent: records.filter((r) => r.status === 'absent').length,
+    disputed: records.filter((r) => r.status === 'disputed').length,
   }
 
+
   return (
-    <div className="min-h-screen flex bg-background selection:bg-golden selection:text-maroon">
-      {/* Sidebar */}
-      <aside className="w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col shrink-0 h-dvh sticky top-0 overflow-hidden">
-        <div className="p-6 border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between bg-maroon text-white">
-          <div>
-            <h1 className="text-2xl font-heading font-bold tracking-tight text-golden">
-              Polycheck
-            </h1>
-            <p className="text-[10px] uppercase tracking-widest text-white/70 mt-1">Student</p>
-          </div>
-          {/* Minimal Star motif from PUP logo */}
-          <div className="w-8 h-8 flex items-center justify-center shrink-0">
-             <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[14px] border-b-golden relative before:content-[''] before:absolute before:-top-[4px] before:-left-[8px] before:w-0 before:h-0 before:border-l-[8px] before:border-l-transparent before:border-r-[8px] before:border-r-transparent before:border-t-[14px] before:border-t-golden"></div>
-          </div>
-        </div>
-
-        <nav className="flex-1 overflow-y-auto py-4">
-          <div className="flex flex-col">
-            {navItems.map(({ key, label, icon: Icon }) => {
-              const isActive = activeTab === key
-              return (
-                <button
-                  key={key}
-                  onClick={() => setActiveTab(key as NavTab)}
-                  className={`flex items-center gap-4 px-6 py-4 text-sm font-bold uppercase tracking-wider transition-all border-l-4 w-full text-left ${
-                    isActive
-                      ? 'border-maroon dark:border-golden bg-zinc-100 dark:bg-zinc-900 text-maroon dark:text-golden'
-                      : 'border-transparent text-zinc-500 hover:text-foreground hover:bg-zinc-50 dark:hover:bg-zinc-900'
-                  }`}
-                >
-                  <Icon 
-                    className={`w-5 h-5 shrink-0 ${isActive ? 'text-maroon dark:text-golden' : ''}`}
-                    strokeWidth={isActive ? 2.5 : 1.5}
-                  />
-                  {label}
-                </button>
-              )
-            })}
-          </div>
-        </nav>
-
-        <div className="p-6 border-t border-zinc-300 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
-          <div className="flex items-center justify-between mb-6">
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-              Appearance
-            </p>
-            <ThemeToggle />
-          </div>
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-maroon flex items-center justify-center text-golden font-heading font-bold text-sm shrink-0 border border-maroon-dark">
-              {user.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2)}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-foreground truncate">{user.fullName}</p>
-              <p className="text-xs text-zinc-500 truncate">{user.studentId}</p>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            className="w-full justify-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-600 dark:text-zinc-400 hover:text-white hover:bg-maroon hover:border-maroon transition-colors"
-            onClick={handleLogout}
-          >
-            <LogOut className="w-4 h-4" />
-            Disconnect
-          </Button>
-        </div>
-      </aside>
+    <div className="min-h-screen md:h-screen md:overflow-hidden flex flex-col md:flex-row bg-background selection:bg-golden selection:text-maroon">
+      <Sidebar user={{ ...user, email: user.email || '' } as any} onLogout={handleLogout} />
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
@@ -160,6 +241,18 @@ export default function StudentDashboardPage() {
               </h1>
             </div>
             <div className="mt-4 md:mt-0 flex gap-2">
+              <Button 
+                onClick={() => {
+                  setIsEnrollModalOpen(true)
+                  setEnrollError('')
+                  setEnrollSuccess(false)
+                  setEnrollCode('')
+                }}
+                className="rounded-none bg-maroon text-white hover:bg-maroon-dark uppercase tracking-widest font-bold text-xs h-10 px-6"
+              >
+                <GraduationCap className="w-4 h-4 mr-2" />
+                Enroll in Subject
+              </Button>
               <Button asChild className="rounded-none bg-maroon text-white hover:bg-maroon-dark uppercase tracking-widest font-bold text-xs h-10 px-6">
                 <button onClick={() => {/* Future Scan QR Trigger */}}>
                   <MapPin className="w-4 h-4 mr-2" />
@@ -172,12 +265,12 @@ export default function StudentDashboardPage() {
           {/* Dashboard Tab */}
           {activeTab === 'dashboard' && (
             <>
-              <div className="grid lg:grid-cols-3 gap-8 mb-8">
+              <div className="grid lg:grid-cols-3 gap-8 mb-8 items-start">
                 {/* Digital ID Card */}
-                <Card className="lg:col-span-1 rounded-none border-zinc-300 dark:border-zinc-800 shadow-none overflow-hidden flex flex-col relative bg-zinc-50 dark:bg-zinc-900/50">
+                <Card className="lg:col-span-1 lg:sticky lg:top-8 rounded-none border-zinc-300 dark:border-zinc-800 shadow-none overflow-hidden flex flex-col relative bg-zinc-50 dark:bg-zinc-900/50">
                   <div className="h-24 bg-maroon flex items-center justify-center relative overflow-hidden">
-                    <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at center, #F5A800 2px, transparent 2px)', backgroundSize: '16px 16px' }}></div>
-                    <img src="/pup-logo.png" alt="PUP Logo" className="w-16 h-16 absolute right-4 bottom-4 opacity-20 filter grayscale contrast-200" />
+                    <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at center, #FFDF00 2px, transparent 2px)', backgroundSize: '16px 16px' }}></div>
+                    <Image src="/pup-logo.png" width={64} height={64} alt="PUP Logo" className="w-16 h-16 absolute right-4 bottom-4 opacity-20 filter grayscale contrast-200" />
                   </div>
                   <div className="absolute top-12 left-6 w-24 h-24 bg-zinc-200 dark:bg-zinc-800 border-4 border-background flex items-center justify-center overflow-hidden">
                      {/* Placeholder for actual photo */}
@@ -236,7 +329,7 @@ export default function StudentDashboardPage() {
                             {/* Header */}
                             <div className="bg-maroon p-3 flex justify-between items-center border-b-2 border-zinc-300 dark:border-zinc-700">
                               <div className="flex items-center gap-3">
-                                <img src="/pup-logo.png" alt="PUP Logo" className="w-8 h-8" />
+                                <Image src="/pup-logo.png" width={32} height={32} alt="PUP Logo" className="w-8 h-8" />
                                 <div>
                                   <h3 className="text-[9px] font-heading font-bold text-golden uppercase tracking-widest leading-none mb-1">Republic of the Philippines</h3>
                                   <h2 className="text-xs sm:text-sm font-heading font-bold text-white uppercase tracking-wider leading-none">Polytechnic University of the Philippines</h2>
@@ -302,7 +395,7 @@ export default function StudentDashboardPage() {
                                  <div className="w-full aspect-square bg-zinc-100 border-2 border-zinc-300 flex items-center justify-center p-2">
                                    <div className="grid grid-cols-5 grid-rows-5 w-full h-full gap-[1px]">
                                      {Array.from({length: 25}).map((_, i) => (
-                                       <div key={i} className={`bg-zinc-900 ${Math.random() > 0.5 ? 'opacity-100' : 'opacity-0'}`}></div>
+                                       <div key={i} className={`bg-zinc-900 ${(i * 17 + 5) % 3 === 0 ? 'opacity-100' : 'opacity-0'}`}></div>
                                      ))}
                                    </div>
                                  </div>
@@ -320,9 +413,9 @@ export default function StudentDashboardPage() {
 
                 <div className="lg:col-span-2 flex flex-col gap-8">
                   {/* Stats Grid */}
-                  <div className="grid grid-cols-3 gap-0 border border-zinc-300 dark:border-zinc-800 bg-background">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-0 border border-zinc-300 dark:border-zinc-800 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
                     {statCards.map(({ key, label, color }, index) => (
-                      <div key={key} className={`p-6 border-zinc-300 dark:border-zinc-800 ${index !== 0 ? 'border-l' : ''}`}>
+                      <div key={key} className={`p-6 border-zinc-300 dark:border-zinc-800 ${index !== 0 ? 'border-l' : ''} ${index > 1 ? 'border-t lg:border-t-0' : ''}`}>
                         <div className="flex items-center gap-3 mb-4 text-zinc-400">
                           <p className="text-[10px] font-bold uppercase tracking-widest">{label}</p>
                         </div>
@@ -333,8 +426,86 @@ export default function StudentDashboardPage() {
                     ))}
                   </div>
 
+                  {/* Today's Schedule */}
+                  <Card className="rounded-none border-zinc-300 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden shadow-none bg-zinc-50/50 dark:bg-zinc-900/50">
+                    <CardHeader className="border-b border-zinc-200 dark:border-zinc-800 p-6 flex flex-row items-center justify-between space-y-0 bg-zinc-50 dark:bg-zinc-900/50">
+                      <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-maroon dark:text-golden" />
+                        Today&apos;s Schedule
+                      </CardTitle>
+                      <button 
+                        onClick={() => router.push('?tab=schedule')}
+                        className="text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden hover:opacity-85 transition-opacity"
+                      >
+                        Full Schedule
+                      </button>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                      {todayEvents.length === 0 ? (
+                        <div className="text-center py-6">
+                          <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">No classes scheduled for today</p>
+                        </div>
+                      ) : (
+                        <div className="grid md:grid-cols-2 gap-4">
+                          {todayEvents.map((ev) => {
+                            const isSessionActive = ev.status === 'active'
+                            const studentStatus = ev.studentStatus
+
+                            let borderStyle = "border-l-zinc-300 dark:border-l-zinc-800"
+                            let badgeLabel = "Scheduled"
+                            let badgeStyle = "text-zinc-500 bg-zinc-100 dark:bg-zinc-800"
+
+                            if (studentStatus === 'present') {
+                              borderStyle = "border-l-emerald-500"
+                              badgeLabel = "Present"
+                              badgeStyle = "text-emerald-700 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-950/30"
+                            } else if (studentStatus === 'late') {
+                              borderStyle = "border-l-amber-500"
+                              badgeLabel = "Late"
+                              badgeStyle = "text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/30"
+                            } else if (studentStatus === 'absent') {
+                              borderStyle = "border-l-rose-500"
+                              badgeLabel = "Absent"
+                              badgeStyle = "text-rose-700 bg-rose-50 dark:text-rose-300 dark:bg-rose-950/30"
+                            } else if (isSessionActive) {
+                              borderStyle = "border-l-golden"
+                              badgeLabel = "Active Now"
+                              badgeStyle = "text-maroon bg-golden/20 dark:text-golden dark:bg-golden/10 border border-golden/30"
+                            }
+
+                            return (
+                              <div key={ev.id} className={`p-4 border border-zinc-200 dark:border-zinc-800 border-l-4 ${borderStyle} bg-background dark:bg-zinc-900/30 flex flex-col justify-between rounded-none`}>
+                                <div className="flex justify-between items-start mb-2 gap-4">
+                                  <div className="min-w-0">
+                                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                                      {formatTime(ev.startTime)} - {formatTime(ev.endTime)}
+                                    </p>
+                                    <h4 className="text-sm font-bold text-foreground truncate leading-snug">
+                                      {ev.subjectName}
+                                    </h4>
+                                  </div>
+                                  <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 whitespace-nowrap ${badgeStyle}`}>
+                                    {badgeLabel}
+                                  </span>
+                                </div>
+                                <div className="mt-4 flex justify-between items-center text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                                  <span>Sec {ev.sectionName} {ev.room ? `\\ ${ev.room}` : ''}</span>
+                                  {isSessionActive && !studentStatus && (
+                                    <Link href="/student/dashboard?tab=dashboard" className="text-[9px] font-bold uppercase tracking-widest text-maroon dark:text-golden border border-maroon dark:border-golden px-2 py-1 bg-white dark:bg-zinc-800 hover:bg-maroon hover:text-white dark:hover:bg-golden dark:hover:text-maroon transition-colors">
+                                      Scan Attendance
+                                    </Link>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
                   {/* Recent Attendance */}
-                  <Card className="rounded-none border-zinc-300 dark:border-zinc-800 shadow-none bg-zinc-50 dark:bg-zinc-900/20 flex-1">
+                  <Card className="rounded-none border-zinc-300 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden">
                     <CardHeader className="border-b border-zinc-300 dark:border-zinc-800 p-6">
                       <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
                         <Clock className="w-4 h-4 text-maroon dark:text-golden" />
@@ -345,38 +516,52 @@ export default function StudentDashboardPage() {
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
-                            <tr className="border-b border-zinc-300 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30">
+                            <tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30">
                               <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Subject</th>
                               <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Date/Time</th>
-                              <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Status</th>
+                              <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Result</th>
+                              <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Action</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {records.slice(0, 5).map((r) => (
-                              <tr
-                                key={r.id}
-                                className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
-                              >
-                                <td className="px-6 py-4">
-                                  <span className="font-bold text-foreground">
-                    {sectionSubjectName(r.sectionId)}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                                  {new Date(r.timestamp).toLocaleDateString()} at {new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                  <StatusBadge status={r.status} />
-                                </td>
-                              </tr>
-                            ))}
-                            {records.length === 0 && (
-                              <tr>
-                                <td colSpan={3} className="px-6 py-12 text-center text-zinc-400 dark:text-zinc-500 text-sm font-bold uppercase tracking-widest">
-                                  No scan history available
-                                </td>
-                              </tr>
-                            )}
+                        {records.map((r) => (
+                          <tr
+                            key={r.id}
+                            className="border-b border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors"
+                          >
+                            <td className="px-6 py-4 font-bold text-foreground">
+                              {sectionSubjectName(r.sectionId)}
+                            </td>
+                            <td className="px-6 py-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                               {new Date(r.timestamp).toLocaleDateString()} &mdash; {new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <StatusBadge status={r.status} />
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              {r.status === 'disputed' ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Disputed
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => { setDisputeRecord(r); setDisputeReason(''); setDisputeDescription(''); setDisputeFeedback(null) }}
+                                  className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-maroon dark:hover:text-golden transition-colors border border-zinc-300 dark:border-zinc-700 px-2 py-1 hover:border-maroon dark:hover:border-golden"
+                                >
+                                  Report Issue
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {records.length === 0 && (
+                          <tr>
+                            <td colSpan={4} className="px-6 py-16 text-center text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest">
+                              Audit log is empty
+                            </td>
+                          </tr>
+                        )}
                           </tbody>
                         </table>
                       </div>
@@ -389,45 +574,44 @@ export default function StudentDashboardPage() {
 
           {/* My Subjects Tab */}
           {activeTab === 'subjects' && (
-            <div className="grid gap-6 sm:grid-cols-2">
+            <>
+              <div className="grid gap-6 sm:grid-cols-2">
               {sections.map((section) => {
-                const subj = api.getSubject(section.subjectId)
+                const subj = subjectMap.get(section.subjectId)
                 return (
                 <Link key={section.id} href={`/student/subjects/${section.id}`} className="block group">
-                  <Card className="rounded-none border-zinc-300 dark:border-zinc-800 shadow-none hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50 cursor-pointer">
-                    <div className="border-l-4 border-maroon dark:border-golden h-full flex flex-col">
-                      <CardHeader className="pb-4 pt-6 px-6">
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">
-                            {subj?.code}
-                          </span>
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-                            Sec {section.section}
+                  <Card className="rounded-none border-zinc-300 dark:border-zinc-800 border-l-4 border-l-maroon dark:border-l-golden hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50 cursor-pointer flex flex-col h-full">
+                    <CardHeader className="pb-4 pt-6 px-6">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">
+                          {subj?.code}
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                          Sec {section.section}
+                        </span>
+                      </div>
+                      <CardTitle className="text-xl font-heading font-bold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors line-clamp-2 leading-tight">
+                        {subj?.name}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-6 pb-6 flex-1 flex flex-col">
+                      <div className="space-y-3 text-xs font-medium text-zinc-600 dark:text-zinc-400 flex-1 uppercase tracking-wider">
+                        <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
+                          <span className="text-zinc-400">Instructor</span>
+                          <span className="text-foreground text-right">{section.teacherName}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
+                          <span className="text-zinc-400">Room</span>
+                          <span className="text-foreground text-right">{section.room}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
+                          <span className="text-zinc-400">Schedule</span>
+                          <span className="text-foreground text-right">
+                            {section.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')}
                           </span>
                         </div>
-                        <CardTitle className="text-xl font-heading font-bold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors line-clamp-2 leading-tight">
-                          {subj?.name}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="px-6 pb-6 flex-1 flex flex-col">
-                        <div className="space-y-3 text-xs font-medium text-zinc-600 dark:text-zinc-400 flex-1 uppercase tracking-wider">
-                          <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
-                            <span className="text-zinc-400">Instructor</span>
-                            <span className="text-foreground text-right">{section.teacherName}</span>
-                          </div>
-                          <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
-                            <span className="text-zinc-400">Room</span>
-                            <span className="text-foreground text-right">{section.room}</span>
-                          </div>
-                          <div className="flex justify-between border-b border-zinc-300 dark:border-zinc-800 pb-2">
-                            <span className="text-zinc-400">Schedule</span>
-                            <span className="text-foreground text-right">
-                              {section.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')}
-                            </span>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </div>
+                      </div>
+                    </CardContent>
                   </Card>
                 </Link>
                 )
@@ -439,11 +623,128 @@ export default function StudentDashboardPage() {
                 </div>
               )}
             </div>
+            </>
+          )}
+
+          {/* Schedule Tab */}
+          {activeTab === 'schedule' && (
+            <>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8 border-b border-zinc-200 dark:border-zinc-800 pb-6">
+                <div>
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">My Weekly Schedule</p>
+                  <h2 className="text-xl font-heading font-bold text-foreground">
+                    {(() => {
+                      const wd = getWeekDays(scheduleDate)
+                      const s = wd[0]; const e = wd[6]
+                      if (s.getMonth() === e.getMonth()) return `${s.toLocaleDateString('en-US', { month: 'long' })} ${s.getDate()} - ${e.getDate()}, ${s.getFullYear()}`
+                      return `${s.toLocaleDateString('en-US', { month: 'short' })} ${s.getDate()} - ${e.toLocaleDateString('en-US', { month: 'short' })} ${e.getDate()}, ${s.getFullYear()}`
+                    })()}
+                  </h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setScheduleDate(new Date())} className="text-[10px] font-bold uppercase tracking-widest rounded-none px-4">Today</Button>
+                  <div className="flex items-center border border-zinc-300 dark:border-zinc-700">
+                    <Button variant="ghost" size="icon" onClick={() => { const d = new Date(scheduleDate); d.setDate(d.getDate() - 7); setScheduleDate(d) }} className="rounded-none h-8 w-8 border-r border-zinc-300 dark:border-zinc-700"><ChevronLeft className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => { const d = new Date(scheduleDate); d.setDate(d.getDate() + 7); setScheduleDate(d) }} className="rounded-none h-8 w-8"><ChevronRight className="w-4 h-4" /></Button>
+                  </div>
+                </div>
+              </div>
+
+              {sections.length === 0 ? (
+                <div className="border border-dashed border-zinc-300 dark:border-zinc-700 p-16 text-center bg-zinc-50 dark:bg-zinc-900/20">
+                  <BookOpen className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mx-auto mb-4" />
+                  <p className="text-xl font-heading font-bold text-zinc-400 mb-2">NO ENROLLMENTS</p>
+                  <p className="text-xs uppercase tracking-widest text-zinc-500">Enroll in a subject to see your schedule.</p>
+                </div>
+              ) : (
+                <>
+                  {(() => {
+                    const wd = getWeekDays(scheduleDate)
+                    const today = new Date()
+                    const weekRange = getDateRangeForWeek(scheduleDate)
+                    const allEvents = generateStudentCalendarEvents(
+                      sections,
+                      sessions,
+                      records,
+                      (id) => subjectMap.get(id),
+                      formatDate(weekRange.start),
+                      formatDate(weekRange.end),
+                    )
+                    const weekDayEvents = new Map<string, CalendarEvent[]>()
+                    for (const day of wd) {
+                      weekDayEvents.set(formatDate(day), allEvents.filter((e) => e.date === formatDate(day)))
+                    }
+                    const STATUS_BORDER: Record<string, string> = {
+                      present: 'border-l-green-500 bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-950/50',
+                      late: 'border-l-yellow-500 bg-yellow-50 dark:bg-yellow-950/30 hover:bg-yellow-100 dark:hover:bg-yellow-950/50',
+                      absent: 'border-l-red-500 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50',
+                    }
+                    const STATUS_TEXT: Record<string, string> = {
+                      present: 'text-green-700 dark:text-green-300',
+                      late: 'text-yellow-700 dark:text-yellow-300',
+                      absent: 'text-red-700 dark:text-red-300',
+                    }
+                    const STATUS_ICONS: Record<string, React.ReactNode> = {
+                      present: <CheckCircle className="w-3 h-3 text-green-600" />,
+                      late: <Clock className="w-3 h-3 text-yellow-600" />,
+                      absent: <XCircle className="w-3 h-3 text-red-600" />,
+                    }
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
+                        {wd.map((day, i) => {
+                          const ds = formatDate(day)
+                          const dayEvs = weekDayEvents.get(ds) || []
+                          const isT = isSameDay(day, today)
+                          return (
+                            <div key={i} className={`rounded-none border ${isT ? 'border-maroon dark:border-golden border-t-4 border-t-maroon dark:border-t-golden' : 'border-zinc-300 dark:border-zinc-800'} bg-white dark:bg-zinc-900`}>
+                              <div className={`p-3 border-b border-zinc-200 dark:border-zinc-700 ${isT ? 'bg-maroon/5 dark:bg-golden/10' : 'bg-zinc-50 dark:bg-zinc-900/50'}`}>
+                                <p className={`text-[10px] font-bold uppercase tracking-widest ${isT ? 'text-maroon dark:text-golden' : 'text-zinc-500'}`}>{getDayName(i)}</p>
+                                <p className={`text-lg font-heading font-bold mt-0.5 ${isT ? 'text-maroon dark:text-golden' : 'text-foreground'}`}>{day.getDate()}</p>
+                                <p className="text-[9px] text-zinc-400 uppercase tracking-wider mt-0.5">{getDayNameFull(i)}</p>
+                              </div>
+                              <div className="p-2 space-y-2 min-h-[120px]">
+                                {dayEvs.length === 0 ? (
+                                  <p className="text-[10px] text-zinc-400 text-center py-4">No classes</p>
+                                ) : (
+                                  dayEvs.map((ev) => {
+                                    const isGhost = ev.type === 'schedule'
+                                    const borderColor = isGhost ? 'border-l-zinc-300 bg-transparent border-dashed' : (ev.studentStatus ? STATUS_BORDER[ev.studentStatus] || 'border-l-zinc-400 bg-zinc-50 dark:bg-zinc-800/30' : 'border-l-zinc-400 bg-zinc-50 dark:bg-zinc-800/30')
+                                    const textColor = isGhost ? 'text-zinc-300 dark:text-zinc-600' : (ev.studentStatus ? STATUS_TEXT[ev.studentStatus] || 'text-zinc-500' : 'text-zinc-500')
+                                    const statusIcon = ev.studentStatus ? STATUS_ICONS[ev.studentStatus] : null
+                                    const statusLabel = ev.studentStatus ? ev.studentStatus.charAt(0).toUpperCase() + ev.studentStatus.slice(1) : null
+                                    return (
+                                      <Link key={ev.id} href={isGhost ? '#' : `/student/subjects/${ev.sectionId}`} className={`block p-2 border-l-4 transition-colors ${borderColor} ${isGhost ? 'cursor-default' : ''}`}>
+                                        <p className={`text-[10px] font-bold truncate leading-tight ${textColor}`}>
+                                          {isGhost ? 'No session yet' : ev.subjectCode || ev.subjectName}
+                                        </p>
+                                        <p className="text-[9px] text-zinc-500 dark:text-zinc-400 mt-0.5">{formatTime(ev.startTime)} - {formatTime(ev.endTime)}</p>
+                                        {ev.room && <p className={`text-[9px] truncate ${isGhost ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-400 dark:text-zinc-500'}`}>{ev.room}</p>}
+                                        {ev.teacherName && <p className={`text-[9px] truncate ${isGhost ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-400 dark:text-zinc-500'}`}>{ev.teacherName}</p>}
+                                        {!isGhost && statusIcon && statusLabel && (
+                                          <div className={`flex items-center gap-1 mt-1 text-[9px] font-bold uppercase tracking-widest ${textColor}`}>
+                                            {statusIcon}
+                                            {statusLabel}
+                                          </div>
+                                        )}
+                                      </Link>
+                                    )
+                                  })
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })()}
+                </>
+              )}
+            </>
           )}
 
           {/* Attendance History Tab */}
           {activeTab === 'attendance' && (
-            <Card className="rounded-none border-zinc-300 dark:border-zinc-800 shadow-none bg-zinc-50 dark:bg-zinc-900/20">
+            <Card className="rounded-none border-zinc-300 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden">
               <CardHeader className="border-b border-zinc-300 dark:border-zinc-800 p-6">
                 <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
                   <Clock className="w-4 h-4 text-maroon dark:text-golden" />
@@ -454,17 +755,18 @@ export default function StudentDashboardPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-zinc-300 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30">
+                      <tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30">
                         <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Subject</th>
                         <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Date/Time</th>
                         <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Result</th>
+                        <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {records.map((r) => (
+                      {pagedRecords.map((r) => (
                         <tr
                           key={r.id}
-                          className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                          className="border-b border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors"
                         >
                           <td className="px-6 py-4 font-bold text-foreground">
                             {sectionSubjectName(r.sectionId)}
@@ -475,11 +777,26 @@ export default function StudentDashboardPage() {
                           <td className="px-6 py-4 text-right">
                             <StatusBadge status={r.status} />
                           </td>
+                          <td className="px-6 py-4 text-right">
+                            {r.status === 'disputed' ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">
+                                <AlertTriangle className="w-3 h-3" />
+                                Disputed
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => { setDisputeRecord(r); setDisputeReason(''); setDisputeDescription(''); setDisputeFeedback(null) }}
+                                className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-maroon dark:hover:text-golden transition-colors border border-zinc-300 dark:border-zinc-700 px-2 py-1 hover:border-maroon dark:hover:border-golden"
+                              >
+                                Report Issue
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       ))}
                       {records.length === 0 && (
                         <tr>
-                          <td colSpan={3} className="px-6 py-16 text-center text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest">
+                          <td colSpan={4} className="px-6 py-16 text-center text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest">
                             Audit log is empty
                           </td>
                         </tr>
@@ -488,10 +805,194 @@ export default function StudentDashboardPage() {
                   </table>
                 </div>
               </CardContent>
+
+              {/* Pagination controls */}
+              {attendancePageCount > 1 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between border-t border-zinc-200 dark:border-zinc-800 px-6 py-4 bg-zinc-50/50 dark:bg-zinc-900/30 gap-4">
+                  <div className="text-xs text-zinc-500 uppercase tracking-widest font-bold">
+                    Showing {attendancePage * ATTENDANCE_PAGE_SIZE + 1} - {Math.min((attendancePage + 1) * ATTENDANCE_PAGE_SIZE, records.length)} of {records.length} scans
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap justify-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-none text-xs font-bold uppercase tracking-widest h-8"
+                      onClick={() => setAttendancePage(Math.max(0, attendancePage - 1))}
+                      disabled={attendancePage === 0}
+                    >
+                      Prev
+                    </Button>
+                    {Array.from({ length: attendancePageCount }, (_, i) => (
+                      <Button
+                        key={i}
+                        variant={attendancePage === i ? 'default' : 'outline'}
+                        size="sm"
+                        className={`rounded-none text-xs font-bold w-8 h-8 p-0 ${attendancePage === i ? 'bg-maroon hover:bg-maroon-dark text-white border-maroon' : 'text-zinc-500 hover:text-foreground'}`}
+                        onClick={() => setAttendancePage(i)}
+                      >
+                        {i + 1}
+                      </Button>
+                    ))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-none text-xs font-bold uppercase tracking-widest h-8"
+                      onClick={() => setAttendancePage(Math.min(attendancePageCount - 1, attendancePage + 1))}
+                      disabled={attendancePage === attendancePageCount - 1}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
             </Card>
           )}
+
+          {/* Dispute Modal */}
+          <Dialog open={!!disputeRecord} onOpenChange={(open) => { if (!open) { setDisputeRecord(null); setDisputeFeedback(null) } }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Dispute Attendance Record</DialogTitle>
+                <DialogDescription>
+                  Report an issue with this attendance record.
+                </DialogDescription>
+              </DialogHeader>
+              {disputeRecord && (
+                <div className="space-y-4 mt-2">
+                  <div className="text-sm text-zinc-600 dark:text-zinc-400 space-y-1 pb-3 border-b border-zinc-200 dark:border-zinc-800">
+                    <p><span className="font-bold text-zinc-900 dark:text-zinc-100">Student:</span> {disputeRecord.studentName}</p>
+                    <p><span className="font-bold text-zinc-900 dark:text-zinc-100">Date:</span> {new Date(disputeRecord.timestamp).toLocaleDateString()} at {new Date(disputeRecord.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                    <p><span className="font-bold text-zinc-900 dark:text-zinc-100">Session:</span> {sectionSubjectName(disputeRecord.sectionId)}</p>
+                    <p><span className="font-bold text-zinc-900 dark:text-zinc-100">Status:</span> <StatusBadge status={disputeRecord.status} /></p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1.5">Reason</label>
+                    <select
+                      value={disputeReason}
+                      onChange={(e) => setDisputeReason(e.target.value)}
+                      className="w-full h-10 rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors"
+                    >
+                      <option value="">Select a reason</option>
+                      <option value="outside_geofence">Wrong location</option>
+                      <option value="expired_token">Wrong time</option>
+                      <option value="duplicate_submission">I was present</option>
+                      <option value="invalid_signature">Technical issue</option>
+                      <option value="device_mismatch">Other</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1.5">Description</label>
+                    <textarea
+                      value={disputeDescription}
+                      onChange={(e) => setDisputeDescription(e.target.value)}
+                      rows={3}
+                      className="w-full rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors resize-none"
+                      placeholder="Describe the issue..."
+                    />
+                  </div>
+
+                  {disputeFeedback && (
+                    <div className={`text-xs font-bold uppercase tracking-widest px-3 py-2 ${disputeFeedback.type === 'success' ? 'text-golden bg-maroon-dark' : 'text-white bg-red-600'}`}>
+                      {disputeFeedback.message}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-3 pt-2">
+                    <DialogClose asChild>
+                      <Button variant="outline" className="rounded-none text-xs font-bold uppercase tracking-widest">
+                        Cancel
+                      </Button>
+                    </DialogClose>
+                    <Button
+                      onClick={handleSubmitDispute}
+                      disabled={!disputeReason}
+                      className="rounded-none bg-maroon text-white hover:bg-maroon-dark text-xs font-bold uppercase tracking-widest"
+                    >
+                      <Flag className="w-3 h-3 mr-2" />
+                      Submit Dispute
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          {/* Enroll in Subject Modal */}
+          <Dialog open={isEnrollModalOpen} onOpenChange={(open) => { if (!open) setIsEnrollModalOpen(false) }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-xl text-maroon dark:text-golden font-heading font-bold">
+                  <GraduationCap className="w-5 h-5 text-maroon dark:text-golden" />
+                  Enroll in a Subject
+                </DialogTitle>
+                <DialogDescription>
+                  Enter the enrollment code provided by your instructor.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 mt-2">
+                {enrollSuccess ? (
+                  <div className="border border-green-300 bg-green-50 dark:bg-green-950/30 dark:border-green-800 p-4 flex items-start gap-3">
+                    <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-bold text-green-700 dark:text-green-300">Successfully enrolled!</p>
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1">You can now access your new subject from the dashboard.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleEnrollSubmit} className="space-y-4">
+                    <div>
+                      <Input
+                        value={enrollCode}
+                        onChange={(e) => setEnrollCode(e.target.value)}
+                        placeholder="Enter enrollment code"
+                        className="text-lg text-center tracking-widest font-mono uppercase rounded-none h-12"
+                        autoFocus
+                      />
+                    </div>
+
+                    {enrollError && (
+                      <div className="border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800 p-3 flex items-start gap-2">
+                        <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-red-600 dark:text-red-400">{enrollError}</p>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end gap-3 pt-2">
+                      <DialogClose asChild>
+                        <Button type="button" variant="outline" className="rounded-none text-xs font-bold uppercase tracking-widest h-10">
+                          Cancel
+                        </Button>
+                      </DialogClose>
+                      <Button type="submit" disabled={enrollLoading} className="rounded-none bg-maroon text-white hover:bg-maroon-dark text-xs font-bold uppercase tracking-widest h-10 px-6">
+                        {enrollLoading ? 'Enrolling...' : 'Enroll'}
+                      </Button>
+                    </div>
+                  </form>
+                )}
+
+                {enrollSuccess && (
+                  <div className="flex justify-end pt-2">
+                    <Button onClick={() => setIsEnrollModalOpen(false)} className="rounded-none bg-maroon text-white hover:bg-maroon-dark text-xs font-bold uppercase tracking-widest h-10 px-6">
+                      Close
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </main>
     </div>
+  )
+}
+
+export default function StudentDashboardPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-background text-zinc-500 uppercase tracking-widest text-xs font-bold">Loading portal...</div>}>
+      <StudentDashboardContent />
+    </Suspense>
   )
 }

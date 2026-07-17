@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, Animated, Image, StyleSheet } from 'react
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { api } from '../../services/mock-api'
+import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 
 export default function IdCardScreen() {
@@ -40,10 +40,10 @@ export default function IdCardScreen() {
         <Text style={[styles.headerTitle, isDark && styles.textGolden]}>ID Card</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
-            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={24} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleLogout} style={styles.iconBtn} accessibilityLabel="Sign out">
-            <MaterialIcons name="logout" size={24} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="logout" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
         </View>
       </View>
@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
 
   cardHeader: { backgroundColor: '#7B1113', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardLogo: { width: 32, height: 32 },
-  cardHeaderSub: { fontSize: 8, fontWeight: '700', color: '#F5A800', textTransform: 'uppercase', letterSpacing: 1, lineHeight: 10, marginBottom: 2 },
+  cardHeaderSub: { fontSize: 8, fontWeight: '700', color: '#FFDF00', textTransform: 'uppercase', letterSpacing: 1, lineHeight: 10, marginBottom: 2 },
   cardHeaderTitle: { fontSize: 10, fontWeight: '700', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 1, lineHeight: 12 },
 
   cardBody: { flex: 1, flexDirection: 'row', backgroundColor: '#FDFBF7' },
@@ -200,5 +200,5 @@ const styles = StyleSheet.create({
   flipHint: { textAlign: 'center', fontSize: 11, color: '#71717A', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2, marginTop: 32 },
   textWhite: { color: '#FFFFFF' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
 })

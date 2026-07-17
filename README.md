@@ -7,7 +7,7 @@
 ---
 
 [![PUP Brand](https://img.shields.io/badge/PUP-Maroon%20%26%20Gold-7B1113?style=for-the-badge)](https://www.pup.edu.ph/)
-[![Stack](https://img.shields.io/badge/Tech_Stack-Next.js_15_|_React_Native_|_NestJS_|_Supabase-blue?style=for-the-badge&logo=typescript)](https://typescriptlang.org)
+[![Stack](https://img.shields.io/badge/Tech_Stack-Next.js_15_|_React_Native_|_NestJS_|_PostgreSQL-blue?style=for-the-badge&logo=typescript)](https://typescriptlang.org)
 [![Turborepo](https://img.shields.io/badge/Monorepo-Turborepo_|_pnpm-EF4444?style=for-the-badge&logo=turborepo)](https://turbo.build/)
 
 ---
@@ -44,7 +44,7 @@ sequenceDiagram
     actor Student
     actor Teacher
     participant LocalDB as Local Device SQLite
-    participant Server as Supabase Cloud & NestJS API
+    participant Server as PostgreSQL & NestJS API
 
     Note over Teacher, LocalDB: Before Session: Connected Setup
     Teacher->>Server: Configure Subject & Geofence Coordinates
@@ -88,7 +88,7 @@ Polycheck adheres strictly to the official brand guidelines of the **Polytechnic
 
 *   **Primary Maroon** (`#7B1113`): Buttons, navigation bars, active headers, and primary branding states.
 *   **Deep Maroon** (`#4A0A0B`): Dark mode cards, sidebar backgrounds, and hover/pressed states.
-*   **Golden Yellow** (`#F5A800`): Derived from the star in the PUP logo, used for highlights, badges, and CTAs.
+*   **Golden Yellow** (`#FFDF00`): Derived from the star in the PUP logo, used for highlights, badges, and CTAs.
 *   **Light Base** (`#FFFFFF`): Clean backgrounds and card layouts.
 *   **Dark Base** (`#0A0A0A`): Low-strain near-black theme base.
 *   **Typography Display**: `Lora` (academic serif font via Google Fonts).
@@ -158,6 +158,18 @@ Make sure you have the following installed:
 ## 🚀 Running the Applications
 
 Turborepo handles task orchestration. You can run all development services concurrently or run target workspaces independently.
+
+### Isolated Local Docker Stack
+
+To run Next.js, NestJS, PostgreSQL, and Redis entirely in Docker while keeping Android outside Docker:
+
+```powershell
+Copy-Item .env.docker.local.example .env.docker.local
+pnpm docker:local:up
+pnpm docker:local:seed
+```
+
+Open `http://localhost:3000/login`. See [Local Docker Environment](documentation/LOCAL_DOCKER.md) for logs, Android connectivity, persistence, and reset instructions.
 
 ### Running Everything in Development Mode
 To start the Next.js web application, the Expo dev server, and watch the shared package simultaneously:

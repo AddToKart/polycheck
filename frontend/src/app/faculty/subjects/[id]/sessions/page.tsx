@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState, useMemo } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Search, ArrowLeft, CalendarDays } from 'lucide-react'
-import { api } from '@/lib/mock-api'
+import { api } from '@/lib/api-client'
 import type { User, Subject, Section, Session } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -27,6 +27,7 @@ function SubjectSessionsContent() {
   const [dayFilter, setDayFilter] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [activating, setActivating] = useState('')
+  const [allSessions, setAllSessions] = useState<Session[]>([])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -39,18 +40,25 @@ function SubjectSessionsContent() {
 
   useEffect(() => {
     if (!id) return
-    const subj = api.getSubject(id)
-    if (!subj) { router.push('/faculty/subjects'); return }
-    setSubject(subj)
-    let secs = api.getSections().filter((s) => s.subjectId === id)
-    if (user && user.role === 'teacher') {
-      secs = secs.filter((s) => s.teacherId === user.id)
+    const fn = async () => {
+      const subj = await api.getSubject(id)
+      if (!subj) { router.push('/faculty/subjects'); return }
+      setSubject(subj)
+      let secs = (await api.getSections()).filter((s) => s.subjectId === id)
+      if (user && user.role === 'teacher') {
+        secs = secs.filter((s) => s.teacherId === user.id)
+      }
+      setSubjectSections(secs)
     }
-    setSubjectSections(secs)
+    fn()
   }, [id, router, user])
 
-  const allSessions = useMemo(() => {
-    return api.getSessions()
+  useEffect(() => {
+    const fn = async () => {
+      const sessions = await api.getSessions()
+      setAllSessions(sessions)
+    }
+    fn()
   }, [])
 
   const filtered = useMemo(() => {
@@ -98,7 +106,7 @@ function SubjectSessionsContent() {
   if (!user || !subject) return null
 
   return (
-    <div className="min-h-screen flex bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
       <Sidebar user={user} onLogout={handleLogout} backHref={`/faculty/subjects/${id}`} backLabel="Back to Subject" />
 
       <main className="flex-1 overflow-y-auto">

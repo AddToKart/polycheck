@@ -4,11 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import * as Clipboard from 'expo-clipboard'
-import { api } from '../../../services/mock-api'
+import { api } from '../../../services/api-client'
 import { fonts } from '../../../theme/typography'
 import { useTheme } from '../../../theme/ThemeContext'
-import MapView from '../../../components/MapView'
-import type { User, Session, AttendanceRecord, AttendanceStatus, Student } from '@polycheck/shared'
+import MapView, { type StudentMapPin } from '../../../components/MapView'
+import type { User, Session, AttendanceRecord, AttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
+import { subscribeToSession } from '../../../services/realtime'
+import QRCode from 'react-native-qrcode-svg'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 
@@ -20,35 +22,47 @@ export default function SessionDetailScreen() {
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [enrolledStudents, setEnrolledStudents] = useState<Student[]>([])
   const [filter, setFilter] = useState<AttendanceStatus | 'all'>('all')
+  const [proofsOfClass, setProofsOfClass] = useState<ProofOfClass[]>([])
   const [showQrModal, setShowQrModal] = useState(false)
   const [showValidityPrompt, setShowValidityPrompt] = useState(false)
   const [validityMinutes, setValidityMinutes] = useState('20')
   const [countdown, setCountdown] = useState('')
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
+  const [refreshLabel, setRefreshLabel] = useState('Updated just now')
+  const [realtimeConnected, setRealtimeConnected] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const refreshData = useCallback(() => {
+  const refreshData = useCallback(async () => {
     if (!id) return
-    const s = api.getSession(id)
-    if (s) setSession(s)
-    setRecords(api.getAttendanceRecords(id))
+    try {
+      const [nextSession, nextRecords, nextProofs] = await Promise.all([
+        api.getSession(id),
+        api.getAttendanceRecords(id),
+        api.getProofsOfClass(id),
+      ])
+      setSession(nextSession)
+      setRecords(nextRecords)
+      setProofsOfClass(nextProofs)
+      setLastUpdated(new Date())
+    } catch {
+      Alert.alert('Unable to refresh session', 'Please check your connection and try again.')
+    }
   }, [id])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
     if (!cu) { router.replace('/'); return }
     setUser(cu)
-    refreshData()
-    if (id && session) {
-      const section = api.getSection(session.sectionId)
-      if (section) {
-        const students = api.getSectionStudents(section.id)
-        setEnrolledStudents(students.map((s) => {
-          const { attendance, ...student } = s
-          return student
-        }))
-      }
-    }
-  }, [id])
+    if (!id) return
+    void api.getSession(id).then(async (nextSession) => {
+      const section = await api.getSection(nextSession.sectionId)
+      if (cu.role === 'teacher' && section.teacherId !== cu.id) { router.replace('/'); return }
+      const students = await api.getSectionStudents(section.id)
+      setEnrolledStudents(students.map(({ attendance: _attendance, ...student }) => student))
+      await refreshData()
+    }).catch(() => router.replace('/'))
+  }, [id, refreshData])
 
   useEffect(() => {
     if (!session || !session.isActive || !session.qrTokenExpiresAt) {
@@ -78,7 +92,38 @@ export default function SessionDetailScreen() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [session])
 
+  useEffect(() => {
+    if (!id) return
+    return subscribeToSession(id, () => { void refreshData() }, setRealtimeConnected)
+  }, [id, refreshData])
+
+  useEffect(() => {
+    if (!session?.isActive) {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+      return
+    }
+    if (realtimeConnected) return
+    pollRef.current = setInterval(() => { void refreshData() }, 10000)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [session?.isActive, id, realtimeConnected, refreshData])
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const seconds = Math.floor((Date.now() - lastUpdated.getTime()) / 1000)
+      if (seconds < 5) setRefreshLabel('Updated just now')
+      else if (seconds < 60) setRefreshLabel(`Updated ${seconds}s ago`)
+      else setRefreshLabel(`Updated ${Math.floor(seconds / 60)}m ago`)
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [lastUpdated])
+
   if (!user || !session) return null
+  const isTeacher = user.role === 'teacher'
+
+  const border = isDark ? 'rgba(245, 168, 0, 0.15)' : '#EEE'
+  const textPrimary = isDark ? '#FFFFFF' : '#333'
+  const textSecondary = isDark ? 'rgba(255,255,255,0.5)' : '#888'
+  const textTertiary = isDark ? 'rgba(255,255,255,0.5)' : '#999'
 
   const filteredRecords = filter === 'all' ? records : records.filter((r) => r.status === filter)
   const presentCount = records.filter((r) => r.status === 'present').length
@@ -88,32 +133,47 @@ export default function SessionDetailScreen() {
 
   const studentMap = new Map(records.map((r) => [r.studentId, r]))
 
-  const handleGenerateQr = () => {
+  const studentPins: StudentMapPin[] = records
+    .filter((r) => r.coordinates && (r.coordinates.latitude !== 0 || r.coordinates.longitude !== 0))
+    .map((r) => ({
+      id: r.studentId,
+      latitude: r.coordinates.latitude,
+      longitude: r.coordinates.longitude,
+      label: r.studentName,
+      program: r.studentProgram,
+      status: r.status,
+      timestamp: r.timestamp,
+      deviceId: r.deviceId,
+    }))
+
+  const handleGenerateQr = async () => {
     const mins = parseInt(validityMinutes, 10)
     if (isNaN(mins) || mins < 1) return
-    api.generateQrCode(session.id, mins)
-    setShowValidityPrompt(false)
-    refreshData()
+    try {
+      await api.generateQrCode(session.id, mins)
+      setShowValidityPrompt(false)
+      await refreshData()
+    } catch (error) {
+      Alert.alert('Unable to generate QR code', error instanceof Error ? error.message : 'Please try again.')
+    }
   }
 
   const handleEndSession = () => {
     Alert.alert('End Session', 'Mark all pending students as absent and end the session?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'End Session', style: 'destructive', onPress: () => { api.endSession(session.id); refreshData() } },
+      { text: 'End Session', style: 'destructive', onPress: () => { void api.endSession(session.id).then(refreshData) } },
     ])
   }
 
-  const handleManualOverride = (studentId: string, currentStatus: AttendanceStatus) => {
+  const handleManualOverride = async (studentId: string, currentStatus: AttendanceStatus) => {
     const idx = STATUS_CYCLE.indexOf(currentStatus)
     const nextStatus = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]
     const existing = records.find((r) => r.studentId === studentId && r.sessionId === session.id)
     if (existing) {
-      api.updateAttendanceStatus(existing.id, nextStatus)
-      const updated = api.getAttendanceRecords(session.id).find((r) => r.id === existing.id)
-      if (updated) updated.manuallySet = true
+      await api.updateAttendanceStatus(existing.id, nextStatus)
     } else {
       const student = enrolledStudents.find((s) => s.id === studentId)
-      api.addAttendanceRecord({
+      await api.addAttendanceRecord({
         id: `a-${Date.now()}`,
         sessionId: session.id,
         sectionId: session.sectionId,
@@ -128,7 +188,7 @@ export default function SessionDetailScreen() {
         manuallySet: true,
       })
     }
-    refreshData()
+    await refreshData()
   }
 
   const handleShare = async () => {
@@ -139,35 +199,14 @@ export default function SessionDetailScreen() {
   }
 
   const handleRefresh = () => {
-    refreshData()
-  }
-
-  function MockQr({ token, size = 140 }: { token: string; size?: number }) {
-    const cells = 11
-    const cellSize = size / cells
-    const seed = token.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
-    const filled: boolean[][] = []
-    for (let r = 0; r < cells; r++) {
-      filled[r] = []
-      for (let c = 0; c < cells; c++) {
-        const idx = r * cells + c
-        filled[r][c] = (r < 3 && c < 3) || (seed * (idx + 1) * 7) % 3 !== 0
-      }
-    }
-    return (
-      <View style={{ width: size, height: size, flexDirection: 'row', flexWrap: 'wrap', borderWidth: 2, borderColor: '#ccc', borderStyle: 'dashed', borderRadius: 4, overflow: 'hidden' }}>
-        {filled.flat().map((f, i) => (
-          <View key={i} style={{ width: cellSize, height: cellSize, backgroundColor: f ? '#7B1113' : '#fff' }} />
-        ))}
-      </View>
-    )
+    void refreshData()
   }
 
   return (
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <View style={[styles.header, isDark && styles.headerDark]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={22} color={isDark ? '#F5A800' : '#7B1113'} />
+          <MaterialIcons name="arrow-back" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
         </TouchableOpacity>
         <View style={styles.headerTitle}>
           <Text style={[styles.heading, isDark && styles.textGolden]} numberOfLines={1}>{session.subjectName}</Text>
@@ -177,22 +216,22 @@ export default function SessionDetailScreen() {
           </Text>
         </View>
         <TouchableOpacity onPress={handleRefresh} style={styles.iconBtn}>
-          <MaterialIcons name="refresh" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+          <MaterialIcons name="refresh" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* QR Code Card */}
-        <View style={[styles.card, isDark && styles.cardDark]}>
+        {isTeacher && <View style={[styles.card, isDark && styles.cardDark]}>
           <View style={styles.cardHeader}>
-            <MaterialIcons name="qr-code" size={18} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="qr-code" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.cardTitle, isDark && styles.textWhite]}>QR Code</Text>
           </View>
           <View style={styles.qrContainer}>
             {session.qrToken ? (
               <>
                 <TouchableOpacity onPress={() => setShowQrModal(true)} style={styles.qrContainer}>
-                  <MockQr token={session.qrToken} size={140} />
+                  <QRCode value={session.qrToken} size={140} quietZone={10} backgroundColor="#FFFFFF" color="#0A0A0A" />
                 </TouchableOpacity>
                 {countdown ? (
                   <Text style={[styles.countdown, isDark && styles.textWhite70]}>
@@ -201,11 +240,11 @@ export default function SessionDetailScreen() {
                 ) : null}
                 <View style={styles.qrActions}>
                   <TouchableOpacity style={[styles.qrActionBtn, isDark && styles.qrActionBtnDark]} onPress={() => setShowQrModal(true)}>
-                    <MaterialIcons name="fullscreen" size={16} color={isDark ? '#F5A800' : '#7B1113'} />
+                    <MaterialIcons name="fullscreen" size={16} color={isDark ? '#FFDF00' : '#7B1113'} />
                     <Text style={[styles.qrActionText, isDark && styles.qrActionTextDark]}>Full Screen</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.qrActionBtn, isDark && styles.qrActionBtnDark]} onPress={handleShare}>
-                    <MaterialIcons name="share" size={16} color={isDark ? '#F5A800' : '#7B1113'} />
+                    <MaterialIcons name="share" size={16} color={isDark ? '#FFDF00' : '#7B1113'} />
                     <Text style={[styles.qrActionText, isDark && styles.qrActionTextDark]}>Share</Text>
                   </TouchableOpacity>
                 </View>
@@ -226,12 +265,12 @@ export default function SessionDetailScreen() {
               </>
             )}
           </View>
-        </View>
+        </View>}
 
         {/* Session Info */}
         <View style={[styles.card, isDark && styles.cardDark]}>
           <View style={styles.cardHeader}>
-            <MaterialIcons name="info" size={18} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="info" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.cardTitle, isDark && styles.textWhite]}>Session Info</Text>
           </View>
           <View style={styles.infoGrid}>
@@ -259,10 +298,10 @@ export default function SessionDetailScreen() {
         {/* Geofence Map */}
         <View style={[styles.card, isDark && styles.cardDark]}>
           <View style={styles.cardHeader}>
-            <MaterialIcons name="location-on" size={18} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="location-on" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.cardTitle, isDark && styles.textWhite]}>Geofence</Text>
           </View>
-          <MapView latitude={session.geofence.latitude} longitude={session.geofence.longitude} radius={session.geofence.radiusMeters} />
+          <MapView latitude={session.geofence.latitude} longitude={session.geofence.longitude} radius={session.geofence.radiusMeters} studentPins={studentPins} />
           <View style={styles.coordRow}>
             <View style={styles.coord}>
               <Text style={[styles.coordLabel, isDark && styles.textWhite50]}>Lat</Text>
@@ -279,18 +318,57 @@ export default function SessionDetailScreen() {
           </View>
         </View>
 
+        {/* Proof of Class */}
+        <View style={[styles.card, isDark && styles.cardDark]}>
+          <View style={styles.cardHeader}>
+            <MaterialIcons name="camera-alt" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
+            <Text style={[styles.cardTitle, isDark && styles.textWhite]}>Proof of Class</Text>
+            <Text style={[styles.rosterCount, isDark && styles.textWhite50]}>({proofsOfClass.length})</Text>
+          </View>
+          {proofsOfClass.length === 0 ? (
+            <Text style={[styles.empty, isDark && styles.textWhite50]}>No proof photos uploaded yet.</Text>
+          ) : (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+              {proofsOfClass.map((poc) => (
+                <View key={poc.id} style={{ width: '47%', backgroundColor: isDark ? '#0A0A0C' : '#F9F9F9', borderWidth: 1, borderColor: border, padding: 10 }}>
+                  <View style={{ width: '100%', aspectRatio: 16 / 9, backgroundColor: isDark ? '#1A1A1D' : '#E5E5E5', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
+                    <MaterialIcons name="camera-alt" size={24} color={isDark ? 'rgba(255,255,255,0.3)' : '#BBB'} />
+                  </View>
+                  <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: textPrimary }}>{poc.uploadedByStudentName}</Text>
+                  <Text style={{ fontSize: 9, color: textSecondary }}>{new Date(poc.uploadedAt).toLocaleString()}</Text>
+                  {poc.description && <Text style={{ fontSize: 9, color: textTertiary, marginTop: 2, fontStyle: 'italic' }}>"{poc.description}"</Text>}
+                  {isTeacher && (
+                    <TouchableOpacity
+                      style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                      onPress={() => {
+                        void api.deleteProofOfClass(poc.id).then(refreshData)
+                      }}
+                      accessibilityRole="button"
+                    >
+                      <MaterialIcons name="delete" size={12} color="#EF4444" />
+                      <Text style={{ fontSize: 9, color: '#EF4444', fontWeight: '600' }}>Delete</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
         {/* Student Roster */}
         <View style={[styles.card, isDark && styles.cardDark]}>
           <View style={styles.cardHeader}>
-            <MaterialIcons name="people" size={18} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="people" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.cardTitle, isDark && styles.textWhite]}>Student Roster</Text>
             <Text style={[styles.rosterCount, isDark && styles.textWhite50]}>({enrolledStudents.length})</Text>
           </View>
 
+          <Text style={[styles.rosterRefreshLabel, isDark && styles.textWhite50]}>{refreshLabel}</Text>
+
           {/* Summary */}
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, { color: '#F5A800' }]}>{presentCount}</Text>
+              <Text style={[styles.summaryValue, { color: '#FFDF00' }]}>{presentCount}</Text>
               <Text style={[styles.summaryLabel, isDark && styles.textWhite50]}>Present</Text>
             </View>
             <View style={styles.summaryItem}>
@@ -331,7 +409,8 @@ export default function SessionDetailScreen() {
                 <TouchableOpacity
                   key={student.id}
                   style={[styles.rosterRow, isDark && styles.rosterRowDark]}
-                  onPress={() => handleManualOverride(student.id, status)}
+                  onPress={() => { if (isTeacher) handleManualOverride(student.id, status) }}
+                  disabled={!isTeacher}
                   activeOpacity={0.6}
                 >
                   <View style={styles.rosterLeft}>
@@ -340,10 +419,10 @@ export default function SessionDetailScreen() {
                   </View>
                   <View style={styles.rosterRight}>
                     {record?.manuallySet && (
-                      <MaterialIcons name="edit" size={14} color={isDark ? '#F5A800' : '#7B1113'} style={{ marginRight: 4 }} />
+                      <MaterialIcons name="edit" size={14} color={isDark ? '#FFDF00' : '#7B1113'} style={{ marginRight: 4 }} />
                     )}
                     <RosterStatusBadge status={status} isDark={isDark} />
-                    <MaterialIcons name="chevron-right" size={18} color={isDark ? 'rgba(255,255,255,0.2)' : '#CCC'} />
+                    {isTeacher && <MaterialIcons name="chevron-right" size={18} color={isDark ? 'rgba(255,255,255,0.2)' : '#CCC'} />}
                   </View>
                 </TouchableOpacity>
               )
@@ -352,7 +431,7 @@ export default function SessionDetailScreen() {
         </View>
 
         {/* End Session Button */}
-        {session.isActive && (
+        {isTeacher && session.isActive && (
           <TouchableOpacity style={[styles.endSessionBtn, isDark && styles.endSessionBtnDark]} onPress={handleEndSession} accessibilityRole="button">
             <MaterialIcons name="stop" size={18} color="#FFFFFF" />
             <Text style={styles.endSessionText}>End Session</Text>
@@ -361,10 +440,10 @@ export default function SessionDetailScreen() {
       </ScrollView>
 
       {/* Validity Prompt Modal */}
-      <Modal visible={showValidityPrompt} transparent animationType="fade" onRequestClose={() => setShowValidityPrompt(false)}>
+      <Modal visible={isTeacher && showValidityPrompt} transparent animationType="fade" onRequestClose={() => setShowValidityPrompt(false)}>
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowValidityPrompt(false)}>
           <View style={[styles.promptSheet, isDark && styles.promptSheetDark]} onStartShouldSetResponder={() => true}>
-            <MaterialIcons name="timer" size={32} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="timer" size={32} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.promptTitle, isDark && styles.promptTitleDark]}>QR Validity Duration</Text>
             <Text style={[styles.promptHint, isDark && styles.textWhite50]}>
               How many minutes should the QR code be valid?{'\n'}After it expires, students who scan will be marked Late.
@@ -393,15 +472,15 @@ export default function SessionDetailScreen() {
       </Modal>
 
       {/* Full Screen QR Modal */}
-      <Modal visible={showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}>
+      <Modal visible={isTeacher && showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}>
         <TouchableOpacity style={[styles.overlay, { justifyContent: 'center', backgroundColor: isDark ? 'rgba(0,0,0,0.95)' : 'rgba(255,255,255,0.95)' }]} activeOpacity={1} onPress={() => setShowQrModal(false)}>
           <View style={{ alignItems: 'center' }}>
             {session?.qrToken && (
-              <MockQr token={session.qrToken} size={260} />
+              <QRCode value={session.qrToken} size={260} quietZone={14} backgroundColor="#FFFFFF" color="#0A0A0A" />
             )}
             <Text style={[styles.fullscreenHint, isDark && styles.textWhite50]}>Tap anywhere to close</Text>
             <TouchableOpacity style={[styles.qrActionBtn, isDark && styles.qrActionBtnDark, { marginTop: 16 }]} onPress={handleShare}>
-              <MaterialIcons name="share" size={16} color={isDark ? '#F5A800' : '#7B1113'} />
+              <MaterialIcons name="share" size={16} color={isDark ? '#FFDF00' : '#7B1113'} />
               <Text style={[styles.qrActionText, isDark && styles.qrActionTextDark]}>Copy Token to Share</Text>
             </TouchableOpacity>
           </View>
@@ -413,11 +492,11 @@ export default function SessionDetailScreen() {
 
 function RosterStatusBadge({ status, isDark }: { status: AttendanceStatus; isDark: boolean }) {
   const colors: Record<string, { bg: string; text: string; border?: string }> = {
-    present: { bg: '#F5A800', text: '#4A0A0B' },
+    present: { bg: '#FFDF00', text: '#4A0A0B' },
     late: { bg: '#7B1113', text: '#FFFFFF' },
-    absent: { bg: '#4A0A0B', text: '#F5A800', border: '#F5A800' },
+    absent: { bg: '#4A0A0B', text: '#FFDF00', border: '#FFDF00' },
     pending: { bg: isDark ? '#222' : '#E0E0E0', text: isDark ? 'rgba(255,255,255,0.5)' : '#666' },
-    disputed: { bg: '#4A0A0B', text: '#F5A800', border: '#F5A800' },
+    disputed: { bg: '#4A0A0B', text: '#FFDF00', border: '#FFDF00' },
   }
   const c = colors[status] || colors.pending
   return (
@@ -445,7 +524,7 @@ const styles = StyleSheet.create({
   textWhite: { color: '#FFFFFF' },
   textWhite70: { color: 'rgba(255,255,255,0.7)' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   card: { backgroundColor: '#FFFFFF', borderRadius: 0, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE' },
   cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
@@ -460,9 +539,9 @@ const styles = StyleSheet.create({
   qrActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#DDD' },
   qrActionBtnDark: { borderColor: 'rgba(245, 168, 0, 0.3)' },
   qrActionText: { fontSize: 11, fontFamily: fonts.bodyMedium, color: '#7B1113' },
-  qrActionTextDark: { color: '#F5A800' },
+  qrActionTextDark: { color: '#FFDF00' },
   activateBtn: { backgroundColor: '#7B1113', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 10 },
-  activateBtnDark: { backgroundColor: '#F5A800' },
+  activateBtnDark: { backgroundColor: '#FFDF00' },
   activateText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600', fontFamily: fonts.bodySemiBold },
   activateTextDark: { color: '#4A0A0B' },
   infoGrid: { flexDirection: 'row', gap: 24 },
@@ -480,6 +559,7 @@ const styles = StyleSheet.create({
   coordLabel: { fontSize: 10, fontFamily: fonts.bodyMedium, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 },
   coordValue: { fontSize: 12, fontFamily: fonts.mono, color: '#333', marginTop: 2 },
   rosterCount: { fontSize: 12, fontFamily: fonts.body, color: '#AAA', marginLeft: 4 },
+  rosterRefreshLabel: { fontSize: 10, fontFamily: fonts.body, color: '#AAA', marginBottom: 8 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 12 },
   summaryItem: { alignItems: 'center' },
   summaryValue: { fontSize: 22, fontWeight: '700', fontFamily: fonts.bodyBold },
@@ -488,7 +568,7 @@ const styles = StyleSheet.create({
   filterTab: { paddingHorizontal: 12, paddingVertical: 5, backgroundColor: '#F5F5F5', borderWidth: 1, borderColor: '#DDD', marginRight: 6 },
   filterTabActive: { backgroundColor: '#7B1113', borderColor: '#7B1113' },
   filterTabDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215' },
-  filterTabActiveDark: { backgroundColor: '#F5A800', borderColor: '#F5A800' },
+  filterTabActiveDark: { backgroundColor: '#FFDF00', borderColor: '#FFDF00' },
   filterTabText: { fontSize: 11, fontFamily: fonts.bodyMedium, color: '#888' },
   filterTabTextActive: { color: '#FFFFFF' },
   empty: { textAlign: 'center', fontFamily: fonts.body, paddingVertical: 24, color: '#AAA' },
@@ -510,7 +590,7 @@ const styles = StyleSheet.create({
   promptInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 },
   promptInputRowDark: { borderColor: 'rgba(245, 168, 0, 0.15)' },
   promptInput: { borderWidth: 1, borderColor: '#DDD', paddingHorizontal: 16, paddingVertical: 10, fontSize: 24, fontFamily: fonts.bodyBold, color: '#333', textAlign: 'center', width: 80 },
-  promptInputDark: { borderColor: 'rgba(245, 168, 0, 0.3)', backgroundColor: '#0A0A0C', color: '#F5A800' },
+  promptInputDark: { borderColor: 'rgba(245, 168, 0, 0.3)', backgroundColor: '#0A0A0C', color: '#FFDF00' },
   promptUnit: { fontSize: 16, fontFamily: fonts.body, color: '#888' },
   promptActions: { flexDirection: 'row', gap: 12, width: '100%' },
   promptCancelBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#DDD' },
@@ -518,7 +598,7 @@ const styles = StyleSheet.create({
   promptCancelText: { fontSize: 14, fontFamily: fonts.bodySemiBold, color: '#888' },
   promptCancelTextDark: { color: 'rgba(255,255,255,0.5)' },
   promptConfirmBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', backgroundColor: '#7B1113' },
-  promptConfirmBtnDark: { backgroundColor: '#F5A800' },
+  promptConfirmBtnDark: { backgroundColor: '#FFDF00' },
   promptConfirmText: { fontSize: 14, fontFamily: fonts.bodySemiBold, color: '#FFFFFF' },
   promptConfirmTextDark: { color: '#4A0A0B' },
   fullscreenHint: { fontSize: 12, fontFamily: fonts.body, color: '#AAA', marginTop: 20 },

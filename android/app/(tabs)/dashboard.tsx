@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
-import { api } from '../../services/mock-api'
+import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
+import type { AttendanceRecord, ScheduleDay, Section, Subject } from '@polycheck/shared'
 
 export default function DashboardScreen() {
   const { isDark, toggle } = useTheme()
@@ -13,24 +14,38 @@ export default function DashboardScreen() {
   const student = user && 'studentId' in user
     ? (user as typeof user & { studentId: string; program: string; yearLevel: number })
     : null
-  const mySections = student ? api.getStudentSections(student.studentId) : []
-  const myAttendance = student ? api.getMyAttendance(student.studentId) : []
+  const [mySections, setMySections] = useState<Section[]>([])
+  const [myAttendance, setMyAttendance] = useState<AttendanceRecord[]>([])
+  const [subjects, setSubjects] = useState<Record<string, Subject>>({})
+
+  const loadDashboard = useCallback(async () => {
+    if (!student) return
+    const [sections, attendance, allSubjects] = await Promise.all([
+      api.getStudentSections(student.id), api.getMyAttendance(student.id), api.getSubjects(),
+    ])
+    setMySections(sections)
+    setMyAttendance(attendance)
+    setSubjects(Object.fromEntries(allSubjects.map((subject) => [subject.id, subject])))
+  }, [student?.id])
+
+  useEffect(() => { loadDashboard().catch(() => undefined) }, [loadDashboard])
 
   const present = myAttendance.filter((r) => r.status === 'present').length
   const late = myAttendance.filter((r) => r.status === 'late').length
   const absent = myAttendance.filter((r) => r.status === 'absent').length
+  const disputed = myAttendance.filter((r) => r.status === 'disputed').length
   const attendanceRate = myAttendance.length > 0 ? ((present / myAttendance.length) * 100).toFixed(0) : '0'
 
   const todaySchedule = useMemo(() => {
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     const todayName = dayNames[new Date().getDay()]
-    return mySections.filter((s) => s.schedule.some((sd) => sd.day === todayName))
+    return mySections.filter((section) => section.schedule.some((scheduleDay: ScheduleDay) => scheduleDay.day === todayName))
   }, [mySections])
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true)
-    setTimeout(() => setRefreshing(false), 1000)
-  }, [])
+    try { await loadDashboard() } finally { setRefreshing(false) }
+  }, [loadDashboard])
 
   const greeting = () => {
     const hour = new Date().getHours()
@@ -58,10 +73,10 @@ export default function DashboardScreen() {
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
-            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={24} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleLogout} style={styles.iconBtn} accessibilityLabel="Sign out">
-            <MaterialIcons name="logout" size={24} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="logout" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
         </View>
       </View>
@@ -69,7 +84,7 @@ export default function DashboardScreen() {
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={isDark ? '#F5A800' : '#7B1113'} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={isDark ? '#FFDF00' : '#7B1113'} />}
       >
         {/* Student info card */}
         <View style={[styles.card, isDark && styles.cardDark]}>
@@ -87,12 +102,12 @@ export default function DashboardScreen() {
         {/* Stats row */}
         <View style={styles.statsRow}>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="book" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="book" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.statNum, isDark && styles.textGolden]}>{mySections.length}</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Subjects</Text>
           </View>
           <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="trending-up" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="trending-up" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
             <Text style={[styles.statNum, isDark && styles.textGolden]}>{attendanceRate}%</Text>
             <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Rate</Text>
           </View>
@@ -105,17 +120,30 @@ export default function DashboardScreen() {
             <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Present</Text>
           </View>
           <View style={styles.attendanceItem}>
-            <Text style={[styles.attendanceNum, { color: isDark ? '#F5A800' : '#7B1113' }]}>{late}</Text>
+            <Text style={[styles.attendanceNum, { color: isDark ? '#FFDF00' : '#7B1113' }]}>{late}</Text>
             <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Late</Text>
           </View>
           <View style={styles.attendanceItem}>
             <Text style={[styles.attendanceNum, { color: isDark ? '#EF4444' : '#4A0A0B' }]}>{absent}</Text>
             <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Absent</Text>
           </View>
+          <View style={styles.attendanceItem}>
+            <Text style={[styles.attendanceNum, { color: isDark ? '#FFDF00' : '#4A0A0B' }]}>{disputed}</Text>
+            <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Disputed</Text>
+          </View>
         </View>
 
         {/* Today's schedule */}
-        <Text style={[styles.sectionTitle, isDark && styles.textGolden]}>Today's Schedule</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginBottom: 0 }]}>Today's Schedule</Text>
+          <TouchableOpacity
+            onPress={() => router.push('/(tabs)/schedule')}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderWidth: 1, borderColor: isDark ? '#FFDF00' : '#7B1113' }}
+          >
+            <MaterialIcons name="calendar-today" size={14} color={isDark ? '#FFDF00' : '#7B1113'} />
+            <Text style={{ fontSize: 10, fontWeight: '700', fontFamily: 'DMSans_700Bold', color: isDark ? '#FFDF00' : '#7B1113', textTransform: 'uppercase', letterSpacing: 0.5 }}>View Schedule</Text>
+          </TouchableOpacity>
+        </View>
 
         {todaySchedule.length === 0 ? (
           <View style={[styles.emptyCard, isDark && styles.cardDark]}>
@@ -124,15 +152,24 @@ export default function DashboardScreen() {
           </View>
         ) : (
           todaySchedule.map((section) => {
-            const parent = api.getSubject(section.subjectId)
+            const parent = subjects[section.subjectId]
             const todaySD = section.schedule.find(
-              (sd) => sd.day === ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date().getDay()],
+              (scheduleDay: ScheduleDay) => scheduleDay.day === ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date().getDay()],
             )
             const status = myAttendance.find((r) => r.sectionId === section.id)?.status ?? 'pending'
+            
+            const STATUS_BORDER_COLORS: Record<string, string> = {
+              present: '#10B981', // green
+              late: '#FBBF24',    // yellow
+              absent: '#EF4444',  // red
+              pending: isDark ? '#FFDF00' : '#7B1113',
+              disputed: '#FFDF00',
+            }
+
             return (
               <TouchableOpacity
                 key={section.id}
-                style={[styles.schedCard, isDark && styles.cardDark]}
+                style={[styles.schedCard, isDark && styles.cardDark, { borderLeftColor: STATUS_BORDER_COLORS[status] || '#7B1113' }]}
                 onPress={() => handleSubjectTap(section.id)}
                 activeOpacity={0.7}
               >
@@ -155,16 +192,29 @@ export default function DashboardScreen() {
           })
         )}
 
-        {/* My Subjects (all enrolled) */}
-        <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginTop: 24 }]}>My Subjects</Text>
+        {/* Enroll CTA */}
+        <TouchableOpacity
+          style={[styles.enrollCta, isDark && styles.enrollCtaDark]}
+          onPress={() => router.push('/(tabs)/enroll')}
+          activeOpacity={0.7}
+        >
+          <MaterialIcons name="school" size={20} color={isDark ? '#4A0A0B' : '#FFF'} />
+          <Text style={[styles.enrollCtaText, isDark && styles.enrollCtaTextDark]}>Enroll in Subject</Text>
+          <MaterialIcons name="chevron-right" size={20} color={isDark ? '#4A0A0B' : '#FFF'} />
+        </TouchableOpacity>
+
+        {/* My Subjects */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 16 }}>
+          <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginBottom: 0 }]}>My Subjects</Text>
+        </View>
         {mySections.length === 0 ? (
           <View style={[styles.emptyCard, isDark && styles.cardDark]}>
             <MaterialIcons name="book" size={32} color="#CCC" />
             <Text style={[styles.emptyText, isDark && styles.textWhite50]}>No enrollments yet</Text>
           </View>
         ) : (
-          mySections.map((section) => {
-            const parent = api.getSubject(section.subjectId)
+          mySections.slice(0, 4).map((section) => {
+            const parent = subjects[section.subjectId]
             const presentCount = myAttendance.filter((r) => r.sectionId === section.id && r.status === 'present').length
             return (
               <TouchableOpacity
@@ -191,7 +241,7 @@ export default function DashboardScreen() {
                     <View style={styles.allSubjDetailRow}>
                       <MaterialIcons name="calendar-today" size={12} color="#888" />
                       <Text style={[styles.allSubjDetailText, isDark && styles.textWhite50]}>
-                        {section.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')}
+                        {section.schedule.map((scheduleDay: ScheduleDay) => `${scheduleDay.day} ${scheduleDay.startTime}-${scheduleDay.endTime}`).join(', ')}
                       </Text>
                     </View>
                   </View>
@@ -210,6 +260,19 @@ export default function DashboardScreen() {
             )
           })
         )}
+
+        {/* View All Subjects — full-width when > 4 subjects */}
+        {mySections.length > 4 && (
+          <TouchableOpacity
+            style={[styles.viewAllBtn, isDark && styles.viewAllBtnDark]}
+            onPress={() => router.push('/(tabs)/subjects')}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="book" size={16} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
+            <Text style={[styles.viewAllText, isDark && styles.viewAllTextDark]}>View All Subjects ({mySections.length})</Text>
+            <MaterialIcons name="chevron-right" size={16} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </SafeAreaView>
   )
@@ -218,10 +281,11 @@ export default function DashboardScreen() {
 function StatusBadge({ status }: { status: string }) {
   const { isDark } = useTheme()
   const configs: Record<string, { bg: string; text: string }> = {
-    present: { bg: '#F5A800', text: '#4A0A0B' },
-    late: { bg: isDark ? 'rgba(245, 168, 0, 0.15)' : '#7B1113', text: isDark ? '#F5A800' : '#FFFFFF' },
-    absent: { bg: isDark ? 'rgba(239, 68, 68, 0.15)' : '#4A0A0B', text: isDark ? '#EF4444' : '#F5A800' },
-    pending: { bg: 'transparent', text: isDark ? '#F5A800' : '#7B1113' },
+    present: { bg: '#FFDF00', text: '#4A0A0B' },
+    late: { bg: isDark ? 'rgba(245, 168, 0, 0.15)' : '#7B1113', text: isDark ? '#FFDF00' : '#FFFFFF' },
+    absent: { bg: isDark ? 'rgba(239, 68, 68, 0.15)' : '#4A0A0B', text: isDark ? '#EF4444' : '#FFDF00' },
+    pending: { bg: 'transparent', text: isDark ? '#FFDF00' : '#7B1113' },
+    disputed: { bg: '#4A0A0B', text: '#FFDF00' },
   }
   const c = configs[status] || configs.pending
   return (
@@ -229,7 +293,8 @@ function StatusBadge({ status }: { status: string }) {
       styles.badge,
       { backgroundColor: c.bg },
       status === 'pending' && (isDark ? styles.badgeBorderGolden : styles.badgeBorder),
-      status === 'late' && isDark && { borderWidth: 1, borderColor: '#F5A800' },
+      status === 'disputed' && { borderWidth: 1.5, borderColor: '#FFDF00' },
+      status === 'late' && isDark && { borderWidth: 1, borderColor: '#FFDF00' },
       status === 'absent' && isDark && { borderWidth: 1, borderColor: '#EF4444' }
     ]}>
       <Text style={[styles.badgeText, { color: c.text }]}>{status}</Text>
@@ -254,10 +319,12 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 120 },
 
   card: {
-    borderWidth: 2, borderColor: '#D4D4D8', backgroundColor: '#FFFFFF',
-    padding: 20, marginBottom: 16,
+    borderWidth: 1, borderColor: '#E4E4E7', backgroundColor: '#FFFFFF',
+    borderLeftWidth: 4, borderLeftColor: '#7B1113',
+    padding: 20, marginBottom: 16, borderRadius: 0,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
   },
-  cardDark: { borderColor: 'rgba(245, 168, 0, 0.2)', backgroundColor: '#121215' },
+  cardDark: { borderColor: 'rgba(255, 223, 0, 0.15)', backgroundColor: '#121215', borderLeftColor: '#FFDF00', borderRadius: 0 },
   programText: { fontSize: 20, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#7B1113', marginBottom: 16 },
 
   cardRow: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#E4E4E7', paddingBottom: 8, marginBottom: 8 },
@@ -268,32 +335,36 @@ const styles = StyleSheet.create({
 
   statsRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   statCard: {
-    flex: 1, borderWidth: 2, borderColor: '#D4D4D8', backgroundColor: '#FFFFFF',
-    padding: 16, alignItems: 'center', gap: 8,
+    flex: 1, borderWidth: 1, borderColor: '#E4E4E7', backgroundColor: '#FFFFFF',
+    padding: 16, alignItems: 'center', gap: 8, borderRadius: 0,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
   },
   statNum: { fontSize: 24, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#7B1113' },
   statLabel: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700', color: '#71717A' },
 
   attendanceCard: {
     flexDirection: 'row', justifyContent: 'space-around',
-    borderWidth: 2, borderColor: '#D4D4D8', backgroundColor: '#FFFFFF',
-    padding: 20, marginBottom: 24,
+    borderWidth: 1, borderColor: '#E4E4E7', backgroundColor: '#FFFFFF',
+    padding: 20, marginBottom: 24, borderRadius: 0,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
   },
   attendanceItem: { alignItems: 'center' },
-  attendanceNum: { fontSize: 24, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#F5A800' },
+  attendanceNum: { fontSize: 24, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#FFDF00' },
   attendanceLabel: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700', color: '#71717A', marginTop: 4 },
 
   sectionTitle: { fontSize: 18, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#000000', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 16 },
 
   emptyCard: {
-    borderWidth: 2, borderColor: '#D4D4D8', borderStyle: 'dashed',
-    backgroundColor: '#FAFAFA', padding: 32, alignItems: 'center', justifyContent: 'center', marginBottom: 40,
+    borderWidth: 1, borderColor: '#E4E4E7', borderStyle: 'dashed',
+    backgroundColor: '#FAFAFA', padding: 32, alignItems: 'center', justifyContent: 'center', marginBottom: 40, borderRadius: 0,
   },
   emptyText: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700', color: '#71717A', marginTop: 16 },
 
   schedCard: {
-    borderWidth: 2, borderColor: '#D4D4D8', backgroundColor: '#FFFFFF',
-    padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between',
+    borderWidth: 1, borderColor: '#E4E4E7', backgroundColor: '#FFFFFF',
+    borderLeftWidth: 4, borderLeftColor: '#7B1113',
+    padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', borderRadius: 0,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
   },
   schedLeft: { flex: 1, paddingRight: 16 },
   schedTime: { fontSize: 11, fontWeight: '700', color: '#7B1113', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
@@ -308,18 +379,18 @@ const styles = StyleSheet.create({
   schedCode: { fontSize: 12, fontWeight: '700', color: '#52525B' },
   schedSection: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, color: '#A1A1AA' },
 
-  badge: { paddingHorizontal: 8, paddingVertical: 4 },
+  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 0 },
   badgeBorder: { borderWidth: 2, borderColor: '#7B1113' },
-  badgeBorderGolden: { borderWidth: 2, borderColor: '#F5A800' },
+  badgeBorderGolden: { borderWidth: 2, borderColor: '#FFDF00' },
   badgeText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
 
   textWhite: { color: '#FFFFFF' },
   textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#F5A800' },
+  textGolden: { color: '#FFDF00' },
 
   allSubjCard: { backgroundColor: '#FFFFFF', borderRadius: 0, marginBottom: 12, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2, flexDirection: 'row' },
   allSubjAccent: { width: 4, backgroundColor: '#7B1113' },
-  allSubjAccentDark: { backgroundColor: '#F5A800' },
+  allSubjAccentDark: { backgroundColor: '#FFDF00' },
   allSubjBody: { padding: 14, flex: 1 },
   allSubjName: { fontSize: 15, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#333' },
   allSubjMeta: { fontSize: 11, color: '#888', marginTop: 2 },
@@ -327,8 +398,27 @@ const styles = StyleSheet.create({
   allSubjDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   allSubjDetailText: { fontSize: 11, color: '#888', flex: 1 },
   allSubjFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
-  allSubjRateBg: { flex: 1, height: 4, backgroundColor: '#EEE', borderRadius: 2 },
+  allSubjRateBg: { flex: 1, height: 4, backgroundColor: '#EEE', borderRadius: 0 },
   allSubjRateBgDark: { backgroundColor: '#333' },
-  allSubjRateFill: { height: 4, backgroundColor: '#F5A800', borderRadius: 2 },
+  allSubjRateFill: { height: 4, backgroundColor: '#FFDF00', borderRadius: 0 },
   allSubjRateText: { fontSize: 10, fontWeight: '700', color: '#888', minWidth: 30, textAlign: 'right' },
+
+  enrollCta: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#7B1113', padding: 16, marginBottom: 8,
+    borderWidth: 0, borderRadius: 0,
+  },
+  enrollCtaDark: { backgroundColor: '#FFDF00' },
+  enrollCtaText: {
+    flex: 1, fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1,
+    color: '#FFFFFF',
+  },
+  enrollCtaTextDark: { color: '#4A0A0B' },
+  viewAllBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#7B1113', padding: 14, marginTop: 8, marginBottom: 4,
+  },
+  viewAllBtnDark: { backgroundColor: '#FFDF00' },
+  viewAllText: { flex: 1, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, color: '#FFFFFF', textAlign: 'center' },
+  viewAllTextDark: { color: '#4A0A0B' },
 })

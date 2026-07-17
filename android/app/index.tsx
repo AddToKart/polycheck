@@ -15,7 +15,7 @@ export default function LandingScreen() {
         onPress={toggle}
         accessibilityLabel="Toggle theme"
       >
-        <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+        <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
       </TouchableOpacity>
 
       <View style={styles.center}>
@@ -37,7 +37,7 @@ export default function LandingScreen() {
               <Text style={[styles.cardTitle, isDark && styles.textWhite]}>Student Portal</Text>
               <Text style={[styles.cardSub, isDark && styles.textWhite50]}>Access ID & Scan QR</Text>
             </View>
-            <MaterialIcons name="arrow-forward" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="arrow-forward" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -47,13 +47,13 @@ export default function LandingScreen() {
             accessibilityLabel="Faculty sign in"
           >
             <View style={[styles.iconBox, isDark ? styles.iconBoxDark : styles.iconBoxLight, isDark ? styles.iconBorderGolden : styles.iconBorderMaroon]}>
-              <MaterialIcons name="menu-book" size={24} color={isDark ? '#F5A800' : '#7B1113'} />
+              <MaterialIcons name="menu-book" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
             </View>
             <View style={styles.cardText}>
               <Text style={[styles.cardTitle, isDark && styles.textWhite]}>Faculty Portal</Text>
               <Text style={[styles.cardSub, isDark && styles.textWhite50]}>Manage Sessions</Text>
             </View>
-            <MaterialIcons name="arrow-forward" size={20} color={isDark ? '#F5A800' : '#7B1113'} />
+            <MaterialIcons name="arrow-forward" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
           </TouchableOpacity>
         </View>
       </View>
@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
   logo: { width: 64, height: 64, marginBottom: 16 },
   subtitle: { fontSize: 10, fontWeight: '700', color: '#A1A1AA', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 8, textAlign: 'center' },
   title: { fontSize: 48, fontWeight: '800', fontFamily: 'Lora_400Regular', color: '#7B1113', marginBottom: 48, letterSpacing: -1, textAlign: 'center' },
-  titleDark: { color: '#F5A800' },
+  titleDark: { color: '#FFDF00' },
   cards: { width: '100%', maxWidth: 384, gap: 16 },
   card: {
     borderWidth: 2, borderColor: '#D4D4D8', backgroundColor: '#FAFAFA',
@@ -88,11 +88,11 @@ const styles = StyleSheet.create({
   cardDark: { borderColor: 'rgba(245, 168, 0, 0.2)', backgroundColor: '#121215' },
   iconBox: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
   iconBoxMaroon: { backgroundColor: '#7B1113', borderColor: '#7B1113' },
-  iconBoxGolden: { backgroundColor: '#F5A800', borderColor: '#F5A800' },
+  iconBoxGolden: { backgroundColor: '#FFDF00', borderColor: '#FFDF00' },
   iconBoxLight: { backgroundColor: '#FFFFFF' },
   iconBoxDark: { backgroundColor: '#18181B' },
   iconBorderMaroon: { borderColor: '#7B1113' },
-  iconBorderGolden: { borderColor: '#F5A800' },
+  iconBorderGolden: { borderColor: '#FFDF00' },
   cardText: { flex: 1 },
   cardTitle: { fontSize: 18, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#000000', textTransform: 'uppercase', letterSpacing: 2 },
   cardSub: { fontSize: 10, fontWeight: '700', fontFamily: 'DMSans_400Regular', color: '#71717A', marginTop: 4, textTransform: 'uppercase', letterSpacing: 1.5 },

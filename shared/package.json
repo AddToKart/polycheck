@@ -16,10 +16,10 @@
       "import": "./dist/utils/index.mjs",
       "require": "./dist/utils/index.js"
     },
-    "./mock": {
-      "types": "./dist/mock/index.d.ts",
-      "import": "./dist/mock/index.mjs",
-      "require": "./dist/mock/index.js"
+    "./map": {
+      "types": "./dist/map/index.d.ts",
+      "import": "./dist/map/index.mjs",
+      "require": "./dist/map/index.js"
     }
   },
   "scripts": {
@@ -28,6 +28,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "tweetnacl": "^1.0.3",
     "zod": "^3.24.0"
   },
   "devDependencies": {
