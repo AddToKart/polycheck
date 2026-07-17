@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useMemo, Suspense } from 'react'
+import React, { useEffect, useState, useMemo, Suspense, lazy } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -15,7 +15,6 @@ import {
   User,
   GraduationCap,
   Calendar,
-  MapPin,
   X,
   Flag,
   AlertTriangle,
@@ -23,7 +22,10 @@ import {
   XCircle,
   ChevronLeft,
   ChevronRight,
+  QrCode,
 } from 'lucide-react'
+
+const ScanQrModal = lazy(() => import('@/components/ScanQrModal'))
 import {
   Dialog,
   DialogContent,
@@ -74,6 +76,10 @@ function StudentDashboardContent() {
   const [disputeReason, setDisputeReason] = useState('')
   const [disputeDescription, setDisputeDescription] = useState('')
   const [disputeFeedback, setDisputeFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  // Scan QR Modal States
+  const [isScanModalOpen, setIsScanModalOpen] = useState(false)
+  const [scanSessionId, setScanSessionId] = useState<string | undefined>(undefined)
 
   // Enrollment Modal States
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false)
@@ -254,8 +260,8 @@ const ATTENDANCE_PAGE_SIZE = 8
                 Enroll in Subject
               </Button>
               <Button asChild className="rounded-none bg-maroon text-white hover:bg-maroon-dark uppercase tracking-widest font-bold text-xs h-10 px-6">
-                <button onClick={() => {/* Future Scan QR Trigger */}}>
-                  <MapPin className="w-4 h-4 mr-2" />
+                <button onClick={() => { setScanSessionId(undefined); setIsScanModalOpen(true) }}>
+                  <QrCode className="w-4 h-4 mr-2" />
                   Scan Attendance QR
                 </button>
               </Button>
@@ -491,9 +497,12 @@ const ATTENDANCE_PAGE_SIZE = 8
                                 <div className="mt-4 flex justify-between items-center text-xs font-semibold text-zinc-500 uppercase tracking-wider">
                                   <span>Sec {ev.sectionName} {ev.room ? `\\ ${ev.room}` : ''}</span>
                                   {isSessionActive && !studentStatus && (
-                                    <Link href="/student/dashboard?tab=dashboard" className="text-[9px] font-bold uppercase tracking-widest text-maroon dark:text-golden border border-maroon dark:border-golden px-2 py-1 bg-white dark:bg-zinc-800 hover:bg-maroon hover:text-white dark:hover:bg-golden dark:hover:text-maroon transition-colors">
+                                    <button
+                                      onClick={() => { setScanSessionId(ev.type === 'session' ? ev.id : undefined); setIsScanModalOpen(true) }}
+                                      className="text-[9px] font-bold uppercase tracking-widest text-maroon dark:text-golden border border-maroon dark:border-golden px-2 py-1 bg-white dark:bg-zinc-800 hover:bg-maroon hover:text-white dark:hover:bg-golden dark:hover:text-maroon transition-colors"
+                                    >
                                       Scan Attendance
-                                    </Link>
+                                    </button>
                                   )}
                                 </div>
                               </div>
@@ -985,6 +994,25 @@ const ATTENDANCE_PAGE_SIZE = 8
           </Dialog>
         </div>
       </main>
+
+      {/* QR Scan Modal — rendered outside the scroll container so it covers the full screen */}
+      {isScanModalOpen && user && (
+        <Suspense fallback={null}>
+          <ScanQrModal
+            user={user}
+            sessionId={scanSessionId}
+            onClose={async () => {
+              setIsScanModalOpen(false)
+              setScanSessionId(undefined)
+              // Refresh attendance records so the dashboard reflects the new status
+              if (user?.id) {
+                const updatedRecords = await api.getAttendanceForStudent(user.id)
+                setRecords(updatedRecords)
+              }
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   )
 }
