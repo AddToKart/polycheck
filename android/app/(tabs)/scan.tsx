@@ -45,43 +45,44 @@ export default function ScanScreen() {
     if (scannedRef.current || !token) return
     scannedRef.current = true
 
-    const payload = decodeTokenPayload(token)
-    if (!payload) {
-      showResult('absent', 'Invalid QR code')
-      return
-    }
-
-    const user = api.getCurrentUser()
-    if (!user || !('studentId' in user)) {
-      showResult('absent', 'Not logged in as student')
-      return
-    }
-
-    const session = await api.getSession(payload.sessionId)
-    if (!session) {
-      showResult('absent', 'Session not found')
-      return
-    }
-
-    let lat: number
-    let lon: number
     try {
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
-      lat = loc.coords.latitude
-      lon = loc.coords.longitude
-    } catch {
-      showResult('absent', 'Unable to verify your location')
-      return
-    }
+      const payload = decodeTokenPayload(token)
+      if (!payload) {
+        showResult('absent', 'Invalid QR code')
+        return
+      }
 
-    const scannedAt = await api.getTrustedTimestamp()
-    const result = await api.checkAttendance(session.id, user.id, lat, lon, token, scannedAt)
-    if (result.success) {
-      const submitted = await api.submitScan(session.id, user.id, user.fullName, lat, lon, 'device-mobile', token, scannedAt)
+      const user = api.getCurrentUser()
+      if (!user || !('studentId' in user)) {
+        showResult('absent', 'Not logged in as student')
+        return
+      }
+
+      const session = await api.getSession(payload.sessionId)
+      if (!session) {
+        showResult('absent', 'Session not found')
+        return
+      }
+
+      const permission = await Location.requestForegroundPermissionsAsync()
+      if (permission.status !== 'granted') {
+        showResult('absent', 'Location permission is required to check in')
+        return
+      }
+
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
+      const scannedAt = await api.getTrustedTimestamp()
+      const result = await api.checkAttendance(session.id, user.id, loc.coords.latitude, loc.coords.longitude, token, scannedAt)
+      if (!result.success) {
+        showResult('absent', result.message ?? 'Check-in rejected')
+        return
+      }
+
+      const submitted = await api.submitScan(session.id, user.id, user.fullName, loc.coords.latitude, loc.coords.longitude, 'device-mobile', token, scannedAt)
       if ('error' in submitted) showResult('absent', submitted.error)
       else showResult(result.status === 'late' ? 'late' : 'present', submitted.isSynced ? (result.message ?? 'Check-in successful!') : 'Check-in saved offline and queued for sync.')
-    } else {
-      showResult('absent', result.message ?? 'Check-in rejected')
+    } catch (error) {
+      showResult('absent', error instanceof Error ? error.message : 'Unable to verify your location')
     }
   }, [showResult])
 

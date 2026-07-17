@@ -49,8 +49,8 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
   const streamRef = useRef<MediaStream | null>(null)
   const scanLoopRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(null)
   const scannedRef = useRef(false)
+  const handleTokenRef = useRef<(token: string) => Promise<void>>(async () => {})
   // BarcodeDetector not yet in TS lib typings
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const detectorRef = useRef<any | null>(null)
 
   // ── Upload refs ──────────────────────────────────────────────────────────
@@ -121,9 +121,8 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
       if (!trimmed) return
       scannedRef.current = true
       stopCamera()
-      await handleToken(trimmed)
+      await handleTokenRef.current(trimmed)
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [stopCamera]
   )
 
@@ -250,9 +249,8 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
     }
 
     scannedRef.current = true
-    await handleToken(rawToken)
+    await handleTokenRef.current(rawToken)
   },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [uploadPreview]
   )
 
@@ -394,6 +392,10 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
     },
     [user, sessionId]
   )
+
+  useEffect(() => {
+    handleTokenRef.current = handleToken
+  }, [handleToken])
 
   // ── Manual submit ────────────────────────────────────────────────────────
   const handleManualSubmit = async (e: React.FormEvent) => {
@@ -779,7 +781,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
               </Button>
 
               <p className="text-[10px] text-zinc-400 text-center">
-                The QR token from the image is decoded locally — but your live GPS and the token's cryptographic signature are still verified by the server.
+                The QR token from the image is decoded locally — but your live GPS and the token&apos;s cryptographic signature are still verified by the server.
               </p>
             </div>
           )}

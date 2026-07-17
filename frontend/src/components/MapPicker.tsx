@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
-import { Map, MapMarker, MarkerContent, MapControls } from '@/components/ui/map'
+import { Map, MapMarker, MarkerContent, MapControls, type MapRef } from '@/components/ui/map'
 import { MapPin, Maximize, Minimize, Loader2 } from 'lucide-react'
 import GeofenceCircle from '@/components/GeofenceCircle'
 
@@ -21,6 +21,7 @@ export default function MapPicker({
   const [fullscreen, setFullscreen] = useState(false)
   const [locating, setLocating] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<MapRef>(null)
 
   const handleUseMyLocation = useCallback(() => {
     if (!navigator.geolocation) {
@@ -35,6 +36,7 @@ export default function MapPicker({
         const lng = pos.coords.longitude
         const newCenter: [number, number] = [lng, lat]
         setCenter(newCenter)
+        mapRef.current?.easeTo({ center: newCenter, duration: 500 })
         onChange?.(lat, lng, rad)
       },
       () => {
@@ -78,14 +80,14 @@ export default function MapPicker({
         ref={containerRef}
         className={`rounded-none overflow-hidden border border-zinc-200 dark:border-zinc-700 relative ${fullscreen ? 'fixed inset-0 z-50 h-screen w-screen' : 'h-[350px]'}`}
       >
-        <Map center={center as [number, number]} zoom={16}>
+        <Map ref={mapRef} center={center as [number, number]} zoom={16}>
           <MapControls showZoom showFullscreen position="bottom-right" />
           <GeofenceCircle latitude={center[1]} longitude={center[0]} radiusMeters={rad} />
           <MapMarker
             longitude={center[0]}
             latitude={center[1]}
             draggable
-            onDrag={handleMove}
+            onDragEnd={handleMove}
           >
             <MarkerContent>
               <MapPin className="fill-maroon stroke-white" size={28} />

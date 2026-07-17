@@ -119,8 +119,7 @@ export default function SessionDetailPage() {
     }
     if (realtimeConnected) return
     pollRef.current = setInterval(async () => {
-      setRecords(await api.getAttendanceRecords(id))
-      setLastUpdated(new Date())
+      await refreshData()
     }, 10000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [session?.isActive, id, realtimeConnected, refreshData])

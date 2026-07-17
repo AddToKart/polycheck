@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, TextInput, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -138,18 +138,18 @@ export default function SessionDetailScreen() {
 
   const studentMap = new Map(records.map((r) => [r.studentId, r]))
 
-  const studentPins: StudentMapPin[] = records
-    .filter((r) => r.coordinates && (r.coordinates.latitude !== 0 || r.coordinates.longitude !== 0))
-    .map((r) => ({
-      id: r.studentId,
-      latitude: r.coordinates.latitude,
-      longitude: r.coordinates.longitude,
-      label: r.studentName,
-      program: r.studentProgram,
-      status: r.status,
-      timestamp: r.timestamp,
-      deviceId: r.deviceId,
-    }))
+  const studentPins: StudentMapPin[] = useMemo(() => records
+      .filter((r) => r.coordinates && (r.coordinates.latitude !== 0 || r.coordinates.longitude !== 0))
+      .map((r) => ({
+        id: r.studentId,
+        latitude: r.coordinates.latitude,
+        longitude: r.coordinates.longitude,
+        label: r.studentName,
+        program: r.studentProgram,
+        status: r.status,
+        timestamp: r.timestamp,
+        deviceId: r.deviceId,
+      })), [records])
 
   const handleGenerateQr = async () => {
     const mins = parseInt(validityMinutes, 10)

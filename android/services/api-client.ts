@@ -265,7 +265,7 @@ export const api = {
     return post('/sessions', body)
   },
   async generateQrCode(sessionId: string, validityMinutes: number, gracePeriodMinutes?: number): Promise<Session> {
-    const [session, key] = await Promise.all([get<Session>(`/sessions/${sessionId}`), getOrCreateTeacherSigningKey()])
+    const [session, key] = await Promise.all([this.getSession(sessionId), getOrCreateTeacherSigningKey()])
     const user = this.getCurrentUser()
     if (!user || user.role !== 'teacher') throw new Error('A teacher account is required to sign QR tokens')
     const issuedAt = new Date(await this.getTrustedTimestamp()).getTime()

@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useState } from 'react'
+import { useRef, useCallback, useEffect, useMemo, useState } from 'react'
 import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -16,6 +16,8 @@ export interface StudentMapPin {
   timestamp: string
   deviceId?: string
 }
+
+const EMPTY_STUDENT_PINS: StudentMapPin[] = []
 
 interface MapViewProps {
   latitude: number
@@ -161,32 +163,36 @@ function html(
   var statusColors = ${JSON.stringify(statusColors)};
   var statusLabels = { present: 'Present', late: 'Late', absent: 'Absent', pending: 'Pending', disputed: 'Disputed' };
 
-  var pins = ${pinsJSON};
   var pinMarkers = [];
-  pins.forEach(function(p) {
-    if (p.lat === 0 && p.lng === 0) return;
-    var color = statusColors[p.status] || '#9CA3AF';
-    var circleMarker = L.circleMarker([p.lat, p.lng], {
-      radius: 7,
-      fillColor: color,
-      color: '#fff',
-      weight: 2,
-      fillOpacity: 1
-    }).addTo(map);
+  function updatePins(pins) {
+    pinMarkers.forEach(function(pin) { map.removeLayer(pin); });
+    pinMarkers = [];
+    pins.forEach(function(p) {
+      if (p.lat === 0 && p.lng === 0) return;
+      var color = statusColors[p.status] || '#9CA3AF';
+      var circleMarker = L.circleMarker([p.lat, p.lng], {
+        radius: 7,
+        fillColor: color,
+        color: '#fff',
+        weight: 2,
+        fillOpacity: 1
+      }).addTo(map);
 
-    var popupHtml = '<div class="student-popup">' +
-      '<div class="name">' + p.label + '</div>' +
-      '<div class="id">' + (p.program ? p.id + ' · ' + p.program : p.id) + '</div>' +
-      '<div class="status-row">' +
-        '<span class="status" style="background:' + color + ';color:' + (p.status === 'late' ? '#4A0A0B' : '#fff') + '">' + (statusLabels[p.status] || p.status) + '</span>' +
-        '<span class="time">' + new Date(p.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) + '</span>' +
-      '</div>' +
-      (p.deviceId && p.deviceId !== 'manual' ? '<div class="device">Device: ' + p.deviceId + '</div>' : '') +
-    '</div>';
+      var popupHtml = '<div class="student-popup">' +
+        '<div class="name">' + p.label + '</div>' +
+        '<div class="id">' + (p.program ? p.id + ' · ' + p.program : p.id) + '</div>' +
+        '<div class="status-row">' +
+          '<span class="status" style="background:' + color + ';color:' + (p.status === 'late' ? '#4A0A0B' : '#fff') + '">' + (statusLabels[p.status] || p.status) + '</span>' +
+          '<span class="time">' + new Date(p.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) + '</span>' +
+        '</div>' +
+        (p.deviceId && p.deviceId !== 'manual' ? '<div class="device">Device: ' + p.deviceId + '</div>' : '') +
+      '</div>';
 
-    circleMarker.bindPopup(popupHtml);
-    pinMarkers.push(circleMarker);
-  });
+      circleMarker.bindPopup(popupHtml);
+      pinMarkers.push(circleMarker);
+    });
+  }
+  updatePins(${pinsJSON});
 
   function update(lat, lng, rad) {
     marker.setLatLng([lat, lng]);
@@ -198,6 +204,7 @@ function html(
   ${interactive ? `
   marker.on('dragend', function() {
     var pos = marker.getLatLng();
+    circle.setLatLng(pos);
     window.ReactNativeWebView.postMessage(JSON.stringify({
       lat: pos.lat.toFixed(6),
       lng: pos.lng.toFixed(6)
@@ -218,29 +225,57 @@ function html(
 </html>`
 }
 
-export default function MapView({ latitude, longitude, radius, interactive, recenterSignal, onLocationChange, onRadiusChange, studentPins = [] }: MapViewProps) {
+export default function MapView({ latitude, longitude, radius, interactive, recenterSignal, onLocationChange, onRadiusChange, studentPins = EMPTY_STUDENT_PINS }: MapViewProps) {
   const { isDark } = useTheme()
   const webRef = useRef<WebView>(null)
+  const fullscreenWebRef = useRef<WebView>(null)
   const [fullscreen, setFullscreen] = useState(false)
   const sliderRef = useRef<View>(null)
   const sliderWidthRef = useRef(0)
   const sliderLeftRef = useRef(0)
+  const initialMapProps = useRef({ latitude, longitude, radius, studentPins })
+  const latestLocation = useRef({ latitude, longitude })
+  latestLocation.current = { latitude, longitude }
+  const pinsData = useMemo(() => studentPins.map((p) => ({
+      id: p.id,
+      lat: p.latitude,
+      lng: p.longitude,
+      label: p.label,
+      program: p.program || '',
+      status: p.status,
+      timestamp: p.timestamp,
+      deviceId: p.deviceId || '',
+    })), [studentPins])
+  const source = useMemo(() => ({
+    html: html(
+      initialMapProps.current.latitude,
+      initialMapProps.current.longitude,
+      initialMapProps.current.radius,
+      !!interactive,
+      isDark,
+      initialMapProps.current.studentPins,
+    ),
+  }), [interactive, isDark])
+
+  const syncMap = useCallback((view: WebView | null) => {
+    view?.injectJavaScript(`
+      update(${latitude}, ${longitude}, ${radius});
+      updatePins(${JSON.stringify(pinsData)});
+      true;
+    `)
+  }, [latitude, longitude, radius, pinsData])
 
   useEffect(() => {
-    if (webRef.current) {
-      webRef.current.injectJavaScript(`
-        update(${latitude}, ${longitude}, ${radius});
-        true;
-      `)
-    }
-  }, [latitude, longitude, radius])
+    syncMap(webRef.current)
+    syncMap(fullscreenWebRef.current)
+  }, [syncMap])
 
   useEffect(() => {
-    if (recenterSignal && webRef.current) {
-      webRef.current.injectJavaScript(`
-        map.setView([${latitude}, ${longitude}], Math.max(map.getZoom(), 17));
-        true;
-      `)
+    if (recenterSignal) {
+      const next = latestLocation.current
+      const script = `map.panTo([${next.latitude}, ${next.longitude}]); true;`
+      webRef.current?.injectJavaScript(script)
+      fullscreenWebRef.current?.injectJavaScript(script)
     }
   }, [recenterSignal])
 
@@ -268,11 +303,12 @@ export default function MapView({ latitude, longitude, radius, interactive, rece
   const mapWebView = () => (
     <WebView
       ref={webRef}
-      source={{ html: html(latitude, longitude, radius, !!interactive, isDark, studentPins) }}
+      source={source}
       style={styles.webview}
       scrollEnabled={false}
       bounces={false}
       onMessage={handleMessage}
+      onLoadEnd={() => syncMap(webRef.current)}
       javaScriptEnabled
       domStorageEnabled
       originWhitelist={['*']}
@@ -361,11 +397,13 @@ export default function MapView({ latitude, longitude, radius, interactive, rece
             </View>
             <View style={styles.fsMapContainer}>
               <WebView
-                source={{ html: html(latitude, longitude, radius, !!interactive, isDark, studentPins) }}
+                ref={fullscreenWebRef}
+                source={source}
                 style={styles.webview}
                 scrollEnabled={false}
                 bounces={false}
                 onMessage={handleMessage}
+                onLoadEnd={() => syncMap(fullscreenWebRef.current)}
                 javaScriptEnabled
                 domStorageEnabled
                 originWhitelist={['*']}
