@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
-import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../auth/authenticated-principal'
 import type { SectionRoleType } from '@prisma/client'
 
 interface AssignRoleInput {

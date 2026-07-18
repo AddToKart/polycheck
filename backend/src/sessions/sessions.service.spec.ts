@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import { SessionsService } from './sessions.service'
 import { AttendanceGateway } from '../realtime/attendance.gateway'
-import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../auth/authenticated-principal'
 import type { ActivateSessionDto, CreateBulkSessionsDto, CreateSessionDto } from './dto/create-session.dto'
 
 jest.mock('@polycheck/shared', () => ({

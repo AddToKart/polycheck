@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import { AttendanceService } from './attendance.service'
 import { AttendanceGateway } from '../realtime/attendance.gateway'
-import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../auth/authenticated-principal'
 
 jest.mock('@polycheck/shared', () => ({
   verifyQRToken: jest.fn(),

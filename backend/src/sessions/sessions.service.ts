@@ -9,7 +9,7 @@ import {
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { verifyQRToken } from '@polycheck/shared'
 import { PrismaService } from '../prisma/prisma.service'
-import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../auth/authenticated-principal'
 import type { ActivateSessionDto, CreateBulkSessionsDto, CreateSessionDto } from './dto/create-session.dto'
 import { AttendanceGateway } from '../realtime/attendance.gateway'
 import { RedisService } from '../infrastructure/redis.service'
@@ -236,9 +236,7 @@ export class SessionsService {
       const now = new Date()
       const expired = activeSessions.filter((session) => {
         if (!session.qrTokenExpiresAt) return false
-        const graceEnd = new Date(
-          session.qrTokenExpiresAt.getTime() + session.gracePeriodMinutes * 60 * 1000,
-        )
+        const graceEnd = new Date(session.qrTokenExpiresAt.getTime() + session.gracePeriodMinutes * 60 * 1000)
         return now > graceEnd
       })
 

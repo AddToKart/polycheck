@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common'
 import { DashboardService } from './dashboard.service'
-import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../auth/authenticated-principal'
 
 describe('DashboardService', () => {
   const teacher: RequestUser = { id: 'teacher-1', role: 'teacher' }

@@ -3,12 +3,13 @@ import { ProofsService } from './proofs.service'
 
 describe('ProofsService', () => {
   const config = { get: jest.fn((key: string) => (key === 'MAX_PROOF_BYTES' ? 5_000_000 : 'uploads')) }
+  const storage = { store: jest.fn(), read: jest.fn(), remove: jest.fn() }
 
   it('only accepts uploads while a session is active', async () => {
     const prisma = {
       session: { findUnique: jest.fn().mockResolvedValue({ id: 's1', sectionId: 'sec1', isActive: false }) },
     }
-    const service = new ProofsService(prisma as never, config as never)
+    const service = new ProofsService(prisma as never, config as never, storage as never)
 
     await expect(
       service.upload(
@@ -32,7 +33,7 @@ describe('ProofsService', () => {
       sectionRole: { findFirst: jest.fn().mockResolvedValue({ id: 'r1' }) },
       proofOfClass: { create: jest.fn() },
     }
-    const service = new ProofsService(prisma as never, config as never)
+    const service = new ProofsService(prisma as never, config as never, storage as never)
 
     await expect(
       service.upload(
@@ -48,7 +49,7 @@ describe('ProofsService', () => {
       session: { findUnique: jest.fn().mockResolvedValue({ id: 's1', sectionId: 'sec1', teacherId: 'teacher-1' }) },
       enrollment: { findUnique: jest.fn().mockResolvedValue(null) },
     }
-    const service = new ProofsService(prisma as never, config as never)
+    const service = new ProofsService(prisma as never, config as never, storage as never)
 
     await expect(service.list({ id: 'student-2', role: 'student' }, 's1')).rejects.toThrow(ForbiddenException)
   })

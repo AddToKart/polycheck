@@ -26,7 +26,7 @@ export class ProofsController {
     const file = await this.proofs.file(req.user, id)
     response.setHeader('Cache-Control', 'private, max-age=300')
     response.type(file.contentType)
-    return response.sendFile(file.path)
+    return response.send(file.buffer)
   }
 
   @Post()

@@ -1,17 +1,19 @@
 import '../global.css'
-import { Stack } from 'expo-router'
+import { Stack, useRouter } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { useCallback, useEffect, useState } from 'react'
 import * as SplashScreen from 'expo-splash-screen'
 import { useFonts } from 'expo-font'
-import { AppState, View } from 'react-native'
+import { Alert, AppState, View } from 'react-native'
 import { ThemeProvider, useTheme } from '../theme/ThemeContext'
-import { api } from '../services/api-client'
+import { api, subscribeToAuthChanges } from '../services/api-client'
+import { monitorAuthSession } from '../services/realtime'
 
 SplashScreen.preventAutoHideAsync()
 
 function RootLayoutInner() {
   const { isDark } = useTheme()
+  const router = useRouter()
   const [sessionReady, setSessionReady] = useState(false)
   const [fontsLoaded] = useFonts({
     DMSans_400Regular: require('@expo-google-fonts/dm-sans/400Regular/DMSans_400Regular.ttf'),
@@ -23,6 +25,16 @@ function RootLayoutInner() {
 
   useEffect(() => {
     let mounted = true
+    let stopAuthMonitor: () => void = () => undefined
+    const stopAuthChanges = subscribeToAuthChanges((user) => {
+      stopAuthMonitor()
+      stopAuthMonitor = user
+        ? monitorAuthSession(() => {
+            Alert.alert('Session ended', 'Your session was replaced or revoked. Please sign in again.')
+            void api.logout().finally(() => router.replace('/'))
+          })
+        : () => undefined
+    })
     void api.restoreSession()
       .then(() => api.preSyncOfflineData())
       .finally(() => { if (mounted) setSessionReady(true) })
@@ -33,10 +45,12 @@ function RootLayoutInner() {
     })
     return () => {
       mounted = false
+      stopAuthChanges()
+      stopAuthMonitor()
       clearInterval(interval)
       subscription.remove()
     }
-  }, [])
+  }, [router])
 
   const onLayoutRootView = useCallback(async () => {
     if (fontsLoaded && sessionReady) {

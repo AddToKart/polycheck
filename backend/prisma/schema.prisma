@@ -42,6 +42,8 @@ model User {
   fullName         String
   email            String?  @unique
   password         String
+  authEmail         String   @unique
+  authEmailVerified Boolean  @default(true)
   role             UserRole
   program          String?
   yearLevel        Int?
@@ -62,10 +64,61 @@ model User {
   proofsOfClass      ProofOfClass[]
   createdSubjects    Subject[]           @relation("SubjectCreator")
   scanAttempts       ScanAttempt[]
+  authAccounts       AuthAccount[]
+  authSessions       AuthSession[]
 
   @@index([role])
   @@index([studentId])
   @@index([email])
+}
+
+model AuthAccount {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model AuthSession {
+  id         String   @id
+  expiresAt  DateTime
+  token      String   @unique
+  createdAt  DateTime
+  updatedAt  DateTime
+  ipAddress  String?
+  userAgent  String?
+  userId     String
+  generation Int      @default(0)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, generation])
+  @@index([expiresAt])
+}
+
+model AuthVerification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime
+  updatedAt  DateTime
+
+  @@index([identifier])
+  @@index([expiresAt])
 }
 
 model InstitutionSetting {

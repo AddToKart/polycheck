@@ -1,14 +1,19 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common'
+import { Injectable, NotFoundException, ForbiddenException, Optional } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
-import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../auth/authenticated-principal'
 import { ConflictException } from '@nestjs/common'
 import { hash } from 'bcryptjs'
 import type { CreateStudentDto, CreateTeacherDto } from './dto/manage-user.dto'
 import { Prisma } from '@prisma/client'
+import { randomUUID } from 'crypto'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Optional() private events?: EventEmitter2,
+  ) {}
 
   async findAll(user: RequestUser, pagination?: { limit: number; offset: number }) {
     if (user.role !== 'super_admin') {
@@ -82,7 +87,15 @@ export class UsersService {
       throw new ForbiddenException('Cannot access this user profile')
     }
 
-    const { password: _password, teacherPublicKey: _teacherPublicKey, enrollments, ...rest } = target
+    const {
+      password: _password,
+      authEmail: _authEmail,
+      authEmailVerified: _authEmailVerified,
+      authVersion: _authVersion,
+      teacherPublicKey: _teacherPublicKey,
+      enrollments,
+      ...rest
+    } = target
     return {
       ...rest,
       ...(target.role === 'student'
@@ -161,14 +174,28 @@ export class UsersService {
     })
     if (exists) throw new ConflictException('A user with this email already exists')
     const password = await hash(dto.password, 12)
+    const id = randomUUID()
+    const now = new Date()
     try {
       return await this.prisma.user.create({
         data: {
+          id,
           fullName: dto.fullName.trim(),
           email: dto.email.toLowerCase(),
+          authEmail: `u-${randomUUID()}@auth.polycheck.invalid`,
           password,
           department: dto.department?.trim(),
           role: 'teacher',
+          authAccounts: {
+            create: {
+              id: randomUUID(),
+              accountId: id,
+              providerId: 'credential',
+              password,
+              createdAt: now,
+              updatedAt: now,
+            },
+          },
         },
         select: {
           id: true,
@@ -200,17 +227,31 @@ export class UsersService {
     if (exists) throw new ConflictException('A user with this student ID or email already exists')
 
     const password = await hash(dto.password, 12)
+    const id = randomUUID()
+    const now = new Date()
     try {
       const student = await this.prisma.user.create({
         data: {
+          id,
           fullName: dto.fullName.trim(),
           studentId: normalizedStudentId,
           email: normalizedEmail,
+          authEmail: `u-${randomUUID()}@auth.polycheck.invalid`,
           password,
           program: dto.program.trim(),
           yearLevel: dto.yearLevel,
           department: dto.department.trim(),
           role: 'student',
+          authAccounts: {
+            create: {
+              id: randomUUID(),
+              accountId: id,
+              providerId: 'credential',
+              password,
+              createdAt: now,
+              updatedAt: now,
+            },
+          },
         },
         select: {
           id: true,
@@ -246,10 +287,27 @@ export class UsersService {
     this.assertDepartmentScope(user, target.department ?? undefined)
 
     const passwordHash = await hash(password, 12)
-    await this.prisma.user.update({
-      where: { id },
-      data: { password: passwordHash, authVersion: { increment: 1 } },
-    })
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id },
+        data: { password: passwordHash, authVersion: { increment: 1 } },
+      }),
+      this.prisma.authAccount.upsert({
+        where: { providerId_accountId: { providerId: 'credential', accountId: id } },
+        update: { password: passwordHash, updatedAt: new Date() },
+        create: {
+          id: randomUUID(),
+          accountId: id,
+          providerId: 'credential',
+          userId: id,
+          password: passwordHash,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      }),
+      this.prisma.authSession.deleteMany({ where: { userId: id } }),
+    ])
+    this.events?.emit('auth.session-replaced', { userId: id, reason: 'password_reset' })
     return { message: 'Password reset successfully', userId: id }
   }
 
@@ -264,24 +322,32 @@ export class UsersService {
     if (user.scope !== 'institution' && target.department !== user.department) {
       throw new ForbiddenException('This account is outside your administrative scope')
     }
-    return this.prisma.user.update({
-      where: { id },
-      data: { isActive, authVersion: { increment: 1 } },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        role: true,
-        department: true,
-        program: true,
-        yearLevel: true,
-        studentId: true,
-        photoUrl: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id },
+        data: { isActive, authVersion: { increment: 1 } },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          role: true,
+          department: true,
+          program: true,
+          yearLevel: true,
+          studentId: true,
+          photoUrl: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      this.prisma.authSession.deleteMany({ where: { userId: id } }),
+    ])
+    this.events?.emit('auth.session-replaced', {
+      userId: id,
+      reason: isActive ? 'account_updated' : 'account_disabled',
     })
+    return updated
   }
 
   private assertDepartmentScope(user: RequestUser, department?: string) {

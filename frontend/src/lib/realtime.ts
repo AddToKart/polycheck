@@ -36,3 +36,31 @@ export function subscribeToSession(
     socket.disconnect()
   }
 }
+
+export function monitorAuthSession(onReplaced: () => void) {
+  if (typeof window === 'undefined') return () => undefined
+  let socket: ReturnType<typeof io> | null = null
+
+  const connect = () => {
+    socket?.disconnect()
+    socket = null
+    if (!localStorage.getItem('polycheck-user')) return
+    socket = io(realtimeUrl(), {
+      withCredentials: true,
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 8,
+      reconnectionDelay: 1_000,
+      timeout: 8_000,
+    })
+    socket.on('auth:session-replaced', onReplaced)
+  }
+
+  connect()
+  window.addEventListener('polycheck-auth-changed', connect)
+  return () => {
+    window.removeEventListener('polycheck-auth-changed', connect)
+    socket?.removeAllListeners()
+    socket?.disconnect()
+  }
+}

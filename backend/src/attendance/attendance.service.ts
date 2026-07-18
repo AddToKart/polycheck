@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { isWithinGeofence, verifyQRToken } from '@polycheck/shared'
 import { PrismaService } from '../prisma/prisma.service'
-import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../auth/authenticated-principal'
 import type { CreateManualAttendanceDto, ScanAttendanceDto, SubmitAttendanceDto } from './dto/attendance.dto'
 import { AttendanceGateway } from '../realtime/attendance.gateway'
 import { RedisService } from '../infrastructure/redis.service'

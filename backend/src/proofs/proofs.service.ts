@@ -1,11 +1,9 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { mkdir, unlink, writeFile } from 'fs/promises'
-import { randomUUID } from 'crypto'
-import { extname, resolve } from 'path'
 import { PrismaService } from '../prisma/prisma.service'
-import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../auth/authenticated-principal'
 import type { Session } from '@prisma/client'
+import { ProofStorageService } from './proof-storage.service'
 
 interface UploadProofInput {
   sectionId: string
@@ -19,6 +17,7 @@ export class ProofsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly storage: ProofStorageService,
   ) {}
 
   async list(user: RequestUser, sessionId: string) {
@@ -38,11 +37,7 @@ export class ProofsService {
     const permitted = await this.canUpload(user, session)
     if (!permitted) throw new ForbiddenException('You are not permitted to upload proof for this session')
     const image = this.decodeImage(dto.photoData)
-    const uploadDirectory = resolve(this.config.get<string>('UPLOAD_DIR') ?? 'uploads')
-    await mkdir(uploadDirectory, { recursive: true })
-    const fileName = `${randomUUID()}.${image.extension}`
-    const filePath = resolve(uploadDirectory, fileName)
-    await writeFile(filePath, image.buffer, { flag: 'wx' })
+    const reference = await this.storage.store(image.buffer, image.extension, image.mime)
     const person = await this.prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } })
     let proof
     try {
@@ -52,12 +47,12 @@ export class ProofsService {
           sessionId: dto.sessionId,
           uploadedBy: user.id,
           uploadedByStudentName: person?.fullName ?? 'Unknown',
-          photoUrl: `/uploads/${fileName}`,
+          photoUrl: reference,
           description: dto.description?.trim() || undefined,
         },
       })
     } catch (error) {
-      await unlink(filePath).catch(() => undefined)
+      await this.storage.remove(reference).catch(() => undefined)
       throw error
     }
     return this.present(proof)
@@ -70,15 +65,7 @@ export class ProofsService {
     })
     if (!proof) throw new NotFoundException('Proof not found')
     await this.access(user, proof.session.sectionId, proof.session.teacherId)
-    if (!proof.photoUrl.startsWith('/uploads/')) throw new NotFoundException('Proof file not found')
-    const uploadDirectory = resolve(this.config.get<string>('UPLOAD_DIR') ?? 'uploads')
-    const path = resolve(uploadDirectory, proof.photoUrl.slice('/uploads/'.length))
-    if (!path.startsWith(`${uploadDirectory}\\`) && !path.startsWith(`${uploadDirectory}/`)) {
-      throw new ForbiddenException('Invalid proof file path')
-    }
-    const extension = extname(path).toLowerCase()
-    const contentType = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : 'image/jpeg'
-    return { path, contentType }
+    return this.storage.read(proof.photoUrl)
   }
 
   async remove(user: RequestUser, id: string) {
@@ -94,7 +81,7 @@ export class ProofsService {
     if (user.role !== 'teacher' || proof.session.teacherId !== user.id)
       throw new ForbiddenException('Only the session teacher can delete proof')
     await this.prisma.proofOfClass.delete({ where: { id } })
-    await this.deleteStoredFile(proof.photoUrl)
+    await this.storage.remove(proof.photoUrl)
     return true
   }
 
@@ -144,15 +131,7 @@ export class ProofsService {
         buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
         buffer.subarray(8, 12).toString('ascii') === 'WEBP')
     if (!validMagic) throw new BadRequestException('Proof image content does not match its declared type')
-    return { buffer, extension: mime === 'image/jpeg' ? 'jpg' : mime.slice('image/'.length) }
-  }
-
-  private async deleteStoredFile(photoUrl: string) {
-    if (!photoUrl.startsWith('/uploads/') || extname(photoUrl) === '') return
-    const uploadDirectory = resolve(this.config.get<string>('UPLOAD_DIR') ?? 'uploads')
-    const filePath = resolve(uploadDirectory, photoUrl.slice('/uploads/'.length))
-    if (!filePath.startsWith(`${uploadDirectory}\\`) && !filePath.startsWith(`${uploadDirectory}/`)) return
-    await unlink(filePath).catch(() => undefined)
+    return { buffer, extension: mime === 'image/jpeg' ? 'jpg' : mime.slice('image/'.length), mime }
   }
 
   private present<T extends { id: string; photoUrl: string }>(proof: T) {

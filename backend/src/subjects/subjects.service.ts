@@ -1,8 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import type { CreateSubjectDto } from './dto/create-subject.dto'
 import type { UpdateSubjectDto } from './dto/update-subject.dto'
-import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../auth/authenticated-principal'
 
 @Injectable()
 export class SubjectsService {
@@ -61,12 +62,25 @@ export class SubjectsService {
   }
 
   async remove(id: string, user: RequestUser) {
-    const subject = await this.prisma.subject.findUnique({ where: { id }, select: { createdById: true } })
+    const subject = await this.prisma.subject.findUnique({
+      where: { id },
+      select: { createdById: true, _count: { select: { sections: true } } },
+    })
     if (!subject) throw new NotFoundException('Subject not found')
     if (user.role !== 'teacher' || subject.createdById !== user.id) {
       throw new ForbiddenException('You can only delete subjects you created')
     }
-    await this.prisma.subject.delete({ where: { id } })
+    if (subject._count.sections > 0) {
+      throw new ConflictException('Delete or reassign the subject sections first')
+    }
+    try {
+      await this.prisma.subject.delete({ where: { id } })
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+        throw new ConflictException('Delete or reassign the subject sections first')
+      }
+      throw error
+    }
     return { message: 'Subject deleted' }
   }
 

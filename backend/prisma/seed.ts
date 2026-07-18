@@ -125,7 +125,25 @@ async function main() {
 
   for (const user of users) {
     const { password: _password, ...profile } = user
-    await prisma.user.upsert({ where: { id: user.id }, update: profile, create: user })
+    const authEmail = `u-${user.id}@auth.polycheck.invalid`
+    await prisma.user.upsert({
+      where: { id: user.id },
+      update: { ...profile, authEmail },
+      create: { ...user, authEmail },
+    })
+    await prisma.authAccount.upsert({
+      where: { providerId_accountId: { providerId: 'credential', accountId: user.id } },
+      update: {},
+      create: {
+        id: `credential-${user.id}`,
+        accountId: user.id,
+        providerId: 'credential',
+        userId: user.id,
+        password,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    })
   }
 
   // ── Subjects ──

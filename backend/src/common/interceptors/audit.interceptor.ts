@@ -3,7 +3,7 @@ import type { Request } from 'express'
 import { tap } from 'rxjs/operators'
 import type { Observable } from 'rxjs'
 import { PrismaService } from '../../prisma/prisma.service'
-import type { RequestUser } from '../../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../../auth/authenticated-principal'
 
 type AuditedRequest = Request & { user?: RequestUser }
 
@@ -22,6 +22,7 @@ export class AuditInterceptor implements NestInterceptor {
       tap(() => {
         const path = request.route?.path ? `${request.baseUrl}${request.route.path}` : request.path
         const segments = request.path.split('/').filter(Boolean)
+        const entityId = request.params?.id ?? request.params?.sessionId
         void this.prisma.auditLog
           .create({
             data: {
@@ -29,7 +30,7 @@ export class AuditInterceptor implements NestInterceptor {
               actorRole: request.user!.role,
               action: `${request.method} ${path}`,
               entityType: segments[1] ?? segments[0] ?? 'unknown',
-              entityId: request.params?.id ?? request.params?.sessionId ?? undefined,
+              entityId: Array.isArray(entityId) ? entityId[0] : entityId,
               metadata: { path: request.path },
             },
           })

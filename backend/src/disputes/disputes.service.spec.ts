@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing'
 import { ForbiddenException, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { DisputesService } from './disputes.service'
-import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../auth/authenticated-principal'
 
 interface MockPrisma {
   attendanceRecord: {

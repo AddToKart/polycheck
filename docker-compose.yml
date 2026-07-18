@@ -41,18 +41,20 @@ services:
       PORT: 4000
       DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
       REDIS_URL: redis://redis:6379/0
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
-      JWT_ISSUER: ${JWT_ISSUER:-polycheck-api}
-      JWT_AUDIENCE: ${JWT_AUDIENCE:-polycheck-clients}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required}
       CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS is required}
       FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL is required}
       TRUST_PROXY: ${TRUST_PROXY:-true}
       ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
-      UPLOAD_DIR: /app/backend/uploads
       MAX_PROOF_BYTES: ${MAX_PROOF_BYTES:-5000000}
-    volumes:
-      - proof-uploads:/app/backend/uploads
+      STORAGE_DRIVER: s3
+      S3_BUCKET: ${S3_BUCKET:?S3_BUCKET is required}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
     ports:
       - "${BACKEND_PORT:-4000}:4000"
     healthcheck:
@@ -78,4 +80,3 @@ services:
 volumes:
   postgres-data:
   redis-data:
-  proof-uploads:
