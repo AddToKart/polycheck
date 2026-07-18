@@ -25,7 +25,7 @@ async function bootstrap() {
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }))
 
   const socketAdapter = new RedisIoAdapter(app)
-  await socketAdapter.connect(env.REDIS_URL || undefined)
+  await socketAdapter.connect(env.REDIS_URL || undefined, env.NODE_ENV === 'production')
   app.useWebSocketAdapter(socketAdapter)
   app.enableShutdownHooks()
 

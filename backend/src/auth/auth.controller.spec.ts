@@ -1,4 +1,3 @@
-import type { ConfigService } from '@nestjs/config'
 import type { Request, Response } from 'express'
 import { AuthController } from './auth.controller'
 import type { AuthService } from './auth.service'
@@ -9,18 +8,22 @@ describe('AuthController secure cookies', () => {
     loginFaculty: jest.fn(),
     logout: jest.fn(),
   }
-  const config = { get: jest.fn().mockReturnValue('production') }
-  const response = { cookie: jest.fn(), clearCookie: jest.fn() }
-  const request = { ip: '203.0.113.10' }
+  const response = { append: jest.fn() }
+  const request = { ip: '203.0.113.10', headers: {} }
   let controller: AuthController
 
   beforeEach(() => {
     jest.clearAllMocks()
-    controller = new AuthController(auth as unknown as AuthService, config as unknown as ConfigService)
+    controller = new AuthController(auth as unknown as AuthService)
   })
 
   it('sets a hardened browser cookie after student login', async () => {
-    auth.loginStudent.mockResolvedValue({ token: 'signed-token', user: { id: 'student-1' } })
+    auth.loginStudent.mockResolvedValue({
+      headers: new Headers({
+        'set-cookie': 'polycheck_access=signed-token; HttpOnly; Secure; SameSite=Strict; Path=/',
+      }),
+      user: { id: 'student-1' },
+    })
 
     await controller.loginStudent(
       { studentId: '2026-00001-MN-0', password: 'strong-password' },
@@ -28,16 +31,19 @@ describe('AuthController secure cookies', () => {
       response as unknown as Response,
     )
 
-    expect(response.cookie).toHaveBeenCalledWith('polycheck_access', 'signed-token', {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'strict',
-      path: '/',
-    })
+    expect(response.append).toHaveBeenCalledWith(
+      'set-cookie',
+      'polycheck_access=signed-token; HttpOnly; Secure; SameSite=Strict; Path=/',
+    )
   })
 
   it('sets the same hardened cookie after faculty login', async () => {
-    auth.loginFaculty.mockResolvedValue({ token: 'faculty-token', user: { id: 'teacher-1' } })
+    auth.loginFaculty.mockResolvedValue({
+      headers: new Headers({
+        'set-cookie': 'polycheck_access=faculty-token; HttpOnly; Secure; SameSite=Strict; Path=/',
+      }),
+      user: { id: 'teacher-1' },
+    })
 
     await controller.loginFaculty(
       { email: 'teacher@pup.edu.ph', password: 'strong-password' },
@@ -45,22 +51,21 @@ describe('AuthController secure cookies', () => {
       response as unknown as Response,
     )
 
-    expect(response.cookie).toHaveBeenCalledWith(
-      'polycheck_access',
-      'faculty-token',
-      expect.objectContaining({ httpOnly: true, secure: true, sameSite: 'strict' }),
+    expect(response.append).toHaveBeenCalledWith(
+      'set-cookie',
+      'polycheck_access=faculty-token; HttpOnly; Secure; SameSite=Strict; Path=/',
     )
   })
 
   it('revokes the server session and clears the matching cookie', async () => {
-    auth.logout.mockResolvedValue({ success: true })
+    auth.logout.mockResolvedValue({
+      message: 'Logged out successfully',
+      headers: new Headers({ 'set-cookie': 'polycheck_access=; Max-Age=0; Path=/' }),
+    })
 
-    await controller.logout({ user: { id: 'student-1' } } as never, response as unknown as Response)
+    await controller.logout({ user: { id: 'student-1' }, headers: {} } as never, response as unknown as Response)
 
-    expect(auth.logout).toHaveBeenCalledWith('student-1')
-    expect(response.clearCookie).toHaveBeenCalledWith(
-      'polycheck_access',
-      expect.objectContaining({ httpOnly: true, secure: true, sameSite: 'strict', path: '/' }),
-    )
+    expect(auth.logout).toHaveBeenCalledWith(expect.any(Headers))
+    expect(response.append).toHaveBeenCalledWith('set-cookie', 'polycheck_access=; Max-Age=0; Path=/')
   })
 })

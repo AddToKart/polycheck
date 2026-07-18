@@ -7,10 +7,11 @@ import {
   WebSocketServer,
   WsException,
 } from '@nestjs/websockets'
-import { JwtService } from '@nestjs/jwt'
 import type { Server, Socket } from 'socket.io'
 import { PrismaService } from '../prisma/prisma.service'
-import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../auth/authenticated-principal'
+import { SessionAuthenticator } from '../auth/session-authenticator.service'
+import { OnEvent } from '@nestjs/event-emitter'
 
 type SocketUser = RequestUser
 
@@ -32,50 +33,15 @@ export class AttendanceGateway implements OnGatewayInit {
   @WebSocketServer() server!: Server
 
   constructor(
-    private readonly jwt: JwtService,
+    private readonly sessions: SessionAuthenticator,
     private readonly prisma: PrismaService,
   ) {}
 
   afterInit(server: Server) {
     server.use(async (socket, next) => {
       try {
-        const authHeader = socket.handshake.headers.authorization
-        const cookieToken = socket.handshake.headers.cookie
-          ?.split(';')
-          .map((part) => part.trim())
-          .find((part) => part.startsWith('polycheck_access='))
-          ?.slice('polycheck_access='.length)
-        const supplied = socket.handshake.auth?.token ?? authHeader ?? cookieToken
-        const token = typeof supplied === 'string' ? supplied.replace(/^Bearer\s+/i, '') : ''
-        if (!token) return next(new Error('Authentication required'))
-
-        const payload = await this.jwt.verifyAsync<{
-          sub: string
-          sessionVersion: number
-        }>(token)
-        const account = await this.prisma.user.findUnique({
-          where: { id: payload.sub },
-          select: {
-            isActive: true,
-            authVersion: true,
-            role: true,
-            email: true,
-            studentId: true,
-            department: true,
-            scope: true,
-          },
-        })
-        if (!account?.isActive || account.authVersion !== payload.sessionVersion)
-          return next(new Error('Session was replaced or the account is inactive'))
-
-        socket.data.user = {
-          id: payload.sub,
-          role: account.role,
-          email: account.email,
-          studentId: account.studentId,
-          department: account.department,
-          scope: account.scope,
-        } satisfies SocketUser
+        socket.data.user = await this.sessions.authenticate(this.handshakeHeaders(socket))
+        await socket.join(this.userRoom((socket.data.user as SocketUser).id))
         next()
       } catch {
         next(new Error('Invalid or expired token'))
@@ -87,14 +53,38 @@ export class AttendanceGateway implements OnGatewayInit {
   async joinSession(@ConnectedSocket() socket: Socket, @MessageBody() body: { sessionId?: string }) {
     const sessionId = body?.sessionId?.trim()
     if (!sessionId || sessionId.length > 128) throw new WsException('A valid sessionId is required')
+    const principal = await this.sessions.authenticate(this.handshakeHeaders(socket))
+    socket.data.user = principal
     const session = await this.prisma.session.findUnique({
       where: { id: sessionId },
       select: { id: true, sectionId: true, teacherId: true },
     })
     if (!session) throw new WsException('Session not found')
-    await this.assertSessionAccess(socket.data.user as SocketUser, session)
+    await this.assertSessionAccess(principal, session)
     await socket.join(this.sessionRoom(session.id))
     return { event: 'session:joined', data: { sessionId: session.id } }
+  }
+
+  @OnEvent('auth.session-replaced')
+  handleSessionReplacement(event: { userId: string; reason?: string }) {
+    const room = this.userRoom(event.userId)
+    this.server.to(room).emit('auth:session-replaced', { reason: event.reason ?? 'session_revoked' })
+    this.server.in(room).disconnectSockets(true)
+  }
+
+  private handshakeHeaders(socket: Socket) {
+    const headers = new Headers()
+    const cookie = socket.handshake.headers.cookie
+    if (cookie) headers.set('cookie', cookie)
+    const supplied = socket.handshake.auth?.token ?? socket.handshake.headers.authorization
+    if (typeof supplied === 'string' && supplied) {
+      headers.set('authorization', supplied.startsWith('Bearer ') ? supplied : `Bearer ${supplied}`)
+    }
+    return headers
+  }
+
+  private userRoom(userId: string) {
+    return `auth:user:${userId}`
   }
 
   @SubscribeMessage('session:leave')

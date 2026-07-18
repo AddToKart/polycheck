@@ -49,7 +49,7 @@ polycheck/
 | Local database | SQLite via expo-sqlite |
 | Real-time Updates | WebSockets (Socket.IO) |
 | Caching & Queues | Redis (WebSocket Adapter, Cache Store, BullMQ) |
-| Authentication | Better Auth (Next.js) + JWT (NestJS guards) |
+| Authentication | Better Auth (HttpOnly web cookie + signed mobile bearer) |
 | Monorepo | pnpm workspaces + Turborepo |
 | Shared code | `@polycheck/shared` package |
 

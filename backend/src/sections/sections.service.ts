@@ -6,7 +6,7 @@ import {
   ConflictException,
 } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
-import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../auth/authenticated-principal'
 import type { CreateSectionDto } from './dto/create-section.dto'
 import type { UpdateSectionDto } from './dto/update-section.dto'
 import { DayOfWeek, type Prisma } from '@prisma/client'
@@ -352,9 +352,7 @@ export class SectionsService {
     } else if (user.scope === 'institution') {
       where = {}
     } else {
-      where = user.department
-        ? { section: { teacher: { department: user.department } } }
-        : { id: { in: [] } }
+      where = user.department ? { section: { teacher: { department: user.department } } } : { id: { in: [] } }
     }
 
     return this.prisma.enrollment.findMany({

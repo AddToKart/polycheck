@@ -2,6 +2,8 @@
 
 This stack runs the Polycheck web application, API, PostgreSQL, and Redis entirely in Docker. Android remains on the emulator or physical device and connects through the backend port exposed by Docker.
 
+Local Docker intentionally uses the `local` proof-storage driver and a persistent volume. Production requires the `s3` driver so backend instances remain stateless and horizontally scalable.
+
 ## Prerequisites
 
 - Docker Desktop with Linux containers enabled

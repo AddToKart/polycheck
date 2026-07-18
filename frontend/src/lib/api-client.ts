@@ -18,6 +18,7 @@ function saveUser(user: User | null) {
   try {
     if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
     else localStorage.removeItem(STORAGE_KEY)
+    window.dispatchEvent(new Event('polycheck-auth-changed'))
   } catch { /* noop */ }
 }
 
@@ -122,15 +123,29 @@ export const api = {
     return currentUser
   },
 
-  logout() {
-    void fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
+  async logout() {
     currentUser = null
     saveUser(null)
+    try {
+      await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
+    } catch { /* Local logout still succeeds when the server is unavailable. */ }
   },
 
   getCurrentUser(): User | null {
     if (!currentUser) currentUser = loadUser()
     return currentUser
+  },
+
+  async restoreSession(): Promise<User | null> {
+    try {
+      currentUser = await get<User>('/auth/me')
+      saveUser(currentUser)
+      return currentUser
+    } catch {
+      currentUser = null
+      saveUser(null)
+      return null
+    }
   },
 
   // ── Subjects ──
@@ -336,7 +351,7 @@ export const api = {
     if (sessionId) params.set('sessionId', sessionId)
     const qs = params.toString()
     if (qs) path += `?${qs}`
-    const res = await fetch(`${API_BASE}${path}`, { headers: await authHeaders() })
+    const res = await fetch(`${API_BASE}${path}`, { headers: await authHeaders(), credentials: 'include' })
     return res.text()
   },
   search(query: string): Promise<{ students: Student[]; sections: Section[]; sessions: Session[] }> {

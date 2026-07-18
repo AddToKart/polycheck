@@ -16,7 +16,7 @@ import { SectionRolesModule } from './section-roles/section-roles.module'
 import { SessionPermissionsModule } from './session-permissions/session-permissions.module'
 import { ProofsModule } from './proofs/proofs.module'
 import { DashboardModule } from './dashboard/dashboard.module'
-import { JwtAuthGuard } from './common/guards/jwt-auth.guard'
+import { SessionAuthGuard } from './common/guards/session-auth.guard'
 import { RolesGuard } from './common/guards/roles.guard'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
 import { HealthController } from './health.controller'
@@ -28,6 +28,7 @@ import { MaintenanceModule } from './common/services/maintenance.module'
 import { validateEnv } from './common/config/env-validation'
 import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor'
 import { AuditInterceptor } from './common/interceptors/audit.interceptor'
+import { EventEmitterModule } from '@nestjs/event-emitter'
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor'
       },
     }),
     ScheduleModule.forRoot(),
+    EventEmitterModule.forRoot(),
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     PrismaModule,
     AuthModule,
@@ -75,7 +77,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor'
     },
     {
       provide: APP_GUARD,
-      useClass: JwtAuthGuard,
+      useClass: SessionAuthGuard,
     },
     {
       provide: APP_GUARD,

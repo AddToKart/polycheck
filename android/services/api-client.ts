@@ -51,6 +51,17 @@ async function setTokenInStore(token: string | null) {
 
 let currentUser: User | null = null
 let tokenCache: string | null | undefined
+const authListeners = new Set<(user: User | null) => void>()
+
+function notifyAuthListeners() {
+  for (const listener of authListeners) listener(currentUser)
+}
+
+export function subscribeToAuthChanges(listener: (user: User | null) => void) {
+  authListeners.add(listener)
+  listener(currentUser)
+  return () => authListeners.delete(listener)
+}
 
 class ApiRequestError extends Error {
   constructor(message: string, readonly status: number) {
@@ -74,6 +85,11 @@ async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 204) return undefined as T
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }))
+    if (res.status === 401) {
+      currentUser = null
+      await Promise.all([saveUserToStore(null), setTokenInStore(null)])
+      notifyAuthListeners()
+    }
     throw new ApiRequestError(err.message || 'Request failed', res.status)
   }
   return res.json()
@@ -121,7 +137,7 @@ async function del<T>(path: string): Promise<T> {
 
 export const api = {
   async loginStudent(studentId: string, password?: string): Promise<User | null> {
-    const res = await fetch(`${API_BASE}/auth/login/student`, {
+    const res = await fetch(`${API_BASE}/auth/mobile/login/student`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ studentId, password: password ?? '' }),
@@ -134,11 +150,12 @@ export const api = {
     currentUser = data.user as User
     await saveUserToStore(currentUser)
     await setTokenInStore(data.token)
+    notifyAuthListeners()
     return currentUser
   },
 
   async loginFaculty(email: string, password?: string): Promise<User | null> {
-    const res = await fetch(`${API_BASE}/auth/login/faculty`, {
+    const res = await fetch(`${API_BASE}/auth/mobile/login/faculty`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password: password ?? '' }),
@@ -151,6 +168,7 @@ export const api = {
     currentUser = data.user as User
     await saveUserToStore(currentUser)
     await setTokenInStore(data.token)
+    notifyAuthListeners()
     if (currentUser.role === 'teacher') {
       const key = await getOrCreateTeacherSigningKey()
       await post('/auth/provision-key', { publicKey: key.publicKey })
@@ -163,15 +181,35 @@ export const api = {
   },
 
   async restoreSession(): Promise<User | null> {
-    const u = await loadUserFromStore()
-    if (u) currentUser = u
-    return u
+    const [cachedUser, token] = await Promise.all([loadUserFromStore(), getTokenFromStore()])
+    if (!cachedUser || !token) return null
+    currentUser = cachedUser
+    try {
+      const profile = await get<User>('/auth/me')
+      currentUser = profile
+      await saveUserToStore(profile)
+      notifyAuthListeners()
+      return profile
+    } catch (error) {
+      if (isNetworkError(error)) {
+        notifyAuthListeners()
+        return cachedUser
+      }
+      return null
+    }
   },
 
-  logout() {
+  async logout() {
+    const token = await getTokenFromStore()
     currentUser = null
-    saveUserToStore(null)
-    setTokenInStore(null)
+    await Promise.all([saveUserToStore(null), setTokenInStore(null)])
+    notifyAuthListeners()
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+    } catch { /* Local logout still succeeds while offline. */ }
   },
 
   getCurrentUser(): User | null {

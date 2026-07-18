@@ -1,6 +1,6 @@
-import { ForbiddenException } from '@nestjs/common'
+import { ConflictException, ForbiddenException } from '@nestjs/common'
 import { SubjectsService } from './subjects.service'
-import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../auth/authenticated-principal'
 
 describe('SubjectsService', () => {
   const student: RequestUser = { id: 'student-1', role: 'student' }
@@ -40,5 +40,18 @@ describe('SubjectsService', () => {
     await service.findAll({ id: 'admin-1', role: 'super_admin', scope: 'department', department: 'CCIS' })
 
     expect(prisma.subject.findMany.mock.calls[0][0].where.OR).toEqual(expect.any(Array))
+  })
+
+  it('returns a conflict instead of deleting a subject with sections', async () => {
+    const prisma = {
+      subject: {
+        findUnique: jest.fn().mockResolvedValue({ createdById: teacher.id, _count: { sections: 1 } }),
+        delete: jest.fn(),
+      },
+    }
+    const service = new SubjectsService(prisma as never)
+
+    await expect(service.remove('subject-1', teacher)).rejects.toThrow(ConflictException)
+    expect(prisma.subject.delete).not.toHaveBeenCalled()
   })
 })

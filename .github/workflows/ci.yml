@@ -38,9 +38,8 @@ jobs:
       NODE_ENV: test
       DATABASE_URL: postgresql://polycheck:polycheck-test-password@localhost:5432/polycheck_test?schema=public
       REDIS_URL: redis://localhost:6379/0
-      JWT_SECRET: ci-only-secret-that-is-at-least-32-characters
-      JWT_ISSUER: polycheck-api
-      JWT_AUDIENCE: polycheck-clients
+      BETTER_AUTH_SECRET: ci-only-better-auth-secret-at-least-32-characters
+      BETTER_AUTH_URL: http://localhost:4000
       CORS_ORIGINS: http://localhost:3000
       NEXT_PUBLIC_API_URL: http://localhost:4000/api
       EXPO_PUBLIC_API_URL: http://localhost:4000/api

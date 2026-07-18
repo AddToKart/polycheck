@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { NotificationProvider } from "@/lib/notifications";
+import { AuthSessionMonitor } from "@/components/AuthSessionMonitor";
 
 export const metadata: Metadata = {
   title: "Polycheck",
@@ -40,7 +41,10 @@ export default function RootLayout({
         <ThemeScript />
       </head>
       <body className="min-h-full flex flex-col font-sans">
-        <NotificationProvider>{children}</NotificationProvider>
+        <NotificationProvider>
+          <AuthSessionMonitor />
+          {children}
+        </NotificationProvider>
       </body>
     </html>
   );

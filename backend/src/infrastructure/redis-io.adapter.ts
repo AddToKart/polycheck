@@ -14,8 +14,11 @@ export class RedisIoAdapter extends IoAdapter {
     super(app)
   }
 
-  async connect(url?: string) {
-    if (!url) return
+  async connect(url?: string, required = false) {
+    if (!url) {
+      if (required) throw new Error('REDIS_URL is required for production WebSocket fan-out')
+      return
+    }
     try {
       this.publisher = createClient({ url })
       this.subscriber = this.publisher.duplicate()
@@ -25,6 +28,13 @@ export class RedisIoAdapter extends IoAdapter {
       this.adapterConstructor = createAdapter(this.publisher, this.subscriber)
       this.logger.log('Socket.IO Redis adapter enabled')
     } catch (error) {
+      if (this.subscriber?.isOpen) await this.subscriber.quit()
+      if (this.publisher?.isOpen) await this.publisher.quit()
+      if (required) {
+        throw new Error(
+          `Socket.IO Redis adapter is required in production: ${error instanceof Error ? error.message : 'unknown error'}`,
+        )
+      }
       this.logger.warn(
         `Socket.IO Redis adapter unavailable; using the in-process adapter: ${error instanceof Error ? error.message : 'unknown error'}`,
       )

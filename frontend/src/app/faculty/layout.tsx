@@ -10,12 +10,16 @@ export default function FacultyLayout({ children }: { children: React.ReactNode 
   const [user, setUser] = useState<User | null>(null)
 
   useEffect(() => {
-    const cu = api.getCurrentUser()
-    if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
-      router.replace('/')
-      return
-    }
-    setUser(cu)
+    let active = true
+    void api.restoreSession().then((cu) => {
+      if (!active) return
+      if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
+        router.replace('/')
+        return
+      }
+      setUser(cu)
+    })
+    return () => { active = false }
   }, [router])
 
   if (!user) return null

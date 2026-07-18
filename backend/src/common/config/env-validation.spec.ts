@@ -3,7 +3,7 @@ import { validateEnv } from './env-validation'
 const base = {
   NODE_ENV: 'development',
   DATABASE_URL: 'postgresql://user:pass@localhost:5432/polycheck',
-  JWT_SECRET: 'a'.repeat(32),
+  BETTER_AUTH_SECRET: 'a'.repeat(32),
 }
 
 describe('validateEnv', () => {

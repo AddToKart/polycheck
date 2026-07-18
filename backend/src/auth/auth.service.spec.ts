@@ -1,11 +1,11 @@
 import { Test } from '@nestjs/testing'
 import { ForbiddenException, HttpException, HttpStatus, NotFoundException, UnauthorizedException } from '@nestjs/common'
-import { JwtService } from '@nestjs/jwt'
-import { ConfigService } from '@nestjs/config'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 import { hashSync } from 'bcryptjs'
 import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import { AuthService } from './auth.service'
+import { BetterAuthService } from './better-auth.service'
 import type { User } from '@prisma/client'
 
 const VALID_PASSWORD = 'correct-horse-battery-staple'
@@ -17,6 +17,8 @@ function buildUser(overrides: Partial<User> = {}): User {
     studentId: 'S-001',
     fullName: 'Jane Doe',
     email: null,
+    authEmail: 'u-user-1@auth.polycheck.invalid',
+    authEmailVerified: false,
     password: VALID_HASH,
     role: 'student',
     program: 'BSIT',
@@ -43,7 +45,8 @@ describe('AuthService', () => {
     delete: jest.Mock
     setIfAbsent: jest.Mock
   }
-  let jwt: { sign: jest.Mock }
+  let betterAuth: { auth: { api: { signInEmail: jest.Mock; signOut: jest.Mock } } }
+  let events: { emit: jest.Mock }
 
   beforeEach(async () => {
     prisma = {
@@ -56,15 +59,27 @@ describe('AuthService', () => {
       delete: jest.fn(),
       setIfAbsent: jest.fn().mockResolvedValue(true),
     }
-    jwt = { sign: jest.fn().mockReturnValue('signed-jwt-token') }
+    betterAuth = {
+      auth: {
+        api: {
+          signInEmail: jest.fn().mockResolvedValue({
+            headers: new Headers({ 'set-auth-token': 'signed-bearer-token' }),
+          }),
+          signOut: jest.fn().mockResolvedValue({
+            headers: new Headers({ 'set-cookie': 'polycheck_access=; Max-Age=0; Path=/' }),
+          }),
+        },
+      },
+    }
+    events = { emit: jest.fn() }
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: PrismaService, useValue: prisma },
-        { provide: JwtService, useValue: jwt },
-        { provide: ConfigService, useValue: { get: jest.fn() } },
         { provide: RedisService, useValue: redis },
+        { provide: BetterAuthService, useValue: betterAuth },
+        { provide: EventEmitter2, useValue: events },
       ],
     }).compile()
 
@@ -74,21 +89,23 @@ describe('AuthService', () => {
   describe('loginStudent', () => {
     it('returns token and sanitized user for valid student credentials', async () => {
       prisma.user.findUnique.mockResolvedValue(buildUser())
-      prisma.user.update.mockResolvedValue(buildUser({ authVersion: 1 }))
       const result = await service.loginStudent('S-001', VALID_PASSWORD)
-      expect(result.token).toBe('signed-jwt-token')
+      expect(result.token).toBe('signed-bearer-token')
       expect(result.user.id).toBe('user-1')
       expect(result.user.role).toBe('student')
       expect(result.user).not.toHaveProperty('password')
-      expect(jwt.sign).toHaveBeenCalled()
-      // beginSession increments authVersion
-      expect(prisma.user.update).toHaveBeenCalled()
+      expect(betterAuth.auth.api.signInEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: expect.objectContaining({ email: 'u-user-1@auth.polycheck.invalid' }),
+        }),
+      )
+      expect(events.emit).toHaveBeenCalledWith('auth.session-replaced', { userId: 'user-1', reason: 'new_login' })
     })
 
     it('rejects invalid password even when student exists', async () => {
       prisma.user.findUnique.mockResolvedValue(buildUser())
       await expect(service.loginStudent('S-001', 'wrong-password')).rejects.toThrow(UnauthorizedException)
-      expect(prisma.user.update).not.toHaveBeenCalled()
+      expect(betterAuth.auth.api.signInEmail).not.toHaveBeenCalled()
     })
 
     it('rejects unknown student and exercises DUMMY_HASH compare (timing safety)', async () => {
@@ -131,9 +148,8 @@ describe('AuthService', () => {
 
     it('returns auth result for valid faculty credentials (email normalized lowercase)', async () => {
       prisma.user.findUnique.mockResolvedValue(facultyUser())
-      prisma.user.update.mockResolvedValue({ ...facultyUser(), authVersion: 1 })
       const result = await service.loginFaculty('Teacher@PUP.edu', VALID_PASSWORD)
-      expect(result.token).toBe('signed-jwt-token')
+      expect(result.token).toBe('signed-bearer-token')
       expect(prisma.user.findUnique.mock.calls[0][0]).toEqual({ where: { email: 'teacher@pup.edu' } })
     })
 
@@ -202,14 +218,12 @@ describe('AuthService', () => {
   })
 
   describe('logout', () => {
-    it('increments authVersion and returns success message', async () => {
-      prisma.user.update.mockResolvedValue(buildUser({ authVersion: 1 }))
-      const result = await service.logout('user-1')
+    it('revokes the Better Auth session and returns response headers', async () => {
+      const headers = new Headers({ authorization: 'Bearer token' })
+      const result = await service.logout(headers)
       expect(result.message).toBe('Logged out successfully')
-      expect(prisma.user.update).toHaveBeenCalledWith({
-        where: { id: 'user-1' },
-        data: { authVersion: { increment: 1 } },
-      })
+      expect(betterAuth.auth.api.signOut).toHaveBeenCalledWith({ headers, returnHeaders: true })
+      expect(result.headers.get('set-cookie')).toContain('polycheck_access=')
     })
   })
 })

@@ -10,7 +10,7 @@ import type { Observable } from 'rxjs'
 import { catchError, from, map, mergeMap, of, throwError } from 'rxjs'
 import { createHash } from 'crypto'
 import type { Response } from 'express'
-import type { RequestUser } from '../../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../../auth/authenticated-principal'
 import { ErrorCode } from '../constants/error-codes'
 import { RedisService } from '../../infrastructure/redis.service'
 

@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { createClient } from 'redis'
 
@@ -10,12 +10,16 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private client: ReturnType<typeof createClient> | null = null
   private readonly localValues = new Map<string, { value: string; expiresAt: number }>()
   private readonly localRateLimits = new Map<string, { count: number; expiresAt: number }>()
+  private readonly requireDistributedState: boolean
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly config: ConfigService) {
+    this.requireDistributedState = config.get<string>('NODE_ENV') === 'production'
+  }
 
   async onModuleInit() {
     const url = this.config.get<string>('REDIS_URL')
     if (!url) {
+      if (this.requireDistributedState) throw new Error('REDIS_URL is required in production')
       this.logger.log('REDIS_URL is not set; using local WebSocket, database, and throttling fallbacks')
       return
     }
@@ -26,6 +30,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       this.client = client
       this.logger.log('Redis infrastructure connected')
     } catch (error) {
+      if (this.requireDistributedState) {
+        throw new Error(
+          `Redis is required in production: ${error instanceof Error ? error.message : 'unknown connection error'}`,
+        )
+      }
       this.logger.warn(
         `Redis unavailable; continuing with local fallbacks: ${error instanceof Error ? error.message : 'unknown error'}`,
       )
@@ -90,9 +99,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         if (Number.isFinite(count)) return count <= limit
         this.logger.warn('Redis returned an invalid rate-limit counter; using the in-process fallback')
       } catch (error) {
+        this.assertDistributedStateAvailable('consume rate limit', error)
         this.logFallback('consume rate limit', error)
       }
     }
+    this.assertDistributedStateAvailable('consume rate limit')
     return this.consumeLocalRateLimit(redisKey, limit, windowSeconds)
   }
 
@@ -104,9 +115,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         const result = await this.client.set(storageKey, value, { EX: ttl, NX: true })
         return result === 'OK'
       } catch (error) {
+        this.assertDistributedStateAvailable('acquire idempotency lock', error)
         this.logFallback('set value if absent', error)
       }
     }
+    this.assertDistributedStateAvailable('acquire idempotency lock')
     if (this.getLocalValue(storageKey) !== null) return false
     this.setLocalValue(storageKey, value, ttl)
     return true
@@ -166,6 +179,13 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private logFallback(operation: string, error: unknown) {
     this.logger.warn(
       `Redis failed to ${operation}; using the in-process fallback: ${error instanceof Error ? error.message : 'unknown error'}`,
+    )
+  }
+
+  private assertDistributedStateAvailable(operation: string, cause?: unknown) {
+    if (!this.requireDistributedState) return
+    throw new ServiceUnavailableException(
+      `Redis is unavailable; cannot safely ${operation}${cause instanceof Error ? `: ${cause.message}` : ''}`,
     )
   }
 }

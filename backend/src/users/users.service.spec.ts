@@ -1,7 +1,7 @@
 import { ConflictException, ForbiddenException } from '@nestjs/common'
 import { compare } from 'bcryptjs'
 import { UsersService } from './users.service'
-import type { RequestUser } from '../auth/strategies/jwt.strategy'
+import type { RequestUser } from '../auth/authenticated-principal'
 
 describe('UsersService', () => {
   const teacher: RequestUser = { id: 'teacher-1', role: 'teacher' }
@@ -23,6 +23,9 @@ describe('UsersService', () => {
           id: 'student-1',
           role: 'student',
           password: 'hash',
+          authEmail: 'internal@auth.polycheck.invalid',
+          authEmailVerified: true,
+          authVersion: 3,
           teacherPublicKey: 'public',
           enrollments: [{ sectionId: 'section-1' }],
         }),
@@ -33,6 +36,9 @@ describe('UsersService', () => {
     const result = await service.findOne('student-1', { id: 'student-1', role: 'student' })
 
     expect(result).not.toHaveProperty('password')
+    expect(result).not.toHaveProperty('authEmail')
+    expect(result).not.toHaveProperty('authEmailVerified')
+    expect(result).not.toHaveProperty('authVersion')
     expect(result).not.toHaveProperty('teacherPublicKey')
     expect(result.enrolledSectionIds).toEqual(['section-1'])
   })
@@ -147,6 +153,9 @@ describe('UsersService', () => {
         findUnique: jest.fn().mockResolvedValue({ id: 'teacher-1', role: 'teacher', department: 'CCIS' }),
         update: jest.fn().mockResolvedValue({ id: 'teacher-1' }),
       },
+      authAccount: { upsert: jest.fn().mockResolvedValue({}) },
+      authSession: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
     }
     const service = new UsersService(prisma as never)
 
@@ -159,6 +168,12 @@ describe('UsersService', () => {
     expect(updateData.authVersion).toEqual({ increment: 1 })
     expect(updateData.password).not.toBe('Replacement1!Secure')
     await expect(compare('Replacement1!Secure', updateData.password)).resolves.toBe(true)
+    expect(prisma.authAccount.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { providerId_accountId: { providerId: 'credential', accountId: 'teacher-1' } },
+      }),
+    )
+    expect(prisma.authSession.deleteMany).toHaveBeenCalledWith({ where: { userId: 'teacher-1' } })
   })
 
   it('does not allow super admin passwords to be reset through user management', async () => {
