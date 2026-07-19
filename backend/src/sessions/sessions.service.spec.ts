@@ -55,6 +55,8 @@ describe('SessionsService', () => {
     setJson: jest.Mock
     delete: jest.Mock
     setIfAbsent: jest.Mock
+    acquireLock: jest.Mock
+    releaseLock: jest.Mock
   }
 
   beforeEach(async () => {
@@ -83,6 +85,8 @@ describe('SessionsService', () => {
       setJson: jest.fn(),
       delete: jest.fn(),
       setIfAbsent: jest.fn().mockResolvedValue(true),
+      acquireLock: jest.fn().mockResolvedValue('owner-token'),
+      releaseLock: jest.fn().mockResolvedValue(true),
     }
     mockedVerifyQRToken.mockReset()
 
@@ -256,6 +260,16 @@ describe('SessionsService', () => {
       await expect(service.activate('missing', dto, teacherUser)).rejects.toThrow(NotFoundException)
     })
 
+    it('rejects activation timing above the hardened caps without changing persisted session values', async () => {
+      await expect(service.activate('sess-1', { ...dto, validityMinutes: 16 }, teacherUser)).rejects.toThrow(
+        BadRequestException,
+      )
+      await expect(service.activate('sess-1', { ...dto, gracePeriodMinutes: 61 }, teacherUser)).rejects.toThrow(
+        BadRequestException,
+      )
+      expect(prisma.session.findUnique).not.toHaveBeenCalled()
+    })
+
     it('forbids teacher who does not own the section', async () => {
       prisma.session.findUnique.mockResolvedValue(makeSession())
       prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-other', subject: { name: 'CS 101' } })
@@ -309,6 +323,52 @@ describe('SessionsService', () => {
         teacherName: '',
       } as any)
       await expect(service.activate('sess-1', dto, teacherUser)).rejects.toThrow(BadRequestException)
+    })
+
+    it('materializes an expired signed offline activation as ended with an absent roster', async () => {
+      const session = makeSession()
+      prisma.session.findUnique.mockResolvedValue(session)
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      mockedVerifyQRToken.mockReturnValue({
+        version: 1,
+        sessionId: 'sess-1',
+        sectionId: 'sec-1',
+        teacherId: 'teacher-1',
+        issuedAt: Date.now() - 20 * 60_000,
+        validityMinutes: 10,
+        gracePeriodMinutes: 5,
+        teacherName: '',
+      } as any)
+      const ended = { ...session, isActive: false, endedAt: new Date() }
+      const tx = {
+        session: { update: jest.fn().mockResolvedValue(ended) },
+        enrollment: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([{ studentId: 'stu-1', student: { fullName: 'Jane Doe', program: 'BSIT' } }]),
+        },
+        attendanceRecord: {
+          createMany: jest.fn().mockResolvedValue({ count: 1 }),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+      }
+      prisma.$transaction.mockImplementation(async (cb: any) => cb(tx))
+
+      const result = await service.activate('sess-1', dto, teacherUser)
+
+      expect(tx.session.update.mock.calls[0][0].data).toEqual(
+        expect.objectContaining({ isActive: false, qrToken: null, endedAt: expect.any(Date) }),
+      )
+      expect(tx.attendanceRecord.createMany.mock.calls[0][0].data[0].status).toBe('absent')
+      expect(tx.attendanceRecord.updateMany).toHaveBeenCalledWith({
+        where: { sessionId: 'sess-1', status: 'pending' },
+        data: { status: 'absent', timestamp: expect.any(Date), manuallySet: false },
+      })
+      expect(realtime.emitSessionState).toHaveBeenCalledWith(ended, 'ended')
+      expect(redis.delete).toHaveBeenCalledWith('active-session:sess-1')
+      expect(redis.setJson).not.toHaveBeenCalled()
+      expect(result.isActive).toBe(false)
     })
 
     it('activates session, seeds pending attendance records, caches, and emits state', async () => {
@@ -406,6 +466,66 @@ describe('SessionsService', () => {
       }
       prisma.$transaction.mockImplementation(async (cb: any) => cb(tx))
       await expect(service.end('sess-1', teacherUser)).rejects.toThrow(ConflictException)
+      expect(redis.delete).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('autoEndExpiredSessions', () => {
+    it('skips the tick when another replica owns the lock', async () => {
+      redis.acquireLock.mockResolvedValue(null)
+
+      await service.autoEndExpiredSessions()
+
+      expect(prisma.session.findMany).not.toHaveBeenCalled()
+      expect(redis.releaseLock).not.toHaveBeenCalled()
+    })
+
+    it('mutates attendance and emits side effects only after winning the observed session claim', async () => {
+      const qrGeneratedAt = new Date(Date.now() - 20 * 60_000)
+      const qrTokenExpiresAt = new Date(Date.now() - 10 * 60_000)
+      const session = makeSession({ isActive: true, qrGeneratedAt, qrTokenExpiresAt, gracePeriodMinutes: 5 })
+      prisma.session.findMany.mockResolvedValue([session])
+      const ended = { ...session, isActive: false, endedAt: new Date() }
+      const tx = {
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(ended),
+        },
+        attendanceRecord: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+
+      await service.autoEndExpiredSessions()
+
+      expect(tx.session.updateMany.mock.calls[0][0].where).toEqual({
+        id: 'sess-1',
+        isActive: true,
+        qrTokenExpiresAt,
+        qrGeneratedAt,
+      })
+      expect(tx.attendanceRecord.updateMany).toHaveBeenCalledTimes(1)
+      expect(realtime.emitSessionState).toHaveBeenCalledWith(ended, 'ended')
+      expect(redis.delete).toHaveBeenCalledWith('active-session:sess-1')
+      expect(redis.releaseLock).toHaveBeenCalledWith('sessions:auto-end-expired', 'owner-token')
+    })
+
+    it('does not mutate attendance or emit side effects when the observed session claim loses a race', async () => {
+      const qrGeneratedAt = new Date(Date.now() - 20 * 60_000)
+      const qrTokenExpiresAt = new Date(Date.now() - 10 * 60_000)
+      prisma.session.findMany.mockResolvedValue([
+        makeSession({ isActive: true, qrGeneratedAt, qrTokenExpiresAt, gracePeriodMinutes: 5 }),
+      ])
+      const tx = {
+        session: { updateMany: jest.fn().mockResolvedValue({ count: 0 }), findUniqueOrThrow: jest.fn() },
+        attendanceRecord: { updateMany: jest.fn() },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+
+      await service.autoEndExpiredSessions()
+
+      expect(tx.attendanceRecord.updateMany).not.toHaveBeenCalled()
+      expect(tx.session.findUniqueOrThrow).not.toHaveBeenCalled()
+      expect(realtime.emitSessionState).not.toHaveBeenCalled()
       expect(redis.delete).not.toHaveBeenCalled()
     })
   })

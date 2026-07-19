@@ -1,8 +1,15 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { randomUUID } from 'node:crypto'
 import { createClient } from 'redis'
 
 const MAX_LOCAL_FALLBACK_ENTRIES = 10_000
+const RELEASE_LOCK_SCRIPT = `
+if redis.call('get', KEYS[1]) == ARGV[1] then
+  return redis.call('del', KEYS[1])
+end
+return 0
+`
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
@@ -43,6 +50,26 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   isAvailable() {
     return Boolean(this.client?.isReady)
+  }
+
+  async ping() {
+    if (!this.client?.isReady) return false
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      return (
+        (await Promise.race([
+          this.client.ping(),
+          new Promise<string>((_, reject) => {
+            timeout = setTimeout(() => reject(new Error('Redis ping timed out')), 2_000)
+            timeout.unref()
+          }),
+        ])) === 'PONG'
+      )
+    } catch {
+      return false
+    } finally {
+      if (timeout) clearTimeout(timeout)
+    }
   }
 
   async getJson<T>(key: string): Promise<T | null> {
@@ -122,6 +149,32 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     this.assertDistributedStateAvailable('acquire idempotency lock')
     if (this.getLocalValue(storageKey) !== null) return false
     this.setLocalValue(storageKey, value, ttl)
+    return true
+  }
+
+  async acquireLock(key: string, ttlSeconds: number): Promise<string | null> {
+    const ownershipToken = randomUUID()
+    const acquired = await this.setIfAbsent(`lock:${key}`, ownershipToken, ttlSeconds)
+    return acquired ? ownershipToken : null
+  }
+
+  async releaseLock(key: string, ownershipToken: string): Promise<boolean> {
+    const storageKey = this.key(`lock:${key}`)
+    if (this.client?.isReady) {
+      try {
+        const result = await this.client.eval(RELEASE_LOCK_SCRIPT, {
+          keys: [storageKey],
+          arguments: [ownershipToken],
+        })
+        return Number(result) === 1
+      } catch (error) {
+        this.assertDistributedStateAvailable('release distributed lock', error)
+        this.logFallback('release distributed lock', error)
+      }
+    }
+    this.assertDistributedStateAvailable('release distributed lock')
+    if (this.getLocalValue(storageKey) !== ownershipToken) return false
+    this.localValues.delete(storageKey)
     return true
   }
 

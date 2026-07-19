@@ -1,83 +1,75 @@
-import { useEffect } from 'react'
-import { Platform, View } from 'react-native'
-import { router, Tabs } from 'expo-router'
+import { Platform } from 'react-native'
+import { Tabs } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 
 const iconMap: Record<string, keyof typeof MaterialIcons.glyphMap> = {
-  dashboard: 'dashboard',
-  schedule: 'calendar-today',
+  dashboard: 'grid-view',
+  schedule: 'calendar-month',
   scan: 'qr-code-scanner',
-  'id-card': 'badge',
   history: 'history',
 }
 
 export default function TabLayout() {
   const { isDark } = useTheme()
   const insets = useSafeAreaInsets()
-
-  useEffect(() => {
-    const user = api.getCurrentUser()
-    if (!user || user.role !== 'student') {
-      router.replace('/')
-    }
-  }, [])
+  const bottomMargin = Math.max(insets.bottom, 12)
 
   return (
     <Tabs
       key={isDark ? 'dark' : 'light'}
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: isDark ? '#4A0A0B' : '#FFDF00',
-        tabBarInactiveTintColor: isDark ? 'rgba(74, 10, 11, 0.4)' : 'rgba(255, 223, 0, 0.55)',
+        tabBarActiveTintColor: '#FFDF00',
+        tabBarInactiveTintColor: 'rgba(255,255,255,0.70)',
         tabBarStyle: {
           position: 'absolute',
-          bottom: insets.bottom + 12,
-          left: 24,
-          right: 24,
-          backgroundColor: isDark ? '#FFDF00' : '#7B1113',
-          borderTopWidth: 0,
-          borderWidth: 1,
-          borderColor: isDark ? 'rgba(74, 10, 11, 0.15)' : 'rgba(255, 223, 0, 0.15)',
-          borderRadius: 28,
+          bottom: bottomMargin,
+          left: 16,
+          right: 16,
+          backgroundColor: isDark ? '#1F0B0E' : '#7B1113',
+          borderRadius: 32,
+          borderWidth: 0,
           height: 64,
-          paddingBottom: 0,
-          paddingTop: 0,
+          paddingTop: 6,
+          paddingBottom: 6,
           ...Platform.select({
             ios: {
               shadowColor: '#000',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.15,
-              shadowRadius: 12,
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.35,
+              shadowRadius: 10,
             },
             android: {
-              elevation: 8,
+              elevation: 12,
             },
           }),
         },
+        tabBarItemStyle: {
+          justifyContent: 'center',
+          alignItems: 'center',
+        },
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 9,
           fontFamily: 'DMSans_700Bold',
           textTransform: 'uppercase',
-          letterSpacing: 1,
-          marginTop: -4,
+          letterSpacing: 1.2,
+          marginTop: 1,
         },
         tabBarIconStyle: {
-          marginTop: 4,
+          marginTop: 2,
+          marginBottom: 0,
         },
-        tabBarIcon: ({ focused, color }) => {
+        tabBarIcon: ({ color }) => {
           const iconName = iconMap[route.name]
           if (!iconName) return null
           return (
-            <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-              <MaterialIcons
-                name={iconName}
-                size={24}
-                color={color}
-              />
-            </View>
+            <MaterialIcons
+              name={iconName}
+              size={22}
+              color={color}
+            />
           )
         },
       })}
@@ -86,7 +78,7 @@ export default function TabLayout() {
       <Tabs.Screen name="schedule" options={{ title: 'Schedule', tabBarLabel: 'Schedule' }} />
       <Tabs.Screen name="enroll" options={{ href: null }} />
       <Tabs.Screen name="scan" options={{ title: 'Scan', tabBarLabel: 'Scan' }} />
-      <Tabs.Screen name="id-card" options={{ title: 'ID Card', tabBarLabel: 'ID Card' }} />
+      <Tabs.Screen name="id-card" options={{ href: null }} />
       <Tabs.Screen name="history" options={{ title: 'Audit', tabBarLabel: 'Audit' }} />
       <Tabs.Screen name="subject-info/[id]" options={{ href: null }} />
       <Tabs.Screen name="subject-info/[id]/create-session" options={{ href: null }} />

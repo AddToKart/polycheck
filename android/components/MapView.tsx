@@ -303,6 +303,8 @@ export default function MapView({ latitude, longitude, radius, interactive, rece
   const mapWebView = () => (
     <WebView
       ref={webRef}
+      accessible
+      accessibilityLabel={interactive ? 'Interactive geofence map' : 'Session geofence map'}
       source={source}
       style={styles.webview}
       scrollEnabled={false}
@@ -326,6 +328,7 @@ export default function MapView({ latitude, longitude, radius, interactive, rece
             <TouchableOpacity
               style={styles.fullscreenBtn}
               onPress={() => setFullscreen(true)}
+              accessibilityRole="button"
               accessibilityLabel="Full screen map"
             >
               <MaterialIcons name="fullscreen" size={20} color="#FFF" />
@@ -363,6 +366,17 @@ export default function MapView({ latitude, longitude, radius, interactive, rece
               <View
                 ref={sliderRef}
                 style={styles.sliderTrack}
+                accessible
+                accessibilityRole="adjustable"
+                accessibilityLabel="Geofence radius"
+                accessibilityValue={{ min: 10, max: 200, now: radius, text: `${radius} meters` }}
+                accessibilityActions={[{ name: 'increment', label: 'Increase radius' }, { name: 'decrement', label: 'Decrease radius' }]}
+                onAccessibilityAction={(event) => {
+                  const nextRadius = event.nativeEvent.actionName === 'increment'
+                    ? Math.min(200, radius + 10)
+                    : Math.max(10, radius - 10)
+                  onRadiusChange?.(nextRadius)
+                }}
                 onLayout={(e) => {
                   sliderWidthRef.current = e.nativeEvent.layout.width
                   measureSlider()
@@ -389,7 +403,7 @@ export default function MapView({ latitude, longitude, radius, interactive, rece
         <Modal visible transparent animationType="fade" onRequestClose={() => setFullscreen(false)}>
           <View style={[styles.fsOverlay, isDark && styles.fsOverlayDark]}>
             <View style={[styles.fsHeader, isDark && styles.fsHeaderDark]}>
-              <TouchableOpacity onPress={() => setFullscreen(false)} style={styles.fsCloseBtn} accessibilityLabel="Close full screen map">
+              <TouchableOpacity onPress={() => setFullscreen(false)} style={styles.fsCloseBtn} accessibilityRole="button" accessibilityLabel="Close full screen map">
                 <MaterialIcons name="close" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
               </TouchableOpacity>
               <Text style={[styles.fsTitle, isDark && styles.textWhite]}>Set Location</Text>
@@ -398,6 +412,8 @@ export default function MapView({ latitude, longitude, radius, interactive, rece
             <View style={styles.fsMapContainer}>
               <WebView
                 ref={fullscreenWebRef}
+                accessible
+                accessibilityLabel="Full-screen interactive geofence map"
                 source={source}
                 style={styles.webview}
                 scrollEnabled={false}

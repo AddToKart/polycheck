@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Request } from '@nestjs/common'
 import { Roles } from '../common/decorators/roles.decorator'
 import {
+  AttendanceListQueryDto,
+  AttendanceReportQueryDto,
   CreateManualAttendanceDto,
   ScanAttendanceDto,
   SubmitAttendanceDto,
@@ -8,30 +10,34 @@ import {
 } from './dto/attendance.dto'
 import { AttendanceService } from './attendance.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
-import { parsePagination } from '../common/utils/pagination'
 
 @Controller('attendance')
 export class AttendanceController {
   constructor(private readonly attendance: AttendanceService) {}
 
   @Get()
-  findAll(@Request() req: AuthenticatedRequest, @Query('sessionId') sessionId?: string) {
-    return this.attendance.findAll(req.user, sessionId)
+  findAll(@Request() req: AuthenticatedRequest, @Query() query: AttendanceListQueryDto) {
+    return this.attendance.findAll(req.user, query)
   }
 
   @Get('page')
-  findPage(
-    @Request() req: AuthenticatedRequest,
-    @Query('sessionId') sessionId?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ) {
-    return this.attendance.findPage(req.user, sessionId, parsePagination(limit, offset))
+  findPage(@Request() req: AuthenticatedRequest, @Query() query: AttendanceListQueryDto) {
+    return this.attendance.findPage(req.user, query, {
+      limit: Math.min(query.limit ?? 50, 100),
+      offset: query.offset ?? 0,
+    })
   }
 
   @Get('summaries')
-  summaries(@Request() req: AuthenticatedRequest) {
-    return this.attendance.summaries(req.user)
+  @Roles('teacher', 'super_admin')
+  summaries(@Request() req: AuthenticatedRequest, @Query() query: AttendanceReportQueryDto) {
+    return this.attendance.summaries(req.user, query)
+  }
+
+  @Get('report')
+  @Roles('teacher', 'super_admin')
+  report(@Request() req: AuthenticatedRequest, @Query() query: AttendanceReportQueryDto) {
+    return this.attendance.report(req.user, query)
   }
 
   @Get('attempts')

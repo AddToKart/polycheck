@@ -15,6 +15,8 @@ import { AttendanceGateway } from '../realtime/attendance.gateway'
 import { RedisService } from '../infrastructure/redis.service'
 import type { Session } from '@prisma/client'
 
+const AUTO_END_LOCK_TTL_SECONDS = 5 * 60
+
 @Injectable()
 export class SessionsService {
   constructor(
@@ -69,7 +71,7 @@ export class SessionsService {
         subjectName,
         teacherId,
         // Timing defaults — the authoritative values are set at QR generation time
-        qrValidityMinutes: qrValidityMinutes ?? 20,
+        qrValidityMinutes: qrValidityMinutes ?? 15,
         gracePeriodMinutes: gracePeriodMinutes ?? 15,
         geofenceLatitude: geofence.latitude,
         geofenceLongitude: geofence.longitude,
@@ -123,7 +125,7 @@ export class SessionsService {
             endTime: dto.endTime,
             room: dto.room,
             // Timing defaults — the authoritative values are set at QR generation time
-            qrValidityMinutes: dto.qrValidityMinutes ?? 20,
+            qrValidityMinutes: dto.qrValidityMinutes ?? 15,
             gracePeriodMinutes: dto.gracePeriodMinutes ?? 15,
             teacherId: user.id,
             geofenceLatitude: dto.geofence.latitude,
@@ -139,6 +141,9 @@ export class SessionsService {
   }
 
   async activate(id: string, dto: ActivateSessionDto, user: RequestUser) {
+    if (dto.validityMinutes > 15 || (dto.gracePeriodMinutes ?? 0) > 60) {
+      throw new BadRequestException('QR validity is limited to 15 minutes and grace to 60 minutes')
+    }
     const session = await this.prisma.session.findUnique({ where: { id } })
     if (!session) throw new NotFoundException('Session not found')
     await this.assertTeacherOwnsSection(session.sectionId, user.id)
@@ -152,12 +157,15 @@ export class SessionsService {
     }
     // Grace period is configurable at generation time; fall back to the session default
     const gracePeriodMinutes = dto.gracePeriodMinutes ?? session.gracePeriodMinutes
+    if (gracePeriodMinutes > 60) throw new BadRequestException('QR grace period is limited to 60 minutes')
     if (payload.validityMinutes !== dto.validityMinutes || payload.gracePeriodMinutes !== gracePeriodMinutes) {
       throw new BadRequestException('QR token timing does not match the session')
     }
     if (!Number.isFinite(payload.issuedAt) || payload.issuedAt > Date.now() + 5 * 60_000) {
       throw new BadRequestException('QR token issuedAt is invalid')
     }
+    const receivedAt = new Date()
+    const expired = receivedAt.getTime() > payload.issuedAt + (dto.validityMinutes + gracePeriodMinutes) * 60_000
     const issuedAt = new Date(payload.issuedAt)
     const expiresAt = new Date(issuedAt.getTime() + dto.validityMinutes * 60_000)
 
@@ -165,11 +173,11 @@ export class SessionsService {
       const updated = await tx.session.update({
         where: { id },
         data: {
-          isActive: true,
-          endedAt: null,
-          qrToken: dto.token,
-          qrGeneratedAt: issuedAt,
-          qrTokenExpiresAt: expiresAt,
+          isActive: !expired,
+          endedAt: expired ? receivedAt : null,
+          qrToken: expired ? null : dto.token,
+          qrGeneratedAt: expired ? null : issuedAt,
+          qrTokenExpiresAt: expired ? null : expiresAt,
           qrValidityMinutes: dto.validityMinutes,
           gracePeriodMinutes,
         },
@@ -185,19 +193,26 @@ export class SessionsService {
           studentId: enrollment.studentId,
           studentName: enrollment.student.fullName,
           studentProgram: enrollment.student.program,
-          timestamp: issuedAt,
-          status: 'pending',
+          timestamp: expired ? receivedAt : issuedAt,
+          status: expired ? 'absent' : 'pending',
           latitude: session.geofenceLatitude,
           longitude: session.geofenceLongitude,
           isSynced: true,
-          syncedAt: issuedAt,
+          syncedAt: expired ? receivedAt : issuedAt,
         })),
         skipDuplicates: true,
       })
+      if (expired) {
+        await tx.attendanceRecord.updateMany({
+          where: { sessionId: id, status: 'pending' },
+          data: { status: 'absent', timestamp: receivedAt, manuallySet: false },
+        })
+      }
       return updated
     })
-    this.realtime.emitSessionState(activated, 'activated')
-    await this.cacheActiveSession(activated, teacher.teacherPublicKey)
+    this.realtime.emitSessionState(activated, expired ? 'ended' : 'activated')
+    if (expired) await this.redis.delete(`active-session:${activated.id}`)
+    else await this.cacheActiveSession(activated, teacher.teacherPublicKey)
     return this.present(activated, teacher.teacherPublicKey, true)
   }
 
@@ -206,16 +221,15 @@ export class SessionsService {
     if (!session) throw new NotFoundException('Session not found')
     await this.assertTeacherOwnsSection(session.sectionId, user.id)
     const ended = await this.prisma.$transaction(async (tx) => {
-      const pendingResult = await tx.attendanceRecord.updateMany({
-        where: { sessionId: id, status: 'pending' },
-        data: { status: 'absent', timestamp: new Date(), manuallySet: false },
-      })
-      void pendingResult
       const sessionResult = await tx.session.updateMany({
         where: { id, isActive: true },
         data: { isActive: false, endedAt: new Date(), qrToken: null, qrTokenExpiresAt: null, qrGeneratedAt: null },
       })
       if (sessionResult.count === 0) throw new ConflictException('Session is not active or was already ended')
+      await tx.attendanceRecord.updateMany({
+        where: { sessionId: id, status: 'pending' },
+        data: { status: 'absent', timestamp: new Date(), manuallySet: false },
+      })
       return tx.session.findUniqueOrThrow({ where: { id } })
     })
     this.realtime.emitSessionState(ended, 'ended')
@@ -223,9 +237,14 @@ export class SessionsService {
     return this.present(ended, await this.teacherPublicKey(session.teacherId), true)
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron(CronExpression.EVERY_MINUTE, { waitForCompletion: true })
   async autoEndExpiredSessions() {
+    const lockKey = 'sessions:auto-end-expired'
+    let ownershipToken: string | null = null
     try {
+      ownershipToken = await this.redis.acquireLock(lockKey, AUTO_END_LOCK_TTL_SECONDS)
+      if (!ownershipToken) return
+
       const activeSessions = await this.prisma.session.findMany({
         where: {
           isActive: true,
@@ -241,35 +260,59 @@ export class SessionsService {
       })
 
       for (const session of expired) {
-        const ended = await this.prisma.$transaction(async (tx) => {
-          await tx.attendanceRecord.updateMany({
-            where: { sessionId: session.id, status: 'pending' },
-            data: { status: 'absent', timestamp: now, manuallySet: false },
+        try {
+          const ended = await this.prisma.$transaction(async (tx) => {
+            const claim = await tx.session.updateMany({
+              where: {
+                id: session.id,
+                isActive: true,
+                qrTokenExpiresAt: session.qrTokenExpiresAt,
+                qrGeneratedAt: session.qrGeneratedAt,
+              },
+              data: {
+                isActive: false,
+                endedAt: now,
+                qrToken: null,
+                qrTokenExpiresAt: null,
+                qrGeneratedAt: null,
+              },
+            })
+            if (claim.count === 0) return null
+
+            await tx.attendanceRecord.updateMany({
+              where: { sessionId: session.id, status: 'pending' },
+              data: { status: 'absent', timestamp: now, manuallySet: false },
+            })
+            return tx.session.findUniqueOrThrow({ where: { id: session.id } })
           })
+          if (!ended) continue
 
-          const updated = await tx.session.update({
-            where: { id: session.id },
-            data: {
-              isActive: false,
-              endedAt: now,
-              qrToken: null,
-              qrTokenExpiresAt: null,
-              qrGeneratedAt: null,
-            },
-          })
-
-          return updated
-        })
-
-        this.realtime.emitSessionState(ended, 'ended')
-        await this.redis.delete(`active-session:${ended.id}`)
-        Logger.log(`Automatically ended expired session ${session.id} (${session.subjectName})`, 'SessionsService')
+          this.realtime.emitSessionState(ended, 'ended')
+          await this.redis.delete(`active-session:${ended.id}`)
+          Logger.log(`Automatically ended expired session ${session.id} (${session.subjectName})`, 'SessionsService')
+        } catch (error) {
+          Logger.error(
+            `Failed to auto-end session ${session.id}: ${error instanceof Error ? error.message : 'unknown'}`,
+            'SessionsService',
+          )
+        }
       }
     } catch (error) {
       Logger.error(
         `Failed to auto-end expired sessions: ${error instanceof Error ? error.message : 'unknown'}`,
         'SessionsService',
       )
+    } finally {
+      if (ownershipToken) {
+        try {
+          await this.redis.releaseLock(lockKey, ownershipToken)
+        } catch (error) {
+          Logger.error(
+            `Failed to release auto-end lock: ${error instanceof Error ? error.message : 'unknown'}`,
+            'SessionsService',
+          )
+        }
+      }
     }
   }
 

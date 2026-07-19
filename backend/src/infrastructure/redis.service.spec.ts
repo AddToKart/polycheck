@@ -28,6 +28,15 @@ describe('RedisService', () => {
     expect(transaction.exec).toHaveBeenCalledTimes(1)
   })
 
+  it('actively pings Redis for readiness', async () => {
+    const service = new RedisService(config)
+    const client = { isReady: true, ping: jest.fn().mockResolvedValue('PONG') }
+    ;(service as unknown as { client: typeof client }).client = client
+
+    await expect(service.ping()).resolves.toBe(true)
+    expect(client.ping).toHaveBeenCalledTimes(1)
+  })
+
   it('provides expiring local storage for idempotency when Redis is unavailable', async () => {
     const service = new RedisService(config)
 
@@ -37,5 +46,29 @@ describe('RedisService', () => {
     await expect(service.getJson('response')).resolves.toEqual({ ok: true })
     await service.delete('request')
     await expect(service.setIfAbsent('request', '1', 60)).resolves.toBe(true)
+  })
+
+  it('releases a local lock only when the ownership token matches', async () => {
+    const service = new RedisService(config)
+    const ownershipToken = await service.acquireLock('maintenance', 60)
+
+    expect(ownershipToken).not.toBeNull()
+    await expect(service.acquireLock('maintenance', 60)).resolves.toBeNull()
+    await expect(service.releaseLock('maintenance', 'not-the-owner')).resolves.toBe(false)
+    await expect(service.acquireLock('maintenance', 60)).resolves.toBeNull()
+    await expect(service.releaseLock('maintenance', ownershipToken!)).resolves.toBe(true)
+    await expect(service.acquireLock('maintenance', 60)).resolves.not.toBeNull()
+  })
+
+  it('uses compare-and-delete Lua when releasing a Redis lock', async () => {
+    const service = new RedisService(config)
+    const client = { isReady: true, eval: jest.fn().mockResolvedValue(0) }
+    ;(service as unknown as { client: typeof client }).client = client
+
+    await expect(service.releaseLock('maintenance', 'owner-token')).resolves.toBe(false)
+    expect(client.eval).toHaveBeenCalledWith(expect.stringContaining("redis.call('get', KEYS[1]) == ARGV[1]"), {
+      keys: ['polycheck:lock:maintenance'],
+      arguments: ['owner-token'],
+    })
   })
 })

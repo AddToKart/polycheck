@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api-client'
-import type { User, AttendanceSummary } from '@polycheck/shared'
+import type { User, AttendanceReport } from '@polycheck/shared'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,13 +12,29 @@ import StatusBadge from '@/components/StatusBadge'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Download, ChevronRight, CalendarDays } from 'lucide-react'
 
+const campusDateFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Manila',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+const campusDate = (date = new Date()) => {
+  const parts = new Map(campusDateFormatter.formatToParts(date).map((part) => [part.type, part.value]))
+  return `${parts.get('year')}-${parts.get('month')}-${parts.get('day')}`
+}
+
+const defaultToDate = campusDate()
+const defaultFrom = new Date(`${defaultToDate}T00:00:00.000Z`)
+defaultFrom.setUTCDate(defaultFrom.getUTCDate() - 29)
+const defaultFromDate = defaultFrom.toISOString().slice(0, 10)
+
 export default function AttendanceOverviewPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
-  const [summaries, setSummaries] = useState<AttendanceSummary[]>([])
-  const [filteredSummaries, setFilteredSummaries] = useState<AttendanceSummary[]>([])
-  const [fromDate, setFromDate] = useState('')
-  const [toDate, setToDate] = useState('')
+  const [report, setReport] = useState<AttendanceReport | null>(null)
+  const [fromDate, setFromDate] = useState(defaultFromDate)
+  const [toDate, setToDate] = useState(defaultToDate)
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -27,56 +43,32 @@ export default function AttendanceOverviewPage() {
       return
     }
     setUser(cu)
-    const fetch = async () => {
-      setSummaries(await api.getAttendanceSummaries(cu.id))
-    }
-    fetch()
   }, [router])
 
-  // Filter summaries by date range using underlying attendance records
   useEffect(() => {
-    if (!fromDate && !toDate) {
-      setFilteredSummaries(summaries)
-      return
-    }
-    const fetch = async () => {
-      const allRecords = await api.getAttendanceRecords()
-      const result = await Promise.all(summaries.map(async (s) => {
-        const sectionSessionIds = (await api.getSessions(s.sectionId)).map((sess) => sess.id)
-        const filtered = allRecords.filter((r) => {
-          if (!sectionSessionIds.includes(r.sessionId)) return false
-          const rDate = r.timestamp.slice(0, 10)
-          if (fromDate && rDate < fromDate) return false
-          if (toDate && rDate > toDate) return false
-          return true
-        })
-        return {
-          ...s,
-          present: filtered.filter((r) => r.status === 'present').length,
-          late: filtered.filter((r) => r.status === 'late').length,
-          absent: filtered.filter((r) => r.status === 'absent').length,
-          totalSessions: [...new Set(filtered.map((r) => r.sessionId))].length || s.totalSessions,
-        }
-      }))
-      setFilteredSummaries(result)
-    }
-    fetch()
-  }, [summaries, fromDate, toDate])
+    if (!user || !fromDate || !toDate) return
+    let active = true
+    void api.getAttendanceReport({ startDate: fromDate, endDate: toDate }).then((nextReport) => {
+      if (active) setReport(nextReport)
+    })
+    return () => { active = false }
+  }, [user, fromDate, toDate])
 
   if (!user) return null
 
-  const totals = filteredSummaries.reduce(
-    (acc, s) => ({
-      totalSessions: acc.totalSessions + s.totalSessions,
-      present: acc.present + s.present,
-      late: acc.late + s.late,
-      absent: acc.absent + s.absent,
-    }),
-    { totalSessions: 0, present: 0, late: 0, absent: 0 }
-  )
+  const summaries = report?.summaries ?? []
+  const totals = report?.totals ?? {
+    totalRecords: 0,
+    totalSessions: 0,
+    present: 0,
+    late: 0,
+    absent: 0,
+    pending: 0,
+    disputed: 0,
+  }
 
   const handleExport = async () => {
-    const csv = await api.exportAttendanceCsv()
+    const csv = await api.exportAttendanceCsv({ startDate: fromDate, endDate: toDate })
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -136,11 +128,11 @@ export default function AttendanceOverviewPage() {
                   className="rounded-none w-40 h-8 text-xs"
                 />
               </div>
-              {(fromDate || toDate) && (
+              {(fromDate !== defaultFromDate || toDate !== defaultToDate) && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => { setFromDate(''); setToDate('') }}
+                  onClick={() => { setFromDate(defaultFromDate); setToDate(defaultToDate) }}
                   className="text-[10px] font-bold uppercase tracking-widest h-8 rounded-none text-zinc-500 hover:text-maroon dark:hover:text-golden"
                 >
                   Clear
@@ -155,7 +147,7 @@ export default function AttendanceOverviewPage() {
           </div>
 
           {/* Stat Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 border border-zinc-300 dark:border-zinc-800 mb-8">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-0 border border-zinc-300 dark:border-zinc-800 mb-8">
             <div className="p-6 border-r border-zinc-300 dark:border-zinc-800">
               <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-3">Total Sessions</p>
               <p className="text-3xl font-heading font-bold text-foreground">{totals.totalSessions}</p>
@@ -171,6 +163,14 @@ export default function AttendanceOverviewPage() {
             <div className="p-6">
               <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-3">Absent</p>
               <p className="text-3xl font-heading font-bold text-maroon-dark dark:text-red-400">{totals.absent}</p>
+            </div>
+            <div className="p-6 border-l border-zinc-300 dark:border-zinc-800">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-3">Pending</p>
+              <p className="text-3xl font-heading font-bold text-zinc-500">{totals.pending}</p>
+            </div>
+            <div className="p-6 border-l border-zinc-300 dark:border-zinc-800">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-3">Disputed</p>
+              <p className="text-3xl font-heading font-bold text-amber-600">{totals.disputed}</p>
             </div>
           </div>
 
@@ -188,11 +188,13 @@ export default function AttendanceOverviewPage() {
                     <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-golden">Present</th>
                     <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-maroon">Late</th>
                     <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-maroon-dark dark:text-red-400">Absent</th>
+                    <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Pending</th>
+                    <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-amber-600">Disputed</th>
                     <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredSummaries.map((s) => (
+                   {summaries.map((s) => (
                     <tr
                       key={s.sectionId}
                       className="border-b border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-50/80 dark:hover:bg-zinc-800/50 transition-colors group cursor-pointer"
@@ -212,14 +214,20 @@ export default function AttendanceOverviewPage() {
                       <td className="px-4 py-4 text-center">
                         <Badge variant="absent">{s.absent}</Badge>
                       </td>
+                      <td className="px-4 py-4 text-center">
+                        <Badge variant="pending">{s.pending}</Badge>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <Badge className="bg-amber-600 text-white">{s.disputed}</Badge>
+                      </td>
                       <td className="px-4 py-4 text-right">
                         <ChevronRight className="w-4 h-4 text-zinc-300 dark:text-zinc-600 group-hover:text-maroon dark:group-hover:text-golden transition-colors ml-auto" />
                       </td>
                     </tr>
                   ))}
-                  {filteredSummaries.length === 0 && (
+                  {summaries.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center">
+                      <td colSpan={8} className="px-6 py-12 text-center">
                         <span className="inline-flex items-center gap-2 text-xs font-bold text-zinc-400 uppercase tracking-widest">
                           No attendance data available.
                           <StatusBadge status="pending" />

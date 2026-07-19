@@ -1,4 +1,4 @@
-import { signQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult } from '@polycheck/shared'
+import { signQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview } from '@polycheck/shared'
 import { getOrCreateTeacherSigningKey } from './signing-key'
 import { API_BASE } from './api-config'
 
@@ -23,6 +23,20 @@ function saveUser(user: User | null) {
 }
 
 let currentUser: User | null = loadUser()
+
+function recentDateRange(days = 30) {
+  const end = new Date()
+  const start = new Date(end)
+  start.setUTCDate(start.getUTCDate() - (days - 1))
+  return { startDate: start.toISOString().slice(0, 10), endDate: end.toISOString().slice(0, 10) }
+}
+
+function queryPath(path: string, values: Record<string, string | number | undefined>) {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(values)) if (value !== undefined && value !== '') params.set(key, String(value))
+  const query = params.toString()
+  return query ? `${path}?${query}` : path
+}
 
 async function authHeaders(): Promise<Record<string, string>> {
   return { 'Content-Type': 'application/json' }
@@ -195,10 +209,14 @@ export const api = {
     return post('/sessions', body)
   },
   async generateQrCode(sessionId: string, validityMinutes: number, gracePeriodMinutes?: number): Promise<Session> {
+    if (validityMinutes < 1 || validityMinutes > 15 || (gracePeriodMinutes ?? 0) > 60) {
+      throw new Error('QR validity must be 1-15 minutes and grace must be 0-60 minutes')
+    }
     const [session, key] = await Promise.all([get<Session>(`/sessions/${sessionId}`), getOrCreateTeacherSigningKey()])
     const user = this.getCurrentUser()
     if (!user || user.role !== 'teacher') throw new Error('A teacher account is required to sign QR tokens')
-    const effectiveGrace = gracePeriodMinutes ?? session.gracePeriodMinutes
+    const effectiveGrace = gracePeriodMinutes ?? Math.min(session.gracePeriodMinutes, 60)
+    if (effectiveGrace < 0 || effectiveGrace > 60) throw new Error('QR grace must be 0-60 minutes')
     await post('/auth/provision-key', { publicKey: key.publicKey })
     const token = signQRToken({
       version: 1,
@@ -219,10 +237,17 @@ export const api = {
 
   // ── Attendance ──
   getAttendanceRecords(sessionId?: string): Promise<AttendanceRecord[]> {
-    return get(`/attendance${sessionId ? `?sessionId=${sessionId}` : ''}`)
+    const scope = sessionId ? { sessionId, limit: 1000 } : { ...recentDateRange(31), limit: 1000 }
+    return get(queryPath('/attendance', scope))
   },
   getAttendanceSummaries(teacherId?: string): Promise<AttendanceSummary[]> {
-    return get(`/attendance/summaries${teacherId ? `?teacherId=${teacherId}` : ''}`)
+    return get(queryPath('/attendance/summaries', { ...recentDateRange(), teacherId }))
+  },
+  getAttendanceReport(filters: AttendanceReportFilters = {}): Promise<AttendanceReport> {
+    return get(queryPath('/attendance/report', { ...recentDateRange(), ...filters }))
+  },
+  getDashboardOverview(filters: Pick<AttendanceReportFilters, 'startDate' | 'endDate'> = {}): Promise<DashboardOverview> {
+    return get(queryPath('/dashboard/overview', filters))
   },
   getAttendanceForStudent(studentId: string): Promise<AttendanceRecord[]> {
     return get(`/attendance/student/${studentId}`)
@@ -240,8 +265,8 @@ export const api = {
     void sessionId; void sectionId; void coordinates; void deviceId
     throw new Error('Attendance requires a freshly scanned, signed QR token')
   },
-  submitScan(sessionId: string, _studentId: string, _studentName: string, lat: number, lon: number, deviceId: string, qrToken?: string, scannedAt?: string): Promise<AttendanceRecord | { error: string }> {
-    return post('/attendance/scan', { sessionId, lat, lon, deviceId, qrToken, scannedAt })
+  submitScan(sessionId: string, _studentId: string, _studentName: string, lat: number, lon: number, deviceId: string, qrToken: string, scannedAt?: string, evidence?: ScanEvidenceInput): Promise<AttendanceRecord | { error: string }> {
+    return post('/attendance/scan', { sessionId, lat, lon, deviceId, qrToken, scannedAt, ...evidence })
   },
   checkAttendance(sessionId: string, studentId: string, lat: number, lon: number, qrToken?: string, scannedAt?: string): Promise<SubmitAttendanceResult> {
     void studentId
@@ -344,14 +369,13 @@ export const api = {
     void teacherId
     return post('/sessions/bulk', body)
   },
-  async exportAttendanceCsv(sectionId?: string, sessionId?: string): Promise<string> {
-    let path = '/reports/export'
-    const params = new URLSearchParams()
-    if (sectionId) params.set('sectionId', sectionId)
-    if (sessionId) params.set('sessionId', sessionId)
-    const qs = params.toString()
-    if (qs) path += `?${qs}`
+  async exportAttendanceCsv(filters: AttendanceReportFilters = {}): Promise<string> {
+    const path = queryPath('/reports/export', { ...recentDateRange(), ...filters })
     const res = await fetch(`${API_BASE}${path}`, { headers: await authHeaders(), credentials: 'include' })
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ message: res.statusText }))
+      throw new Error(Array.isArray(error.message) ? error.message.join('. ') : error.message || 'Export failed')
+    }
     return res.text()
   },
   search(query: string): Promise<{ students: Student[]; sections: Section[]; sessions: Session[] }> {

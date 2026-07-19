@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator } from 'react-native'
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
+import type { Section, Student, Subject } from '@polycheck/shared'
+import * as Location from 'expo-location'
 import { api } from '../../../../../services/api-client'
 import { useTheme } from '../../../../../theme/ThemeContext'
 import MapView from '../../../../../components/MapView'
-import type { Student, Section, Subject } from '@polycheck/shared'
-import * as Location from 'expo-location'
+import { CampusHeader } from '../../../../../components/CampusHeader'
+import { CampusButton, CampusCard, SectionHeading } from '../../../../../components/CampusPrimitives'
+import { CampusFormField } from '../../../../../components/CampusFormField'
 
 export default function StudentCreateSessionScreen() {
   const { isDark } = useTheme()
@@ -15,7 +18,6 @@ export default function StudentCreateSessionScreen() {
   const [user, setUser] = useState<Student | null>(null)
   const [section, setSection] = useState<Section | null>(null)
   const [subject, setSubject] = useState<Subject | null>(null)
-
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')
@@ -25,31 +27,16 @@ export default function StudentCreateSessionScreen() {
   const [radius, setRadius] = useState(40)
   const [recenterSignal, setRecenterSignal] = useState(0)
   const [locating, setLocating] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [mapFocus, setMapFocus] = useState(false)
 
-  const handleUseMyLocation = async () => {
-    setLocating(true)
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync()
-      if (permission.status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required to set the attendance location.')
-        return
-      }
-      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
-      setLatitude(location.coords.latitude)
-      setLongitude(location.coords.longitude)
-      setRecenterSignal((value) => value + 1)
-    } catch {
-      Alert.alert('Location Error', 'Unable to retrieve your location. Make sure GPS is enabled.')
-    } finally {
-      setLocating(false)
-    }
-  }
-
   useEffect(() => {
-    const cu = api.getCurrentUser()
-    if (!cu || cu.role !== 'student') { router.replace('/'); return }
-    setUser(cu as Student)
+    const currentUser = api.getCurrentUser()
+    if (!currentUser || currentUser.role !== 'student') {
+      router.replace('/')
+      return
+    }
+    setUser(currentUser as Student)
   }, [])
 
   useEffect(() => {
@@ -58,15 +45,39 @@ export default function StudentCreateSessionScreen() {
       setSection(nextSection)
       setSubject(await api.getSubject(nextSection.subjectId))
       setRoom(nextSection.room || '')
-    })
+    }).catch(() => router.back())
   }, [sectionId])
 
-  const handleSubmit = async () => {
+  const useMyLocation = async () => {
+    setLocating(true)
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync()
+      if (permission.status !== 'granted') {
+        Alert.alert('Location required', 'Allow location access to position the attendance geofence.')
+        return
+      }
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
+      setLatitude(location.coords.latitude)
+      setLongitude(location.coords.longitude)
+      setRecenterSignal((value) => value + 1)
+    } catch {
+      Alert.alert('Location unavailable', 'Turn on GPS and try again.')
+    } finally {
+      setLocating(false)
+    }
+  }
+
+  const createSession = async () => {
     if (!section || !subject || !user) return
-    if (!await api.checkSessionPermission(sectionId, user.id)) {
-      Alert.alert('Permission Expired', 'Your session creation permission has expired. Ask your teacher to grant a new one.')
+    if (!date.trim() || !startTime.trim() || !endTime.trim()) {
+      Alert.alert('Missing session details', 'Enter the date, start time, and end time.')
       return
     }
+    if (!await api.checkSessionPermission(sectionId, user.id)) {
+      Alert.alert('Permission expired', 'Ask your instructor to renew your session creation permission.')
+      return
+    }
+    setSubmitting(true)
     try {
       await api.createSession({
         sectionId: section.id,
@@ -74,123 +85,72 @@ export default function StudentCreateSessionScreen() {
         date,
         startTime,
         endTime,
-        room: room || undefined,
+        room: room.trim() || undefined,
         geofence: { latitude, longitude, radiusMeters: radius },
         teacherId: section.teacherId,
       })
-      Alert.alert('Session Created', 'Session created successfully!')
-      router.back()
+      Alert.alert('Session created', 'The class session is ready for activation.', [{ text: 'Done', onPress: () => router.back() }])
     } catch (error) {
-      Alert.alert('Unable to create session', error instanceof Error ? error.message : 'Please try again.')
+      Alert.alert('Unable to create session', error instanceof Error ? error.message : 'Try again in a moment.')
+    } finally {
+      setSubmitting(false)
     }
   }
 
   if (!section) return null
 
-  const bg = isDark ? '#0A0A0C' : '#F5F5F5'
-  const surface = isDark ? '#121215' : '#FFFFFF'
-  const border = isDark ? 'rgba(245, 168, 0, 0.15)' : '#DDD'
-  const textPrimary = isDark ? '#FFFFFF' : '#333'
-  const textSecondary = isDark ? 'rgba(255,255,255,0.5)' : '#888'
-  const iconColor = isDark ? '#FFDF00' : '#7B1113'
-
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: surface, borderBottomWidth: 1, borderBottomColor: border }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 4, marginRight: 12 }}>
-          <MaterialIcons name="arrow-back" size={22} color={iconColor} />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text className="text-lg font-heading font-bold" style={{ color: isDark ? '#FFDF00' : '#4A0A0B' }} numberOfLines={1}>Create Session</Text>
-          <Text className="text-xs mt-0.5" style={{ color: textSecondary }}>{subject?.name} · Sec {section.section}</Text>
-        </View>
-      </View>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+      <CampusHeader
+        eyebrow="Authorized officer action"
+        title="Create class session"
+        subtitle={`${subject?.name ?? 'Class'} · Section ${section.section}`}
+        onBack={() => router.back()}
+      />
 
-      <ScrollView scrollEnabled={!mapFocus} contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
-        <View style={{ backgroundColor: surface, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: border }}>
-          <Text className="text-sm font-sans-bold mb-4" style={{ color: textPrimary }}>Session Details</Text>
-
-          <View className="mb-3">
-            <Text className="text-[10px] font-sans-medium uppercase tracking-[0.5px] mb-1" style={{ color: textSecondary }}>Date</Text>
-            <TextInput
-              className="h-10 px-3 text-sm border"
-              style={{ color: textPrimary, borderColor: border, backgroundColor: isDark ? '#0A0A0C' : '#FFF' }}
-              value={date}
-              onChangeText={setDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#999"
-            />
+      <ScrollView scrollEnabled={!mapFocus} className="flex-1" contentContainerClassName="px-4 pb-12" keyboardShouldPersistTaps="handled">
+        <SectionHeading eyebrow="Step 1" title="Session details" />
+        <CampusCard className="mb-7 gap-4">
+          <CampusFormField label="Date" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" icon="today" autoCapitalize="none" />
+          <View className="flex-row gap-3">
+            <CampusFormField label="Start time" value={startTime} onChangeText={setStartTime} placeholder="HH:MM" icon="schedule" className="flex-1" />
+            <CampusFormField label="End time" value={endTime} onChangeText={setEndTime} placeholder="HH:MM" icon="schedule" className="flex-1" />
           </View>
+          <CampusFormField label="Room" value={room} onChangeText={setRoom} placeholder="Optional room" icon="room" />
+        </CampusCard>
 
-          <View className="flex-row gap-3 mb-3">
+        <SectionHeading eyebrow="Step 2" title="Attendance geofence" />
+        <CampusCard className="mb-7 p-4">
+          <View className="mb-4 flex-row items-start justify-between gap-3">
             <View className="flex-1">
-              <Text className="text-[10px] font-sans-medium uppercase tracking-[0.5px] mb-1" style={{ color: textSecondary }}>Start Time</Text>
-              <TextInput
-                className="h-10 px-3 text-sm border"
-                style={{ color: textPrimary, borderColor: border, backgroundColor: isDark ? '#0A0A0C' : '#FFF' }}
-                value={startTime}
-                onChangeText={setStartTime}
-                placeholder="HH:MM"
-                placeholderTextColor="#999"
-              />
+              <Text className="font-sans-bold text-sm text-ink dark:text-white">Class location</Text>
+              <Text className="mt-1 font-sans text-xs leading-5 text-muted dark:text-zinc-400">Drag the pin or tap the map. Students must be within {radius} meters.</Text>
             </View>
-            <View className="flex-1">
-              <Text className="text-[10px] font-sans-medium uppercase tracking-[0.5px] mb-1" style={{ color: textSecondary }}>End Time</Text>
-              <TextInput
-                className="h-10 px-3 text-sm border"
-                style={{ color: textPrimary, borderColor: border, backgroundColor: isDark ? '#0A0A0C' : '#FFF' }}
-                value={endTime}
-                onChangeText={setEndTime}
-                placeholder="HH:MM"
-                placeholderTextColor="#999"
-              />
-            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Use my current location"
+              disabled={locating}
+              onPress={() => void useMyLocation()}
+              className="min-h-11 flex-row items-center gap-2 rounded-2xl bg-maroon/5 px-3 dark:bg-golden/10"
+            >
+              {locating ? <ActivityIndicator size="small" color={isDark ? '#FFDF00' : '#7B1113'} /> : <MaterialIcons name="my-location" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />}
+              <Text className="font-sans-bold text-[10px] text-maroon dark:text-golden">{locating ? 'Locating…' : 'My location'}</Text>
+            </Pressable>
           </View>
-
-          <View className="mb-3">
-            <Text className="text-[10px] font-sans-medium uppercase tracking-[0.5px] mb-1" style={{ color: textSecondary }}>Room</Text>
-            <TextInput
-              className="h-10 px-3 text-sm border"
-              style={{ color: textPrimary, borderColor: border, backgroundColor: isDark ? '#0A0A0C' : '#FFF' }}
-              value={room}
-              onChangeText={setRoom}
-              placeholder="Room (optional)"
-              placeholderTextColor="#999"
-            />
-          </View>
-
-        </View>
-
-        <View style={{ backgroundColor: surface, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: border }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <Text className="text-sm font-sans-bold" style={{ color: textPrimary }}>Geofence</Text>
-            <TouchableOpacity onPress={handleUseMyLocation} disabled={locating} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, opacity: locating ? 0.6 : 1 }}>
-              {locating ? <ActivityIndicator size="small" color={iconColor} /> : <MaterialIcons name="my-location" size={16} color={iconColor} />}
-              <Text className="text-xs font-sans-bold" style={{ color: iconColor }}>{locating ? 'Locating...' : 'Use My Location'}</Text>
-            </TouchableOpacity>
-          </View>
-          <Text className="text-xs mb-3" style={{ color: textSecondary }}>Drag the pin or tap the map to set the attendance location.</Text>
-          <View onTouchStart={() => setMapFocus(true)} onTouchEnd={() => setMapFocus(false)} onTouchCancel={() => setMapFocus(false)}>
+          <View className="overflow-hidden rounded-3xl" onTouchStart={() => setMapFocus(true)} onTouchEnd={() => setMapFocus(false)} onTouchCancel={() => setMapFocus(false)}>
             <MapView
               latitude={latitude}
               longitude={longitude}
               radius={radius}
               interactive
               recenterSignal={recenterSignal}
-              onLocationChange={(lat, lng) => { setLatitude(lat); setLongitude(lng) }}
+              onLocationChange={(nextLatitude, nextLongitude) => { setLatitude(nextLatitude); setLongitude(nextLongitude) }}
               onRadiusChange={setRadius}
             />
           </View>
-        </View>
+        </CampusCard>
 
-        <TouchableOpacity
-          className="py-3 items-center"
-          style={{ backgroundColor: isDark ? '#FFDF00' : '#7B1113' }}
-          onPress={handleSubmit}
-          accessibilityRole="button"
-        >
-          <Text className="text-sm font-sans-bold" style={{ color: isDark ? '#4A0A0B' : '#FFF' }}>Create Session</Text>
-        </TouchableOpacity>
+        <CampusButton label={submitting ? 'Creating session…' : 'Create session'} icon="add" disabled={submitting} onPress={() => void createSession()} />
       </ScrollView>
     </SafeAreaView>
   )

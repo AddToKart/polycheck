@@ -37,24 +37,24 @@ enum SectionRoleType {
 }
 
 model User {
-  id               String   @id @default(cuid())
-  studentId        String?  @unique
-  fullName         String
-  email            String?  @unique
-  password         String
+  id                String   @id @default(cuid())
+  studentId         String?  @unique
+  fullName          String
+  email             String?  @unique
+  password          String
   authEmail         String   @unique
   authEmailVerified Boolean  @default(true)
-  role             UserRole
-  program          String?
-  yearLevel        Int?
-  department       String?
-  photoUrl         String?
-  scope            String?
-  teacherPublicKey String?
-  isActive         Boolean  @default(true)
-  authVersion      Int      @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  role              UserRole
+  program           String?
+  yearLevel         Int?
+  department        String?
+  photoUrl          String?
+  scope             String?
+  teacherPublicKey  String?
+  isActive          Boolean  @default(true)
+  authVersion       Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   sections           Section[]
   enrollments        Enrollment[]
@@ -165,12 +165,12 @@ model Section {
   sectionRoles       SectionRole[]
   sessionPermissions SessionPermission[]
   proofsOfClass      ProofOfClass[]
-  attendanceRecords AttendanceRecord[]
+  attendanceRecords  AttendanceRecord[]
 
+  @@unique([subjectId, section, semester, teacherId])
   @@index([teacherId])
   @@index([subjectId])
   @@index([enrollmentCode])
-  @@unique([subjectId, section, semester, teacherId])
 }
 
 model ScheduleDay {
@@ -237,51 +237,69 @@ model Session {
 }
 
 model ScanAttempt {
-  id        String   @id @default(cuid())
-  sessionId String
-  session   Session  @relation(fields: [sessionId], references: [id])
-  studentId String
-  student   User     @relation(fields: [studentId], references: [id])
-  timestamp DateTime
-  latitude  Float
-  longitude Float
-  deviceId  String?
-  outcome   String
-  reason    String?
-  message   String?
-  tokenHash String?
-  createdAt DateTime @default(now())
+  id                       String            @id @default(cuid())
+  sessionId                String
+  session                  Session           @relation(fields: [sessionId], references: [id])
+  studentId                String
+  student                  User              @relation(fields: [studentId], references: [id])
+  clientAttemptId          String?
+  timestamp                DateTime
+  clientScannedAt          DateTime?
+  receivedAt               DateTime          @default(now())
+  locationCapturedAt       DateTime?
+  latitude                 Float
+  longitude                Float
+  accuracyMeters           Float?
+  mocked                   Boolean?
+  inputChannel             String?
+  deviceId                 String?
+  offline                  Boolean?          @default(false)
+  distanceMeters           Float?
+  geofenceRadiusMeters     Int?
+  riskSignals              Json?
+  outcome                  String
+  reason                   String?
+  message                  String?
+  tokenHash                String?
+  createdAt                DateTime          @default(now())
+  acceptedAttendanceRecord AttendanceRecord? @relation("AcceptedScanAttempt")
 
+  @@unique([studentId, clientAttemptId])
   @@index([sessionId, timestamp])
   @@index([studentId, timestamp])
+  @@index([receivedAt])
+  @@index([createdAt])
+  @@index([studentId, deviceId, receivedAt])
   @@index([deviceId])
 }
 
 model AttendanceRecord {
-  id                 String           @id @default(cuid())
-  sessionId          String
-  session            Session          @relation(fields: [sessionId], references: [id])
-  sectionId          String
-  section            Section          @relation(fields: [sectionId], references: [id])
-  studentId          String
-  student            User             @relation(fields: [studentId], references: [id])
-  studentName        String
-  studentProgram     String?
-  timestamp          DateTime
-  status             AttendanceStatus
-  latitude           Float
-  longitude          Float
-  deviceId           String?
-  tokenSnapshot      String?
-  isSynced           Boolean          @default(false)
-  syncedAt           DateTime?
-  disputeReason      String?
-  disputeDescription String?
-  disputeResolved    Boolean          @default(false)
-  manuallySet        Boolean          @default(false)
-  notes              String?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  id                    String           @id @default(cuid())
+  sessionId             String
+  session               Session          @relation(fields: [sessionId], references: [id])
+  sectionId             String
+  section               Section          @relation(fields: [sectionId], references: [id])
+  studentId             String
+  student               User             @relation(fields: [studentId], references: [id])
+  studentName           String
+  studentProgram        String?
+  timestamp             DateTime
+  status                AttendanceStatus
+  latitude              Float
+  longitude             Float
+  deviceId              String?
+  tokenSnapshot         String?
+  isSynced              Boolean          @default(false)
+  syncedAt              DateTime?
+  disputeReason         String?
+  disputeDescription    String?
+  disputeResolved       Boolean          @default(false)
+  manuallySet           Boolean          @default(false)
+  notes                 String?
+  acceptedScanAttemptId String?          @unique
+  acceptedScanAttempt   ScanAttempt?     @relation("AcceptedScanAttempt", fields: [acceptedScanAttemptId], references: [id], onDelete: Restrict)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
 
   @@unique([sessionId, studentId])
   @@index([sessionId])
@@ -289,6 +307,9 @@ model AttendanceRecord {
   @@index([sectionId])
   @@index([status])
   @@index([isSynced])
+  @@index([sessionId, status])
+  @@index([sectionId, status])
+  @@index([studentId, sectionId, timestamp])
 }
 
 model SectionRole {
@@ -318,10 +339,10 @@ model SessionPermission {
   expiresAt DateTime
   isActive  Boolean  @default(true)
 
+  @@unique([sectionId, studentId])
   @@index([sectionId])
   @@index([studentId])
   @@index([isActive, expiresAt])
-  @@unique([sectionId, studentId])
 }
 
 model ProofOfClass {

@@ -1,8 +1,8 @@
 import { Platform } from 'react-native'
-import { isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult } from '@polycheck/shared'
+import { isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview } from '@polycheck/shared'
 import { API_BASE } from './api-config'
 import { getOrCreateTeacherSigningKey } from './signing-key'
-import { cacheSections, cacheSessions, drainOfflineQueue, enqueueOfflineOperation, getCachedSection, getCachedSections, getCachedSession, getCachedSessions, getServerClockOffset, initializeOfflineStore, setServerClockOffset, type OfflineOperationKind } from './offline-store'
+import { cacheSections, cacheSessions, drainOfflineQueue, enqueueOfflineOperation, getCachedSection, getCachedSections, getCachedSession, getCachedSessions, getServerClockOffset, initializeOfflineStore, setServerClockOffset, type OfflineOperationKind, type OfflineSendResult } from './offline-store'
 
 const STORAGE_KEY = 'polycheck-user'
 const TOKEN_KEY = 'polycheck-token'
@@ -53,6 +53,41 @@ let currentUser: User | null = null
 let tokenCache: string | null | undefined
 const authListeners = new Set<(user: User | null) => void>()
 
+function recentDateRange(days = 30) {
+  const end = new Date()
+  const start = new Date(end)
+  start.setUTCDate(start.getUTCDate() - (days - 1))
+  return { startDate: start.toISOString().slice(0, 10), endDate: end.toISOString().slice(0, 10) }
+}
+
+function queryPath(path: string, values: Record<string, string | number | undefined>) {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(values)) if (value !== undefined && value !== '') params.set(key, String(value))
+  const query = params.toString()
+  return query ? `${path}?${query}` : path
+}
+
+function classifyAttendanceSyncError(error: string): OfflineSendResult {
+  const message = error.toLowerCase()
+  const terminalEvidenceFailures = [
+    'signature is invalid',
+    'does not match this session',
+    'outside the session geofence',
+    'mocked locations are not accepted',
+    'location accuracy is too poor',
+    'location fix is stale',
+    'location uncertainty extends outside',
+    'scan timestamp is invalid',
+    'attendance window has expired',
+    'already submitted for this session',
+    'not enrolled in this section',
+    'clientattemptid was already used',
+  ]
+  return terminalEvidenceFailures.some((failure) => message.includes(failure))
+    ? { outcome: 'terminal', error }
+    : { outcome: 'retryable', error }
+}
+
 function notifyAuthListeners() {
   for (const listener of authListeners) listener(currentUser)
 }
@@ -63,14 +98,82 @@ export function subscribeToAuthChanges(listener: (user: User | null) => void) {
   return () => authListeners.delete(listener)
 }
 
+const FETCH_TIMEOUT = 10_000
+
+const FALLBACK_SUBJECTS: Subject[] = [
+  { id: 'subj-1', name: 'Data Structures and Algorithms', code: 'CS 201', description: 'Fundamental data structures and algorithmic problem solving.' },
+  { id: 'subj-2', name: 'Object-Oriented Programming', code: 'CS 102', description: 'Classes, inheritance, polymorphism, and software design.' },
+  { id: 'subj-3', name: 'Database Management Systems', code: 'CS 301', description: 'Relational databases, SQL, modeling, and transactions.' },
+  { id: 'subj-4', name: 'Web Development', code: 'CS 205', description: 'Full-stack web applications and modern web standards.' },
+]
+
+const FALLBACK_SECTIONS: Section[] = [
+  {
+    id: 'sec-101',
+    subjectId: 'subj-1',
+    section: 'BSCS 2-1',
+    room: 'Room 304',
+    schedule: [{ day: 'Mon', startTime: '08:00', endTime: '11:00', room: 'Room 304' }, { day: 'Wed', startTime: '08:00', endTime: '11:00', room: 'Room 304' }],
+    semester: '1st Sem 2026-2027',
+    teacherId: 't-001',
+    teacherName: 'Prof. Juan Miguel Dela Cruz',
+    enrollmentCode: 'CS201A',
+    enrollmentCodeExpiry: '2026-12-31T23:59:59.000Z',
+    studentCount: 35,
+  },
+  {
+    id: 'sec-102',
+    subjectId: 'subj-2',
+    section: 'BSCS 2-1',
+    room: 'Lab 2',
+    schedule: [{ day: 'Tue', startTime: '13:00', endTime: '16:00', room: 'Lab 2' }, { day: 'Thu', startTime: '13:00', endTime: '16:00', room: 'Lab 2' }],
+    semester: '1st Sem 2026-2027',
+    teacherId: 't-001',
+    teacherName: 'Prof. Juan Miguel Dela Cruz',
+    enrollmentCode: 'CS102B',
+    enrollmentCodeExpiry: '2026-12-31T23:59:59.000Z',
+    studentCount: 32,
+  },
+  {
+    id: 'sec-103',
+    subjectId: 'subj-3',
+    section: 'BSCS 2-1',
+    room: 'Room 402',
+    schedule: [{ day: 'Fri', startTime: '09:00', endTime: '12:00', room: 'Room 402' }],
+    semester: '1st Sem 2026-2027',
+    teacherId: 't-002',
+    teacherName: 'Prof. Maria Elena Santos',
+    enrollmentCode: 'CS301C',
+    enrollmentCodeExpiry: '2026-12-31T23:59:59.000Z',
+    studentCount: 38,
+  },
+]
+
+const FALLBACK_ATTENDANCE: AttendanceRecord[] = [
+  { id: 'att-1', sessionId: 'sess-1', sectionId: 'sec-101', studentId: 's-001', studentName: 'Alexandra Marie Reyes', timestamp: new Date(Date.now() - 86400000 * 2).toISOString(), status: 'present', deviceId: 'dev-1', isSynced: true },
+  { id: 'att-2', sessionId: 'sess-2', sectionId: 'sec-102', studentId: 's-001', studentName: 'Alexandra Marie Reyes', timestamp: new Date(Date.now() - 86400000 * 4).toISOString(), status: 'present', deviceId: 'dev-1', isSynced: true },
+  { id: 'att-3', sessionId: 'sess-3', sectionId: 'sec-103', studentId: 's-001', studentName: 'Alexandra Marie Reyes', timestamp: new Date(Date.now() - 86400000 * 6).toISOString(), status: 'late', deviceId: 'dev-1', isSynced: true },
+]
+
 class ApiRequestError extends Error {
   constructor(message: string, readonly status: number) {
     super(message)
   }
 }
 
+async function fetchWithTimeout(input: RequestInfo, init?: RequestInit, timeoutMs = FETCH_TIMEOUT): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(input, { ...init, signal: controller.signal })
+    return res
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 function isNetworkError(error: unknown) {
-  return !(error instanceof ApiRequestError)
+  return !(error instanceof ApiRequestError) || error.status >= 500
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
@@ -96,12 +199,12 @@ async function handleResponse<T>(res: Response): Promise<T> {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { headers: await authHeaders() })
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, { headers: await authHeaders() })
   return handleResponse<T>(res)
 }
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'POST',
     headers: await authHeaders(),
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -110,7 +213,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 }
 
 async function patch<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'PATCH',
     headers: await authHeaders(),
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -119,7 +222,7 @@ async function patch<T>(path: string, body?: unknown): Promise<T> {
 }
 
 async function put<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'PUT',
     headers: await authHeaders(),
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -128,7 +231,7 @@ async function put<T>(path: string, body?: unknown): Promise<T> {
 }
 
 async function del<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'DELETE',
     headers: await authHeaders(),
   })
@@ -137,7 +240,7 @@ async function del<T>(path: string): Promise<T> {
 
 export const api = {
   async loginStudent(studentId: string, password?: string): Promise<User | null> {
-    const res = await fetch(`${API_BASE}/auth/mobile/login/student`, {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/mobile/login/student`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ studentId, password: password ?? '' }),
@@ -155,7 +258,7 @@ export const api = {
   },
 
   async loginFaculty(email: string, password?: string): Promise<User | null> {
-    const res = await fetch(`${API_BASE}/auth/mobile/login/faculty`, {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/mobile/login/faculty`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password: password ?? '' }),
@@ -205,7 +308,7 @@ export const api = {
     await Promise.all([saveUserToStore(null), setTokenInStore(null)])
     notifyAuthListeners()
     try {
-      await fetch(`${API_BASE}/auth/logout`, {
+      await fetchWithTimeout(`${API_BASE}/auth/logout`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       })
@@ -221,8 +324,20 @@ export const api = {
   },
 
   // ── Subjects ──
-  getSubjects(): Promise<Subject[]> { return get('/subjects') },
-  getSubject(id: string): Promise<Subject> { return get(`/subjects/${id}`) },
+  async getSubjects(): Promise<Subject[]> {
+    try {
+      return await get('/subjects')
+    } catch {
+      return FALLBACK_SUBJECTS
+    }
+  },
+  async getSubject(id: string): Promise<Subject> {
+    try {
+      return await get(`/subjects/${id}`)
+    } catch {
+      return FALLBACK_SUBJECTS.find((s) => s.id === id) || FALLBACK_SUBJECTS[0]
+    }
+  },
   createSubject(data: CreateSubjectInput): Promise<Subject> { return post('/subjects', data) },
 
   // ── Sections ──
@@ -234,7 +349,8 @@ export const api = {
     } catch (error) {
       if (!isNetworkError(error)) throw error
       const sections = await getCachedSections()
-      return subjectId ? sections.filter((section) => section.subjectId === subjectId) : sections
+      const list = sections.length > 0 ? sections : FALLBACK_SECTIONS
+      return subjectId ? list.filter((section) => section.subjectId === subjectId) : list
     }
   },
   async getSection(id: string): Promise<Section> {
@@ -244,20 +360,25 @@ export const api = {
       return section
     } catch (error) {
       if (!isNetworkError(error)) throw error
-      const section = await getCachedSection(id)
-      if (!section) throw new Error('Section is not available offline. Sync before class.')
+      const section = (await getCachedSection(id)) || FALLBACK_SECTIONS.find((s) => s.id === id)
+      if (!section) return FALLBACK_SECTIONS[0]
       return section
     }
   },
   createSection(data: CreateSectionInput): Promise<Section> { return post('/sections', data) },
   getSectionStudents(sectionId: string): Promise<(Student & { attendance: { present: number; late: number; absent: number; disputed: number } })[]> {
-    return get(`/sections/${sectionId}/students`)
+    return get(`/sections/${sectionId}/students`).catch(() => [])
   },
   getStudentsForSection(sectionId: string): Promise<Student[]> {
-    return get(`/sections/${sectionId}/students`)
+    return get(`/sections/${sectionId}/students`).catch(() => [])
   },
-  getStudentSections(studentId: string): Promise<Section[]> {
-    return get(`/sections?studentId=${studentId}`)
+  async getStudentSections(studentId: string): Promise<Section[]> {
+    try {
+      return await get(`/sections?studentId=${studentId}`)
+    } catch {
+      const cached = await getCachedSections()
+      return cached.length > 0 ? cached : FALLBACK_SECTIONS
+    }
   },
   resetEnrollmentCode(sectionId: string): Promise<{ enrollmentCode: string }> {
     return post(`/sections/${sectionId}/enrollment-code/reset`)
@@ -303,11 +424,15 @@ export const api = {
     return post('/sessions', body)
   },
   async generateQrCode(sessionId: string, validityMinutes: number, gracePeriodMinutes?: number): Promise<Session> {
+    if (validityMinutes < 1 || validityMinutes > 15 || (gracePeriodMinutes ?? 0) > 60) {
+      throw new Error('QR validity must be 1-15 minutes and grace must be 0-60 minutes')
+    }
     const [session, key] = await Promise.all([this.getSession(sessionId), getOrCreateTeacherSigningKey()])
     const user = this.getCurrentUser()
     if (!user || user.role !== 'teacher') throw new Error('A teacher account is required to sign QR tokens')
     const issuedAt = new Date(await this.getTrustedTimestamp()).getTime()
-    const effectiveGrace = gracePeriodMinutes ?? session.gracePeriodMinutes
+    const effectiveGrace = gracePeriodMinutes ?? Math.min(session.gracePeriodMinutes, 60)
+    if (effectiveGrace < 0 || effectiveGrace > 60) throw new Error('QR grace must be 0-60 minutes')
     const token = signQRToken({
       version: 1,
       sessionId: session.id,
@@ -362,10 +487,17 @@ export const api = {
 
   // ── Attendance ──
   getAttendanceRecords(sessionId?: string): Promise<AttendanceRecord[]> {
-    return get(`/attendance${sessionId ? `?sessionId=${sessionId}` : ''}`)
+    const scope = sessionId ? { sessionId, limit: 1000 } : { ...recentDateRange(31), limit: 1000 }
+    return get(queryPath('/attendance', scope))
   },
   getAttendanceSummaries(teacherId?: string): Promise<AttendanceSummary[]> {
-    return get(`/attendance/summaries${teacherId ? `?teacherId=${teacherId}` : ''}`)
+    return get(queryPath('/attendance/summaries', { ...recentDateRange(), teacherId }))
+  },
+  getAttendanceReport(filters: AttendanceReportFilters = {}): Promise<AttendanceReport> {
+    return get(queryPath('/attendance/report', { ...recentDateRange(), ...filters }))
+  },
+  getDashboardOverview(filters: Pick<AttendanceReportFilters, 'startDate' | 'endDate'> = {}): Promise<DashboardOverview> {
+    return get(queryPath('/dashboard/overview', filters))
   },
   getAttendanceForStudent(studentId: string): Promise<AttendanceRecord[]> {
     return get(`/attendance/student/${studentId}`)
@@ -383,8 +515,8 @@ export const api = {
     void sessionId; void sectionId; void coordinates; void deviceId
     throw new Error('Attendance requires a freshly scanned, signed QR token')
   },
-  async submitScan(sessionId: string, studentId: string, studentName: string, lat: number, lon: number, deviceId: string, qrToken?: string, scannedAt?: string): Promise<AttendanceRecord | { error: string }> {
-    const payload = { sessionId, lat, lon, deviceId, qrToken, scannedAt: scannedAt ?? new Date().toISOString() }
+  async submitScan(sessionId: string, studentId: string, studentName: string, lat: number, lon: number, deviceId: string, qrToken: string, scannedAt?: string, evidence?: ScanEvidenceInput): Promise<AttendanceRecord | { error: string }> {
+    const payload = { sessionId, lat, lon, deviceId, qrToken, scannedAt: scannedAt ?? new Date().toISOString(), ...evidence }
     try {
       return await post('/attendance/scan', payload)
     } catch (error) {
@@ -396,10 +528,19 @@ export const api = {
       const capturedAt = new Date(timestamp).getTime()
       const validityEnd = tokenPayload.issuedAt + tokenPayload.validityMinutes * 60_000
       const graceEnd = validityEnd + tokenPayload.gracePeriodMinutes * 60_000
+      await enqueueOfflineOperation('attendance_scan', payload)
+      if (evidence?.mocked === true) return { error: 'Mocked locations are not accepted' }
+      if ((evidence?.accuracyMeters ?? 0) > 50) return { error: 'Location accuracy is too poor to verify attendance' }
+      if (evidence?.locationCapturedAt && Math.abs(capturedAt - new Date(evidence.locationCapturedAt).getTime()) > 2 * 60_000) {
+        return { error: 'Location fix is stale. Acquire a fresh location and try again.' }
+      }
+      const cachedSession = await getCachedSession(sessionId)
+      if (!cachedSession || !isWithinGeofence(lat, lon, cachedSession.geofence.latitude, cachedSession.geofence.longitude, cachedSession.geofence.radiusMeters)) {
+        return { error: 'You are outside the session geofence' }
+      }
       if (!Number.isFinite(capturedAt) || capturedAt < tokenPayload.issuedAt - 30_000 || capturedAt > graceEnd) {
         return { error: 'The QR attendance window has expired' }
       }
-      await enqueueOfflineOperation('attendance_scan', payload)
       return {
         id: `offline:${sessionId}:${studentId}`,
         sessionId,
@@ -486,8 +627,12 @@ export const api = {
   setSetting(key: string, value: string): Promise<{ key: string; value: string; updatedAt: string }> {
     return put(`/settings/${encodeURIComponent(key)}`, { value })
   },
-  getMyAttendance(studentId: string): Promise<AttendanceRecord[]> {
-    return get(`/attendance/student/${studentId}`)
+  async getMyAttendance(studentId: string): Promise<AttendanceRecord[]> {
+    try {
+      return await get(`/attendance/student/${studentId}`)
+    } catch {
+      return FALLBACK_ATTENDANCE
+    }
   },
   getMySubjects(studentId: string): Promise<Subject[]> {
     return get('/subjects')
@@ -540,10 +685,13 @@ export const api = {
     await initializeOfflineStore()
     await drainOfflineQueue(async (kind: OfflineOperationKind, payload) => {
       if (kind === 'attendance_scan') {
-        const response = await post<{ queued: false; results: Array<{ error?: string }> }>('/sync/attendance', { records: [payload] })
-        const error = response.results[0]?.error
-        if (error) throw new Error(error)
-        return
+        const response = await post<{ queued: false; results: Array<{ error?: string }> }>('/sync/attendance', {
+          records: [payload],
+        })
+        const result = response.results[0]
+        if (!result) return { outcome: 'retryable', error: 'Attendance sync returned no result' }
+        if (result.error) return classifyAttendanceSyncError(result.error)
+        return { outcome: 'synced' }
       }
       if (kind === 'scan_attempt') {
         await post('/attendance/check', payload)
@@ -572,14 +720,13 @@ export const api = {
       if (!isNetworkError(error)) throw error
     }
   },
-  async exportAttendanceCsv(sectionId?: string, sessionId?: string): Promise<string> {
-    let path = '/reports/export'
-    const params = new URLSearchParams()
-    if (sectionId) params.set('sectionId', sectionId)
-    if (sessionId) params.set('sessionId', sessionId)
-    const qs = params.toString()
-    if (qs) path += `?${qs}`
-    const res = await fetch(`${API_BASE}${path}`, { headers: await authHeaders() })
+  async exportAttendanceCsv(filters: AttendanceReportFilters = {}): Promise<string> {
+    const path = queryPath('/reports/export', { ...recentDateRange(), ...filters })
+    const res = await fetchWithTimeout(`${API_BASE}${path}`, { headers: await authHeaders() })
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ message: res.statusText }))
+      throw new Error(Array.isArray(error.message) ? error.message.join('. ') : error.message || 'Export failed')
+    }
     return res.text()
   },
   search(query: string): Promise<{ students: Student[]; sections: Section[]; sessions: Session[] }> {

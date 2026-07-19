@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, Pressable, StyleSheet } from 'react-native'
+import { Alert, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
+import type { Section, Subject, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
-import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
-import type { User, Section, Subject } from '@polycheck/shared'
+import { CampusHeader } from '../../components/CampusHeader'
+import { CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
 
 export default function FacultySubjectsScreen() {
   const { isDark, toggle } = useTheme()
@@ -15,119 +16,78 @@ export default function FacultySubjectsScreen() {
   const [sections, setSections] = useState<Section[]>([])
 
   useEffect(() => {
-    const cu = api.getCurrentUser()
-    if (cu) {
-      setUser(cu)
-      void Promise.all([api.getSubjects(), api.getSections()]).then(([nextSubjects, nextSections]) => {
+    const currentUser = api.getCurrentUser()
+    if (!currentUser) return
+    setUser(currentUser)
+    void Promise.all([api.getSubjects(), api.getSections()])
+      .then(([nextSubjects, nextSections]) => {
         setSubjects(nextSubjects)
         setSections(nextSections)
       })
-    }
+      .catch(() => Alert.alert('Unable to load subjects', 'Check your connection and try again.'))
   }, [])
 
   if (!user) return null
+  const isSuper = user.role === 'super_admin'
 
-  const handleLogout = () => {
-    api.logout()
+  const signOut = () => {
+    void api.logout()
     router.replace('/')
   }
 
   return (
-    <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <Text style={[styles.heading, isDark && styles.textGolden]}>{user.role === 'super_admin' ? 'Subject Directory' : 'My Subjects'}</Text>
-        <View style={styles.headerRight}>
-          {user.role === 'teacher' && (
-            <TouchableOpacity onPress={() => router.push('/(faculty)/subjects/create')} style={styles.iconBtn} accessibilityLabel="Create subject">
-              <MaterialIcons name="add" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
-            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleLogout} style={styles.iconBtn} accessibilityLabel="Sign out">
-            <MaterialIcons name="logout" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
-          </TouchableOpacity>
-        </View>
-      </View>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+      <CampusHeader
+        eyebrow={isSuper ? 'Institution catalog' : 'Teaching catalog'}
+        title={isSuper ? 'Subject directory' : 'My subjects'}
+        subtitle={isSuper ? 'Read-only access to subjects and their sections.' : 'Open a subject to manage its class sections.'}
+        actions={(
+          <>
+            {!isSuper ? <CampusIconButton icon="add" label="Create subject" onPress={() => router.push('/(faculty)/subjects/create')} inverse /> : null}
+            <CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />
+            <CampusIconButton icon="logout" label="Sign out" onPress={signOut} inverse />
+          </>
+        )}
+      />
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {subjects.map((subject) => {
+      <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pb-32">
+        {subjects.length === 0 ? (
+          <CampusEmptyState
+            icon="auto-stories"
+            title="No subjects yet"
+            description={isSuper ? 'Subjects created by faculty will appear here.' : 'Create your first subject to begin adding class sections.'}
+          />
+        ) : subjects.map((subject) => {
           const sectionCount = sections.filter((section) => section.subjectId === subject.id).length
           return (
-          <Pressable
-            key={subject.id}
-            onPress={() => router.push(`/(faculty)/subjects/${subject.id}`)}
-            style={({ pressed }) => [
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <View style={[styles.card, isDark && styles.cardDark]}>
-              <View style={[styles.cardAccent, isDark && styles.cardAccentDark]} />
-              <View style={styles.cardBody}>
-                <Text style={[styles.subjectName, isDark && styles.textWhite]}>{subject.name}</Text>
-                <Text style={[styles.subjectMeta, isDark && styles.textWhite50]}>{subject.code}</Text>
-                {subject.description ? (
-                  <Text style={[styles.description, isDark && styles.textWhite50]}>{subject.description}</Text>
-                ) : null}
-                <View style={styles.subjectDetails}>
-                  <View style={styles.detailRow}>
-                    <MaterialIcons name="people" size={14} color="#888" />
-                    <Text style={[styles.detailText, isDark && styles.textWhite50]}>{sectionCount} section{sectionCount !== 1 ? 's' : ''}</Text>
+            <CampusCard
+              key={subject.id}
+              onPress={() => router.push(`/(faculty)/subjects/${subject.id}`)}
+              accessibilityLabel={`Open ${subject.name}`}
+            >
+              <View className="flex-row items-start gap-4">
+                <View className="h-14 w-14 items-center justify-center rounded-[20px] bg-maroon dark:bg-golden">
+                  <Text className="font-sans-bold text-xs text-white dark:text-maroon-dark">{subject.code.slice(0, 5)}</Text>
+                </View>
+                <View className="flex-1">
+                  <Text className="font-sans-bold text-lg text-ink dark:text-white">{subject.name}</Text>
+                  <Text className="mt-1 font-sans-bold text-xs text-maroon dark:text-golden">{subject.code}</Text>
+                  {subject.description ? (
+                    <Text className="mt-3 font-sans text-sm leading-5 text-muted dark:text-zinc-400" numberOfLines={2}>{subject.description}</Text>
+                  ) : null}
+                  <View className="mt-4 flex-row items-center justify-between border-t border-line pt-4 dark:border-line-dark">
+                    <View className="flex-row items-center gap-2">
+                      <MaterialIcons name="view-list" size={18} color={isDark ? '#A1A1AA' : '#746C6E'} />
+                      <Text className="font-sans-medium text-xs text-muted dark:text-zinc-400">{sectionCount} section{sectionCount === 1 ? '' : 's'}</Text>
+                    </View>
+                    <MaterialIcons name="arrow-forward" size={19} color={isDark ? '#FFDF00' : '#7B1113'} />
                   </View>
                 </View>
-                <View style={[styles.cardActions, { borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : '#F0F0F0' }]}>
-                  <TouchableOpacity
-                    style={[styles.viewBtn, isDark && styles.viewBtnDark]}
-                    onPress={() => router.push(`/(faculty)/subjects/${subject.id}`)}
-                    accessibilityRole="button"
-                    accessibilityLabel="View sections"
-                  >
-                    <MaterialIcons name="list" size={16} color={isDark ? '#4A0A0B' : '#FFF'} />
-                    <Text style={[styles.viewBtnText, isDark && styles.viewBtnTextDark]}>View Sections</Text>
-                  </TouchableOpacity>
-                </View>
               </View>
-            </View>
-          </Pressable>
+            </CampusCard>
           )
         })}
-        {subjects.length === 0 && (
-          <Text style={[styles.empty, isDark && styles.textWhite50]}>No subjects yet.</Text>
-        )}
       </ScrollView>
     </SafeAreaView>
   )
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  containerDark: { backgroundColor: '#0A0A0C' },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-  headerDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
-  iconBtn: { padding: 6 },
-  heading: { flex: 1, fontSize: 22, fontWeight: '700', fontFamily: fonts.heading, color: '#4A0A0B' },
-  headerRight: { flexDirection: 'row', gap: 8 },
-  textWhite: { color: '#FFFFFF' },
-  textWhite70: { color: 'rgba(255,255,255,0.7)' },
-  textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#FFDF00' },
-  content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 0, marginBottom: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
-  cardDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
-  cardAccent: { width: 4, height: '100%', backgroundColor: '#7B1113', position: 'absolute', left: 0, top: 0, bottom: 0 },
-  cardAccentDark: { backgroundColor: '#FFDF00' },
-  cardBody: { padding: 20, paddingLeft: 24 },
-  subjectName: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#333' },
-  subjectMeta: { fontSize: 13, fontFamily: fonts.body, color: '#888', marginTop: 2 },
-  description: { fontSize: 13, fontFamily: fonts.body, color: '#888', marginTop: 4, lineHeight: 18 },
-  subjectDetails: { marginTop: 12, gap: 8 },
-  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  detailText: { fontSize: 13, fontFamily: fonts.body, color: '#888', flex: 1 },
-  cardActions: { flexDirection: 'row', gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
-  viewBtn: { backgroundColor: '#7B1113', paddingHorizontal: 14, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'center' },
-  viewBtnDark: { backgroundColor: '#FFDF00' },
-  viewBtnText: { color: '#FFF', fontSize: 12, fontWeight: '600', fontFamily: fonts.bodySemiBold },
-  viewBtnTextDark: { color: '#4A0A0B' },
-  empty: { textAlign: 'center', fontFamily: fonts.body, paddingVertical: 60, color: '#BBB' },
-})

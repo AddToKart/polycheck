@@ -1,3 +1,16 @@
+name: polycheck
+
+x-backend-build: &backend-build
+  context: .
+  dockerfile: Dockerfile.backend
+
+x-read-only-service: &read-only-service
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -8,44 +21,128 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    networks:
+      - data
+    shm_size: ${POSTGRES_SHM_SIZE:-256mb}
+    stop_grace_period: 60s
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-2g}
+    cpus: ${POSTGRES_CPU_LIMIT:-2.0}
+    pids_limit: 256
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U polycheck -d polycheck"]
       interval: 5s
       timeout: 5s
       retries: 20
+      start_period: 10s
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: polycheck
+      DB_USER: polycheck
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-2000}
+      DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-50}
+      MIN_POOL_SIZE: ${PGBOUNCER_MIN_POOL_SIZE:-10}
+      RESERVE_POOL_SIZE: ${PGBOUNCER_RESERVE_POOL_SIZE:-10}
+      SERVER_IDLE_TIMEOUT: ${PGBOUNCER_SERVER_IDLE_TIMEOUT:-600}
+      SERVER_RESET_QUERY: DISCARD ALL
+    networks:
+      - data
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${PGBOUNCER_MEMORY_LIMIT:-256m}
+    cpus: ${PGBOUNCER_CPU_LIMIT:-1.0}
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD-SHELL", "PGPASSWORD=\"$${DB_PASSWORD}\" psql -h 127.0.0.1 -p 5432 -U polycheck -d polycheck -Atqc 'SELECT 1' | grep -qx 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
 
   redis:
     image: redis:7.4-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      REDIS_MAXMEMORY: ${REDIS_MAXMEMORY:-768mb}
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}" --maxmemory "$${REDIS_MAXMEMORY}" --maxmemory-policy noeviction
     volumes:
       - redis-data:/data
+    networks:
+      - data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: ${REDIS_MEMORY_LIMIT:-1g}
+    cpus: ${REDIS_CPU_LIMIT:-1.0}
+    pids_limit: 128
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 20
+      start_period: 5s
 
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
-    restart: unless-stopped
+  migrate:
+    image: ${BACKEND_IMAGE:-polycheck-backend:local}
+    build: *backend-build
+    restart: "no"
     depends_on:
       postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DIRECT_DATABASE_URL:?DIRECT_DATABASE_URL is required for migrations}
+      DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:?DIRECT_DATABASE_URL is required for migrations}
+    command: ["sh", "docker-entrypoint.sh", "migrate"]
+    networks:
+      - data
+    <<: *read-only-service
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    mem_limit: ${MIGRATION_MEMORY_LIMIT:-512m}
+    cpus: ${MIGRATION_CPU_LIMIT:-1.0}
+    pids_limit: 128
+
+  backend:
+    image: ${BACKEND_IMAGE:-polycheck-backend:local}
+    build: *backend-build
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 4000
-      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
-      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required and must target PgBouncer with connection_limit and pool_timeout}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      METRICS_TOKEN: ${METRICS_TOKEN:?METRICS_TOKEN must be at least 32 characters}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required}
       CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS is required}
       FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL is required}
       TRUST_PROXY: ${TRUST_PROXY:-true}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-2}
       ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
       MAX_PROOF_BYTES: ${MAX_PROOF_BYTES:-5000000}
       STORAGE_DRIVER: s3
@@ -55,28 +152,120 @@ services:
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
-    ports:
-      - "${BACKEND_PORT:-4000}:4000"
+    networks:
+      - edge
+      - data
+      - monitoring
+    stop_grace_period: 40s
+    <<: *read-only-service
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid,nodev
+    mem_limit: ${BACKEND_MEMORY_LIMIT:-768m}
+    cpus: ${BACKEND_CPU_LIMIT:-1.0}
+    pids_limit: 256
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:4000/api/health/ready"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/api/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 20s
 
   frontend:
+    image: ${FRONTEND_IMAGE:-polycheck-frontend:local}
     build:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+    networks:
+      - edge
+    <<: *read-only-service
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+      - /app/frontend/.next/cache:size=128m,noexec,nosuid,nodev
+    mem_limit: ${FRONTEND_MEMORY_LIMIT:-512m}
+    cpus: ${FRONTEND_CPU_LIMIT:-1.0}
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/login"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  nginx:
+    image: nginxinc/nginx-unprivileged:1.28-alpine
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "${HTTP_BIND_ADDRESS:-127.0.0.1}:${HTTP_PORT:-8080}:8080"
+    volumes:
+      - ./deployment/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - edge
+    <<: *read-only-service
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid,nodev
+    mem_limit: ${NGINX_MEMORY_LIMIT:-256m}
+    cpus: ${NGINX_CPU_LIMIT:-1.0}
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-15d}
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./deployment/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deployment/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    secrets:
+      - metrics_token
+    networks:
+      - monitoring
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    mem_limit: ${PROMETHEUS_MEMORY_LIMIT:-512m}
+    cpus: ${PROMETHEUS_CPU_LIMIT:-0.5}
+    pids_limit: 128
+
+networks:
+  edge:
+  data:
+    internal: true
+  monitoring:
 
 volumes:
   postgres-data:
   redis-data:
+  prometheus-data:
+
+secrets:
+  metrics_token:
+    environment: METRICS_TOKEN

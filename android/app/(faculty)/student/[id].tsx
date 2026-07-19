@@ -1,23 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { View, Text, ScrollView, Pressable, Alert, ActivityIndicator, Animated, TouchableOpacity, Image } from 'react-native'
+import { AccessibilityInfo, ActivityIndicator, Alert, Animated, Image, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
+import type { AttendanceRecord, AttendanceStatus, Session, Student } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
 import { useTheme } from '../../../theme/ThemeContext'
-import type { Student, Session, AttendanceRecord, AttendanceStatus } from '@polycheck/shared'
+import { CampusHeader } from '../../../components/CampusHeader'
+import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, SectionHeading } from '../../../components/CampusPrimitives'
+import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
+import QRCode from 'react-native-qrcode-svg'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
-
-const statusLabel: Record<AttendanceStatus, string> = {
-  present: 'Present',
-  late: 'Late',
-  absent: 'Absent',
-  pending: 'Pending',
-  disputed: 'Disputed',
-}
-
 const SESSION_PAGE_SIZE = 5
+
+const IdLabel = ({ label, value, prominent = false }: { label: string; value: string; prominent?: boolean }) => <View><Text className="font-sans-bold text-[7px] uppercase tracking-[1.4px] text-zinc-500 dark:text-white/45">{label}</Text><Text className={`mt-1 font-sans-bold uppercase text-ink dark:text-white ${prominent ? 'text-lg text-maroon dark:text-golden' : 'text-[10px]'}`} numberOfLines={2}>{value}</Text></View>
 
 export default function StudentDetailScreen() {
   const { isDark } = useTheme()
@@ -28,368 +25,97 @@ export default function StudentDetailScreen() {
   const [loading, setLoading] = useState(true)
   const [sessionPage, setSessionPage] = useState(0)
   const [isFlipped, setIsFlipped] = useState(false)
-  const flipAnim = useRef(new Animated.Value(0)).current
+  const [reduceMotion, setReduceMotion] = useState(false)
+  const flipAnimation = useRef(new Animated.Value(0)).current
 
   const loadData = useCallback(async () => {
     if (!studentId) return
-    let secId = sectionId
-    if (!secId) {
+    let activeSectionId: string | undefined = sectionId
+    if (!activeSectionId) {
       const enrollments = await api.getEnrollments()
-      const enr = enrollments.find((e) => e.studentId === studentId)
-      if (enr) secId = enr.sectionId
+      activeSectionId = enrollments.find((enrollment) => enrollment.studentId === studentId)?.sectionId
     }
-    if (!secId) { router.back(); return }
+    if (!activeSectionId) { router.back(); return }
     try {
-      const [nextStudent, nextSessions, nextRecords] = await Promise.all([
-        api.getStudent(studentId), api.getSectionSessions(secId), api.getStudentAttendanceForSection(studentId, secId),
-      ])
+      const [nextStudent, nextSessions, nextRecords] = await Promise.all([api.getStudent(studentId), api.getSectionSessions(activeSectionId), api.getStudentAttendanceForSection(studentId, activeSectionId)])
       setStudent(nextStudent)
       setSessions(nextSessions)
       setRecords(nextRecords)
     } catch { router.back(); return }
     setLoading(false)
-  }, [studentId, sectionId])
+  }, [sectionId, studentId])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => { void loadData() }, [loadData])
+  useEffect(() => { void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion) }, [])
 
-  const handleFlip = () => {
-    Animated.timing(flipAnim, {
-      toValue: isFlipped ? 0 : 180,
-      duration: 500,
-      useNativeDriver: true,
-    }).start()
-    setIsFlipped(!isFlipped)
+  const flip = () => {
+    Animated.timing(flipAnimation, { toValue: isFlipped ? 0 : 180, duration: reduceMotion ? 0 : 450, useNativeDriver: true }).start()
+    setIsFlipped((value) => !value)
   }
 
-  const frontInterpolate = flipAnim.interpolate({ inputRange: [0, 180], outputRange: ['0deg', '180deg'] })
-  const backInterpolate = flipAnim.interpolate({ inputRange: [0, 180], outputRange: ['180deg', '360deg'] })
+  if (loading || !student) return <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark"><ActivityIndicator size="large" color={isDark ? '#FFDF00' : '#7B1113'} /><Text className="mt-4 font-sans text-sm text-muted dark:text-zinc-400">Loading student profile…</Text></SafeAreaView>
 
-  const handleRemove = () => {
-    if (!sectionId || !studentId) return
-    Alert.alert(
-      'Remove Student',
-      `Remove ${student?.fullName} from this subject? This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => {
-            void api.removeStudentFromSection(sectionId, studentId).then(() => router.back())
-          },
-        },
-      ],
-    )
-  }
-
-  const handleCycleStatus = async (record: AttendanceRecord) => {
-    const currentIdx = STATUS_CYCLE.indexOf(record.status)
-    const nextStatus = STATUS_CYCLE[(currentIdx + 1) % STATUS_CYCLE.length]
-    await api.updateAttendanceStatus(record.id, nextStatus)
-    setRecords((prev) =>
-      prev.map((r) => (r.id === record.id ? { ...r, status: nextStatus } : r))
-    )
-  }
-
-  const handleAddAbsent = async (session: Session) => {
-    const existing = records.find((r) => r.sessionId === session.id)
-    if (existing) return
-    const newRecord: AttendanceRecord = {
-      id: `a-manual-${Date.now()}`,
-      sessionId: session.id,
-      sectionId: sectionId!,
-      studentId: studentId!,
-      studentName: student?.fullName ?? '',
-      studentProgram: student?.program,
-      timestamp: new Date().toISOString(),
-      status: 'absent',
-      coordinates: { latitude: 0, longitude: 0 },
-      isSynced: false,
-      notes: 'Manually marked by teacher',
-    }
-    await api.addAttendanceRecord(newRecord)
-    setRecords((prev) => [...prev, newRecord])
-  }
-
-  const getBadgeStyle = (status: AttendanceStatus) => {
-    if (isDark) {
-      switch (status) {
-        case 'present':
-          return { bg: 'rgba(245, 168, 0, 0.15)', text: '#FFDF00', border: 'rgba(245, 168, 0, 0.3)' }
-        case 'late':
-          return { bg: 'rgba(123, 17, 19, 0.3)', text: '#FFFFFF', border: 'rgba(123, 17, 19, 0.5)' }
-        case 'absent':
-          return { bg: 'rgba(74, 10, 11, 0.4)', text: '#FFDF00', border: '#FFDF00' }
-        default:
-          return { bg: 'rgba(255,255,255,0.1)', text: 'rgba(255,255,255,0.7)' }
-      }
-    } else {
-      switch (status) {
-        case 'present':
-          return { bg: '#FFF5E0', text: '#FFDF00' }
-        case 'late':
-          return { bg: '#FDE8E8', text: '#7B1113' }
-        case 'absent':
-          return { bg: '#F0F0F0', text: '#4A0A0B' }
-        default:
-          return { bg: '#F0F0F0', text: '#666' }
-      }
-    }
-  }
-
-  if (loading || !student) {
-    return (
-      <SafeAreaView className="flex-1 items-center justify-center" style={{ backgroundColor: isDark ? '#0A0A0C' : '#F5F5F5' }}>
-        <ActivityIndicator size="large" color={isDark ? '#FFDF00' : '#7B1113'} />
-      </SafeAreaView>
-    )
-  }
   const isTeacher = api.getCurrentUser()?.role === 'teacher'
+  const frontRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['0deg', '180deg'] })
+  const backRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['180deg', '360deg'] })
+  const totalPresent = records.filter((record) => record.status === 'present').length
+  const totalLate = records.filter((record) => record.status === 'late').length
+  const totalAbsent = records.filter((record) => record.status === 'absent').length
+  const sessionPageCount = Math.max(1, Math.ceil(sessions.length / SESSION_PAGE_SIZE))
+  const pagedSessions = sessions.slice(sessionPage * SESSION_PAGE_SIZE, (sessionPage + 1) * SESSION_PAGE_SIZE)
 
-  const getRecordForSession = (sessionId: string) =>
-    records.find((r) => r.sessionId === sessionId)
+  const remove = () => {
+    if (!sectionId || !studentId) return
+    Alert.alert('Remove student?', `${student.fullName} will be removed from this section.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => { void api.removeStudentFromSection(sectionId, studentId).then(() => router.back()) } },
+    ])
+  }
 
-  const bg = isDark ? '#0A0A0C' : '#F5F5F5'
-  const surface = isDark ? '#121215' : '#FFFFFF'
-  const surfaceDark = isDark ? '#0A0A0C' : '#FDFBF7'
-  const border = isDark ? 'rgba(245, 168, 0, 0.15)' : '#EEE'
-  const borderCard = isDark ? 'rgba(245, 168, 0, 0.2)' : '#D4D4D8'
-  const textPrimary = isDark ? '#FFFFFF' : '#333'
-  const textSecondary = isDark ? 'rgba(255,255,255,0.5)' : '#888'
-  const iconColor = isDark ? '#FFDF00' : '#7B1113'
+  const cycleStatus = async (record: AttendanceRecord) => {
+    const currentIndex = STATUS_CYCLE.indexOf(record.status)
+    const nextStatus = STATUS_CYCLE[(currentIndex + 1) % STATUS_CYCLE.length]
+    await api.updateAttendanceStatus(record.id, nextStatus)
+    setRecords((previous) => previous.map((item) => item.id === record.id ? { ...item, status: nextStatus } : item))
+  }
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
-      {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: surface, borderBottomWidth: 1, borderBottomColor: border }}>
-        <Pressable onPress={() => router.back()} className="p-1 mr-3 active:opacity-70" accessibilityLabel="Go back">
-          <MaterialIcons name="arrow-back" size={22} color={iconColor} />
-        </Pressable>
-        <Text className="text-lg font-heading font-bold flex-1" style={{ color: isDark ? '#FFDF00' : '#4A0A0B' }} numberOfLines={1}>
-          {student.fullName}
-        </Text>
-      </View>
+  const addAbsent = async (session: Session) => {
+    if (records.some((record) => record.sessionId === session.id)) return
+    const newRecord: AttendanceRecord = { id: `a-manual-${Date.now()}`, sessionId: session.id, sectionId: sectionId!, studentId: studentId!, studentName: student.fullName, studentProgram: student.program, timestamp: new Date().toISOString(), status: 'absent', coordinates: { latitude: 0, longitude: 0 }, isSynced: false, notes: 'Manually marked by teacher', manuallySet: true }
+    await api.addAttendanceRecord(newRecord)
+    setRecords((previous) => [...previous, newRecord])
+  }
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }} keyboardShouldPersistTaps="handled">
-        {/* Flippable ID Card */}
-        <TouchableOpacity activeOpacity={1} onPress={handleFlip} style={{ width: '100%', maxWidth: 384, aspectRatio: 1.586, alignSelf: 'center', marginBottom: 20 }}>
-          {/* Front Face */}
-          <Animated.View
-            style={{
-              width: '100%', height: '100%', borderWidth: 2, borderColor: borderCard,
-              backgroundColor: isDark ? '#121215' : '#FFFFFF', flexDirection: 'column', overflow: 'hidden',
-              transform: [{ rotateY: frontInterpolate }], backfaceVisibility: 'hidden',
-            }}
-          >
-            {/* Card Header */}
-            <View style={{ backgroundColor: '#7B1113', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Image source={require('../../../assets/pup-logo.png')} style={{ width: 32, height: 32 }} />
-              <View>
-                <Text style={{ fontSize: 8, fontWeight: '700', color: '#FFDF00', textTransform: 'uppercase', letterSpacing: 1, lineHeight: 10, marginBottom: 2 }}>
-                  Republic of the Philippines
-                </Text>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 1, lineHeight: 12 }}>
-                  Polytechnic University of the Philippines
-                </Text>
-              </View>
-            </View>
+  return <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <CampusHeader eyebrow="Student record" title={student.fullName} subtitle={`${student.studentId} · ${student.program}`} onBack={() => router.back()} />
+    <ScrollView contentContainerClassName="px-4 pb-28 pt-3" showsVerticalScrollIndicator={false}>
+      <SectionHeading eyebrow="Digital credential" title="PUP student ID" />
+      <Pressable accessibilityRole="button" accessibilityLabel={`Student ID card, showing ${isFlipped ? 'back' : 'front'}. Tap to flip.`} accessibilityHint="Shows identity and verification details" onPress={flip} className="mb-3 w-full self-center" style={{ maxWidth: 390, aspectRatio: 1.586 }}>
+        <Animated.View pointerEvents={isFlipped ? 'none' : 'auto'} className="absolute h-full w-full overflow-hidden rounded-[26px] border-2 border-maroon/20 bg-[#FDFBF7] shadow-lg dark:border-golden/20 dark:bg-[#151013]" style={{ backfaceVisibility: 'hidden', transform: [{ rotateY: frontRotation }] }}>
+          <View className="flex-row items-center gap-3 bg-maroon px-4 py-3"><Image source={require('../../../assets/pup-logo.png')} className="h-9 w-9" /><View className="flex-1"><Text className="font-sans-bold text-[8px] uppercase tracking-[1.5px] text-golden">Polytechnic University of the Philippines</Text><Text className="mt-1 font-sans-bold text-[10px] uppercase tracking-[1px] text-white">Student identification card</Text></View></View>
+          <View className="flex-1 flex-row">
+            <View className="w-[34%] items-center justify-center border-r-2 border-maroon/15 p-3 dark:border-golden/15"><View className="aspect-[3/4] w-full items-center justify-center rounded-xl border-2 border-maroon/15 bg-white dark:border-golden/15 dark:bg-zinc-900"><View className="h-12 w-12 items-center justify-center rounded-full bg-maroon dark:bg-golden"><Text className="font-heading text-xl text-white dark:text-maroon-dark">{student.fullName.split(' ').map((part) => part[0]).join('').slice(0, 2)}</Text></View></View><View className="mt-3 h-5 w-full justify-end border-b border-zinc-400"><Text className="text-center font-sans text-[6px] text-zinc-500 dark:text-zinc-400">SIGNATURE</Text></View></View>
+            <View className="flex-1 justify-center gap-3 p-4"><IdLabel label="Student number" value={student.studentId} prominent /><IdLabel label="Full name" value={student.fullName} /><View className="flex-row gap-3"><View className="flex-1"><IdLabel label="Program" value={student.program} /></View><View className="flex-1"><IdLabel label="Validity" value="2026–2027" /></View></View></View>
+          </View>
+        </Animated.View>
 
-            {/* Card Body */}
-            <View style={{ flex: 1, flexDirection: 'row', backgroundColor: surfaceDark }}>
-              {/* Left: Photo */}
-              <View style={{ width: '33%', borderRightWidth: 2, borderRightColor: borderCard, padding: 12, flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                <View style={{ width: '100%', aspectRatio: 3 / 4, backgroundColor: isDark ? '#121215' : '#FFFFFF', borderWidth: 2, borderColor: borderCard, marginBottom: 12, alignItems: 'center', justifyContent: 'center' }}>
-                  <View style={{ width: 48, height: 48, backgroundColor: isDark ? '#27272A' : '#CCC', alignItems: 'center', justifyContent: 'center' }}>
-                    <Text className="font-heading font-bold" style={{ fontSize: 24, color: isDark ? '#FFDF00' : '#FFF' }}>
-                      {student.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
-                <View style={{ width: '100%', marginTop: 'auto' }}>
-                  <View style={{ borderBottomWidth: 2, borderBottomColor: isDark ? 'rgba(255,255,255,0.1)' : '#27272A', height: 20, justifyContent: 'flex-end', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 7, color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.5)' }}>SIGNATURE</Text>
-                  </View>
-                </View>
-              </View>
+        <Animated.View pointerEvents={isFlipped ? 'auto' : 'none'} className="absolute h-full w-full overflow-hidden rounded-[26px] border-2 border-maroon/20 bg-[#FDFBF7] shadow-lg dark:border-golden/20 dark:bg-[#151013]" style={{ backfaceVisibility: 'hidden', transform: [{ rotateY: backRotation }] }}>
+          <View className="mt-4 h-12 w-full bg-zinc-900" />
+          <View className="flex-1 flex-row p-4"><View className="flex-[2] justify-between pr-4"><View><Text className="font-sans-bold text-[8px] uppercase tracking-[1.5px] text-maroon dark:text-golden">Conditions of use</Text><Text className="mt-2 font-sans text-[8px] leading-3 text-zinc-600 dark:text-zinc-300">This card is non-transferable and remains the property of PUP. Report a lost card immediately.</Text></View><View><Text className="font-sans-bold text-[7px] uppercase tracking-[1px] text-zinc-500">In case of emergency</Text><View className="mt-2 h-4 border-b border-zinc-400" /><View className="mt-1 h-4 border-b border-zinc-400" /></View></View><View className="flex-1 items-center justify-center border-l-2 border-dashed border-maroon/15 pl-4 dark:border-golden/15"><View className="rounded-xl bg-white p-1"><QRCode value={student.studentId} size={70} backgroundColor="#FFFFFF" color="#0A0A0A" /></View><Text className="mt-2 text-center font-sans-bold text-[6px] tracking-[1.5px] text-zinc-500">SCAN TO VERIFY</Text></View></View>
+        </Animated.View>
+      </Pressable>
+      <Text className="mb-7 text-center font-sans-bold text-[10px] uppercase tracking-[1.3px] text-muted dark:text-zinc-500">Tap the card to view the {isFlipped ? 'front' : 'back'}</Text>
 
-              {/* Right: Details */}
-              <View style={{ flex: 1, padding: 16, justifyContent: 'center' }}>
-                <View style={{ marginBottom: 16 }}>
-                  <Text style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: 1.5, color: isDark ? 'rgba(255,255,255,0.5)' : '#71717A', fontWeight: '700', marginBottom: 2 }}>Student Number</Text>
-                  <Text style={{ fontSize: 20, fontWeight: '700', color: isDark ? '#FFDF00' : '#7B1113' }}>{student.studentId}</Text>
-                </View>
-                <View style={{ marginBottom: 16 }}>
-                  <Text style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: 1.5, color: isDark ? 'rgba(255,255,255,0.5)' : '#71717A', fontWeight: '700', marginBottom: 2 }}>Full Name</Text>
-                  <Text style={{ fontSize: 16, fontWeight: '700', textTransform: 'uppercase', lineHeight: 20, color: isDark ? '#FFFFFF' : '#18181B' }}>{student.fullName}</Text>
-                </View>
-                <View className="flex-row gap-4">
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: 1.5, color: isDark ? 'rgba(255,255,255,0.5)' : '#71717A', fontWeight: '700', marginBottom: 2 }}>Program</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: isDark ? '#FFFFFF' : '#18181B' }}>{student.program}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: 1.5, color: isDark ? 'rgba(255,255,255,0.5)' : '#71717A', fontWeight: '700', marginBottom: 2 }}>Validity</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: isDark ? '#FFFFFF' : '#18181B' }}>2026-2027</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-          </Animated.View>
+      {isTeacher ? <CampusButton label="Remove from section" icon="person-remove" variant="secondary" onPress={remove} className="mb-7 border-red-300 dark:border-red-800" /> : null}
 
-          {/* Back Face */}
-          <Animated.View
-            style={{
-              width: '100%', height: '100%', borderWidth: 2, borderColor: borderCard,
-              backgroundColor: isDark ? '#121215' : '#FFFFFF', flexDirection: 'column', overflow: 'hidden',
-              transform: [{ rotateY: backInterpolate }], backfaceVisibility: 'hidden',
-              position: 'absolute', top: 0,
-            }}
-          >
-            <View style={{ backgroundColor: '#18181B', height: 48, width: '100%', marginTop: 16 }} />
-            <View style={{ flex: 1, flexDirection: 'row', padding: 16 }}>
-              <View style={{ flex: 2, paddingRight: 16, justifyContent: 'space-between' }}>
-                <View>
-                  <Text style={{ fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5, color: isDark ? '#FFDF00' : '#7B1113', marginBottom: 4 }}>Conditions of Use</Text>
-                  <Text style={{ fontSize: 8, lineHeight: 11, color: isDark ? 'rgba(255,255,255,0.7)' : '#52525B', textAlign: 'justify' }}>
-                    This card is non-transferable and must be presented upon entry to the university premises. The finder of this lost card is requested to surrender it to the Office of Student Affairs.
-                  </Text>
-                </View>
-                <View style={{ marginTop: 'auto' }}>
-                  <Text style={{ fontSize: 7, textTransform: 'uppercase', letterSpacing: 1, color: isDark ? 'rgba(255,255,255,0.5)' : '#71717A', fontWeight: '700', marginBottom: 4 }}>
-                    In case of emergency, contact:
-                  </Text>
-                  <View style={{ borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.2)' : '#A1A1AA', height: 20 }} />
-                  <View style={{ borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.2)' : '#A1A1AA', height: 20, marginTop: 4 }} />
-                </View>
-              </View>
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', borderLeftWidth: 2, borderLeftColor: isDark ? 'rgba(245, 168, 0, 0.15)' : '#D4D4D8', borderStyle: 'dashed', paddingLeft: 16 }}>
-                <View style={{ width: '100%', aspectRatio: 1, backgroundColor: isDark ? '#0A0A0C' : '#F4F4F5', borderWidth: 2, borderColor: isDark ? 'rgba(245, 168, 0, 0.15)' : '#D4D4D8', alignItems: 'center', justifyContent: 'center', padding: 4 }}>
-                  <MaterialIcons name="qr-code" size={48} color={isDark ? '#FFDF00' : '#000'} />
-                </View>
-                <Text style={{ fontSize: 6, marginTop: 8, color: isDark ? 'rgba(255,255,255,0.5)' : '#71717A', textAlign: 'center', letterSpacing: 2 }}>SCAN TO VERIFY</Text>
-              </View>
-            </View>
-          </Animated.View>
-        </TouchableOpacity>
-
-        <Text className="text-center text-[11px] font-bold uppercase tracking-wider mb-6" style={{ color: isDark ? 'rgba(255,255,255,0.5)' : '#71717A' }}>
-          Tap card to flip
-        </Text>
-
-        {/* Remove from Subject */}
-        {isTeacher && (
-          <Pressable
-            className="flex-row items-center justify-center gap-2 border py-3 mb-6 active:opacity-70"
-            style={{ borderColor: '#EF4444', backgroundColor: isDark ? 'rgba(239, 68, 68, 0.08)' : 'transparent' }}
-            onPress={handleRemove}
-          >
-            <MaterialIcons name="person-remove" size={18} color="#EF4444" />
-            <Text className="text-red-500 text-sm font-sans-semibold">Remove from Subject</Text>
-          </Pressable>
-        )}
-
-        {/* Attendance Manipulation */}
-        <Text className="text-base font-sans-bold mb-1" style={{ color: textPrimary }}>Attendance per Session</Text>
-        <Text className="text-[11px] mb-3" style={{ color: textSecondary }}>
-          {isTeacher ? 'Tap a status badge to cycle between Present, Late, and Absent.' : 'Read-only attendance history.'}
-        </Text>
-
-        {sessions.length === 0 ? (
-          <Text className="text-center py-10" style={{ color: isDark ? 'rgba(255,255,255,0.5)' : '#BBB' }}>No sessions created yet.</Text>
-        ) : (
-          <>
-            {sessions
-              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-              .slice(sessionPage * SESSION_PAGE_SIZE, (sessionPage + 1) * SESSION_PAGE_SIZE)
-              .map((session) => {
-                const record = getRecordForSession(session.id)
-                return (
-                  <View key={session.id} className="flex-row justify-between items-center p-3.5 mb-2 border" style={{ backgroundColor: surface, borderColor: border }}>
-                    <View className="flex-1">
-                      <Text className="text-sm font-sans-semibold" style={{ color: textPrimary }}>
-                        {new Date(session.date).toLocaleDateString('en-PH', {
-                          month: 'short', day: 'numeric', year: 'numeric',
-                        })}
-                      </Text>
-                      <Text className="text-[11px] mt-0.5" style={{ color: textSecondary }}>
-                        {session.startTime} – {session.endTime}
-                      </Text>
-                    </View>
-
-                    <View className="ml-3">
-                      {record ? (
-                        <Pressable
-                          onPress={() => { if (isTeacher) handleCycleStatus(record) }}
-                          disabled={!isTeacher}
-                          className={`flex-row items-center gap-1 px-2.5 py-1.5 ${isTeacher ? 'active:opacity-70' : ''}`}
-                          style={{
-                            backgroundColor: getBadgeStyle(record.status).bg,
-                            borderWidth: getBadgeStyle(record.status).border ? 1 : 0,
-                            borderColor: getBadgeStyle(record.status).border,
-                          }}
-                        >
-                          <Text
-                            className="text-xs font-sans-semibold"
-                            style={{ color: getBadgeStyle(record.status).text }}
-                          >
-                            {statusLabel[record.status]}
-                          </Text>
-                          {isTeacher && <MaterialIcons name="sync" size={14} color={getBadgeStyle(record.status).text} />}
-                        </Pressable>
-                      ) : (
-                        <Pressable
-                          onPress={() => { if (isTeacher) handleAddAbsent(session) }}
-                          disabled={!isTeacher}
-                          className={`flex-row items-center gap-1 px-2.5 py-1.5 ${isTeacher ? 'active:opacity-70' : ''}`}
-                          style={{
-                            backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#F0F0F0',
-                            borderWidth: isDark ? 1 : 0,
-                            borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'transparent',
-                          }}
-                        >
-                          <Text className="text-xs font-sans-semibold" style={{ color: isDark ? 'rgba(255,255,255,0.5)' : '#4A0A0B' }}>No Record</Text>
-                          {isTeacher && <MaterialIcons name="add" size={14} color={isDark ? 'rgba(255,255,255,0.5)' : '#4A0A0B'} />}
-                        </Pressable>
-                      )}
-                    </View>
-                  </View>
-                )
-              })}
-            {/* Session Pagination */}
-            {(() => {
-              const spc = Math.max(1, Math.ceil(sessions.length / SESSION_PAGE_SIZE))
-              if (spc <= 1) return null
-              return (
-                <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 16, marginBottom: 24 }}>
-                  <TouchableOpacity
-                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: sessionPage === 0 ? (isDark ? 'rgba(255,255,255,0.1)' : '#E0E0E0') : (isDark ? '#FFDF00' : '#7B1113'), backgroundColor: sessionPage === 0 ? 'transparent' : (isDark ? '#FFDF00' : '#7B1113'), opacity: sessionPage === 0 ? 0.4 : 1 }}
-                    onPress={() => setSessionPage(Math.max(0, sessionPage - 1))}
-                    disabled={sessionPage === 0}
-                    accessibilityLabel="Previous session page"
-                  >
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: sessionPage === 0 ? '#999' : (isDark ? '#4A0A0B' : '#FFFFFF') }}>← Prev</Text>
-                  </TouchableOpacity>
-
-                  <View style={{ paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E0E0E0' }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: isDark ? '#FFFFFF' : '#333' }}>
-                      Page {sessionPage + 1} of {spc}
-                    </Text>
-                  </View>
-
-                  <TouchableOpacity
-                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: sessionPage === spc - 1 ? (isDark ? 'rgba(255,255,255,0.1)' : '#E0E0E0') : (isDark ? '#FFDF00' : '#7B1113'), backgroundColor: sessionPage === spc - 1 ? 'transparent' : (isDark ? '#FFDF00' : '#7B1113'), opacity: sessionPage === spc - 1 ? 0.4 : 1 }}
-                    onPress={() => setSessionPage(Math.min(spc - 1, sessionPage + 1))}
-                    disabled={sessionPage === spc - 1}
-                    accessibilityLabel="Next session page"
-                  >
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: sessionPage === spc - 1 ? '#999' : (isDark ? '#4A0A0B' : '#FFFFFF') }}>Next →</Text>
-                  </TouchableOpacity>
-                </View>
-              )
-            })()}
-          </>
-        )}
-      </ScrollView>
-    </SafeAreaView>
-  )
+      <SectionHeading eyebrow="Attendance" title="Student performance" />
+      <AttendanceMetricGrid metrics={[{ label: 'Present', value: totalPresent, tone: 'success' }, { label: 'Late', value: totalLate, tone: 'warning' }, { label: 'Absent', value: totalAbsent, tone: 'danger' }]} />
+      <View className="mb-4"><Text className="font-sans-bold text-sm text-ink dark:text-white">Attendance per session</Text><Text className="mt-1 font-sans text-xs text-muted dark:text-zinc-400">{sessions.length} sessions · Tap a status to cycle it.</Text></View>
+      <View className="gap-3">{pagedSessions.map((session) => {
+        const record = records.find((item) => item.sessionId === session.id)
+        return <CampusCard key={session.id} className="p-4"><View className="flex-row items-center gap-3"><View className="h-11 w-11 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10"><Text className="font-heading text-base text-maroon dark:text-golden">{new Date(session.date).getDate()}</Text></View><View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">{new Date(session.date).toLocaleDateString('en-PH', { weekday: 'short', month: 'long', day: 'numeric' })}</Text><Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">{session.startTime}–{session.endTime}{session.room ? ` · ${session.room}` : ''}</Text></View>{record ? <Pressable disabled={!isTeacher} accessibilityRole={isTeacher ? 'button' : undefined} accessibilityLabel={isTeacher ? `Change status, currently ${record.status}` : undefined} onPress={() => void cycleStatus(record)} className="min-h-11 justify-center"><AttendanceStatusPill status={record.status} /></Pressable> : <Pressable disabled={!isTeacher} accessibilityRole={isTeacher ? 'button' : undefined} accessibilityLabel={isTeacher ? 'Mark absent' : undefined} onPress={() => void addAbsent(session)} className="min-h-11 justify-center rounded-full border border-line px-3 dark:border-line-dark"><Text className="font-sans-bold text-[10px] text-muted dark:text-zinc-400">No record</Text></Pressable>}</View></CampusCard>
+      })}{!sessions.length ? <CampusEmptyState icon="event-busy" title="No sessions yet" description="Attendance will appear after the first class meeting is created." /> : null}</View>
+      {sessionPageCount > 1 ? <View className="mt-5 flex-row items-center gap-3"><CampusButton className="flex-1" label="Previous" variant="secondary" disabled={sessionPage === 0} onPress={() => setSessionPage((value) => Math.max(0, value - 1))} /><Text className="font-sans-bold text-xs text-muted dark:text-zinc-400">{sessionPage + 1}/{sessionPageCount}</Text><CampusButton className="flex-1" label="Next" variant="secondary" disabled={sessionPage === sessionPageCount - 1} onPress={() => setSessionPage((value) => Math.min(sessionPageCount - 1, value + 1))} /></View> : null}
+    </ScrollView>
+  </SafeAreaView>
 }

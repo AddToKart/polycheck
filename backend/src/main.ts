@@ -17,7 +17,7 @@ async function bootstrap() {
 
   app.useLogger(app.get(PinoLogger))
 
-  if (env.TRUST_PROXY) app.getHttpAdapter().getInstance().set('trust proxy', 1)
+  if (env.TRUST_PROXY) app.getHttpAdapter().getInstance().set('trust proxy', env.TRUST_PROXY_HOPS)
   const bodyLimit = `${Math.ceil((env.MAX_PROOF_BYTES * 4) / 3) + 100_000}b`
   app.use(json({ limit: bodyLimit }))
   app.use(urlencoded({ extended: true, limit: bodyLimit }))
