@@ -101,10 +101,10 @@ export function subscribeToAuthChanges(listener: (user: User | null) => void) {
 const FETCH_TIMEOUT = 10_000
 
 const FALLBACK_SUBJECTS: Subject[] = [
-  { id: 'subj-1', name: 'Data Structures and Algorithms', code: 'CS 201', description: 'Fundamental data structures and algorithmic problem solving.' },
-  { id: 'subj-2', name: 'Object-Oriented Programming', code: 'CS 102', description: 'Classes, inheritance, polymorphism, and software design.' },
-  { id: 'subj-3', name: 'Database Management Systems', code: 'CS 301', description: 'Relational databases, SQL, modeling, and transactions.' },
-  { id: 'subj-4', name: 'Web Development', code: 'CS 205', description: 'Full-stack web applications and modern web standards.' },
+  { id: 'subj-1', name: 'Data Structures and Algorithms', code: 'CS 201', description: 'Fundamental data structures and algorithmic problem solving.', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 'subj-2', name: 'Object-Oriented Programming', code: 'CS 102', description: 'Classes, inheritance, polymorphism, and software design.', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 'subj-3', name: 'Database Management Systems', code: 'CS 301', description: 'Relational databases, SQL, modeling, and transactions.', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 'subj-4', name: 'Web Development', code: 'CS 205', description: 'Full-stack web applications and modern web standards.', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
 ]
 
 const FALLBACK_SECTIONS: Section[] = [
@@ -120,6 +120,8 @@ const FALLBACK_SECTIONS: Section[] = [
     enrollmentCode: 'CS201A',
     enrollmentCodeExpiry: '2026-12-31T23:59:59.000Z',
     studentCount: 35,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
   },
   {
     id: 'sec-102',
@@ -133,6 +135,8 @@ const FALLBACK_SECTIONS: Section[] = [
     enrollmentCode: 'CS102B',
     enrollmentCodeExpiry: '2026-12-31T23:59:59.000Z',
     studentCount: 32,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
   },
   {
     id: 'sec-103',
@@ -146,13 +150,15 @@ const FALLBACK_SECTIONS: Section[] = [
     enrollmentCode: 'CS301C',
     enrollmentCodeExpiry: '2026-12-31T23:59:59.000Z',
     studentCount: 38,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
   },
 ]
 
 const FALLBACK_ATTENDANCE: AttendanceRecord[] = [
-  { id: 'att-1', sessionId: 'sess-1', sectionId: 'sec-101', studentId: 's-001', studentName: 'Alexandra Marie Reyes', timestamp: new Date(Date.now() - 86400000 * 2).toISOString(), status: 'present', deviceId: 'dev-1', isSynced: true },
-  { id: 'att-2', sessionId: 'sess-2', sectionId: 'sec-102', studentId: 's-001', studentName: 'Alexandra Marie Reyes', timestamp: new Date(Date.now() - 86400000 * 4).toISOString(), status: 'present', deviceId: 'dev-1', isSynced: true },
-  { id: 'att-3', sessionId: 'sess-3', sectionId: 'sec-103', studentId: 's-001', studentName: 'Alexandra Marie Reyes', timestamp: new Date(Date.now() - 86400000 * 6).toISOString(), status: 'late', deviceId: 'dev-1', isSynced: true },
+  { id: 'att-1', sessionId: 'sess-1', sectionId: 'sec-101', studentId: 's-001', studentName: 'Alexandra Marie Reyes', timestamp: new Date(Date.now() - 86400000 * 2).toISOString(), status: 'present', coordinates: { latitude: 14.5995, longitude: 120.9842 }, deviceId: 'dev-1', isSynced: true },
+  { id: 'att-2', sessionId: 'sess-2', sectionId: 'sec-102', studentId: 's-001', studentName: 'Alexandra Marie Reyes', timestamp: new Date(Date.now() - 86400000 * 4).toISOString(), status: 'present', coordinates: { latitude: 14.5995, longitude: 120.9842 }, deviceId: 'dev-1', isSynced: true },
+  { id: 'att-3', sessionId: 'sess-3', sectionId: 'sec-103', studentId: 's-001', studentName: 'Alexandra Marie Reyes', timestamp: new Date(Date.now() - 86400000 * 6).toISOString(), status: 'late', coordinates: { latitude: 14.5995, longitude: 120.9842 }, deviceId: 'dev-1', isSynced: true },
 ]
 
 class ApiRequestError extends Error {
@@ -367,10 +373,10 @@ export const api = {
   },
   createSection(data: CreateSectionInput): Promise<Section> { return post('/sections', data) },
   getSectionStudents(sectionId: string): Promise<(Student & { attendance: { present: number; late: number; absent: number; disputed: number } })[]> {
-    return get(`/sections/${sectionId}/students`).catch(() => [])
+    return get<(Student & { attendance: { present: number; late: number; absent: number; disputed: number } })[]>(`/sections/${sectionId}/students`).catch(() => [])
   },
   getStudentsForSection(sectionId: string): Promise<Student[]> {
-    return get(`/sections/${sectionId}/students`).catch(() => [])
+    return get<Student[]>(`/sections/${sectionId}/students`).catch(() => [])
   },
   async getStudentSections(studentId: string): Promise<Section[]> {
     try {

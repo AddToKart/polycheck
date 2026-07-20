@@ -7,7 +7,7 @@ import type { Section, SectionRole, SessionPermission, Student, Subject } from '
 import { api } from '../../../services/api-client'
 import { useTheme } from '../../../theme/ThemeContext'
 import { CampusHeader } from '../../../components/CampusHeader'
-import { CampusButton, CampusCard, CampusEmptyState, SectionHeading } from '../../../components/CampusPrimitives'
+import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
 import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
 import { ChoiceSheet } from '../../../components/CampusPickerSheets'
 
@@ -161,6 +161,7 @@ export default function SectionDetailScreen() {
       {pageCount > 1 ? <View className="mt-5 flex-row items-center justify-center gap-3"><CampusButton className="flex-1" label="Previous" variant="secondary" disabled={page === 0} onPress={() => setPage((value) => Math.max(0, value - 1))} /><Text className="font-sans-bold text-xs text-muted dark:text-zinc-400">{page + 1}/{pageCount}</Text><CampusButton className="flex-1" label="Next" variant="secondary" disabled={page === pageCount - 1} onPress={() => setPage((value) => Math.min(pageCount - 1, value + 1))} /></View> : null}
     </ScrollView>
 
-    <ChoiceSheet visible={assignRole !== null} title={assignRole === 'president' ? 'Assign president' : 'Assign QAC coordinator'} options={assignCandidates.map((student) => ({ value: student.id, label: `${student.fullName} · ${student.studentId}` }))} value="" onSelect={(studentId) => { void assignStudentRole(studentId) }} onClose={() => setAssignRole(null)} />
-  </SafeAreaView>
+      <ChoiceSheet visible={assignRole !== null} title={assignRole === 'president' ? 'Assign president' : 'Assign QAC coordinator'} options={assignCandidates.map((student) => ({ value: student.id, label: `${student.fullName} · ${student.studentId}` }))} value="" onSelect={(studentId) => { void assignStudentRole(studentId) }} onClose={() => setAssignRole(null)} />
+    </SafeAreaView>
+  )
 }

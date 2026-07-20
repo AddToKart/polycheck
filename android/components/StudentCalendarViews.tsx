@@ -1,25 +1,8 @@
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
-import type { AttendanceStatus } from '@polycheck/shared'
+import type { AttendanceStatus, CalendarEvent } from '@polycheck/shared'
 import { useTheme } from '../theme/ThemeContext'
 import { AttendanceStatusPill, CampusCard, CampusEmptyState } from './CampusPrimitives'
-
-export type CalendarEvent = {
-  id: string
-  subjectId: string
-  subjectName: string
-  subjectCode?: string
-  sectionId: string
-  sectionName: string
-  teacherName?: string
-  date: string
-  startTime: string
-  endTime: string
-  room?: string
-  type: 'session' | 'schedule'
-  status?: 'scheduled' | 'active' | 'completed' | 'moved' | 'cancelled'
-  studentStatus?: AttendanceStatus
-}
 
 type EventMap = Map<string, CalendarEvent[]>
 
@@ -45,7 +28,7 @@ const eventDotClass = (event: CalendarEvent) => {
 }
 
 type StudentMonthCalendarProps = {
-  monthDays: Date[]
+  monthDays: (Date | null)[][] | Date[]
   currentMonth: number
   today: string
   selectedDay: string | null
@@ -60,46 +43,58 @@ export const StudentMonthCalendar = ({
   selectedDay,
   eventsByDate,
   onSelectDay,
-}: StudentMonthCalendarProps) => (
-  <CampusCard className="mb-4 rounded-none p-3 border-t-4 border-t-maroon dark:border-t-golden">
-    <View className="mb-2 flex-row justify-between border-b border-line pb-2 dark:border-line-dark">
-      {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => (
-        <Text key={`${day}-${idx}`} className="w-[14%] text-center font-sans-bold text-xs text-muted dark:text-zinc-400">
-          {day}
-        </Text>
-      ))}
-    </View>
+}: StudentMonthCalendarProps) => {
+  const flatDays: (Date | null)[] = Array.isArray(monthDays[0])
+    ? (monthDays as (Date | null)[][]).flat()
+    : (monthDays as Date[])
 
-    {Array.from({ length: Math.ceil(monthDays.length / 7) }).map((_, weekIdx) => (
-      <View key={weekIdx} className="flex-row justify-between">
-        {monthDays.slice(weekIdx * 7, (weekIdx + 1) * 7).map((day) => {
-          const date = day.toISOString().split('T')[0]
-          const isToday = date === today
-          const selected = date === selectedDay
-          const dayEvents = eventsByDate.get(date) ?? []
-          const outsideMonth = day.getMonth() !== currentMonth
-          return (
-            <Pressable
-              key={date}
-              accessibilityRole="button"
-              accessibilityLabel={`${day.toLocaleDateString('en-PH', { month: 'long', day: 'numeric' })}, ${dayEvents.length} classes`}
-              accessibilityState={{ selected }}
-              onPress={() => onSelectDay(date)}
-              className={`aspect-square flex-1 items-center justify-center rounded-none border ${selected ? 'border-maroon bg-maroon/5 dark:border-golden dark:bg-golden/10' : 'border-transparent'}`}
-            >
-              <View className={`h-6 w-6 items-center justify-center rounded-none ${isToday ? 'bg-maroon dark:bg-golden' : ''}`}>
-                <Text className={`font-sans-bold text-xs ${isToday ? 'text-white dark:text-maroon-dark' : outsideMonth ? 'text-zinc-300 dark:text-zinc-700' : 'text-ink dark:text-white'}`}>{day.getDate()}</Text>
-              </View>
-              <View className="mt-1 h-1.5 flex-row items-center gap-0.5">
-                {dayEvents.slice(0, 3).map((event, index) => <View key={`${event.id}-${index}`} className={`h-1.5 w-1.5 rounded-none ${eventDotClass(event)}`} />)}
-              </View>
-            </Pressable>
-          )
-        })}
+  return (
+    <CampusCard className="mb-4 rounded-none p-3 border-t-4 border-t-maroon dark:border-t-golden">
+      <View className="mb-2 flex-row justify-between border-b border-line pb-2 dark:border-line-dark">
+        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => (
+          <Text key={`${day}-${idx}`} className="w-[14%] text-center font-sans-bold text-xs text-muted dark:text-zinc-400">
+            {day}
+          </Text>
+        ))}
       </View>
-    ))}
-  </CampusCard>
-)
+
+      {Array.from({ length: Math.ceil(flatDays.length / 7) }).map((_, weekIdx) => (
+        <View key={weekIdx} className="flex-row justify-between">
+          {flatDays.slice(weekIdx * 7, (weekIdx + 1) * 7).map((day, dayIdx) => {
+            if (!day) return <View key={`empty-${weekIdx}-${dayIdx}`} className="aspect-square flex-1" />
+            const date = day.toISOString().split('T')[0]
+            const isToday = date === today
+            const selected = date === selectedDay
+            const dayEvents = eventsByDate.get(date) ?? []
+            const outsideMonth = day.getMonth() !== currentMonth
+            return (
+              <Pressable
+                key={date}
+                accessibilityRole="button"
+                accessibilityLabel={`${day.toLocaleDateString('en-PH', { month: 'long', day: 'numeric' })}, ${dayEvents.length} classes`}
+                accessibilityState={{ selected }}
+                onPress={() => onSelectDay(date)}
+                className={`aspect-square flex-1 items-center justify-center rounded-none border ${selected ? 'border-maroon bg-maroon/5 dark:border-golden dark:bg-golden/10' : 'border-transparent'}`}
+              >
+                <View className={`h-6 w-6 items-center justify-center rounded-none ${isToday ? 'bg-maroon dark:bg-golden' : ''}`}>
+                  <Text className={`font-sans-bold text-xs ${isToday ? 'text-white dark:text-maroon-dark' : outsideMonth ? 'text-zinc-300 dark:text-zinc-700' : 'text-ink dark:text-white'}`}>
+                    {day.getDate()}
+                  </Text>
+                </View>
+
+                <View className="mt-1 flex-row gap-0.5">
+                  {dayEvents.slice(0, 3).map((event) => (
+                    <View key={event.id} className={`h-1.5 w-1.5 rounded-full ${eventDotClass(event)}`} />
+                  ))}
+                </View>
+              </Pressable>
+            )
+          })}
+        </View>
+      ))}
+    </CampusCard>
+  )
+}
 
 type WeekDay = { date: string; day: string; isToday: boolean }
 
@@ -153,7 +148,6 @@ export const StudentWeekCalendar = ({
               ) : events.map((event) => (
                 <Pressable
                   key={event.id}
-                  delayPressIn={0}
                   hitSlop={4}
                   onPress={() => onSelectEvent(event)}
                   className={`rounded-none border-l-4 bg-zinc-50 p-3 dark:bg-white/5 ${event.status === 'moved' ? 'border-l-zinc-400' : event.type === 'schedule' ? 'border-l-zinc-300' : event.studentStatus === 'present' ? 'border-l-emerald-500' : event.studentStatus === 'late' ? 'border-l-amber-400' : event.studentStatus === 'absent' ? 'border-l-red-500' : 'border-l-maroon dark:border-l-golden'}`}

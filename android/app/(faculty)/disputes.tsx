@@ -7,7 +7,7 @@ import type { AttendanceRecord, DisputeReason, Section, Session, Subject, User }
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 import { CampusHeader } from '../../components/CampusHeader'
-import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState } from '../../components/CampusPrimitives'
+import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
 
 const DISPUTE_LABELS: Record<DisputeReason, string> = {
   outside_geofence: 'Outside geofence', expired_token: 'Expired token', duplicate_submission: 'Duplicate submission',

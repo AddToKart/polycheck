@@ -3,12 +3,11 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useFocusEffect } from 'expo-router'
-import type { AttendanceRecord, ScheduleDay, Section, Subject } from '@polycheck/shared'
+import type { AttendanceRecord, CalendarEvent, ScheduleDay, Section, Subject } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusIconButton, CampusEmptyState, SectionHeading } from '../../components/CampusPrimitives'
-import type { CalendarEvent } from '../../components/StudentCalendarViews'
 import {
   StudentCalendarEventList,
   StudentCalendarEventModal,
@@ -108,7 +107,7 @@ export default function ScheduleScreen() {
           if (dayMap[scheduleDay.day] === dayNum) {
             pushEvent({
               id: `sched-${section.id}-${dateStr}-${scheduleDay.startTime}`,
-              subjectId: section.subjectId,
+              title: parentSubject?.name ?? 'Class',
               subjectName: parentSubject?.name ?? 'Class',
               subjectCode: parentSubject?.code,
               sectionId: section.id,
@@ -119,7 +118,7 @@ export default function ScheduleScreen() {
               endTime: scheduleDay.endTime,
               room: scheduleDay.room || section.room,
               type: 'schedule',
-              status: 'scheduled',
+              status: 'inactive',
             })
           }
         })
@@ -128,10 +127,10 @@ export default function ScheduleScreen() {
     }
 
     attendanceRecords.forEach((record) => {
-      if (!record || typeof record.scannedAt !== 'string' || !record.scannedAt) return
+      if (!record || typeof record.timestamp !== 'string' || !record.timestamp) return
       const section = sections.find((s) => s.id === record.sectionId)
       const parentSubject = section ? subjects[section.subjectId] : undefined
-      const parts = record.scannedAt.split('T')
+      const parts = record.timestamp.split('T')
       const recordDate = parts[0]
       const recordTime = parts[1] ? parts[1].substring(0, 5) : '09:00'
 
@@ -140,7 +139,7 @@ export default function ScheduleScreen() {
 
       const sessionEvent: CalendarEvent = {
         id: `att-${record.id}`,
-        subjectId: section?.subjectId ?? '',
+        title: parentSubject?.name ?? 'Class',
         subjectName: parentSubject?.name ?? 'Class',
         subjectCode: parentSubject?.code,
         sectionId: record.sectionId,
@@ -152,7 +151,7 @@ export default function ScheduleScreen() {
         room: section?.room,
         type: 'session',
         status: 'completed',
-        studentStatus: record.status,
+        studentStatus: (record.status === 'present' || record.status === 'late' || record.status === 'absent') ? record.status : undefined,
       }
 
       if (index >= 0) {

@@ -7,7 +7,7 @@ import type { AttendanceRecord, AttendanceStatus, Session, Student } from '@poly
 import { api } from '../../../services/api-client'
 import { useTheme } from '../../../theme/ThemeContext'
 import { CampusHeader } from '../../../components/CampusHeader'
-import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, SectionHeading } from '../../../components/CampusPrimitives'
+import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
 import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
 import QRCode from 'react-native-qrcode-svg'
 
@@ -125,4 +125,5 @@ export default function StudentDetailScreen() {
       {sessionPageCount > 1 ? <View className="mt-5 flex-row items-center gap-3"><CampusButton className="flex-1" label="Previous" variant="secondary" disabled={sessionPage === 0} onPress={() => setSessionPage((value) => Math.max(0, value - 1))} /><Text className="font-sans-bold text-xs text-muted dark:text-zinc-400">{sessionPage + 1}/{sessionPageCount}</Text><CampusButton className="flex-1" label="Next" variant="secondary" disabled={sessionPage === sessionPageCount - 1} onPress={() => setSessionPage((value) => Math.min(sessionPageCount - 1, value + 1))} /></View> : null}
     </ScrollView>
   </SafeAreaView>
+)
 }

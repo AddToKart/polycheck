@@ -7,7 +7,7 @@ import type { Section, Subject } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
 import { useTheme } from '../../../theme/ThemeContext'
 import { CampusHeader } from '../../../components/CampusHeader'
-import { CampusButton, CampusCard, CampusEmptyState, SectionHeading } from '../../../components/CampusPrimitives'
+import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
 
 export default function SubjectDetailScreen() {
   const { isDark, toggle } = useTheme()
