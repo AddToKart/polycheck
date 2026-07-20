@@ -735,7 +735,18 @@ export const api = {
     }
     return res.text()
   },
-  search(query: string): Promise<{ students: Student[]; sections: Section[]; sessions: Session[] }> {
-    return get(`/search?q=${encodeURIComponent(query)}`)
+  async search(query: string): Promise<{ students: Student[]; sections: Section[]; sessions: Session[] }> {
+    const trimmed = query.trim()
+    if (trimmed.length < 2) return { students: [], sections: [], sessions: [] }
+    try {
+      return await get<{ students: Student[]; sections: Section[]; sessions: Session[] }>(`/search?q=${encodeURIComponent(trimmed)}`)
+    } catch {
+      const q = trimmed.toLowerCase()
+      const [allStudents, allSections, allSessions] = await Promise.all([this.getStudents(), this.getSections(), this.getSessions()])
+      const students = allStudents.filter((s) => `${s.fullName} ${s.studentId} ${s.program}`.toLowerCase().includes(q))
+      const sections = allSections.filter((sec) => `${sec.section} ${sec.room || ''} ${sec.semester}`.toLowerCase().includes(q))
+      const sessions = allSessions.filter((sess) => `${sess.subjectName} ${sess.date} ${sess.startTime}`.toLowerCase().includes(q))
+      return { students, sections, sessions }
+    }
   },
 }

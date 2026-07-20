@@ -36,7 +36,7 @@ export default function FacultySearchScreen() {
   useEffect(() => { void api.getSubjects().then(setSubjects) }, [])
   useEffect(() => {
     const trimmed = query.trim()
-    if (!trimmed) {
+    if (trimmed.length < 2) {
       setResults(emptyResults)
       setSearched(false)
       setSearching(false)
@@ -47,6 +47,7 @@ export default function FacultySearchScreen() {
     const timeout = setTimeout(() => {
       void api.search(trimmed)
         .then((nextResults) => { if (active) { setResults(nextResults); setSearched(true) } })
+        .catch(() => { if (active) { setResults(emptyResults); setSearched(true) } })
         .finally(() => { if (active) setSearching(false) })
     }, 250)
     return () => { active = false; clearTimeout(timeout) }
@@ -77,6 +78,7 @@ export default function FacultySearchScreen() {
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }} keyboardShouldPersistTaps="handled">
         {!searched && !query ? <CampusEmptyState icon="manage-search" title="Search university records" description="Enter a name, student number, subject code, section, or session date." /> : null}
+        {!searched && query.trim().length === 1 ? <CampusEmptyState icon="edit" title="Keep typing" description="Type at least 2 characters to start searching." /> : null}
         {searched ? <Text accessibilityLiveRegion="polite" className="my-4 font-sans-medium text-xs text-muted dark:text-zinc-400">{totalResults ? `${totalResults} result${totalResults === 1 ? '' : 's'} for “${query.trim()}”` : `No results for “${query.trim()}”`}</Text> : null}
         {searched && !totalResults ? <CampusEmptyState icon="search-off" title="No matching records" description="Try a shorter name, a full student number, or a subject code." /> : null}
 
