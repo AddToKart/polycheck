@@ -170,7 +170,7 @@ export default function FacultyReportsScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
       <CampusHeader
         eyebrow="Institution oversight"
         title="Attendance reports"
@@ -184,7 +184,7 @@ export default function FacultyReportsScreen() {
         )}
       />
 
-      <ScrollView contentContainerClassName="px-4 pb-32 pt-3" showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 12 }} showsVerticalScrollIndicator={false}>
         <CampusCard className="mb-4 gap-4 p-4">
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center gap-2">

@@ -17,7 +17,7 @@ const EventDetail = ({ icon, label, value }: { icon: keyof typeof MaterialIcons.
 }
 
 export default function FacultyScheduleScreen() {
-  const { isDark } = useTheme()
+  const { isDark, toggle } = useTheme()
   const [user, setUser] = useState<User | null>(null)
   const [viewMode, setViewMode] = useState<'month' | 'week'>('month')
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -78,24 +78,30 @@ export default function FacultyScheduleScreen() {
     ? `${getMonthName(currentDate.getMonth())} ${currentDate.getFullYear()}`
     : `${new Date(`${weekDays[0].date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} – ${new Date(`${weekDays[6].date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}`
 
-  return <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
-    <CampusHeader eyebrow="Faculty calendar" title="Teaching schedule" subtitle="See class patterns, active meetings, and rescheduled sessions in one place." />
-    <View className="px-4 pt-2">
-      <View className="flex-row rounded-2xl bg-zinc-200/70 p-1 dark:bg-white/5">
-        {(['month', 'week'] as const).map((mode) => <Pressable key={mode} accessibilityRole="tab" accessibilityState={{ selected: viewMode === mode }} onPress={() => setViewMode(mode)} className={`min-h-11 flex-1 items-center justify-center rounded-xl ${viewMode === mode ? 'bg-maroon dark:bg-golden' : ''}`}><Text className={`font-sans-bold text-xs capitalize ${viewMode === mode ? 'text-white dark:text-maroon-dark' : 'text-muted dark:text-zinc-400'}`}>{mode}</Text></Pressable>)}
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+      <CampusHeader
+        eyebrow="Faculty calendar"
+        title="Teaching schedule"
+        subtitle="See class patterns, active meetings, and rescheduled sessions in one place."
+        actions={<CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />}
+      />
+      <View className="px-4 pt-2">
+        <View className="flex-row rounded-2xl bg-zinc-200/70 p-1 dark:bg-white/5">
+          {(['month', 'week'] as const).map((mode) => <Pressable key={mode} accessibilityRole="tab" accessibilityState={{ selected: viewMode === mode }} onPress={() => setViewMode(mode)} className={`min-h-11 flex-1 items-center justify-center rounded-xl ${viewMode === mode ? 'bg-maroon dark:bg-golden' : ''}`}><Text className={`font-sans-bold text-xs capitalize ${viewMode === mode ? 'text-white dark:text-maroon-dark' : 'text-muted dark:text-zinc-400'}`}>{mode}</Text></Pressable>)}
+        </View>
+        <View className="my-3 flex-row items-center gap-2">
+          <Pressable accessibilityRole="button" accessibilityLabel="Previous period" onPress={() => move(-1)} className="h-12 w-12 items-center justify-center rounded-2xl border border-line bg-white dark:border-line-dark dark:bg-surface-dark"><MaterialIcons name="chevron-left" size={24} color={isDark ? '#FFDF00' : '#7B1113'} /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Go to today" onPress={() => { const today = new Date(); setCurrentDate(today); setSelectedDay(formatDate(today)) }} className="min-h-12 justify-center rounded-2xl border border-maroon px-4 dark:border-golden"><Text className="font-sans-bold text-xs text-maroon dark:text-golden">Today</Text></Pressable>
+          <Text className="flex-1 text-center font-sans-bold text-sm text-ink dark:text-white">{displayRange}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Next period" onPress={() => move(1)} className="h-12 w-12 items-center justify-center rounded-2xl border border-line bg-white dark:border-line-dark dark:bg-surface-dark"><MaterialIcons name="chevron-right" size={24} color={isDark ? '#FFDF00' : '#7B1113'} /></Pressable>
+        </View>
+        <View className="mb-2 flex-row flex-wrap justify-center gap-x-4 gap-y-2">{[
+          { label: 'Scheduled', color: 'bg-zinc-300 dark:bg-zinc-600' }, { label: 'Session', color: 'bg-maroon dark:bg-golden' }, { label: 'Active', color: 'bg-emerald-500' }, { label: 'Moved', color: 'bg-zinc-500' },
+        ].map((item) => <View key={item.label} className="flex-row items-center gap-1.5"><View className={`h-2 w-2 rounded-full ${item.color}`} /><Text className="font-sans-bold text-[9px] uppercase tracking-[.6px] text-muted dark:text-zinc-500">{item.label}</Text></View>)}</View>
       </View>
-      <View className="my-3 flex-row items-center gap-2">
-        <Pressable accessibilityRole="button" accessibilityLabel="Previous period" onPress={() => move(-1)} className="h-12 w-12 items-center justify-center rounded-2xl border border-line bg-white dark:border-line-dark dark:bg-surface-dark"><MaterialIcons name="chevron-left" size={24} color={isDark ? '#FFDF00' : '#7B1113'} /></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Go to today" onPress={() => { const today = new Date(); setCurrentDate(today); setSelectedDay(formatDate(today)) }} className="min-h-12 justify-center rounded-2xl border border-maroon px-4 dark:border-golden"><Text className="font-sans-bold text-xs text-maroon dark:text-golden">Today</Text></Pressable>
-        <Text className="flex-1 text-center font-sans-bold text-sm text-ink dark:text-white">{displayRange}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Next period" onPress={() => move(1)} className="h-12 w-12 items-center justify-center rounded-2xl border border-line bg-white dark:border-line-dark dark:bg-surface-dark"><MaterialIcons name="chevron-right" size={24} color={isDark ? '#FFDF00' : '#7B1113'} /></Pressable>
-      </View>
-      <View className="mb-2 flex-row flex-wrap justify-center gap-x-4 gap-y-2">{[
-        { label: 'Scheduled', color: 'bg-zinc-300 dark:bg-zinc-600' }, { label: 'Session', color: 'bg-maroon dark:bg-golden' }, { label: 'Active', color: 'bg-emerald-500' }, { label: 'Moved', color: 'bg-zinc-500' },
-      ].map((item) => <View key={item.label} className="flex-row items-center gap-1.5"><View className={`h-2 w-2 rounded-full ${item.color}`} /><Text className="font-sans-bold text-[9px] uppercase tracking-[.6px] text-muted dark:text-zinc-500">{item.label}</Text></View>)}</View>
-    </View>
 
-    <ScrollView contentContainerClassName="px-4 pb-32 pt-2" showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} scrollEnabled={viewMode === 'month'} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 8 }} showsVerticalScrollIndicator={false}>
       {viewMode === 'month' ? <StudentMonthCalendar monthDays={monthDays} currentMonth={currentDate.getMonth()} today={formatDate(new Date())} selectedDay={selectedDay} eventsByDate={eventsByDate} onSelectDay={(date) => setSelectedDay(date === selectedDay ? null : date)} /> : <StudentWeekCalendar weekDays={weekDays} eventsByDate={eventsByDate} onSelectEvent={setSelectedEvent} />}
       {viewMode === 'month' && selectedDay ? <>
         <SectionHeading eyebrow="Selected day" title={new Date(`${selectedDay}T00:00:00`).toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric' })} />

@@ -17,7 +17,7 @@ const SESSION_PAGE_SIZE = 5
 const IdLabel = ({ label, value, prominent = false }: { label: string; value: string; prominent?: boolean }) => <View><Text className="font-sans-bold text-[7px] uppercase tracking-[1.4px] text-zinc-500 dark:text-white/45">{label}</Text><Text className={`mt-1 font-sans-bold uppercase text-ink dark:text-white ${prominent ? 'text-lg text-maroon dark:text-golden' : 'text-[10px]'}`} numberOfLines={2}>{value}</Text></View>
 
 export default function StudentDetailScreen() {
-  const { isDark } = useTheme()
+  const { isDark, toggle } = useTheme()
   const { id: studentId, sectionId } = useLocalSearchParams<{ id: string; sectionId: string }>()
   const [student, setStudent] = useState<Student | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
@@ -86,9 +86,16 @@ export default function StudentDetailScreen() {
     setRecords((previous) => [...previous, newRecord])
   }
 
-  return <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
-    <CampusHeader eyebrow="Student record" title={student.fullName} subtitle={`${student.studentId} · ${student.program}`} onBack={() => router.back()} />
-    <ScrollView contentContainerClassName="px-4 pb-28 pt-3" showsVerticalScrollIndicator={false}>
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+      <CampusHeader
+        eyebrow="Student record"
+        title={student.fullName}
+        subtitle={`${student.studentId} · ${student.program}`}
+        onBack={() => router.back()}
+        actions={<CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />}
+      />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 12 }} showsVerticalScrollIndicator={false}>
       <SectionHeading eyebrow="Digital credential" title="PUP student ID" />
       <Pressable accessibilityRole="button" accessibilityLabel={`Student ID card, showing ${isFlipped ? 'back' : 'front'}. Tap to flip.`} accessibilityHint="Shows identity and verification details" onPress={flip} className="mb-3 w-full self-center" style={{ maxWidth: 390, aspectRatio: 1.586 }}>
         <Animated.View pointerEvents={isFlipped ? 'none' : 'auto'} className="absolute h-full w-full overflow-hidden rounded-[26px] border-2 border-maroon/20 bg-[#FDFBF7] shadow-lg dark:border-golden/20 dark:bg-[#151013]" style={{ backfaceVisibility: 'hidden', transform: [{ rotateY: frontRotation }] }}>

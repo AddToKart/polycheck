@@ -147,15 +147,16 @@ export default function FacultyUsersScreen() {
 
   const visibleAccounts = activeTab === 'teachers' ? teachers : students
 
-  return <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
-    <CampusHeader eyebrow="Account administration" title="Campus users" subtitle="Create accounts, manage access, and reset credentials securely." actions={<><CampusIconButton inverse icon="settings" label="Institution settings" onPress={() => router.push('/(faculty)/settings' as never)} /><CampusIconButton inverse icon="person-add" label={`Add ${activeTab === 'teachers' ? 'teacher' : 'student'}`} onPress={openCreate} /><CampusIconButton inverse icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle theme" onPress={toggle} /></>} />
-    <View className="mx-4 mt-2 flex-row rounded-2xl bg-zinc-200/70 p-1 dark:bg-white/5">
-      {([{ id: 'teachers', label: `Teachers · ${teachers.length}`, icon: 'people' }, { id: 'students', label: `Students · ${students.length}`, icon: 'school' }] as const).map((tab) => {
-        const active = activeTab === tab.id
-        return <Pressable key={tab.id} accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => setActiveTab(tab.id)} className={`min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-xl ${active ? 'bg-maroon dark:bg-golden' : ''}`}><MaterialIcons name={tab.icon} size={17} color={active ? isDark ? '#4A0A0B' : '#FFFFFF' : '#746C6E'} /><Text className={`font-sans-bold text-xs ${active ? 'text-white dark:text-maroon-dark' : 'text-muted dark:text-zinc-400'}`}>{tab.label}</Text></Pressable>
-      })}
-    </View>
-    <ScrollView contentContainerClassName="gap-3 px-4 pb-32 pt-4" showsVerticalScrollIndicator={false}>
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+      <CampusHeader eyebrow="Account administration" title="Campus users" subtitle="Create accounts, manage access, and reset credentials securely." actions={<><CampusIconButton inverse icon="settings" label="Institution settings" onPress={() => router.push('/(faculty)/settings' as never)} /><CampusIconButton inverse icon="person-add" label={`Add ${activeTab === 'teachers' ? 'teacher' : 'student'}`} onPress={openCreate} /><CampusIconButton inverse icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle theme" onPress={toggle} /></>} />
+      <View className="mx-4 mt-2 flex-row rounded-2xl bg-zinc-200/70 p-1 dark:bg-white/5">
+        {([{ id: 'teachers', label: `Teachers · ${teachers.length}`, icon: 'people' }, { id: 'students', label: `Students · ${students.length}`, icon: 'school' }] as const).map((tab) => {
+          const active = activeTab === tab.id
+          return <Pressable key={tab.id} accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => setActiveTab(tab.id)} className={`min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-xl ${active ? 'bg-maroon dark:bg-golden' : ''}`}><MaterialIcons name={tab.icon} size={17} color={active ? isDark ? '#4A0A0B' : '#FFFFFF' : '#746C6E'} /><Text className={`font-sans-bold text-xs ${active ? 'text-white dark:text-maroon-dark' : 'text-muted dark:text-zinc-400'}`}>{tab.label}</Text></Pressable>
+        })}
+      </View>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 16, gap: 12 }} showsVerticalScrollIndicator={false}>
       {visibleAccounts.map((account) => <UserCard key={account.id} account={account} busy={busyUserId === account.id} onStatus={() => changeStatus(account)} onReset={() => { setPasswordForm({ password: '', confirmPassword: '' }); setResetTarget(account) }} />)}
       {!visibleAccounts.length ? <CampusEmptyState icon="group-off" title={`No ${activeTab}`} description="Create the first account with the add button in the header." /> : null}
     </ScrollView>

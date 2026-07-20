@@ -22,7 +22,7 @@ const CardTitle = ({ icon, title, detail }: { icon: keyof typeof MaterialIcons.g
 }
 
 export default function SessionDetailScreen() {
-  const { isDark } = useTheme()
+  const { isDark, toggle } = useTheme()
   const { id } = useLocalSearchParams<{ id: string }>()
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
@@ -147,9 +147,21 @@ export default function SessionDetailScreen() {
     } catch (error) { Alert.alert('Unable to update attendance', error instanceof Error ? error.message : 'Please try again.') }
   }
 
-  return <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
-    <CampusHeader eyebrow="Live attendance" title={session.subjectName} subtitle={`${new Date(session.date).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })} · ${session.startTime}–${session.endTime}`} onBack={() => router.back()} actions={<CampusIconButton inverse icon="refresh" label="Refresh session" onPress={() => void refreshData()} />} />
-    <ScrollView contentContainerClassName="px-4 pb-28 pt-3" showsVerticalScrollIndicator={false}>
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+      <CampusHeader
+        eyebrow="Live attendance"
+        title={session.subjectName}
+        subtitle={`${new Date(session.date).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })} · ${session.startTime}–${session.endTime}`}
+        onBack={() => router.back()}
+        actions={(
+          <>
+            <CampusIconButton inverse icon="refresh" label="Refresh session" onPress={() => void refreshData()} />
+            <CampusIconButton inverse icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle theme" onPress={toggle} />
+          </>
+        )}
+      />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 12 }} showsVerticalScrollIndicator={false}>
       {isTeacher ? <CampusCard className="mb-5 items-center overflow-hidden bg-maroon dark:bg-[#2A0E11]">
         <View className="mb-4 w-full flex-row items-center"><View className="h-9 w-9 items-center justify-center rounded-xl bg-white/10"><MaterialIcons name="qr-code-2" size={19} color="#FFDF00" /></View><View className="ml-3 flex-1"><Text className="font-sans-bold text-base text-white">Session QR</Text><Text className="mt-1 font-sans text-xs text-white/60">Students scan this code inside the geofence.</Text></View></View>
         {session.qrToken ? <>

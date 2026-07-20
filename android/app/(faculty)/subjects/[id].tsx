@@ -10,7 +10,7 @@ import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, SectionHeading } from '../../../components/CampusPrimitives'
 
 export default function SubjectDetailScreen() {
-  const { isDark } = useTheme()
+  const { isDark, toggle } = useTheme()
   const { id } = useLocalSearchParams<{ id: string }>()
   const [subject, setSubject] = useState<Subject | null>(null)
   const [sections, setSections] = useState<Section[]>([])
@@ -26,9 +26,15 @@ export default function SubjectDetailScreen() {
   if (!subject) return null
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
-      <CampusHeader eyebrow={subject.code} title={subject.name} subtitle={subject.description || `${sections.length} class sections`} onBack={() => router.replace('/(faculty)/subjects')} />
-      <ScrollView className="flex-1" contentContainerClassName="px-4 pb-20">
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+      <CampusHeader
+        eyebrow={subject.code}
+        title={subject.name}
+        subtitle={subject.description || `${sections.length} class sections`}
+        onBack={() => router.replace('/(faculty)/subjects')}
+        actions={<CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />}
+      />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}>
         <SectionHeading eyebrow={`${sections.length} total`} title="Class sections" />
         {isTeacher ? <CampusButton label="Add class section" icon="add" onPress={() => router.push({ pathname: '/(faculty)/sections/create', params: { subjectId: id } })} className="mb-5" /> : null}
         <View className="gap-3">

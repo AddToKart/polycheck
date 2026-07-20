@@ -42,7 +42,7 @@ const DetailRow = ({ label, value }: { label: string; value: string }) => (
 )
 
 export default function DisputesScreen() {
-  const { isDark } = useTheme()
+  const { isDark, toggle } = useTheme()
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [disputes, setDisputes] = useState<AttendanceRecord[]>([])
@@ -137,11 +137,12 @@ export default function DisputesScreen() {
   const selectedSession = selectedRecord ? sessions[selectedRecord.sessionId] : undefined
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
       <CampusHeader
         eyebrow="Attendance integrity"
         title="Disputed records"
         subtitle={`${pendingCount} pending reviews · ${resolvedCount} resolved decisions`}
+        actions={<CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />}
       />
 
       <View className="px-4 pb-3 pt-2">
@@ -173,7 +174,7 @@ export default function DisputesScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerClassName="gap-3 px-4 pb-32 pt-2" showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 8, gap: 12 }} showsVerticalScrollIndicator={false}>
         {!records.length ? <CampusEmptyState icon="verified" title={`No ${activeTab} records`} description="Adjust the student search or subject filter to broaden this view." /> : null}
         {groups.map((subject) => {
           const count = subject.sections.reduce((sum, section) => sum + section.sessions.reduce((sessionSum, session) => sessionSum + session.records.length, 0), 0)

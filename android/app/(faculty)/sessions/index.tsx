@@ -10,7 +10,7 @@ import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
 
 export default function FacultySessionsScreen() {
-  const { isDark } = useTheme()
+  const { isDark, toggle } = useTheme()
   const [user, setUser] = useState<User | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const [subjects, setSubjects] = useState<Subject[]>([])
@@ -41,15 +41,20 @@ export default function FacultySessionsScreen() {
   const isSuper = user.role === 'super_admin'
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
       <CampusHeader
         eyebrow={isSuper ? 'Session oversight' : 'Attendance workspace'}
         title={isSuper ? 'Session monitoring' : 'Class sessions'}
         subtitle={isSuper ? 'Observe active and completed sessions across the institution.' : 'Activate an upcoming class or review a previous session.'}
-        actions={!isSuper ? <CampusIconButton icon="add" label="Create session" onPress={() => router.push('/(faculty)/sessions/create')} inverse /> : undefined}
+        actions={(
+          <>
+            {!isSuper ? <CampusIconButton icon="add" label="Create session" onPress={() => router.push('/(faculty)/sessions/create')} inverse /> : null}
+            <CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />
+          </>
+        )}
       />
 
-      <ScrollView className="flex-1" contentContainerClassName="px-4 pb-32">
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}>
         {groupedSessions.length === 0 ? (
           <CampusEmptyState icon="event-busy" title="No sessions found" description="Create a session from a class section when attendance is ready to begin." />
         ) : groupedSessions.map((group) => (

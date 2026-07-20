@@ -15,7 +15,7 @@ const PAGE_SIZE = 10
 const initials = (name: string) => name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()
 
 export default function SectionDetailScreen() {
-  const { isDark } = useTheme()
+  const { isDark, toggle } = useTheme()
   const { id } = useLocalSearchParams<{ id: string }>()
   const [section, setSection] = useState<Section | null>(null)
   const [students, setStudents] = useState<Array<Student & { attendance: { present: number; late: number; absent: number; disputed: number } }>>([])
@@ -111,9 +111,16 @@ export default function SectionDetailScreen() {
     }
   }
 
-  return <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
-    <CampusHeader eyebrow="Section workspace" title={`${parentSubject?.name ?? 'Subject'} · ${section.section}`} subtitle={`${parentSubject?.code ?? ''} · ${section.semester}`} onBack={() => router.back()} />
-    <ScrollView contentContainerClassName="px-4 pb-28 pt-3" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+      <CampusHeader
+        eyebrow="Section workspace"
+        title={`${parentSubject?.name ?? 'Subject'} · ${section.section}`}
+        subtitle={`${parentSubject?.code ?? ''} · ${section.semester}`}
+        onBack={() => router.back()}
+        actions={<CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />}
+      />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 12 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <SectionHeading eyebrow="Class profile" title="Section details" />
       <CampusCard className="mb-5 p-4">
         <View className="flex-row gap-3">{[

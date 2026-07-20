@@ -36,7 +36,7 @@ export default function FacultySubjectsScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
       <CampusHeader
         eyebrow={isSuper ? 'Institution catalog' : 'Teaching catalog'}
         title={isSuper ? 'Subject directory' : 'My subjects'}
@@ -50,7 +50,7 @@ export default function FacultySubjectsScreen() {
         )}
       />
 
-      <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pb-32">
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, gap: 12 }}>
         {subjects.length === 0 ? (
           <CampusEmptyState
             icon="auto-stories"

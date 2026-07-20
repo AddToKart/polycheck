@@ -3,8 +3,9 @@ import { ActivityIndicator, Alert, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { api } from '../../services/api-client'
+import { useTheme } from '../../theme/ThemeContext'
 import { CampusHeader } from '../../components/CampusHeader'
-import { CampusButton, CampusCard } from '../../components/CampusPrimitives'
+import { CampusButton, CampusCard, CampusIconButton } from '../../components/CampusPrimitives'
 import { CampusFormField } from '../../components/CampusFormField'
 
 const fields = [
@@ -15,6 +16,7 @@ const fields = [
 ] as const
 
 export default function InstitutionSettingsScreen() {
+  const { isDark, toggle } = useTheme()
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((field) => [field.key, field.defaultValue])))
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -48,10 +50,16 @@ export default function InstitutionSettingsScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
-      <CampusHeader eyebrow="Super administrator" title="Institution settings" subtitle="Defaults applied when faculty create new attendance sessions." onBack={() => router.back()} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+      <CampusHeader
+        eyebrow="Super administrator"
+        title="Institution settings"
+        subtitle="Defaults applied when faculty create new attendance sessions."
+        onBack={() => router.back()}
+        actions={<CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />}
+      />
       {loading ? <View className="flex-1 items-center justify-center"><ActivityIndicator size="large" color="#7B1113" /></View> : (
-        <ScrollView className="flex-1" contentContainerClassName="px-4 pb-12" keyboardShouldPersistTaps="handled">
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }} keyboardShouldPersistTaps="handled">
           <CampusCard>
             <Text className="font-heading text-xl text-ink dark:text-white">University defaults</Text>
             <Text className="mb-6 mt-2 font-sans text-sm leading-5 text-muted dark:text-zinc-400">These values guide new sessions but do not alter existing records.</Text>

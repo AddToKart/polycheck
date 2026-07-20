@@ -56,7 +56,7 @@ export default function FacultySearchScreen() {
   const totalResults = results.students.length + results.sections.length + results.sessions.length
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
       <CampusHeader eyebrow="Faculty tools" title="Global search" subtitle="Find students, class sections, and attendance sessions." onBack={() => router.back()} />
       <View className="mx-4 mb-2 min-h-14 flex-row items-center rounded-2xl border border-line bg-white px-4 dark:border-line-dark dark:bg-surface-dark">
         {searching ? <ActivityIndicator size="small" color={isDark ? '#FFDF00' : '#7B1113'} /> : <MaterialIcons name="search" size={21} color={isDark ? '#A1A1AA' : '#746C6E'} />}
@@ -75,7 +75,7 @@ export default function FacultySearchScreen() {
         {query ? <Pressable accessibilityRole="button" accessibilityLabel="Clear search" onPress={() => setQuery('')} className="h-10 w-10 items-center justify-center"><MaterialIcons name="close" size={19} color={isDark ? '#A1A1AA' : '#746C6E'} /></Pressable> : null}
       </View>
 
-      <ScrollView className="flex-1" contentContainerClassName="px-4 pb-24" keyboardShouldPersistTaps="handled">
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }} keyboardShouldPersistTaps="handled">
         {!searched && !query ? <CampusEmptyState icon="manage-search" title="Search university records" description="Enter a name, student number, subject code, section, or session date." /> : null}
         {searched ? <Text accessibilityLiveRegion="polite" className="my-4 font-sans-medium text-xs text-muted dark:text-zinc-400">{totalResults ? `${totalResults} result${totalResults === 1 ? '' : 's'} for “${query.trim()}”` : `No results for “${query.trim()}”`}</Text> : null}
         {searched && !totalResults ? <CampusEmptyState icon="search-off" title="No matching records" description="Try a shorter name, a full student number, or a subject code." /> : null}
