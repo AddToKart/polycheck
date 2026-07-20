@@ -183,10 +183,10 @@ export default function FacultyScheduleScreen() {
       </ScrollView>
 
       <Modal visible={!!selectedEvent} transparent animationType="slide" onRequestClose={() => setSelectedEvent(null)}>
-        <Pressable className="flex-1 justify-end bg-black/60" onPress={() => setSelectedEvent(null)}>
+        <Pressable className="flex-1 justify-end bg-black/80" onPress={() => setSelectedEvent(null)}>
           {selectedEvent ? (
-            <Pressable onPress={() => undefined} className="rounded-t-[34px] bg-white px-5 pb-10 pt-4 dark:bg-[#151013]">
-              <View className="mb-5 h-1.5 w-12 self-center rounded-full bg-zinc-300 dark:bg-zinc-700" />
+            <Pressable onPress={() => undefined} className="rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-[#161214]">
+              <View className="mb-4 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
               <Text className="font-sans-bold text-[10px] uppercase tracking-[1.5px] text-maroon dark:text-golden">{selectedEvent.status === 'moved' ? 'Rescheduled slot' : selectedEvent.type === 'session' ? 'Class session' : 'Scheduled class'}</Text>
               <Text className="mt-1 font-heading text-2xl text-ink dark:text-white">{selectedEvent.subjectName}</Text>
               {selectedEvent.status === 'moved' && selectedEvent.rescheduledTo ? (

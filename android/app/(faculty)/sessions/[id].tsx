@@ -219,9 +219,39 @@ export default function SessionDetailScreen() {
     </ScrollView>
 
     <Modal visible={isTeacher && showValidityPrompt} transparent animationType="slide" onRequestClose={() => setShowValidityPrompt(false)}>
-      <Pressable className="flex-1 justify-end bg-black/60" onPress={() => setShowValidityPrompt(false)}><Pressable onPress={() => undefined} className="rounded-t-[34px] bg-white px-5 pb-10 pt-4 dark:bg-[#151013]"><View className="mb-5 h-1.5 w-12 self-center rounded-full bg-zinc-300 dark:bg-zinc-700" /><View className="mb-5 flex-row items-start gap-4"><View className="h-12 w-12 items-center justify-center rounded-2xl bg-golden"><MaterialIcons name="timer" size={23} color="#4A0A0B" /></View><View className="flex-1"><Text className="font-heading text-2xl text-ink dark:text-white">QR settings</Text><Text className="mt-1 font-sans text-xs leading-5 text-muted dark:text-zinc-400">Set a short validity window and a late-arrival grace period.</Text></View></View><View className="mb-5 flex-row gap-3">{[
-        { label: 'QR validity', value: validityMinutes, setValue: setValidityMinutes, hint: '1–15 min' }, { label: 'Grace period', value: graceMinutes, setValue: setGraceMinutes, hint: '0–60 min' },
-      ].map((field) => <View key={field.label} className="flex-1"><Text className="mb-2 font-sans-bold text-xs text-ink dark:text-zinc-200">{field.label}</Text><View className="min-h-14 flex-row items-center rounded-2xl border border-line bg-zinc-50 px-4 dark:border-line-dark dark:bg-white/5"><TextInput accessibilityLabel={field.label} className="flex-1 text-center font-heading text-xl text-ink dark:text-white" keyboardType="number-pad" value={field.value} onChangeText={field.setValue} /><Text className="font-sans text-[10px] text-muted dark:text-zinc-500">min</Text></View><Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">{field.hint}</Text></View>)}</View><View className="flex-row gap-3"><CampusButton className="flex-1" label="Cancel" variant="secondary" onPress={() => setShowValidityPrompt(false)} /><CampusButton className="flex-1" label="Generate" icon="qr-code-2" onPress={() => void generateQr()} /></View></Pressable></Pressable>
+      <Pressable className="flex-1 justify-end bg-black/80" onPress={() => setShowValidityPrompt(false)}>
+        <Pressable onPress={() => undefined} className="rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-[#161214]">
+          <View className="mb-4 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
+          <View className="mb-5 flex-row items-start gap-4">
+            <View className="h-12 w-12 items-center justify-center rounded-2xl bg-golden">
+              <MaterialIcons name="timer" size={23} color="#4A0A0B" />
+            </View>
+            <View className="flex-1">
+              <Text className="font-heading text-2xl text-ink dark:text-white">QR settings</Text>
+              <Text className="mt-1 font-sans text-xs leading-5 text-muted dark:text-zinc-400">Set a short validity window and a late-arrival grace period.</Text>
+            </View>
+          </View>
+          <View className="mb-5 flex-row gap-3">
+            {[
+              { label: 'QR validity', value: validityMinutes, setValue: setValidityMinutes, hint: '1–15 min' },
+              { label: 'Grace period', value: graceMinutes, setValue: setGraceMinutes, hint: '0–60 min' },
+            ].map((field) => (
+              <View key={field.label} className="flex-1">
+                <Text className="mb-2 font-sans-bold text-xs text-ink dark:text-zinc-200">{field.label}</Text>
+                <View className="min-h-14 flex-row items-center rounded-2xl border border-zinc-300 bg-zinc-50 px-4 dark:border-zinc-700 dark:bg-white/5">
+                  <TextInput accessibilityLabel={field.label} className="flex-1 text-center font-heading text-xl text-ink dark:text-white" keyboardType="number-pad" value={field.value} onChangeText={field.setValue} />
+                  <Text className="font-sans text-[10px] text-muted dark:text-zinc-500">min</Text>
+                </View>
+                <Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">{field.hint}</Text>
+              </View>
+            ))}
+          </View>
+          <View className="flex-row gap-3">
+            <CampusButton className="flex-1" label="Cancel" variant="secondary" onPress={() => setShowValidityPrompt(false)} />
+            <CampusButton className="flex-1" label="Generate" icon="qr-code-2" onPress={() => void generateQr()} />
+          </View>
+        </Pressable>
+      </Pressable>
     </Modal>
 
       <Modal visible={isTeacher && showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}><Pressable accessibilityRole="button" accessibilityLabel="Close full-screen QR code" className="flex-1 items-center justify-center bg-black/95 px-5" onPress={() => setShowQrModal(false)}>{session.qrToken ? <View className="rounded-[32px] bg-white p-4"><QRCode value={session.qrToken} size={270} quietZone={8} backgroundColor="#FFFFFF" color="#0A0A0A" /></View> : null}<Text className="mt-6 font-sans-medium text-sm text-white/60">Tap anywhere to close</Text></Pressable></Modal>

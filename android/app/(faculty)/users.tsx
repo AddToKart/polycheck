@@ -18,18 +18,25 @@ const initials = (name: string) => name.split(' ').map((part) => part[0]).join('
 
 const AccountSheet = ({ visible, title, description, children, onClose }: { visible: boolean; title: string; description: string; children: ReactNode; onClose: () => void }) => {
   const { isDark } = useTheme()
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-    <View className="flex-1 justify-end bg-black/60">
-      <View className="max-h-[92%] rounded-t-[34px] bg-white px-5 pb-10 pt-4 dark:bg-[#151013]">
-        <View className="mb-4 h-1.5 w-12 self-center rounded-full bg-zinc-300 dark:bg-zinc-700" />
-        <View className="mb-2 flex-row items-start gap-4">
-          <View className="flex-1"><Text className="font-heading text-2xl text-ink dark:text-white">{title}</Text><Text className="mt-2 font-sans text-xs leading-5 text-muted dark:text-zinc-400">{description}</Text></View>
-          <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} className="h-11 w-11 items-center justify-center rounded-2xl bg-zinc-100 dark:bg-white/5"><MaterialIcons name="close" size={21} color={isDark ? '#FFFFFF' : '#181113'} /></Pressable>
-        </View>
-        {children}
-      </View>
-    </View>
-  </Modal>
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable className="flex-1 justify-end bg-black/80" onPress={onClose}>
+        <Pressable onPress={() => undefined} className="max-h-[92%] rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-[#161214]">
+          <View className="mb-4 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
+          <View className="mb-2 flex-row items-start gap-4">
+            <View className="flex-1">
+              <Text className="font-heading text-2xl text-ink dark:text-white">{title}</Text>
+              <Text className="mt-2 font-sans text-xs leading-5 text-muted dark:text-zinc-400">{description}</Text>
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} className="h-11 w-11 items-center justify-center rounded-2xl bg-zinc-100 dark:bg-white/10">
+              <MaterialIcons name="close" size={21} color={isDark ? '#FFFFFF' : '#181113'} />
+            </Pressable>
+          </View>
+          {children}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  )
 }
 
 const UserCard = ({ account, busy, onStatus, onReset }: { account: Teacher | Student; busy: boolean; onStatus: () => void; onReset: () => void }) => {
