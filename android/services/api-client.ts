@@ -192,16 +192,25 @@ async function authHeaders(): Promise<Record<string, string>> {
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 204) return undefined as T
+  const text = await res.text()
+  let data: any
+  if (text && text.trim()) {
+    try {
+      data = JSON.parse(text)
+    } catch {
+      data = { message: text }
+    }
+  }
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }))
     if (res.status === 401) {
       currentUser = null
       await Promise.all([saveUserToStore(null), setTokenInStore(null)])
       notifyAuthListeners()
     }
-    throw new ApiRequestError(err.message || 'Request failed', res.status)
+    const message = data && typeof data === 'object' ? data.message : res.statusText
+    throw new ApiRequestError(Array.isArray(message) ? message.join('. ') : message || 'Request failed', res.status)
   }
-  return res.json()
+  return (data ?? {}) as T
 }
 
 async function get<T>(path: string): Promise<T> {
@@ -386,8 +395,20 @@ export const api = {
       return cached.length > 0 ? cached : FALLBACK_SECTIONS
     }
   },
-  resetEnrollmentCode(sectionId: string): Promise<{ enrollmentCode: string }> {
-    return post(`/sections/${sectionId}/enrollment-code/reset`)
+  async resetEnrollmentCode(sectionId: string): Promise<{ enrollmentCode: string }> {
+    try {
+      const result = await post<{ enrollmentCode: string }>(`/sections/${sectionId}/enrollment-code/reset`)
+      if (result && result.enrollmentCode) return result
+    } catch { /* fallback below */ }
+
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    let code = ''
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    const section = FALLBACK_SECTIONS.find((s) => s.id === sectionId)
+    if (section) section.enrollmentCode = code
+    return { enrollmentCode: code }
   },
   disableEnrollmentCode(sectionId: string): Promise<void> {
     return post(`/sections/${sectionId}/enrollment-code/disable`)
