@@ -513,8 +513,12 @@ export const api = {
   },
 
   // ── Attendance ──
-  getAttendanceRecords(sessionId?: string): Promise<AttendanceRecord[]> {
-    const scope = sessionId ? { sessionId, limit: 1000 } : { ...recentDateRange(31), limit: 1000 }
+  getAttendanceRecords(sessionId?: string, startDate?: string, endDate?: string): Promise<AttendanceRecord[]> {
+    const scope = sessionId
+      ? { sessionId, limit: 1000 }
+      : startDate && endDate
+        ? { startDate, endDate, limit: 1000 }
+        : { ...recentDateRange(31), limit: 1000 }
     return get(queryPath('/attendance', scope))
   },
   getAttendanceSummaries(teacherId?: string): Promise<AttendanceSummary[]> {

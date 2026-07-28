@@ -1,5 +1,4 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
-import { haversineDistance, verifyQRToken } from '@polycheck/shared'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type {
@@ -12,46 +11,13 @@ import type {
 import { AttendanceGateway } from '../realtime/attendance.gateway'
 import { RedisService } from '../infrastructure/redis.service'
 import { createHash } from 'crypto'
-import type { AttendanceRecord, AttendanceStatus, Prisma, Session } from '@prisma/client'
-
-type CachedSession = Omit<Session, 'endedAt' | 'qrTokenExpiresAt'> & {
-  endedAt: string | null
-  qrTokenExpiresAt: string | null
-  teacherPublicKey?: string
-}
-
-type ScanEvidence = {
-  sessionId: string
-  latitude: number
-  longitude: number
-  deviceId?: string
-  qrToken: string
-  scannedAt?: string
-  clientAttemptId?: string
-  accuracyMeters?: number
-  locationCapturedAt?: string
-  mocked?: boolean
-  inputChannel?: 'camera' | 'image' | 'manual'
-}
-
-type ScanValidation = {
-  success: boolean
-  status: AttendanceStatus
-  reason?: string
-  message: string
-  scannedAt: Date
-  receivedAt: Date
-  distanceMeters?: number
-  geofenceRadiusMeters?: number
-  riskSignals: string[]
-}
-
-const MAX_LOCATION_AGE_MS = 2 * 60_000
-const MAX_LOCATION_ACCURACY_METERS = 50
-const RAW_ATTENDANCE_LIMIT = 1_000
-const RAW_DATE_RANGE_DAYS = 31
-const REPORT_DATE_RANGE_DAYS = 366
-const REPORT_SECTION_LIMIT = 1_000
+import type { AttendanceRecord, AttendanceStatus } from '@prisma/client'
+import { ScanValidatorService } from './scan-validator.service'
+import { AttendanceScopeService } from './attendance-scope.service'
+import { AttendanceReportService } from './attendance-report.service'
+import { GeofenceService } from './geofence.service'
+import { verifyQRToken } from '@polycheck/shared'
+import { RAW_ATTENDANCE_LIMIT, type ScanEvidence, type ScanValidation, type CachedSession } from './types'
 
 @Injectable()
 export class AttendanceService {
@@ -59,10 +25,16 @@ export class AttendanceService {
     private readonly prisma: PrismaService,
     private readonly realtime: AttendanceGateway,
     private readonly redis: RedisService,
+    private readonly scanValidator: ScanValidatorService,
+    private readonly scope: AttendanceScopeService,
+    private readonly reportService: AttendanceReportService,
+    private readonly geofence: GeofenceService,
   ) {}
 
+  // ── Raw record access ──
+
   async findAll(user: RequestUser, query: AttendanceListQueryDto = {}) {
-    const where = await this.rawRecordWhere(user, query)
+    const where = await this.scope.rawRecordWhere(user, query)
     const records = await this.prisma.attendanceRecord.findMany({
       where,
       orderBy: { timestamp: 'desc' },
@@ -72,7 +44,7 @@ export class AttendanceService {
   }
 
   async findPage(user: RequestUser, query: AttendanceListQueryDto, pagination: { limit: number; offset: number }) {
-    const where = await this.rawRecordWhere(user, query)
+    const where = await this.scope.rawRecordWhere(user, query)
     const [records, total] = await Promise.all([
       this.prisma.attendanceRecord.findMany({
         where,
@@ -121,79 +93,20 @@ export class AttendanceService {
     return records.map((record) => this.present(record))
   }
 
+  // ── Report / summaries ──
+
   async summaries(user: RequestUser, query: AttendanceReportQueryDto = {}) {
-    return (await this.report(user, query)).summaries
+    return this.reportService.summaries(user, query)
   }
 
   async report(user: RequestUser, query: AttendanceReportQueryDto = {}) {
-    const range = this.resolveDateRange(query.startDate, query.endDate, REPORT_DATE_RANGE_DAYS, 30)
-    const sessionWhere = await this.filteredSessionScope(user, query, range)
-    const recordWhere: Prisma.AttendanceRecordWhereInput = {
-      AND: [
-        await this.recordScope(user),
-        { session: sessionWhere },
-        ...(query.sectionId ? [{ sectionId: query.sectionId }] : []),
-        ...(query.sessionId ? [{ sessionId: query.sessionId }] : []),
-      ],
-    }
-    const sessionGroups = await this.prisma.session.groupBy({
-      by: ['sectionId'],
-      where: sessionWhere,
-      _count: { _all: true },
-      orderBy: { sectionId: 'asc' },
-      take: REPORT_SECTION_LIMIT + 1,
-    })
-    if (sessionGroups.length > REPORT_SECTION_LIMIT) {
-      throw new BadRequestException(`Reports are limited to ${REPORT_SECTION_LIMIT} sections; narrow the filters`)
-    }
-    const statusGroups = await this.prisma.attendanceRecord.groupBy({
-      by: ['sectionId', 'status'],
-      where: recordWhere,
-      _count: { _all: true },
-    })
-    const sectionIds = [
-      ...new Set([...statusGroups.map((group) => group.sectionId), ...sessionGroups.map((group) => group.sectionId)]),
-    ]
-    const sections = await this.prisma.section.findMany({
-      where: { id: { in: sectionIds } },
-      select: { id: true, subject: { select: { name: true } } },
-    })
-    const subjectNames = new Map(sections.map((section) => [section.id, section.subject.name]))
-    const summaries = new Map(
-      sectionIds.map((sectionId) => [
-        sectionId,
-        {
-          sectionId,
-          subjectName: subjectNames.get(sectionId) ?? sectionId,
-          totalSessions: 0,
-          present: 0,
-          late: 0,
-          absent: 0,
-          disputed: 0,
-          pending: 0,
-        },
-      ]),
-    )
-    for (const group of sessionGroups) summaries.get(group.sectionId)!.totalSessions = group._count._all
-    for (const group of statusGroups) summaries.get(group.sectionId)![group.status] = group._count._all
-    const rows = [...summaries.values()].sort((left, right) => left.subjectName.localeCompare(right.subjectName))
-    const totals = rows.reduce(
-      (total, row) => ({
-        totalRecords: total.totalRecords + row.present + row.late + row.absent + row.pending + row.disputed,
-        totalSessions: total.totalSessions + row.totalSessions,
-        present: total.present + row.present,
-        late: total.late + row.late,
-        absent: total.absent + row.absent,
-        pending: total.pending + row.pending,
-        disputed: total.disputed + row.disputed,
-      }),
-      { totalRecords: 0, totalSessions: 0, present: 0, late: 0, absent: 0, pending: 0, disputed: 0 },
-    )
-    return { range, totals, summaries: rows }
+    return this.reportService.report(user, query)
   }
 
+  // ── Scan attempts ──
+
   async findAttempts(user: RequestUser, sessionId?: string) {
-    const sessionWhere = await this.sessionScope(user)
+    const sessionWhere = await this.scope.sessionScope(user)
     return this.prisma.scanAttempt.findMany({
       where: { ...(sessionId ? { sessionId } : {}), session: sessionWhere },
       include: {
@@ -205,8 +118,10 @@ export class AttendanceService {
     })
   }
 
+  // ── Scan / check / submit / sync ──
+
   async check(user: RequestUser, dto: ScanAttendanceDto) {
-    const evidence = this.scanEvidence(dto)
+    const evidence = this.scanValidator.scanEvidenceFromScanDto(dto)
     const receivedAt = new Date()
     const withinLimit = await this.redis.consumeRateLimit(`scan:${user.id}:${dto.sessionId}`, 30, 60)
     if (!withinLimit) {
@@ -222,7 +137,7 @@ export class AttendanceService {
       await this.recordScanAttempt(user, evidence, validation, 'denied')
       return validation
     }
-    const validation = await this.validateScan(user, evidence, false, receivedAt)
+    const validation = await this.scanValidator.validateScan(user, evidence, false, receivedAt)
     if (!validation.success) {
       await this.recordScanAttempt(user, evidence, validation, 'denied')
     }
@@ -230,11 +145,11 @@ export class AttendanceService {
   }
 
   async submit(user: RequestUser, dto: SubmitAttendanceDto) {
-    return this.processScanSubmission(user, this.submitEvidence(dto), false)
+    return this.processScanSubmission(user, this.scanValidator.scanEvidenceFromSubmitDto(dto), false)
   }
 
   async scan(user: RequestUser, dto: ScanAttendanceDto) {
-    const result = await this.processScanSubmission(user, this.scanEvidence(dto), false)
+    const result = await this.processScanSubmission(user, this.scanValidator.scanEvidenceFromScanDto(dto), false)
     if (!result.success || !('record' in result)) return { error: result.message ?? 'Check-in rejected' }
     return result.record
   }
@@ -243,7 +158,7 @@ export class AttendanceService {
     if (!dto.scannedAt) {
       return { error: 'Offline attendance records require the original scan timestamp' }
     }
-    const result = await this.processScanSubmission(user, this.scanEvidence(dto), true)
+    const result = await this.processScanSubmission(user, this.scanValidator.scanEvidenceFromScanDto(dto), true)
     if (!result.success || !('record' in result)) return { error: result.message ?? 'Offline check-in rejected' }
     return result.record
   }
@@ -251,7 +166,7 @@ export class AttendanceService {
   private async processScanSubmission(user: RequestUser, evidence: ScanEvidence, offline: boolean) {
     const receivedAt = new Date()
     const tokenHash = createHash('sha256').update(evidence.qrToken).digest('hex')
-    const replay = await this.findReplay(user.id, evidence, tokenHash)
+    const replay = await this.scanValidator.findReplay(user.id, evidence, tokenHash)
     if (replay) return replay
 
     const withinLimit = await this.redis.consumeRateLimit(`scan:${user.id}:${evidence.sessionId}`, 10, 60)
@@ -261,7 +176,7 @@ export class AttendanceService {
         status: 'absent',
         reason: 'rate_limited',
         message: 'Too many scan attempts. Try again shortly.',
-        scannedAt: this.clientScannedAt(evidence, offline, receivedAt),
+        scannedAt: this.scanValidator.clientScannedAt(evidence, offline, receivedAt),
         receivedAt,
         riskSignals: ['rate_limited'],
       }
@@ -276,7 +191,7 @@ export class AttendanceService {
         status: 'absent',
         reason: 'qr_expired',
         message: 'The QR attendance window has expired',
-        scannedAt: this.clientScannedAt(evidence, offline, receivedAt),
+        scannedAt: this.scanValidator.clientScannedAt(evidence, offline, receivedAt),
         receivedAt,
         riskSignals: ['expired_before_activation'],
       }
@@ -284,7 +199,7 @@ export class AttendanceService {
       return validation
     }
 
-    const validation = await this.validateScan(user, evidence, offline, receivedAt)
+    const validation = await this.scanValidator.validateScan(user, evidence, offline, receivedAt)
     if (!validation.success) {
       await this.recordScanAttempt(user, evidence, validation, 'denied', offline)
       return validation
@@ -295,7 +210,7 @@ export class AttendanceService {
     if (!existing) throw new NotFoundException('Attendance roster entry not found')
     const suspiciousCoordinates =
       validation.status !== 'disputed' &&
-      (await this.hasSuspiciousCoordinates(
+      (await this.geofence.hasSuspiciousCoordinates(
         user.id,
         evidence.sessionId,
         evidence.deviceId,
@@ -314,7 +229,7 @@ export class AttendanceService {
     try {
       transactionResult = await this.prisma.$transaction(async (tx) => {
         const attempt = await tx.scanAttempt.create({
-          data: this.scanAttemptData(user.id, evidence, validation, outcome, offline),
+          data: this.scanValidator.buildScanAttemptData(user.id, evidence, validation, outcome, offline),
         })
         const updated = await tx.attendanceRecord.updateMany({
           where: {
@@ -359,7 +274,7 @@ export class AttendanceService {
       })
     } catch (error) {
       if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
-        const concurrentReplay = await this.findReplay(user.id, evidence, tokenHash)
+        const concurrentReplay = await this.scanValidator.findReplay(user.id, evidence, tokenHash)
         if (concurrentReplay && concurrentReplay.success && 'record' in concurrentReplay) return concurrentReplay
       }
       throw error
@@ -375,6 +290,8 @@ export class AttendanceService {
     this.realtime.emitAttendanceUpdated(transactionResult)
     return { ...validation, status: finalStatus, record: this.present(transactionResult) }
   }
+
+  // ── Manual status updates ──
 
   async updateStatus(user: RequestUser, id: string, status: 'present' | 'late' | 'absent' | 'pending' | 'disputed') {
     if (user.role !== 'teacher') {
@@ -431,168 +348,7 @@ export class AttendanceService {
     return this.present(record)
   }
 
-  private async validateScan(
-    user: RequestUser,
-    evidence: ScanEvidence,
-    offline: boolean,
-    receivedAt: Date,
-  ): Promise<ScanValidation> {
-    const riskSignals: string[] = []
-    const missingCoreEvidence: string[] = []
-    if (!evidence.clientAttemptId) missingCoreEvidence.push('missing_client_attempt_id')
-    if (evidence.accuracyMeters === undefined) missingCoreEvidence.push('missing_accuracy')
-    if (!evidence.locationCapturedAt) missingCoreEvidence.push('missing_location_timestamp')
-    if (!evidence.inputChannel) missingCoreEvidence.push('missing_input_channel')
-    riskSignals.push(...missingCoreEvidence)
-    if (evidence.mocked === undefined) riskSignals.push('mock_status_unavailable')
-    if (evidence.inputChannel && evidence.inputChannel !== 'camera')
-      riskSignals.push(`fallback_${evidence.inputChannel}`)
-    const scannedAt = this.clientScannedAt(evidence, offline, receivedAt)
-    const failed = (
-      status: AttendanceStatus,
-      reason: string,
-      message: string,
-      signals: string[] = [],
-    ): ScanValidation => ({
-      success: false,
-      status,
-      reason,
-      message,
-      scannedAt,
-      receivedAt,
-      riskSignals: [...riskSignals, ...signals],
-    })
-
-    const cached = await this.redis.getJson<CachedSession>(`active-session:${evidence.sessionId}`)
-    const session = cached
-      ? {
-          ...cached,
-          endedAt: cached.endedAt ? new Date(cached.endedAt) : null,
-          qrTokenExpiresAt: cached.qrTokenExpiresAt ? new Date(cached.qrTokenExpiresAt) : null,
-        }
-      : await this.prisma.session.findUnique({ where: { id: evidence.sessionId } })
-    if (!session) return failed('absent', 'session_not_found', 'Session not found')
-    if (Number.isNaN(scannedAt.getTime()))
-      return failed('disputed', 'invalid_timestamp', 'Scan timestamp is invalid', ['invalid_client_timestamp'])
-
-    const enrollment = await this.prisma.enrollment.findUnique({
-      where: { studentId_sectionId: { studentId: user.id, sectionId: session.sectionId } },
-    })
-    if (!enrollment) return failed('absent', 'not_enrolled', 'You are not enrolled in this section')
-    const teacherPublicKey =
-      cached?.teacherPublicKey ??
-      (await this.prisma.user.findUnique({ where: { id: session.teacherId }, select: { teacherPublicKey: true } }))
-        ?.teacherPublicKey
-    if (!teacherPublicKey) return failed('disputed', 'invalid_signature', 'Teacher signing key is unavailable')
-    const payload = verifyQRToken(evidence.qrToken, teacherPublicKey)
-    if (!payload) return failed('disputed', 'invalid_signature', 'QR token signature is invalid')
-    if (
-      (session.qrToken && evidence.qrToken !== session.qrToken) ||
-      payload.sessionId !== session.id ||
-      payload.sectionId !== session.sectionId ||
-      payload.teacherId !== session.teacherId
-    )
-      return failed('disputed', 'token_mismatch', 'QR token does not match this session')
-
-    const validityEnd = payload.issuedAt + payload.validityMinutes * 60_000
-    const graceEnd = validityEnd + payload.gracePeriodMinutes * 60_000
-    if (!session.isActive && !offline) return failed('absent', 'session_inactive', 'Session is not active')
-    if (!session.isActive && offline && !session.endedAt)
-      return failed('absent', 'session_inactive', 'Session was never activated')
-    if (scannedAt.getTime() < payload.issuedAt - 30_000 || scannedAt.getTime() > receivedAt.getTime() + 5 * 60_000)
-      return failed('disputed', 'invalid_timestamp', 'Scan timestamp is invalid', ['implausible_client_timestamp'])
-
-    const distanceMeters = haversineDistance(
-      evidence.latitude,
-      evidence.longitude,
-      session.geofenceLatitude,
-      session.geofenceLongitude,
-    )
-    const withLocation = (validation: ScanValidation): ScanValidation => ({
-      ...validation,
-      distanceMeters,
-      geofenceRadiusMeters: session.geofenceRadiusMeters,
-    })
-    if (evidence.mocked === true)
-      return withLocation(
-        failed('disputed', 'mocked_location', 'Mocked locations are not accepted', ['mocked_location']),
-      )
-    if (evidence.locationCapturedAt) {
-      const locationCapturedAt = new Date(evidence.locationCapturedAt)
-      const clientTimestamp = evidence.scannedAt ? new Date(evidence.scannedAt) : null
-      const locationReference =
-        clientTimestamp && !Number.isNaN(clientTimestamp.getTime()) ? clientTimestamp : scannedAt
-      const age = locationReference.getTime() - locationCapturedAt.getTime()
-      if (Number.isNaN(locationCapturedAt.getTime()) || age < -30_000 || age > MAX_LOCATION_AGE_MS)
-        return withLocation(
-          failed('disputed', 'stale_location', 'Location fix is stale or has an invalid timestamp', ['stale_location']),
-        )
-    }
-    if (evidence.accuracyMeters !== undefined && evidence.accuracyMeters > MAX_LOCATION_ACCURACY_METERS)
-      return withLocation(
-        failed('disputed', 'poor_location_accuracy', 'Location accuracy is too poor to verify attendance', [
-          'poor_accuracy',
-        ]),
-      )
-    if (distanceMeters > session.geofenceRadiusMeters)
-      return withLocation(
-        failed('absent', 'outside_geofence', 'You are outside the session geofence', ['outside_geofence']),
-      )
-    if (
-      evidence.accuracyMeters !== undefined &&
-      distanceMeters + evidence.accuracyMeters > session.geofenceRadiusMeters
-    )
-      return withLocation(
-        failed('disputed', 'geofence_uncertain', 'Location uncertainty extends outside the session geofence', [
-          'geofence_uncertain',
-        ]),
-      )
-    if (scannedAt.getTime() > graceEnd)
-      return withLocation(
-        failed('absent', 'qr_expired', 'The QR attendance window has expired', ['client_scan_outside_window']),
-      )
-    if (offline && (receivedAt.getTime() > graceEnd || session.endedAt)) {
-      return {
-        success: true,
-        status: 'disputed',
-        reason: 'delayed_offline_sync',
-        scannedAt,
-        receivedAt,
-        message: 'Offline check-in arrived after the attendance window and requires teacher review.',
-        distanceMeters,
-        geofenceRadiusMeters: session.geofenceRadiusMeters,
-        riskSignals: [
-          ...riskSignals,
-          'delayed_offline_sync',
-          ...(session.endedAt ? ['received_after_session_end'] : []),
-        ],
-      }
-    }
-    if (missingCoreEvidence.length > 0) {
-      return {
-        success: true,
-        status: 'disputed',
-        reason: 'missing_scan_evidence',
-        scannedAt,
-        receivedAt,
-        message: 'Legacy scan evidence is incomplete and requires teacher review.',
-        distanceMeters,
-        geofenceRadiusMeters: session.geofenceRadiusMeters,
-        riskSignals,
-      }
-    }
-    const status: AttendanceStatus = scannedAt.getTime() > validityEnd ? 'late' : 'present'
-    return {
-      success: true,
-      status,
-      scannedAt,
-      receivedAt,
-      message: status === 'late' ? 'Check-in recorded as late.' : 'Check-in successful.',
-      distanceMeters,
-      geofenceRadiusMeters: session.geofenceRadiusMeters,
-      riskSignals,
-    }
-  }
+  // ── Private: offline activation recovery ──
 
   private async ensureOfflineActivation(sessionId: string, qrToken: string, receivedAt: Date, offline: boolean) {
     const session = await this.prisma.session.findUnique({ where: { id: sessionId } })
@@ -676,6 +432,8 @@ export class AttendanceService {
     return activated ? ('activated' as const) : ('unchanged' as const)
   }
 
+  // ── Private: scan attempt persistence ──
+
   private async recordScanAttempt(
     user: RequestUser,
     evidence: ScanEvidence,
@@ -687,263 +445,14 @@ export class AttendanceService {
     if (!session) return
     try {
       await this.prisma.scanAttempt.create({
-        data: this.scanAttemptData(user.id, evidence, validation, outcome, offline),
+        data: this.scanValidator.buildScanAttemptData(user.id, evidence, validation, outcome, offline),
       })
     } catch (error) {
       if (!(error && typeof error === 'object' && 'code' in error && error.code === 'P2002')) throw error
     }
   }
 
-  private scanEvidence(dto: ScanAttendanceDto): ScanEvidence {
-    return {
-      sessionId: dto.sessionId,
-      latitude: dto.lat,
-      longitude: dto.lon,
-      deviceId: dto.deviceId,
-      qrToken: dto.qrToken,
-      scannedAt: dto.scannedAt,
-      clientAttemptId: dto.clientAttemptId,
-      accuracyMeters: dto.accuracyMeters,
-      locationCapturedAt: dto.locationCapturedAt,
-      mocked: dto.mocked,
-      inputChannel: dto.inputChannel,
-    }
-  }
-
-  private submitEvidence(dto: SubmitAttendanceDto): ScanEvidence {
-    return {
-      sessionId: dto.sessionId,
-      latitude: dto.latitude,
-      longitude: dto.longitude,
-      deviceId: dto.deviceId,
-      qrToken: dto.qrToken,
-      scannedAt: dto.scannedAt,
-      clientAttemptId: dto.clientAttemptId,
-      accuracyMeters: dto.accuracyMeters,
-      locationCapturedAt: dto.locationCapturedAt,
-      mocked: dto.mocked,
-      inputChannel: dto.inputChannel,
-    }
-  }
-
-  private clientScannedAt(evidence: ScanEvidence, offline: boolean, receivedAt: Date) {
-    return offline && evidence.scannedAt ? new Date(evidence.scannedAt) : receivedAt
-  }
-
-  private scanAttemptData(
-    studentId: string,
-    evidence: ScanEvidence,
-    validation: ScanValidation,
-    outcome: string,
-    offline: boolean,
-  ) {
-    return {
-      sessionId: evidence.sessionId,
-      studentId,
-      clientAttemptId: evidence.clientAttemptId,
-      timestamp: validation.scannedAt,
-      clientScannedAt: evidence.scannedAt ? new Date(evidence.scannedAt) : undefined,
-      receivedAt: validation.receivedAt,
-      locationCapturedAt: evidence.locationCapturedAt ? new Date(evidence.locationCapturedAt) : undefined,
-      latitude: evidence.latitude,
-      longitude: evidence.longitude,
-      accuracyMeters: evidence.accuracyMeters,
-      mocked: evidence.mocked,
-      inputChannel: evidence.inputChannel,
-      deviceId: evidence.deviceId,
-      offline,
-      distanceMeters: validation.distanceMeters,
-      geofenceRadiusMeters: validation.geofenceRadiusMeters,
-      riskSignals: validation.riskSignals,
-      outcome,
-      reason: validation.reason,
-      message: validation.message,
-      tokenHash: createHash('sha256').update(evidence.qrToken).digest('hex'),
-    }
-  }
-
-  private async findReplay(studentId: string, evidence: ScanEvidence, tokenHash: string) {
-    if (!evidence.clientAttemptId) return null
-    const attempt = await this.prisma.scanAttempt.findUnique({
-      where: { studentId_clientAttemptId: { studentId, clientAttemptId: evidence.clientAttemptId } },
-      include: { acceptedAttendanceRecord: true },
-    })
-    if (!attempt) return null
-    const clientScannedAt = evidence.scannedAt ? new Date(evidence.scannedAt).getTime() : null
-    const locationCapturedAt = evidence.locationCapturedAt ? new Date(evidence.locationCapturedAt).getTime() : null
-    const exactReplay =
-      attempt.sessionId === evidence.sessionId &&
-      attempt.tokenHash === tokenHash &&
-      attempt.latitude === evidence.latitude &&
-      attempt.longitude === evidence.longitude &&
-      (attempt.deviceId ?? undefined) === evidence.deviceId &&
-      (attempt.inputChannel ?? undefined) === evidence.inputChannel &&
-      (attempt.accuracyMeters ?? undefined) === evidence.accuracyMeters &&
-      (attempt.mocked ?? undefined) === evidence.mocked &&
-      (attempt.clientScannedAt?.getTime() ?? null) === clientScannedAt &&
-      (attempt.locationCapturedAt?.getTime() ?? null) === locationCapturedAt
-    if (!exactReplay) {
-      return {
-        success: false,
-        status: 'disputed' as const,
-        reason: 'client_attempt_conflict',
-        message: 'clientAttemptId was already used for a different scan payload',
-      }
-    }
-    if (!attempt.acceptedAttendanceRecord) {
-      return {
-        success: false,
-        status: 'disputed' as const,
-        reason: attempt.reason ?? 'replayed_rejection',
-        message: attempt.message ?? 'This scan attempt was already rejected',
-      }
-    }
-    return {
-      success: true,
-      status: attempt.acceptedAttendanceRecord.status,
-      message: 'Attendance was already acknowledged.',
-      record: this.present(attempt.acceptedAttendanceRecord),
-    }
-  }
-
-  private async hasSuspiciousCoordinates(
-    studentId: string,
-    sessionId: string,
-    deviceId: string | undefined,
-    latitude: number,
-    longitude: number,
-  ) {
-    if (!deviceId) return false
-    const previous = await this.prisma.attendanceRecord.findMany({
-      where: {
-        studentId,
-        deviceId,
-        sessionId: { not: sessionId },
-        status: { in: ['present', 'late', 'disputed'] },
-        manuallySet: false,
-      },
-      select: {
-        latitude: true,
-        longitude: true,
-        session: { select: { geofenceLatitude: true, geofenceLongitude: true } },
-      },
-      orderBy: { timestamp: 'desc' },
-      take: 5,
-    })
-    const identical = previous.filter(
-      (record) =>
-        Math.abs(record.latitude - latitude) < 0.0000001 && Math.abs(record.longitude - longitude) < 0.0000001,
-    )
-    const exactCenter = previous.some(
-      (record) =>
-        Math.abs(record.session.geofenceLatitude - latitude) < 0.0000001 &&
-        Math.abs(record.session.geofenceLongitude - longitude) < 0.0000001,
-    )
-    return identical.length >= 2 || (exactCenter && identical.length >= 1)
-  }
-
-  private async rawRecordWhere(user: RequestUser, query: AttendanceListQueryDto) {
-    const hasDateRange = Boolean(query.startDate || query.endDate)
-    if (hasDateRange && (!query.startDate || !query.endDate)) {
-      throw new BadRequestException('Raw attendance date scopes require both startDate and endDate')
-    }
-    if (user.role !== 'student' && !query.sessionId && !query.sectionId && !hasDateRange) {
-      throw new BadRequestException('Staff attendance lists require a sessionId, sectionId, or date range')
-    }
-    const range =
-      query.startDate && query.endDate
-        ? this.resolveDateRange(query.startDate, query.endDate, RAW_DATE_RANGE_DAYS, RAW_DATE_RANGE_DAYS)
-        : undefined
-    const sessionWhere: Prisma.SessionWhereInput = {
-      AND: [await this.sessionScope(user), ...(range ? [{ date: { gte: range.startDate, lte: range.endDate } }] : [])],
-    }
-    return {
-      AND: [
-        await this.recordScope(user),
-        { session: sessionWhere },
-        ...(query.sessionId ? [{ sessionId: query.sessionId }] : []),
-        ...(query.sectionId ? [{ sectionId: query.sectionId }] : []),
-      ],
-    } satisfies Prisma.AttendanceRecordWhereInput
-  }
-
-  private async filteredSessionScope(
-    user: RequestUser,
-    query: AttendanceReportQueryDto,
-    range: { startDate: string; endDate: string },
-  ): Promise<Prisma.SessionWhereInput> {
-    if (user.role === 'teacher' && query.teacherId && query.teacherId !== user.id) {
-      throw new ForbiddenException('Teachers can only report on their own attendance')
-    }
-    return {
-      AND: [
-        await this.sessionScope(user),
-        { date: { gte: range.startDate, lte: range.endDate } },
-        ...(query.teacherId ? [{ teacherId: query.teacherId }] : []),
-        ...(query.sectionId ? [{ sectionId: query.sectionId }] : []),
-        ...(query.sessionId ? [{ id: query.sessionId }] : []),
-        ...(query.subjectId ? [{ section: { subjectId: query.subjectId } }] : []),
-      ],
-    }
-  }
-
-  private resolveDateRange(
-    requestedStart: string | undefined,
-    requestedEnd: string | undefined,
-    maximumDays: number,
-    defaultDays: number,
-  ) {
-    const endDate = requestedEnd ?? new Date().toISOString().slice(0, 10)
-    const parsedEnd = this.parseDate(endDate)
-    const defaultStart = new Date(parsedEnd)
-    defaultStart.setUTCDate(defaultStart.getUTCDate() - (defaultDays - 1))
-    const startDate = requestedStart ?? defaultStart.toISOString().slice(0, 10)
-    const parsedStart = this.parseDate(startDate)
-    if (parsedEnd < parsedStart) throw new BadRequestException('endDate must be on or after startDate')
-    const dayCount = Math.floor((parsedEnd.getTime() - parsedStart.getTime()) / 86_400_000) + 1
-    if (dayCount > maximumDays) {
-      throw new BadRequestException(`Date ranges are limited to ${maximumDays} days`)
-    }
-    return { startDate, endDate }
-  }
-
-  private parseDate(value: string) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new BadRequestException('Dates must use YYYY-MM-DD')
-    const parsed = new Date(`${value}T00:00:00.000Z`)
-    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
-      throw new BadRequestException('Date is invalid')
-    }
-    return parsed
-  }
-
-  private async recordScope(user: RequestUser, sessionId?: string) {
-    if (user.role === 'super_admin') {
-      const adminScope =
-        user.scope === 'institution'
-          ? {}
-          : user.department
-            ? { session: { section: { teacher: { department: user.department } } } }
-            : { id: { in: [] as string[] } }
-      return { ...adminScope, ...(sessionId ? { sessionId } : {}) }
-    }
-    if (user.role === 'teacher') return { session: { teacherId: user.id }, ...(sessionId ? { sessionId } : {}) }
-    return { studentId: user.id, ...(sessionId ? { sessionId } : {}) }
-  }
-
-  private async sessionScope(user: RequestUser) {
-    if (user.role === 'super_admin') {
-      if (user.scope === 'institution') return {}
-      return user.department
-        ? { section: { teacher: { department: user.department } } }
-        : { id: { in: [] as string[] } }
-    }
-    if (user.role === 'teacher') return { teacherId: user.id }
-    const enrollments = await this.prisma.enrollment.findMany({
-      where: { studentId: user.id },
-      select: { sectionId: true },
-    })
-    return { sectionId: { in: enrollments.map((item) => item.sectionId) } }
-  }
+  // ── Private: presentation helper ──
 
   private present(record: AttendanceRecord) {
     return { ...record, coordinates: { latitude: record.latitude, longitude: record.longitude } }

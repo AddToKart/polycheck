@@ -3,6 +3,10 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import { AttendanceService } from './attendance.service'
+import { AttendanceScopeService } from './attendance-scope.service'
+import { AttendanceReportService } from './attendance-report.service'
+import { GeofenceService } from './geofence.service'
+import { ScanValidatorService } from './scan-validator.service'
 import { AttendanceGateway } from '../realtime/attendance.gateway'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { createHash } from 'crypto'
@@ -127,6 +131,10 @@ describe('AttendanceService', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         AttendanceService,
+        AttendanceScopeService,
+        AttendanceReportService,
+        GeofenceService,
+        ScanValidatorService,
         { provide: PrismaService, useValue: prisma },
         { provide: AttendanceGateway, useValue: realtime },
         { provide: RedisService, useValue: redis },

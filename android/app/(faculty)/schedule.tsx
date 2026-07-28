@@ -49,7 +49,7 @@ export default function FacultyScheduleScreen() {
     const range = viewMode === 'month'
       ? getDateRangeForMonth(currentDate.getFullYear(), currentDate.getMonth())
       : { start: getWeekDays(currentDate)[0].date, end: getWeekDays(currentDate)[6].date }
-    void Promise.all([api.getCalendarEvents(user.id, range.start, range.end), api.getAttendanceRecords()])
+    void Promise.all([api.getCalendarEvents(user.id, range.start, range.end), api.getAttendanceRecords(undefined, range.start, range.end)])
       .then(([nextEvents, nextRecords]) => { setEvents(nextEvents); setAttendanceRecords(nextRecords) })
       .catch(() => Alert.alert('Unable to load schedule', 'Please check your connection and try again.'))
   }, [currentDate, user, viewMode])
