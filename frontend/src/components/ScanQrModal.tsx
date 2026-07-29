@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import {
   X, QrCode, MapPin, Keyboard, CheckCircle, XCircle,
   Clock, AlertTriangle, Loader2, RefreshCw, Upload, Camera,
+  Clipboard, SwitchCamera,
 } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { decodeTokenPayload } from '@polycheck/shared/utils'
@@ -13,7 +14,7 @@ import { Input } from '@/components/ui/input'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type InputMode = 'camera' | 'upload' | 'manual'
-const ALLOW_QR_FALLBACKS = process.env.NEXT_PUBLIC_ALLOW_QR_FALLBACKS === 'true'
+const ALLOW_QR_FALLBACKS = process.env.NEXT_PUBLIC_ALLOW_QR_FALLBACKS !== 'false'
 
 type ScanPhase =
   | 'idle'
@@ -71,6 +72,8 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
   const [uploadFileName, setUploadFileName] = useState('')
   const [uploadError, setUploadError] = useState('')
 
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment')
+
   // ── Camera lifecycle ─────────────────────────────────────────────────────
   const stopCamera = useCallback(() => {
     if (scanLoopRef.current) {
@@ -86,12 +89,17 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
     }
   }, [])
 
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(async (overrideFacingMode?: 'environment' | 'user') => {
+    const targetFacing = overrideFacingMode || facingMode
     setPhase('requesting-camera')
     setCameraError('')
     try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop())
+        streamRef.current = null
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: targetFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
       })
       streamRef.current = stream
@@ -111,7 +119,14 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
       if (ALLOW_QR_FALLBACKS) setInputMode('upload')
       setPhase('idle')
     }
-  }, [])
+  }, [facingMode])
+
+  const toggleCameraFacing = useCallback(() => {
+    const nextFacing = facingMode === 'environment' ? 'user' : 'environment'
+    setFacingMode(nextFacing)
+    stopCamera()
+    void startCamera(nextFacing)
+  }, [facingMode, stopCamera, startCamera])
 
   // ── BarcodeDetector scan loop ────────────────────────────────────────────
   const processScanResult = useCallback(
@@ -658,11 +673,23 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
                 )}
               </div>
 
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
-                <MapPin className="w-3.5 h-3.5 text-maroon dark:text-golden shrink-0" />
-                <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                  GPS is captured automatically when a QR is detected
-                </p>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <MapPin className="w-3.5 h-3.5 text-maroon dark:text-golden shrink-0" />
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 truncate">
+                    GPS captured automatically on scan
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleCameraFacing}
+                  className="text-[10px] h-7 px-2.5 font-bold uppercase tracking-widest text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-800 shrink-0"
+                >
+                  <SwitchCamera className="w-3.5 h-3.5 mr-1.5 text-maroon dark:text-golden" />
+                  Flip Camera ({facingMode === 'environment' ? 'Rear' : 'Front'})
+                </Button>
               </div>
 
               {cameraError && (
@@ -782,14 +809,33 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
               </div>
 
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-3">
-                  QR Token
-                </p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                    QR Token Code
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const text = await navigator.clipboard.readText()
+                        if (text) setManualToken(text)
+                      } catch {
+                        // Clipboard permission declined or unavailable
+                      }
+                    }}
+                    className="text-[10px] h-7 px-2 font-bold uppercase tracking-widest text-maroon dark:text-golden border-maroon/30 dark:border-golden/30 hover:bg-maroon/10 dark:hover:bg-golden/10"
+                  >
+                    <Clipboard className="w-3 h-3 mr-1.5" />
+                    Paste Clipboard
+                  </Button>
+                </div>
                 <form onSubmit={handleManualSubmit} className="flex flex-col gap-3">
                   <Input
                     value={manualToken}
                     onChange={e => setManualToken(e.target.value)}
-                    placeholder="Paste or type the QR token…"
+                    placeholder="Paste or type the QR token from your instructor…"
                     className="rounded-none font-mono text-xs h-10 border-zinc-300 dark:border-zinc-700 focus:border-maroon dark:focus:border-golden"
                     aria-label="QR token text field"
                     autoComplete="off"
