@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { ArrowLeft, QrCode, Timer, Play, StopCircle, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2 } from 'lucide-react'
+import { ArrowLeft, QrCode, Timer, Play, StopCircle, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2, Copy, Download, Check, X } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Session, AttendanceRecord, AttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -40,6 +40,7 @@ export default function SessionDetailPage() {
   const [proofsOfClass, setProofsOfClass] = useState<ProofOfClass[]>([])
   const [loading, setLoading] = useState(true)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  const [copiedToken, setCopiedToken] = useState(false)
   const [showQrModal, setShowQrModal] = useState(false)
   const [showValidityPrompt, setShowValidityPrompt] = useState(false)
   const [validityMinutes, setValidityMinutes] = useState('15')
@@ -168,6 +169,31 @@ export default function SessionDetailPage() {
   const pendingCount = records.filter((r) => r.status === 'pending').length
   const studentMap = new Map(records.map((r) => [r.studentId, r]))
 
+  const handleCopyToken = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    if (!session?.qrToken) return
+    try {
+      await navigator.clipboard.writeText(session.qrToken)
+      setCopiedToken(true)
+      addNotification('success', 'Token Copied', 'QR token copied to clipboard for manual check-in')
+      setTimeout(() => setCopiedToken(false), 2500)
+    } catch {
+      addNotification('error', 'Copy Failed', 'Could not access system clipboard')
+    }
+  }
+
+  const handleDownloadQr = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    if (!qrDataUrl) return
+    const link = document.createElement('a')
+    link.href = qrDataUrl
+    link.download = `polycheck-qr-${session?.subjectName.replace(/\s+/g, '_') || 'session'}.png`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    addNotification('success', 'QR Image Saved', 'Session QR code saved as PNG image')
+  }
+
   const handleGenerateQr = async () => {
     const mins = parseInt(validityMinutes, 10)
     const grace = parseInt(graceMinutes, 10)
@@ -256,13 +282,35 @@ export default function SessionDetailPage() {
                       <Image src={qrDataUrl} width={180} height={180} unoptimized alt="Scannable session QR code" />
                     </div>
                     {countdown && (
-                      <p className={`text-sm mt-2 ${countdown === 'Grace ended' ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                      <p className={`text-sm mt-2 font-mono ${countdown === 'Grace ended' ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
                         {countdown.includes('Grace') ? countdown : `Expires in: ${countdown}`}
                       </p>
                     )}
-                    <div className="mt-3">
-                      <Button variant="outline" size="sm" className="flex items-center gap-1.5 text-xs" onClick={() => setShowQrModal(true)}>
+                    <div className="mt-4 flex items-center justify-center gap-2 flex-wrap">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider border-zinc-300 dark:border-zinc-700"
+                        onClick={() => setShowQrModal(true)}
+                      >
                         <Maximize className="w-3.5 h-3.5" /> Full Screen
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#7B1113] dark:text-[#FFDF00] border-[#7B1113]/30 dark:border-[#FFDF00]/30 hover:bg-[#7B1113]/10 dark:hover:bg-[#FFDF00]/10"
+                        onClick={handleCopyToken}
+                      >
+                        {copiedToken ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedToken ? 'Copied Token!' : 'Copy Token'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider border-zinc-300 dark:border-zinc-700"
+                        onClick={handleDownloadQr}
+                      >
+                        <Download className="w-3.5 h-3.5 text-[#7B1113] dark:text-[#FFDF00]" /> Save Image
                       </Button>
                     </div>
                   </>
@@ -490,10 +538,53 @@ export default function SessionDetailPage() {
 
       {/* Full Screen QR Modal */}
       {isTeacher && showQrModal && qrDataUrl && (
-        <div className="fixed inset-0 bg-white dark:bg-black z-50 flex items-center justify-center" onClick={() => setShowQrModal(false)}>
-          <div className="text-center">
-            <Image src={qrDataUrl} width={320} height={320} unoptimized alt="Scannable session QR code" />
-            <p className="text-sm text-gray-400 dark:text-gray-500 mt-6">Tap anywhere to close</p>
+        <div
+          className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-6"
+          onClick={() => setShowQrModal(false)}
+        >
+          <div
+            className="bg-white dark:bg-[#121215] border-2 border-zinc-300 dark:border-zinc-800 p-8 flex flex-col items-center gap-6 max-w-lg w-full shadow-2xl relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowQrModal(false)}
+              className="absolute top-4 right-4 p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 transition-colors"
+              aria-label="Close full screen view"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Class Session QR Code</p>
+              <h2 className="text-xl font-heading font-bold text-[#7B1113] dark:text-[#FFDF00]">{session.subjectName}</h2>
+            </div>
+
+            <div className="p-4 bg-white border border-zinc-200 shadow-inner">
+              <Image src={qrDataUrl} width={340} height={340} unoptimized alt="Scannable session QR code" />
+            </div>
+
+            {countdown && (
+              <p className={`text-sm font-mono font-bold tracking-widest uppercase ${countdown === 'Grace ended' ? 'text-red-500' : 'text-zinc-400'}`}>
+                {countdown.includes('Grace') ? countdown : `Expires in: ${countdown}`}
+              </p>
+            )}
+
+            <div className="flex items-center gap-3 w-full">
+              <Button
+                variant="outline"
+                onClick={handleCopyToken}
+                className="flex-1 rounded-none border-zinc-300 dark:border-zinc-700 text-xs font-bold uppercase tracking-widest text-[#7B1113] dark:text-[#FFDF00]"
+              >
+                {copiedToken ? <Check className="w-4 h-4 mr-2 text-green-500" /> : <Copy className="w-4 h-4 mr-2" />}
+                {copiedToken ? 'Copied Token!' : 'Copy Token'}
+              </Button>
+              <Button
+                onClick={handleDownloadQr}
+                className="flex-1 rounded-none bg-[#7B1113] hover:bg-[#4A0A0B] text-white text-xs font-bold uppercase tracking-widest"
+              >
+                <Download className="w-4 h-4 mr-2 text-[#FFDF00]" /> Save Image
+              </Button>
+            </div>
           </div>
         </div>
       )}
