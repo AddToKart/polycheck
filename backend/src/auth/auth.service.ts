@@ -163,7 +163,7 @@ export class AuthService {
     const address = clientAddress || 'unknown'
     const [identityAllowed, addressAllowed] = await Promise.all([
       this.redis.consumeRateLimit(
-        `login:${kind}:identity:${identifier}:${address}`,
+        `login:${kind}:identity:${identifier}`,
         LOGIN_RATE_LIMIT,
         LOGIN_RATE_WINDOW,
       ),

@@ -114,13 +114,14 @@ export function createQRTokenData(
   teacherId: string,
   teacherName: string,
   validityMinutes: number,
-  gracePeriodMinutes: number
+  gracePeriodMinutes: number,
+  issuedAtMs?: number,
 ): string {
   const payload: QRTokenPayload = {
     version: 1,
     sessionId,
     sectionId,
-    issuedAt: Date.now(),
+    issuedAt: issuedAtMs ?? Date.now(),
     validityMinutes,
     gracePeriodMinutes,
     teacherId,

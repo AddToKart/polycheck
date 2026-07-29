@@ -7,6 +7,8 @@ export type OfflineSendResult =
   | { outcome: 'synced' }
   | { outcome: 'retryable' | 'terminal'; error: string }
 
+const MAX_RETRY_ATTEMPTS = 5
+
 type QueueRow = {
   id: string
   kind: OfflineOperationKind
@@ -151,7 +153,8 @@ export async function drainOfflineQueue(
     if (!db) return
     const rows = await db.getAllAsync<QueueRow>(
       `SELECT id, kind, payload, attempts FROM sync_queue
-       WHERE last_error IS NULL OR last_error NOT LIKE 'terminal:%'
+       WHERE (last_error IS NULL OR last_error NOT LIKE 'terminal:%')
+         AND attempts < ${MAX_RETRY_ATTEMPTS}
        ORDER BY created_at ASC LIMIT 100`,
     )
     for (const row of rows) {

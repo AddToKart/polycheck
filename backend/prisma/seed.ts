@@ -191,8 +191,8 @@ async function main() {
       semester: '2nd Semester AY 2025-2026',
       teacherId: 't-001',
       enrollmentCode: 'SE2026',
-      enrollmentCodeExpiry: new Date('2026-02-15T23:59:59Z'),
-      studentCount: 6,
+      enrollmentCodeExpiry: new Date('2026-12-31T23:59:59Z'),
+      studentCount: 7,
     },
     {
       id: 'sec-002',
@@ -202,8 +202,8 @@ async function main() {
       semester: '2nd Semester AY 2025-2026',
       teacherId: 't-001',
       enrollmentCode: 'SEB2026',
-      enrollmentCodeExpiry: new Date('2026-02-15T23:59:59Z'),
-      studentCount: 6,
+      enrollmentCodeExpiry: new Date('2026-12-31T23:59:59Z'),
+      studentCount: 0,
     },
     {
       id: 'sec-003',
@@ -213,8 +213,8 @@ async function main() {
       semester: '2nd Semester AY 2025-2026',
       teacherId: 't-001',
       enrollmentCode: 'DSA2026',
-      enrollmentCodeExpiry: new Date('2026-02-15T23:59:59Z'),
-      studentCount: 5,
+      enrollmentCodeExpiry: new Date('2026-12-31T23:59:59Z'),
+      studentCount: 6,
     },
     {
       id: 'sec-004',
@@ -224,8 +224,8 @@ async function main() {
       semester: '2nd Semester AY 2025-2026',
       teacherId: 't-002',
       enrollmentCode: 'HCI2026',
-      enrollmentCodeExpiry: new Date('2026-02-15T23:59:59Z'),
-      studentCount: 4,
+      enrollmentCodeExpiry: new Date('2026-12-31T23:59:59Z'),
+      studentCount: 6,
     },
     {
       id: 'sec-005',
@@ -235,8 +235,8 @@ async function main() {
       semester: '2nd Semester AY 2025-2026',
       teacherId: 't-002',
       enrollmentCode: 'PL2026',
-      enrollmentCodeExpiry: new Date('2026-02-15T23:59:59Z'),
-      studentCount: 3,
+      enrollmentCodeExpiry: new Date('2026-12-31T23:59:59Z'),
+      studentCount: 5,
     },
   ]
 

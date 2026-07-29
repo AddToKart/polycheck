@@ -78,8 +78,11 @@ export class ProofsService {
       },
     })
     if (!proof) throw new NotFoundException('Proof not found')
-    if (user.role !== 'teacher' || proof.session.teacherId !== user.id)
-      throw new ForbiddenException('Only the session teacher can delete proof')
+    const isSessionTeacher = user.role === 'teacher' && proof.session.teacherId === user.id
+    const isSuperAdmin = user.role === 'super_admin'
+    if (!isSessionTeacher && !isSuperAdmin) {
+      throw new ForbiddenException('Only the session teacher or a super admin can delete proof')
+    }
     await this.prisma.proofOfClass.delete({ where: { id } })
     await this.storage.remove(proof.photoUrl)
     return true
