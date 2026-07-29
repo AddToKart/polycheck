@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common'
 import { compare } from 'bcryptjs'
 import { PrismaService } from '../prisma/prisma.service'
@@ -17,6 +18,8 @@ const DUMMY_HASH = '$2a$10$R9h/lIPzMRgGq1V468UTuOr.164R5.h2.4yXG5Wv4Jz/aGv1Vv8a.
 const LOGIN_RATE_LIMIT = 10
 const LOGIN_IP_RATE_LIMIT = 30
 const LOGIN_RATE_WINDOW = 60
+const KEY_PROVISION_RATE_LIMIT = 3
+const KEY_PROVISION_RATE_WINDOW = 3600
 
 export interface AuthResult {
   token?: string
@@ -40,6 +43,8 @@ export interface AuthResult {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name)
+
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
@@ -106,13 +111,27 @@ export class AuthService {
   }
 
   async provisionKey(userId: string, publicKey: string) {
+    const withinLimit = await this.redis.consumeRateLimit(
+      `auth:key-provision:${userId}`,
+      KEY_PROVISION_RATE_LIMIT,
+      KEY_PROVISION_RATE_WINDOW,
+    )
+    if (!withinLimit) {
+      this.logger.warn(`Rate limited key provision attempt for user ${userId}`)
+      throw new HttpException('Too many key provisioning attempts. Try again later.', HttpStatus.TOO_MANY_REQUESTS)
+    }
+
     const user = await this.prisma.user.findUnique({ where: { id: userId } })
     if (!user) throw new NotFoundException('User not found')
 
+    const previousKey = user.teacherPublicKey
     await this.prisma.user.update({
       where: { id: userId },
       data: { teacherPublicKey: publicKey },
     })
+
+    this.logger.log(`Signing key provisioned for user ${userId} (previous key: ${previousKey ? 'replaced' : 'first provision'})`)
+    this.events.emit('auth.key-provisioned', { userId, hadPreviousKey: !!previousKey })
 
     return { message: 'Public key provisioned successfully' }
   }

@@ -265,10 +265,6 @@ export const api = {
   updateAttendanceStatus(recordId: string, status: AttendanceStatus): Promise<AttendanceRecord> {
     return patch(`/attendance/${recordId}/status`, { status })
   },
-  async submitAttendance(sessionId: string, sectionId: string, _studentId: string, coordinates: { latitude: number; longitude: number }, deviceId: string): Promise<SubmitAttendanceResult> {
-    void sessionId; void sectionId; void coordinates; void deviceId
-    throw new Error('Attendance requires a freshly scanned, signed QR token')
-  },
   submitScan(sessionId: string, _studentId: string, _studentName: string, lat: number, lon: number, deviceId: string, qrToken: string, scannedAt?: string, evidence?: ScanEvidenceInput): Promise<AttendanceRecord | { error: string }> {
     return post('/attendance/scan', { sessionId, lat, lon, deviceId, qrToken, scannedAt, ...evidence })
   },
