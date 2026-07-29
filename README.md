@@ -167,6 +167,16 @@ To run Next.js, NestJS, PostgreSQL, Redis, and seed initial test data entirely i
 pnpm docker:local:setup
 ```
 
+Or run step-by-step:
+
+```powershell
+# 1. Start services & apply database migrations
+pnpm docker:local:up
+
+# 2. Seed mock test records
+pnpm docker:local:seed
+```
+
 Open `http://localhost:3000/login`. See [Local Docker Environment](documentation/LOCAL_DOCKER.md) for logs, Android connectivity, daily workflow commands, and data reset instructions.
 
 ### Running Everything in Development Mode
