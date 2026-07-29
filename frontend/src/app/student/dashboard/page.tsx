@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { api } from '@/lib/api-client'
-import type { Student, Section, AttendanceRecord, StudentDisputeReason, Subject } from '@polycheck/shared'
+import type { Student, Section, AttendanceRecord, StudentDisputeReason, Subject, Session } from '@polycheck/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sidebar } from '@/components/layout/sidebar'
 import StatusBadge from '@/components/StatusBadge'
@@ -55,7 +55,7 @@ function StudentDashboardContent() {
   const [user, setUser] = useState<Student | null>(null)
   const [sections, setSections] = useState<Section[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
-  const [sessions, setSessions] = useState<any[]>([])
+  const [sessions, setSessions] = useState<Session[]>([])
   const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard')
 

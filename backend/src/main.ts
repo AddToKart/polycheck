@@ -52,15 +52,32 @@ async function bootstrap() {
     }),
   )
 
-  if (env.NODE_ENV !== 'production' || env.ENABLE_API_DOCS === true) {
-    const swaggerConfig = new DocumentBuilder()
-      .setTitle('Polycheck API')
-      .setDescription('Unified web and mobile attendance management system for PUP')
-      .setVersion('1.0')
-      .addBearerAuth()
-      .build()
-    const document = SwaggerModule.createDocument(app, swaggerConfig)
-    SwaggerModule.setup('api/docs', app, document)
+  // ── Swagger API Docs ──────────────────────────────────────────────────────
+  // Always generate the OpenAPI document so it can be exported in CI.
+  // In production the UI is gated behind METRICS_TOKEN; in dev it's open.
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Polycheck API')
+    .setDescription('Unified web and mobile attendance management system for PUP')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build()
+  const document = SwaggerModule.createDocument(app, swaggerConfig)
+  SwaggerModule.setup('api/docs', app, document, {
+    swaggerOptions: { persistAuthorization: true },
+    customSiteTitle: 'Polycheck API Docs',
+  })
+
+  // Gate Swagger UI behind METRICS_TOKEN in production so docs are always
+  // accessible but not publicly exposed.
+  if (env.NODE_ENV === 'production' && env.METRICS_TOKEN) {
+    const token = env.METRICS_TOKEN
+    app.use('/api/docs', (req: any, res: any, next: any) => {
+      const authHeader = req.headers.authorization
+      const queryToken = req.query?.token
+      if (authHeader === `Bearer ${token}` || queryToken === token) return next()
+      res.setHeader('WWW-Authenticate', 'Bearer realm="swagger"')
+      res.status(401).json({ message: 'Access to API docs requires authentication' })
+    })
   }
 
   const port = env.PORT
