@@ -487,7 +487,6 @@ export const api = {
       const capturedAt = new Date(timestamp).getTime()
       const validityEnd = tokenPayload.issuedAt + tokenPayload.validityMinutes * 60_000
       const graceEnd = validityEnd + tokenPayload.gracePeriodMinutes * 60_000
-      await enqueueOfflineOperation('attendance_scan', payload)
       if (evidence?.mocked === true) return { error: 'Mocked locations are not accepted' }
       if ((evidence?.accuracyMeters ?? 0) > 50) return { error: 'Location accuracy is too poor to verify attendance' }
       if (evidence?.locationCapturedAt && Math.abs(capturedAt - new Date(evidence.locationCapturedAt).getTime()) > 2 * 60_000) {
@@ -500,6 +499,7 @@ export const api = {
       if (!Number.isFinite(capturedAt) || capturedAt < tokenPayload.issuedAt - 30_000 || capturedAt > graceEnd) {
         return { error: 'The QR attendance window has expired' }
       }
+      await enqueueOfflineOperation('attendance_scan', payload)
       return {
         id: `offline:${sessionId}:${studentId}`,
         sessionId,
@@ -522,25 +522,24 @@ export const api = {
       if (!isNetworkError(error)) throw error
       const session = await getCachedSession(sessionId)
       const clockOffset = await getServerClockOffset()
-      const queueDenied = async (result: SubmitAttendanceResult) => {
-        await enqueueOfflineOperation('scan_attempt', { sessionId, lat, lon, deviceId: 'device-mobile', qrToken, scannedAt })
-        return result
+      if (!session || !qrToken || !session.teacherPublicKey || clockOffset === null) {
+        return { success: false, status: 'absent', reason: 'not_synced', message: 'Session security time and class data are not available offline. Sync before class.' }
       }
-      if (!session || !qrToken || !session.teacherPublicKey || clockOffset === null) return queueDenied({ success: false, status: 'absent', reason: 'not_synced', message: 'Session security time and class data are not available offline. Sync before class.' })
       const payload = verifyQRToken(qrToken, session.teacherPublicKey)
       if (!payload || payload.sessionId !== session.id || payload.sectionId !== session.sectionId || payload.teacherId !== session.teacherId) {
-        return queueDenied({ success: false, status: 'disputed', reason: 'invalid_signature', message: 'QR token signature is invalid' })
+        return { success: false, status: 'disputed', reason: 'invalid_signature', message: 'QR token signature is invalid' }
       }
       if (!isWithinGeofence(lat, lon, session.geofence.latitude, session.geofence.longitude, session.geofence.radiusMeters)) {
-        return queueDenied({ success: false, status: 'absent', reason: 'outside_geofence', message: 'You are outside the session geofence' })
+        return { success: false, status: 'absent', reason: 'outside_geofence', message: 'You are outside the session geofence' }
       }
       const capturedAt = new Date(scannedAt ?? Date.now()).getTime()
-      if (session.endedAt && capturedAt > new Date(session.endedAt).getTime()) return queueDenied({ success: false, status: 'absent', reason: 'session_inactive', message: 'Session was not active at scan time' })
+      if (session.endedAt && capturedAt > new Date(session.endedAt).getTime()) return { success: false, status: 'absent', reason: 'session_inactive', message: 'Session was not active at scan time' }
       const validityEnd = payload.issuedAt + payload.validityMinutes * 60_000
       const graceEnd = validityEnd + payload.gracePeriodMinutes * 60_000
       if (!Number.isFinite(capturedAt) || capturedAt < payload.issuedAt - 30_000 || capturedAt > graceEnd) {
-        return queueDenied({ success: false, status: 'absent', reason: 'qr_expired', message: 'The QR attendance window has expired' })
+        return { success: false, status: 'absent', reason: 'qr_expired', message: 'The QR attendance window has expired' }
       }
+      await enqueueOfflineOperation('scan_attempt', { sessionId, lat, lon, deviceId: 'device-mobile', qrToken, scannedAt })
       const status = capturedAt <= validityEnd ? 'present' : 'late'
       return { success: true, status, message: status === 'present' ? 'Check-in saved offline and queued for sync.' : 'Late check-in saved offline and queued for sync.' }
     }

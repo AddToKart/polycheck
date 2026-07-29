@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config'
 import { Queue, QueueEvents, Worker } from 'bullmq'
 import type { Job } from 'bullmq'
 import IORedis from 'ioredis'
-import { createHash } from 'crypto'
 import { AttendanceService } from '../attendance/attendance.service'
 import type { ScanAttendanceDto } from '../attendance/dto/attendance.dto'
 import type { RequestUser } from '../auth/authenticated-principal'
@@ -86,7 +85,6 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       'process-batch',
       { user: { id: user.id, role: user.role }, records },
       {
-        jobId: this.batchId(user.id, records),
         attempts: 5,
         backoff: { type: 'exponential', delay: 1_000 },
         removeOnComplete: { age: 3_600, count: 10_000 },
@@ -99,10 +97,6 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     // the worker returns authoritative per-record results.
     const results = await job.waitUntilFinished(this.events, 60_000)
     return { queued: false as const, results }
-  }
-
-  private batchId(userId: string, records: ScanAttendanceDto[]) {
-    return createHash('sha256').update(JSON.stringify({ userId, records })).digest('hex')
   }
 
   private async processRecords(user: RequestUser, records: ScanAttendanceDto[]) {

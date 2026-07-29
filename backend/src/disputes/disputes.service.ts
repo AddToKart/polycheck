@@ -101,6 +101,9 @@ export class DisputesService {
     const status: AttendanceStatus | undefined =
       resolution === 'accept' ? 'present' : resolution === 'reject' ? 'absent' : newStatus
     if (!status) throw new ForbiddenException('An override status is required')
+    if (status === 'pending' || status === 'disputed') {
+      throw new ForbiddenException('Cannot override status to pending or disputed')
+    }
     return this.present(
       await this.prisma.attendanceRecord.update({
         where: { id },

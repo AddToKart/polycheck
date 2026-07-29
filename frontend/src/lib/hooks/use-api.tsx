@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 
 interface UseApiState<T> {
   data: T | null
@@ -15,12 +15,14 @@ export function useApi<T>(
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const argsRef = useRef(args)
+  argsRef.current = args
 
   const execute = useCallback(async (...executeArgs: any[]) => {
     setLoading(true)
     setError(null)
     try {
-      const result = await apiFn(...(executeArgs.length ? executeArgs : args))
+      const result = await apiFn(...(executeArgs.length ? executeArgs : argsRef.current))
       setData(result)
       return result
     } catch (err) {
@@ -30,7 +32,7 @@ export function useApi<T>(
     } finally {
       setLoading(false)
     }
-  }, [apiFn, args])
+  }, [apiFn])
 
   const reset = useCallback(() => {
     setData(null)
