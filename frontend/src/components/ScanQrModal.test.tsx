@@ -33,6 +33,7 @@ vi.mock('lucide-react', () => {
   const iconNames = [
     'X', 'QrCode', 'MapPin', 'Keyboard', 'CheckCircle', 'XCircle',
     'Clock', 'AlertTriangle', 'Loader2', 'RefreshCw', 'Upload', 'Camera',
+    'SwitchCamera', 'Clipboard',
   ]
   for (const name of iconNames) {
     icons[name] = (props: any) => <div data-testid={`icon-${name}`} {...props} />
