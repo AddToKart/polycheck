@@ -123,7 +123,9 @@ describe('AttendanceService', () => {
       setJson: jest.fn(),
       delete: jest.fn(),
       setIfAbsent: jest.fn().mockResolvedValue(true),
-    }
+      acquireLock: jest.fn().mockResolvedValue('lock-token'),
+      releaseLock: jest.fn().mockResolvedValue(undefined),
+    } as any
     mockedVerifyQRToken.mockReset()
     mockedHaversineDistance.mockReset().mockReturnValue(0)
     prisma.$transaction.mockImplementation(async (callback: any) => callback(prisma))

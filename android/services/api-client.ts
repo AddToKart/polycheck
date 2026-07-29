@@ -67,7 +67,7 @@ function queryPath(path: string, values: Record<string, string | number | undefi
   return query ? `${path}?${query}` : path
 }
 
-function classifyAttendanceSyncError(error: string): OfflineSendResult {
+export function classifyAttendanceSyncError(error: string): OfflineSendResult {
   const message = error.toLowerCase()
   const terminalEvidenceFailures = [
     'signature is invalid',
