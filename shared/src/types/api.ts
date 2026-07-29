@@ -219,7 +219,6 @@ export interface ApiClient {
   getStudentAttendanceForSection(studentId: string, sectionId: string): AttendanceRecord[]
   addAttendanceRecord(record: AttendanceRecord): AttendanceRecord
   updateAttendanceStatus(recordId: string, status: AttendanceStatus): AttendanceRecord | undefined
-  submitAttendance(sessionId: string, sectionId: string, studentId: string, coordinates: { latitude: number; longitude: number }, deviceId: string): SubmitAttendanceResult
   submitScan(sessionId: string, studentId: string, studentName: string, lat: number, lon: number, deviceId: string, qrToken: string, scannedAt?: string, evidence?: ScanEvidenceInput): Promise<AttendanceRecord | { error: string }>
   checkAttendance(sessionId: string, studentId: string, lat: number, lon: number): SubmitAttendanceResult
 
