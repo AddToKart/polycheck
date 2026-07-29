@@ -513,7 +513,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
       onClick={(e) => { if (e.target === e.currentTarget) handleClose() }}
     >
       {/* Panel */}
-      <div className="relative w-full max-w-lg mx-4 bg-background border-2 border-zinc-300 dark:border-zinc-800 shadow-2xl flex flex-col max-h-[92dvh] overflow-hidden">
+      <div className="relative w-full max-w-lg mx-4 bg-background border-2 border-zinc-300 dark:border-zinc-800 shadow-2xl flex flex-col h-[540px] max-h-[92dvh] overflow-hidden">
 
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-maroon text-white shrink-0">
@@ -554,11 +554,11 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
         )}
 
         {/* ── Body ── */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto h-full">
 
           {/* ── Success ── */}
           {phase === 'success' && outcomeConfig && (
-            <div className="flex flex-col items-center justify-center p-10 text-center gap-6">
+            <div className="flex-1 flex flex-col items-center justify-center p-10 text-center gap-6 h-full min-h-0">
               <div className={`w-20 h-20 flex items-center justify-center border-2 ${outcomeConfig.bg}`}>
                 <outcomeConfig.icon className={`w-10 h-10 ${outcomeConfig.iconColor}`} />
               </div>
@@ -583,7 +583,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
 
           {/* ── Error ── */}
           {phase === 'error' && (
-            <div className="flex flex-col items-center justify-center p-10 text-center gap-6">
+            <div className="flex-1 flex flex-col items-center justify-center p-10 text-center gap-6 h-full min-h-0">
               <div className="w-20 h-20 flex items-center justify-center border-2 border-red-500/40 bg-red-950/30">
                 <XCircle className="w-10 h-10 text-red-500" />
               </div>
@@ -616,7 +616,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
 
           {/* ── Processing ── */}
           {isProcessing && (
-            <div className="flex flex-col items-center justify-center p-10 text-center gap-4">
+            <div className="flex-1 flex flex-col items-center justify-center p-10 text-center gap-4 h-full min-h-0">
               <Loader2 className="w-10 h-10 text-maroon dark:text-golden animate-spin" />
               <p className="text-sm font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
                 {phase === 'decoding-image'
@@ -635,8 +635,8 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
 
           {/* ── Camera viewfinder ── */}
           {showScanner && !isProcessing && (
-            <div className="flex flex-col">
-              <div className="relative w-full bg-pup-black" style={{ aspectRatio: '4/3' }}>
+            <div className="flex-1 flex flex-col h-full min-h-0 bg-pup-black justify-between">
+              <div className="relative flex-1 w-full bg-pup-black overflow-hidden flex items-center justify-center min-h-0">
                 <video
                   ref={videoRef}
                   autoPlay
@@ -673,7 +673,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
                 )}
               </div>
 
-              <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 gap-2">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 gap-2 shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
                   <MapPin className="w-3.5 h-3.5 text-maroon dark:text-golden shrink-0" />
                   <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 truncate">
@@ -693,7 +693,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
               </div>
 
               {cameraError && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 px-4 pt-3 border-l-2 border-amber-400 ml-4">
+                <p className="text-xs text-amber-600 dark:text-amber-400 px-4 pt-3 border-l-2 border-amber-400 ml-4 shrink-0">
                   {cameraError}
                 </p>
               )}
@@ -702,10 +702,10 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
 
           {/* ── Upload QR image ── */}
           {inputMode === 'upload' && !isProcessing && phase !== 'success' && phase !== 'error' && (
-            <div className="p-6 flex flex-col gap-4">
+            <div className="p-6 flex-1 flex flex-col justify-between gap-4 h-full min-h-0 overflow-y-auto">
 
               {/* Security notice */}
-              <div className="flex items-start gap-3 p-3 border border-maroon/30 dark:border-golden/20 bg-maroon/5 dark:bg-golden/5">
+              <div className="flex items-start gap-3 p-3 border border-maroon/30 dark:border-golden/20 bg-maroon/5 dark:bg-golden/5 shrink-0">
                 <MapPin className="w-4 h-4 text-maroon dark:text-golden mt-0.5 shrink-0" />
                 <p className="text-[10px] font-bold uppercase tracking-wider text-maroon dark:text-golden leading-relaxed">
                   Geofence is enforced regardless of input method — your live GPS location must be inside the classroom to check in.
@@ -714,12 +714,11 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
 
               {/* Drop zone / file picker */}
               <div
-                className={`relative flex flex-col items-center justify-center border-2 border-dashed transition-colors cursor-pointer
+                className={`relative flex-1 flex flex-col items-center justify-center border-2 border-dashed transition-colors cursor-pointer min-h-[160px]
                   ${uploadPreview
                     ? 'border-maroon dark:border-golden bg-maroon/5 dark:bg-golden/5'
                     : 'border-zinc-300 dark:border-zinc-700 hover:border-maroon dark:hover:border-golden bg-zinc-50 dark:bg-zinc-900/50'
                   }`}
-                style={{ minHeight: 200 }}
                 onClick={() => fileInputRef.current?.click()}
                 onDrop={handleDrop}
                 onDragOver={(e) => e.preventDefault()}
@@ -748,7 +747,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
                     <img
                       src={uploadPreview}
                       alt="Uploaded QR"
-                      className="max-h-48 max-w-full object-contain border border-zinc-200 dark:border-zinc-700"
+                      className="max-h-40 max-w-full object-contain border border-zinc-200 dark:border-zinc-700"
                     />
                     <p className="text-[10px] font-mono text-zinc-400 truncate max-w-xs">{uploadFileName}</p>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">
@@ -757,16 +756,16 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
                   </div>
                 ) : (
                   /* Empty state */
-                  <div className="flex flex-col items-center gap-3 p-8 text-center">
-                    <div className="w-14 h-14 border-2 border-zinc-300 dark:border-zinc-700 flex items-center justify-center">
-                      <Upload className="w-6 h-6 text-zinc-400" />
+                  <div className="flex flex-col items-center gap-3 p-6 text-center">
+                    <div className="w-12 h-12 border-2 border-zinc-300 dark:border-zinc-700 flex items-center justify-center">
+                      <Upload className="w-5 h-5 text-zinc-400" />
                     </div>
                     <div>
                       <p className="text-sm font-bold text-foreground">Upload QR image</p>
                       <p className="text-xs text-zinc-500 mt-1">
                         Screenshot from group chat, photo, or any image with a QR code
                       </p>
-                      <p className="text-[10px] text-zinc-400 mt-2">JPEG · PNG · WebP · BMP — max 10 MB</p>
+                      <p className="text-[10px] text-zinc-400 mt-1.5">JPEG · PNG · WebP · BMP — max 10 MB</p>
                     </div>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">
                       Tap to browse or drag and drop
@@ -777,79 +776,83 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
 
               {/* Decode error */}
               {uploadError && (
-                <p className="text-xs text-red-600 dark:text-red-400 border-l-2 border-red-500 pl-3">
+                <p className="text-xs text-red-600 dark:text-red-400 border-l-2 border-red-500 pl-3 shrink-0">
                   {uploadError}
                 </p>
               )}
 
               {/* Submit button */}
-              <Button
-                onClick={handleDecodeUpload}
-                disabled={!uploadPreview}
-                className="w-full rounded-none bg-maroon hover:bg-maroon-dark disabled:opacity-40 text-white uppercase tracking-widest font-bold text-xs h-11"
-              >
-                <QrCode className="w-4 h-4 mr-2" />
-                Read QR &amp; Check In
-              </Button>
+              <div className="shrink-0 flex flex-col gap-2">
+                <Button
+                  onClick={handleDecodeUpload}
+                  disabled={!uploadPreview}
+                  className="w-full rounded-none bg-maroon hover:bg-maroon-dark disabled:opacity-40 text-white uppercase tracking-widest font-bold text-xs h-11"
+                >
+                  <QrCode className="w-4 h-4 mr-2" />
+                  Read QR &amp; Check In
+                </Button>
 
-              <p className="text-[10px] text-zinc-400 text-center">
-                The QR token from the image is decoded locally — but your live GPS and the token&apos;s cryptographic signature are still verified by the server.
-              </p>
+                <p className="text-[10px] text-zinc-400 text-center">
+                  The QR token from the image is decoded locally — but your live GPS and the token&apos;s cryptographic signature are still verified by the server.
+                </p>
+              </div>
             </div>
           )}
 
           {/* ── Manual entry ── */}
           {inputMode === 'manual' && !isProcessing && phase !== 'success' && phase !== 'error' && (
-            <div className="p-6 flex flex-col gap-4">
-              <div className="flex items-start gap-3 p-3 border border-maroon/30 dark:border-golden/20 bg-maroon/5 dark:bg-golden/5">
+            <div className="p-6 flex-1 flex flex-col justify-between gap-4 h-full min-h-0 overflow-y-auto">
+              <div className="flex items-start gap-3 p-3 border border-maroon/30 dark:border-golden/20 bg-maroon/5 dark:bg-golden/5 shrink-0">
                 <MapPin className="w-4 h-4 text-maroon dark:text-golden mt-0.5 shrink-0" />
                 <p className="text-[10px] font-bold uppercase tracking-wider text-maroon dark:text-golden leading-relaxed">
                   Geofence is enforced for manual entry — you must be physically inside the classroom.
                 </p>
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                    QR Token Code
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        const text = await navigator.clipboard.readText()
-                        if (text) setManualToken(text)
-                      } catch {
-                        // Clipboard permission declined or unavailable
-                      }
-                    }}
-                    className="text-[10px] h-7 px-2 font-bold uppercase tracking-widest text-maroon dark:text-golden border-maroon/30 dark:border-golden/30 hover:bg-maroon/10 dark:hover:bg-golden/10"
-                  >
-                    <Clipboard className="w-3 h-3 mr-1.5" />
-                    Paste Clipboard
-                  </Button>
+              <div className="flex-1 flex flex-col justify-between gap-3">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                      QR Token Code
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          const text = await navigator.clipboard.readText()
+                          if (text) setManualToken(text)
+                        } catch {
+                          // Clipboard permission declined or unavailable
+                        }
+                      }}
+                      className="text-[10px] h-7 px-2 font-bold uppercase tracking-widest text-maroon dark:text-golden border-maroon/30 dark:border-golden/30 hover:bg-maroon/10 dark:hover:bg-golden/10"
+                    >
+                      <Clipboard className="w-3 h-3 mr-1.5" />
+                      Paste Clipboard
+                    </Button>
+                  </div>
+                  <form onSubmit={handleManualSubmit} className="flex flex-col gap-3">
+                    <Input
+                      value={manualToken}
+                      onChange={e => setManualToken(e.target.value)}
+                      placeholder="Paste or type the QR token from your instructor…"
+                      className="rounded-none font-mono text-xs h-10 border-zinc-300 dark:border-zinc-700 focus:border-maroon dark:focus:border-golden"
+                      aria-label="QR token text field"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <Button
+                      type="submit"
+                      disabled={!manualToken.trim()}
+                      className="w-full rounded-none bg-maroon hover:bg-maroon-dark disabled:opacity-40 text-white h-10 font-bold uppercase tracking-widest text-xs"
+                    >
+                      Check In
+                    </Button>
+                  </form>
                 </div>
-                <form onSubmit={handleManualSubmit} className="flex flex-col gap-3">
-                  <Input
-                    value={manualToken}
-                    onChange={e => setManualToken(e.target.value)}
-                    placeholder="Paste or type the QR token from your instructor…"
-                    className="rounded-none font-mono text-xs h-10 border-zinc-300 dark:border-zinc-700 focus:border-maroon dark:focus:border-golden"
-                    aria-label="QR token text field"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  <Button
-                    type="submit"
-                    disabled={!manualToken.trim()}
-                    className="w-full rounded-none bg-maroon hover:bg-maroon-dark disabled:opacity-40 text-white h-10 font-bold uppercase tracking-widest text-xs"
-                  >
-                    Check In
-                  </Button>
-                </form>
-                <p className="text-[10px] text-zinc-400 mt-3">
+                <p className="text-[10px] text-zinc-400 mt-2 shrink-0">
                   Ask your instructor to copy and share the session token. It is a long string of characters beginning with the payload and signature separated by a dot.
                 </p>
               </div>
