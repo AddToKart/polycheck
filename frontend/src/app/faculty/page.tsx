@@ -486,13 +486,19 @@ export default function FacultyPortalPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const cu = api.getCurrentUser()
-    if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
-      router.push('/')
-      return
+    const fn = async () => {
+      let cu = api.getCurrentUser()
+      if (!cu) {
+        cu = await api.restoreSession()
+      }
+      if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
+        router.push('/login/faculty')
+        return
+      }
+      setUser(cu)
+      setLoading(false)
     }
-    setUser(cu)
-    setLoading(false)
+    fn()
   }, [router])
 
   const handleLogout = () => {
