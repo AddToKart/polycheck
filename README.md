@@ -161,15 +161,13 @@ Turborepo handles task orchestration. You can run all development services concu
 
 ### Isolated Local Docker Stack
 
-To run Next.js, NestJS, PostgreSQL, and Redis entirely in Docker while keeping Android outside Docker:
+To run Next.js, NestJS, PostgreSQL, Redis, and seed initial test data entirely in Docker in **1 shot**:
 
 ```powershell
-Copy-Item .env.docker.local.example .env.docker.local
-pnpm docker:local:up
-pnpm docker:local:seed
+pnpm docker:local:setup
 ```
 
-Open `http://localhost:3000/login`. See [Local Docker Environment](documentation/LOCAL_DOCKER.md) for logs, Android connectivity, persistence, and reset instructions.
+Open `http://localhost:3000/login`. See [Local Docker Environment](documentation/LOCAL_DOCKER.md) for logs, Android connectivity, daily workflow commands, and data reset instructions.
 
 ### Running Everything in Development Mode
 To start the Next.js web application, the Expo dev server, and watch the shared package simultaneously:
