@@ -77,9 +77,8 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
   const isSuper = user.role === 'super_admin'
   const showSearch = !backHref && (user.role === 'teacher' || user.role === 'super_admin')
   
-  const items = backHref
-    ? []
-    : user.role === 'student'
+  const items =
+    user.role === 'student'
       ? studentNav
       : isSuper
         ? superAdminNav
