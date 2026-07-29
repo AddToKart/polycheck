@@ -238,9 +238,9 @@ export class UsersService {
           email: normalizedEmail,
           authEmail: `u-${randomUUID()}@auth.polycheck.invalid`,
           password,
-          program: dto.program.trim(),
+          program: dto.program?.trim() ?? null,
           yearLevel: dto.yearLevel,
-          department: dto.department.trim(),
+          department: dto.department?.trim() ?? null,
           role: 'student',
           authAccounts: {
             create: {
