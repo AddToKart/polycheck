@@ -12,6 +12,21 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 // ── Types ──────────────────────────────────────────────────────────────────
+// BarcodeDetector is a W3C API — not yet in all lib typings.
+// https://wicg.github.io/shape-detection/#barcodedetector-section
+declare global {
+  interface BarcodeDetectorOptions { formats?: string[] }
+  class BarcodeDetector {
+    constructor(options?: BarcodeDetectorOptions)
+    detect(source: ImageBitmapSource): Promise<BarcodeDetectorResult[]>
+  }
+  interface BarcodeDetectorResult {
+    rawValue: string
+    format: string
+    boundingBox?: DOMRectReadOnly
+  }
+}
+
 type InputMode = 'camera' | 'upload' | 'manual'
 const ALLOW_QR_FALLBACKS = process.env.NEXT_PUBLIC_ALLOW_QR_FALLBACKS === 'true'
 
@@ -52,7 +67,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
   const scannedRef = useRef(false)
   const handleTokenRef = useRef<(token: string, channel: ScanInputChannel) => Promise<void>>(async () => {})
   // BarcodeDetector not yet in TS lib typings
-  const detectorRef = useRef<any | null>(null)
+  const detectorRef = useRef<BarcodeDetector | null>(null)
 
   // ── Upload refs ──────────────────────────────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -130,7 +145,6 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
     if (phase !== 'scanning') return
 
     if (isBarcodeDetectorSupported() && !detectorRef.current) {
-      // @ts-expect-error BarcodeDetector not in lib typings yet
       detectorRef.current = new BarcodeDetector({ formats: ['qr_code'] })
     }
 
@@ -221,7 +235,6 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
         const img = new Image()
         img.src = uploadPreview
         await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej })
-        // @ts-expect-error BarcodeDetector not in lib typings yet
         const detector = new BarcodeDetector({ formats: ['qr_code'] })
         const codes = await detector.detect(img)
         if (codes.length > 0) rawToken = codes[0].rawValue

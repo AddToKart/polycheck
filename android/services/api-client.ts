@@ -100,66 +100,8 @@ export function subscribeToAuthChanges(listener: (user: User | null) => void) {
 
 const FETCH_TIMEOUT = 10_000
 
-const FALLBACK_SUBJECTS: Subject[] = [
-  { id: 'subj-1', name: 'Data Structures and Algorithms', code: 'CS 201', description: 'Fundamental data structures and algorithmic problem solving.', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
-  { id: 'subj-2', name: 'Object-Oriented Programming', code: 'CS 102', description: 'Classes, inheritance, polymorphism, and software design.', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
-  { id: 'subj-3', name: 'Database Management Systems', code: 'CS 301', description: 'Relational databases, SQL, modeling, and transactions.', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
-  { id: 'subj-4', name: 'Web Development', code: 'CS 205', description: 'Full-stack web applications and modern web standards.', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
-]
-
-const FALLBACK_SECTIONS: Section[] = [
-  {
-    id: 'sec-101',
-    subjectId: 'subj-1',
-    section: 'BSCS 2-1',
-    room: 'Room 304',
-    schedule: [{ day: 'Mon', startTime: '08:00', endTime: '11:00', room: 'Room 304' }, { day: 'Wed', startTime: '08:00', endTime: '11:00', room: 'Room 304' }],
-    semester: '1st Sem 2026-2027',
-    teacherId: 't-001',
-    teacherName: 'Prof. Juan Miguel Dela Cruz',
-    enrollmentCode: 'CS201A',
-    enrollmentCodeExpiry: '2026-12-31T23:59:59.000Z',
-    studentCount: 35,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-  },
-  {
-    id: 'sec-102',
-    subjectId: 'subj-2',
-    section: 'BSCS 2-1',
-    room: 'Lab 2',
-    schedule: [{ day: 'Tue', startTime: '13:00', endTime: '16:00', room: 'Lab 2' }, { day: 'Thu', startTime: '13:00', endTime: '16:00', room: 'Lab 2' }],
-    semester: '1st Sem 2026-2027',
-    teacherId: 't-001',
-    teacherName: 'Prof. Juan Miguel Dela Cruz',
-    enrollmentCode: 'CS102B',
-    enrollmentCodeExpiry: '2026-12-31T23:59:59.000Z',
-    studentCount: 32,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-  },
-  {
-    id: 'sec-103',
-    subjectId: 'subj-3',
-    section: 'BSCS 2-1',
-    room: 'Room 402',
-    schedule: [{ day: 'Fri', startTime: '09:00', endTime: '12:00', room: 'Room 402' }],
-    semester: '1st Sem 2026-2027',
-    teacherId: 't-002',
-    teacherName: 'Prof. Maria Elena Santos',
-    enrollmentCode: 'CS301C',
-    enrollmentCodeExpiry: '2026-12-31T23:59:59.000Z',
-    studentCount: 38,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-  },
-]
-
-const FALLBACK_ATTENDANCE: AttendanceRecord[] = [
-  { id: 'att-1', sessionId: 'sess-1', sectionId: 'sec-101', studentId: 's-001', studentName: 'Alexandra Marie Reyes', timestamp: new Date(Date.now() - 86400000 * 2).toISOString(), status: 'present', coordinates: { latitude: 14.5995, longitude: 120.9842 }, deviceId: 'dev-1', isSynced: true },
-  { id: 'att-2', sessionId: 'sess-2', sectionId: 'sec-102', studentId: 's-001', studentName: 'Alexandra Marie Reyes', timestamp: new Date(Date.now() - 86400000 * 4).toISOString(), status: 'present', coordinates: { latitude: 14.5995, longitude: 120.9842 }, deviceId: 'dev-1', isSynced: true },
-  { id: 'att-3', sessionId: 'sess-3', sectionId: 'sec-103', studentId: 's-001', studentName: 'Alexandra Marie Reyes', timestamp: new Date(Date.now() - 86400000 * 6).toISOString(), status: 'late', coordinates: { latitude: 14.5995, longitude: 120.9842 }, deviceId: 'dev-1', isSynced: true },
-]
+// Offline fallback data — returns empty arrays for first-run / unsynced users
+// instead of displaying fake subjects that don't correspond to real data.
 
 class ApiRequestError extends Error {
   constructor(message: string, readonly status: number) {
@@ -343,14 +285,14 @@ export const api = {
     try {
       return await get('/subjects')
     } catch {
-      return FALLBACK_SUBJECTS
+      return []
     }
   },
   async getSubject(id: string): Promise<Subject> {
     try {
       return await get(`/subjects/${id}`)
     } catch {
-      return FALLBACK_SUBJECTS.find((s) => s.id === id) || FALLBACK_SUBJECTS[0]
+      return { id, name: '', code: '', description: '', createdAt: '', updatedAt: '' }
     }
   },
   createSubject(data: CreateSubjectInput): Promise<Subject> { return post('/subjects', data) },
@@ -364,8 +306,7 @@ export const api = {
     } catch (error) {
       if (!isNetworkError(error)) throw error
       const sections = await getCachedSections()
-      const list = sections.length > 0 ? sections : FALLBACK_SECTIONS
-      return subjectId ? list.filter((section) => section.subjectId === subjectId) : list
+      return subjectId ? sections.filter((section) => section.subjectId === subjectId) : sections
     }
   },
   async getSection(id: string): Promise<Section> {
@@ -375,8 +316,8 @@ export const api = {
       return section
     } catch (error) {
       if (!isNetworkError(error)) throw error
-      const section = (await getCachedSection(id)) || FALLBACK_SECTIONS.find((s) => s.id === id)
-      if (!section) return FALLBACK_SECTIONS[0]
+      const section = await getCachedSection(id)
+      if (!section) throw new Error('Section not found locally. Please sync while online first.')
       return section
     }
   },
@@ -391,24 +332,15 @@ export const api = {
     try {
       return await get(`/sections?studentId=${studentId}`)
     } catch {
-      const cached = await getCachedSections()
-      return cached.length > 0 ? cached : FALLBACK_SECTIONS
+      return await getCachedSections()
     }
   },
   async resetEnrollmentCode(sectionId: string): Promise<{ enrollmentCode: string }> {
     try {
       const result = await post<{ enrollmentCode: string }>(`/sections/${sectionId}/enrollment-code/reset`)
       if (result && result.enrollmentCode) return result
-    } catch { /* fallback below */ }
-
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-    let code = ''
-    for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-    const section = FALLBACK_SECTIONS.find((s) => s.id === sectionId)
-    if (section) section.enrollmentCode = code
-    return { enrollmentCode: code }
+    } catch { /* offline — cannot reset enrollment code while disconnected */ }
+    throw new Error('Cannot reset enrollment code while offline. Please try again when connected.')
   },
   disableEnrollmentCode(sectionId: string): Promise<void> {
     return post(`/sections/${sectionId}/enrollment-code/disable`)
@@ -662,7 +594,7 @@ export const api = {
     try {
       return await get(`/attendance/student/${studentId}`)
     } catch {
-      return FALLBACK_ATTENDANCE
+      return []
     }
   },
   getMySubjects(studentId: string): Promise<Subject[]> {

@@ -51,7 +51,6 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       TRUST_PROXY: "false"
-      ENABLE_API_DOCS: "true"
       UPLOAD_DIR: /app/backend/uploads
       MAX_PROOF_BYTES: ${MAX_PROOF_BYTES:-5000000}
       STORAGE_DRIVER: local
