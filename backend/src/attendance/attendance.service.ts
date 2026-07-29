@@ -351,6 +351,19 @@ export class AttendanceService {
   // ── Private: offline activation recovery ──
 
   private async ensureOfflineActivation(sessionId: string, qrToken: string, receivedAt: Date, offline: boolean) {
+    // Serialize concurrent offline-activation attempts per session to prevent
+    // two scans from both passing the qrToken-null check and creating duplicate state.
+    const lockTtlSeconds = 10
+    const lockToken = await this.redis.acquireLock(`offline-activation:${sessionId}`, lockTtlSeconds)
+    if (!lockToken) return 'unchanged' as const
+    try {
+      return await this.performOfflineActivation(sessionId, qrToken, receivedAt, offline)
+    } finally {
+      await this.redis.releaseLock(`offline-activation:${sessionId}`, lockToken)
+    }
+  }
+
+  private async performOfflineActivation(sessionId: string, qrToken: string, receivedAt: Date, offline: boolean) {
     const session = await this.prisma.session.findUnique({ where: { id: sessionId } })
     if (!session || session.qrToken || session.endedAt) return 'unchanged' as const
     const teacher = await this.prisma.user.findUnique({

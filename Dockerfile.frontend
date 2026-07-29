@@ -4,7 +4,10 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY shared/package.json shared/package.json
 COPY frontend/package.json frontend/package.json
-RUN pnpm install --frozen-lockfile --filter frontend... --filter @polycheck/shared...
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+    pnpm config set fetch-timeout 300000 \
+ && pnpm config set fetch-retries 10 \
+ && pnpm install --frozen-lockfile --filter frontend... --filter @polycheck/shared...
 COPY shared shared
 COPY frontend frontend
 ARG NEXT_PUBLIC_API_URL

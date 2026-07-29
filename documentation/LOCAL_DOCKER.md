@@ -11,34 +11,25 @@ Local Docker intentionally uses the `local` proof-storage driver and a persisten
 
 Node.js, pnpm, PostgreSQL, and Redis are not required on the host for this workflow.
 
-## First start
+## First start (1-Shot Onboarding)
 
-From the repository root, create the ignored local environment file:
+To set up, build, migrate, and seed the entire local environment in **1 single command**:
 
 ```powershell
-Copy-Item .env.docker.local.example .env.docker.local
+pnpm docker:local:setup
 ```
 
-The example values are for local development only. You may change them before the first start. Do not commit `.env.docker.local`.
-
-Build and start the isolated stack:
+Or step-by-step:
 
 ```powershell
-docker compose -f docker-compose.local.yml --env-file .env.docker.local up -d --build
-```
-
-The backend automatically applies all pending Prisma migrations before it starts. Seed the fresh database once:
-
-```powershell
-docker compose -f docker-compose.local.yml --env-file .env.docker.local --profile tools run --rm seed
-```
-
-Equivalent pnpm shortcuts are available:
-
-```powershell
+# 1. Start containers & apply database migrations
 pnpm docker:local:up
+
+# 2. Seed mock test database records
 pnpm docker:local:seed
 ```
+
+Environment variables are defaulted automatically in `docker-compose.local.yml`. You may optionally copy `.env.docker.local.example` to `.env.docker.local` to customize local secret values.
 
 ## Addresses
 

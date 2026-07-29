@@ -139,30 +139,37 @@ function StudentDashboardContent() {
 
   useEffect(() => {
     const fn = async () => {
-      const cu = api.getCurrentUser()
+      let cu = api.getCurrentUser()
+      if (!cu) {
+        cu = await api.restoreSession()
+      }
       if (!cu || cu.role !== 'student') {
-        router.push('/')
+        router.push('/login/student')
         return
       }
       setUser(cu as Student)
       if (cu.studentId) {
-        const studentSections = await api.getStudentSections(cu.id)
-        const studentRecords = await api.getAttendanceForStudent(cu.id)
-        const allSessions = await api.getSessions()
-        setSections(studentSections)
-        setRecords(studentRecords)
-        setSessions(allSessions)
+        try {
+          const studentSections = await api.getStudentSections(cu.id)
+          const studentRecords = await api.getAttendanceForStudent(cu.id)
+          const allSessions = await api.getSessions()
+          setSections(studentSections)
+          setRecords(studentRecords)
+          setSessions(allSessions)
 
-        const todayStr = new Date().toISOString().slice(0, 10)
-        const evs = generateStudentCalendarEvents(
-          studentSections,
-          allSessions,
-          studentRecords,
-          (id) => subjectMap.get(id),
-          todayStr,
-          todayStr
-        ).sort((a, b) => a.startTime.localeCompare(b.startTime))
-        setTodayEvents(evs)
+          const todayStr = new Date().toISOString().slice(0, 10)
+          const evs = generateStudentCalendarEvents(
+            studentSections,
+            allSessions,
+            studentRecords,
+            (id) => subjectMap.get(id),
+            todayStr,
+            todayStr
+          ).sort((a, b) => a.startTime.localeCompare(b.startTime))
+          setTodayEvents(evs)
+        } catch {
+          // Graceful fallback if initial background fetch fails
+        }
       }
     }
     fn()

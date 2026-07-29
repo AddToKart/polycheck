@@ -41,10 +41,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: development
       PORT: 4000
-      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-polycheck_local_db_2026}@postgres:5432/polycheck?schema=public
       REDIS_URL: redis://redis:6379/0
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-polycheck-local-better-auth-secret-2026}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4000}
@@ -64,6 +66,18 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
+
+  migrate:
+    image: polycheck-backend-local
+    build: *backend-build
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-polycheck_local_db_2026}@postgres:5432/polycheck?schema=public
+    command: ["sh", "docker-entrypoint.sh", "migrate"]
 
   frontend:
     image: polycheck-frontend-local
@@ -95,10 +109,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: development
-      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
-      SEED_PASSWORD: ${SEED_PASSWORD:?SEED_PASSWORD is required}
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-polycheck_local_db_2026}@postgres:5432/polycheck?schema=public
+      SEED_PASSWORD: ${SEED_PASSWORD:-PolycheckLocal1!}
       ALLOW_PRODUCTION_SEED: "false"
     command: ["node", "-r", "ts-node/register/transpile-only", "-e", "require('./prisma/seed.ts')"]
     restart: "no"

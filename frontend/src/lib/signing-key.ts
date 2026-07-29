@@ -6,28 +6,50 @@ const PUBLIC_KEY = 'polycheck-teacher-signing-public'
 const DATABASE = 'polycheck-keys'
 const STORE = 'crypto-keys'
 const WRAPPING_KEY = 'teacher-signing-key-wrapper'
+const IDB_ENCRYPTED_KEY = 'teacher-signing-encrypted-secret'
+const IDB_PUBLIC_KEY = 'teacher-signing-public'
 
 type EncryptedSecret = { iv: string; ciphertext: string }
 
 export async function getOrCreateTeacherSigningKey() {
-  const publicKey = localStorage.getItem(PUBLIC_KEY)
-  const encrypted = localStorage.getItem(ENCRYPTED_PRIVATE_KEY)
-  if (publicKey && encrypted) {
-    return { publicKey, secretKey: await decryptSecret(JSON.parse(encrypted) as EncryptedSecret) }
+  // 1. Try IndexedDB first (secure storage — XSS cannot easily exfiltrate).
+  const idbEncrypted = await idbGet<EncryptedSecret>(IDB_ENCRYPTED_KEY)
+  const idbPublic = await idbGet<string>(IDB_PUBLIC_KEY)
+  if (idbEncrypted && idbPublic) {
+    // One-time migration: copy public key to localStorage for quick access by other modules.
+    if (!localStorage.getItem(PUBLIC_KEY)) localStorage.setItem(PUBLIC_KEY, idbPublic)
+    return { publicKey: idbPublic, secretKey: await decryptSecret(idbEncrypted) }
   }
 
-  // One-time migration from the previous plaintext-at-rest implementation.
+  // 2. Migrate from localStorage v2 (encrypted secret was in localStorage — XSS risk).
+  const lsPublic = localStorage.getItem(PUBLIC_KEY)
+  const lsEncrypted = localStorage.getItem(ENCRYPTED_PRIVATE_KEY)
+  if (lsPublic && lsEncrypted) {
+    const parsed = JSON.parse(lsEncrypted) as EncryptedSecret
+    await idbPut(IDB_ENCRYPTED_KEY, parsed)
+    await idbPut(IDB_PUBLIC_KEY, lsPublic)
+    localStorage.removeItem(ENCRYPTED_PRIVATE_KEY)
+    return { publicKey: lsPublic, secretKey: await decryptSecret(parsed) }
+  }
+
+  // 3. One-time migration from the previous plaintext-at-rest implementation.
   const legacySecret = localStorage.getItem(LEGACY_PRIVATE_KEY)
-  if (publicKey && legacySecret) {
-    localStorage.setItem(ENCRYPTED_PRIVATE_KEY, JSON.stringify(await encryptSecret(legacySecret)))
+  if (lsPublic && legacySecret) {
+    const encrypted = await encryptSecret(legacySecret)
+    await idbPut(IDB_ENCRYPTED_KEY, encrypted)
+    await idbPut(IDB_PUBLIC_KEY, lsPublic)
     localStorage.removeItem(LEGACY_PRIVATE_KEY)
-    return { publicKey, secretKey: legacySecret }
+    return { publicKey: lsPublic, secretKey: legacySecret }
   }
 
+  // 4. First run — generate a new key pair.
   const pair = createSigningKeyPair(crypto.getRandomValues(new Uint8Array(32)))
-  localStorage.setItem(ENCRYPTED_PRIVATE_KEY, JSON.stringify(await encryptSecret(pair.secretKey)))
+  const encrypted = await encryptSecret(pair.secretKey)
+  await idbPut(IDB_ENCRYPTED_KEY, encrypted)
+  await idbPut(IDB_PUBLIC_KEY, pair.publicKey)
   localStorage.setItem(PUBLIC_KEY, pair.publicKey)
   localStorage.removeItem(LEGACY_PRIVATE_KEY)
+  localStorage.removeItem(ENCRYPTED_PRIVATE_KEY)
   return pair
 }
 
@@ -66,6 +88,18 @@ function openDatabase() {
     opening.onsuccess = () => resolve(opening.result)
     opening.onerror = () => reject(opening.error ?? new Error('Unable to open signing key storage'))
   })
+}
+
+async function idbGet<T>(key: string): Promise<T | undefined> {
+  const database = await openDatabase()
+  return request<T | undefined>(database.transaction(STORE).objectStore(STORE).get(key))
+}
+
+async function idbPut<T>(key: string, value: T): Promise<void> {
+  const database = await openDatabase()
+  const transaction = database.transaction(STORE, 'readwrite')
+  transaction.objectStore(STORE).put(value, key)
+  await transactionDone(transaction)
 }
 
 function request<T>(value: IDBRequest<T>) {

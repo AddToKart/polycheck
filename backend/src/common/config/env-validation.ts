@@ -88,6 +88,25 @@ export const envSchema = z
         message: 'Production DATABASE_URL must set connection_limit and pool_timeout',
       })
     }
+    if (env.NODE_ENV === 'production') {
+      const urlParams = new URLSearchParams(env.DATABASE_URL.split('?')[1] ?? '')
+      const connectionLimit = urlParams.get('connection_limit')
+      const poolTimeout = urlParams.get('pool_timeout')
+      if (connectionLimit !== null && isNaN(parseInt(connectionLimit, 10))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['DATABASE_URL'],
+          message: 'connection_limit in DATABASE_URL must be a valid integer',
+        })
+      }
+      if (poolTimeout !== null && isNaN(parseInt(poolTimeout, 10))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['DATABASE_URL'],
+          message: 'pool_timeout in DATABASE_URL must be a valid integer',
+        })
+      }
+    }
     if (
       env.NODE_ENV === 'production' &&
       [env.BETTER_AUTH_URL, env.FRONTEND_URL, ...productionOrigins].some((url) => url && !url.startsWith('https://'))

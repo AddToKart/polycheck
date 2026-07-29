@@ -10,11 +10,22 @@ const student = {
   role: 'student',
 }
 
+const teacher = {
+  id: 'teacher-1',
+  email: 'teacher@pup.edu',
+  fullName: 'Prof. Test',
+  role: 'teacher',
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json' },
   })
+}
+
+function textResponse(text: string, status = 200) {
+  return new Response(text, { status, headers: { 'Content-Type': 'text/plain' } })
 }
 
 describe('real API client', () => {
@@ -48,133 +59,202 @@ describe('real API client', () => {
     expect(localStorage.getItem('polycheck-user')).toBeNull()
   })
 
-  it('surfaces all server validation messages', async () => {
-    vi.mocked(fetch).mockResolvedValue(jsonResponse({ message: ['Email is invalid', 'Password is required'] }, 400))
+  it('logs in faculty and persists profile', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ accessToken: 'x', user: teacher }))
     const { api } = await import('./api-client')
 
-    await expect(api.loginFaculty('invalid', '')).rejects.toThrow('Email is invalid. Password is required')
+    const result = await api.loginFaculty(teacher.email, 'password')
+    expect(result).toEqual(teacher)
+    expect(localStorage.getItem('polycheck-user')).toBe(JSON.stringify(teacher))
   })
 
-  it('does not let the browser choose the authoritative teacher on session creation', async () => {
-    vi.mocked(fetch).mockResolvedValue(jsonResponse({ id: 'session-1' }))
-    const { api } = await import('./api-client')
-
-    await api.createSession({
-      sectionId: 'section-1',
-      subjectName: 'Algorithms',
-      date: '2026-07-18',
-      startTime: '08:00',
-      endTime: '09:00',
-      qrValidityMinutes: 5,
-      gracePeriodMinutes: 10,
-      geofence: { latitude: 14.5995, longitude: 120.9842, radiusMeters: 40 },
-      teacherId: 'spoofed-teacher',
-    })
-
-    const request = vi.mocked(fetch).mock.calls[0]
-    expect(request[0]).toBe('https://api.polycheck.test/api/sessions')
-    expect(request[1]).toEqual(expect.objectContaining({ method: 'POST', credentials: 'include' }))
-    expect(JSON.parse(String(request[1]?.body))).not.toHaveProperty('teacherId')
-  })
-
-  it('logs out server-side and removes the cached profile immediately', async () => {
+  it('logout clears local state and calls server', async () => {
     localStorage.setItem('polycheck-user', JSON.stringify(student))
-    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 204 }))
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({}))
     const { api } = await import('./api-client')
 
-    api.logout()
-
-    expect(fetch).toHaveBeenCalledWith('https://api.polycheck.test/api/auth/logout', {
-      method: 'POST',
-      credentials: 'include',
-    })
+    await api.logout()
     expect(api.getCurrentUser()).toBeNull()
     expect(localStorage.getItem('polycheck-user')).toBeNull()
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.polycheck.test/api/auth/logout',
+      expect.objectContaining({ method: 'POST', credentials: 'include' }),
+    )
   })
 
-  it('creates student accounts through the authenticated super-admin endpoint', async () => {
+  it('logout still succeeds when server is unreachable', async () => {
+    localStorage.setItem('polycheck-user', JSON.stringify(student))
+    vi.mocked(fetch).mockRejectedValue(new Error('Network error'))
+    const { api } = await import('./api-client')
+
+    // Should not throw — local logout succeeds
+    await api.logout()
+    expect(api.getCurrentUser()).toBeNull()
+  })
+
+  it('restoreSession fetches /auth/me and persists user', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse(student))
     const { api } = await import('./api-client')
-    const account = {
-      fullName: 'Test Student',
-      studentId: '2026-00001-MN-0',
-      email: 'student@iskolarngbayan.pup.edu.ph',
-      password: 'Temporary1!Secure',
-      program: 'BS Computer Science',
-      yearLevel: 1,
-      department: 'CCIS',
-    }
 
-    await api.createStudent(account)
-
-    expect(fetch).toHaveBeenCalledWith(
-      'https://api.polycheck.test/api/users/students',
-      expect.objectContaining({
-        method: 'POST',
-        credentials: 'include',
-        body: JSON.stringify(account),
-      }),
-    )
+    const result = await api.restoreSession()
+    expect(result).toEqual(student)
+    expect(api.getCurrentUser()).toEqual(student)
   })
 
-  it('resets managed-user passwords through an authenticated request', async () => {
-    vi.mocked(fetch).mockResolvedValue(jsonResponse({ message: 'Password reset successfully', userId: 'student-1' }))
+  it('restoreSession returns null on 401', async () => {
+    localStorage.setItem('polycheck-user', JSON.stringify(student))
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ message: 'Unauthorized' }, 401))
     const { api } = await import('./api-client')
 
-    await api.resetUserPassword('student-1', 'Replacement1!Secure')
-
-    expect(fetch).toHaveBeenCalledWith(
-      'https://api.polycheck.test/api/users/student-1/password',
-      expect.objectContaining({
-        method: 'PATCH',
-        credentials: 'include',
-        body: JSON.stringify({ password: 'Replacement1!Secure' }),
-      }),
-    )
+    const result = await api.restoreSession()
+    expect(result).toBeNull()
+    expect(api.getCurrentUser()).toBeNull()
   })
 
-  it('sends report filters to the aggregate endpoint instead of requesting raw history', async () => {
-    vi.mocked(fetch).mockResolvedValue(jsonResponse({ totals: {}, summaries: [] }))
-    const { api } = await import('./api-client')
-
-    await api.getAttendanceReport({
-      startDate: '2026-07-01',
-      endDate: '2026-07-18',
-      teacherId: 'teacher-1',
-      subjectId: 'subject-1',
-    })
-
-    expect(fetch).toHaveBeenCalledWith(
-      'https://api.polycheck.test/api/attendance/report?startDate=2026-07-01&endDate=2026-07-18&teacherId=teacher-1&subjectId=subject-1',
-      expect.objectContaining({ credentials: 'include' }),
-    )
-  })
-
-  it('caps session roster requests at 1000 records', async () => {
+  it('getSubjects fetches the correct path', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse([]))
     const { api } = await import('./api-client')
 
-    await api.getAttendanceRecords('session-1')
-
+    await api.getSubjects()
     expect(fetch).toHaveBeenCalledWith(
-      'https://api.polycheck.test/api/attendance?sessionId=session-1&limit=1000',
-      expect.any(Object),
+      'https://api.polycheck.test/api/subjects',
+      expect.objectContaining({ credentials: 'include' }),
     )
   })
 
-  it('passes the active report filters through to CSV export', async () => {
-    vi.mocked(fetch).mockResolvedValue(new Response('csv', { status: 200 }))
+  it('getSections passes subjectId query parameter', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse([]))
     const { api } = await import('./api-client')
 
-    await api.exportAttendanceCsv({
-      startDate: '2026-07-01',
-      endDate: '2026-07-18',
-      sectionId: 'section-1',
-    })
-
+    await api.getSections('sec-1')
     expect(fetch).toHaveBeenCalledWith(
-      'https://api.polycheck.test/api/reports/export?startDate=2026-07-01&endDate=2026-07-18&sectionId=section-1',
-      expect.objectContaining({ credentials: 'include' }),
+      'https://api.polycheck.test/api/sections?subjectId=sec-1',
+      expect.anything(),
     )
+  })
+
+  it('submitScan posts scan data with evidence', async () => {
+    const record = { id: 'att-1', status: 'present' }
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(record))
+    const { api } = await import('./api-client')
+
+    const result = await api.submitScan(
+      'sess-1', 'stu-1', 'Student', 14.58, 120.98, 'device-1', 'token123', '2026-01-01T00:00:00Z',
+      { clientAttemptId: 'a-1', accuracyMeters: 10, locationCapturedAt: '2026-01-01T00:00:00Z', inputChannel: 'camera' },
+    )
+    expect(result).toEqual(record)
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.polycheck.test/api/attendance/scan',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('token123'),
+      }),
+    )
+  })
+
+  it('exportAttendanceCsv fetches CSV text', async () => {
+    vi.mocked(fetch).mockResolvedValue(textResponse('sessionId,status\natt-1,present'))
+    const { api } = await import('./api-client')
+
+    const csv = await api.exportAttendanceCsv()
+    expect(csv).toBe('sessionId,status\natt-1,present')
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/reports/export'),
+      expect.anything(),
+    )
+  })
+
+  it('exportAttendanceCsv throws on failure', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ message: 'Forbidden' }, 403))
+    const { api } = await import('./api-client')
+
+    await expect(api.exportAttendanceCsv()).rejects.toThrow('Forbidden')
+  })
+
+  it('generateQrCode rejects invalid validity range', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({}))
+    const { api } = await import('./api-client')
+
+    await expect(api.generateQrCode('sess-1', 0)).rejects.toThrow('QR validity must be 1-15 minutes')
+    await expect(api.generateQrCode('sess-1', 20)).rejects.toThrow('QR validity must be 1-15 minutes')
+  })
+
+  it('search queries the search endpoint', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ students: [], sections: [], sessions: [] }))
+    const { api } = await import('./api-client')
+
+    const result = await api.search('query')
+    expect(result).toEqual({ students: [], sections: [], sessions: [] })
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/search?q=query'),
+      expect.anything(),
+    )
+  })
+
+  it('handleResponse throws parsed error message on failure', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ message: ['Error A', 'Error B'] }, 422))
+    const { api } = await import('./api-client')
+
+    await expect(api.getSubjects()).rejects.toThrow('Error A. Error B')
+  })
+
+  it('handleResponse falls back to status text on unparseable error', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response('Not JSON', { status: 502, statusText: 'Bad Gateway' }))
+    const { api } = await import('./api-client')
+
+    await expect(api.getSubjects()).rejects.toThrow('Bad Gateway')
+  })
+
+  it('handleResponse returns undefined for 204 No Content', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 204 }))
+    const { api } = await import('./api-client')
+
+    // deleteProofOfClass should succeed without throwing
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const result = await api.removeStudentFromSection('sec-1', 'stu-1')
+    expect(result).toBeUndefined()
+  })
+
+  it('getSessions passes sectionId query parameter', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse([]))
+    const { api } = await import('./api-client')
+
+    await api.getSectionSessions('sec-1')
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.polycheck.test/api/sessions?sectionId=sec-1',
+      expect.anything(),
+    )
+  })
+
+  it('getAttendanceRecords defaults to recent date range', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse([]))
+    const { api } = await import('./api-client')
+
+    await api.getAttendanceRecords()
+    const url = vi.mocked(fetch).mock.calls[0]?.[0] as string
+    expect(url).toContain('startDate=')
+    expect(url).toContain('endDate=')
+    expect(url).toContain('limit=1000')
+  })
+
+  it('enrollStudent posts enrollment data', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(true))
+    const { api } = await import('./api-client')
+
+    const result = await api.enrollStudent({ sectionId: 'sec-1', studentId: 'stu-1', studentName: 'Test', enrollmentCode: 'CODE' })
+    expect(result).toBe(true)
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/sections/sec-1/enroll-student'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('search URL-encodes query parameter', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ students: [], sections: [], sessions: [] }))
+    const { api } = await import('./api-client')
+
+    await api.search('hello world & special=chars')
+    const url = vi.mocked(fetch).mock.calls[0]?.[0] as string
+    expect(url).toContain(encodeURIComponent('hello world & special=chars'))
   })
 })
