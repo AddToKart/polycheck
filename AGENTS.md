@@ -33,7 +33,30 @@ polycheck/
 │       ├── app/            # Expo Router screens
 │       ├── components/     # React Native components
 │       └── services/       # API client, local DB, sync engine
-├── backend/                # NestJS API (not yet built)
+├── backend/                # NestJS API (30+ modules, Prisma, Swagger)
+│   ├── src/
+│   │   ├── main.ts         # Bootstrap, Swagger, CORS, health checks
+│   │   ├── app.module.ts   # Root module
+│   │   ├── auth/           # Better Auth strategies, JWT guards
+│   │   ├── attendance/     # Check-in logic, validation, geofencing
+│   │   ├── sessions/       # QR generation, activation, permissions
+│   │   ├── sections/       # CRUD, enrollment, student management
+│   │   ├── subjects/       # Course-level CRUD
+│   │   ├── disputes/       # Dispute review and resolution
+│   │   ├── dashboard/      # Aggregated stats for teachers & students
+│   │   ├── sync/           # Offline sync engine
+│   │   ├── prisma/         # Schema, migrations, seed data
+│   │   ├── realtime/       # WebSocket gateway, Redis adapter
+│   │   ├── proofs/         # Proof-of-class photo uploads
+│   │   ├── settings/       # Institution-level configuration
+│   │   ├── users/          # User management, roles
+│   │   ├── section-roles/  # Per-section role assignments
+│   │   ├── session-permissions/ # Per-session access control
+│   │   ├── health/         # Readiness/liveness probes
+│   │   ├── observability/  # Logging, metrics, tracing
+│   │   └── common/         # Config, env validation, shared providers
+│   ├── prisma/             # Schema & seed scripts
+│   └── dist/               # Compiled output
 └── documentation/
     └── PUP_Attendance_System_Plan.md
 ```
