@@ -132,4 +132,49 @@ describe('real API client', () => {
       }),
     )
   })
+
+  it('sends report filters to the aggregate endpoint instead of requesting raw history', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ totals: {}, summaries: [] }))
+    const { api } = await import('./api-client')
+
+    await api.getAttendanceReport({
+      startDate: '2026-07-01',
+      endDate: '2026-07-18',
+      teacherId: 'teacher-1',
+      subjectId: 'subject-1',
+    })
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.polycheck.test/api/attendance/report?startDate=2026-07-01&endDate=2026-07-18&teacherId=teacher-1&subjectId=subject-1',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+
+  it('caps session roster requests at 1000 records', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse([]))
+    const { api } = await import('./api-client')
+
+    await api.getAttendanceRecords('session-1')
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.polycheck.test/api/attendance?sessionId=session-1&limit=1000',
+      expect.any(Object),
+    )
+  })
+
+  it('passes the active report filters through to CSV export', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response('csv', { status: 200 }))
+    const { api } = await import('./api-client')
+
+    await api.exportAttendanceCsv({
+      startDate: '2026-07-01',
+      endDate: '2026-07-18',
+      sectionId: 'section-1',
+    })
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.polycheck.test/api/reports/export?startDate=2026-07-01&endDate=2026-07-18&sectionId=section-1',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
 })

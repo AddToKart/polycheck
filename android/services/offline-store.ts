@@ -3,6 +3,9 @@ import * as SQLite from 'expo-sqlite'
 import type { Section, Session } from '@polycheck/shared'
 
 export type OfflineOperationKind = 'attendance_scan' | 'scan_attempt' | 'session_activation' | 'session_end'
+export type OfflineSendResult =
+  | { outcome: 'synced' }
+  | { outcome: 'retryable' | 'terminal'; error: string }
 
 type QueueRow = {
   id: string
@@ -125,9 +128,13 @@ export async function enqueueOfflineOperation(kind: OfflineOperationKind, payloa
   const db = await database()
   if (!db) throw new Error('Offline queue is unavailable on this platform')
   const createdAt = new Date().toISOString()
-  const id = `${kind}:${createdAt}:${Math.random().toString(36).slice(2)}`
+  const clientAttemptId =
+    payload && typeof payload === 'object' && 'clientAttemptId' in payload
+      ? String(payload.clientAttemptId)
+      : undefined
+  const id = clientAttemptId ? `${kind}:${clientAttemptId}` : `${kind}:${createdAt}:${Math.random().toString(36).slice(2)}`
   await db.runAsync(
-    'INSERT INTO sync_queue (id, kind, payload, created_at) VALUES (?, ?, ?, ?)',
+    'INSERT OR IGNORE INTO sync_queue (id, kind, payload, created_at) VALUES (?, ?, ?, ?)',
     id,
     kind,
     JSON.stringify(payload),
@@ -136,16 +143,38 @@ export async function enqueueOfflineOperation(kind: OfflineOperationKind, payloa
 }
 
 export async function drainOfflineQueue(
-  send: (kind: OfflineOperationKind, payload: Record<string, unknown>) => Promise<void>,
+  send: (kind: OfflineOperationKind, payload: Record<string, unknown>) => Promise<OfflineSendResult | void>,
 ) {
   if (drainPromise) return drainPromise
   drainPromise = (async () => {
     const db = await database()
     if (!db) return
-    const rows = await db.getAllAsync<QueueRow>('SELECT id, kind, payload, attempts FROM sync_queue ORDER BY created_at ASC LIMIT 100')
+    const rows = await db.getAllAsync<QueueRow>(
+      `SELECT id, kind, payload, attempts FROM sync_queue
+       WHERE last_error IS NULL OR last_error NOT LIKE 'terminal:%'
+       ORDER BY created_at ASC LIMIT 100`,
+    )
     for (const row of rows) {
       try {
-        await send(row.kind, JSON.parse(row.payload) as Record<string, unknown>)
+        const result = await send(row.kind, JSON.parse(row.payload) as Record<string, unknown>)
+        if (result?.outcome === 'terminal') {
+          await db.runAsync(
+            'UPDATE sync_queue SET attempts = ?, last_error = ? WHERE id = ?',
+            row.attempts + 1,
+            `terminal: ${result.error.slice(0, 490)}`,
+            row.id,
+          )
+          continue
+        }
+        if (result?.outcome === 'retryable') {
+          await db.runAsync(
+            'UPDATE sync_queue SET attempts = ?, last_error = ? WHERE id = ?',
+            row.attempts + 1,
+            `retryable: ${result.error.slice(0, 489)}`,
+            row.id,
+          )
+          break
+        }
         await db.runAsync('DELETE FROM sync_queue WHERE id = ?', row.id)
       } catch (error) {
         const message = error instanceof Error ? error.message.slice(0, 500) : 'Sync failed'

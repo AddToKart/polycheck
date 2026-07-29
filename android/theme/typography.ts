@@ -1,5 +1,5 @@
 export const fonts = {
-  heading: 'Lora_400Regular',
+  heading: 'DMSans_700Bold',
   body: 'DMSans_400Regular',
   bodyMedium: 'DMSans_500Medium',
   bodySemiBold: 'DMSans_600SemiBold',

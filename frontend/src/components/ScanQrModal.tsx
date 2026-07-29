@@ -7,12 +7,13 @@ import {
 } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { decodeTokenPayload } from '@polycheck/shared/utils'
-import type { Student } from '@polycheck/shared'
+import type { ScanInputChannel, Student } from '@polycheck/shared'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type InputMode = 'camera' | 'upload' | 'manual'
+const ALLOW_QR_FALLBACKS = process.env.NEXT_PUBLIC_ALLOW_QR_FALLBACKS === 'true'
 
 type ScanPhase =
   | 'idle'
@@ -49,7 +50,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
   const streamRef = useRef<MediaStream | null>(null)
   const scanLoopRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(null)
   const scannedRef = useRef(false)
-  const handleTokenRef = useRef<(token: string) => Promise<void>>(async () => {})
+  const handleTokenRef = useRef<(token: string, channel: ScanInputChannel) => Promise<void>>(async () => {})
   // BarcodeDetector not yet in TS lib typings
   const detectorRef = useRef<any | null>(null)
 
@@ -102,13 +103,12 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
     } catch (err: unknown) {
       const msg =
         err instanceof Error && err.name === 'NotAllowedError'
-          ? 'Camera access denied. Use Upload QR or Manual entry instead.'
+          ? 'Camera access denied. Enable camera permission to scan attendance QR codes.'
           : err instanceof Error && err.name === 'NotFoundError'
-            ? 'No camera found on this device. Use Upload QR or Manual entry instead.'
-            : 'Camera unavailable. Use Upload QR or Manual entry instead.'
+            ? 'No camera found on this device.'
+            : 'Camera unavailable.'
       setCameraError(msg)
-      // Auto-switch to upload mode when camera fails
-      setInputMode('upload')
+      if (ALLOW_QR_FALLBACKS) setInputMode('upload')
       setPhase('idle')
     }
   }, [])
@@ -121,7 +121,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
       if (!trimmed) return
       scannedRef.current = true
       stopCamera()
-      await handleTokenRef.current(trimmed)
+      await handleTokenRef.current(trimmed, 'camera')
     },
     [stopCamera]
   )
@@ -249,7 +249,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
     }
 
     scannedRef.current = true
-    await handleTokenRef.current(rawToken)
+    await handleTokenRef.current(rawToken, 'image')
   },
     [uploadPreview]
   )
@@ -283,7 +283,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
   // Geofence enforcement is 100% server-side: the server re-validates GPS
   // coordinates against the session geofence regardless of input mode.
   const handleToken = useCallback(
-    async (token: string) => {
+    async (token: string, inputChannel: ScanInputChannel) => {
       // 1. Decode payload locally (no sig check — server enforces that)
       const payload = decodeTokenPayload(token)
       if (!payload) {
@@ -306,10 +306,14 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
       setLocationStatus('Getting your location…')
       let lat: number
       let lon: number
+      let accuracyMeters: number
+      let locationCapturedAt: string
       try {
         const pos = await getCurrentPosition()
         lat = pos.coords.latitude
         lon = pos.coords.longitude
+        accuracyMeters = pos.coords.accuracy
+        locationCapturedAt = new Date(pos.timestamp).toISOString()
         setLocationStatus(`Location acquired (±${Math.round(pos.coords.accuracy)}m)`)
       } catch (err: unknown) {
         const denied =
@@ -332,35 +336,6 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
         const scannedAt = new Date().toISOString()
         const deviceId = `web-${user.id}`
 
-        // Dry-run validation — surfaces a human-readable rejection reason
-        const check = await api.checkAttendance(
-          payload.sessionId,
-          user.id,
-          lat,
-          lon,
-          token,
-          scannedAt,
-        )
-
-        if (!check.success) {
-          const reason = check.reason ?? ''
-          const msgMap: Record<string, string> = {
-            outside_geofence:
-              'You are outside the session geofence. You must be physically inside the classroom to check in.',
-            qr_expired: 'The QR attendance window has closed.',
-            session_inactive: 'This session is not currently active.',
-            invalid_signature: 'QR code signature is invalid — the code may have been altered.',
-            token_mismatch: 'This QR code does not match the active session.',
-            not_enrolled: 'You are not enrolled in this section.',
-            rate_limited: 'Too many attempts. Wait a moment and try again.',
-            duplicate: 'Your attendance has already been recorded for this session.',
-          }
-          setErrorMessage(msgMap[reason] ?? check.message ?? 'Check-in was rejected by the server.')
-          setPhase('error')
-          return
-        }
-
-        // Commit the attendance record
         const result = await api.submitScan(
           payload.sessionId,
           user.id,
@@ -370,6 +345,12 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
           deviceId,
           token,
           scannedAt,
+          {
+            clientAttemptId: crypto.randomUUID(),
+            accuracyMeters,
+            locationCapturedAt,
+            inputChannel,
+          },
         )
 
         if ('error' in result) {
@@ -379,8 +360,8 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
         }
 
         setOutcome({
-          status: (result.status as 'present' | 'late' | 'disputed') ?? check.status,
-          message: check.message ?? 'Check-in recorded.',
+          status: result.status as 'present' | 'late' | 'disputed',
+          message: `Attendance recorded as ${result.status}.`,
         })
         setPhase('success')
       } catch (err: unknown) {
@@ -404,7 +385,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
     if (!trimmed) return
     scannedRef.current = true
     stopCamera()
-    await handleToken(trimmed)
+    await handleToken(trimmed, 'manual')
   }
 
   // ── Mode switching ───────────────────────────────────────────────────────
@@ -498,8 +479,12 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
   // ── Tab config ───────────────────────────────────────────────────────────
   const tabs: { mode: InputMode; label: string; icon: React.ReactNode }[] = [
     { mode: 'camera', label: 'Camera', icon: <Camera className="w-3.5 h-3.5" /> },
-    { mode: 'upload', label: 'Upload QR', icon: <Upload className="w-3.5 h-3.5" /> },
-    { mode: 'manual', label: 'Enter Code', icon: <Keyboard className="w-3.5 h-3.5" /> },
+    ...(ALLOW_QR_FALLBACKS
+      ? [
+          { mode: 'upload' as const, label: 'Upload QR', icon: <Upload className="w-3.5 h-3.5" /> },
+          { mode: 'manual' as const, label: 'Enter Code', icon: <Keyboard className="w-3.5 h-3.5" /> },
+        ]
+      : []),
   ]
 
   const showTabs = phase !== 'success' && phase !== 'error' && !isProcessing

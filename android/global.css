@@ -9,6 +9,13 @@
   --color-maroon: #7B1113;
   --color-maroon-dark: #4A0A0B;
   --color-golden: #FFDF00;
+  --color-campus: #F7F6F6;
+  --color-campus-dark: #0B0B0E;
+  --color-ink: #211A1B;
+  --color-muted: #746C6E;
+  --color-line: #E8E2E3;
+  --color-surface-dark: #171316;
+  --color-line-dark: #30272A;
   --color-pup-white: #FFFFFF;
   --color-pup-black: #0A0A0A;
   --color-background: var(--background);
@@ -17,7 +24,7 @@
   --font-sans-medium: 'DMSans_500Medium';
   --font-sans-semibold: 'DMSans_600SemiBold';
   --font-sans-bold: 'DMSans_700Bold';
-  --font-heading: 'Lora_400Regular';
+  --font-heading: 'DMSans_700Bold';
 }
 
 :root {
@@ -26,6 +33,6 @@
 }
 
 .dark {
-  --background: #0A0A0C;
+  --background: #0B0B0E;
   --foreground: #F4F4F4;
 }

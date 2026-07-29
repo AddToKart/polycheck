@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { ArrowLeft, QrCode, Timer, Play, StopCircle, Share2, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2 } from 'lucide-react'
+import { ArrowLeft, QrCode, Timer, Play, StopCircle, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2 } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Session, AttendanceRecord, AttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -42,7 +42,7 @@ export default function SessionDetailPage() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [showQrModal, setShowQrModal] = useState(false)
   const [showValidityPrompt, setShowValidityPrompt] = useState(false)
-  const [validityMinutes, setValidityMinutes] = useState('20')
+  const [validityMinutes, setValidityMinutes] = useState('15')
   const [graceMinutes, setGraceMinutes] = useState('15')
   const [countdown, setCountdown] = useState('')
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
@@ -56,8 +56,8 @@ export default function SessionDetailPage() {
     const s = await api.getSession(id)
     if (s) {
       setSession(s)
-      setValidityMinutes(String(s.qrValidityMinutes || 20))
-      setGraceMinutes(String(s.gracePeriodMinutes || 15))
+      setValidityMinutes(String(Math.min(s.qrValidityMinutes || 15, 15)))
+      setGraceMinutes(String(Math.min(s.gracePeriodMinutes || 15, 60)))
       if (s.qrToken) {
         setQrDataUrl(await QRCode.toDataURL(s.qrToken, {
           width: 1024,
@@ -171,7 +171,7 @@ export default function SessionDetailPage() {
   const handleGenerateQr = async () => {
     const mins = parseInt(validityMinutes, 10)
     const grace = parseInt(graceMinutes, 10)
-    if (isNaN(mins) || mins < 1 || isNaN(grace) || grace < 0) return
+    if (isNaN(mins) || mins < 1 || mins > 15 || isNaN(grace) || grace < 0 || grace > 60) return
     await api.generateQrCode(session.id, mins, grace)
     setShowValidityPrompt(false)
     await refreshData()
@@ -214,13 +214,6 @@ export default function SessionDetailPage() {
     }
     await refreshData()
     addNotification('info', 'Status Updated', `Student marked as ${nextStatus}`)
-  }
-
-  const handleShare = async () => {
-    if (session.qrToken) {
-      await navigator.clipboard.writeText(session.qrToken)
-      alert('QR token copied to clipboard!')
-    }
   }
 
   const handleLogout = () => { api.logout(); router.push('/') }
@@ -267,12 +260,9 @@ export default function SessionDetailPage() {
                         {countdown.includes('Grace') ? countdown : `Expires in: ${countdown}`}
                       </p>
                     )}
-                    <div className="flex gap-3 mt-3">
+                    <div className="mt-3">
                       <Button variant="outline" size="sm" className="flex items-center gap-1.5 text-xs" onClick={() => setShowQrModal(true)}>
                         <Maximize className="w-3.5 h-3.5" /> Full Screen
-                      </Button>
-                      <Button variant="outline" size="sm" className="flex items-center gap-1.5 text-xs" onClick={handleShare}>
-                        <Share2 className="w-3.5 h-3.5" /> Copy Token
                       </Button>
                     </div>
                   </>
@@ -470,6 +460,7 @@ export default function SessionDetailPage() {
                     value={validityMinutes}
                     onChange={(e) => setValidityMinutes(e.target.value)}
                     min={1}
+                    max={15}
                   />
                   <span className="text-sm text-gray-500 dark:text-gray-400">minutes</span>
                 </div>
@@ -483,6 +474,7 @@ export default function SessionDetailPage() {
                     value={graceMinutes}
                     onChange={(e) => setGraceMinutes(e.target.value)}
                     min={0}
+                    max={60}
                   />
                   <span className="text-sm text-gray-500 dark:text-gray-400">minutes</span>
                 </div>
@@ -502,9 +494,6 @@ export default function SessionDetailPage() {
           <div className="text-center">
             <Image src={qrDataUrl} width={320} height={320} unoptimized alt="Scannable session QR code" />
             <p className="text-sm text-gray-400 dark:text-gray-500 mt-6">Tap anywhere to close</p>
-            <Button variant="outline" className="mt-4" onClick={(e) => { e.stopPropagation(); handleShare() }}>
-              <Share2 className="w-4 h-4 mr-2" /> Copy Token
-            </Button>
           </div>
         </div>
       )}

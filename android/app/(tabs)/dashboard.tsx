@@ -1,19 +1,48 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity, StyleSheet } from 'react-native'
+import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { router } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
+import { router } from 'expo-router'
+import type { AttendanceRecord, AttendanceStatus, ScheduleDay, Section, Subject } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
-import type { AttendanceRecord, ScheduleDay, Section, Subject } from '@polycheck/shared'
+import { CampusHeader } from '../../components/CampusHeader'
+import {
+  AttendanceStatusPill,
+  CampusButton,
+  CampusCard,
+  CampusEmptyState,
+  CampusIconButton,
+  MetricTile,
+  SectionHeading,
+} from '../../components/CampusPrimitives'
+import { IdCardModal } from '../../components/IdCardModal'
+
+const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+const greeting = () => {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 18) return 'Good afternoon'
+  return 'Good evening'
+}
 
 export default function DashboardScreen() {
   const { isDark, toggle } = useTheme()
   const [refreshing, setRefreshing] = useState(false)
+  const [showIdModal, setShowIdModal] = useState(false)
   const user = api.getCurrentUser()
-  const student = user && 'studentId' in user
-    ? (user as typeof user & { studentId: string; program: string; yearLevel: number })
-    : null
+  const student = useMemo(() => {
+    if (!user) return null
+    return {
+      id: user.id,
+      fullName: user.fullName || 'Student',
+      studentId: user.studentId || user.id || '2024-00001',
+      program: user.program || 'PUP Student',
+      yearLevel: user.yearLevel || 1,
+    }
+  }, [user])
+
   const [mySections, setMySections] = useState<Section[]>([])
   const [myAttendance, setMyAttendance] = useState<AttendanceRecord[]>([])
   const [subjects, setSubjects] = useState<Record<string, Subject>>({})
@@ -21,404 +50,212 @@ export default function DashboardScreen() {
   const loadDashboard = useCallback(async () => {
     if (!student) return
     const [sections, attendance, allSubjects] = await Promise.all([
-      api.getStudentSections(student.id), api.getMyAttendance(student.id), api.getSubjects(),
+      api.getStudentSections(student.id),
+      api.getMyAttendance(student.id),
+      api.getSubjects(),
     ])
     setMySections(sections)
     setMyAttendance(attendance)
     setSubjects(Object.fromEntries(allSubjects.map((subject) => [subject.id, subject])))
   }, [student?.id])
 
-  useEffect(() => { loadDashboard().catch(() => undefined) }, [loadDashboard])
+  useEffect(() => {
+    void loadDashboard().catch(() => undefined)
+  }, [loadDashboard])
 
-  const present = myAttendance.filter((r) => r.status === 'present').length
-  const late = myAttendance.filter((r) => r.status === 'late').length
-  const absent = myAttendance.filter((r) => r.status === 'absent').length
-  const disputed = myAttendance.filter((r) => r.status === 'disputed').length
-  const attendanceRate = myAttendance.length > 0 ? ((present / myAttendance.length) * 100).toFixed(0) : '0'
+  const attendanceTotals = useMemo(() => myAttendance.reduce(
+    (totals, record) => ({ ...totals, [record.status]: totals[record.status] + 1 }),
+    { present: 0, late: 0, absent: 0, pending: 0, disputed: 0 } as Record<AttendanceStatus, number>,
+  ), [myAttendance])
 
-  const todaySchedule = useMemo(() => {
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    const todayName = dayNames[new Date().getDay()]
-    return mySections.filter((section) => section.schedule.some((scheduleDay: ScheduleDay) => scheduleDay.day === todayName))
-  }, [mySections])
+  const attendanceRate = myAttendance.length > 0
+    ? Math.round((attendanceTotals.present / myAttendance.length) * 100)
+    : 0
+  const todayName = dayNames[new Date().getDay()]
+  const todaySchedule = useMemo(
+    () => mySections.filter((section) => section.schedule.some((day) => day.day === todayName)),
+    [mySections, todayName],
+  )
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
-    try { await loadDashboard() } finally { setRefreshing(false) }
+    try {
+      await loadDashboard()
+    } finally {
+      setRefreshing(false)
+    }
   }, [loadDashboard])
 
-  const greeting = () => {
-    const hour = new Date().getHours()
-    if (hour < 12) return 'Good morning'
-    if (hour < 18) return 'Good afternoon'
-    return 'Good evening'
+  if (!student) {
+    return (
+      <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark">
+        <ActivityIndicator size="large" color="#7B1113" />
+      </SafeAreaView>
+    )
   }
 
-  const handleLogout = () => {
-    api.logout()
+  const signOut = () => {
+    void api.logout()
     router.replace('/')
   }
 
-  const handleSubjectTap = (sectionId: string) => {
-    router.push(`/(tabs)/subject-info/${sectionId}`)
-  }
-
   return (
-    <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
-      {/* Header */}
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <View>
-          <Text style={[styles.greeting, isDark && styles.textWhite50]}>{greeting()}</Text>
-          <Text style={[styles.name, isDark && styles.textGolden]}>{student?.fullName.split(' ')[0] ?? 'Student'}</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
-            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleLogout} style={styles.iconBtn} accessibilityLabel="Sign out">
-            <MaterialIcons name="logout" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
-          </TouchableOpacity>
-        </View>
-      </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+      <CampusHeader
+        eyebrow={greeting()}
+        title={student.fullName.split(' ')[0]}
+        subtitle={`${student.program} · Year ${student.yearLevel}`}
+        actions={(
+          <>
+            <CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />
+            <CampusIconButton icon="logout" label="Sign out" onPress={signOut} inverse />
+          </>
+        )}
+      />
 
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={isDark ? '#FFDF00' : '#7B1113'} />}
       >
-        {/* Student info card */}
-        <View style={[styles.card, isDark && styles.cardDark]}>
-          <Text style={[styles.programText, isDark && styles.textGolden]}>{student?.program ?? 'N/A'}</Text>
-          <View style={[styles.cardRow, isDark && styles.cardRowDark]}>
-            <Text style={[styles.cardRowLabel, isDark && styles.textWhite50]}>Year Level</Text>
-            <Text style={[styles.cardRowValue, isDark && styles.textWhite]}>Year {student?.yearLevel ?? 'N/A'}</Text>
+        {/* Credential Card */}
+        <CampusCard className="mb-4 bg-white dark:bg-surface-dark border-l-4 border-l-golden rounded-none">
+          <View className="flex-row items-center justify-between gap-4">
+            <View className="flex-1">
+              <Text className="font-sans-bold text-[10px] uppercase tracking-[2.5px] text-muted dark:text-zinc-400">Student Credential</Text>
+              <Text className="mt-1 font-mono text-xl font-bold text-maroon dark:text-golden">{student.studentId}</Text>
+              <Text className="mt-0.5 font-sans text-xs text-muted dark:text-zinc-400">Verified PUP Account</Text>
+            </View>
+            <View className="h-11 w-11 items-center justify-center rounded-none bg-maroon/5 dark:bg-golden/10 border border-maroon/10 dark:border-golden/20">
+              <MaterialIcons name="verified-user" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
+            </View>
           </View>
-          <View style={styles.cardRowLast}>
-            <Text style={[styles.cardRowLabel, isDark && styles.textWhite50]}>Student ID</Text>
-            <Text style={[styles.cardRowValue, isDark && styles.textWhite]}>{student?.studentId ?? 'N/A'}</Text>
-          </View>
+          <CampusButton
+            label="View Digital ID Card"
+            icon="badge"
+            variant="secondary"
+            onPress={() => setShowIdModal(true)}
+            className="mt-4"
+          />
+        </CampusCard>
+
+        <View className="mb-6 flex-row flex-wrap gap-3">
+          <MetricTile label="Enrolled Classes" value={mySections.length} icon="auto-stories" />
+          <MetricTile label="Attendance Rate" value={`${attendanceRate}%`} icon="insights" />
         </View>
 
-        {/* Stats row */}
-        <View style={styles.statsRow}>
-          <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="book" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
-            <Text style={[styles.statNum, isDark && styles.textGolden]}>{mySections.length}</Text>
-            <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Subjects</Text>
+        <CampusCard className="mb-7 rounded-none border-t-4 border-t-maroon dark:border-t-golden">
+          <Text className="mb-4 font-sans-bold text-[10px] uppercase tracking-[2.5px] text-muted dark:text-zinc-400">Attendance Snapshot</Text>
+          <View className="flex-row justify-between">
+            {([
+              ['Present', attendanceTotals.present, 'text-emerald-700 dark:text-emerald-300'],
+              ['Late', attendanceTotals.late, 'text-amber-700 dark:text-amber-300'],
+              ['Absent', attendanceTotals.absent, 'text-red-700 dark:text-red-300'],
+              ['Disputed', attendanceTotals.disputed, 'text-maroon dark:text-golden'],
+            ] as const).map(([label, value, color]) => (
+              <View key={label} className="items-center">
+                <Text className={`font-heading text-3xl font-bold ${color}`}>{value}</Text>
+                <Text className="mt-1 font-sans-bold text-[10px] uppercase tracking-wider text-muted dark:text-zinc-400">{label}</Text>
+              </View>
+            ))}
           </View>
-          <View style={[styles.statCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="trending-up" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
-            <Text style={[styles.statNum, isDark && styles.textGolden]}>{attendanceRate}%</Text>
-            <Text style={[styles.statLabel, isDark && styles.textWhite50]}>Rate</Text>
-          </View>
-        </View>
+        </CampusCard>
 
-        {/* Attendance breakdown */}
-        <View style={[styles.attendanceCard, isDark && styles.cardDark]}>
-          <View style={styles.attendanceItem}>
-            <Text style={styles.attendanceNum}>{present}</Text>
-            <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Present</Text>
-          </View>
-          <View style={styles.attendanceItem}>
-            <Text style={[styles.attendanceNum, { color: isDark ? '#FFDF00' : '#7B1113' }]}>{late}</Text>
-            <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Late</Text>
-          </View>
-          <View style={styles.attendanceItem}>
-            <Text style={[styles.attendanceNum, { color: isDark ? '#EF4444' : '#4A0A0B' }]}>{absent}</Text>
-            <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Absent</Text>
-          </View>
-          <View style={styles.attendanceItem}>
-            <Text style={[styles.attendanceNum, { color: isDark ? '#FFDF00' : '#4A0A0B' }]}>{disputed}</Text>
-            <Text style={[styles.attendanceLabel, isDark && styles.textWhite50]}>Disputed</Text>
-          </View>
-        </View>
+        <SectionHeading
+          eyebrow="Today"
+          title="Your Class Schedule"
+          actionLabel="Full Schedule"
+          onAction={() => router.push('/(tabs)/schedule')}
+        />
 
-        {/* Today's schedule */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginBottom: 0 }]}>Today's Schedule</Text>
-          <TouchableOpacity
-            onPress={() => router.push('/(tabs)/schedule')}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderWidth: 1, borderColor: isDark ? '#FFDF00' : '#7B1113' }}
-          >
-            <MaterialIcons name="calendar-today" size={14} color={isDark ? '#FFDF00' : '#7B1113'} />
-            <Text style={{ fontSize: 10, fontWeight: '700', fontFamily: 'DMSans_700Bold', color: isDark ? '#FFDF00' : '#7B1113', textTransform: 'uppercase', letterSpacing: 0.5 }}>View Schedule</Text>
-          </TouchableOpacity>
-        </View>
-
-        {todaySchedule.length === 0 ? (
-          <View style={[styles.emptyCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="event-busy" size={32} color="#CCC" />
-            <Text style={[styles.emptyText, isDark && styles.textWhite50]}>No classes today</Text>
-          </View>
-        ) : (
-          todaySchedule.map((section) => {
+        <View className="mb-7 gap-3">
+          {todaySchedule.length === 0 ? (
+            <CampusEmptyState icon="event-available" title="YOUR DAY IS CLEAR" description="There are no enrolled classes scheduled for today." />
+          ) : todaySchedule.map((section) => {
             const parent = subjects[section.subjectId]
-            const todaySD = section.schedule.find(
-              (scheduleDay: ScheduleDay) => scheduleDay.day === ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date().getDay()],
-            )
-            const status = myAttendance.find((r) => r.sectionId === section.id)?.status ?? 'pending'
-            
-            const STATUS_BORDER_COLORS: Record<string, string> = {
-              present: '#10B981', // green
-              late: '#FBBF24',    // yellow
-              absent: '#EF4444',  // red
-              pending: isDark ? '#FFDF00' : '#7B1113',
-              disputed: '#FFDF00',
-            }
+            const schedule = section.schedule.find((day: ScheduleDay) => day.day === todayName)
+            const status = myAttendance.find((record) => record.sectionId === section.id)?.status ?? 'pending'
 
             return (
-              <TouchableOpacity
+              <CampusCard
                 key={section.id}
-                style={[styles.schedCard, isDark && styles.cardDark, { borderLeftColor: STATUS_BORDER_COLORS[status] || '#7B1113' }]}
-                onPress={() => handleSubjectTap(section.id)}
-                activeOpacity={0.7}
+                onPress={() => router.push(`/(tabs)/subject-info/${section.id}`)}
+                accessibilityLabel={`Open ${parent?.name ?? 'class'} details`}
+                className="p-4 rounded-none border-l-4 border-l-maroon dark:border-l-golden"
               >
-                <View style={styles.schedLeft}>
-                  <Text style={[styles.schedTime, isDark && styles.textGolden]}>
-                    {todaySD?.startTime} - {todaySD?.endTime}
-                  </Text>
-                  <Text style={[styles.schedName, isDark && styles.textWhite]}>{parent?.name ?? ''}</Text>
-                  <Text style={[styles.schedRoom, isDark && styles.textWhite50]}>{section.room}</Text>
-                </View>
-                <View style={[styles.schedRight, isDark && styles.schedRightDark]}>
-                  <View style={styles.schedMeta}>
-                    <Text style={[styles.schedCode, isDark && styles.textWhite50]}>{parent?.code ?? ''}</Text>
-                    <Text style={[styles.schedSection, isDark && styles.textWhite50]}>Sec {section.section}</Text>
+                <View className="flex-row items-center gap-4">
+                  <View className="h-12 w-12 items-center justify-center rounded-none bg-maroon dark:bg-golden">
+                    <Text className="font-sans-bold text-xs text-white dark:text-maroon-dark">{schedule?.startTime ?? '—'}</Text>
                   </View>
-                  <StatusBadge status={status} />
-                </View>
-              </TouchableOpacity>
-            )
-          })
-        )}
-
-        {/* Enroll CTA */}
-        <TouchableOpacity
-          style={[styles.enrollCta, isDark && styles.enrollCtaDark]}
-          onPress={() => router.push('/(tabs)/enroll')}
-          activeOpacity={0.7}
-        >
-          <MaterialIcons name="school" size={20} color={isDark ? '#4A0A0B' : '#FFF'} />
-          <Text style={[styles.enrollCtaText, isDark && styles.enrollCtaTextDark]}>Enroll in Subject</Text>
-          <MaterialIcons name="chevron-right" size={20} color={isDark ? '#4A0A0B' : '#FFF'} />
-        </TouchableOpacity>
-
-        {/* My Subjects */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 16 }}>
-          <Text style={[styles.sectionTitle, isDark && styles.textGolden, { marginBottom: 0 }]}>My Subjects</Text>
-        </View>
-        {mySections.length === 0 ? (
-          <View style={[styles.emptyCard, isDark && styles.cardDark]}>
-            <MaterialIcons name="book" size={32} color="#CCC" />
-            <Text style={[styles.emptyText, isDark && styles.textWhite50]}>No enrollments yet</Text>
-          </View>
-        ) : (
-          mySections.slice(0, 4).map((section) => {
-            const parent = subjects[section.subjectId]
-            const presentCount = myAttendance.filter((r) => r.sectionId === section.id && r.status === 'present').length
-            return (
-              <TouchableOpacity
-                key={section.id}
-                style={[styles.allSubjCard, isDark && styles.cardDark]}
-                onPress={() => handleSubjectTap(section.id)}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.allSubjAccent, isDark && styles.allSubjAccentDark]} />
-                <View style={styles.allSubjBody}>
-                  <Text style={[styles.allSubjName, isDark && styles.textWhite]}>{parent?.name ?? ''}</Text>
-                  <Text style={[styles.allSubjMeta, isDark && styles.textWhite50]}>
-                    {parent?.code ?? ''} · Sec {section.section}
-                  </Text>
-                  <View style={styles.allSubjDetails}>
-                    <View style={styles.allSubjDetailRow}>
-                      <MaterialIcons name="person" size={12} color="#888" />
-                      <Text style={[styles.allSubjDetailText, isDark && styles.textWhite50]}>{section.teacherName}</Text>
-                    </View>
-                    <View style={styles.allSubjDetailRow}>
-                      <MaterialIcons name="room" size={12} color="#888" />
-                      <Text style={[styles.allSubjDetailText, isDark && styles.textWhite50]}>{section.room}</Text>
-                    </View>
-                    <View style={styles.allSubjDetailRow}>
-                      <MaterialIcons name="calendar-today" size={12} color="#888" />
-                      <Text style={[styles.allSubjDetailText, isDark && styles.textWhite50]}>
-                        {section.schedule.map((scheduleDay: ScheduleDay) => `${scheduleDay.day} ${scheduleDay.startTime}-${scheduleDay.endTime}`).join(', ')}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.allSubjFooter}>
-                    <View style={[styles.allSubjRateBg, isDark && styles.allSubjRateBgDark]}>
-                      <View style={[styles.allSubjRateFill, { width: `${myAttendance.filter((r) => r.sectionId === section.id).length > 0 ? Math.round((presentCount / myAttendance.filter((r) => r.sectionId === section.id).length) * 100) : 0}%` }]} />
-                    </View>
-                    <Text style={[styles.allSubjRateText, isDark && styles.textWhite50]}>
-                      {myAttendance.filter((r) => r.sectionId === section.id).length > 0
-                        ? `${Math.round((presentCount / myAttendance.filter((r) => r.sectionId === section.id).length) * 100)}%`
-                        : '—'}
+                  <View className="flex-1">
+                    <Text className="font-sans-bold text-base text-ink dark:text-white" numberOfLines={1}>{parent?.name ?? 'Class'}</Text>
+                    <Text className="mt-1 font-sans text-xs text-muted dark:text-zinc-400 uppercase tracking-wider">
+                      {parent?.code} · Sec {section.section} · {section.room || 'Room TBA'}
                     </Text>
+                    <View className="mt-3"><AttendanceStatusPill status={status} /></View>
+                  </View>
+                  <MaterialIcons name="chevron-right" size={22} color={isDark ? '#A1A1AA' : '#746C6E'} />
+                </View>
+              </CampusCard>
+            )
+          })}
+        </View>
+
+        <CampusButton label="Enroll in a class" icon="add" onPress={() => router.push('/(tabs)/enroll')} className="mb-8" />
+
+        <SectionHeading eyebrow="Enrolled" title="My Classes" />
+        <View className="gap-3">
+          {mySections.length === 0 ? (
+            <CampusEmptyState icon="auto-stories" title="NO CLASSES YET" description="Use an enrollment code from your instructor to add a class." />
+          ) : mySections.slice(0, 4).map((section) => {
+            const parent = subjects[section.subjectId]
+            const records = myAttendance.filter((record) => record.sectionId === section.id)
+            const presentCount = records.filter((record) => record.status === 'present').length
+            const rate = records.length ? Math.round((presentCount / records.length) * 100) : 0
+
+            return (
+              <CampusCard
+                key={section.id}
+                onPress={() => router.push(`/(tabs)/subject-info/${section.id}`)}
+                accessibilityLabel={`Open ${parent?.name ?? 'class'}`}
+                className="rounded-none border-l-4 border-l-maroon dark:border-l-golden"
+              >
+                <View className="flex-row items-start gap-4">
+                  <View className="h-10 w-10 items-center justify-center rounded-none bg-maroon/5 dark:bg-golden/10 border border-maroon/10 dark:border-golden/20">
+                    <MaterialIcons name="menu-book" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="font-sans-bold text-base text-ink dark:text-white">{parent?.name ?? 'Class'}</Text>
+                    <Text className="mt-1 font-sans text-xs text-muted dark:text-zinc-400 uppercase tracking-wider">{parent?.code} · Sec {section.section} · {section.teacherName}</Text>
+                    <View className="mt-4 flex-row items-center gap-3">
+                      <View className="h-2 flex-1 overflow-hidden rounded-none bg-zinc-100 dark:bg-white/10">
+                        <View className="h-full bg-golden" style={{ width: `${rate}%` }} />
+                      </View>
+                      <Text className="w-9 text-right font-sans-bold text-xs text-muted dark:text-zinc-300">{records.length ? `${rate}%` : '—'}</Text>
+                    </View>
                   </View>
                 </View>
-              </TouchableOpacity>
+              </CampusCard>
             )
-          })
-        )}
+          })}
+        </View>
 
-        {/* View All Subjects — full-width when > 4 subjects */}
-        {mySections.length > 4 && (
-          <TouchableOpacity
-            style={[styles.viewAllBtn, isDark && styles.viewAllBtnDark]}
+        {mySections.length > 4 ? (
+          <CampusButton
+            label={`View all ${mySections.length} classes`}
+            icon="arrow-forward"
+            variant="secondary"
             onPress={() => router.push('/(tabs)/subjects')}
-            activeOpacity={0.7}
-          >
-            <MaterialIcons name="book" size={16} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
-            <Text style={[styles.viewAllText, isDark && styles.viewAllTextDark]}>View All Subjects ({mySections.length})</Text>
-            <MaterialIcons name="chevron-right" size={16} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
-          </TouchableOpacity>
-        )}
+            className="mt-4"
+          />
+        ) : null}
       </ScrollView>
+
+      <IdCardModal
+        visible={showIdModal}
+        student={student}
+        onClose={() => setShowIdModal(false)}
+      />
     </SafeAreaView>
   )
 }
-
-function StatusBadge({ status }: { status: string }) {
-  const { isDark } = useTheme()
-  const configs: Record<string, { bg: string; text: string }> = {
-    present: { bg: '#FFDF00', text: '#4A0A0B' },
-    late: { bg: isDark ? 'rgba(245, 168, 0, 0.15)' : '#7B1113', text: isDark ? '#FFDF00' : '#FFFFFF' },
-    absent: { bg: isDark ? 'rgba(239, 68, 68, 0.15)' : '#4A0A0B', text: isDark ? '#EF4444' : '#FFDF00' },
-    pending: { bg: 'transparent', text: isDark ? '#FFDF00' : '#7B1113' },
-    disputed: { bg: '#4A0A0B', text: '#FFDF00' },
-  }
-  const c = configs[status] || configs.pending
-  return (
-    <View style={[
-      styles.badge,
-      { backgroundColor: c.bg },
-      status === 'pending' && (isDark ? styles.badgeBorderGolden : styles.badgeBorder),
-      status === 'disputed' && { borderWidth: 1.5, borderColor: '#FFDF00' },
-      status === 'late' && isDark && { borderWidth: 1, borderColor: '#FFDF00' },
-      status === 'absent' && isDark && { borderWidth: 1, borderColor: '#EF4444' }
-    ]}>
-      <Text style={[styles.badgeText, { color: c.text }]}>{status}</Text>
-    </View>
-  )
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  containerDark: { backgroundColor: '#0A0A0C' },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 16,
-    backgroundColor: '#FFFFFF', borderBottomWidth: 2, borderBottomColor: '#D4D4D8',
-  },
-  headerDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
-  greeting: { fontSize: 10, fontWeight: '700', color: '#A1A1AA', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 4 },
-  name: { fontSize: 24, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#7B1113' },
-  headerRight: { flexDirection: 'row', gap: 8 },
-  iconBtn: { padding: 8 },
-  scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 120 },
-
-  card: {
-    borderWidth: 1, borderColor: '#E4E4E7', backgroundColor: '#FFFFFF',
-    borderLeftWidth: 4, borderLeftColor: '#7B1113',
-    padding: 20, marginBottom: 16, borderRadius: 0,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
-  },
-  cardDark: { borderColor: 'rgba(255, 223, 0, 0.15)', backgroundColor: '#121215', borderLeftColor: '#FFDF00', borderRadius: 0 },
-  programText: { fontSize: 20, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#7B1113', marginBottom: 16 },
-
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#E4E4E7', paddingBottom: 8, marginBottom: 8 },
-  cardRowDark: { borderBottomColor: '#27272A' },
-  cardRowLast: { flexDirection: 'row', justifyContent: 'space-between' },
-  cardRowLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700', color: '#71717A' },
-  cardRowValue: { fontSize: 14, fontWeight: '700', color: '#000000' },
-
-  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  statCard: {
-    flex: 1, borderWidth: 1, borderColor: '#E4E4E7', backgroundColor: '#FFFFFF',
-    padding: 16, alignItems: 'center', gap: 8, borderRadius: 0,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
-  },
-  statNum: { fontSize: 24, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#7B1113' },
-  statLabel: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700', color: '#71717A' },
-
-  attendanceCard: {
-    flexDirection: 'row', justifyContent: 'space-around',
-    borderWidth: 1, borderColor: '#E4E4E7', backgroundColor: '#FFFFFF',
-    padding: 20, marginBottom: 24, borderRadius: 0,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
-  },
-  attendanceItem: { alignItems: 'center' },
-  attendanceNum: { fontSize: 24, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#FFDF00' },
-  attendanceLabel: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700', color: '#71717A', marginTop: 4 },
-
-  sectionTitle: { fontSize: 18, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#000000', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 16 },
-
-  emptyCard: {
-    borderWidth: 1, borderColor: '#E4E4E7', borderStyle: 'dashed',
-    backgroundColor: '#FAFAFA', padding: 32, alignItems: 'center', justifyContent: 'center', marginBottom: 40, borderRadius: 0,
-  },
-  emptyText: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700', color: '#71717A', marginTop: 16 },
-
-  schedCard: {
-    borderWidth: 1, borderColor: '#E4E4E7', backgroundColor: '#FFFFFF',
-    borderLeftWidth: 4, borderLeftColor: '#7B1113',
-    padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', borderRadius: 0,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
-  },
-  schedLeft: { flex: 1, paddingRight: 16 },
-  schedTime: { fontSize: 11, fontWeight: '700', color: '#7B1113', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
-  schedName: { fontSize: 16, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#000000', marginBottom: 8 },
-  schedRoom: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2, color: '#71717A' },
-  schedRight: {
-    alignItems: 'flex-end', justifyContent: 'space-between',
-    borderLeftWidth: 2, borderLeftColor: '#E4E4E7', borderStyle: 'dashed', paddingLeft: 16,
-  },
-  schedRightDark: { borderLeftColor: '#27272A' },
-  schedMeta: { alignItems: 'flex-end' },
-  schedCode: { fontSize: 12, fontWeight: '700', color: '#52525B' },
-  schedSection: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, color: '#A1A1AA' },
-
-  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 0 },
-  badgeBorder: { borderWidth: 2, borderColor: '#7B1113' },
-  badgeBorderGolden: { borderWidth: 2, borderColor: '#FFDF00' },
-  badgeText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
-
-  textWhite: { color: '#FFFFFF' },
-  textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#FFDF00' },
-
-  allSubjCard: { backgroundColor: '#FFFFFF', borderRadius: 0, marginBottom: 12, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2, flexDirection: 'row' },
-  allSubjAccent: { width: 4, backgroundColor: '#7B1113' },
-  allSubjAccentDark: { backgroundColor: '#FFDF00' },
-  allSubjBody: { padding: 14, flex: 1 },
-  allSubjName: { fontSize: 15, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#333' },
-  allSubjMeta: { fontSize: 11, color: '#888', marginTop: 2 },
-  allSubjDetails: { marginTop: 8, gap: 4 },
-  allSubjDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  allSubjDetailText: { fontSize: 11, color: '#888', flex: 1 },
-  allSubjFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
-  allSubjRateBg: { flex: 1, height: 4, backgroundColor: '#EEE', borderRadius: 0 },
-  allSubjRateBgDark: { backgroundColor: '#333' },
-  allSubjRateFill: { height: 4, backgroundColor: '#FFDF00', borderRadius: 0 },
-  allSubjRateText: { fontSize: 10, fontWeight: '700', color: '#888', minWidth: 30, textAlign: 'right' },
-
-  enrollCta: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#7B1113', padding: 16, marginBottom: 8,
-    borderWidth: 0, borderRadius: 0,
-  },
-  enrollCtaDark: { backgroundColor: '#FFDF00' },
-  enrollCtaText: {
-    flex: 1, fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1,
-    color: '#FFFFFF',
-  },
-  enrollCtaTextDark: { color: '#4A0A0B' },
-  viewAllBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: '#7B1113', padding: 14, marginTop: 8, marginBottom: 4,
-  },
-  viewAllBtnDark: { backgroundColor: '#FFDF00' },
-  viewAllText: { flex: 1, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, color: '#FFFFFF', textAlign: 'center' },
-  viewAllTextDark: { color: '#4A0A0B' },
-})

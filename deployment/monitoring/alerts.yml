@@ -1,0 +1,98 @@
+groups:
+  - name: polycheck-availability
+    rules:
+      - alert: PolycheckNoReadyInstances
+        expr: sum(up{job="polycheck-backend"}) < 1 or absent(up{job="polycheck-backend"}) or sum(polycheck_readiness_status{job="polycheck-backend"}) < 1 or absent(polycheck_readiness_status{job="polycheck-backend"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: No Polycheck backend instance is ready
+          description: Prometheus cannot scrape a ready Polycheck backend instance.
+
+      - alert: PolycheckRedisUnavailable
+        expr: min(polycheck_dependency_ready{job="polycheck-backend",dependency="redis"}) < 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Redis is unavailable to at least one backend instance
+          description: Distributed rate limits, idempotency, realtime delivery, and queues may be impaired.
+
+      - alert: PolycheckBullMqComponentUnavailable
+        expr: min by (component) (polycheck_bullmq_component_ready{job="polycheck-backend",queue="attendance-sync"}) < 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: A BullMQ attendance sync component is unavailable
+          description: The {{ $labels.component }} component is not ready on at least one backend instance.
+
+  - name: polycheck-http
+    rules:
+      - alert: PolycheckHighHttp5xxRate
+        expr: sum(rate(polycheck_http_requests_total{job="polycheck-backend",status_code=~"5.."}[5m])) / clamp_min(sum(rate(polycheck_http_requests_total{job="polycheck-backend"}[5m])), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Polycheck HTTP 5xx rate exceeds 5 percent
+          description: More than 5 percent of backend requests have failed for five minutes.
+
+      - alert: PolycheckHighHttpLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(polycheck_http_request_duration_seconds_bucket{job="polycheck-backend"}[5m]))) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Polycheck p95 HTTP latency exceeds one second
+          description: Aggregate backend p95 latency has exceeded one second for ten minutes.
+
+  - name: polycheck-runtime
+    rules:
+      - alert: PolycheckHighResidentMemory
+        expr: polycheck_process_resident_memory_bytes{job="polycheck-backend"} > 681574400
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: A Polycheck backend is nearing its memory limit
+          description: Resident memory exceeds 650 MiB on instance {{ $labels.instance }}.
+
+      - alert: PolycheckEventLoopLag
+        expr: polycheck_nodejs_eventloop_lag_p99_seconds{job="polycheck-backend"} > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Polycheck event-loop lag is elevated
+          description: Event-loop p99 lag exceeds 100 ms on instance {{ $labels.instance }}.
+
+  - name: polycheck-queue
+    rules:
+      - alert: PolycheckBullMqJobsFailing
+        expr: sum(increase(polycheck_bullmq_jobs_failed_total{job="polycheck-backend",queue="attendance-sync"}[10m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Attendance sync jobs are failing
+          description: At least one BullMQ attendance sync attempt failed in the last ten minutes.
+
+      - alert: PolycheckBullMqBacklog
+        expr: max(polycheck_bullmq_jobs{job="polycheck-backend",queue="attendance-sync",state=~"wait|delayed"}) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Attendance sync queue backlog is growing
+          description: More than 100 attendance sync jobs have been waiting or delayed for five minutes.
+
+      - alert: PolycheckBullMqFailedBacklog
+        expr: max(polycheck_bullmq_jobs{job="polycheck-backend",queue="attendance-sync",state="failed"}) > 25
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Attendance sync failed-job backlog is elevated
+          description: More than 25 failed attendance sync jobs remain retained in BullMQ.

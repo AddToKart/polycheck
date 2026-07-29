@@ -498,11 +498,14 @@ export default function FacultySchedulePage() {
   useEffect(() => {
     if (!user) return
     const fetchData = async () => {
-      const records = await api.getAttendanceRecords()
+      const range = getDateRangeForMonth(currentYear, currentMonth)
+      const startStr = range.start.toISOString().slice(0, 10)
+      const endStr = range.end.toISOString().slice(0, 10)
+      const records = await api.getAttendanceRecords(undefined, startStr, endStr)
       setAllAttendanceRecords(records as AttendanceRecord[])
     }
     fetchData()
-  }, [user])
+  }, [user, currentYear, currentMonth])
 
   const attendanceRecords = allAttendanceRecords
 

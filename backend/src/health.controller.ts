@@ -4,6 +4,7 @@ import { PrismaService } from './prisma/prisma.service'
 import { RedisService } from './infrastructure/redis.service'
 import { ConfigService } from '@nestjs/config'
 import { SkipThrottle } from '@nestjs/throttler'
+import { MetricsService } from './observability/metrics.service'
 
 @Controller('health')
 export class HealthController {
@@ -11,6 +12,7 @@ export class HealthController {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly config: ConfigService,
+    private readonly metrics: MetricsService,
   ) {}
 
   @Public()
@@ -34,10 +36,20 @@ export class HealthController {
       checks.database = 'unavailable'
       allReady = false
     }
+    this.metrics.setDependencyReady('database', checks.database === 'ok')
 
-    const redisReady = this.redis.isAvailable()
+    const redisReady = await this.redis.ping()
     checks.redis = redisReady ? 'ok' : 'unavailable'
     if (this.config.get<string>('NODE_ENV') === 'production' && !redisReady) allReady = false
+    this.metrics.setDependencyReady('redis', redisReady)
+
+    const bullMq = this.metrics.getBullMqReadiness()
+    checks.bullmqProducer = bullMq.configured ? (bullMq.producer ? 'ok' : 'unavailable') : 'disabled'
+    checks.bullmqEvents = bullMq.configured ? (bullMq.events ? 'ok' : 'unavailable') : 'disabled'
+    checks.bullmqWorker = bullMq.configured ? (bullMq.worker ? 'ok' : 'unavailable') : 'disabled'
+    if (bullMq.configured && (!bullMq.producer || !bullMq.events || !bullMq.worker)) allReady = false
+
+    this.metrics.setApplicationReady(allReady)
 
     const result = {
       status: allReady ? 'ok' : 'unavailable',

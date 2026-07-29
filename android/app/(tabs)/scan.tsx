@@ -1,23 +1,47 @@
-import { useState, useRef, useCallback } from 'react'
-import { View, Text, TextInput, TouchableOpacity, Dimensions, StyleSheet, ActivityIndicator, Modal, KeyboardAvoidingView, Platform } from 'react-native'
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Easing,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { CameraView, scanFromURLAsync, useCameraPermissions } from 'expo-camera'
 import { router, useFocusEffect } from 'expo-router'
+import { decodeTokenPayload } from '@polycheck/shared/utils'
+import type { ScanInputChannel, Session } from '@polycheck/shared'
+import * as Crypto from 'expo-crypto'
+import * as ImagePicker from 'expo-image-picker'
+import * as Location from 'expo-location'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
-import { decodeTokenPayload, haversineDistance } from '@polycheck/shared/utils'
-import type { Session } from '@polycheck/shared'
-import * as Location from 'expo-location'
-import * as ImagePicker from 'expo-image-picker'
+import { CampusIconButton } from '../../components/CampusPrimitives'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
-const SCAN_SIZE = SCREEN_WIDTH * 0.7
+const scanSize = Math.min(SCREEN_WIDTH * 0.82, 340)
+const allowQrFallbacks = process.env.EXPO_PUBLIC_ALLOW_QR_FALLBACKS === 'true'
 
 type ScanResult = {
-  status: 'present' | 'late' | 'absent'
+  status: 'present' | 'late' | 'absent' | 'disputed'
   message: string
 } | null
+
+const resultPresentation = {
+  present: { icon: 'check-circle' as const, title: 'ATTENDANCE VERIFIED', classes: 'border-emerald-500 bg-emerald-950/95 text-emerald-300' },
+  late: { icon: 'schedule' as const, title: 'MARKED LATE', classes: 'border-amber-500 bg-amber-950/95 text-amber-300' },
+  absent: { icon: 'location-off' as const, title: 'CHECK-IN REJECTED', classes: 'border-red-500 bg-red-950/95 text-red-300' },
+  disputed: { icon: 'gavel' as const, title: 'FLAGGED FOR REVIEW', classes: 'border-golden bg-black/95 text-golden' },
+}
 
 export default function ScanScreen() {
   const { isDark } = useTheme()
@@ -25,96 +49,143 @@ export default function ScanScreen() {
   const [result, setResult] = useState<ScanResult>(null)
   const [showManual, setShowManual] = useState(false)
   const [manualToken, setManualToken] = useState('')
+  const [torchOn, setTorchOn] = useState(false)
   const [decodingImage, setDecodingImage] = useState(false)
   const [cameraPermission, requestPermission] = useCameraPermissions()
+  const [activeSession, setActiveSession] = useState<Session | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scannedRef = useRef(false)
 
-  const [activeSession, setActiveSession] = useState<Session | null>(null)
+  // Scanning laser line animation
+  const scanAnim = useRef(new Animated.Value(0)).current
 
-  // Refresh active session whenever the screen is focused
+  useEffect(() => {
+    let animation: Animated.CompositeAnimation | null = null
+    void AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
+      if (reduceMotion) return
+      animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(scanAnim, {
+            toValue: 1,
+            duration: 2200,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(scanAnim, {
+            toValue: 0,
+            duration: 2200,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+      )
+      animation.start()
+    })
+    return () => animation?.stop()
+  }, [scanAnim])
+
   useFocusEffect(
     useCallback(() => {
-      api.getSessions().then((sessions) => {
-        const activeSessions = sessions.filter((session) => session.isActive)
-        setActiveSession(activeSessions.length === 1 ? activeSessions[0] : null)
-      }).catch(() => setActiveSession(null))
-    }, [])
+      let focused = true
+      void api
+        .getSessions()
+        .then((sessions) => {
+          if (!focused) return
+          const active = sessions.filter((s) => s.isActive)
+          setActiveSession(active.length === 1 ? active[0] : null)
+        })
+        .catch(() => {
+          if (focused) setActiveSession(null)
+        })
+      return () => {
+        focused = false
+      }
+    }, []),
   )
 
-  const showResult = useCallback((status: 'present' | 'late' | 'absent', message: string) => {
+  useEffect(
+    () => () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    },
+    [],
+  )
+
+  const showResult = useCallback((status: NonNullable<ScanResult>['status'], message: string) => {
     setResult({ status, message })
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
-    timeoutRef.current = setTimeout(() => { setResult(null); scannedRef.current = false }, 5000)
+    timeoutRef.current = setTimeout(() => {
+      setResult(null)
+      scannedRef.current = false
+    }, 5000)
   }, [])
 
-  const handleScanResult = useCallback(async (token: string) => {
-    if (scannedRef.current || !token) return
-    scannedRef.current = true
+  const handleScanResult = useCallback(
+    async (token: string, inputChannel: ScanInputChannel = 'camera') => {
+      if (scannedRef.current || !token) return
+      scannedRef.current = true
 
-    try {
-      const payload = decodeTokenPayload(token)
-      if (!payload) {
-        showResult('absent', 'Invalid QR code')
-        return
-      }
+      try {
+        const payload = decodeTokenPayload(token)
+        if (!payload) {
+          showResult('absent', 'This QR code is not a valid Polycheck attendance token.')
+          return
+        }
 
-      const user = api.getCurrentUser()
-      if (!user || !('studentId' in user)) {
-        showResult('absent', 'Not logged in as student')
-        return
-      }
+        const user = api.getCurrentUser()
+        if (!user || !('studentId' in user)) {
+          showResult('absent', 'Sign in with a student account before scanning.')
+          return
+        }
 
-      const session = await api.getSession(payload.sessionId)
-      if (!session) {
-        showResult('absent', 'Session not found')
-        return
-      }
-      setActiveSession(session)
+        const session = await api.getSession(payload.sessionId)
+        if (!session) {
+          showResult('absent', 'The class session could not be found.')
+          return
+        }
+        setActiveSession(session)
 
-      const permission = await Location.requestForegroundPermissionsAsync()
-      if (permission.status !== 'granted') {
-        showResult('absent', 'Location permission is required to check in')
-        return
-      }
+        const permission = await Location.requestForegroundPermissionsAsync()
+        if (permission.status !== 'granted') {
+          showResult('absent', 'Location access is required to verify that you are inside the class geofence.')
+          return
+        }
 
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation })
-      const accuracy = loc.coords.accuracy ?? Number.POSITIVE_INFINITY
-      const distance = haversineDistance(
-        loc.coords.latitude,
-        loc.coords.longitude,
-        session.geofence.latitude,
-        session.geofence.longitude,
-      )
-      if (accuracy > Math.max(session.geofence.radiusMeters, 50)) {
-        showResult('absent', `GPS accuracy is only ±${Math.round(accuracy)}m. Wait for a more accurate fix and try again.`)
-        return
-      }
-      if (distance > session.geofence.radiusMeters) {
-        showResult(
-          'absent',
-          `Device GPS is ${Math.round(distance)}m from class; allowed radius is ${session.geofence.radiusMeters}m. If testing in an emulator, set its Location to ${session.geofence.latitude.toFixed(6)}, ${session.geofence.longitude.toFixed(6)}.`,
+        const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation })
+        const scannedAt = await api.getTrustedTimestamp()
+        const locationAgeMs = Math.max(0, Date.now() - location.timestamp)
+        const locationCapturedAt = new Date(new Date(scannedAt).getTime() - locationAgeMs).toISOString()
+        const submitted = await api.submitScan(
+          session.id,
+          user.id,
+          user.fullName,
+          location.coords.latitude,
+          location.coords.longitude,
+          'device-mobile',
+          token,
+          scannedAt,
+          {
+            clientAttemptId: Crypto.randomUUID(),
+            accuracyMeters: location.coords.accuracy ?? undefined,
+            locationCapturedAt,
+            mocked: location.mocked,
+            inputChannel,
+          },
         )
-        return
-      }
-      const scannedAt = await api.getTrustedTimestamp()
-      const result = await api.checkAttendance(session.id, user.id, loc.coords.latitude, loc.coords.longitude, token, scannedAt)
-      if (!result.success) {
-        showResult('absent', result.message ?? 'Check-in rejected')
-        return
-      }
 
-      const submitted = await api.submitScan(session.id, user.id, user.fullName, loc.coords.latitude, loc.coords.longitude, 'device-mobile', token, scannedAt)
-      if ('error' in submitted) showResult('absent', submitted.error)
-      else showResult(result.status === 'late' ? 'late' : 'present', submitted.isSynced ? (result.message ?? 'Check-in successful!') : 'Check-in saved offline and queued for sync.')
-    } catch (error) {
-      showResult('absent', error instanceof Error ? error.message : 'Unable to verify your location')
-    }
-  }, [showResult])
-
-  const handleBarCodeScanned = useCallback(({ data }: { data: string }) => {
-    handleScanResult(data)
-  }, [handleScanResult])
+        if ('error' in submitted) {
+          showResult('absent', submitted.error)
+          return
+        }
+        showResult(
+          submitted.status === 'late' ? 'late' : submitted.status === 'disputed' ? 'disputed' : 'present',
+          submitted.isSynced ? `Attendance recorded as ${submitted.status}.` : 'Check-in saved offline and queued for sync.',
+        )
+      } catch (error) {
+        showResult('absent', error instanceof Error ? error.message : 'Your location could not be verified.')
+      }
+    },
+    [showResult],
+  )
 
   const handleUploadQr = useCallback(async () => {
     if (decodingImage || scannedRef.current) return
@@ -122,201 +193,338 @@ export default function ScanScreen() {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
       if (!permission.granted) {
-        showResult('absent', 'Photo access is required to select a QR image')
+        showResult('absent', 'Photo access is required to select a QR image.')
         return
       }
-      const selection = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: false,
-        quality: 1,
-      })
+      const selection = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 1 })
       if (selection.canceled) return
 
       const codes = await scanFromURLAsync(selection.assets[0].uri, ['qr'])
       const qrCode = codes.find((code) => code.type === 'qr') ?? codes[0]
       if (!qrCode?.data) {
-        showResult('absent', 'No QR code was found in that image')
+        showResult('absent', 'No QR code was found in that image.')
         return
       }
-      await handleScanResult(qrCode.data)
+      await handleScanResult(qrCode.data, 'image')
     } catch (error) {
-      showResult('absent', error instanceof Error ? error.message : 'Unable to read the QR image')
+      showResult('absent', error instanceof Error ? error.message : 'The QR image could not be read.')
     } finally {
       setDecodingImage(false)
     }
   }, [decodingImage, handleScanResult, showResult])
 
+  const laserTranslateY = scanAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, scanSize - 4],
+  })
+
+  const presentation = result ? resultPresentation[result.status] : null
+
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
-      <View style={styles.scannerViewport}>
-        {cameraPermission?.granted ? (
-          <CameraView
-            style={StyleSheet.absoluteFill}
-            facing="back"
-            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            onBarcodeScanned={showManual || decodingImage || result ? undefined : handleBarCodeScanned}
-          >
-            <View style={styles.scanArea}>
-              <View style={styles.scanFrame}>
-                <View style={[styles.corner, styles.cornerTL]} />
-                <View style={[styles.corner, styles.cornerTR]} />
-                <View style={[styles.corner, styles.cornerBL]} />
-                <View style={[styles.corner, styles.cornerBR]} />
-              </View>
-              <Text style={styles.scanHint}>Align the QR code inside the frame</Text>
+    <View style={{ flex: 1, backgroundColor: '#0A0A0E' }}>
+      {/* Full-bleed Camera Viewport */}
+      {cameraPermission?.granted ? (
+        <CameraView
+          style={StyleSheet.absoluteFill}
+          facing="back"
+          enableTorch={torchOn}
+          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+          onBarcodeScanned={showManual || decodingImage || result ? undefined : ({ data }) => void handleScanResult(data, 'camera')}
+        />
+      ) : null}
+
+      {/* Top Header Overlay - Explicit dark translucent inline style */}
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          paddingTop: Math.max(insets.top, 12) + 8,
+          paddingBottom: 16,
+          paddingHorizontal: 20,
+          backgroundColor: 'rgba(10, 10, 14, 0.82)',
+          borderBottomWidth: 1,
+          borderBottomColor: 'rgba(255, 255, 255, 0.15)',
+          zIndex: 20,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ width: 10, height: 10, borderRadius: 0, backgroundColor: '#34D399' }} />
+            <View>
+              <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 9, textTransform: 'uppercase', letterSpacing: 2, color: '#FFDF00' }}>Polycheck Scanner</Text>
+              <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 14, textTransform: 'uppercase', letterSpacing: 1, color: '#FFFFFF' }}>
+                {activeSession ? activeSession.subjectName : 'Live Attendance Check'}
+              </Text>
             </View>
-          </CameraView>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <CampusIconButton
+              icon={torchOn ? 'flash-on' : 'flash-off'}
+              label="Toggle flash"
+              onPress={() => setTorchOn((v) => !v)}
+              inverse
+            />
+            <CampusIconButton
+              icon="close"
+              label="Close scanner"
+              onPress={() => router.replace('/(tabs)/dashboard')}
+              inverse
+            />
+          </View>
+        </View>
+      </View>
+
+      {/* Main Scanner Center Overlay */}
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
+        {cameraPermission?.granted ? (
+          <View style={{ alignItems: 'center' }}>
+            {/* Maximized Target Frame */}
+            <View
+              style={{
+                width: scanSize,
+                height: scanSize,
+                position: 'relative',
+                borderWidth: 1,
+                borderColor: 'rgba(255, 255, 255, 0.20)',
+                backgroundColor: 'rgba(0, 0, 0, 0.20)',
+              }}
+            >
+              {/* Corner Bracket Guides */}
+              <View style={{ position: 'absolute', left: 0, top: 0, width: 40, height: 40, borderLeftWidth: 4, borderTopWidth: 4, borderColor: '#FFDF00' }} />
+              <View style={{ position: 'absolute', right: 0, top: 0, width: 40, height: 40, borderRightWidth: 4, borderTopWidth: 4, borderColor: '#FFDF00' }} />
+              <View style={{ position: 'absolute', bottom: 0, left: 0, width: 40, height: 40, borderBottomWidth: 4, borderLeftWidth: 4, borderColor: '#FFDF00' }} />
+              <View style={{ position: 'absolute', bottom: 0, right: 0, width: 40, height: 40, borderBottomWidth: 4, borderRightWidth: 4, borderColor: '#FFDF00' }} />
+
+              {/* Animated Laser Scanning Line */}
+              <Animated.View
+                style={{
+                  transform: [{ translateY: laserTranslateY }],
+                  height: 3,
+                  backgroundColor: '#FFDF00',
+                  shadowColor: '#FFDF00',
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 0.9,
+                  shadowRadius: 6,
+                  elevation: 6,
+                  marginHorizontal: 8,
+                  width: '95%',
+                }}
+              />
+            </View>
+
+            <View style={{ marginTop: 24, borderRadius: 0, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.20)', backgroundColor: 'rgba(0, 0, 0, 0.75)', paddingHorizontal: 20, paddingVertical: 10 }}>
+              <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.5, color: '#FFFFFF' }}>
+                Center instructor's QR code inside the frame
+              </Text>
+            </View>
+          </View>
         ) : (
-          <View style={styles.permissionPanel}>
-            <View style={styles.permissionIcon}>
+          <View style={{ alignItems: 'center', borderRadius: 0, borderWidth: 1, borderColor: 'rgba(255, 223, 0, 0.30)', backgroundColor: 'rgba(0, 0, 0, 0.85)', padding: 32 }}>
+            <View style={{ width: 64, height: 64, borderRadius: 0, borderWidth: 2, borderColor: '#FFDF00', backgroundColor: 'rgba(255, 223, 0, 0.10)', alignItems: 'center', justifyContent: 'center' }}>
               <MaterialIcons name="camera-alt" size={32} color="#FFDF00" />
             </View>
-            <Text style={styles.permissionTitle}>Camera access needed</Text>
-            <Text style={styles.permissionText}>Enable the camera for live scanning, or use a saved QR image below.</Text>
-            <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-              <Text style={styles.permissionButtonText}>Enable camera</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {result && (
-          <View style={[styles.resultCard, result.status === 'present' ? styles.resultSuccess : result.status === 'late' ? styles.resultLate : styles.resultFail]}>
-            <MaterialIcons
-              name={result.status === 'present' ? 'check-circle' : result.status === 'late' ? 'schedule' : 'location-off'}
-              size={28}
-              color={result.status === 'absent' ? '#FCA5A5' : '#FFDF00'}
-            />
-            <View style={styles.resultCopy}>
-              <Text style={styles.resultTitle}>{result.status === 'present' ? 'Attendance verified' : result.status === 'late' ? 'Marked late' : 'Check-in rejected'}</Text>
-              <Text style={styles.resultMessage}>{result.message}</Text>
-            </View>
+            <Text style={{ marginTop: 20, fontFamily: 'DMSans_700Bold', fontSize: 20, textTransform: 'uppercase', letterSpacing: 1, color: '#FFFFFF' }}>Camera Access Needed</Text>
+            <Text style={{ marginTop: 8, maxWidth: 280, textAlign: 'center', fontFamily: 'DMSans_400Regular', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255, 255, 255, 0.70)' }}>
+              Enable camera permissions to scan live class attendance codes.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Enable camera access"
+              onPress={requestPermission}
+              style={{ marginTop: 24, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 0, backgroundColor: '#FFDF00', paddingHorizontal: 32 }}
+            >
+              <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.5, color: '#4A0A0B' }}>Enable Camera</Text>
+            </Pressable>
           </View>
         )}
       </View>
 
-      <View style={[styles.bottomPanel, isDark && styles.bottomPanelDark, { paddingBottom: insets.bottom + 88 }]}>
-        {activeSession && (
-          <View style={[styles.sessionCard, isDark && styles.sessionCardDark]}>
-            <View style={styles.liveDot} />
-            <View style={styles.sessionCopy}>
-              <Text numberOfLines={1} style={[styles.sessionName, isDark && styles.textWhite]}>{activeSession.subjectName}</Text>
-              <Text style={[styles.sessionMeta, isDark && styles.textMuted]}>{activeSession.startTime}–{activeSession.endTime} · {activeSession.geofence.radiusMeters}m geofence</Text>
-            </View>
-            <MaterialIcons name="verified-user" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
+      {/* Feedback Banner Overlay */}
+      {result && presentation ? (
+        <View
+          style={{
+            position: 'absolute',
+            bottom: insets.bottom + 140,
+            left: 16,
+            right: 16,
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: 12,
+            borderRadius: 0,
+            borderWidth: 2,
+            padding: 16,
+            zIndex: 30,
+          }}
+          className={presentation.classes}
+        >
+          <MaterialIcons name={presentation.icon} size={24} color="#FFDF00" />
+          <View style={{ flex: 1 }}>
+            <Text accessibilityLiveRegion="assertive" style={{ fontFamily: 'DMSans_700Bold', fontSize: 14, textTransform: 'uppercase', letterSpacing: 1, color: '#FFFFFF' }}>
+              {presentation.title}
+            </Text>
+            <Text style={{ marginTop: 4, fontFamily: 'DMSans_400Regular', fontSize: 12, lineHeight: 20, color: 'rgba(255, 255, 255, 0.90)' }}>{result.message}</Text>
           </View>
-        )}
-
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={[styles.actionButton, isDark && styles.actionButtonDark]} onPress={handleUploadQr} disabled={decodingImage}>
-            {decodingImage ? <ActivityIndicator size="small" color={isDark ? '#FFDF00' : '#7B1113'} /> : <MaterialIcons name="image" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />}
-            <Text style={[styles.actionText, isDark && styles.textGolden]}>{decodingImage ? 'Reading...' : 'QR image'}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.actionButton, isDark && styles.actionButtonDark]} onPress={() => setShowManual(true)}>
-            <MaterialIcons name="keyboard" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
-            <Text style={[styles.actionText, isDark && styles.textGolden]}>Enter code</Text>
-          </TouchableOpacity>
         </View>
+      ) : null}
 
-        <TouchableOpacity style={styles.cancelBtn} onPress={() => router.replace('/(tabs)/dashboard')}>
-          <MaterialIcons name="arrow-back" size={18} color={isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)'} />
-          <Text style={[styles.cancelText, isDark && styles.cancelTextDark]}>Cancel</Text>
-        </TouchableOpacity>
+      {/* Floating Bottom Control Panel - Explicit dark translucent inline style */}
+      <View
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          paddingBottom: Math.max(insets.bottom, 12) + 76,
+          paddingHorizontal: 16,
+          paddingTop: 16,
+          backgroundColor: 'rgba(10, 10, 14, 0.88)',
+          borderTopWidth: 1,
+          borderTopColor: 'rgba(255, 255, 255, 0.15)',
+          zIndex: 20,
+        }}
+      >
+        {activeSession ? (
+          <View style={{ marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 0, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.20)', backgroundColor: 'rgba(255, 255, 255, 0.10)', padding: 12 }}>
+            <View style={{ width: 12, height: 12, borderRadius: 0, backgroundColor: '#34D399' }} />
+            <View style={{ flex: 1 }}>
+              <Text numberOfLines={1} style={{ fontFamily: 'DMSans_700Bold', fontSize: 14, textTransform: 'uppercase', letterSpacing: 1, color: '#FFFFFF' }}>
+                {activeSession.subjectName}
+              </Text>
+              <Text style={{ marginTop: 2, fontFamily: 'DMSans_400Regular', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255, 255, 255, 0.70)' }}>
+                {activeSession.startTime}–{activeSession.endTime} · {activeSession.geofence.radiusMeters}m Geofence
+              </Text>
+            </View>
+            <MaterialIcons name="verified-user" size={20} color="#FFDF00" />
+          </View>
+        ) : (
+          <View style={{ marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 0, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.20)', backgroundColor: 'rgba(255, 255, 255, 0.10)', padding: 12 }}>
+            <MaterialIcons name="info-outline" size={20} color="#FFDF00" />
+            <Text style={{ flex: 1, fontFamily: 'DMSans_400Regular', fontSize: 12, lineHeight: 20, color: 'rgba(255, 255, 255, 0.85)' }}>
+              Point your camera at your instructor’s QR code to verify attendance.
+            </Text>
+          </View>
+        )}
+
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Choose a QR image"
+            disabled={decodingImage}
+            onPress={handleUploadQr}
+            style={({ pressed }) => ({
+              minHeight: 48,
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              borderRadius: 0,
+              borderWidth: 1,
+              borderColor: 'rgba(255, 255, 255, 0.30)',
+              backgroundColor: pressed ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.12)',
+            })}
+          >
+            {decodingImage ? (
+              <ActivityIndicator size="small" color="#FFDF00" />
+            ) : (
+              <MaterialIcons name="image" size={18} color="#FFDF00" />
+            )}
+            <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.2, color: '#FFFFFF' }}>
+              {decodingImage ? 'Reading…' : 'Upload QR Image'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Enter a QR token manually"
+            onPress={() => setShowManual(true)}
+            style={({ pressed }) => ({
+              minHeight: 48,
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              borderRadius: 0,
+              borderWidth: 1,
+              borderColor: 'rgba(255, 255, 255, 0.30)',
+              backgroundColor: pressed ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.12)',
+            })}
+          >
+            <MaterialIcons name="keyboard" size={18} color="#FFDF00" />
+            <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.2, color: '#FFFFFF' }}>Enter Code</Text>
+          </Pressable>
+        </View>
       </View>
 
+      {/* Manual Entry Fallback Modal */}
       <Modal visible={showManual} transparent animationType="fade" onRequestClose={() => setShowManual(false)}>
-        <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={[styles.manualCard, isDark && styles.manualCardDark]}>
-            <View style={styles.manualHeader}>
-              <View>
-                <Text style={[styles.manualEyebrow, isDark && styles.textGolden]}>Fallback check-in</Text>
-                <Text style={[styles.manualTitle, isDark && styles.textWhite]}>Enter QR token</Text>
+        <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0, 0, 0, 0.80)', padding: 20 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={{ borderRadius: 0, borderWidth: 1, borderTopWidth: 4, borderTopColor: '#FFDF00', borderColor: isDark ? 'rgba(255,255,255,0.18)' : '#E8E2E3', backgroundColor: isDark ? '#171316' : '#FFFFFF', padding: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 9, textTransform: 'uppercase', letterSpacing: 2, color: isDark ? '#FFDF00' : '#7B1113' }}>Fallback Check-in</Text>
+                <Text style={{ marginTop: 4, fontFamily: 'DMSans_700Bold', fontSize: 22, color: isDark ? '#FFFFFF' : '#211A1B' }}>Enter QR Token</Text>
               </View>
-              <TouchableOpacity onPress={() => setShowManual(false)} accessibilityLabel="Close manual entry">
-                <MaterialIcons name="close" size={24} color={isDark ? '#FFF' : '#4A0A0B'} />
-              </TouchableOpacity>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close manual entry"
+                onPress={() => setShowManual(false)}
+                style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 0, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.15)' : '#E8E2E3', backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F4F4F5' }}
+              >
+                <MaterialIcons name="close" size={20} color={isDark ? '#FFFFFF' : '#4A0A0B'} />
+              </Pressable>
             </View>
-            <Text style={[styles.manualHelp, isDark && styles.textMuted]}>Paste the token shared by your instructor. Your live location is still verified.</Text>
+            <Text style={{ marginTop: 8, fontFamily: 'DMSans_400Regular', fontSize: 12, lineHeight: 18, color: isDark ? 'rgba(255,255,255,0.65)' : '#746C6E' }}>
+              Paste the token from your instructor. Live location will still be verified.
+            </Text>
             <TextInput
-              style={[styles.manualInput, isDark && styles.manualInputDark]}
+              style={{
+                marginTop: 16,
+                minHeight: 100,
+                borderRadius: 0,
+                borderWidth: 1,
+                borderColor: isDark ? 'rgba(255,255,255,0.20)' : '#E8E2E3',
+                backgroundColor: isDark ? '#0B0B0E' : '#F9F8F8',
+                padding: 16,
+                fontFamily: 'monospace',
+                fontSize: 12,
+                color: isDark ? '#FFFFFF' : '#211A1B',
+                textAlignVertical: 'top',
+              }}
               placeholder="Paste token here"
-              placeholderTextColor="#999"
+              placeholderTextColor={isDark ? 'rgba(255,255,255,0.40)' : '#A39B9D'}
               autoFocus
               multiline
               value={manualToken}
               onChangeText={setManualToken}
             />
-            <TouchableOpacity
-              style={[styles.manualSubmit, !manualToken.trim() && styles.disabledButton]}
+            <Pressable
+              accessibilityRole="button"
               disabled={!manualToken.trim()}
+              style={{
+                marginTop: 16,
+                minHeight: 48,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 0,
+                backgroundColor: '#7B1113',
+                opacity: manualToken.trim() ? 1 : 0.4,
+              }}
               onPress={() => {
                 const token = manualToken.trim()
                 setShowManual(false)
                 setManualToken('')
-                void handleScanResult(token)
+                void handleScanResult(token, 'manual')
               }}
             >
-              <Text style={styles.manualSubmitText}>Verify and check in</Text>
-            </TouchableOpacity>
+              <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.5, color: '#FFFFFF' }}>Verify & Check In</Text>
+            </Pressable>
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </SafeAreaView>
+    </View>
   )
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0A0A0C' },
-  scannerViewport: { flex: 1, minHeight: 280, overflow: 'hidden', backgroundColor: '#050509' },
-  scanArea: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  scanFrame: { width: Math.min(SCAN_SIZE, 260), height: Math.min(SCAN_SIZE, 260), position: 'relative' },
-  corner: { position: 'absolute', width: 24, height: 24, borderColor: '#FFDF00' },
-  cornerTL: { top: 0, left: 0, borderTopWidth: 4, borderLeftWidth: 4 },
-  cornerTR: { top: 0, right: 0, borderTopWidth: 4, borderRightWidth: 4 },
-  cornerBL: { bottom: 0, left: 0, borderBottomWidth: 4, borderLeftWidth: 4 },
-  cornerBR: { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4 },
-  scanHint: { color: '#FFFFFF', fontSize: 12, fontWeight: '700', letterSpacing: 0.4, marginTop: 18, backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 14, paddingVertical: 7 },
-  permissionPanel: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
-  permissionIcon: { width: 64, height: 64, borderRadius: 32, borderWidth: 1, borderColor: 'rgba(255,223,0,0.4)', alignItems: 'center', justifyContent: 'center' },
-  permissionTitle: { color: '#FFF', fontSize: 20, fontFamily: 'Lora_700Bold', marginTop: 16 },
-  permissionText: { color: 'rgba(255,255,255,0.6)', textAlign: 'center', marginTop: 8, fontSize: 13, lineHeight: 19, maxWidth: 300 },
-  permissionButton: { marginTop: 20, backgroundColor: '#FFDF00', paddingHorizontal: 20, paddingVertical: 12 },
-  permissionButtonText: { color: '#4A0A0B', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
-  bottomPanel: { backgroundColor: '#FFFFFF', borderTopWidth: 3, borderTopColor: '#7B1113', paddingHorizontal: 18, paddingTop: 14 },
-  bottomPanelDark: { backgroundColor: '#0A0A0C', borderTopColor: '#FFDF00' },
-  sessionCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#F7F1F1', borderLeftWidth: 3, borderLeftColor: '#7B1113', paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12 },
-  sessionCardDark: { backgroundColor: '#170B0C', borderLeftColor: '#FFDF00' },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E' },
-  sessionCopy: { flex: 1 },
-  sessionName: { color: '#4A0A0B', fontSize: 13, fontWeight: '800' },
-  sessionMeta: { color: '#71717A', fontSize: 11, marginTop: 2 },
-  actionRow: { flexDirection: 'row', gap: 10 },
-  actionButton: { flex: 1, minHeight: 52, borderWidth: 1.5, borderColor: '#7B1113', alignItems: 'center', justifyContent: 'center', gap: 3 },
-  actionButtonDark: { borderColor: '#FFDF00', backgroundColor: '#110B0B' },
-  actionText: { color: '#7B1113', fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.7 },
-  cancelBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 10 },
-  cancelText: { color: '#71717A', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2 },
-  cancelTextDark: { color: '#A1A1AA' },
-  modalBackdrop: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.72)' },
-  manualCard: { backgroundColor: '#FFF', padding: 20, borderTopWidth: 4, borderTopColor: '#7B1113' },
-  manualCardDark: { backgroundColor: '#121215', borderTopColor: '#FFDF00' },
-  manualHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  manualEyebrow: { color: '#7B1113', fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.2 },
-  manualTitle: { color: '#4A0A0B', fontSize: 22, fontFamily: 'Lora_700Bold', marginTop: 2 },
-  manualHelp: { color: '#71717A', fontSize: 12, lineHeight: 18, marginTop: 12 },
-  manualInput: { minHeight: 110, borderWidth: 1, borderColor: '#D4D4D8', padding: 12, marginTop: 14, fontSize: 13, color: '#333', textAlignVertical: 'top' },
-  manualInputDark: { color: '#FFF', backgroundColor: '#0A0A0C', borderColor: '#3F3F46' },
-  manualSubmit: { backgroundColor: '#7B1113', alignItems: 'center', paddingVertical: 14, marginTop: 12 },
-  manualSubmitText: { color: '#FFF', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
-  disabledButton: { opacity: 0.4 },
-  resultCard: { position: 'absolute', left: 18, right: 18, bottom: 18, flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 14, borderWidth: 1 },
-  resultSuccess: { backgroundColor: 'rgba(74,10,11,0.96)', borderColor: '#FFDF00' },
-  resultLate: { backgroundColor: 'rgba(74,10,11,0.96)', borderColor: '#F59E0B' },
-  resultFail: { backgroundColor: 'rgba(24,24,27,0.97)', borderColor: '#EF4444' },
-  resultCopy: { flex: 1 },
-  resultTitle: { color: '#FFF', fontSize: 14, fontWeight: '800' },
-  resultMessage: { fontSize: 11, lineHeight: 16, color: 'rgba(255,255,255,0.78)', marginTop: 3 },
-  textWhite: { color: '#FFF' },
-  textMuted: { color: 'rgba(255,255,255,0.55)' },
-  textGolden: { color: '#FFDF00' },
-})

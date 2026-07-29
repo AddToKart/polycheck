@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Animated, Modal, Platform, Pressable, Text, TouchableOpacity, View } from 'react-native'
+import { AccessibilityInfo, Animated, Modal, Platform, Pressable, Text, View } from 'react-native'
 import { Tabs, router } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -7,33 +7,26 @@ import { api } from '../../services/api-client'
 import { fonts } from '../../theme/typography'
 import { useTheme } from '../../theme/ThemeContext'
 
-function TabIcon({ name, focused, color }: { name: keyof typeof MaterialIcons.glyphMap; focused: boolean; color: any }) {
-  return (
-    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <MaterialIcons name={name} size={22} color={color} />
-    </View>
-  )
+function TabIcon({ name, color }: { name: keyof typeof MaterialIcons.glyphMap; focused: boolean; color: any }) {
+  return <MaterialIcons name={name} size={22} color={color} />
 }
 
 // Bottom sheet for "More" — reveals Schedule + Attendance
 function MoreSheet({ visible, onClose, isDark, isSuper }: { visible: boolean; onClose: () => void; isDark: boolean; isSuper: boolean }) {
   const insets = useSafeAreaInsets()
   const slideAnim = useRef(new Animated.Value(300)).current
+  const [reduceMotion, setReduceMotion] = useState(false)
+
+  useEffect(() => { void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion) }, [])
 
   useEffect(() => {
     if (visible) {
-      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 180 }).start()
+      if (reduceMotion) slideAnim.setValue(0)
+      else Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 180 }).start()
     } else {
-      Animated.timing(slideAnim, { toValue: 300, duration: 200, useNativeDriver: true }).start()
+      Animated.timing(slideAnim, { toValue: 300, duration: reduceMotion ? 0 : 200, useNativeDriver: true }).start()
     }
-  }, [visible])
-
-  const bg = isDark ? '#121215' : '#FFFFFF'
-  const border = isDark ? 'rgba(245,168,0,0.2)' : '#EEEEEE'
-  const accent = isDark ? '#FFDF00' : '#7B1113'
-  const accentText = isDark ? '#4A0A0B' : '#FFFFFF'
-  const textColor = isDark ? '#FFFFFF' : '#1A1A1A'
-  const subText = isDark ? 'rgba(255,255,255,0.5)' : '#888888'
+  }, [reduceMotion, slideAnim, visible])
 
   const items = isSuper
     ? [
@@ -51,58 +44,37 @@ function MoreSheet({ visible, onClose, isDark, isSuper }: { visible: boolean; on
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <Pressable
-        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }}
-        onPress={onClose}
-      >
-        <View style={{ flex: 1 }} />
+      <Pressable className="flex-1 bg-black/50" onPress={onClose}>
+        <View className="flex-1" />
         <Animated.View
-          style={{
-            transform: [{ translateY: slideAnim }],
-            backgroundColor: bg,
-            borderTopWidth: 1,
-            borderTopColor: border,
-            paddingBottom: insets.bottom + 16,
-          }}
+          className="rounded-none border-t-4 border-t-golden bg-white px-4 pt-3 dark:border-line-dark dark:bg-[#151013]"
+          style={{ transform: [{ translateY: slideAnim }], paddingBottom: insets.bottom + 16 }}
           onStartShouldSetResponder={() => true}
         >
-          {/* Handle */}
-          <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 8 }}>
-            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : '#E0E0E0' }} />
+          <View className="items-center pb-3 pt-1">
+            <View className="h-1 w-10 bg-zinc-400 dark:bg-zinc-600" />
           </View>
 
-          <Text style={{ fontSize: 10, fontWeight: '700', fontFamily: fonts.bodyBold, color: subText, textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 20, paddingBottom: 12 }}>
-            More
-          </Text>
+          <Text className="px-1 pb-3 font-sans-bold text-[10px] uppercase tracking-[2.5px] text-maroon dark:text-golden">More faculty tools</Text>
 
           {items.map((item) => (
-            <TouchableOpacity
+            <Pressable
               key={item.route}
+              accessibilityRole="button"
+              accessibilityLabel={item.label}
+              accessibilityHint={item.sub}
               onPress={() => { onClose(); router.push(item.route as any) }}
-              activeOpacity={0.7}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 16,
-                paddingHorizontal: 20,
-                paddingVertical: 16,
-                borderTopWidth: 1,
-                borderTopColor: border,
-              }}
+              className="mb-2 min-h-14 flex-row items-center gap-4 rounded-none border border-line border-l-4 border-l-maroon bg-zinc-50 px-3 py-3 dark:border-line-dark dark:border-l-golden dark:bg-white/5"
             >
-              <View style={{
-                width: 44, height: 44,
-                backgroundColor: accent,
-                alignItems: 'center', justifyContent: 'center',
-              }}>
-                <MaterialIcons name={item.icon} size={22} color={accentText} />
+              <View className="h-10 w-10 items-center justify-center rounded-none bg-maroon dark:bg-golden">
+                <MaterialIcons name={item.icon} size={20} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', fontFamily: fonts.bodySemiBold, color: textColor }}>{item.label}</Text>
-                <Text style={{ fontSize: 12, fontFamily: fonts.body, color: subText, marginTop: 1 }}>{item.sub}</Text>
+              <View className="flex-1">
+                <Text className="font-sans-bold text-sm text-ink dark:text-white uppercase tracking-wider">{item.label}</Text>
+                <Text className="mt-0.5 font-sans text-xs text-muted dark:text-zinc-400">{item.sub}</Text>
               </View>
-              <MaterialIcons name="chevron-right" size={20} color={isDark ? 'rgba(255,255,255,0.2)' : '#CCC'} />
-            </TouchableOpacity>
+              <MaterialIcons name="chevron-right" size={20} color={isDark ? '#A1A1AA' : '#746C6E'} />
+            </Pressable>
           ))}
         </Animated.View>
       </Pressable>
@@ -113,46 +85,34 @@ function MoreSheet({ visible, onClose, isDark, isSuper }: { visible: boolean; on
 export default function FacultyLayout() {
   const { isDark } = useTheme()
   const insets = useSafeAreaInsets()
-  const [isSuper, setIsSuper] = useState(false)
-  const [ready, setReady] = useState(false)
+  const currentUser = api.getCurrentUser()
+  const isSuper = currentUser?.role === 'super_admin'
   const [moreVisible, setMoreVisible] = useState(false)
-
-  useEffect(() => {
-    const user = api.getCurrentUser()
-    if (!user || (user.role !== 'teacher' && user.role !== 'super_admin')) {
-      router.replace('/')
-      return
-    }
-    setIsSuper(user.role === 'super_admin')
-    setReady(true)
-  }, [])
-
-  if (!ready) return null
 
   const tabStyle = {
     position: 'absolute' as const,
-    bottom: insets.bottom + 12,
-    left: 24,
-    right: 24,
-    backgroundColor: isDark ? '#FFDF00' : '#7B1113',
-    borderTopWidth: 0,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(74, 10, 11, 0.15)' : 'rgba(255, 223, 0, 0.15)',
-    borderRadius: 28,
-    height: 64,
-    paddingBottom: 0,
-    paddingTop: 0,
+    bottom: Math.max(insets.bottom, 12),
+    left: 16,
+    right: 16,
+    backgroundColor: isDark ? '#1F0B0E' : '#7B1113',
+    borderRadius: 32,
+    borderWidth: 0,
+    height: 62,
+    paddingBottom: 4,
+    paddingTop: 4,
     ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12 },
-      android: { elevation: 8 },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 10 },
+      android: { elevation: 12 },
     }),
   }
 
   const labelStyle = {
-    fontSize: 10,
-    fontWeight: '600' as const,
-    fontFamily: fonts.bodySemiBold,
-    marginTop: -4,
+    fontSize: 9,
+    fontWeight: '700' as const,
+    fontFamily: fonts.bodyBold,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 1.2,
+    marginTop: 1,
   }
 
   return (
@@ -161,11 +121,11 @@ export default function FacultyLayout() {
         key={isDark ? 'dark' : 'light'}
         screenOptions={({ route }) => ({
           headerShown: false,
-          tabBarActiveTintColor: isDark ? '#4A0A0B' : '#FFDF00',
-          tabBarInactiveTintColor: isDark ? 'rgba(74, 10, 11, 0.4)' : 'rgba(255, 223, 0, 0.55)',
+          tabBarActiveTintColor: '#FFDF00',
+          tabBarInactiveTintColor: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.65)',
           tabBarStyle: route.name === 'sessions/create' || route.name === 'sessions/[id]' || route.name === 'subjects/create' || route.name === 'subjects/[id]' || route.name === 'subjects/[id]/sessions' || route.name === 'sections/create' || route.name === 'sections/[id]' || route.name === 'student/[id]' || route.name === 'settings' ? { display: 'none' } : tabStyle,
           tabBarLabelStyle: labelStyle,
-          tabBarIconStyle: { marginTop: 4 },
+          tabBarIconStyle: { marginTop: 0 },
           tabBarIcon: ({ focused, color }) => {
             let iconName: keyof typeof MaterialIcons.glyphMap | undefined
             switch (route.name) {

@@ -1,204 +1,179 @@
-import { useRef, useState } from 'react'
-import { View, Text, TouchableOpacity, Animated, Image, StyleSheet } from 'react-native'
+import { useRef, useState, useMemo } from 'react'
+import { AccessibilityInfo, ActivityIndicator, Animated, Image, Pressable, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
+import { CampusHeader } from '../../components/CampusHeader'
+import { CampusIconButton } from '../../components/CampusPrimitives'
+
+type StudentCredential = {
+  fullName: string
+  studentId: string
+  program: string
+  yearLevel: number
+}
+
+const IdCardFront = ({ student, isDark }: { student: StudentCredential; isDark: boolean }) => (
+  <View className="flex-1 overflow-hidden rounded-none border-2 border-zinc-300 bg-white dark:border-zinc-700 dark:bg-surface-dark shadow-md">
+    <View className="flex-row items-center gap-3 bg-maroon p-3 border-b-2 border-golden">
+      <View className="h-9 w-9 items-center justify-center rounded-none bg-white">
+        <Image source={require('../../assets/pup-logo.png')} className="h-7 w-7" resizeMode="contain" />
+      </View>
+      <View className="flex-1">
+        <Text className="font-sans-bold text-[7px] uppercase tracking-[1.5px] text-golden">Republic of the Philippines</Text>
+        <Text className="mt-0.5 font-heading font-bold text-[9px] uppercase tracking-wider text-white">Polytechnic University of the Philippines</Text>
+      </View>
+      <MaterialIcons name="verified" size={18} color="#FFDF00" />
+    </View>
+
+    <View className="flex-1 flex-row bg-[#FDFBF7] p-4 dark:bg-surface-dark">
+      <View className="mr-4 w-[32%]">
+        <View className="aspect-[3/4] w-full items-center justify-center rounded-none border-2 border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-800">
+          <MaterialIcons name="person" size={44} color={isDark ? '#6B6466' : '#B5AEB0'} />
+        </View>
+        <View className="mt-2 border-b-2 border-zinc-800 pb-0.5 dark:border-zinc-400">
+          <Text className="text-center font-sans-medium text-[6px] uppercase tracking-[1px] text-muted dark:text-zinc-500">Signature</Text>
+        </View>
+      </View>
+
+      <View className="flex-1 justify-center">
+        <Text className="font-sans-bold text-[8px] uppercase tracking-[1.5px] text-zinc-500">Student Number</Text>
+        <Text className="mt-0.5 font-mono text-lg font-bold text-maroon dark:text-golden">{student.studentId}</Text>
+
+        <Text className="mt-2.5 font-sans-bold text-[8px] uppercase tracking-[1.5px] text-zinc-500">Full Name</Text>
+        <Text className="mt-0.5 font-heading text-base font-bold uppercase leading-5 text-ink dark:text-white" numberOfLines={2}>{student.fullName}</Text>
+
+        <View className="mt-3 flex-row gap-4">
+          <View className="flex-1">
+            <Text className="font-sans-bold text-[8px] uppercase tracking-[1.5px] text-zinc-500">Program</Text>
+            <Text className="mt-0.5 font-sans-bold text-[10px] text-ink dark:text-white">{student.program}</Text>
+          </View>
+          <View>
+            <Text className="font-sans-bold text-[8px] uppercase tracking-[1.5px] text-zinc-500">Validity</Text>
+            <Text className="mt-0.5 font-sans-bold text-[10px] text-ink dark:text-white">2026–2027</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  </View>
+)
+
+const IdCardBack = ({ isDark }: { isDark: boolean }) => (
+  <View className="flex-1 overflow-hidden rounded-none border-2 border-zinc-300 bg-white dark:border-zinc-700 dark:bg-surface-dark shadow-md">
+    <View className="mt-4 h-11 w-full bg-zinc-900" />
+    <View className="flex-1 flex-row gap-4 p-4">
+      <View className="flex-1 justify-between">
+        <View>
+          <Text className="font-sans-bold text-[9px] uppercase tracking-[1.5px] text-maroon dark:text-golden">Conditions of Use</Text>
+          <Text className="mt-1.5 font-sans text-[8px] leading-3 text-zinc-600 dark:text-zinc-400">
+            This card is non-transferable and must be presented upon entry to the university premises. The finder of this lost card is requested to surrender it to the Office of Student Affairs.
+          </Text>
+        </View>
+        <View className="mt-auto">
+          <Text className="font-sans-bold text-[7px] uppercase tracking-[1px] text-zinc-500">Emergency Contact</Text>
+          <View className="mt-1 h-4 border-b border-zinc-400 dark:border-zinc-600" />
+          <View className="mt-1 h-4 border-b border-zinc-400 dark:border-zinc-600" />
+        </View>
+      </View>
+      <View className="w-[34%] items-center justify-center border-l-2 border-dashed border-zinc-300 pl-3 dark:border-zinc-700">
+        <View className="aspect-square w-full items-center justify-center rounded-none border-2 border-zinc-300 bg-zinc-100 dark:border-zinc-700 dark:bg-white p-1">
+          <MaterialIcons name="qr-code-2" size={54} color="#171316" />
+        </View>
+        <Text className="mt-2 text-center font-mono text-[7px] font-bold uppercase tracking-widest text-zinc-500">SCAN TO VERIFY</Text>
+      </View>
+    </View>
+  </View>
+)
 
 export default function IdCardScreen() {
   const { isDark, toggle } = useTheme()
   const user = api.getCurrentUser()
-  const student = user && 'studentId' in user
-    ? (user as typeof user & { studentId: string; program: string; yearLevel: number })
-    : null
+  const student = useMemo(() => {
+    if (!user) return null
+    return {
+      fullName: user.fullName || 'Student',
+      studentId: user.studentId || user.id || '2024-00001',
+      program: user.program || 'BS Computer Science',
+      yearLevel: user.yearLevel || 2,
+    }
+  }, [user])
 
-  const handleLogout = () => {
-    api.logout()
+  const [isFlipped, setIsFlipped] = useState(false)
+  const flipAnimation = useRef(new Animated.Value(0)).current
+
+  if (!student) {
+    return (
+      <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark">
+        <ActivityIndicator size="large" color="#7B1113" />
+      </SafeAreaView>
+    )
+  }
+
+  const flipCard = () => {
+    void AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
+      Animated.timing(flipAnimation, {
+        toValue: isFlipped ? 0 : 180,
+        duration: reduceMotion ? 0 : 420,
+        useNativeDriver: true,
+      }).start()
+      setIsFlipped((flipped) => !flipped)
+    })
+  }
+
+  const signOut = () => {
+    void api.logout()
     router.replace('/')
   }
 
-  const [isFlipped, setIsFlipped] = useState(false)
-  const flipAnim = useRef(new Animated.Value(0)).current
-
-  const handleFlip = () => {
-    Animated.timing(flipAnim, {
-      toValue: isFlipped ? 0 : 180,
-      duration: 500,
-      useNativeDriver: true,
-    }).start()
-    setIsFlipped(!isFlipped)
-  }
-
-  const frontInterpolate = flipAnim.interpolate({ inputRange: [0, 180], outputRange: ['0deg', '180deg'] })
-  const backInterpolate = flipAnim.interpolate({ inputRange: [0, 180], outputRange: ['180deg', '360deg'] })
+  const frontRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['0deg', '180deg'] })
+  const backRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['180deg', '360deg'] })
 
   return (
-    <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
-      {/* Header */}
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <Text style={[styles.headerTitle, isDark && styles.textGolden]}>ID Card</Text>
-        <View style={styles.headerRight}>
-          <TouchableOpacity onPress={toggle} style={styles.iconBtn} accessibilityLabel="Toggle theme">
-            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleLogout} style={styles.iconBtn} accessibilityLabel="Sign out">
-            <MaterialIcons name="logout" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
-          </TouchableOpacity>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+      <CampusHeader
+        eyebrow="Verified Credential"
+        title="Digital Student ID"
+        subtitle="Keep this ready for identity checks on campus."
+        actions={(
+          <>
+            <CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />
+            <CampusIconButton icon="logout" label="Sign out" onPress={signOut} inverse />
+          </>
+        )}
+      />
+
+      <View className="flex-1 justify-center px-4 pb-28">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={isFlipped ? 'Student ID back side' : 'Student ID front side'}
+          accessibilityHint="Double tap to flip the card"
+          onPress={flipCard}
+          className="w-full"
+          style={{ aspectRatio: 1.586 }}
+        >
+          <Animated.View
+            className="absolute inset-0 shadow-lg"
+            style={{ transform: [{ perspective: 1000 }, { rotateY: frontRotation }], backfaceVisibility: 'hidden' }}
+          >
+            <IdCardFront student={student} isDark={isDark} />
+          </Animated.View>
+          <Animated.View
+            className="absolute inset-0 shadow-lg"
+            style={{ transform: [{ perspective: 1000 }, { rotateY: backRotation }], backfaceVisibility: 'hidden' }}
+          >
+            <IdCardBack isDark={isDark} />
+          </Animated.View>
+        </Pressable>
+
+        <View className="mt-6 flex-row items-center justify-center gap-2">
+          <MaterialIcons name="3d-rotation" size={16} color={isDark ? '#FFDF00' : '#7B1113'} />
+          <Text className="font-sans-bold text-xs uppercase tracking-widest text-muted dark:text-zinc-400">
+            Tap card to view {isFlipped ? 'front' : 'back'}
+          </Text>
         </View>
-      </View>
-
-      <View style={styles.cardContainer}>
-        <TouchableOpacity activeOpacity={1} onPress={handleFlip} style={styles.cardWrapper}>
-          {/* Front Face */}
-          <Animated.View
-            style={[styles.cardFace, styles.cardFront, isDark && styles.cardDark, { transform: [{ rotateY: frontInterpolate }], backfaceVisibility: 'hidden' }]}
-          >
-            {/* Card Header */}
-            <View style={styles.cardHeader}>
-              <Image source={require('../../assets/pup-logo.png')} style={styles.cardLogo} />
-              <View>
-                <Text style={styles.cardHeaderSub}>Republic of the Philippines</Text>
-                <Text style={styles.cardHeaderTitle}>Polytechnic University of the Philippines</Text>
-              </View>
-            </View>
-
-            {/* Card Body */}
-            <View style={[styles.cardBody, isDark && styles.cardBodyDark]}>
-              {/* Left: Photo */}
-              <View style={[styles.photoCol, isDark && styles.photoColDark]}>
-                <View style={[styles.photoBox, isDark && styles.photoBoxDark]}>
-                  <MaterialIcons name="person" size={48} color={isDark ? '#555' : '#CCC'} />
-                </View>
-                <View style={styles.signatureArea}>
-                  <View style={[styles.signatureLine, isDark && styles.signatureLineDark]}>
-                    <Text style={[styles.signatureLabel, isDark && styles.textWhite50]}>SIGNATURE</Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Right: Details */}
-              <View style={styles.detailsCol}>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Student Number</Text>
-                  <Text style={[styles.detailValueLarge, isDark && styles.textGolden]}>{student?.studentId ?? 'N/A'}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Full Name</Text>
-                  <Text style={[styles.detailValueName, isDark && styles.textWhite]}>{student?.fullName ?? 'N/A'}</Text>
-                </View>
-                <View style={styles.detailRowSplit}>
-                  <View style={styles.detailHalf}>
-                    <Text style={styles.detailLabel}>Program</Text>
-                    <Text style={[styles.detailValueSm, isDark && styles.textWhite]}>{student?.program ?? 'N/A'}</Text>
-                  </View>
-                  <View style={styles.detailHalf}>
-                    <Text style={styles.detailLabel}>Validity</Text>
-                    <Text style={[styles.detailValueSm, isDark && styles.textWhite]}>2026-2027</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-          </Animated.View>
-
-          {/* Back Face */}
-          <Animated.View
-            style={[styles.cardFace, styles.cardBack, isDark && styles.cardDark, { transform: [{ rotateY: backInterpolate }], backfaceVisibility: 'hidden', position: 'absolute', top: 0 }]}
-          >
-            <View style={styles.magneticStripe} />
-            <View style={styles.backBody}>
-              <View style={styles.backLeft}>
-                <View>
-                  <Text style={styles.conditionsTitle}>Conditions of Use</Text>
-                  <Text style={styles.conditionsText}>
-                    This card is non-transferable and must be presented upon entry to the university premises. The finder of this lost card is requested to surrender it to the Office of Student Affairs.
-                  </Text>
-                </View>
-                <View style={styles.emergencyArea}>
-                  <Text style={styles.emergencyLabel}>In case of emergency, contact:</Text>
-                  <View style={[styles.emergencyLine, isDark && styles.emergencyLineDark]} />
-                  <View style={[styles.emergencyLine, isDark && styles.emergencyLineDark, { marginTop: 4 }]} />
-                </View>
-              </View>
-              <View style={[styles.backRight, isDark && styles.backRightDark]}>
-                <View style={styles.qrBox}>
-                  <MaterialIcons name="qr-code" size={48} color="#000" />
-                </View>
-                <Text style={styles.qrLabel}>SCAN TO VERIFY</Text>
-              </View>
-            </View>
-          </Animated.View>
-        </TouchableOpacity>
-
-        <Text style={[styles.flipHint, isDark && styles.textWhite50]}>Tap card to flip</Text>
       </View>
     </SafeAreaView>
   )
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
-  containerDark: { backgroundColor: '#0A0A0C' },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 16,
-    backgroundColor: '#FFFFFF', borderBottomWidth: 2, borderBottomColor: '#D4D4D8',
-  },
-  headerDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
-  headerTitle: { fontSize: 24, fontWeight: '700', fontFamily: 'Lora_400Regular', color: '#7B1113' },
-  headerRight: { flexDirection: 'row', gap: 8 },
-  iconBtn: { padding: 8 },
-
-  cardContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 80 },
-  cardWrapper: { width: '100%', maxWidth: 384, aspectRatio: 1.586 },
-  cardFace: { width: '100%', height: '100%', borderWidth: 2, borderColor: '#D4D4D8', flexDirection: 'column', overflow: 'hidden' },
-  cardFront: { backgroundColor: '#FFFFFF' },
-  cardBack: { backgroundColor: '#FFFFFF' },
-  cardDark: { borderColor: 'rgba(245, 168, 0, 0.25)', backgroundColor: '#121215' },
-
-  cardHeader: { backgroundColor: '#7B1113', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  cardLogo: { width: 32, height: 32 },
-  cardHeaderSub: { fontSize: 8, fontWeight: '700', color: '#FFDF00', textTransform: 'uppercase', letterSpacing: 1, lineHeight: 10, marginBottom: 2 },
-  cardHeaderTitle: { fontSize: 10, fontWeight: '700', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 1, lineHeight: 12 },
-
-  cardBody: { flex: 1, flexDirection: 'row', backgroundColor: '#FDFBF7' },
-  cardBodyDark: { backgroundColor: '#121215' },
-
-  photoCol: { width: '33%', borderRightWidth: 2, borderRightColor: '#D4D4D8', padding: 12, flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
-  photoColDark: { borderRightColor: 'rgba(245, 168, 0, 0.2)' },
-  photoBox: { width: '100%', aspectRatio: 3 / 4, backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#D4D4D8', marginBottom: 12, alignItems: 'center', justifyContent: 'center' },
-  photoBoxDark: { backgroundColor: '#1C1C21', borderColor: 'rgba(245, 168, 0, 0.2)' },
-
-  signatureArea: { width: '100%', marginTop: 'auto' },
-  signatureLine: { borderBottomWidth: 2, borderBottomColor: '#27272A', height: 20, justifyContent: 'flex-end', alignItems: 'center' },
-  signatureLineDark: { borderBottomColor: 'rgba(255, 255, 255, 0.2)' },
-  signatureLabel: { fontSize: 7, fontFamily: 'DMSans_400Regular', color: 'rgba(0,0,0,0.5)' },
-
-  detailsCol: { flex: 1, padding: 16, justifyContent: 'center' },
-  detailRow: { marginBottom: 16 },
-  detailLabel: { fontSize: 8, textTransform: 'uppercase', letterSpacing: 1.5, color: '#71717A', fontWeight: '700', marginBottom: 2 },
-  detailValueLarge: { fontSize: 20, fontFamily: 'DMSans_400Regular', fontWeight: '700', color: '#7B1113' },
-  detailValueName: { fontSize: 16, fontFamily: 'Lora_400Regular', fontWeight: '700', color: '#18181B', textTransform: 'uppercase', lineHeight: 20 },
-  detailRowSplit: { flexDirection: 'row', gap: 16 },
-  detailHalf: { flex: 1 },
-  detailValueSm: { fontSize: 11, fontWeight: '700', color: '#18181B' },
-
-  magneticStripe: { backgroundColor: '#18181B', height: 48, width: '100%', marginTop: 16 },
-  backBody: { flex: 1, flexDirection: 'row', padding: 16 },
-  backLeft: { flex: 2, paddingRight: 16, justifyContent: 'space-between' },
-  conditionsTitle: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5, color: '#7B1113', marginBottom: 4 },
-  conditionsText: { fontSize: 8, lineHeight: 11, color: '#52525B', textAlign: 'justify' },
-  emergencyArea: { marginTop: 'auto' },
-  emergencyLabel: { fontSize: 7, textTransform: 'uppercase', letterSpacing: 1, color: '#71717A', fontWeight: '700', marginBottom: 4 },
-  emergencyLine: { borderBottomWidth: 1, borderBottomColor: '#A1A1AA', height: 20 },
-  emergencyLineDark: { borderBottomColor: 'rgba(255, 255, 255, 0.2)' },
-  backRight: { flex: 1, alignItems: 'center', justifyContent: 'center', borderLeftWidth: 2, borderLeftColor: '#D4D4D8', borderStyle: 'dashed', paddingLeft: 16 },
-  backRightDark: { borderLeftColor: 'rgba(245, 168, 0, 0.2)' },
-  qrBox: { width: '100%', aspectRatio: 1, backgroundColor: '#F4F4F5', borderWidth: 2, borderColor: '#D4D4D8', alignItems: 'center', justifyContent: 'center', padding: 4 },
-  qrLabel: { fontSize: 6, fontFamily: 'DMSans_400Regular', marginTop: 8, color: '#71717A', textAlign: 'center', letterSpacing: 2 },
-
-  flipHint: { textAlign: 'center', fontSize: 11, color: '#71717A', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2, marginTop: 32 },
-  textWhite: { color: '#FFFFFF' },
-  textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  textGolden: { color: '#FFDF00' },
-})

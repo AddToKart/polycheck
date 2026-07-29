@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api-client'
-import type { User, Section, Session, Subject, AttendanceRecord, CalendarEvent, Enrollment } from '@polycheck/shared'
+import type { User, Section, Subject, CalendarEvent, DashboardOverview } from '@polycheck/shared'
 import { formatTime } from '@polycheck/shared/utils'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -25,88 +25,59 @@ import {
   BarChart3
 } from 'lucide-react'
 
+const campusDateFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Manila',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+const campusDate = (date = new Date()) => {
+  const parts = new Map(campusDateFormatter.formatToParts(date).map((part) => [part.type, part.value]))
+  return `${parts.get('year')}-${parts.get('month')}-${parts.get('day')}`
+}
+
 // ============================================================================
 // Teacher Dashboard Component
 // ============================================================================
 
 function TeacherDashboard({ user }: { user: User }) {
   const [sections, setSections] = useState<Section[]>([])
-  const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
   const [allSubjects, setAllSubjects] = useState<Subject[]>([])
-  const [allSessions, setAllSessions] = useState<Session[]>([])
-  const [allSections, setAllSections] = useState<Section[]>([])
-  const [allEnrollments, setAllEnrollments] = useState<Enrollment[]>([])
-  const [allDisputes, setAllDisputes] = useState<AttendanceRecord[]>([])
+  const [overview, setOverview] = useState<DashboardOverview | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchData = async () => {
-      const teacherSections = (await api.getSections()).filter((s) => s.teacherId === user.id)
-      setSections(teacherSections)
-      const sectionIds = teacherSections.map((s) => s.id)
-
-      const [attendanceRecords, subjects, sessions, allSects, enrollments, disputes] = await Promise.all([
-        api.getAttendanceRecords(),
-        api.getSubjects(),
-        api.getSessions(),
+      const todayStr = campusDate()
+      const [allSects, subjects, nextOverview, evs] = await Promise.all([
         api.getSections(),
-        api.getEnrollments(),
-        api.getDisputedRecords(),
+        api.getSubjects(),
+        api.getDashboardOverview(),
+        api.getCalendarEvents(user.id, todayStr, todayStr),
       ])
-
-      setRecords(attendanceRecords.filter((r) => sectionIds.includes(r.sectionId)))
+      setSections(allSects.filter((section) => section.teacherId === user.id))
       setAllSubjects(subjects)
-      setAllSessions(sessions)
-      setAllSections(allSects)
-      setAllEnrollments(enrollments)
-      setAllDisputes(disputes)
-
-      const todayStr = new Date().toISOString().slice(0, 10)
-      const evs = (await api.getCalendarEvents(user.id, todayStr, todayStr))
-        .sort((a, b) => a.startTime.localeCompare(b.startTime))
-      setTodayEvents(evs)
+      setOverview(nextOverview)
+      setTodayEvents(evs.sort((a, b) => a.startTime.localeCompare(b.startTime)))
 
       setLoading(false)
     }
     fetchData()
   }, [user.id])
 
-  const sessionsToday = allSessions.filter((s) => s.date === new Date().toISOString().slice(0, 10)).length
-  const studentsInSubjects = new Set(allEnrollments.filter(e => sections.map(s => s.id).includes(e.sectionId)).map(e => e.studentId)).size
-  
   const subjectMap = useMemo(() => {
     const map = new Map<string, Subject>()
     for (const s of allSubjects) map.set(s.id, s)
     return map
   }, [allSubjects])
 
-  const sectionMap = useMemo(() => {
-    const map = new Map<string, Section>()
-    for (const s of allSections) map.set(s.id, s)
-    return map
-  }, [allSections])
-
-  const sessionMap = useMemo(() => {
-    const map = new Map<string, Session>()
-    for (const s of allSessions) map.set(s.id, s)
-    return map
-  }, [allSessions])
-
-  const getSubjectNameForRecord = (r: AttendanceRecord) => {
-    const sess = sessionMap.get(r.sessionId)
-    if (!sess) return r.sectionId
-    const sec = sectionMap.get(sess.sectionId)
-    if (!sec) return r.sectionId
-    const subj = subjectMap.get(sec.subjectId)
-    return subj?.name ?? r.sectionId
-  }
-
   const statCards = [
-    { label: 'My Subjects', value: sections.length, icon: BookOpen },
-    { label: 'My Students', value: studentsInSubjects, icon: Users },
-    { label: 'Sessions Today', value: sessionsToday, icon: CalendarCheck },
-    { label: 'Disputes', value: allDisputes.length, icon: ClipboardList },
+    { label: 'My Subjects', value: overview?.counts.subjects ?? 0, icon: BookOpen },
+    { label: 'My Students', value: overview?.counts.students ?? 0, icon: Users },
+    { label: 'Sessions Today', value: overview?.counts.sessionsToday ?? 0, icon: CalendarCheck },
+    { label: 'Disputes', value: overview?.counts.pendingDisputes ?? 0, icon: ClipboardList },
   ]
 
   if (loading) return <LoadingSpinner className="min-h-[400px]" />
@@ -193,9 +164,7 @@ function TeacherDashboard({ user }: { user: User }) {
               const isActive = ev.status === 'active'
               const isCompleted = ev.status === 'completed'
               const isMoved = ev.status === 'moved'
-              const todayStr = new Date().toISOString().slice(0, 10)
-
-              let borderStyle = "border-t-zinc-300 dark:border-t-zinc-800"
+               let borderStyle = "border-t-zinc-300 dark:border-t-zinc-800"
               if (isActive) borderStyle = "border-t-golden"
               else if (isCompleted) borderStyle = "border-t-zinc-400"
               else if (isMoved) borderStyle = "border-t-red-600"
@@ -235,10 +204,7 @@ function TeacherDashboard({ user }: { user: User }) {
                     <div className="mt-auto pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between">
                       {isActive ? (
                         <Link href={(() => {
-                          const activeSession = allSessions.find(
-                            (sess) => sess.sectionId === ev.sectionId && sess.date === todayStr && sess.isActive
-                          )
-                          return activeSession ? `/faculty/sessions/${activeSession.id}` : '#'
+                          return `/faculty/sessions/${ev.id}`
                         })()} className="w-full">
                           <Button className="w-full rounded-none bg-golden text-maroon hover:bg-golden/90 font-bold uppercase tracking-widest text-[10px] h-9 border border-golden">
                             View Active QR
@@ -316,12 +282,12 @@ function TeacherDashboard({ user }: { user: User }) {
                 <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Status</th>
               </tr></thead>
               <tbody>
-                {records.slice(0, 10).map((r) => (<tr key={r.id} className="border-b border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors">
+                {overview?.recentAttendance.map((r) => (<tr key={r.id} className="border-b border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors">
                   <td className="px-6 py-4"><p className="font-bold text-foreground">{r.studentName}</p><p className="text-xs text-zinc-500">{new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p></td>
-                  <td className="px-6 py-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">{getSubjectNameForRecord(r)}</td>
+                  <td className="px-6 py-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">{r.subjectName}</td>
                   <td className="px-6 py-4 text-right"><StatusBadge status={r.status} /></td>
                 </tr>))}
-                {records.length === 0 && <tr><td colSpan={3} className="p-12 text-center text-sm font-bold text-zinc-400 uppercase tracking-widest">No recent activity</td></tr>}
+                {!overview?.recentAttendance.length && <tr><td colSpan={3} className="p-12 text-center text-sm font-bold text-zinc-400 uppercase tracking-widest">No recent activity</td></tr>}
               </tbody>
             </table></div>
           </CardContent>
@@ -338,58 +304,37 @@ function TeacherDashboard({ user }: { user: User }) {
 
 function SuperAdminDashboard({ user }: { user: User }) {
   const [loading, setLoading] = useState(true)
-  const [totalFaculty, setTotalFaculty] = useState(0)
-  const [totalStudents, setTotalStudents] = useState(0)
-  const [totalSubjects, setTotalSubjects] = useState(0)
-  const [weeklyTrends, setWeeklyTrends] = useState<{ day: string; present: number; late: number; absent: number }[]>([])
-  const [anomalies, setAnomalies] = useState<{ id: string; type: string; student: string; time: string; severity: string }[]>([])
+  const [overview, setOverview] = useState<DashboardOverview | null>(null)
 
   useEffect(() => {
     const fetchData = async () => {
-      const [teachers, students, subjects, allRecords, disputedRecords] = await Promise.all([
-        api.getTeachers(),
-        api.getStudents(),
-        api.getSubjects(),
-        api.getAttendanceRecords(),
-        api.getDisputedRecords(),
-      ])
-      setTotalFaculty(teachers.length)
-      setTotalStudents(students.length)
-      setTotalSubjects(subjects.length)
-
-      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-      const displayDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
-      setWeeklyTrends(displayDays.map((dayName) => {
-        const dayRecords = allRecords.filter((r) => {
-          const d = new Date(r.timestamp)
-          return dayNames[d.getDay()] === dayName
-        })
-        const total = dayRecords.length || 1
-        return {
-          day: dayName,
-          present: Math.round((dayRecords.filter((r) => r.status === 'present').length / total) * 100),
-          late: Math.round((dayRecords.filter((r) => r.status === 'late').length / total) * 100),
-          absent: Math.round((dayRecords.filter((r) => r.status === 'absent').length / total) * 100),
-        }
-      }))
-
-      setAnomalies(disputedRecords.slice(0, 5).map((r) => ({
-        id: r.id,
-        type: r.disputeReason ?? 'Attendance Dispute',
-        student: r.studentName,
-        time: new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        severity: r.disputeReason?.toLowerCase().includes('geo') ? 'High' : 'Medium',
-      })))
-
+      setOverview(await api.getDashboardOverview())
       setLoading(false)
     }
     fetchData()
   }, [])
+
+  const weeklyTrends = (overview?.trends ?? []).map((trend) => {
+    const total = trend.present + trend.late + trend.absent + trend.disputed || 1
+    return {
+      day: new Date(`${trend.date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short' }),
+      present: Math.round((trend.present / total) * 100),
+      late: Math.round((trend.late / total) * 100),
+      absent: Math.round((trend.absent / total) * 100),
+    }
+  })
+  const anomalies = (overview?.recentDisputes ?? []).map((record) => ({
+    id: record.id,
+    type: record.disputeReason ?? 'Attendance Dispute',
+    student: record.studentName,
+    time: new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    severity: record.disputeReason?.toLowerCase().includes('geo') ? 'High' : 'Medium',
+  }))
   
   const statCards = [
-    { label: 'Total Faculty', value: totalFaculty, icon: Users },
-    { label: 'Total Students', value: totalStudents, icon: Users },
-    { label: 'Total Subjects', value: totalSubjects, icon: BookOpen },
+    { label: 'Total Faculty', value: overview?.counts.faculty ?? 0, icon: Users },
+    { label: 'Total Students', value: overview?.counts.students ?? 0, icon: Users },
+    { label: 'Total Subjects', value: overview?.counts.subjects ?? 0, icon: BookOpen },
     { label: 'System Health', value: 'Nominal', icon: ShieldCheck },
   ]
 

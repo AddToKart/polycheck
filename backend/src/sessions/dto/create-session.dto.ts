@@ -40,8 +40,8 @@ export class CreateSessionDto {
 }
 
 export class ActivateSessionDto {
-  @Type(() => Number) @IsInt() @Min(1) @Max(180) validityMinutes!: number
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(180) gracePeriodMinutes?: number
+  @Type(() => Number) @IsInt() @Min(1) @Max(15) validityMinutes!: number
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(60) gracePeriodMinutes?: number
   @IsString() @MinLength(80) @MaxLength(4096) token!: string
 }
 

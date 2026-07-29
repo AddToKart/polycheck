@@ -72,6 +72,46 @@ jobs:
     needs: verify
     steps:
       - uses: actions/checkout@v4
+      - name: Validate production Compose topology
+        env:
+          POSTGRES_PASSWORD: compose-validation-only
+          REDIS_PASSWORD: compose-validation-only
+          DATABASE_URL: postgresql://polycheck:compose-validation-only@pgbouncer:5432/polycheck?schema=public&pgbouncer=true&connection_limit=10&pool_timeout=10
+          DIRECT_DATABASE_URL: postgresql://polycheck:compose-validation-only@postgres:5432/polycheck?schema=public&connection_limit=2&pool_timeout=30
+          REDIS_URL: redis://:compose-validation-only@redis:6379/0
+          BETTER_AUTH_SECRET: compose-validation-only-secret-at-least-32-characters
+          METRICS_TOKEN: compose-validation-only-metrics-token-at-least-32-characters
+          BETTER_AUTH_URL: https://polycheck.example.test
+          CORS_ORIGINS: https://polycheck.example.test
+          FRONTEND_URL: https://polycheck.example.test
+          NEXT_PUBLIC_API_URL: /api
+          S3_BUCKET: compose-validation-only
+        run: |
+          docker compose -f docker-compose.yml config --quiet
+          docker compose -f docker-compose.yml -f deployment/docker-compose.scale.yml config --quiet
+      - name: Validate nginx configuration
+        run: >-
+          docker run --rm
+          -v "$GITHUB_WORKSPACE/deployment/nginx/nginx.conf:/etc/nginx/nginx.conf:ro"
+          nginxinc/nginx-unprivileged:1.28-alpine nginx -t
+      - name: Validate Prometheus configuration and rules
+        env:
+          METRICS_TOKEN: prometheus-validation-only-token-at-least-32-characters
+        run: |
+          mkdir -p "$RUNNER_TEMP/polycheck-prometheus-secrets"
+          printf '%s' "$METRICS_TOKEN" > "$RUNNER_TEMP/polycheck-prometheus-secrets/metrics_token"
+          docker run --rm --entrypoint promtool \
+            -v "$GITHUB_WORKSPACE/deployment/monitoring:/etc/prometheus:ro" \
+            -v "$RUNNER_TEMP/polycheck-prometheus-secrets:/run/secrets:ro" \
+            prom/prometheus:v3.5.0 check config /etc/prometheus/prometheus.yml
+          docker run --rm --entrypoint promtool \
+            -v "$GITHUB_WORKSPACE/deployment/monitoring:/etc/prometheus:ro" \
+            prom/prometheus:v3.5.0 check rules /etc/prometheus/alerts.yml
+      - uses: grafana/setup-k6-action@v1
+      - name: Validate k6 attendance test
+        run: |
+          k6 inspect performance/attendance-load.js
+          k6 inspect --env K6_PROFILE=full performance/attendance-load.js
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:

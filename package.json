@@ -9,7 +9,15 @@
     "docker:local:up": "docker compose -f docker-compose.local.yml --env-file .env.docker.local up -d --build",
     "docker:local:seed": "docker compose -f docker-compose.local.yml --env-file .env.docker.local --profile tools run --rm seed",
     "docker:local:logs": "docker compose -f docker-compose.local.yml --env-file .env.docker.local logs -f",
-    "docker:local:down": "docker compose -f docker-compose.local.yml --env-file .env.docker.local down"
+    "docker:local:down": "docker compose -f docker-compose.local.yml --env-file .env.docker.local down",
+    "docker:prod:config": "docker compose --env-file .env.production -f docker-compose.yml -f deployment/docker-compose.scale.yml config",
+    "docker:prod:migrate": "docker compose --env-file .env.production up --build migrate",
+    "docker:prod:up": "docker compose --env-file .env.production up -d --build",
+    "docker:prod:scale": "docker compose --env-file .env.production -f docker-compose.yml -f deployment/docker-compose.scale.yml up -d --build",
+    "docker:prod:logs": "docker compose --env-file .env.production logs -f nginx backend migrate pgbouncer",
+    "docker:prod:down": "docker compose --env-file .env.production down",
+    "load:attendance:smoke": "k6 run -e K6_PROFILE=smoke performance/attendance-load.js",
+    "load:attendance:full": "k6 run -e K6_PROFILE=full performance/attendance-load.js"
   },
   "devDependencies": {
     "turbo": "^2.4.0",

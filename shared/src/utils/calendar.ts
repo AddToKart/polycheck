@@ -26,8 +26,13 @@ export function formatDate(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-export function formatTime(time: string): string {
-  const [h, m] = time.split(':').map(Number)
+export function formatTime(time?: string): string {
+  if (!time || typeof time !== 'string') return ''
+  const parts = time.split(':')
+  if (parts.length < 2) return time
+  const h = Number(parts[0])
+  const m = Number(parts[1])
+  if (isNaN(h) || isNaN(m)) return time
   const period = h >= 12 ? 'PM' : 'AM'
   const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
   return `${pad(hour12)}:${pad(m)} ${period}`

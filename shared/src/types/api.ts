@@ -43,9 +43,9 @@ export interface CreateSessionInput {
   startTime: string
   endTime: string
   room?: string
-  /** Optional — set at QR generation time. Defaults to 20 if omitted. */
+  /** Optional - set at QR generation time. Defaults to 15 if omitted. */
   qrValidityMinutes?: number
-  /** Optional — set at QR generation time. Defaults to 15 if omitted. */
+  /** Optional - set at QR generation time. Defaults to 15 if omitted. */
   gracePeriodMinutes?: number
   geofence: { latitude: number; longitude: number; radiusMeters: number }
   teacherId: string
@@ -60,6 +60,16 @@ export interface SubmitAttendanceResult {
   status: AttendanceStatus
   reason?: string
   message?: string
+}
+
+export type ScanInputChannel = 'camera' | 'image' | 'manual'
+
+export interface ScanEvidenceInput {
+  clientAttemptId: string
+  accuracyMeters?: number
+  locationCapturedAt: string
+  mocked?: boolean
+  inputChannel: ScanInputChannel
 }
 
 export interface DisputeInput {
@@ -83,9 +93,9 @@ export interface BulkSessionInput {
   startTime: string
   endTime: string
   room?: string
-  /** Optional — set at QR generation time. Defaults to 20 if omitted. */
+  /** Optional - set at QR generation time. Defaults to 15 if omitted. */
   qrValidityMinutes?: number
-  /** Optional — set at QR generation time. Defaults to 15 if omitted. */
+  /** Optional - set at QR generation time. Defaults to 15 if omitted. */
   gracePeriodMinutes?: number
   geofence: { latitude: number; longitude: number; radiusMeters: number }
   teacherId: string
@@ -110,6 +120,68 @@ export interface CalendarEvent {
   isRescheduled?: boolean
   rescheduledFromDate?: string
   rescheduledTo?: { date: string; startTime: string; endTime: string; room?: string }
+}
+
+export interface AttendanceReportFilters {
+  startDate?: string
+  endDate?: string
+  teacherId?: string
+  subjectId?: string
+  sectionId?: string
+  sessionId?: string
+}
+
+export interface AttendanceReportSummary extends AttendanceSummary {
+  pending: number
+}
+
+export interface AttendanceReport {
+  range: { startDate: string; endDate: string }
+  totals: {
+    totalRecords: number
+    totalSessions: number
+    present: number
+    late: number
+    absent: number
+    pending: number
+    disputed: number
+  }
+  summaries: AttendanceReportSummary[]
+}
+
+export interface DashboardOverview {
+  counts: {
+    faculty: number
+    students: number
+    subjects: number
+    sections: number
+    sessionsToday: number
+    pendingDisputes: number
+  }
+  trendRange: { startDate: string; endDate: string }
+  trends: Array<{
+    date: string
+    present: number
+    late: number
+    absent: number
+    disputed: number
+  }>
+  recentAttendance: Array<{
+    id: string
+    sessionId: string
+    sectionId: string
+    studentName: string
+    subjectName: string
+    timestamp: string
+    status: AttendanceStatus
+  }>
+  recentDisputes: Array<{
+    id: string
+    sectionId: string
+    studentName: string
+    timestamp: string
+    disputeReason?: string
+  }>
 }
 
 export interface ApiClient {
@@ -141,12 +213,14 @@ export interface ApiClient {
 
   getAttendanceRecords(sessionId?: string): AttendanceRecord[]
   getAttendanceSummaries(teacherId?: string): AttendanceSummary[]
+  getAttendanceReport(filters?: AttendanceReportFilters): Promise<AttendanceReport>
+  getDashboardOverview(filters?: Pick<AttendanceReportFilters, 'startDate' | 'endDate'>): Promise<DashboardOverview>
   getAttendanceForStudent(studentId: string): AttendanceRecord[]
   getStudentAttendanceForSection(studentId: string, sectionId: string): AttendanceRecord[]
   addAttendanceRecord(record: AttendanceRecord): AttendanceRecord
   updateAttendanceStatus(recordId: string, status: AttendanceStatus): AttendanceRecord | undefined
   submitAttendance(sessionId: string, sectionId: string, studentId: string, coordinates: { latitude: number; longitude: number }, deviceId: string): SubmitAttendanceResult
-  submitScan(sessionId: string, studentId: string, studentName: string, lat: number, lon: number, deviceId: string): AttendanceRecord | { error: string }
+  submitScan(sessionId: string, studentId: string, studentName: string, lat: number, lon: number, deviceId: string, qrToken: string, scannedAt?: string, evidence?: ScanEvidenceInput): Promise<AttendanceRecord | { error: string }>
   checkAttendance(sessionId: string, studentId: string, lat: number, lon: number): SubmitAttendanceResult
 
   getDisputedRecords(sessionId?: string, filters?: { search?: string; status?: 'pending' | 'resolved' | 'all' }): AttendanceRecord[]
@@ -184,6 +258,6 @@ export interface ApiClient {
   enrollStudent(data: EnrollStudentInput): boolean
   getCalendarEvents(userId: string, startDate: string, endDate: string): CalendarEvent[]
   createBulkSessions(data: BulkSessionInput): Session[]
-  exportAttendanceCsv(sectionId?: string, sessionId?: string): string
+  exportAttendanceCsv(filters?: AttendanceReportFilters): Promise<string>
   search(query: string): { students: Student[]; sections: Section[]; sessions: Session[] }
 }

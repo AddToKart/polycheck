@@ -1,95 +1,26 @@
-import { useEffect, useState } from 'react'
-import { Modal, View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native'
+import { useEffect, useMemo, useState } from 'react'
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import * as Location from 'expo-location'
+import type { Section, Session, Subject, User } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
-import { fonts } from '../../../theme/typography'
 import { useTheme } from '../../../theme/ThemeContext'
 import MapView from '../../../components/MapView'
-import type { User, Subject, Section, Session } from '@polycheck/shared'
+import { CampusHeader } from '../../../components/CampusHeader'
+import { CampusButton, CampusCard, SectionHeading } from '../../../components/CampusPrimitives'
+import { CampusFormField } from '../../../components/CampusFormField'
+import { CampusPickerField, ChoiceSheet, formatCampusTime, TimePickerSheet } from '../../../components/CampusPickerSheets'
 
-const HOURS = Array.from({ length: 24 }, (_, i) => i)
-const MINUTES = [0, 15, 30, 45]
+const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-function pad(n: number) { return n.toString().padStart(2, '0') }
-
-function formatTime(h: number, m: number) {
-  const period = h >= 12 ? 'PM' : 'AM'
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-  return `${h12}:${pad(m)} ${period}`
-}
-
-function TimePickerModal({ value, onChange, onClose }: { value: string; onChange: (t: string) => void; onClose: () => void }) {
-  const { isDark } = useTheme()
-  const [h, setH] = useState(parseInt(value.split(':')[0], 10))
-  const [m, setM] = useState(parseInt(value.split(':')[1], 10))
-
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={[styles.timeSheet, isDark && styles.timeSheetDark]} onStartShouldSetResponder={() => true}>
-          <Text style={[styles.timeSheetTitle, isDark && styles.timeSheetTitleDark]}>Select Time</Text>
-          <View style={styles.timeColumns}>
-            <ScrollView style={[styles.timeColumn, isDark && styles.timeColumnDark]} showsVerticalScrollIndicator={false}>
-              {HOURS.map((hour) => {
-                const isActive = h === hour
-                return (
-                  <TouchableOpacity
-                    key={hour}
-                    style={[
-                      styles.timeItem,
-                      isActive && (isDark ? styles.timeItemActiveDark : styles.timeItemActive)
-                    ]}
-                    onPress={() => setH(hour)}
-                  >
-                    <Text style={[
-                      styles.timeItemText,
-                      isDark && styles.textWhite,
-                      isActive && (isDark ? styles.timeItemTextActiveDark : styles.timeItemTextActive)
-                    ]}>
-                      {formatTime(hour, 0)}
-                    </Text>
-                  </TouchableOpacity>
-                )
-              })}
-            </ScrollView>
-            <ScrollView style={[styles.timeColumn, isDark && styles.timeColumnDark, { borderRightWidth: 0 }]} showsVerticalScrollIndicator={false}>
-              {MINUTES.map((min) => {
-                const isActive = m === min
-                return (
-                  <TouchableOpacity
-                    key={min}
-                    style={[
-                      styles.timeItem,
-                      isActive && (isDark ? styles.timeItemActiveDark : styles.timeItemActive)
-                    ]}
-                    onPress={() => setM(min)}
-                  >
-                    <Text style={[
-                      styles.timeItemText,
-                      isDark && styles.textWhite,
-                      isActive && (isDark ? styles.timeItemTextActiveDark : styles.timeItemTextActive)
-                    ]}>
-                      :{pad(min)}
-                    </Text>
-                  </TouchableOpacity>
-                )
-              })}
-            </ScrollView>
-          </View>
-          <TouchableOpacity
-            style={[styles.timeOkBtn, isDark && styles.timeOkBtnDark]}
-            onPress={() => { onChange(`${pad(h)}:${pad(m)}`); onClose() }}
-          >
-            <Text style={[styles.timeOkBtnText, isDark && styles.timeOkBtnTextDark]}>OK</Text>
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-    </Modal>
-  )
-}
+const ToggleRow = ({ checked, label, description, onPress }: { checked: boolean; label: string; description?: string; onPress: () => void }) => (
+  <Pressable accessibilityRole="switch" accessibilityState={{ checked }} onPress={onPress} className="min-h-16 flex-row items-center gap-3 rounded-2xl border border-line bg-zinc-50 px-4 dark:border-line-dark dark:bg-white/5">
+    <View className={`h-7 w-12 justify-center rounded-full p-1 ${checked ? 'bg-maroon dark:bg-golden' : 'bg-zinc-300 dark:bg-zinc-700'}`}><View className={`h-5 w-5 rounded-full bg-white ${checked ? 'self-end dark:bg-maroon-dark' : 'self-start'}`} /></View>
+    <View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">{label}</Text>{description ? <Text className="mt-1 font-sans text-[11px] leading-4 text-muted dark:text-zinc-400">{description}</Text> : null}</View>
+  </Pressable>
+)
 
 export default function CreateSessionScreen() {
   const { isDark } = useTheme()
@@ -109,625 +40,161 @@ export default function CreateSessionScreen() {
   const [radius, setRadius] = useState(40)
   const [recenterKey, setRecenterKey] = useState(0)
   const [locating, setLocating] = useState(false)
-
-  const handleUseMyLocation = async () => {
-    setLocating(true)
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync()
-      if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permissions are required to pin your current coordinates.')
-        setLocating(false)
-        return
-      }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
-      setLatitude(loc.coords.latitude)
-      setLongitude(loc.coords.longitude)
-      setRecenterKey((prev) => prev + 1)
-    } catch (err) {
-      Alert.alert('Error', 'Unable to fetch your current GPS coordinates. Make sure location is turned on.')
-    } finally {
-      setLocating(false)
-    }
-  }
-
+  const [submitting, setSubmitting] = useState(false)
   const [showSubjectPicker, setShowSubjectPicker] = useState(false)
   const [showSectionPicker, setShowSectionPicker] = useState(false)
   const [showStartTime, setShowStartTime] = useState(false)
   const [showEndTime, setShowEndTime] = useState(false)
   const [bulkMode, setBulkMode] = useState(false)
   const [bulkStartDate, setBulkStartDate] = useState(new Date().toISOString().slice(0, 10))
-  const [bulkEndDate, setBulkEndDate] = useState(() => {
-    const d = new Date(); d.setMonth(d.getMonth() + 4); return d.toISOString().slice(0, 10)
-  })
+  const [bulkEndDate, setBulkEndDate] = useState(() => { const next = new Date(); next.setMonth(next.getMonth() + 4); return next.toISOString().slice(0, 10) })
   const [bulkDays, setBulkDays] = useState<string[]>([])
   const [isRescheduled, setIsRescheduled] = useState(false)
   const [rescheduledFromDate, setRescheduledFromDate] = useState('')
   const [showReplaceDatePicker, setShowReplaceDatePicker] = useState(false)
-  const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
   useEffect(() => {
-    const cu = api.getCurrentUser()
-    if (!cu || cu.role !== 'teacher') {
+    const currentUser = api.getCurrentUser()
+    if (!currentUser || currentUser.role !== 'teacher') {
       router.replace('/(faculty)/dashboard')
       return
     }
-    setUser(cu)
-    void api.getSubjects().then(setSubjects)
+    setUser(currentUser)
+    void api.getSubjects().then(setSubjects).catch(() => Alert.alert('Unable to load subjects', 'Please try again.'))
   }, [])
 
   useEffect(() => {
-    if (selectedSubjectId) {
-      void api.getSections(selectedSubjectId).then((nextSections) => {
-        setSections(nextSections.filter((section) => section.teacherId === user?.id))
-      })
-      setSectionId('')
-    } else {
-      setSections([])
-      setSectionId('')
-    }
+    if (!selectedSubjectId) { setSections([]); setSectionId(''); return }
+    void api.getSections(selectedSubjectId).then((nextSections) => setSections(nextSections.filter((section) => section.teacherId === user?.id)))
+    setSectionId('')
   }, [selectedSubjectId, user?.id])
 
-  const filteredSections = selectedSubjectId
-    ? sections.filter(s => s.subjectId === selectedSubjectId)
-    : []
-
-  const selectedSubject = subjects.find((s) => s.id === selectedSubjectId)
-  const selectedSection = sections.find((s) => s.id === sectionId)
-  const selectedParentSubject = selectedSection ? subjects.find((s) => s.id === selectedSection.subjectId) : undefined
-
-  // Issue 3: Duplicate session detection
-  const existingSessionOnDate = !bulkMode && sectionId && date
-    ? sectionSessions.find((session) => session.date === date)
-    : null
-  const hasDuplicateConflict = !!existingSessionOnDate && !isRescheduled
+  const selectedSubject = subjects.find((subject) => subject.id === selectedSubjectId)
+  const selectedSection = sections.find((section) => section.id === sectionId)
+  const selectedParentSubject = selectedSection ? subjects.find((subject) => subject.id === selectedSection.subjectId) : undefined
 
   useEffect(() => {
-    if (selectedSection) {
-      setBulkDays(selectedSection.schedule.map((s) => s.day as string))
-      if (selectedSection.room) setRoom(selectedSection.room)
-      setIsRescheduled(false)
-      setRescheduledFromDate('')
-    }
+    if (!selectedSection) return
+    setBulkDays(selectedSection.schedule.map((schedule) => schedule.day))
+    if (selectedSection.room) setRoom(selectedSection.room)
+    setIsRescheduled(false)
+    setRescheduledFromDate('')
   }, [selectedSection])
 
   useEffect(() => {
-    if (!sectionId) {
-      setSectionSessions([])
-      return
-    }
+    if (!sectionId) { setSectionSessions([]); return }
     void api.getSessions(sectionId).then(setSectionSessions)
   }, [sectionId])
 
-  if (!user) return null
-
-  const getStandardReplaceDates = () => {
+  const replaceDates = useMemo(() => {
     if (!selectedSection) return []
-    const dates: { dateStr: string; label: string; scheduleTime: string; room?: string }[] = []
+    const dates: Array<{ dateStr: string; label: string; scheduleTime: string; room?: string }> = []
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    for (let i = 0; i < 14; i++) {
-      const d = new Date()
-      d.setDate(d.getDate() + i)
-      const dayName = dayNames[d.getDay()]
-      const sched = selectedSection.schedule.find((s) => s.day === dayName)
-      if (sched) {
-        const dateStr = d.toISOString().slice(0, 10)
-        const dateLabel = d.toLocaleDateString('en-US', {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        })
-        dates.push({
-          dateStr,
-          label: `${dateLabel} (${sched.startTime} - ${sched.endTime})`,
-          scheduleTime: `${sched.startTime} - ${sched.endTime}`,
-          room: selectedSection.room || undefined,
-        })
-      }
+    for (let offset = 0; offset < 14; offset += 1) {
+      const next = new Date()
+      next.setDate(next.getDate() + offset)
+      const schedule = selectedSection.schedule.find((item) => item.day === dayNames[next.getDay()])
+      if (!schedule) continue
+      const dateStr = next.toISOString().slice(0, 10)
+      dates.push({
+        dateStr,
+        label: `${next.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} (${schedule.startTime}–${schedule.endTime})`,
+        scheduleTime: `${schedule.startTime} - ${schedule.endTime}`,
+        room: selectedSection.room || undefined,
+      })
     }
     return dates
-  }
+  }, [selectedSection])
 
-  const calculateBulkCount = () => {
-    if (!bulkStartDate || !bulkEndDate || bulkDays.length === 0) return 0
-    const dayMap: Record<string, number> = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 }
-    const targetDays = bulkDays.map((d) => dayMap[d])
-    const start = new Date(bulkStartDate)
+  const bulkCount = useMemo(() => {
+    if (!bulkStartDate || !bulkEndDate || !bulkDays.length) return 0
+    const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+    const targetDays = bulkDays.map((day) => dayMap[day])
+    const cursor = new Date(bulkStartDate)
     const end = new Date(bulkEndDate)
     let count = 0
-    const cursor = new Date(start)
-    while (cursor <= end) {
-      if (targetDays.includes(cursor.getDay())) count++
-      cursor.setDate(cursor.getDate() + 1)
-    }
+    while (cursor <= end) { if (targetDays.includes(cursor.getDay())) count += 1; cursor.setDate(cursor.getDate() + 1) }
     return count
+  }, [bulkDays, bulkEndDate, bulkStartDate])
+
+  const existingSession = !bulkMode && sectionId && date ? sectionSessions.find((session) => session.date === date) : undefined
+  const hasConflict = !!existingSession && !isRescheduled
+
+  if (!user) return null
+
+  const useMyLocation = async () => {
+    setLocating(true)
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync()
+      if (permission.status !== 'granted') { Alert.alert('Location permission needed', 'Allow location access to pin your current position.'); return }
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
+      setLatitude(location.coords.latitude)
+      setLongitude(location.coords.longitude)
+      setRecenterKey((value) => value + 1)
+    } catch { Alert.alert('Unable to locate you', 'Turn on device location and try again.') } finally { setLocating(false) }
   }
 
-  const handleCreate = async () => {
-    if (!sectionId || !selectedSection) return
-    if (bulkMode) {
-      const count = calculateBulkCount()
-      if (count === 0) return
-      try {
-        await api.createBulkSessions({
-        sectionId,
-        subjectName: selectedParentSubject?.name ?? '',
-        startDate: bulkStartDate,
-        endDate: bulkEndDate,
-        daysOfWeek: bulkDays,
-        startTime,
-        endTime,
-        room: room || undefined,
-        geofence: { latitude, longitude, radiusMeters: radius },
-        teacherId: user.id,
-        })
-        Alert.alert('Sessions Created', `${count} session${count !== 1 ? 's' : ''} created successfully.`)
-        router.back()
-      } catch (error) {
-        Alert.alert('Unable to create sessions', error instanceof Error ? error.message : 'Please try again.')
+  const create = async () => {
+    if (!sectionId || !selectedSection || submitting) return
+    if (endTime <= startTime) { Alert.alert('Check the time', 'End time must be later than start time.'); return }
+    setSubmitting(true)
+    try {
+      if (bulkMode) {
+        await api.createBulkSessions({ sectionId, subjectName: selectedParentSubject?.name ?? '', startDate: bulkStartDate, endDate: bulkEndDate, daysOfWeek: bulkDays, startTime, endTime, room: room || undefined, geofence: { latitude, longitude, radiusMeters: radius }, teacherId: user.id })
+        Alert.alert('Sessions created', `${bulkCount} recurring sessions were created.`)
+      } else {
+        const replaced = replaceDates.find((item) => item.dateStr === rescheduledFromDate)
+        await api.createSession({ sectionId, subjectName: selectedParentSubject?.name ?? '', date, startTime, endTime, room: room || undefined, geofence: { latitude, longitude, radiusMeters: radius }, teacherId: user.id, isRescheduled: isRescheduled || undefined, rescheduledFromDate: isRescheduled ? rescheduledFromDate : undefined, originalScheduleTime: isRescheduled ? replaced?.scheduleTime : undefined, originalRoom: isRescheduled ? replaced?.room : undefined })
       }
-    } else {
-      const replaceDates = getStandardReplaceDates()
-      const selectedReplaceOption = replaceDates.find((d) => d.dateStr === rescheduledFromDate)
-
-      try {
-        await api.createSession({
-        sectionId,
-        subjectName: selectedParentSubject?.name ?? '',
-        date,
-        startTime,
-        endTime,
-        room: room || undefined,
-        geofence: { latitude, longitude, radiusMeters: radius },
-        teacherId: user.id,
-        isRescheduled: isRescheduled || undefined,
-        rescheduledFromDate: isRescheduled ? rescheduledFromDate : undefined,
-        originalScheduleTime: isRescheduled ? selectedReplaceOption?.scheduleTime : undefined,
-        originalRoom: isRescheduled ? selectedReplaceOption?.room : undefined,
-        })
-        router.back()
-      } catch (error) {
-        Alert.alert('Unable to create session', error instanceof Error ? error.message : 'Please try again.')
-      }
-    }
+      router.back()
+    } catch (error) { Alert.alert('Unable to create session', error instanceof Error ? error.message : 'Please try again.') } finally { setSubmitting(false) }
   }
 
-  return (
-    <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Go back">
-          <MaterialIcons name="arrow-back" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
-        </TouchableOpacity>
-        <Text style={[styles.heading, isDark && styles.headingDark]}>Create Session</Text>
-      </View>
+  const disabled = !sectionId || (bulkMode && bulkCount === 0) || hasConflict || submitting
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" scrollEnabled={!mapFocus}>
-        {/* Step 1: Subject */}
-        <Text style={[styles.label, isDark && styles.labelDark]}>Step 1 — Subject</Text>
-        <TouchableOpacity
-          style={[styles.picker, isDark && styles.pickerDark]}
-          onPress={() => setShowSubjectPicker(true)}
-        >
-          <Text style={[styles.pickerText, isDark && styles.textWhite, !selectedSubject && styles.pickerPlaceholder]}>
-            {selectedSubject ? `${selectedSubject.name} (${selectedSubject.code})` : 'Select a subject'}
-          </Text>
-          <MaterialIcons name="keyboard-arrow-down" size={20} color={isDark ? '#FFDF00' : '#888'} />
-        </TouchableOpacity>
+  return <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <CampusHeader eyebrow="Session planning" title={bulkMode ? 'Create recurring sessions' : 'Create a session'} subtitle="Choose the class, meeting window, and trusted attendance area." onBack={() => router.back()} />
+    <ScrollView contentContainerClassName="px-4 pb-28 pt-3" keyboardShouldPersistTaps="handled" scrollEnabled={!mapFocus} showsVerticalScrollIndicator={false}>
+      <SectionHeading eyebrow="Step one" title="Choose the class" />
+      <CampusCard className="mb-7 gap-4">
+        <CampusPickerField label="Subject" value={selectedSubject ? `${selectedSubject.name} (${selectedSubject.code})` : ''} placeholder="Select a subject" onPress={() => setShowSubjectPicker(true)} />
+        <View className={!selectedSubject ? 'opacity-50' : ''}><CampusPickerField label="Section" value={selectedSection ? `Section ${selectedSection.section}${selectedSection.room ? ` · ${selectedSection.room}` : ''}` : ''} placeholder={selectedSubject ? 'Select a section' : 'Select a subject first'} onPress={() => selectedSubject && setShowSectionPicker(true)} /></View>
+        <ToggleRow checked={bulkMode} label="Create recurring sessions" description="Build all selected weekday meetings across a semester range." onPress={() => setBulkMode((value) => !value)} />
+      </CampusCard>
 
-        <Modal visible={showSubjectPicker} transparent animationType="fade" onRequestClose={() => setShowSubjectPicker(false)}>
-          <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowSubjectPicker(false)}>
-            <View style={[styles.sheet, isDark && styles.sheetDark]} onStartShouldSetResponder={() => true}>
-              <Text style={[styles.sheetTitle, isDark && styles.sheetTitleDark]}>Select Subject</Text>
-              <ScrollView>
-                {subjects.map((subj) => (
-                  <TouchableOpacity
-                    key={subj.id}
-                    style={[
-                      styles.sheetOption,
-                      isDark && styles.sheetOptionDarkBorder,
-                      subj.id === selectedSubjectId && (isDark ? styles.sheetOptionSelectedDark : styles.sheetOptionSelected)
-                    ]}
-                    onPress={() => { setSelectedSubjectId(subj.id); setShowSubjectPicker(false) }}
-                  >
-                    <Text style={[styles.sheetOptionText, isDark && styles.sheetOptionTextDark, subj.id === selectedSubjectId && (isDark ? styles.sheetOptionTextActiveDark : styles.sheetOptionTextActive)]}>
-                      {subj.name} ({subj.code})
-                    </Text>
-                    {subj.id === selectedSubjectId && <MaterialIcons name="check" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </TouchableOpacity>
-        </Modal>
+      <SectionHeading eyebrow="Step two" title={bulkMode ? 'Set the recurrence' : 'Set the meeting'} />
+      <CampusCard className="mb-7 gap-4">
+        {bulkMode ? <>
+          <View className="flex-row gap-3"><View className="flex-1"><CampusFormField label="Start date" hint="YYYY-MM-DD" value={bulkStartDate} onChangeText={setBulkStartDate} /></View><View className="flex-1"><CampusFormField label="End date" hint="YYYY-MM-DD" value={bulkEndDate} onChangeText={setBulkEndDate} /></View></View>
+          <View><Text className="mb-2 font-sans-bold text-xs text-ink dark:text-zinc-200">Meeting days</Text><View className="flex-row flex-wrap gap-2">{ALL_DAYS.map((day) => {
+            const selected = bulkDays.includes(day)
+            return <Pressable key={day} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} onPress={() => setBulkDays((days) => selected ? days.filter((item) => item !== day) : [...days, day])} className={`min-h-11 min-w-[22%] flex-1 items-center justify-center rounded-2xl border ${selected ? 'border-maroon bg-maroon dark:border-golden dark:bg-golden' : 'border-line bg-zinc-50 dark:border-line-dark dark:bg-white/5'}`}><Text className={`font-sans-bold text-xs ${selected ? 'text-white dark:text-maroon-dark' : 'text-muted dark:text-zinc-400'}`}>{day}</Text></Pressable>
+          })}</View></View>
+          <View className="rounded-2xl bg-golden/15 p-4"><Text className="font-sans-bold text-sm text-maroon-dark dark:text-golden">{bulkCount} session{bulkCount === 1 ? '' : 's'} will be created</Text></View>
+        </> : <>
+          <CampusFormField label="Session date" icon="event" hint="YYYY-MM-DD" value={date} onChangeText={setDate} />
+          {hasConflict ? <View accessibilityRole="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30"><Text className="font-sans-bold text-xs text-amber-800 dark:text-amber-300">Session conflict</Text><Text className="mt-2 font-sans text-xs leading-5 text-amber-900 dark:text-amber-200">A session already exists on {date}. Change the date or mark this as a rescheduled class.</Text></View> : null}
+          {selectedSection?.schedule.length ? <ToggleRow checked={isRescheduled} label="Reschedule a standard class slot" description="The original slot will appear as moved for students." onPress={() => { const next = !isRescheduled; setIsRescheduled(next); setRescheduledFromDate(next ? replaceDates[0]?.dateStr ?? '' : '') }} /> : null}
+          {isRescheduled ? <CampusPickerField label="Standard slot to replace" value={replaceDates.find((item) => item.dateStr === rescheduledFromDate)?.label ?? ''} placeholder="Select standard slot" onPress={() => setShowReplaceDatePicker(true)} /> : null}
+        </>}
+        <View className="flex-row gap-3"><View className="flex-1"><CampusPickerField label="Starts" value={formatCampusTime(startTime)} placeholder="Start time" icon="schedule" onPress={() => setShowStartTime(true)} /></View><View className="flex-1"><CampusPickerField label="Ends" value={formatCampusTime(endTime)} placeholder="End time" icon="schedule" onPress={() => setShowEndTime(true)} /></View></View>
+        <CampusFormField label="Room" icon="meeting-room" placeholder="e.g. CCIS Lab 3" value={room} onChangeText={setRoom} />
+      </CampusCard>
 
-        {/* Step 2: Section */}
-        <Text style={[styles.label, isDark && styles.labelDark]}>Step 2 — Section</Text>
-        <TouchableOpacity
-          style={[styles.picker, isDark && styles.pickerDark, !selectedSubject && styles.pickerDisabled]}
-          onPress={() => selectedSubject && setShowSectionPicker(true)}
-          disabled={!selectedSubject}
-        >
-          <Text style={[styles.pickerText, isDark && styles.textWhite, !selectedSection && styles.pickerPlaceholder, !selectedSubject && styles.pickerTextDisabled]}>
-            {selectedSection
-              ? `Section ${selectedSection.section}${selectedSection.room ? ` - ${selectedSection.room}` : ''}`
-              : selectedSubject ? 'Select a section' : 'Select a subject first'}
-          </Text>
-          <MaterialIcons name="keyboard-arrow-down" size={20} color={isDark ? (selectedSubject ? '#FFDF00' : 'rgba(245,168,0,0.3)') : (selectedSubject ? '#888' : '#CCC')} />
-        </TouchableOpacity>
+      <SectionHeading eyebrow="Step three" title="Set the attendance area" />
+      <CampusCard className="mb-7 p-4">
+        <View className="mb-3 flex-row items-start justify-between gap-3"><View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">Geofence</Text><Text className="mt-1 font-sans text-xs leading-5 text-muted dark:text-zinc-400">Drag the pin or tap the map. Use the radius control to define the accepted scan area.</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Use my current location" disabled={locating} onPress={() => void useMyLocation()} className="min-h-11 flex-row items-center gap-2 rounded-2xl bg-maroon/5 px-3 dark:bg-golden/10">{locating ? <ActivityIndicator size="small" color={isDark ? '#FFDF00' : '#7B1113'} /> : <MaterialIcons name="my-location" size={17} color={isDark ? '#FFDF00' : '#7B1113'} />}<Text className="font-sans-bold text-[10px] text-maroon dark:text-golden">{locating ? 'Locating…' : 'Use mine'}</Text></Pressable></View>
+        <View className="overflow-hidden rounded-2xl" onTouchStart={() => setMapFocus(true)} onTouchEnd={() => setMapFocus(false)} onTouchCancel={() => setMapFocus(false)}><MapView latitude={latitude} longitude={longitude} radius={radius} interactive recenterSignal={recenterKey} onLocationChange={(nextLatitude, nextLongitude) => { setLatitude(nextLatitude); setLongitude(nextLongitude) }} onRadiusChange={setRadius} /></View>
+        <View className="mt-3 flex-row justify-between"><Text className="font-sans text-[10px] text-muted dark:text-zinc-500">{latitude.toFixed(5)}, {longitude.toFixed(5)}</Text><Text className="font-sans-bold text-[10px] text-maroon dark:text-golden">{radius} m radius</Text></View>
+      </CampusCard>
 
-        <Modal visible={showSectionPicker} transparent animationType="fade" onRequestClose={() => setShowSectionPicker(false)}>
-          <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowSectionPicker(false)}>
-            <View style={[styles.sheet, isDark && styles.sheetDark]} onStartShouldSetResponder={() => true}>
-              <Text style={[styles.sheetTitle, isDark && styles.sheetTitleDark]}>Select Section</Text>
-              <ScrollView>
-                {filteredSections.map((s) => {
-                  const parent = subjects.find(sub => sub.id === s.subjectId)
-                  return (
-                    <TouchableOpacity
-                      key={s.id}
-                      style={[
-                        styles.sheetOption,
-                        isDark && styles.sheetOptionDarkBorder,
-                        s.id === sectionId && (isDark ? styles.sheetOptionSelectedDark : styles.sheetOptionSelected)
-                      ]}
-                      onPress={() => { setSectionId(s.id); setShowSectionPicker(false) }}
-                    >
-                      <Text style={[styles.sheetOptionText, isDark && styles.sheetOptionTextDark, s.id === sectionId && (isDark ? styles.sheetOptionTextActiveDark : styles.sheetOptionTextActive)]}>
-                        {parent?.name ?? ''} ({parent?.code ?? ''}) - Sec {s.section}{s.room ? ` - ${s.room}` : ''}
-                      </Text>
-                      {s.id === sectionId && <MaterialIcons name="check" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />}
-                    </TouchableOpacity>
-                  )
-                })}
-              </ScrollView>
-            </View>
-          </TouchableOpacity>
-        </Modal>
+      <CampusButton label={submitting ? 'Creating…' : bulkMode ? `Create ${bulkCount} sessions` : 'Create session'} icon="add" disabled={disabled} onPress={() => void create()} />
+    </ScrollView>
 
-        {/* Bulk Create Toggle */}
-        <View style={styles.bulkToggle}>
-          <TouchableOpacity
-            style={styles.bulkToggleRow}
-            onPress={() => setBulkMode(!bulkMode)}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.checkbox, bulkMode && styles.checkboxActive, isDark && styles.checkboxDark, bulkMode && isDark && styles.checkboxActiveDark]}>
-              {bulkMode && <MaterialIcons name="check" size={14} color="#FFFFFF" />}
-            </View>
-            <Text style={[styles.bulkToggleLabel, isDark && styles.textWhite]}>Create recurring sessions for the semester</Text>
-          </TouchableOpacity>
-        </View>
-
-        {bulkMode ? (
-          <>
-            <Text style={[styles.label, isDark && styles.labelDark, { marginTop: 8 }]}>Bulk Session Range</Text>
-            <View style={[styles.bulkBox, isDark && styles.bulkBoxDark]}>
-              <Text style={[styles.hint, isDark && styles.hintDark, { marginBottom: 12 }]}>
-                Create sessions for all selected days between the start and end dates.
-              </Text>
-              <View style={styles.row}>
-                <View style={styles.half}>
-                  <Text style={[styles.bulkFieldLabel, isDark && styles.textWhite50]}>Start Date</Text>
-                  <TextInput
-                    style={[styles.picker, isDark && styles.pickerDark, { marginTop: 4 }]}
-                    value={bulkStartDate}
-                    onChangeText={setBulkStartDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor="#AAA"
-                  />
-                </View>
-                <View style={styles.half}>
-                  <Text style={[styles.bulkFieldLabel, isDark && styles.textWhite50]}>End Date</Text>
-                  <TextInput
-                    style={[styles.picker, isDark && styles.pickerDark, { marginTop: 4 }]}
-                    value={bulkEndDate}
-                    onChangeText={setBulkEndDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor="#AAA"
-                  />
-                </View>
-              </View>
-              <Text style={[styles.bulkFieldLabel, isDark && styles.textWhite50, { marginTop: 12, marginBottom: 6 }]}>Days of Week</Text>
-              <View style={styles.bulkDaysRow}>
-                {ALL_DAYS.map((day) => {
-                  const selected = bulkDays.includes(day)
-                  return (
-                    <TouchableOpacity
-                      key={day}
-                      style={[styles.bulkDayChip, selected && styles.bulkDayChipActive, isDark && styles.bulkDayChipDark, selected && isDark && styles.bulkDayChipActiveDark]}
-                      onPress={() => {
-                        setBulkDays((prev) => selected ? prev.filter((d) => d !== day) : [...prev, day])
-                      }}
-                    >
-                      <Text style={[styles.bulkDayText, selected && styles.bulkDayTextActive, isDark && styles.bulkDayTextDark]}>
-                        {day}
-                      </Text>
-                    </TouchableOpacity>
-                  )
-                })}
-              </View>
-              <View style={[styles.bulkCountBadge, isDark && styles.bulkCountBadgeDark]}>
-                <Text style={[styles.bulkCountText, isDark && styles.bulkCountTextDark]}>
-                  {calculateBulkCount()} session{calculateBulkCount() !== 1 ? 's' : ''} will be created
-                </Text>
-              </View>
-            </View>
-          </>
-        ) : (
-          <>
-            <Text style={[styles.label, isDark && styles.labelDark]}>Date</Text>
-            <TextInput
-              style={[styles.picker, isDark && styles.pickerDark]}
-              value={date}
-              onChangeText={setDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#AAA"
-            />
-
-            {/* Duplicate session warning */}
-            {hasDuplicateConflict && (
-              <View style={{ backgroundColor: '#FFFBEB', borderLeftWidth: 3, borderLeftColor: '#F59E0B', padding: 12, marginTop: 8 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: '#B45309', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 3 }}>
-                  Session Conflict
-                </Text>
-                <Text style={{ fontSize: 12, color: '#92400E', lineHeight: 17 }}>
-                  A session already exists for this section on {date}. Change the date or enable "Reschedule" to replace it.
-                </Text>
-              </View>
-            )}
-            
-            {selectedSection && selectedSection.schedule.length > 0 && (
-              <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : '#EEE', paddingTop: 12 }}>
-                <TouchableOpacity
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 }}
-                  onPress={() => {
-                    const nextVal = !isRescheduled
-                    setIsRescheduled(nextVal)
-                    if (nextVal) {
-                      const dates = getStandardReplaceDates()
-                      if (dates.length > 0) {
-                        setRescheduledFromDate(dates[0].dateStr)
-                      }
-                    } else {
-                      setRescheduledFromDate('')
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.checkbox, isRescheduled && styles.checkboxActive, isDark && styles.checkboxDark, isRescheduled && isDark && styles.checkboxActiveDark]}>
-                    {isRescheduled && <MaterialIcons name="check" size={14} color="#FFFFFF" />}
-                  </View>
-                  <Text style={{ fontSize: 14, fontWeight: '700', fontFamily: fonts.bodyBold, color: isDark ? '#FFDF00' : '#7B1113' }}>
-                    Reschedule a standard class slot
-                  </Text>
-                </TouchableOpacity>
-
-                {isRescheduled && (
-                  <View style={{ marginTop: 10, padding: 12, backgroundColor: isDark ? '#121215' : '#FAFAFA', borderWidth: 1, borderColor: isDark ? 'rgba(245,168,0,0.15)' : '#E0E0E0' }}>
-                    <Text style={[styles.label, isDark && styles.labelDark, { marginTop: 0, marginBottom: 6 }]}>
-                      Standard slot to replace
-                    </Text>
-                    <TouchableOpacity
-                      style={[styles.picker, isDark && styles.pickerDark]}
-                      onPress={() => setShowReplaceDatePicker(true)}
-                    >
-                      <Text style={[styles.pickerText, isDark && styles.textWhite]}>
-                        {getStandardReplaceDates().find((d) => d.dateStr === rescheduledFromDate)?.label || 'Select standard slot'}
-                      </Text>
-                      <MaterialIcons name="keyboard-arrow-down" size={20} color={isDark ? '#FFDF00' : '#888'} />
-                    </TouchableOpacity>
-
-                    <Text style={{ fontSize: 11, color: '#888', marginTop: 6 }}>
-                      The selected standard slot will be visually marked as "MOVED" for students.
-                    </Text>
-
-                    <Modal visible={showReplaceDatePicker} transparent animationType="fade" onRequestClose={() => setShowReplaceDatePicker(false)}>
-                      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowReplaceDatePicker(false)}>
-                        <View style={[styles.sheet, isDark && styles.sheetDark]} onStartShouldSetResponder={() => true}>
-                          <Text style={[styles.sheetTitle, isDark && styles.sheetTitleDark]}>Select Standard Slot</Text>
-                          <ScrollView>
-                            {getStandardReplaceDates().map((d) => (
-                              <TouchableOpacity
-                                key={d.dateStr}
-                                style={[
-                                  styles.sheetOption,
-                                  isDark && styles.sheetOptionDarkBorder,
-                                  d.dateStr === rescheduledFromDate && (isDark ? styles.sheetOptionSelectedDark : styles.sheetOptionSelected)
-                                ]}
-                                onPress={() => { setRescheduledFromDate(d.dateStr); setShowReplaceDatePicker(false) }}
-                              >
-                                <Text style={[styles.sheetOptionText, isDark && styles.sheetOptionTextDark, d.dateStr === rescheduledFromDate && (isDark ? styles.sheetOptionTextActiveDark : styles.sheetOptionTextActive)]}>
-                                  {d.label}
-                                </Text>
-                                {d.dateStr === rescheduledFromDate && <MaterialIcons name="check" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />}
-                              </TouchableOpacity>
-                            ))}
-                          </ScrollView>
-                        </View>
-                      </TouchableOpacity>
-                    </Modal>
-                  </View>
-                )}
-              </View>
-            )}
-          </>
-        )}
-
-        {/* Time row */}
-        <View style={styles.row}>
-          <View style={styles.half}>
-            <Text style={[styles.label, isDark && styles.labelDark]}>Start Time</Text>
-            <TouchableOpacity style={[styles.picker, isDark && styles.pickerDark]} onPress={() => setShowStartTime(true)}>
-              <Text style={[styles.pickerText, isDark && styles.textWhite]}>{formatTime(parseInt(startTime.split(':')[0], 10), parseInt(startTime.split(':')[1], 10))}</Text>
-              <MaterialIcons name="access-time" size={18} color={isDark ? '#FFDF00' : '#888'} />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.half}>
-            <Text style={[styles.label, isDark && styles.labelDark]}>End Time</Text>
-            <TouchableOpacity style={[styles.picker, isDark && styles.pickerDark]} onPress={() => setShowEndTime(true)}>
-              <Text style={[styles.pickerText, isDark && styles.textWhite]}>{formatTime(parseInt(endTime.split(':')[0], 10), parseInt(endTime.split(':')[1], 10))}</Text>
-              <MaterialIcons name="access-time" size={18} color={isDark ? '#FFDF00' : '#888'} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {showStartTime && <TimePickerModal value={startTime} onChange={setStartTime} onClose={() => setShowStartTime(false)} />}
-        {showEndTime && <TimePickerModal value={endTime} onChange={setEndTime} onClose={() => setShowEndTime(false)} />}
-
-        {/* Room */}
-        <Text style={[styles.label, isDark && styles.labelDark]}>Room</Text>
-        <View style={[styles.picker, isDark && styles.pickerDark]}>
-          <TextInput
-            style={[styles.pickerText, isDark && styles.textWhite]}
-            value={room}
-            onChangeText={setRoom}
-            placeholder="e.g. CCIS Lab 3"
-            placeholderTextColor="#AAA"
-          />
-        </View>
-
-        {/* Geofence */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 2 }}>
-          <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark, { marginTop: 0 }]}>Geofence</Text>
-          <TouchableOpacity
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, opacity: locating ? 0.6 : 1 }}
-            onPress={handleUseMyLocation}
-            disabled={locating}
-          >
-            {locating ? (
-              <ActivityIndicator size="small" color={isDark ? '#FFDF00' : '#7B1113'} />
-            ) : (
-              <MaterialIcons name="my-location" size={16} color={isDark ? '#FFDF00' : '#7B1113'} />
-            )}
-            <Text style={{ fontSize: 13, fontWeight: '700', fontFamily: fonts.bodyBold, color: isDark ? '#FFDF00' : '#7B1113', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              {locating ? 'Locating…' : 'Use My Location'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={[styles.hint, isDark && styles.hintDark]}>Pan and zoom the map. Drag the pin or tap anywhere to set the attendance location.</Text>
-        <View
-          onTouchStart={() => setMapFocus(true)}
-          onTouchEnd={() => setMapFocus(false)}
-          onTouchCancel={() => setMapFocus(false)}
-        >
-          <MapView
-            latitude={latitude}
-            longitude={longitude}
-            radius={radius}
-            interactive
-            recenterSignal={recenterKey}
-            onLocationChange={(lat, lng) => { setLatitude(lat); setLongitude(lng) }}
-            onRadiusChange={setRadius}
-          />
-        </View>
-
-        {/* Create button */}
-        <TouchableOpacity
-          style={[styles.createBtn, isDark && styles.createBtnDark, (!sectionId || (bulkMode && calculateBulkCount() === 0) || hasDuplicateConflict) && styles.createBtnDisabled]}
-          onPress={handleCreate}
-          disabled={!sectionId || (bulkMode && calculateBulkCount() === 0) || hasDuplicateConflict}
-          accessibilityRole="button"
-          accessibilityLabel={bulkMode ? 'Create bulk sessions' : 'Create session'}
-        >
-          <MaterialIcons name="add" size={20} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
-          <Text style={[styles.createBtnText, isDark && styles.createBtnTextDark]}>
-            {bulkMode ? `Create ${calculateBulkCount()} Sessions` : 'Create Session'}
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </SafeAreaView>
-  )
+    <ChoiceSheet visible={showSubjectPicker} title="Select subject" options={subjects.map((subject) => ({ value: subject.id, label: `${subject.name} (${subject.code})` }))} value={selectedSubjectId} onSelect={setSelectedSubjectId} onClose={() => setShowSubjectPicker(false)} />
+    <ChoiceSheet visible={showSectionPicker} title="Select section" options={sections.map((section) => ({ value: section.id, label: `Section ${section.section}${section.room ? ` · ${section.room}` : ''}` }))} value={sectionId} onSelect={setSectionId} onClose={() => setShowSectionPicker(false)} />
+    <ChoiceSheet visible={showReplaceDatePicker} title="Select standard slot" options={replaceDates.map((item) => ({ value: item.dateStr, label: item.label }))} value={rescheduledFromDate} onSelect={setRescheduledFromDate} onClose={() => setShowReplaceDatePicker(false)} />
+    <TimePickerSheet visible={showStartTime} title="Select start time" value={startTime} onChange={setStartTime} onClose={() => setShowStartTime(false)} />
+    <TimePickerSheet visible={showEndTime} title="Select end time" value={endTime} onChange={setEndTime} onClose={() => setShowEndTime(false)} />
+  </SafeAreaView>
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  containerDark: { backgroundColor: '#0A0A0C' },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-  headerDark: { backgroundColor: '#0A0A0C', borderBottomColor: '#1C1C21' },
-  backBtn: { padding: 4, marginRight: 12 },
-  heading: { flex: 1, fontSize: 22, fontWeight: '700', fontFamily: fonts.heading, color: '#1A1A1A' },
-  headingDark: { color: '#FFDF00' },
-  textWhite: { color: '#FFFFFF' },
-  textWhite50: { color: 'rgba(255,255,255,0.5)' },
-  content: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 100 },
-  label: { fontSize: 12, fontFamily: fonts.bodyMedium, color: '#888', marginBottom: 6, marginTop: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
-  labelDark: { color: 'rgba(255,255,255,0.5)' },
-  hint: { fontSize: 12, fontFamily: fonts.body, color: '#999', marginBottom: 10, lineHeight: 16 },
-  hintDark: { color: 'rgba(255,255,255,0.4)' },
-  sectionTitle: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#1A1A1A', marginTop: 24, marginBottom: 2 },
-  sectionTitleDark: { color: '#FFFFFF' },
-  row: { flexDirection: 'row', gap: 12 },
-  half: { flex: 1 },
-  picker: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#DDD', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FFFFFF' },
-  pickerDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215' },
-  pickerDisabled: { opacity: 0.4 },
-  pickerText: { fontSize: 15, fontFamily: fonts.body, color: '#333', flex: 1 },
-  pickerPlaceholder: { color: '#AAA' },
-  pickerTextDisabled: { color: 'rgba(255,255,255,0.3)' },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#FFFFFF', paddingTop: 20, paddingBottom: 40, maxHeight: '70%' },
-  sheetDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
-  sheetTitle: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#1A1A1A', paddingHorizontal: 20, marginBottom: 12 },
-  sheetTitleDark: { color: '#FFFFFF' },
-  sheetOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
-  sheetOptionDarkBorder: { borderBottomColor: 'rgba(255,255,255,0.05)' },
-  sheetOptionSelected: { backgroundColor: 'rgba(123,17,19,0.04)' },
-  sheetOptionSelectedDark: { backgroundColor: 'rgba(245, 168, 0, 0.1)' },
-  sheetOptionText: { fontSize: 15, fontFamily: fonts.body, color: '#333', flex: 1 },
-  sheetOptionTextDark: { color: '#FFF' },
-  sheetOptionTextActive: { fontFamily: fonts.bodySemiBold, color: '#7B1113' },
-  sheetOptionTextActiveDark: { fontFamily: fonts.bodySemiBold, color: '#FFDF00' },
-  optionRow: { flexDirection: 'row', gap: 0, marginTop: 2 },
-  optChip: { paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#DDD', backgroundColor: '#FFFFFF', marginRight: 6 },
-  optChipActive: { borderColor: '#7B1113', backgroundColor: '#7B1113' },
-  optChipDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215' },
-  optChipActiveDark: { borderColor: '#FFDF00', backgroundColor: '#FFDF00' },
-  optChipText: { fontSize: 12, fontFamily: fonts.bodyMedium, color: '#666' },
-  optChipTextDark: { color: 'rgba(255,255,255,0.7)' },
-  optChipTextActive: { color: '#FFFFFF' },
-  createBtn: { backgroundColor: '#7B1113', paddingVertical: 14, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 32 },
-  createBtnDark: { backgroundColor: '#FFDF00' },
-  createBtnDisabled: { opacity: 0.5 },
-  createBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600', fontFamily: fonts.bodySemiBold },
-  createBtnTextDark: { color: '#4A0A0B' },
-  timeSheet: { backgroundColor: '#FFFFFF', paddingTop: 20, paddingBottom: 24 },
-  timeSheetDark: { backgroundColor: '#121215', borderWidth: 1, borderColor: 'rgba(245, 168, 0, 0.15)' },
-  timeSheetTitle: { fontSize: 18, fontWeight: '700', fontFamily: fonts.heading, color: '#1A1A1A', textAlign: 'center', marginBottom: 16 },
-  timeSheetTitleDark: { color: '#FFFFFF' },
-  timeColumns: { flexDirection: 'row', maxHeight: 240 },
-  timeColumn: { flex: 1, borderRightWidth: 1, borderRightColor: '#F0F0F0' },
-  timeColumnDark: { borderRightColor: 'rgba(255,255,255,0.05)' },
-  timeItem: { paddingVertical: 10, alignItems: 'center' },
-  timeItemActive: { backgroundColor: 'rgba(123,17,19,0.08)' },
-  timeItemActiveDark: { backgroundColor: 'rgba(245, 168, 0, 0.1)' },
-  timeItemText: { fontSize: 15, fontFamily: fonts.body, color: '#333' },
-  timeItemTextActive: { fontFamily: fonts.bodySemiBold, color: '#7B1113' },
-  timeItemTextActiveDark: { fontFamily: fonts.bodySemiBold, color: '#FFDF00' },
-  timeOkBtn: { backgroundColor: '#7B1113', marginHorizontal: 20, marginTop: 16, paddingVertical: 12, alignItems: 'center' },
-  timeOkBtnDark: { backgroundColor: '#FFDF00' },
-  timeOkBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600', fontFamily: fonts.bodySemiBold },
-  timeOkBtnTextDark: { color: '#4A0A0B' },
-  bulkToggle: { marginTop: 8 },
-  bulkToggleDark: {},
-  bulkToggleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
-  checkbox: { width: 20, height: 20, borderWidth: 2, borderColor: '#7B1113', justifyContent: 'center', alignItems: 'center' },
-  checkboxActive: { backgroundColor: '#7B1113' },
-  checkboxDark: { borderColor: '#FFDF00' },
-  checkboxActiveDark: { backgroundColor: '#FFDF00' },
-  bulkToggleLabel: { fontSize: 14, fontFamily: fonts.body, color: '#333', flex: 1 },
-  bulkBox: { backgroundColor: '#FAFAFA', borderWidth: 1, borderColor: '#E0E0E0', padding: 14 },
-  bulkBoxDark: { backgroundColor: '#121215', borderColor: 'rgba(245, 168, 0, 0.15)' },
-  bulkFieldLabel: { fontSize: 11, fontFamily: fonts.bodyMedium, color: '#888', marginTop: 4 },
-  bulkDaysRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  bulkDayChip: { paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: '#DDD', backgroundColor: '#FFFFFF' },
-  bulkDayChipActive: { backgroundColor: '#7B1113', borderColor: '#7B1113' },
-  bulkDayChipDark: { borderColor: 'rgba(245, 168, 0, 0.15)', backgroundColor: '#121215' },
-  bulkDayChipActiveDark: { backgroundColor: '#FFDF00', borderColor: '#FFDF00' },
-  bulkDayText: { fontSize: 12, fontFamily: fonts.bodyMedium, color: '#666' },
-  bulkDayTextActive: { color: '#FFFFFF' },
-  bulkDayTextDark: { color: 'rgba(255,255,255,0.7)' },
-  bulkCountBadge: { marginTop: 12, backgroundColor: 'rgba(123,17,19,0.08)', paddingVertical: 6, paddingHorizontal: 10 },
-  bulkCountBadgeDark: { backgroundColor: 'rgba(245, 168, 0, 0.1)' },
-  bulkCountText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: '#7B1113' },
-  bulkCountTextDark: { color: '#FFDF00' },
-})

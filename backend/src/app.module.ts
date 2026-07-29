@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import { ScheduleModule } from '@nestjs/schedule'
 import { LoggerModule } from 'nestjs-pino'
 import { PrismaModule } from './prisma/prisma.module'
@@ -29,6 +28,9 @@ import { validateEnv } from './common/config/env-validation'
 import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor'
 import { AuditInterceptor } from './common/interceptors/audit.interceptor'
 import { EventEmitterModule } from '@nestjs/event-emitter'
+import { ObservabilityModule } from './observability/observability.module'
+import { HttpMetricsInterceptor } from './observability/http-metrics.interceptor'
+import { DistributedRateLimitGuard } from './common/guards/distributed-rate-limit.guard'
 
 @Module({
   imports: [
@@ -51,7 +53,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter'
     }),
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
-    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
+    ObservabilityModule,
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -72,12 +74,16 @@ import { EventEmitterModule } from '@nestjs/event-emitter'
   ],
   providers: [
     {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      provide: APP_INTERCEPTOR,
+      useClass: HttpMetricsInterceptor,
     },
     {
       provide: APP_GUARD,
       useClass: SessionAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: DistributedRateLimitGuard,
     },
     {
       provide: APP_GUARD,

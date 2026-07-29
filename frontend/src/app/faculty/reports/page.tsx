@@ -1,28 +1,42 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Download, Filter } from 'lucide-react'
 import { api } from '@/lib/api-client'
-import type { User, Subject, Section, Teacher, AttendanceRecord } from '@polycheck/shared'
+import type { User, Subject, Teacher, AttendanceReport } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
+const campusDateFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Manila',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+const campusDate = (date = new Date()) => {
+  const parts = new Map(campusDateFormatter.formatToParts(date).map((part) => [part.type, part.value]))
+  return `${parts.get('year')}-${parts.get('month')}-${parts.get('day')}`
+}
+
+const defaultEndDate = campusDate()
+const defaultStart = new Date(`${defaultEndDate}T00:00:00.000Z`)
+defaultStart.setUTCDate(defaultStart.getUTCDate() - 29)
+const defaultStartDate = defaultStart.toISOString().slice(0, 10)
+
 export default function ReportsPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
-  const [sections, setSections] = useState<Section[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [selectedSubject, setSelectedSubject] = useState('')
   const [selectedTeacher, setSelectedTeacher] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-
-  const [allRecords, setAllRecords] = useState<AttendanceRecord[]>([])
-  const [sessionIdsBySection, setSessionIdsBySection] = useState<Map<string, Set<string>>>(new Map())
+  const [dateFrom, setDateFrom] = useState(defaultStartDate)
+  const [dateTo, setDateTo] = useState(defaultEndDate)
+  const [report, setReport] = useState<AttendanceReport | null>(null)
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -32,104 +46,51 @@ export default function ReportsPage() {
     }
     setUser(cu)
     const fetchData = async () => {
-      const [subjectsData, sectionsData, teachersData, records, sessions] = await Promise.all([
+      const [subjectsData, teachersData] = await Promise.all([
         api.getSubjects(),
-        api.getSections(),
         api.getTeachers(),
-        api.getAttendanceRecords(),
-        api.getSessions(),
       ])
       setSubjects(subjectsData)
-      setSections(sectionsData)
       setTeachers(teachersData)
-      setAllRecords(records)
-
-      const map = new Map<string, Set<string>>()
-      for (const s of sessions) {
-        if (!map.has(s.sectionId)) map.set(s.sectionId, new Set())
-        map.get(s.sectionId)!.add(s.id)
-      }
-      setSessionIdsBySection(map)
     }
     fetchData()
   }, [router])
 
-  const subjectSectionIds = useMemo(() => {
-    if (!selectedSubject) return null
-    return new Set(sections.filter((s) => s.subjectId === selectedSubject).map((s) => s.id))
-  }, [selectedSubject, sections])
+  useEffect(() => {
+    if (!user || !dateFrom || !dateTo) return
+    let active = true
+    void api.getAttendanceReport({
+      startDate: dateFrom,
+      endDate: dateTo,
+      teacherId: selectedTeacher || undefined,
+      subjectId: selectedSubject || undefined,
+    }).then((nextReport) => { if (active) setReport(nextReport) })
+    return () => { active = false }
+  }, [user, selectedSubject, selectedTeacher, dateFrom, dateTo])
 
-  const teacherSectionIds = useMemo(() => {
-    if (!selectedTeacher) return null
-    return new Set(sections.filter((s) => s.teacherId === selectedTeacher).map((s) => s.id))
-  }, [selectedTeacher, sections])
-
-  const filteredRecords = useMemo(() => {
-    return allRecords.filter((r) => {
-      if (subjectSectionIds && !subjectSectionIds.has(r.sectionId)) return false
-      if (teacherSectionIds && !teacherSectionIds.has(r.sectionId)) return false
-      if (dateFrom && r.timestamp < new Date(dateFrom).toISOString()) return false
-      if (dateTo) {
-        const toEnd = new Date(dateTo)
-        toEnd.setHours(23, 59, 59, 999)
-        if (r.timestamp > toEnd.toISOString()) return false
-      }
-      return true
-    })
-  }, [allRecords, subjectSectionIds, teacherSectionIds, dateFrom, dateTo])
-
-  const subjectMap = useMemo(() => {
-    const map = new Map<string, Subject>()
-    for (const s of subjects) map.set(s.id, s)
-    return map
-  }, [subjects])
-
-  const sectionSubjectMap = useMemo(() => {
-    const map = new Map<string, Subject>()
-    for (const sec of sections) {
-      const subj = subjectMap.get(sec.subjectId)
-      if (subj) map.set(sec.id, subj)
-    }
-    return map
-  }, [sections, subjectMap])
-
-  const filteredSummaries = useMemo(() => {
-    const grouped = new Map<string, { present: number; late: number; absent: number }>()
-    for (const r of filteredRecords) {
-      if (!grouped.has(r.sectionId)) grouped.set(r.sectionId, { present: 0, late: 0, absent: 0 })
-      const g = grouped.get(r.sectionId)!
-      if (r.status === 'present') g.present++
-      else if (r.status === 'late') g.late++
-      else if (r.status === 'absent') g.absent++
-    }
-    return Array.from(grouped.entries()).map(([sectionId, counts]) => {
-      const subj = sectionSubjectMap.get(sectionId)
-      const sessionIds = sessionIdsBySection.get(sectionId)
-      return {
-        sectionId,
-        subjectName: subj?.name ?? sectionId,
-        totalSessions: sessionIds?.size ?? 0,
-        ...counts,
-      }
-    })
-  }, [filteredRecords, sectionSubjectMap, sessionIdsBySection])
-
-  const total = filteredSummaries.reduce(
-    (acc, s) => ({
-      total: acc.total + s.present + s.late + s.absent,
-      present: acc.present + s.present,
-      late: acc.late + s.late,
-      absent: acc.absent + s.absent,
-    }),
-    { total: 0, present: 0, late: 0, absent: 0 }
-  )
+  const filteredSummaries = report?.summaries ?? []
+  const total = {
+    total: report?.totals.totalRecords ?? 0,
+    present: report?.totals.present ?? 0,
+    late: report?.totals.late ?? 0,
+    absent: report?.totals.absent ?? 0,
+    pending: report?.totals.pending ?? 0,
+    disputed: report?.totals.disputed ?? 0,
+  }
 
   const presentPct = total.total > 0 ? Math.round((total.present / total.total) * 100) : 0
   const latePct = total.total > 0 ? Math.round((total.late / total.total) * 100) : 0
   const absentPct = total.total > 0 ? Math.round((total.absent / total.total) * 100) : 0
+  const pendingPct = total.total > 0 ? Math.round((total.pending / total.total) * 100) : 0
+  const disputedPct = total.total > 0 ? Math.round((total.disputed / total.total) * 100) : 0
 
   const handleExport = async () => {
-    const csv = await api.exportAttendanceCsv()
+    const csv = await api.exportAttendanceCsv({
+      startDate: dateFrom,
+      endDate: dateTo,
+      teacherId: selectedTeacher || undefined,
+      subjectId: selectedSubject || undefined,
+    })
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -207,11 +168,11 @@ export default function ReportsPage() {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
             <Card>
               <CardContent className="p-5">
-                <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Total Attendance</p>
-                <p className="text-3xl font-bold text-maroon">{total.total}</p>
+                <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Total Records</p>
+                <p className="text-3xl font-bold text-maroon">{report?.totals.totalRecords ?? 0}</p>
               </CardContent>
             </Card>
             <Card>
@@ -230,6 +191,18 @@ export default function ReportsPage() {
               <CardContent className="p-5">
                 <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Absent %</p>
                 <p className="text-3xl font-bold text-maroon-dark">{absentPct}%</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Pending %</p>
+                <p className="text-3xl font-bold text-zinc-500">{pendingPct}%</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Disputed %</p>
+                <p className="text-3xl font-bold text-amber-600">{disputedPct}%</p>
               </CardContent>
             </Card>
           </div>
@@ -263,6 +236,18 @@ export default function ReportsPage() {
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
+                        <circle cx="70" cy="70" r="60" fill="none" stroke="#A1A1AA" strokeWidth="20"
+                          strokeDasharray={`${(total.pending / total.total) * 377} 377`}
+                          strokeDashoffset={-(((total.present + total.late + total.absent) / total.total) * 377)}
+                          transform="rotate(-90 70 70)"
+                          style={{ transition: 'stroke-dasharray 0.5s ease' }}
+                        />
+                        <circle cx="70" cy="70" r="60" fill="none" stroke="#D97706" strokeWidth="20"
+                          strokeDasharray={`${(total.disputed / total.total) * 377} 377`}
+                          strokeDashoffset={-(((total.present + total.late + total.absent + total.pending) / total.total) * 377)}
+                          transform="rotate(-90 70 70)"
+                          style={{ transition: 'stroke-dasharray 0.5s ease' }}
+                        />
                       </>
                     )}
                     <text x="70" y="70" textAnchor="middle" dominantBaseline="middle" className="text-lg font-bold fill-zinc-900 dark:fill-zinc-100">{total.total}</text>
@@ -273,6 +258,8 @@ export default function ReportsPage() {
                       { label: 'Present', count: total.present, pct: presentPct, color: '#FFDF00', textColor: 'text-golden' },
                       { label: 'Late', count: total.late, pct: latePct, color: '#7B1113', textColor: 'text-maroon' },
                       { label: 'Absent', count: total.absent, pct: absentPct, color: '#4A0A0B', textColor: 'text-maroon-dark' },
+                      { label: 'Pending', count: total.pending, pct: pendingPct, color: '#A1A1AA', textColor: 'text-zinc-500' },
+                      { label: 'Disputed', count: total.disputed, pct: disputedPct, color: '#D97706', textColor: 'text-amber-600' },
                     ].map((item) => (
                       <div key={item.label} className="flex items-center gap-3">
                         <div className="w-3 h-3 shrink-0" style={{ backgroundColor: item.color }} />
@@ -319,6 +306,8 @@ export default function ReportsPage() {
                       <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Present</th>
                       <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Late</th>
                       <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Absent</th>
+                      <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Pending</th>
+                      <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Disputed</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -335,11 +324,17 @@ export default function ReportsPage() {
                         <td className="px-4 py-3 text-center">
                           <span className="inline-flex items-center px-2 py-0.5 rounded-none text-xs font-semibold bg-maroon-dark text-golden border border-golden">{s.absent}</span>
                         </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-none text-xs font-semibold border border-zinc-300 text-zinc-500">{s.pending}</span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-none text-xs font-semibold bg-amber-600 text-white">{s.disputed}</span>
+                        </td>
                       </tr>
                     ))}
                     {filteredSummaries.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-6 py-8 text-center text-zinc-400 dark:text-zinc-500">
+                        <td colSpan={7} className="px-6 py-8 text-center text-zinc-400 dark:text-zinc-500">
                           No data matching filters.
                         </td>
                       </tr>
