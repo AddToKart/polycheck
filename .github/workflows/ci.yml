@@ -120,6 +120,8 @@ jobs:
           push: false
           load: true
           tags: polycheck-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -128,6 +130,8 @@ jobs:
           load: true
           tags: polycheck-frontend:ci
           build-args: NEXT_PUBLIC_API_URL=https://api.example.test/api
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - uses: aquasecurity/trivy-action@0.32.0
         with:
           image-ref: polycheck-backend:ci

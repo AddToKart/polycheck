@@ -16,7 +16,12 @@ import { OnEvent } from '@nestjs/event-emitter'
 type SocketUser = RequestUser
 
 function allowConfiguredOrigin(origin: string | undefined, callback: (error: Error | null, allowed?: boolean) => void) {
-  // Native clients do not send an Origin header. Browser origins must be explicitly allow-listed.
+  // SECURITY NOTE: Connections without an Origin header are allowed through the CORS
+  // check because native mobile clients (Expo/React Native) do not send Origin headers.
+  // This is safe because the afterInit middleware authenticates every WebSocket connection
+  // via session token (cookie or bearer). Unauthenticated connections are rejected before
+  // they can join any room or receive events. Browser-origin connections are still
+  // validated against the configured CORS_ORIGINS allowlist.
   if (!origin) return callback(null, true)
   const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
     .split(',')
