@@ -10,7 +10,13 @@ import { RealtimeModule } from '../realtime/realtime.module'
 @Module({
   imports: [RealtimeModule],
   controllers: [AttendanceController],
-  providers: [AttendanceScopeService, AttendanceReportService, GeofenceService, ScanValidatorService, AttendanceService],
+  providers: [
+    AttendanceScopeService,
+    AttendanceReportService,
+    GeofenceService,
+    ScanValidatorService,
+    AttendanceService,
+  ],
   exports: [AttendanceService],
 })
 export class AttendanceModule {}

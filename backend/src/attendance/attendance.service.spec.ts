@@ -719,7 +719,8 @@ describe('AttendanceService', () => {
         locationCapturedAt: scannedAt,
       })
 
-      expect('error' in result).toBe(false)
+      expect(result).toBeDefined()
+      expect('error' in result!).toBe(false)
       expect(prisma.attendanceRecord.updateMany.mock.calls[0][0].data).toEqual(
         expect.objectContaining({ status: 'disputed', disputeReason: 'delayed_offline_sync' }),
       )
@@ -759,7 +760,8 @@ describe('AttendanceService', () => {
         locationCapturedAt: scannedAt,
       })
 
-      expect('error' in result).toBe(false)
+      expect(result).toBeDefined()
+      expect('error' in result!).toBe(false)
       expect(prisma.session.updateMany.mock.calls[0][0].data).toEqual(
         expect.objectContaining({ isActive: false, qrToken: null, endedAt: expect.any(Date) }),
       )
@@ -807,7 +809,8 @@ describe('AttendanceService', () => {
         locationCapturedAt: scannedAt,
       })
 
-      expect('error' in result).toBe(true)
+      expect(result).toBeDefined()
+      expect('error' in result!).toBe(true)
       expect(prisma.session.updateMany).not.toHaveBeenCalled()
     })
   })

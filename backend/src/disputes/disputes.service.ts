@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
-import type { AttendanceRecord, AttendanceStatus, Prisma } from '@prisma/client'
+import type { AttendanceRecord, AttendanceStatus, Prisma } from '../prisma/client'
 
 interface SubmitDisputeInput {
   recordId: string

@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { AttendanceListQueryDto, AttendanceReportQueryDto } from './dto/attendance.dto'
 import { RAW_DATE_RANGE_DAYS } from './types'
-import type { Prisma } from '@prisma/client'
+import type { Prisma } from '../prisma/client'
 import { formatCampusDate } from '@polycheck/shared'
 
 @Injectable()

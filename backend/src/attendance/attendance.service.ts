@@ -11,7 +11,7 @@ import type {
 import { AttendanceGateway } from '../realtime/attendance.gateway'
 import { RedisService } from '../infrastructure/redis.service'
 import { createHash } from 'crypto'
-import type { AttendanceRecord, AttendanceStatus } from '@prisma/client'
+import type { AttendanceRecord, AttendanceStatus } from '../prisma/client'
 import { ScanValidatorService } from './scan-validator.service'
 import { AttendanceScopeService } from './attendance-scope.service'
 import { AttendanceReportService } from './attendance-report.service'

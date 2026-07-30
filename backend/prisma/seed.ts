@@ -1,8 +1,15 @@
 import 'dotenv/config'
-import { PrismaClient, UserRole, DayOfWeek, AttendanceStatus, SectionRoleType } from '@prisma/client'
+import {
+  AttendanceStatus,
+  createPrismaAdapter,
+  DayOfWeek,
+  PrismaClient,
+  SectionRoleType,
+  UserRole,
+} from '../src/prisma/client'
 import { hash } from 'bcryptjs'
 
-const prisma = new PrismaClient()
+const prisma = new PrismaClient({ adapter: createPrismaAdapter() })
 
 async function main() {
   if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_SEED !== 'true') {

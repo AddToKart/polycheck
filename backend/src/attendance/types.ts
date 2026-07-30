@@ -1,4 +1,4 @@
-import type { AttendanceRecord, AttendanceStatus, Session } from '@prisma/client'
+import type { AttendanceRecord, AttendanceStatus, Session } from '../prisma/client'
 
 // ── Constants ──
 

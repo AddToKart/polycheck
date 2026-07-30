@@ -13,7 +13,7 @@ import type { RequestUser } from '../auth/authenticated-principal'
 import type { ActivateSessionDto, CreateBulkSessionsDto, CreateSessionDto } from './dto/create-session.dto'
 import { AttendanceGateway } from '../realtime/attendance.gateway'
 import { RedisService } from '../infrastructure/redis.service'
-import { Prisma, type Session } from '@prisma/client'
+import { Prisma, type Session } from '../prisma/client'
 import { parseIsoDate } from '../common/utils/iso-date'
 
 const AUTO_END_LOCK_TTL_SECONDS = 5 * 60

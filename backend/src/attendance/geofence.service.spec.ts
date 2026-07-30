@@ -16,10 +16,7 @@ describe('GeofenceService', () => {
   beforeEach(async () => {
     prisma = { attendanceRecord: { findMany: jest.fn() } }
     const module = await Test.createTestingModule({
-      providers: [
-        GeofenceService,
-        { provide: PrismaService, useValue: prisma },
-      ],
+      providers: [GeofenceService, { provide: PrismaService, useValue: prisma }],
     }).compile()
     service = module.get(GeofenceService)
     jest.clearAllMocks()
@@ -57,7 +54,12 @@ describe('GeofenceService', () => {
       // Use a record whose coords differ from the scan AND whose session center
       // also differs so neither identical nor exactCenter triggers.
       prisma.attendanceRecord.findMany.mockResolvedValue([
-        { ...baseRecord, latitude: 14.9, longitude: 121.5, session: { geofenceLatitude: 14.9, geofenceLongitude: 121.5 } },
+        {
+          ...baseRecord,
+          latitude: 14.9,
+          longitude: 121.5,
+          session: { geofenceLatitude: 14.9, geofenceLongitude: 121.5 },
+        },
       ])
       const result = await service.hasSuspiciousCoordinates('stu-1', 'sess-1', 'device-1', 14.5863, 121.0)
       expect(result).toBe(false)

@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/com
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { parseIsoDate } from '../common/utils/iso-date'
-import type { Prisma } from '@prisma/client'
+import type { Prisma } from '../prisma/client'
 
 const CALENDAR_RESULT_LIMIT = 2_000
 const EXPORT_RESULT_LIMIT = 25_000

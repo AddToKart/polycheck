@@ -9,7 +9,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { CreateSectionDto } from './dto/create-section.dto'
 import type { UpdateSectionDto } from './dto/update-section.dto'
-import { DayOfWeek, Prisma } from '@prisma/client'
+import { DayOfWeek, Prisma } from '../prisma/client'
 import { randomInt } from 'crypto'
 
 const sectionInclude = {

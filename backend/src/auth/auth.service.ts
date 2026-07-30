@@ -10,7 +10,7 @@ import {
 import { compare } from 'bcryptjs'
 import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
-import type { User } from '@prisma/client'
+import type { User } from '../prisma/client'
 import { BetterAuthService } from './better-auth.service'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { DUMMY_PASSWORD_HASH } from './password-policy'

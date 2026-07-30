@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundEx
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
-import type { Session } from '@prisma/client'
+import type { Session } from '../prisma/client'
 import { ProofStorageService } from './proof-storage.service'
 
 interface UploadProofInput {

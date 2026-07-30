@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useId, useMemo } from 'react'
-import type MapLibreGL from 'maplibre-gl'
+import type * as MapLibreGL from 'maplibre-gl'
 import { useMap } from '@/components/ui/map'
 
 function computeCirclePoints(

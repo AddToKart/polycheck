@@ -6,7 +6,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import { AuthService } from './auth.service'
 import { BetterAuthService } from './better-auth.service'
-import type { User } from '@prisma/client'
+import type { User } from '../prisma/client'
 import { DUMMY_PASSWORD_HASH, PASSWORD_HASH_COST } from './password-policy'
 
 const VALID_PASSWORD = 'correct-horse-battery-staple'
