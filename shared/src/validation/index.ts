@@ -39,7 +39,7 @@ export const SessionCreateSchema = z.object({
   endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Must be HH:mm format'),
   room: z.string().optional(),
   qrValidityMinutes: z.number().min(1).max(15).default(15),
-  gracePeriodMinutes: z.number().min(0).max(120).default(15),
+  gracePeriodMinutes: z.number().min(0).max(60).default(15),
   geofence: GeofenceConfigSchema,
   teacherId: z.string().min(1, 'Teacher is required'),
   isRescheduled: z.boolean().optional(),

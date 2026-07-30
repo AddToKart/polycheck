@@ -66,6 +66,7 @@ jobs:
       - run: pnpm --filter @polycheck/backend test:e2e
       - run: pnpm --dir frontend build
       - run: pnpm --dir android typecheck
+      - run: pnpm --dir android test -- --runInBand
 
   containers:
     runs-on: ubuntu-latest

@@ -25,7 +25,7 @@ Polycheck solves this by introducing a robust digital platform that operates **1
 
 | Challenge in Paper-Based Monitoring | Polycheck Digital Solution |
 | :--- | :--- |
-| **Proxy Attendance** (Classmates signing for absent friends) | Cryptographic QR tokens with dynamic expiry (1–180 min) + Geolocation gating. |
+| **Proxy Attendance** (Classmates signing for absent friends) | Cryptographic QR tokens with dynamic expiry (1–15 min + up to 60 min grace) + Geolocation gating. |
 | **Connectivity Dead Zones** (Unreliable campus WiFi/mobile data) | **Offline-First Architecture**: QR scanning and coordinate gating execute locally without network access. |
 | **Credential & Account Sharing** | Single active session enforcement via Better Auth + binding to digital student IDs. |
 | **GPS Coordinate Spoofing** | Plausibility checks and server-side geofence re-validation on sync. |
@@ -75,7 +75,7 @@ graph TD
 ### 2. Teacher / Instructor (Classroom Managers)
 - **Course Management**: Manages Parent Subjects (e.g. `CCIS 3104`) and Child Sections (e.g. `Section A`, Room `CCIS Lab 3`).
 - **Enrollment Control**: Set per-section enrollment codes with expiration dates or manual student additions.
-- **Session Activation**: Generate dynamic QR codes (1–180 min validity + grace period) and configure map geofences (30m–50m radius).
+- **Session Activation**: Generate dynamic QR codes (1–15 min validity + up to 60 min grace) and configure map geofences (30m–50m radius).
 - **Dispute & Audit Panel**: Review disputed attendance records (Accept as Present, Reject as Absent, Manual Override) and review proof-of-class photo submissions.
 
 ### 3. Student (Mobile App & ID Holder)

@@ -1,67 +1,54 @@
 import { createSigningKeyPair } from '@polycheck/shared'
 
 const LEGACY_PRIVATE_KEY = 'polycheck-teacher-signing-secret'
-const ENCRYPTED_PRIVATE_KEY = 'polycheck-teacher-signing-secret-v2'
-const PUBLIC_KEY = 'polycheck-teacher-signing-public'
 const DATABASE = 'polycheck-keys'
 const STORE = 'crypto-keys'
-const WRAPPING_KEY = 'teacher-signing-key-wrapper'
-const IDB_ENCRYPTED_KEY = 'teacher-signing-encrypted-secret'
-const IDB_PUBLIC_KEY = 'teacher-signing-public'
 
 type EncryptedSecret = { iv: string; ciphertext: string }
 
-export async function getOrCreateTeacherSigningKey() {
-  // 1. Try IndexedDB first (secure storage — XSS cannot easily exfiltrate).
-  const idbEncrypted = await idbGet<EncryptedSecret>(IDB_ENCRYPTED_KEY)
-  const idbPublic = await idbGet<string>(IDB_PUBLIC_KEY)
+const accountKeys = (teacherId: string) => {
+  const account = teacherId.trim()
+  if (!account) throw new Error('A teacher account is required for signing-key storage')
+  return {
+    encrypted: `teacher-signing-encrypted-secret:${account}`,
+    public: `teacher-signing-public:${account}`,
+    wrapper: `teacher-signing-key-wrapper:${account}`,
+  }
+}
+
+export async function getOrCreateTeacherSigningKey(teacherId: string) {
+  const keys = accountKeys(teacherId)
+  const idbEncrypted = await idbGet<EncryptedSecret>(keys.encrypted)
+  const idbPublic = await idbGet<string>(keys.public)
   if (idbEncrypted && idbPublic) {
-    // One-time migration: copy public key to localStorage for quick access by other modules.
-    if (!localStorage.getItem(PUBLIC_KEY)) localStorage.setItem(PUBLIC_KEY, idbPublic)
-    return { publicKey: idbPublic, secretKey: await decryptSecret(idbEncrypted) }
+    return { publicKey: idbPublic, secretKey: await decryptSecret(idbEncrypted, keys.wrapper) }
+  }
+  if (idbEncrypted || idbPublic) {
+    throw new Error('Teacher signing-key storage is incomplete. Reset this browser signing key before continuing.')
   }
 
-  // 2. Migrate from localStorage v2 (encrypted secret was in localStorage — XSS risk).
-  const lsPublic = localStorage.getItem(PUBLIC_KEY)
-  const lsEncrypted = localStorage.getItem(ENCRYPTED_PRIVATE_KEY)
-  if (lsPublic && lsEncrypted) {
-    const parsed = JSON.parse(lsEncrypted) as EncryptedSecret
-    await idbPut(IDB_ENCRYPTED_KEY, parsed)
-    await idbPut(IDB_PUBLIC_KEY, lsPublic)
-    localStorage.removeItem(ENCRYPTED_PRIVATE_KEY)
-    return { publicKey: lsPublic, secretKey: await decryptSecret(parsed) }
-  }
-
-  // 3. One-time migration from the previous plaintext-at-rest implementation.
-  const legacySecret = localStorage.getItem(LEGACY_PRIVATE_KEY)
-  if (lsPublic && legacySecret) {
-    const encrypted = await encryptSecret(legacySecret)
-    await idbPut(IDB_ENCRYPTED_KEY, encrypted)
-    await idbPut(IDB_PUBLIC_KEY, lsPublic)
-    localStorage.removeItem(LEGACY_PRIVATE_KEY)
-    return { publicKey: lsPublic, secretKey: legacySecret }
-  }
-
-  // 4. First run — generate a new key pair.
   const pair = createSigningKeyPair(crypto.getRandomValues(new Uint8Array(32)))
-  const encrypted = await encryptSecret(pair.secretKey)
-  await idbPut(IDB_ENCRYPTED_KEY, encrypted)
-  await idbPut(IDB_PUBLIC_KEY, pair.publicKey)
-  localStorage.setItem(PUBLIC_KEY, pair.publicKey)
+  const encrypted = await encryptSecret(pair.secretKey, keys.wrapper)
+  await idbPut(keys.encrypted, encrypted)
+  await idbPut(keys.public, pair.publicKey)
+
+  // Global keys from earlier releases cannot be attributed safely on a shared
+  // browser. Rotate them instead of assigning them to the current account.
   localStorage.removeItem(LEGACY_PRIVATE_KEY)
-  localStorage.removeItem(ENCRYPTED_PRIVATE_KEY)
+  localStorage.removeItem('polycheck-teacher-signing-secret-v2')
+  localStorage.removeItem('polycheck-teacher-signing-public')
   return pair
 }
 
-async function encryptSecret(secret: string): Promise<EncryptedSecret> {
-  const key = await getWrappingKey()
+async function encryptSecret(secret: string, wrappingKey: string): Promise<EncryptedSecret> {
+  const key = await getWrappingKey(wrappingKey)
   const iv = crypto.getRandomValues(new Uint8Array(12))
   const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(secret))
   return { iv: encodeBytes(iv), ciphertext: encodeBytes(new Uint8Array(ciphertext)) }
 }
 
-async function decryptSecret(value: EncryptedSecret) {
-  const key = await getWrappingKey()
+async function decryptSecret(value: EncryptedSecret, wrappingKey: string) {
+  const key = await getWrappingKey(wrappingKey)
   const plaintext = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv: decodeBytes(value.iv) },
     key,
@@ -70,13 +57,15 @@ async function decryptSecret(value: EncryptedSecret) {
   return new TextDecoder().decode(plaintext)
 }
 
-async function getWrappingKey(): Promise<CryptoKey> {
+async function getWrappingKey(storageKey: string): Promise<CryptoKey> {
   const database = await openDatabase()
-  const existing = await request<CryptoKey | undefined>(database.transaction(STORE).objectStore(STORE).get(WRAPPING_KEY))
+  const existing = await request<CryptoKey | undefined>(
+    database.transaction(STORE).objectStore(STORE).get(storageKey),
+  )
   if (existing) return existing
   const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
   const transaction = database.transaction(STORE, 'readwrite')
-  transaction.objectStore(STORE).put(key, WRAPPING_KEY)
+  transaction.objectStore(STORE).put(key, storageKey)
   await transactionDone(transaction)
   return key
 }

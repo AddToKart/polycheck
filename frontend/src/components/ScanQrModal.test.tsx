@@ -15,6 +15,13 @@ vi.mock('@polycheck/shared/utils', () => ({
   decodeTokenPayload: vi.fn(),
 }))
 
+vi.mock('@zxing/browser', () => ({
+  BrowserQRCodeReader: class BrowserQRCodeReader {
+    decodeFromVideoElement = vi.fn().mockResolvedValue({ stop: vi.fn() })
+    decodeFromImageUrl = vi.fn()
+  },
+}))
+
 vi.mock('@radix-ui/react-slot', () => ({
   Slot: (props: any) => <div data-testid="slot">{props.children}</div>,
 }))
@@ -54,6 +61,9 @@ const mockUser: Student = {
   studentId: '2026-00001-MN-0',
   fullName: 'Test Student',
   role: 'student',
+  program: 'BSIT',
+  yearLevel: 2,
+  isActive: true,
   enrolledSectionIds: [],
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
@@ -125,6 +135,31 @@ beforeEach(() => {
 })
 
 describe('ScanQrModal', () => {
+  it('stops a camera stream that resolves after the modal unmounts', async () => {
+    const track = { stop: vi.fn(), kind: 'video' }
+    const stream = { getTracks: () => [track] }
+    let resolveStream!: (value: MediaStream) => void
+    const pendingStream = new Promise<MediaStream>((resolve) => {
+      resolveStream = resolve
+    })
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { getUserMedia: vi.fn().mockReturnValue(pendingStream) },
+      configurable: true,
+    })
+
+    let rendered!: ReturnType<typeof render>
+    await act(async () => {
+      rendered = render(<ScanQrModal user={mockUser} onClose={vi.fn()} />)
+    })
+    rendered.unmount()
+    await act(async () => {
+      resolveStream(stream as unknown as MediaStream)
+      await pendingStream
+    })
+
+    expect(track.stop).toHaveBeenCalledTimes(1)
+  })
+
   it('renders the modal dialog', async () => {
     await act(async () => {
       render(<ScanQrModal user={mockUser} onClose={vi.fn()} />)

@@ -205,7 +205,9 @@ export default function SectionDetailScreen() {
                     </View>
 
                     <View className="mt-3 h-2 overflow-hidden rounded-none bg-zinc-100 dark:bg-white/10">
-                      <View className="h-full bg-golden" style={{ width: `${rate}%` }} />
+                      <View style={{ width: `${rate}%` }}>
+                        <View className="h-full w-full bg-golden" />
+                      </View>
                     </View>
 
                     <View className="mt-3 flex-row gap-2">

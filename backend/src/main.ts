@@ -9,6 +9,7 @@ import { json, urlencoded } from 'express'
 import { AppModule } from './app.module'
 import { RedisIoAdapter } from './infrastructure/redis-io.adapter'
 import { validateEnv } from './common/config/env-validation'
+import { swaggerAccessMiddleware } from './common/middleware/swagger-access.middleware'
 
 async function bootstrap() {
   const env = validateEnv(process.env)
@@ -61,24 +62,18 @@ async function bootstrap() {
     .setVersion('1.0')
     .addBearerAuth()
     .build()
+
+  // Middleware registration order matters in Express. Install the production
+  // gate before Swagger registers its handlers.
+  if (env.NODE_ENV === 'production' && env.METRICS_TOKEN) {
+    app.use('/api/docs', swaggerAccessMiddleware(env.METRICS_TOKEN))
+  }
+
   const document = SwaggerModule.createDocument(app, swaggerConfig)
   SwaggerModule.setup('api/docs', app, document, {
-    swaggerOptions: { persistAuthorization: true },
+    swaggerOptions: { persistAuthorization: env.NODE_ENV !== 'production' },
     customSiteTitle: 'Polycheck API Docs',
   })
-
-  // Gate Swagger UI behind METRICS_TOKEN in production so docs are always
-  // accessible but not publicly exposed.
-  if (env.NODE_ENV === 'production' && env.METRICS_TOKEN) {
-    const token = env.METRICS_TOKEN
-    app.use('/api/docs', (req: any, res: any, next: any) => {
-      const authHeader = req.headers.authorization
-      const queryToken = req.query?.token
-      if (authHeader === `Bearer ${token}` || queryToken === token) return next()
-      res.setHeader('WWW-Authenticate', 'Bearer realm="swagger"')
-      res.status(401).json({ message: 'Access to API docs requires authentication' })
-    })
-  }
 
   const port = env.PORT
   await app.listen(port)

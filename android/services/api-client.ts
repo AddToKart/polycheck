@@ -1,8 +1,8 @@
 import { Platform } from 'react-native'
-import { isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview } from '@polycheck/shared'
+import { getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient } from '@polycheck/shared'
 import { API_BASE } from './api-config'
 import { getOrCreateTeacherSigningKey } from './signing-key'
-import { cacheSections, cacheSessions, drainOfflineQueue, enqueueOfflineOperation, getCachedSection, getCachedSections, getCachedSession, getCachedSessions, getServerClockOffset, initializeOfflineStore, setServerClockOffset, type OfflineOperationKind, type OfflineSendResult } from './offline-store'
+import { cacheSections, cacheSessions, drainOfflineQueue, enqueueOfflineOperation, getCachedSection, getCachedSections, getCachedSession, getCachedSessions, getServerClockOffset, initializeOfflineStore, setOfflineOwner, setServerClockOffset, type OfflineOperationKind, type OfflineSendResult } from './offline-store'
 
 const STORAGE_KEY = 'polycheck-user'
 const TOKEN_KEY = 'polycheck-token'
@@ -54,10 +54,7 @@ let tokenCache: string | null | undefined
 const authListeners = new Set<(user: User | null) => void>()
 
 function recentDateRange(days = 30) {
-  const end = new Date()
-  const start = new Date(end)
-  start.setUTCDate(start.getUTCDate() - (days - 1))
-  return { startDate: start.toISOString().slice(0, 10), endDate: end.toISOString().slice(0, 10) }
+  return getRecentCampusDateRange(days)
 }
 
 function queryPath(path: string, values: Record<string, string | number | undefined>) {
@@ -67,7 +64,9 @@ function queryPath(path: string, values: Record<string, string | number | undefi
   return query ? `${path}?${query}` : path
 }
 
-export function classifyAttendanceSyncError(error: string): OfflineSendResult {
+export function classifyAttendanceSyncError(
+  error: string,
+): Extract<OfflineSendResult, { outcome: 'retryable' | 'terminal' }> {
   const message = error.toLowerCase()
   const terminalEvidenceFailures = [
     'signature is invalid',
@@ -208,6 +207,7 @@ export const api = {
     }
     const data = await res.json()
     currentUser = data.user as User
+    await initializeOfflineStore(currentUser.id)
     await saveUserToStore(currentUser)
     await setTokenInStore(data.token)
     notifyAuthListeners()
@@ -226,11 +226,12 @@ export const api = {
     }
     const data = await res.json()
     currentUser = data.user as User
+    await initializeOfflineStore(currentUser.id)
     await saveUserToStore(currentUser)
     await setTokenInStore(data.token)
     notifyAuthListeners()
     if (currentUser.role === 'teacher') {
-      const key = await getOrCreateTeacherSigningKey()
+      const key = await getOrCreateTeacherSigningKey(currentUser.id)
       await post('/auth/provision-key', { publicKey: key.publicKey })
     }
     return currentUser
@@ -242,8 +243,12 @@ export const api = {
 
   async restoreSession(): Promise<User | null> {
     const [cachedUser, token] = await Promise.all([loadUserFromStore(), getTokenFromStore()])
-    if (!cachedUser || !token) return null
+    if (!cachedUser || !token) {
+      setOfflineOwner(null)
+      return null
+    }
     currentUser = cachedUser
+    await initializeOfflineStore(cachedUser.id)
     try {
       const profile = await get<User>('/auth/me')
       currentUser = profile
@@ -255,6 +260,9 @@ export const api = {
         notifyAuthListeners()
         return cachedUser
       }
+      setOfflineOwner(null)
+      currentUser = null
+      await Promise.all([saveUserToStore(null), setTokenInStore(null)])
       return null
     }
   },
@@ -262,6 +270,7 @@ export const api = {
   async logout() {
     const token = await getTokenFromStore()
     currentUser = null
+    setOfflineOwner(null)
     await Promise.all([saveUserToStore(null), setTokenInStore(null)])
     notifyAuthListeners()
     try {
@@ -284,16 +293,13 @@ export const api = {
   async getSubjects(): Promise<Subject[]> {
     try {
       return await get('/subjects')
-    } catch {
+    } catch (error) {
+      if (!isNetworkError(error)) throw error
       return []
     }
   },
-  async getSubject(id: string): Promise<Subject> {
-    try {
-      return await get(`/subjects/${id}`)
-    } catch {
-      return { id, name: '', code: '', description: '', createdAt: '', updatedAt: '' }
-    }
+  getSubject(id: string): Promise<Subject> {
+    return get(`/subjects/${id}`)
   },
   createSubject(data: CreateSubjectInput): Promise<Subject> { return post('/subjects', data) },
 
@@ -323,15 +329,24 @@ export const api = {
   },
   createSection(data: CreateSectionInput): Promise<Section> { return post('/sections', data) },
   getSectionStudents(sectionId: string): Promise<(Student & { attendance: { present: number; late: number; absent: number; disputed: number } })[]> {
-    return get<(Student & { attendance: { present: number; late: number; absent: number; disputed: number } })[]>(`/sections/${sectionId}/students`).catch(() => [])
+    return get<(Student & { attendance: { present: number; late: number; absent: number; disputed: number } })[]>(
+      `/sections/${sectionId}/students`,
+    ).catch((error) => {
+      if (!isNetworkError(error)) throw error
+      return []
+    })
   },
   getStudentsForSection(sectionId: string): Promise<Student[]> {
-    return get<Student[]>(`/sections/${sectionId}/students`).catch(() => [])
+    return get<Student[]>(`/sections/${sectionId}/students`).catch((error) => {
+      if (!isNetworkError(error)) throw error
+      return []
+    })
   },
   async getStudentSections(studentId: string): Promise<Section[]> {
     try {
       return await get(`/sections?studentId=${studentId}`)
-    } catch {
+    } catch (error) {
+      if (!isNetworkError(error)) throw error
       return await getCachedSections()
     }
   },
@@ -339,7 +354,9 @@ export const api = {
     try {
       const result = await post<{ enrollmentCode: string }>(`/sections/${sectionId}/enrollment-code/reset`)
       if (result && result.enrollmentCode) return result
-    } catch { /* offline — cannot reset enrollment code while disconnected */ }
+    } catch (error) {
+      if (!isNetworkError(error)) throw error
+    }
     throw new Error('Cannot reset enrollment code while offline. Please try again when connected.')
   },
   disableEnrollmentCode(sectionId: string): Promise<void> {
@@ -386,9 +403,12 @@ export const api = {
     if (validityMinutes < 1 || validityMinutes > 15 || (gracePeriodMinutes ?? 0) > 60) {
       throw new Error('QR validity must be 1-15 minutes and grace must be 0-60 minutes')
     }
-    const [session, key] = await Promise.all([this.getSession(sessionId), getOrCreateTeacherSigningKey()])
     const user = this.getCurrentUser()
     if (!user || user.role !== 'teacher') throw new Error('A teacher account is required to sign QR tokens')
+    const [session, key] = await Promise.all([
+      this.getSession(sessionId),
+      getOrCreateTeacherSigningKey(user.id),
+    ])
     const issuedAt = new Date(await this.getTrustedTimestamp()).getTime()
     const effectiveGrace = gracePeriodMinutes ?? Math.min(session.gracePeriodMinutes, 60)
     if (effectiveGrace < 0 || effectiveGrace > 60) throw new Error('QR grace must be 0-60 minutes')
@@ -588,7 +608,8 @@ export const api = {
   async getMyAttendance(studentId: string): Promise<AttendanceRecord[]> {
     try {
       return await get(`/attendance/student/${studentId}`)
-    } catch {
+    } catch (error) {
+      if (!isNetworkError(error)) throw error
       return []
     }
   },
@@ -640,7 +661,9 @@ export const api = {
     return post('/sessions/bulk', body)
   },
   async syncOfflineQueue(): Promise<void> {
-    await initializeOfflineStore()
+    const user = this.getCurrentUser()
+    if (!user) return
+    await initializeOfflineStore(user.id)
     await drainOfflineQueue(async (kind: OfflineOperationKind, payload) => {
       if (kind === 'attendance_scan') {
         const response = await post<{ queued: false; results: Array<{ error?: string }> }>('/sync/attendance', {
@@ -664,8 +687,9 @@ export const api = {
     })
   },
   async preSyncOfflineData(): Promise<void> {
-    await initializeOfflineStore()
-    if (!this.getCurrentUser()) return
+    const user = this.getCurrentUser()
+    if (!user) return
+    await initializeOfflineStore(user.id)
     try {
       const startedAt = Date.now()
       const health = await get<{ timestamp: string }>('/health')
@@ -692,13 +716,16 @@ export const api = {
     if (trimmed.length < 2) return { students: [], sections: [], sessions: [] }
     try {
       return await get<{ students: Student[]; sections: Section[]; sessions: Session[] }>(`/search?q=${encodeURIComponent(trimmed)}`)
-    } catch {
+    } catch (error) {
+      if (!isNetworkError(error)) throw error
       const q = trimmed.toLowerCase()
-      const [allStudents, allSections, allSessions] = await Promise.all([this.getStudents(), this.getSections(), this.getSessions()])
-      const students = allStudents.filter((s) => `${s.fullName} ${s.studentId} ${s.program}`.toLowerCase().includes(q))
+      const [allSections, allSessions] = await Promise.all([getCachedSections(), getCachedSessions()])
+      const students: Student[] = []
       const sections = allSections.filter((sec) => `${sec.section} ${sec.room || ''} ${sec.semester}`.toLowerCase().includes(q))
       const sessions = allSessions.filter((sess) => `${sess.subjectName} ${sess.date} ${sess.startTime}`.toLowerCase().includes(q))
       return { students, sections, sessions }
     }
   },
 }
+
+api satisfies ApiClient

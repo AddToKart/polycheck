@@ -5,14 +5,13 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, CalendarCheck, MapPin } from 'lucide-react'
 import { api } from '@/lib/api-client'
-import type { User, Section, Subject } from '@polycheck/shared'
+import { formatCampusDate, type User, type Section, type Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import MapPicker from '@/components/MapPicker'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 
 export default function StudentCreateSessionPage() {
   const params = useParams()
@@ -22,7 +21,7 @@ export default function StudentCreateSessionPage() {
   const [section, setSection] = useState<Section | null>(null)
   const [subject, setSubject] = useState<Subject | null>(null)
 
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(() => formatCampusDate())
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')
   const [room, setRoom] = useState('')

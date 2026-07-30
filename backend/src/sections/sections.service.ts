@@ -9,7 +9,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { CreateSectionDto } from './dto/create-section.dto'
 import type { UpdateSectionDto } from './dto/update-section.dto'
-import { DayOfWeek, type Prisma } from '@prisma/client'
+import { DayOfWeek, Prisma } from '@prisma/client'
 import { randomInt } from 'crypto'
 
 const sectionInclude = {
@@ -371,17 +371,24 @@ export class SectionsService {
   }
 
   private async createEnrollment(studentId: string, sectionId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const existing = await tx.enrollment.findUnique({
-        where: { studentId_sectionId: { studentId, sectionId } },
-      })
-      if (existing) throw new ConflictException('Already enrolled in this section')
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const existing = await tx.enrollment.findUnique({
+          where: { studentId_sectionId: { studentId, sectionId } },
+        })
+        if (existing) throw new ConflictException('Already enrolled in this section')
 
-      const enrollment = await tx.enrollment.create({ data: { studentId, sectionId } })
-      const studentCount = await tx.enrollment.count({ where: { sectionId } })
-      await tx.section.update({ where: { id: sectionId }, data: { studentCount } })
-      return enrollment
-    })
+        const enrollment = await tx.enrollment.create({ data: { studentId, sectionId } })
+        const studentCount = await tx.enrollment.count({ where: { sectionId } })
+        await tx.section.update({ where: { id: sectionId }, data: { studentCount } })
+        return enrollment
+      })
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('Already enrolled in this section')
+      }
+      throw error
+    }
   }
 
   private presentSection(section: SectionWithIncludes, includeEnrollmentCode = true) {

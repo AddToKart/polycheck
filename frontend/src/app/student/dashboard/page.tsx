@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { api } from '@/lib/api-client'
-import type { Student, Section, AttendanceRecord, StudentDisputeReason, Subject, Session } from '@polycheck/shared'
+import type { Student, Section, AttendanceRecord, StudentDisputeReason, Subject, Session, CalendarEvent } from '@polycheck/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sidebar } from '@/components/layout/sidebar'
 import StatusBadge from '@/components/StatusBadge'
@@ -37,8 +37,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { getWeekDays, getDayName, getDayNameFull, formatDate, formatTime, isSameDay, getDateRangeForWeek } from '@/lib/calendar-utils'
-import type { CalendarEvent } from '@polycheck/shared'
-import { generateStudentCalendarEvents } from '@polycheck/shared/utils'
+import { formatCampusDate, generateStudentCalendarEvents } from '@polycheck/shared/utils'
 
 type NavTab = 'dashboard' | 'subjects' | 'schedule' | 'attendance'
 
@@ -56,7 +55,6 @@ function StudentDashboardContent() {
   const [sections, setSections] = useState<Section[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
-  const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard')
 
   useEffect(() => {
@@ -95,6 +93,17 @@ function StudentDashboardContent() {
     }
     return map
   }, [allSubjects])
+  const todayEvents = useMemo(() => {
+    const today = formatCampusDate()
+    return generateStudentCalendarEvents(
+      sections,
+      sessions,
+      records,
+      (id) => subjectMap.get(id),
+      today,
+      today,
+    ).sort((a, b) => a.startTime.localeCompare(b.startTime))
+  }, [records, sections, sessions, subjectMap])
 
   const handleEnrollSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -123,18 +132,12 @@ function StudentDashboardContent() {
     // Refresh student's enrolled subjects list
     const updatedSections = await api.getStudentSections(user!.id)
     setSections(updatedSections)
-    const updatedRecords = await api.getAttendanceForStudent(user!.id)
-    const updatedSessions = await api.getSessions()
-    const todayStr = new Date().toISOString().slice(0, 10)
-    const evs = generateStudentCalendarEvents(
-      updatedSections,
-      updatedSessions,
-      updatedRecords,
-      (id) => subjectMap.get(id),
-      todayStr,
-      todayStr
-    ).sort((a, b) => a.startTime.localeCompare(b.startTime))
-    setTodayEvents(evs)
+    const [updatedRecords, updatedSessions] = await Promise.all([
+      api.getAttendanceForStudent(user!.id),
+      api.getSessions(),
+    ])
+    setRecords(updatedRecords)
+    setSessions(updatedSessions)
   }
 
   useEffect(() => {
@@ -150,38 +153,23 @@ function StudentDashboardContent() {
       setUser(cu as Student)
       if (cu.studentId) {
         try {
-          const studentSections = await api.getStudentSections(cu.id)
-          const studentRecords = await api.getAttendanceForStudent(cu.id)
-          const allSessions = await api.getSessions()
+          const [studentSections, studentRecords, allSessions, subjects] = await Promise.all([
+            api.getStudentSections(cu.id),
+            api.getAttendanceForStudent(cu.id),
+            api.getSessions(),
+            api.getSubjects(),
+          ])
           setSections(studentSections)
           setRecords(studentRecords)
           setSessions(allSessions)
-
-          const todayStr = new Date().toISOString().slice(0, 10)
-          const evs = generateStudentCalendarEvents(
-            studentSections,
-            allSessions,
-            studentRecords,
-            (id) => subjectMap.get(id),
-            todayStr,
-            todayStr
-          ).sort((a, b) => a.startTime.localeCompare(b.startTime))
-          setTodayEvents(evs)
+          setAllSubjects(subjects)
         } catch {
           // Graceful fallback if initial background fetch fails
         }
       }
     }
     fn()
-  }, [router, subjectMap])
-
-  useEffect(() => {
-    const fetchData = async () => {
-      const subjects = await api.getSubjects()
-      setAllSubjects(subjects)
-    }
-    fetchData()
-  }, [])
+  }, [router])
 
   useEffect(() => {
     setAttendancePage(0)

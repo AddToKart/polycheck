@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useFocusEffect } from 'expo-router'
-import type { AttendanceRecord, CalendarEvent, ScheduleDay, Section, Subject } from '@polycheck/shared'
+import { formatCampusDate, type AttendanceRecord, type CalendarEvent, type ScheduleDay, type Section, type Subject } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 import { CampusHeader } from '../../components/CampusHeader'
@@ -18,7 +18,7 @@ import {
 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
 
-const formatDate = (date: Date) => date.toISOString().split('T')[0]
+const formatDate = (date: Date) => formatCampusDate(date)
 const getMonthName = (month: number) => ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][month]
 
 export default function ScheduleScreen() {

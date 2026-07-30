@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -152,7 +152,7 @@ export default function FacultyUsersScreen() {
     } },
   ])
 
-  const visibleAccounts = activeTab === 'teachers' ? teachers : students
+  const visibleAccounts: Array<Student | Teacher> = activeTab === 'teachers' ? teachers : students
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
@@ -163,10 +163,25 @@ export default function FacultyUsersScreen() {
           return <Pressable key={tab.id} accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => setActiveTab(tab.id)} className={`min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-xl ${active ? 'bg-maroon dark:bg-golden' : ''}`}><MaterialIcons name={tab.icon} size={17} color={active ? isDark ? '#4A0A0B' : '#FFFFFF' : '#746C6E'} /><Text className={`font-sans-bold text-xs ${active ? 'text-white dark:text-maroon-dark' : 'text-muted dark:text-zinc-400'}`}>{tab.label}</Text></Pressable>
         })}
       </View>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 16, gap: 12 }} showsVerticalScrollIndicator={false}>
-        {visibleAccounts.map((account) => <UserCard key={account.id} account={account} busy={busyUserId === account.id} onStatus={() => changeStatus(account)} onReset={() => { setPasswordForm({ password: '', confirmPassword: '' }); setResetTarget(account) }} />)}
-        {!visibleAccounts.length ? <CampusEmptyState icon="group-off" title={`No ${activeTab}`} description="Create the first account with the add button in the header." /> : null}
-      </ScrollView>
+      <FlatList<Student | Teacher>
+        data={visibleAccounts}
+        keyExtractor={(account) => account.id}
+        renderItem={({ item: account }) => (
+          <UserCard
+            account={account}
+            busy={busyUserId === account.id}
+            onStatus={() => changeStatus(account)}
+            onReset={() => {
+              setPasswordForm({ password: '', confirmPassword: '' })
+              setResetTarget(account)
+            }}
+          />
+        )}
+        ItemSeparatorComponent={() => <View className="h-3" />}
+        ListEmptyComponent={<CampusEmptyState icon="group-off" title={`No ${activeTab}`} description="Create the first account with the add button in the header." />}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 16 }}
+        showsVerticalScrollIndicator={false}
+      />
 
       <AccountSheet visible={showCreateTeacher} title="Create teacher" description="The account can sign in immediately. Use a temporary password that satisfies the campus security policy." onClose={() => setShowCreateTeacher(false)}>
         <ScrollView className="mt-4" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>

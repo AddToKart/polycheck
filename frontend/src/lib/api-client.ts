@@ -1,4 +1,4 @@
-import { signQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview } from '@polycheck/shared'
+import { getRecentCampusDateRange, signQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient } from '@polycheck/shared'
 import { getOrCreateTeacherSigningKey } from './signing-key'
 import { API_BASE } from './api-config'
 
@@ -25,10 +25,7 @@ function saveUser(user: User | null) {
 let currentUser: User | null = loadUser()
 
 function recentDateRange(days = 30) {
-  const end = new Date()
-  const start = new Date(end)
-  start.setUTCDate(start.getUTCDate() - (days - 1))
-  return { startDate: start.toISOString().slice(0, 10), endDate: end.toISOString().slice(0, 10) }
+  return getRecentCampusDateRange(days)
 }
 
 function queryPath(path: string, values: Record<string, string | number | undefined>) {
@@ -212,9 +209,12 @@ export const api = {
     if (validityMinutes < 1 || validityMinutes > 15 || (gracePeriodMinutes ?? 0) > 60) {
       throw new Error('QR validity must be 1-15 minutes and grace must be 0-60 minutes')
     }
-    const [session, key] = await Promise.all([get<Session>(`/sessions/${sessionId}`), getOrCreateTeacherSigningKey()])
     const user = this.getCurrentUser()
     if (!user || user.role !== 'teacher') throw new Error('A teacher account is required to sign QR tokens')
+    const [session, key] = await Promise.all([
+      get<Session>(`/sessions/${sessionId}`),
+      getOrCreateTeacherSigningKey(user.id),
+    ])
     const effectiveGrace = gracePeriodMinutes ?? Math.min(session.gracePeriodMinutes, 60)
     if (effectiveGrace < 0 || effectiveGrace > 60) throw new Error('QR grace must be 0-60 minutes')
     await post('/auth/provision-key', { publicKey: key.publicKey })
@@ -382,3 +382,5 @@ export const api = {
     return get(`/search?q=${encodeURIComponent(query)}`)
   },
 }
+
+api satisfies ApiClient

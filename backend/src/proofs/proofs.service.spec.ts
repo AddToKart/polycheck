@@ -53,4 +53,40 @@ describe('ProofsService', () => {
 
     await expect(service.list({ id: 'student-2', role: 'student' }, 's1')).rejects.toThrow(ForbiddenException)
   })
+
+  it('prevents super admins from deleting classroom proof', async () => {
+    const prisma = {
+      proofOfClass: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'proof-1',
+          photoUrl: 'proofs/proof-1.jpg',
+          session: { teacherId: 'teacher-1' },
+        }),
+        delete: jest.fn(),
+      },
+    }
+    const service = new ProofsService(prisma as never, config as never, storage as never)
+
+    await expect(
+      service.remove({ id: 'admin-1', role: 'super_admin', scope: 'institution' }, 'proof-1'),
+    ).rejects.toThrow(ForbiddenException)
+    expect(prisma.proofOfClass.delete).not.toHaveBeenCalled()
+  })
+
+  it('does not report a failed request after the database deletion has committed', async () => {
+    const prisma = {
+      proofOfClass: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'proof-1',
+          photoUrl: 'proofs/proof-1.jpg',
+          session: { teacherId: 'teacher-1' },
+        }),
+        delete: jest.fn().mockResolvedValue({ id: 'proof-1' }),
+      },
+    }
+    storage.remove.mockRejectedValueOnce(new Error('object store unavailable'))
+    const service = new ProofsService(prisma as never, config as never, storage as never)
+
+    await expect(service.remove({ id: 'teacher-1', role: 'teacher' }, 'proof-1')).resolves.toBe(true)
+  })
 })

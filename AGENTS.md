@@ -315,7 +315,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - **Android**: Made student dashboard cards tappable (both Today's Schedule and new "My Subjects" section) — navigates to `subject-info/[id]`.
 - Installed `expo-clipboard` in mobile project.
 - **Types**: Removed `tokenWindowSeconds` from `Session`, replaced with `qrValidityMinutes: number`. Added `qrGeneratedAt?: string`. Added `'disputed'` to `AttendanceStatus`. Added `manuallySet?: boolean` to `AttendanceRecord`. Added `disputed: number` to `AttendanceSummary`. Updated `QRTokenPayload`: `windowDurationSeconds` → `validityMinutes`, added `gracePeriodMinutes`.
-- **Validation**: `SessionCreateSchema` — removed `tokenWindowSeconds`, added `qrValidityMinutes` (min 1, max 180), added optional `endTime`, `room`.
+- **Validation**: `SessionCreateSchema` — removed `tokenWindowSeconds`, added `qrValidityMinutes` (min 1, current max 15), added optional `endTime`, `room`, and a grace period capped at 60 minutes.
 - **Token utils**: `isTokenExpired` replaced with `isTokenInValidityWindow(payload)` returning `{ valid, inGrace }`. `createQRTokenData` now takes `validityMinutes` + `gracePeriodMinutes`.
 - **Mock data**: Updated all 14 sessions to use `qrValidityMinutes`. Added 3 attendance records (2 disputed + 1 manuallySet). Updated all summaries with `disputed: number`.
 - **Mock APIs (both)**: Added `generateQrCode(sessionId, validityMinutes)`, `submitScan(...)`, `endSession(sessionId)`, `getDisputedRecords(sessionId?)`, `resolveDispute(recordId, resolution, newStatus?)`. Updated `checkAttendance` with timeline logic (QR validity → Present, grace period → Late, expired → Absent). Updated `createSession` to accept `qrValidityMinutes`.
@@ -332,7 +332,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - **Web create session** (`sessions/create/page.tsx`): `qrValidity` replaces `tokenWindow` slider (displayed in minutes).
 - **Web dashboard** (`faculty/page.tsx`): Disputes stat card now uses `api.getDisputedRecords().length` instead of hardcoded 0.
 - **Bug fixes (type-check)**: Fixed missing `disputed` in status color maps (`StatusBadge.tsx`, web + mobile student detail pages). Replaced `activateSession()` calls with navigation to session detail pages in both sessions lists. Removed unused imports/variables in session activation page. Fixed broken `isTokenInValidityWindow` import in web mock-api.ts.
-- **Subject→Section refactor**: Split `Subject` type into `Subject` (parent/course: id, name, code, description) and `Section` (child/class instance: id, subjectId, section, room, schedule, semester, teacherId, teacherName, enrollmentCode, enrollmentCodeExpiry, studentCount). Updated `Session.sectionId`, `AttendanceRecord.sectionId`, `AttendanceSummary.sectionId`, `Enrollment.sectionId`, `Student.enrolledSectionIds`. Updated validation schemas with `SubjectCreateSchema` and `SectionCreateSchema`. Restructured mock data: 4 parent subjects + 5 sections with updated enrollments, sessions, attendance. Rewrote both mock APIs: `getSubjects()` (no args) + CRUD for parent Subject, `getSections()` + CRUD for child Section. Renamed methods: `getSubjectStudents` → `getSectionStudents`, `getSubjectSessions` → `getSectionSessions`, `getStudentAttendanceForSubject` → `getStudentAttendanceForSection`, `removeStudentFromSubject` → `removeStudentFromSection`. Installed `mock-qr` polyfill; replaced `react-native-qrcode-svg` and `qrcode` libs with custom `MockQr` deterministic visual component on both platforms. Fixed all 25 UI files across mobile and web for the new data model.
+- **Subject→Section refactor**: Split `Subject` type into `Subject` (parent/course: id, name, code, description) and `Section` (child/class instance: id, subjectId, section, room, schedule, semester, teacherId, teacherName, enrollmentCode, enrollmentCodeExpiry, studentCount). Updated `Session.sectionId`, `AttendanceRecord.sectionId`, `AttendanceSummary.sectionId`, `Enrollment.sectionId`, `Student.enrolledSectionIds`. Updated validation schemas with `SubjectCreateSchema` and `SectionCreateSchema`. Restructured mock data: 4 parent subjects + 5 sections with updated enrollments, sessions, attendance. Rewrote both mock APIs: `getSubjects()` (no args) + CRUD for parent Subject, `getSections()` + CRUD for child Section. Renamed methods: `getSubjectStudents` → `getSectionStudents`, `getSubjectSessions` → `getSectionSessions`, `getStudentAttendanceForSubject` → `getStudentAttendanceForSection`, `removeStudentFromSubject` → `removeStudentFromSection`. A deterministic QR placeholder was used temporarily during this refactor; scanner-compatible QR libraries were restored later. Fixed all 25 UI files across mobile and web for the new data model.
 - **Navigation hierarchy**: Fixed route structure to match the Subject→Section data model. `/faculty/subjects` now lists parent Subjects (courses) instead of Sections. `/faculty/subjects/[id]` shows a Subject's sections in a grid. New `/faculty/sections/[id]` route created for section detail (students, enrollment code, attendance). Updated all navigation links across faculty dashboard, subject/section pages, and student detail pages on both platforms. Mobile: same restructure with new `(faculty)/sections/[id]` route registered in tab layout.
 - **Create Subject simplified**: Removed section-level fields (section, room, schedule, semester, geofence) from both web and mobile create subject forms. Now only creates parent Subject (name, code, optional description). Calls `api.createSubject()` only — no more `api.createSection()` in the same form.
 - **Create Section (new)**: Created new `/faculty/sections/create` (web) and `(faculty)/sections/create` (mobile) forms. Accepts section, room, schedule, semester — no geofence. Calls `api.createSection()` only. Accessible via "Add Section" button on Subject detail page.
@@ -401,6 +401,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - **Mobile QR image upload**: Student scanning now supports selecting a QR image from the photo library, decoding it with Expo Camera, and passing the token through the same live-GPS and server validation flow as camera/manual scans.
 - **Mobile scan UX and geofence diagnostics**: Rebuilt the scan screen as a stable camera viewport with compact fallback controls and modal manual entry. Mobile now requests best-navigation GPS, rejects low-accuracy fixes, and reports measured distance/radius plus emulator setup coordinates when outside the geofence.
 - **Mobile hooks-order fix**: Moved session map pin memoization above the faculty session detail early return to eliminate the `Rendered more hooks than during the previous render` crash.
+- **2026-07 audit remediation**: Enforced account-scoped, encrypted mobile offline storage and signing keys; fixed student session scoping and proof deletion authorization; capped QR timing at 15 minutes plus 60 minutes grace; made session creation concurrency-safe; hardened Swagger and frontend CSP access; aligned the shared API contract; fixed scanner teardown, campus dates, dashboard waterfalls, accessible dialogs, and large mobile lists; and added Android tests to CI.
 
 ### In Progress
 - (none)
@@ -409,17 +410,17 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - (none)
 
 ## Key Decisions
-- Dark mode on mobile: use `isDark` context + inline `style` for colors, not NativeWind `dark:` variants — `dark:` doesn't propagate across `react-native-screens` native view controllers on navigation mount.
+- Dark mode on mobile: use NativeWind `dark:` variants for static colors and `isDark` only where a native API requires a computed color value; never mix `className` and `style` on the same element.
 - `Pressable` replaces `TouchableOpacity` for clickable list items to avoid scroll-touch interference.
-- Timeline for session activation: Teacher generates QR (sets validity N minutes) → scans within N min → Present; after expiry → scans are Late; teacher presses End Session → all remaining Pending → Absent. Grace period is not a separate timer — it's the post-QR-expiry period until End Session.
-- `gracePeriodMinutes` on Session is metadata/display; the grace period ends only when the teacher manually ends the session. No auto-absent on grace expiry.
+- Timeline for session activation: Teacher generates QR (1–15 minutes) → scans within validity → Present; scans during the configured grace period (up to 60 minutes) → Late; after grace expiry the backend auto-ends the session and marks remaining Pending records Absent. A teacher can end the session earlier.
+- `gracePeriodMinutes` is enforced by online validation, delayed offline validation, Redis TTLs, and the automatic expiry job.
 - QR rendering uses `react-native-qrcode-svg` on mobile and `qrcode` on web so generated attendance tokens are scanner-compatible.
 - `expo-sharing` + `react-native-svg` ref are used for sharing the QR image on mobile; web also supports token copy/download.
 
 ## Next Steps
 - Connect sessions page to section context when navigated from section detail.
 - Add dispute notification badge on faculty sidebar/tab bar.
-- Add offline sync engine for mobile (SQLite + background sync).
+- Add OS-scheduled background sync; the encrypted SQLite queue already syncs opportunistically while the app is active.
 - Implement push notifications (Expo Notifications / web push).
 - Add leave/excuse request workflow.
 - Add academic calendar integration (semester dates, holidays).
@@ -434,15 +435,15 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - API client methods include `generateQrCode`, `submitScan`, `endSession`, `getDisputedRecords`, and `resolveDispute`.
 - `createQRTokenData` signature changed: `(sessionId, subjectId, teacherId, teacherName, validityMinutes, gracePeriodMinutes)`. Note: `subjectId` param is actually `sectionId` in the new model; kept as `subjectId` for token backward compat.
 - `isTokenInValidityWindow(payload, serverTimeMs?)` returns `{ valid: boolean, inGrace: boolean }`.
-- Mobile QR rendering uses `MockQr` deterministic visual component (replaced `react-native-qrcode-svg`); web uses same `MockQr` component (replaced `qrcode` npm package).
+- Mobile QR rendering uses `react-native-qrcode-svg`; web QR rendering uses `qrcode`.
 - Mobile scan uses real `CameraView` with `onBarcodeScanned` from `expo-camera`.
 - Faculty layout has a `disputes` tab with `gavel` icon.
-- Grace period: after QR validity expires, scans are marked Late. It ends when teacher presses End Session (no auto-cutoff).
+- Grace period: after QR validity expires, valid scans are Late. The backend auto-ends the session when grace expires, or the teacher can end it earlier.
 
 ## Relevant Files
 - `shared/src/types/session.ts` — Session now has `qrValidityMinutes`, `qrGeneratedAt?`; removed `tokenWindowSeconds`
 - `shared/src/types/attendance.ts` — AttendanceStatus includes `'disputed'`; AttendanceRecord has `manuallySet?`; AttendanceSummary has `disputed`
-- `shared/src/validation/index.ts` — SessionCreateSchema uses `qrValidityMinutes` (1–180), drops `tokenWindowSeconds`, adds optional `endTime`/`room`
+- `shared/src/validation/index.ts` — SessionCreateSchema enforces `qrValidityMinutes` (1–15) and `gracePeriodMinutes` (0–60)
 - `shared/src/utils/token.ts` — `isTokenInValidityWindow` replaces `isTokenExpired`; `createQRTokenData` takes `validityMinutes` + `gracePeriodMinutes`
 - `android/services/api-client.ts` — real NestJS HTTP client with SQLite-backed offline behavior
 - `android/services/api-config.ts` — device-safe backend URL resolution

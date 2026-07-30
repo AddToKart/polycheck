@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { NotificationProvider } from "@/lib/notifications";
 import { AuthSessionMonitor } from "@/components/AuthSessionMonitor";
+import { headers } from "next/headers";
 
 export const metadata: Metadata = {
   title: "Polycheck",
@@ -9,9 +10,10 @@ export const metadata: Metadata = {
   icons: [{ rel: "icon", url: "/pup-logo.png" }],
 };
 
-function ThemeScript() {
+function ThemeScript({ nonce }: { nonce?: string }) {
   return (
     <script
+      nonce={nonce}
       dangerouslySetInnerHTML={{
         __html: `
           (function() {
@@ -30,15 +32,17 @@ function ThemeScript() {
   );
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
+
   return (
     <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <head>
-        <ThemeScript />
+        <ThemeScript nonce={nonce} />
       </head>
       <body className="min-h-full flex flex-col font-sans">
         <NotificationProvider>

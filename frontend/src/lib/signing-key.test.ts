@@ -22,7 +22,8 @@ let stores: Record<string, FakeIDBStore>
 function createFakeIDB() {
   stores = {}
 
-  const open = vi.fn((_name: string, _version: number) => {
+  const open = vi.fn((...openArguments: [string, number]) => {
+    void openArguments
     const result = { result: null as any, onsuccess: null as any, onerror: null as any, onupgradeneeded: null as any }
 
     queueMicrotask(() => {
@@ -34,7 +35,8 @@ function createFakeIDB() {
       // opening.result is available inside onupgradeneeded / onsuccess.
       const db = {
         createObjectStore: vi.fn(),
-        transaction: (storeName: string, _mode?: string) => {
+        transaction: (storeName: string, ...transactionArguments: [string?]) => {
+          void transactionArguments
           const storeData = stores[storeName] ?? {}
           stores[storeName] = storeData
           let pendingOps = 0
@@ -157,13 +159,12 @@ describe('signing-key', () => {
     mockedCreateKeyPair.mockReturnValue(fakePair as any)
 
     const { getOrCreateTeacherSigningKey } = await import('./signing-key')
-    const result = await getOrCreateTeacherSigningKey()
+    const result = await getOrCreateTeacherSigningKey('teacher-1')
 
     expect(result.publicKey).toBe('pub-new-123')
     expect(result.secretKey).toBe('sec-new-123')
     expect(mockedCreateKeyPair).toHaveBeenCalledTimes(1)
-    // Public key should be persisted to localStorage for quick access
-    expect(localStorage.getItem('polycheck-teacher-signing-public')).toBe('pub-new-123')
+    expect(localStorage.getItem('polycheck-teacher-signing-public')).toBeNull()
   })
 
   it('reads from IndexedDB when key already exists', async () => {
@@ -173,42 +174,42 @@ describe('signing-key', () => {
 
     const { getOrCreateTeacherSigningKey } = await import('./signing-key')
     // First call: generates and stores
-    await getOrCreateTeacherSigningKey()
+    await getOrCreateTeacherSigningKey('teacher-1')
 
     // Clear mocks to verify second call doesn't re-generate
     mockedCreateKeyPair.mockClear()
 
     // Second call: should read from IDB
-    const result2 = await getOrCreateTeacherSigningKey()
+    const result2 = await getOrCreateTeacherSigningKey('teacher-1')
     expect(result2.publicKey).toBe('pub-existing')
     expect(mockedCreateKeyPair).not.toHaveBeenCalled()
   })
 
-  it('migrates from localStorage v2 (encrypted secret) to IndexedDB', async () => {
-    // Pre-populate localStorage with v2 data
-    const encryptedSecret = { iv: 'dGVzdC1p', ciphertext: 'dGVzdC1jaXBoZXI=' }
+  it('rotates unattributed localStorage v2 keys instead of assigning them to an account', async () => {
+    const fakePair = { publicKey: 'pub-rotated', secretKey: 'sec-rotated' }
+    mockedCreateKeyPair.mockReturnValue(fakePair as any)
     localStorage.setItem('polycheck-teacher-signing-public', 'pub-migrated-v2')
-    localStorage.setItem('polycheck-teacher-signing-secret-v2', JSON.stringify(encryptedSecret))
+    localStorage.setItem('polycheck-teacher-signing-secret-v2', '{"legacy":true}')
 
     const { getOrCreateTeacherSigningKey } = await import('./signing-key')
-    const result = await getOrCreateTeacherSigningKey()
+    const result = await getOrCreateTeacherSigningKey('teacher-1')
 
-    expect(result.publicKey).toBe('pub-migrated-v2')
-    // Encrypted secret should be removed from localStorage after migration
+    expect(result.publicKey).toBe('pub-rotated')
     expect(localStorage.getItem('polycheck-teacher-signing-secret-v2')).toBeNull()
+    expect(localStorage.getItem('polycheck-teacher-signing-public')).toBeNull()
   })
 
-  it('migrates from legacy plaintext storage to IndexedDB', async () => {
-    // Pre-populate localStorage with legacy plaintext data (no v2 encrypted)
+  it('rotates and removes legacy plaintext storage', async () => {
+    const fakePair = { publicKey: 'pub-rotated', secretKey: 'sec-rotated' }
+    mockedCreateKeyPair.mockReturnValue(fakePair as any)
     localStorage.setItem('polycheck-teacher-signing-public', 'pub-legacy')
     localStorage.setItem('polycheck-teacher-signing-secret', 'legacy-plaintext-secret')
 
     const { getOrCreateTeacherSigningKey } = await import('./signing-key')
-    const result = await getOrCreateTeacherSigningKey()
+    const result = await getOrCreateTeacherSigningKey('teacher-1')
 
-    expect(result.publicKey).toBe('pub-legacy')
-    expect(result.secretKey).toBe('legacy-plaintext-secret')
-    // Legacy secret should be removed from localStorage
+    expect(result.publicKey).toBe('pub-rotated')
+    expect(result.secretKey).toBe('sec-rotated')
     expect(localStorage.getItem('polycheck-teacher-signing-secret')).toBeNull()
   })
 
@@ -217,10 +218,33 @@ describe('signing-key', () => {
     mockedCreateKeyPair.mockReturnValue(fakePair as any)
 
     const { getOrCreateTeacherSigningKey } = await import('./signing-key')
-    await getOrCreateTeacherSigningKey()
+    await getOrCreateTeacherSigningKey('teacher-1')
 
     // The secret key must NOT appear in localStorage
     const allStorage = Object.keys(localStorage).map((k) => `${k}=${localStorage.getItem(k)}`).join('\n')
     expect(allStorage).not.toContain('sec-sensitive')
+  })
+
+  it('stores separate keys for separate teacher accounts', async () => {
+    mockedCreateKeyPair
+      .mockReturnValueOnce({ publicKey: 'pub-one', secretKey: 'sec-one' } as any)
+      .mockReturnValueOnce({ publicKey: 'pub-two', secretKey: 'sec-two' } as any)
+
+    const { getOrCreateTeacherSigningKey } = await import('./signing-key')
+    const first = await getOrCreateTeacherSigningKey('teacher-1')
+    const second = await getOrCreateTeacherSigningKey('teacher-2')
+
+    expect(first.publicKey).toBe('pub-one')
+    expect(second.publicKey).toBe('pub-two')
+    expect(stores['crypto-keys']['teacher-signing-public:teacher-1']).toBe('pub-one')
+    expect(stores['crypto-keys']['teacher-signing-public:teacher-2']).toBe('pub-two')
+  })
+
+  it('fails closed when account key storage is incomplete', async () => {
+    stores['crypto-keys'] = { 'teacher-signing-public:teacher-1': 'orphaned-public' }
+
+    const { getOrCreateTeacherSigningKey } = await import('./signing-key')
+
+    await expect(getOrCreateTeacherSigningKey('teacher-1')).rejects.toThrow('storage is incomplete')
   })
 })

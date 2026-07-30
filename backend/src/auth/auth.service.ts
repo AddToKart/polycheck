@@ -13,8 +13,8 @@ import { RedisService } from '../infrastructure/redis.service'
 import type { User } from '@prisma/client'
 import { BetterAuthService } from './better-auth.service'
 import { EventEmitter2 } from '@nestjs/event-emitter'
+import { DUMMY_PASSWORD_HASH } from './password-policy'
 
-const DUMMY_HASH = '$2a$10$R9h/lIPzMRgGq1V468UTuOr.164R5.h2.4yXG5Wv4Jz/aGv1Vv8a.'
 const LOGIN_RATE_LIMIT = 10
 const LOGIN_IP_RATE_LIMIT = 30
 const LOGIN_RATE_WINDOW = 60
@@ -62,7 +62,7 @@ export class AuthService {
     await this.assertLoginWithinLimit('student', normalizedStudentId, clientAddress)
 
     const user = await this.prisma.user.findUnique({ where: { studentId: normalizedStudentId } })
-    const isValidPassword = await compare(password, user?.password ?? DUMMY_HASH)
+    const isValidPassword = await compare(password, user?.password ?? DUMMY_PASSWORD_HASH)
 
     if (!user || !isValidPassword) {
       throw new UnauthorizedException('Invalid student ID or password')
@@ -88,7 +88,7 @@ export class AuthService {
     await this.assertLoginWithinLimit('faculty', normalizedEmail, clientAddress)
 
     const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } })
-    const isValidPassword = await compare(password, user?.password ?? DUMMY_HASH)
+    const isValidPassword = await compare(password, user?.password ?? DUMMY_PASSWORD_HASH)
 
     if (!user || !isValidPassword) {
       throw new UnauthorizedException('Invalid email or password')
@@ -130,7 +130,9 @@ export class AuthService {
       data: { teacherPublicKey: publicKey },
     })
 
-    this.logger.log(`Signing key provisioned for user ${userId} (previous key: ${previousKey ? 'replaced' : 'first provision'})`)
+    this.logger.log(
+      `Signing key provisioned for user ${userId} (previous key: ${previousKey ? 'replaced' : 'first provision'})`,
+    )
     this.events.emit('auth.key-provisioned', { userId, hadPreviousKey: !!previousKey })
 
     return { message: 'Public key provisioned successfully' }
@@ -162,11 +164,7 @@ export class AuthService {
   private async assertLoginWithinLimit(kind: 'student' | 'faculty', identifier: string, clientAddress: string) {
     const address = clientAddress || 'unknown'
     const [identityAllowed, addressAllowed] = await Promise.all([
-      this.redis.consumeRateLimit(
-        `login:${kind}:identity:${identifier}`,
-        LOGIN_RATE_LIMIT,
-        LOGIN_RATE_WINDOW,
-      ),
+      this.redis.consumeRateLimit(`login:${kind}:identity:${identifier}`, LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW),
       this.redis.consumeRateLimit(`login:${kind}:ip:${address}`, LOGIN_IP_RATE_LIMIT, LOGIN_RATE_WINDOW),
     ])
     if (!identityAllowed || !addressAllowed) {

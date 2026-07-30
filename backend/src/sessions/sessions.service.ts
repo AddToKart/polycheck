@@ -13,9 +13,11 @@ import type { RequestUser } from '../auth/authenticated-principal'
 import type { ActivateSessionDto, CreateBulkSessionsDto, CreateSessionDto } from './dto/create-session.dto'
 import { AttendanceGateway } from '../realtime/attendance.gateway'
 import { RedisService } from '../infrastructure/redis.service'
-import type { Session } from '@prisma/client'
+import { Prisma, type Session } from '@prisma/client'
 
 const AUTO_END_LOCK_TTL_SECONDS = 5 * 60
+const MAX_QR_VALIDITY_MINUTES = 15
+const MAX_QR_GRACE_MINUTES = 60
 
 @Injectable()
 export class SessionsService {
@@ -65,18 +67,16 @@ export class SessionsService {
     const { teacherId, subjectName } = await this.authorizeCreator(dto.sectionId, user)
     this.assertTimeRange(dto.startTime, dto.endTime)
     const { geofence, subjectName: _ignoredSubjectName, qrValidityMinutes, gracePeriodMinutes, ...data } = dto
-    const session = await this.prisma.session.create({
-      data: {
-        ...data,
-        subjectName,
-        teacherId,
-        // Timing defaults — the authoritative values are set at QR generation time
-        qrValidityMinutes: qrValidityMinutes ?? 15,
-        gracePeriodMinutes: gracePeriodMinutes ?? 15,
-        geofenceLatitude: geofence.latitude,
-        geofenceLongitude: geofence.longitude,
-        geofenceRadiusMeters: geofence.radiusMeters,
-      },
+    const session = await this.createSessionOrThrowConflict({
+      ...data,
+      subjectName,
+      teacherId,
+      // Timing defaults — the authoritative values are set at QR generation time
+      qrValidityMinutes: qrValidityMinutes ?? 15,
+      gracePeriodMinutes: gracePeriodMinutes ?? 15,
+      geofenceLatitude: geofence.latitude,
+      geofenceLongitude: geofence.longitude,
+      geofenceRadiusMeters: geofence.radiusMeters,
     })
     this.realtime.emitSessionState(session, 'created')
     return this.present(session, await this.teacherPublicKey(teacherId), user.role !== 'student')
@@ -114,34 +114,42 @@ export class SessionsService {
       throw new ConflictException(`Sessions already exist on ${conflictDates}${suffix}`)
     }
 
-    const sessions = await this.prisma.$transaction(
-      dates.map((date) =>
-        this.prisma.session.create({
-          data: {
-            sectionId: dto.sectionId,
-            subjectName: section.subject.name,
-            date,
-            startTime: dto.startTime,
-            endTime: dto.endTime,
-            room: dto.room,
-            // Timing defaults — the authoritative values are set at QR generation time
-            qrValidityMinutes: dto.qrValidityMinutes ?? 15,
-            gracePeriodMinutes: dto.gracePeriodMinutes ?? 15,
-            teacherId: user.id,
-            geofenceLatitude: dto.geofence.latitude,
-            geofenceLongitude: dto.geofence.longitude,
-            geofenceRadiusMeters: dto.geofence.radiusMeters,
-          },
-        }),
-      ),
-    )
+    let sessions: Session[]
+    try {
+      sessions = await this.prisma.$transaction(
+        dates.map((date) =>
+          this.prisma.session.create({
+            data: {
+              sectionId: dto.sectionId,
+              subjectName: section.subject.name,
+              date,
+              startTime: dto.startTime,
+              endTime: dto.endTime,
+              room: dto.room,
+              // Timing defaults — the authoritative values are set at QR generation time
+              qrValidityMinutes: dto.qrValidityMinutes ?? 15,
+              gracePeriodMinutes: dto.gracePeriodMinutes ?? 15,
+              teacherId: user.id,
+              geofenceLatitude: dto.geofence.latitude,
+              geofenceLongitude: dto.geofence.longitude,
+              geofenceRadiusMeters: dto.geofence.radiusMeters,
+            },
+          }),
+        ),
+      )
+    } catch (error) {
+      if (this.isUniqueConflict(error)) {
+        throw new ConflictException('One or more sessions already exist for the selected date and time')
+      }
+      throw error
+    }
     for (const session of sessions) this.realtime.emitSessionState(session, 'created')
     const publicKey = await this.teacherPublicKey(user.id)
     return sessions.map((session) => this.present(session, publicKey, true))
   }
 
   async activate(id: string, dto: ActivateSessionDto, user: RequestUser) {
-    if (dto.validityMinutes > 15 || (dto.gracePeriodMinutes ?? 0) > 60) {
+    if (dto.validityMinutes > MAX_QR_VALIDITY_MINUTES || (dto.gracePeriodMinutes ?? 0) > MAX_QR_GRACE_MINUTES) {
       throw new BadRequestException('QR validity is limited to 15 minutes and grace to 60 minutes')
     }
     const session = await this.prisma.session.findUnique({ where: { id } })
@@ -157,7 +165,8 @@ export class SessionsService {
     }
     // Grace period is configurable at generation time; fall back to the session default
     const gracePeriodMinutes = dto.gracePeriodMinutes ?? session.gracePeriodMinutes
-    if (gracePeriodMinutes > 60) throw new BadRequestException('QR grace period is limited to 60 minutes')
+    if (gracePeriodMinutes > MAX_QR_GRACE_MINUTES)
+      throw new BadRequestException('QR grace period is limited to 60 minutes')
     if (payload.validityMinutes !== dto.validityMinutes || payload.gracePeriodMinutes !== gracePeriodMinutes) {
       throw new BadRequestException('QR token timing does not match the session')
     }
@@ -331,7 +340,10 @@ export class SessionsService {
       where: { studentId: user.id },
       select: { sectionId: true },
     })
-    return { sectionId: { in: sections.map((item) => item.sectionId) }, ...(sectionId ? { sectionId } : {}) }
+    const enrolledSectionIds = sections.map((item) => item.sectionId)
+    return sectionId
+      ? { AND: [{ sectionId: { in: enrolledSectionIds } }, { sectionId }] }
+      : { sectionId: { in: enrolledSectionIds } }
   }
 
   private async assertAccess(sectionId: string, user: RequestUser, teacherId: string) {
@@ -388,6 +400,21 @@ export class SessionsService {
 
   private assertTimeRange(startTime: string, endTime: string) {
     if (endTime <= startTime) throw new BadRequestException('endTime must be after startTime')
+  }
+
+  private async createSessionOrThrowConflict(data: Prisma.SessionUncheckedCreateInput) {
+    try {
+      return await this.prisma.session.create({ data })
+    } catch (error) {
+      if (this.isUniqueConflict(error)) {
+        throw new ConflictException('A session already exists for this section, date, and time')
+      }
+      throw error
+    }
+  }
+
+  private isUniqueConflict(error: unknown) {
+    return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
   }
 
   private async teacherPublicKey(teacherId: string) {

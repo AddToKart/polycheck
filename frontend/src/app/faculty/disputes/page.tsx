@@ -26,6 +26,7 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useNotifications } from '@/lib/notifications'
 
 const DISPUTE_LABELS: Record<DisputeReason, string> = {
@@ -363,9 +364,11 @@ export default function DisputesPage() {
                     className="rounded-none border border-zinc-200 dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215] overflow-hidden"
                   >
                     {/* Subject Header (Collapsible) */}
-                    <div 
-                      className="flex items-center justify-between px-5 py-4 bg-zinc-50 dark:bg-[#1C1C21] border-b border-zinc-200 dark:border-[#2C2C35] cursor-pointer select-none"
+                    <button
+                      type="button"
+                      className="w-full flex items-center justify-between px-5 py-4 bg-zinc-50 dark:bg-[#1C1C21] border-b border-zinc-200 dark:border-[#2C2C35] cursor-pointer select-none text-left"
                       onClick={() => toggleSubject(subj.subjectId)}
+                      aria-expanded={isSubjExpanded}
                     >
                       <div className="flex items-center gap-3">
                         <BookOpen className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
@@ -383,7 +386,7 @@ export default function DisputesPage() {
                           <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-500" />
                         )}
                       </div>
-                    </div>
+                    </button>
 
                     {/* Sections List */}
                     {isSubjExpanded && (
@@ -398,9 +401,11 @@ export default function DisputesPage() {
                           return (
                             <div key={sec.sectionId} className="border-b border-dashed border-zinc-200 dark:border-zinc-800 last:border-b-0 pb-4 last:pb-0">
                               {/* Section Header */}
-                              <div 
-                                className="flex items-center justify-between py-2 cursor-pointer select-none"
+                              <button
+                                type="button"
+                                className="w-full flex items-center justify-between py-2 cursor-pointer select-none text-left"
                                 onClick={() => toggleSection(sec.sectionId)}
+                                aria-expanded={isSecExpanded}
                               >
                                 <div className="flex items-center gap-2">
                                   <Layers className="w-4 h-4 text-zinc-400 dark:text-[#FFDF00]" />
@@ -418,7 +423,7 @@ export default function DisputesPage() {
                                     <ChevronDown className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500" />
                                   )}
                                 </div>
-                              </div>
+                              </button>
 
                               {/* Sessions List */}
                               {isSecExpanded && (
@@ -438,10 +443,12 @@ export default function DisputesPage() {
                                         {sess.records.map((record) => {
                                           const Icon = record.disputeReason ? DISPUTE_ICONS[record.disputeReason] : AlertTriangle
                                           return (
-                                            <Card
+                                            <button
+                                              type="button"
                                               key={record.id}
-                                              className="rounded-none border border-zinc-200 dark:border-[rgba(245,168,0,0.15)] dark:bg-[#0A0A0C] hover:bg-zinc-50/50 dark:hover:bg-[#121215] cursor-pointer transition-colors"
+                                              className="text-left rounded-none border border-zinc-200 dark:border-[rgba(245,168,0,0.15)] dark:bg-[#0A0A0C] hover:bg-zinc-50/50 dark:hover:bg-[#121215] cursor-pointer transition-colors"
                                               onClick={() => setSelectedRecord(record)}
+                                              aria-label={`${activeTab === 'pending' ? 'Review' : 'View'} dispute from ${record.studentName}`}
                                             >
                                               <CardContent className="p-4">
                                                 <div className="flex items-center justify-between mb-2">
@@ -463,7 +470,7 @@ export default function DisputesPage() {
                                                   <span>&rarr;</span>
                                                 </div>
                                               </CardContent>
-                                            </Card>
+                                            </button>
                                           )
                                         })}
                                       </div>
@@ -484,15 +491,22 @@ export default function DisputesPage() {
         </div>
       </div>
 
-      {/* Review Modal */}
-      {selectedRecord && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setSelectedRecord(null)}>
-          <div className="bg-white dark:bg-[#121215] dark:border dark:border-[rgba(245,168,0,0.15)] p-8 max-w-md w-full mx-4 rounded-none" onClick={(e) => e.stopPropagation()}>
+      <Dialog
+        open={Boolean(selectedRecord)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedRecord(null)
+        }}
+      >
+        <DialogContent className="max-w-md dark:bg-[#121215] dark:border-[rgba(245,168,0,0.15)] p-8">
+          {selectedRecord && (
+            <>
+            <DialogHeader className="items-center text-center">
             <Gavel className="w-10 h-10 text-maroon dark:text-golden mx-auto mb-3" />
-            <h3 className="text-lg font-heading font-bold text-center dark:text-white mb-1">
+            <DialogTitle className="dark:text-white">
               {selectedRecord.disputeResolved ? 'Dispute Archive' : 'Review Dispute'}
-            </h3>
-            <p className="text-sm font-semibold text-[#7B1113] dark:text-[#FFDF00] text-center mb-4">{selectedRecord.studentName}</p>
+            </DialogTitle>
+            <DialogDescription className="font-semibold text-[#7B1113] dark:text-[#FFDF00]">{selectedRecord.studentName}</DialogDescription>
+            </DialogHeader>
 
             {(() => {
               const rSec = sectionMap.get(selectedRecord.sectionId)
@@ -566,9 +580,10 @@ export default function DisputesPage() {
             <Button variant="ghost" className="w-full text-gray-400 rounded-none" onClick={() => setSelectedRecord(null)}>
               {selectedRecord.disputeResolved ? 'Close' : 'Cancel'}
             </Button>
-          </div>
-        </div>
-      )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

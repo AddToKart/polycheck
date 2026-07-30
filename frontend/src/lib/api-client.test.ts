@@ -241,7 +241,7 @@ describe('real API client', () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse(true))
     const { api } = await import('./api-client')
 
-    const result = await api.enrollStudent({ sectionId: 'sec-1', studentId: 'stu-1', studentName: 'Test', enrollmentCode: 'CODE' })
+    const result = await api.enrollStudent({ sectionId: 'sec-1', studentId: 'stu-1', studentName: 'Test' })
     expect(result).toBe(true)
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining('/sections/sec-1/enroll-student'),

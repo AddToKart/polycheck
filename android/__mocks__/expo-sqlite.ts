@@ -117,8 +117,10 @@ class MockSQLiteDatabase {
       const col = orderMatch[1]
       const dir = (orderMatch[2] || 'ASC') as 'ASC' | 'DESC'
       rows.sort((a, b) => {
-        if (a[col] < b[col]) return dir === 'ASC' ? -1 : 1
-        if (a[col] > b[col]) return dir === 'ASC' ? 1 : -1
+        const left = String(a[col] ?? '')
+        const right = String(b[col] ?? '')
+        if (left < right) return dir === 'ASC' ? -1 : 1
+        if (left > right) return dir === 'ASC' ? 1 : -1
         return 0
       })
     }

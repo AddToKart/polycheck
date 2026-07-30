@@ -15,6 +15,7 @@ import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 const FILTERS: Array<AttendanceStatus | 'all'> = ['all', 'present', 'late', 'absent', 'pending', 'disputed']
+const ROSTER_PAGE_SIZE = 20
 
 const CardTitle = ({ icon, title, detail }: { icon: keyof typeof MaterialIcons.glyphMap; title: string; detail?: string }) => {
   const { isDark } = useTheme()
@@ -29,6 +30,7 @@ export default function SessionDetailScreen() {
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [enrolledStudents, setEnrolledStudents] = useState<Student[]>([])
   const [filter, setFilter] = useState<AttendanceStatus | 'all'>('all')
+  const [rosterPage, setRosterPage] = useState(1)
   const [proofsOfClass, setProofsOfClass] = useState<ProofOfClass[]>([])
   const [showQrModal, setShowQrModal] = useState(false)
   const [showValidityPrompt, setShowValidityPrompt] = useState(false)
@@ -109,6 +111,16 @@ export default function SessionDetailScreen() {
   const visibleRecords = filter === 'all' ? records : records.filter((record) => record.status === filter)
   const visibleStudentIds = new Set(visibleRecords.map((record) => record.studentId))
   const studentMap = new Map(records.map((record) => [record.studentId, record]))
+  const filteredStudents = enrolledStudents.filter((student) => {
+    const status = studentMap.get(student.id)?.status ?? 'pending'
+    return filter === 'all' || visibleStudentIds.has(student.id) || status === filter
+  })
+  const rosterPageCount = Math.max(1, Math.ceil(filteredStudents.length / ROSTER_PAGE_SIZE))
+  const safeRosterPage = Math.min(rosterPage, rosterPageCount)
+  const pagedStudents = filteredStudents.slice(
+    (safeRosterPage - 1) * ROSTER_PAGE_SIZE,
+    safeRosterPage * ROSTER_PAGE_SIZE,
+  )
   const counts = {
     present: records.filter((record) => record.status === 'present').length,
     late: records.filter((record) => record.status === 'late').length,
@@ -204,15 +216,15 @@ export default function SessionDetailScreen() {
         <View className="border-b border-line px-4 pb-3 pt-4 dark:border-line-dark"><View className="flex-row items-center justify-between"><Text className="font-sans-bold text-sm text-ink dark:text-white">{enrolledStudents.length} enrolled students</Text><Text accessibilityLiveRegion="polite" className="font-sans text-[10px] text-muted dark:text-zinc-500">{refreshLabel}</Text></View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 pt-4">{FILTERS.map((status) => {
             const active = filter === status
-            return <Pressable key={status} accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => setFilter(status)} className={`min-h-11 justify-center rounded-full border px-4 ${active ? 'border-maroon bg-maroon dark:border-golden dark:bg-golden' : 'border-line bg-white dark:border-line-dark dark:bg-surface-dark'}`}><Text className={`font-sans-bold text-xs capitalize ${active ? 'text-white dark:text-maroon-dark' : 'text-muted dark:text-zinc-400'}`}>{status}</Text></Pressable>
+            return <Pressable key={status} accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => { setFilter(status); setRosterPage(1) }} className={`min-h-11 justify-center rounded-full border px-4 ${active ? 'border-maroon bg-maroon dark:border-golden dark:bg-golden' : 'border-line bg-white dark:border-line-dark dark:bg-surface-dark'}`}><Text className={`font-sans-bold text-xs capitalize ${active ? 'text-white dark:text-maroon-dark' : 'text-muted dark:text-zinc-400'}`}>{status}</Text></Pressable>
           })}</ScrollView>
         </View>
-        {!enrolledStudents.length ? <View className="p-4"><CampusEmptyState icon="group-off" title="No enrolled students" description="Add students from the section details screen." /></View> : enrolledStudents.map((student) => {
+        {!filteredStudents.length ? <View className="p-4"><CampusEmptyState icon="group-off" title={enrolledStudents.length ? 'No matching students' : 'No enrolled students'} description={enrolledStudents.length ? 'Choose a different attendance filter.' : 'Add students from the section details screen.'} /></View> : pagedStudents.map((student) => {
           const record = studentMap.get(student.id)
           const status = record?.status ?? 'pending'
-          if (filter !== 'all' && !visibleStudentIds.has(student.id) && status !== filter) return null
           return <Pressable key={student.id} disabled={!isTeacher} accessibilityRole={isTeacher ? 'button' : undefined} accessibilityLabel={isTeacher ? `Change ${student.fullName} attendance, currently ${status}` : undefined} onPress={() => void override(student.id, status)} className="min-h-16 flex-row items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 dark:border-line-dark"><View className="h-11 w-11 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10"><Text className="font-sans-bold text-xs text-maroon dark:text-golden">{student.fullName.split(' ').map((part) => part[0]).join('').slice(0, 2)}</Text></View><View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">{student.fullName}</Text><Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">{student.studentId}{record?.manuallySet ? ' · Manual override' : ''}</Text></View><AttendanceStatusPill status={status} />{isTeacher ? <MaterialIcons name="chevron-right" size={19} color="#746C6E" /> : null}</Pressable>
         })}
+        {rosterPageCount > 1 ? <View className="flex-row items-center justify-between border-t border-line px-4 py-3 dark:border-line-dark"><CampusButton className="min-h-11 px-3" label="Previous" variant="secondary" disabled={safeRosterPage === 1} onPress={() => setRosterPage((page) => Math.max(1, page - 1))} /><Text className="font-sans-medium text-xs text-muted dark:text-zinc-400">Page {safeRosterPage} of {rosterPageCount}</Text><CampusButton className="min-h-11 px-3" label="Next" variant="secondary" disabled={safeRosterPage === rosterPageCount} onPress={() => setRosterPage((page) => Math.min(rosterPageCount, page + 1))} /></View> : null}
       </CampusCard>
 
       {isTeacher && session.isActive ? <CampusButton label="End session" icon="stop" onPress={endSession} className="border-red-600 bg-red-600 dark:border-red-600 dark:bg-red-600" /> : null}

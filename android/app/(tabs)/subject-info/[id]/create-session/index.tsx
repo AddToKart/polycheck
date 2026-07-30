@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
-import type { Section, Student, Subject } from '@polycheck/shared'
+import { formatCampusDate, type Section, type Student, type Subject } from '@polycheck/shared'
 import * as Location from 'expo-location'
 import { api } from '../../../../../services/api-client'
 import { useTheme } from '../../../../../theme/ThemeContext'
@@ -18,7 +18,7 @@ export default function StudentCreateSessionScreen() {
   const [user, setUser] = useState<Student | null>(null)
   const [section, setSection] = useState<Section | null>(null)
   const [subject, setSubject] = useState<Subject | null>(null)
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(() => formatCampusDate())
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')
   const [room, setRoom] = useState('')

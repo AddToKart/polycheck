@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, UserX, RefreshCw, School, QrCode } from 'lucide-react'
+import { ArrowLeft, UserX, RefreshCw, School } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Student, Session, AttendanceRecord, AttendanceStatus } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'

@@ -229,7 +229,9 @@ export default function DashboardScreen() {
                     <Text className="mt-1 font-sans text-xs text-muted dark:text-zinc-400 uppercase tracking-wider">{parent?.code} · Sec {section.section} · {section.teacherName}</Text>
                     <View className="mt-4 flex-row items-center gap-3">
                       <View className="h-2 flex-1 overflow-hidden rounded-none bg-zinc-100 dark:bg-white/10">
-                        <View className="h-full bg-golden" style={{ width: `${rate}%` }} />
+                        <View style={{ width: `${rate}%` }}>
+                          <View className="h-full w-full bg-golden" />
+                        </View>
                       </View>
                       <Text className="w-9 text-right font-sans-bold text-xs text-muted dark:text-zinc-300">{records.length ? `${rate}%` : '—'}</Text>
                     </View>

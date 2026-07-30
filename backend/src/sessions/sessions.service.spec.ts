@@ -130,6 +130,18 @@ describe('SessionsService', () => {
       expect(where.sectionId).toEqual({ in: ['sec-1', 'sec-2'] })
     })
 
+    it('does not let an explicit section filter escape a student enrollment scope', async () => {
+      prisma.enrollment.findMany.mockResolvedValue([{ sectionId: 'sec-1' }])
+      prisma.session.findMany.mockResolvedValue([])
+      prisma.user.findMany.mockResolvedValue([])
+
+      await service.findAll(studentUser, 'sec-other')
+
+      expect(prisma.session.findMany.mock.calls[0][0]?.where).toEqual({
+        AND: [{ sectionId: { in: ['sec-1'] } }, { sectionId: 'sec-other' }],
+      })
+    })
+
     it('passes sectionId filter when provided', async () => {
       prisma.session.findMany.mockResolvedValue([])
       prisma.user.findMany.mockResolvedValue([])

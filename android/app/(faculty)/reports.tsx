@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import * as Clipboard from 'expo-clipboard'
-import type { AttendanceReport, Subject, Teacher, User } from '@polycheck/shared'
+import { getRecentCampusDateRange, type AttendanceReport, type Subject, type Teacher, type User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 import DatePickerModal from '../../components/DatePickerModal'
@@ -17,22 +17,7 @@ import {
   AttendanceSummaryCard,
 } from '../../components/AttendanceReportCards'
 
-const campusDateFormatter = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'Asia/Manila',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
-
-const campusDate = (date = new Date()) => {
-  const parts = new Map(campusDateFormatter.formatToParts(date).map((part) => [part.type, part.value]))
-  return `${parts.get('year')}-${parts.get('month')}-${parts.get('day')}`
-}
-
-const defaultEndDate = campusDate()
-const defaultStart = new Date(`${defaultEndDate}T00:00:00.000Z`)
-defaultStart.setUTCDate(defaultStart.getUTCDate() - 29)
-const defaultStartDate = defaultStart.toISOString().slice(0, 10)
+const { startDate: defaultStartDate, endDate: defaultEndDate } = getRecentCampusDateRange(30)
 
 type ReportSelectProps = {
   label: string

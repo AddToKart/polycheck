@@ -1,5 +1,4 @@
 import type { AttendanceRecord, AttendanceStatus, Session } from '@prisma/client'
-import type { RequestUser } from '../auth/authenticated-principal'
 
 // ── Constants ──
 

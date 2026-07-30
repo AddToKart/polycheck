@@ -5,7 +5,6 @@ import { RedisService } from '../infrastructure/redis.service'
 import { GeofenceService } from './geofence.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { ScanEvidence } from './types'
-import { createHash } from 'crypto'
 
 jest.mock('@polycheck/shared', () => ({
   verifyQRToken: jest.fn(),
@@ -153,6 +152,13 @@ describe('ScanValidatorService', () => {
       expect(result.reason).toBe('token_mismatch')
     })
 
+    it('rejects a signed token whose timing exceeds policy', async () => {
+      mockedVerify.mockReturnValue(validPayload({ validityMinutes: 60 }) as any)
+      const result = await service.validateScan(studentUser, makeEvidence(), true, new Date())
+      expect(result.success).toBe(false)
+      expect(result.reason).toBe('token_mismatch')
+    })
+
     it('returns absent when session is inactive (online)', async () => {
       redis.getJson.mockResolvedValue({ ...cached, isActive: false })
       const result = await service.validateScan(studentUser, makeEvidence(), false, new Date())
@@ -198,12 +204,7 @@ describe('ScanValidatorService', () => {
     })
 
     it('returns disputed for poor location accuracy', async () => {
-      const result = await service.validateScan(
-        studentUser,
-        makeEvidence({ accuracyMeters: 100 }),
-        false,
-        new Date(),
-      )
+      const result = await service.validateScan(studentUser, makeEvidence({ accuracyMeters: 100 }), false, new Date())
       expect(result.success).toBe(false)
       expect(result.status).toBe('disputed')
       expect(result.reason).toBe('poor_location_accuracy')

@@ -17,7 +17,7 @@ import { AttendanceScopeService } from './attendance-scope.service'
 import { AttendanceReportService } from './attendance-report.service'
 import { GeofenceService } from './geofence.service'
 import { verifyQRToken } from '@polycheck/shared'
-import { RAW_ATTENDANCE_LIMIT, type ScanEvidence, type ScanValidation, type CachedSession } from './types'
+import { RAW_ATTENDANCE_LIMIT, type ScanEvidence, type ScanValidation } from './types'
 
 @Injectable()
 export class AttendanceService {
@@ -381,12 +381,11 @@ export class AttendanceService {
       return 'unchanged' as const
     if (
       payload.validityMinutes < 1 ||
-      payload.validityMinutes > 180 ||
+      payload.validityMinutes > 15 ||
       payload.gracePeriodMinutes < 0 ||
-      payload.gracePeriodMinutes > 180
+      payload.gracePeriodMinutes > 60
     )
       return 'unchanged' as const
-    if (!offline && (payload.validityMinutes > 15 || payload.gracePeriodMinutes > 60)) return 'unchanged' as const
     if (!Number.isFinite(payload.issuedAt) || payload.issuedAt > receivedAt.getTime() + 5 * 60_000)
       return 'unchanged' as const
     const graceEnd = payload.issuedAt + (payload.validityMinutes + payload.gracePeriodMinutes) * 60_000

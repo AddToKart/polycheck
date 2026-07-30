@@ -771,7 +771,7 @@ describe('AttendanceService', () => {
       expect(redis.setJson).not.toHaveBeenCalled()
     })
 
-    it('preserves delayed offline scans issued by legacy clients within the previous timing caps', async () => {
+    it('rejects delayed offline scans that exceed the current timing caps', async () => {
       const issuedAt = Date.now() - 70 * 60_000
       const scannedAt = new Date(issuedAt + 2 * 60_000).toISOString()
       const unactivated = makeSession({ isActive: false, endedAt: null, qrToken: null })
@@ -807,11 +807,8 @@ describe('AttendanceService', () => {
         locationCapturedAt: scannedAt,
       })
 
-      expect('error' in result).toBe(false)
-      expect(prisma.session.updateMany.mock.calls[0][0].data).toEqual(
-        expect.objectContaining({ qrValidityMinutes: 60, gracePeriodMinutes: 5 }),
-      )
-      expect(prisma.attendanceRecord.updateMany.mock.calls.at(-1)[0].data.status).toBe('disputed')
+      expect('error' in result).toBe(true)
+      expect(prisma.session.updateMany).not.toHaveBeenCalled()
     })
   })
 

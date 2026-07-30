@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import * as Location from 'expo-location'
-import type { Section, Session, Subject, User } from '@polycheck/shared'
+import { formatCampusDate, type Section, type Session, type Subject, type User } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
 import { useTheme } from '../../../theme/ThemeContext'
 import MapView from '../../../components/MapView'
@@ -31,7 +31,7 @@ export default function CreateSessionScreen() {
   const [sectionSessions, setSectionSessions] = useState<Session[]>([])
   const [selectedSubjectId, setSelectedSubjectId] = useState('')
   const [sectionId, setSectionId] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(() => formatCampusDate())
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')
   const [room, setRoom] = useState('')
@@ -46,8 +46,8 @@ export default function CreateSessionScreen() {
   const [showStartTime, setShowStartTime] = useState(false)
   const [showEndTime, setShowEndTime] = useState(false)
   const [bulkMode, setBulkMode] = useState(false)
-  const [bulkStartDate, setBulkStartDate] = useState(new Date().toISOString().slice(0, 10))
-  const [bulkEndDate, setBulkEndDate] = useState(() => { const next = new Date(); next.setMonth(next.getMonth() + 4); return next.toISOString().slice(0, 10) })
+  const [bulkStartDate, setBulkStartDate] = useState(() => formatCampusDate())
+  const [bulkEndDate, setBulkEndDate] = useState(() => { const next = new Date(); next.setMonth(next.getMonth() + 4); return formatCampusDate(next) })
   const [bulkDays, setBulkDays] = useState<string[]>([])
   const [isRescheduled, setIsRescheduled] = useState(false)
   const [rescheduledFromDate, setRescheduledFromDate] = useState('')
@@ -95,7 +95,7 @@ export default function CreateSessionScreen() {
       next.setDate(next.getDate() + offset)
       const schedule = selectedSection.schedule.find((item) => item.day === dayNames[next.getDay()])
       if (!schedule) continue
-      const dateStr = next.toISOString().slice(0, 10)
+      const dateStr = formatCampusDate(next)
       dates.push({
         dateStr,
         label: `${next.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} (${schedule.startTime}–${schedule.endTime})`,

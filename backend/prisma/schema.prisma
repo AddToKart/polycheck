@@ -234,6 +234,7 @@ model Session {
   @@index([isActive])
   @@index([teacherId, date])
   @@index([sectionId, date])
+  @@unique([sectionId, date, startTime, endTime])
 }
 
 model ScanAttempt {
