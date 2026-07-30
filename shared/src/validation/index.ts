@@ -2,11 +2,23 @@ import { z } from 'zod'
 
 export const DayOfWeekEnum = z.enum(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
 
+const TimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Must be a real HH:mm time')
+const IsoDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD format')
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`)
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+  }, 'Must be a real calendar date')
+
 export const ScheduleDaySchema = z.object({
   day: DayOfWeekEnum,
-  startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Must be HH:mm format'),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Must be HH:mm format'),
+  startTime: TimeSchema,
+  endTime: TimeSchema,
   room: z.string().optional(),
+}).refine((value) => value.endTime > value.startTime, {
+  message: 'End time must be after start time',
+  path: ['endTime'],
 })
 
 export const GeofenceConfigSchema = z.object({
@@ -34,18 +46,21 @@ export const SectionCreateSchema = z.object({
 export const SessionCreateSchema = z.object({
   sectionId: z.string().min(1),
   subjectName: z.string().min(1, 'Subject name is required'),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD format'),
-  startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Must be HH:mm format'),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Must be HH:mm format'),
+  date: IsoDateSchema,
+  startTime: TimeSchema,
+  endTime: TimeSchema,
   room: z.string().optional(),
   qrValidityMinutes: z.number().min(1).max(15).default(15),
   gracePeriodMinutes: z.number().min(0).max(60).default(15),
   geofence: GeofenceConfigSchema,
   teacherId: z.string().min(1, 'Teacher is required'),
   isRescheduled: z.boolean().optional(),
-  rescheduledFromDate: z.string().optional(),
+  rescheduledFromDate: IsoDateSchema.optional(),
   originalScheduleTime: z.string().optional(),
   originalRoom: z.string().optional(),
+}).refine((value) => value.endTime > value.startTime, {
+  message: 'End time must be after start time',
+  path: ['endTime'],
 })
 
 export const AttendanceRecordSchema = z.object({

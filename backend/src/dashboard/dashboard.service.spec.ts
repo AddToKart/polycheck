@@ -295,4 +295,9 @@ describe('DashboardService', () => {
     const service = new DashboardService({} as never)
     await expect(service.events(teacher, '2026-02-01', '2026-01-01')).rejects.toThrow(BadRequestException)
   })
+
+  it('rejects impossible calendar dates instead of normalizing them', async () => {
+    const service = new DashboardService({} as never)
+    await expect(service.events(teacher, '2026-02-30', '2026-03-02')).rejects.toThrow(BadRequestException)
+  })
 })

@@ -232,6 +232,12 @@ describe('SessionsService', () => {
       await expect(service.create(dto, teacherUser)).rejects.toThrow(ForbiddenException)
     })
 
+    it('rejects impossible calendar dates before writing a session', async () => {
+      await expect(service.create({ ...dto, date: '2026-02-30' }, teacherUser)).rejects.toThrow(BadRequestException)
+      expect(prisma.section.findUnique).not.toHaveBeenCalled()
+      expect(prisma.session.create).not.toHaveBeenCalled()
+    })
+
     it('throws NotFoundException when section does not exist', async () => {
       prisma.section.findUnique.mockResolvedValue(null)
       await expect(service.create(dto, teacherUser)).rejects.toThrow(NotFoundException)
@@ -561,6 +567,14 @@ describe('SessionsService', () => {
       await expect(
         service.createBulk({ ...dto, startDate: '2026-07-15', endDate: '2026-07-13' }, teacherUser),
       ).rejects.toThrow(BadRequestException)
+    })
+
+    it('throws BadRequestException for impossible bulk calendar dates', async () => {
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      await expect(service.createBulk({ ...dto, startDate: '2026-02-30' }, teacherUser)).rejects.toThrow(
+        BadRequestException,
+      )
+      expect(prisma.session.findMany).not.toHaveBeenCalled()
     })
 
     it('throws BadRequestException when date range exceeds 366 days', async () => {

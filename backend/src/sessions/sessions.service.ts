@@ -14,6 +14,7 @@ import type { ActivateSessionDto, CreateBulkSessionsDto, CreateSessionDto } from
 import { AttendanceGateway } from '../realtime/attendance.gateway'
 import { RedisService } from '../infrastructure/redis.service'
 import { Prisma, type Session } from '@prisma/client'
+import { parseIsoDate } from '../common/utils/iso-date'
 
 const AUTO_END_LOCK_TTL_SECONDS = 5 * 60
 const MAX_QR_VALIDITY_MINUTES = 15
@@ -64,6 +65,8 @@ export class SessionsService {
   }
 
   async create(dto: CreateSessionDto, user: RequestUser) {
+    this.assertDate(dto.date, 'date')
+    if (dto.rescheduledFromDate) this.assertDate(dto.rescheduledFromDate, 'rescheduledFromDate')
     const { teacherId, subjectName } = await this.authorizeCreator(dto.sectionId, user)
     this.assertTimeRange(dto.startTime, dto.endTime)
     const { geofence, subjectName: _ignoredSubjectName, qrValidityMinutes, gracePeriodMinutes, ...data } = dto
@@ -85,11 +88,9 @@ export class SessionsService {
   async createBulk(dto: CreateBulkSessionsDto, user: RequestUser) {
     const section = await this.assertTeacherOwnsSection(dto.sectionId, user.id)
     this.assertTimeRange(dto.startTime, dto.endTime)
-    const start = new Date(`${dto.startDate}T00:00:00.000Z`)
-    const end = new Date(`${dto.endDate}T00:00:00.000Z`)
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
-      throw new BadRequestException('End date must be on or after start date')
-    }
+    const start = this.assertDate(dto.startDate, 'startDate')
+    const end = this.assertDate(dto.endDate, 'endDate')
+    if (end < start) throw new BadRequestException('End date must be on or after start date')
     if ((end.getTime() - start.getTime()) / 86_400_000 > 366) {
       throw new BadRequestException('Bulk creation is limited to one year')
     }
@@ -400,6 +401,12 @@ export class SessionsService {
 
   private assertTimeRange(startTime: string, endTime: string) {
     if (endTime <= startTime) throw new BadRequestException('endTime must be after startTime')
+  }
+
+  private assertDate(value: string, field: string) {
+    const date = parseIsoDate(value)
+    if (!date) throw new BadRequestException(`${field} must be a real calendar date in YYYY-MM-DD format`)
+    return date
   }
 
   private async createSessionOrThrowConflict(data: Prisma.SessionUncheckedCreateInput) {

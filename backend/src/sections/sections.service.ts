@@ -288,8 +288,10 @@ export class SectionsService {
 
     await this.prisma.$transaction(async (tx) => {
       await tx.enrollment.delete({ where: { studentId_sectionId: { studentId, sectionId } } })
-      const studentCount = await tx.enrollment.count({ where: { sectionId } })
-      await tx.section.update({ where: { id: sectionId }, data: { studentCount } })
+      await tx.section.update({
+        where: { id: sectionId },
+        data: { studentCount: { decrement: 1 } },
+      })
     })
 
     return { message: 'Student removed from section' }
@@ -379,8 +381,10 @@ export class SectionsService {
         if (existing) throw new ConflictException('Already enrolled in this section')
 
         const enrollment = await tx.enrollment.create({ data: { studentId, sectionId } })
-        const studentCount = await tx.enrollment.count({ where: { sectionId } })
-        await tx.section.update({ where: { id: sectionId }, data: { studentCount } })
+        await tx.section.update({
+          where: { id: sectionId },
+          data: { studentCount: { increment: 1 } },
+        })
         return enrollment
       })
     } catch (error) {

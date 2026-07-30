@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
+import { parseIsoDate } from '../common/utils/iso-date'
 import type { Prisma } from '@prisma/client'
 
 const CALENDAR_RESULT_LIMIT = 2_000
@@ -432,11 +433,8 @@ export class DashboardService {
   }
 
   private parseDate(value: string) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new BadRequestException('Dates must use YYYY-MM-DD')
-    const date = new Date(`${value}T00:00:00.000Z`)
-    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
-      throw new BadRequestException('Date is invalid')
-    }
+    const date = parseIsoDate(value)
+    if (!date) throw new BadRequestException('Dates must use a real YYYY-MM-DD calendar date')
     return date
   }
 
@@ -481,8 +479,8 @@ export class DashboardService {
   }
 
   private assertDateRange(startDate: string, endDate: string) {
-    const start = new Date(`${startDate}T00:00:00.000Z`)
-    const end = new Date(`${endDate}T00:00:00.000Z`)
+    const start = this.parseDate(startDate)
+    const end = this.parseDate(endDate)
     if (end < start) throw new BadRequestException('endDate must be on or after startDate')
     if (end.getTime() - start.getTime() > 366 * 86_400_000) {
       throw new BadRequestException('Calendar ranges are limited to one year')

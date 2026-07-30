@@ -8,8 +8,6 @@ export type OfflineSendResult =
   | { outcome: 'synced' }
   | { outcome: 'retryable' | 'terminal'; error: string }
 
-const MAX_RETRY_ATTEMPTS = 5
-
 type QueueRow = {
   id: string
   kind: OfflineOperationKind
@@ -215,7 +213,6 @@ export const drainOfflineQueue = async (
       `SELECT id, kind, payload, attempts FROM sync_queue_v2
        WHERE owner_id = ?
          AND (last_error IS NULL OR last_error NOT LIKE 'terminal:%')
-         AND attempts < ${MAX_RETRY_ATTEMPTS}
        ORDER BY created_at ASC LIMIT 100`,
       ownerId,
     )
@@ -270,8 +267,7 @@ export const getPendingSyncCount = async () => {
   const row = await db.getFirstAsync<{ count: number }>(
     `SELECT COUNT(*) AS count FROM sync_queue_v2
      WHERE owner_id = ?
-       AND (last_error IS NULL OR last_error NOT LIKE 'terminal:%')
-       AND attempts < ${MAX_RETRY_ATTEMPTS}`,
+       AND (last_error IS NULL OR last_error NOT LIKE 'terminal:%')`,
     ownerId,
   )
   return row?.count ?? 0

@@ -388,6 +388,19 @@ describe('offline-store', () => {
       expect(count).toBe(2) // both still in queue
     })
 
+    it('keeps retryable attendance queued beyond five temporary failures', async () => {
+      await enqueueOfflineOperation('attendance_scan', { clientAttemptId: 'durable-1', sessionId: 's1' })
+      const retry = jest.fn().mockResolvedValue({ outcome: 'retryable', error: 'network' })
+
+      for (let attempt = 0; attempt < 6; attempt++) await drainOfflineQueue(retry)
+
+      expect(retry).toHaveBeenCalledTimes(6)
+      expect(await getPendingSyncCount()).toBe(1)
+
+      await drainOfflineQueue(jest.fn().mockResolvedValue({ outcome: 'synced' }))
+      expect(await getPendingSyncCount()).toBe(0)
+    })
+
     it('processes at most 100 items per drain', async () => {
       for (let i = 0; i < 105; i++) {
         await enqueueOfflineOperation('attendance_scan', {

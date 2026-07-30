@@ -3,6 +3,8 @@ import { getOrCreateTeacherSigningKey } from './signing-key'
 import { API_BASE } from './api-config'
 
 const STORAGE_KEY = 'polycheck-user'
+const REQUEST_TIMEOUT_MS = 15_000
+const EXPORT_TIMEOUT_MS = 30_000
 
 function loadUser(): User | null {
   if (typeof window === 'undefined') return null
@@ -39,6 +41,20 @@ async function authHeaders(): Promise<Record<string, string>> {
   return { 'Content-Type': 'application/json' }
 }
 
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(input, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 204) return undefined as T
   if (!res.ok) {
@@ -54,12 +70,12 @@ async function handleResponse<T>(res: Response): Promise<T> {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { headers: await authHeaders(), credentials: 'include' })
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, { headers: await authHeaders(), credentials: 'include' })
   return handleResponse<T>(res)
 }
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'POST',
     credentials: 'include',
     headers: await authHeaders(),
@@ -69,7 +85,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 }
 
 async function patch<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'PATCH',
     credentials: 'include',
     headers: await authHeaders(),
@@ -79,7 +95,7 @@ async function patch<T>(path: string, body?: unknown): Promise<T> {
 }
 
 async function put<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'PUT',
     credentials: 'include',
     headers: await authHeaders(),
@@ -89,7 +105,7 @@ async function put<T>(path: string, body?: unknown): Promise<T> {
 }
 
 async function del<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'DELETE',
     credentials: 'include',
     headers: await authHeaders(),
@@ -99,7 +115,7 @@ async function del<T>(path: string): Promise<T> {
 
 export const api = {
   async loginStudent(studentId: string, password?: string): Promise<User | null> {
-    const res = await fetch(`${API_BASE}/auth/login/student`, {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/login/student`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -117,7 +133,7 @@ export const api = {
   },
 
   async loginFaculty(email: string, password?: string): Promise<User | null> {
-    const res = await fetch(`${API_BASE}/auth/login/faculty`, {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/login/faculty`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -138,7 +154,7 @@ export const api = {
     currentUser = null
     saveUser(null)
     try {
-      await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
+      await fetchWithTimeout(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
     } catch { /* Local logout still succeeds when the server is unavailable. */ }
   },
 
@@ -371,7 +387,11 @@ export const api = {
   },
   async exportAttendanceCsv(filters: AttendanceReportFilters = {}): Promise<string> {
     const path = queryPath('/reports/export', { ...recentDateRange(), ...filters })
-    const res = await fetch(`${API_BASE}${path}`, { headers: await authHeaders(), credentials: 'include' })
+    const res = await fetchWithTimeout(
+      `${API_BASE}${path}`,
+      { headers: await authHeaders(), credentials: 'include' },
+      EXPORT_TIMEOUT_MS,
+    )
     if (!res.ok) {
       const error = await res.json().catch(() => ({ message: res.statusText }))
       throw new Error(Array.isArray(error.message) ? error.message.join('. ') : error.message || 'Export failed')

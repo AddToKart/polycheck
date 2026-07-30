@@ -122,6 +122,25 @@ describe('real API client', () => {
     )
   })
 
+  it('aborts browser API requests that exceed the production timeout', async () => {
+    vi.useFakeTimers()
+    vi.mocked(fetch).mockImplementation(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+        }),
+    )
+    const { api } = await import('./api-client')
+
+    try {
+      const request = expect(api.getSubjects()).rejects.toMatchObject({ name: 'AbortError' })
+      await vi.advanceTimersByTimeAsync(15_000)
+      await request
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('getSections passes subjectId query parameter', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse([]))
     const { api } = await import('./api-client')
