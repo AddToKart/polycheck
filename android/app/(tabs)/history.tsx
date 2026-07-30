@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
-import { router } from 'expo-router'
+import { router, useFocusEffect } from 'expo-router'
 import type { AttendanceRecord, AttendanceStatus, StudentDisputeReason } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
@@ -49,19 +49,22 @@ export default function HistoryScreen() {
     }
   }, [user])
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (!student) {
       setAllRecords([])
       return
     }
+    let active = true
     void Promise.all([api.getMyAttendance(student.id), api.getSections(), api.getSubjects()])
       .then(([records, sections, subjectList]) => {
+        if (!active) return
         setAllRecords(records)
         setSectionsMap(new Map(sections.map((section) => [section.id, section])))
         setSubjects(Object.fromEntries(subjectList.map((subject) => [subject.id, subject])))
       })
-      .catch(() => Alert.alert('Unable to load history', 'Check your connection and try again.'))
-  }, [student?.id])
+      .catch(() => { if (active) Alert.alert('Unable to load history', 'Check your connection and try again.') })
+    return () => { active = false }
+  }, [student?.id]))
 
   const filteredRecords = useMemo(
     () => activeFilter === 'all' ? allRecords : allRecords.filter((record) => record.status === activeFilter),

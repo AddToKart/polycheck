@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { api } from '@/lib/api-client'
-import type { Student, Section, AttendanceRecord, StudentDisputeReason, Subject, Session, CalendarEvent } from '@polycheck/shared'
+import type { Student, Section, AttendanceRecord, AttendanceStatus, StudentDisputeReason, Subject, Session, CalendarEvent } from '@polycheck/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sidebar } from '@/components/layout/sidebar'
 import StatusBadge from '@/components/StatusBadge'
@@ -66,6 +66,7 @@ function StudentDashboardContent() {
     }
   }, [searchParams])
   const [attendancePage, setAttendancePage] = useState(0)
+  const [attendanceFilter, setAttendanceFilter] = useState<'all' | AttendanceStatus>('all')
   const [isIdModalOpen, setIsIdModalOpen] = useState(false)
   const [isIdFlipped, setIsIdFlipped] = useState(false)
   const [scheduleDate, setScheduleDate] = useState(new Date())
@@ -208,11 +209,17 @@ const ATTENDANCE_PAGE_SIZE = 8
     () => [...records].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
     [records]
   )
-  const attendancePageCount = Math.max(1, Math.ceil(sortedRecords.length / ATTENDANCE_PAGE_SIZE))
-  const pagedRecords = useMemo(
-    () => sortedRecords.slice(attendancePage * ATTENDANCE_PAGE_SIZE, (attendancePage + 1) * ATTENDANCE_PAGE_SIZE),
-    [sortedRecords, attendancePage]
+  const filteredAttendanceRecords = useMemo(
+    () => attendanceFilter === 'all' ? sortedRecords : sortedRecords.filter((record) => record.status === attendanceFilter),
+    [attendanceFilter, sortedRecords],
   )
+  const attendancePageCount = Math.max(1, Math.ceil(filteredAttendanceRecords.length / ATTENDANCE_PAGE_SIZE))
+  const pagedRecords = useMemo(
+    () => filteredAttendanceRecords.slice(attendancePage * ATTENDANCE_PAGE_SIZE, (attendancePage + 1) * ATTENDANCE_PAGE_SIZE),
+    [filteredAttendanceRecords, attendancePage]
+  )
+
+  useEffect(() => setAttendancePage(0), [attendanceFilter])
 
   if (!user) return null
 
@@ -754,6 +761,20 @@ const ATTENDANCE_PAGE_SIZE = 8
                   <Clock className="w-4 h-4 text-maroon dark:text-golden" />
                   Full Attendance Audit
                 </CardTitle>
+                <div className="flex flex-wrap gap-2 pt-4">
+                  {(['all', 'present', 'late', 'absent', 'pending', 'disputed'] as const).map((status) => (
+                    <Button
+                      key={status}
+                      type="button"
+                      size="sm"
+                      variant={attendanceFilter === status ? 'default' : 'outline'}
+                      className="h-8 rounded-none text-[10px] font-bold uppercase tracking-wider"
+                      onClick={() => setAttendanceFilter(status)}
+                    >
+                      {status}
+                    </Button>
+                  ))}
+                </div>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -798,10 +819,10 @@ const ATTENDANCE_PAGE_SIZE = 8
                           </td>
                         </tr>
                       ))}
-                      {records.length === 0 && (
+                      {filteredAttendanceRecords.length === 0 && (
                         <tr>
                           <td colSpan={4} className="px-6 py-16 text-center text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest">
-                            Audit log is empty
+                            No {attendanceFilter === 'all' ? '' : `${attendanceFilter} `}attendance records
                           </td>
                         </tr>
                       )}
@@ -814,7 +835,7 @@ const ATTENDANCE_PAGE_SIZE = 8
               {attendancePageCount > 1 && (
                 <div className="flex flex-col sm:flex-row items-center justify-between border-t border-zinc-200 dark:border-zinc-800 px-6 py-4 bg-zinc-50/50 dark:bg-zinc-900/30 gap-4">
                   <div className="text-xs text-zinc-500 uppercase tracking-widest font-bold">
-                    Showing {attendancePage * ATTENDANCE_PAGE_SIZE + 1} - {Math.min((attendancePage + 1) * ATTENDANCE_PAGE_SIZE, records.length)} of {records.length} scans
+                    Showing {attendancePage * ATTENDANCE_PAGE_SIZE + 1} - {Math.min((attendancePage + 1) * ATTENDANCE_PAGE_SIZE, filteredAttendanceRecords.length)} of {filteredAttendanceRecords.length} scans
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap justify-center">
                     <Button

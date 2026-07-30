@@ -168,6 +168,7 @@ export default function SessionDetailPage() {
   const lateCount = records.filter((r) => r.status === 'late').length
   const absentCount = records.filter((r) => r.status === 'absent').length
   const pendingCount = records.filter((r) => r.status === 'pending').length
+  const disputedCount = records.filter((r) => r.status === 'disputed').length
   const studentMap = new Map(records.map((r) => [r.studentId, r]))
 
   const handleCopyToken = async (e?: React.MouseEvent) => {
@@ -430,6 +431,7 @@ export default function SessionDetailPage() {
                   { label: 'Late', value: lateCount, color: 'text-[#7B1113] dark:text-[#FF6B6B]' },
                   { label: 'Absent', value: absentCount, color: 'text-[#4A0A0B] dark:text-[#FF4F5A]' },
                   { label: 'Pending', value: pendingCount, color: 'text-gray-400' },
+                  { label: 'Disputed', value: disputedCount, color: 'text-[#7B1113] dark:text-[#FFDF00]' },
                 ].map((s) => (
                   <div key={s.label} className="text-center">
                     <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
@@ -440,7 +442,7 @@ export default function SessionDetailPage() {
 
               {/* Filters */}
               <div className="flex gap-2 mb-4 flex-wrap">
-                {(['all', 'present', 'late', 'absent', 'pending'] as const).map((f) => (
+                {(['all', 'present', 'late', 'absent', 'pending', 'disputed'] as const).map((f) => (
                   <button
                     key={f}
                     className={`px-3 py-1 text-xs border ${filter === f ? 'bg-[#7B1113] dark:bg-[#FFDF00] border-[#7B1113] dark:border-[#FFDF00] text-white dark:text-[#4A0A0B]' : 'bg-gray-100 dark:bg-[#121215] border-gray-300 dark:border-[rgba(245,168,0,0.15)] text-gray-500 dark:text-gray-400'}`}

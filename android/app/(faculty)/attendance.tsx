@@ -3,8 +3,8 @@ import { Alert, ScrollView, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { getRecentCampusDateRange, type AttendanceReport, type User } from '@polycheck/shared'
-import * as Clipboard from 'expo-clipboard'
 import { api } from '../../services/api-client'
+import { shareCsvFile } from '../../services/file-sharing'
 import { useTheme } from '../../theme/ThemeContext'
 import DatePickerModal from '../../components/DatePickerModal'
 import { CampusHeader } from '../../components/CampusHeader'
@@ -39,8 +39,7 @@ export default function FacultyAttendanceScreen() {
   const exportAttendance = async () => {
     try {
       const csv = await api.exportAttendanceCsv({ startDate: fromDate, endDate: toDate })
-      await Clipboard.setStringAsync(csv)
-      Alert.alert('Attendance copied', 'Paste the CSV into a spreadsheet or document.')
+      await shareCsvFile(csv, `polycheck-attendance-${fromDate}-to-${toDate}.csv`)
     } catch (error) {
       Alert.alert('Unable to export attendance', error instanceof Error ? error.message : 'Try again in a moment.')
     }

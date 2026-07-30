@@ -1,4 +1,4 @@
-import type { Section, Session } from '@polycheck/shared'
+import type { AttendanceRecord, Section, Session, Subject } from '@polycheck/shared'
 
 // Mock all native dependencies
 jest.mock('expo-secure-store', () => ({
@@ -181,12 +181,21 @@ jest.mock('expo-sqlite', () => ({
 
 import {
   initializeOfflineStore,
+  cacheSubjects,
+  getCachedSubjects,
+  getCachedSubject,
+  replaceCachedSubjects,
   cacheSections,
   getCachedSections,
   getCachedSection,
+  replaceCachedSections,
   cacheSessions,
   getCachedSessions,
   getCachedSession,
+  cacheAttendanceRecords,
+  getCachedAttendanceRecords,
+  replaceCachedAttendanceForStudent,
+  removeCachedAttendanceAttempt,
   enqueueOfflineOperation,
   drainOfflineQueue,
   getPendingSyncCount,
@@ -213,6 +222,15 @@ const mockSection: Section = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 }
 
+const mockSubject: Subject = {
+  id: 'subj-1',
+  name: 'Data Structures',
+  code: 'COMP 201',
+  description: 'Core data structures and algorithms',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+}
+
 const mockSession: Session = {
   id: 'sess-test-1',
   sectionId: 'sec-test-1',
@@ -233,10 +251,45 @@ const mockSession: Session = {
   createdAt: '2026-01-01T00:00:00.000Z',
 }
 
+const mockAttendance: AttendanceRecord = {
+  id: 'att-test-1',
+  sessionId: 'sess-test-1',
+  sectionId: 'sec-test-1',
+  studentId: 'student-1',
+  studentName: 'Student Test',
+  timestamp: '2026-07-15T08:01:00.000Z',
+  status: 'present',
+  coordinates: { latitude: 14.5995, longitude: 120.9842 },
+  isSynced: true,
+}
+
 describe('offline-store', () => {
   beforeEach(async () => {
     _resetDatabase()
     await initializeOfflineStore('user-1')
+  })
+
+  describe('subject caching', () => {
+    it('caches and retrieves subjects', async () => {
+      await cacheSubjects([mockSubject])
+      expect(await getCachedSubjects()).toEqual([mockSubject])
+      expect(await getCachedSubject(mockSubject.id)).toEqual(mockSubject)
+    })
+
+    it('isolates subjects between authenticated accounts', async () => {
+      await cacheSubjects([mockSubject])
+      await initializeOfflineStore('user-2')
+      expect(await getCachedSubjects()).toEqual([])
+    })
+
+    it('removes subjects no longer returned by the server', async () => {
+      const removed = { ...mockSubject, id: 'subj-removed' }
+      await cacheSubjects([mockSubject, removed])
+
+      await replaceCachedSubjects([mockSubject])
+
+      expect(await getCachedSubjects()).toEqual([mockSubject])
+    })
   })
 
   describe('section caching', () => {
@@ -290,6 +343,15 @@ describe('offline-store', () => {
       setOfflineOwner('user-1')
       expect(await getCachedSections()).toHaveLength(1)
     })
+
+    it('removes sections no longer returned by the server', async () => {
+      const removed = { ...mockSection, id: 'sec-removed' }
+      await cacheSections([mockSection, removed])
+
+      await replaceCachedSections([mockSection])
+
+      expect(await getCachedSections()).toEqual([mockSection])
+    })
   })
 
   describe('session caching', () => {
@@ -335,6 +397,44 @@ describe('offline-store', () => {
     it('returns null for non-existent session', async () => {
       const found = await getCachedSession('does-not-exist')
       expect(found).toBeNull()
+    })
+  })
+
+  describe('attendance caching', () => {
+    it('caches and filters attendance by student', async () => {
+      const other = { ...mockAttendance, id: 'att-test-2', studentId: 'student-2' }
+      await cacheAttendanceRecords([mockAttendance, other])
+
+      expect(await getCachedAttendanceRecords('student-1')).toEqual([mockAttendance])
+      expect(await getCachedAttendanceRecords()).toHaveLength(2)
+    })
+
+    it('replaces server records while preserving unsynced scans', async () => {
+      const pending: AttendanceRecord = {
+        ...mockAttendance,
+        id: 'offline:sess-test-2:student-1',
+        sessionId: 'sess-test-2',
+        status: 'late',
+        isSynced: false,
+      }
+      await cacheAttendanceRecords([mockAttendance, pending])
+      const updated = { ...mockAttendance, status: 'late' as const }
+
+      await replaceCachedAttendanceForStudent('student-1', [updated])
+
+      const records = await getCachedAttendanceRecords('student-1')
+      expect(records).toHaveLength(2)
+      expect(records).toContainEqual(updated)
+      expect(records).toContainEqual(pending)
+    })
+
+    it('removes a pending attempt after authoritative synchronization', async () => {
+      const pending = { ...mockAttendance, id: 'offline:sess-test-1:student-1', isSynced: false }
+      await cacheAttendanceRecords([pending])
+
+      await removeCachedAttendanceAttempt('sess-test-1', 'student-1')
+
+      expect(await getCachedAttendanceRecords('student-1')).toEqual([])
     })
   })
 

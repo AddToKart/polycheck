@@ -52,13 +52,9 @@ export default function StudentSubjectDetailPage() {
       }
       const sess = await api.getSessions(id)
       setSessions(sess)
-      if (user) {
-        const perm = await api.checkSessionPermission(user.id, id)
-        setHasPermission(perm)
-      }
     }
     fn()
-  }, [id, user?.id])
+  }, [id])
 
   if (!user || !section) return null
   const studentRoles = roles.filter(r => r.sectionId === id)

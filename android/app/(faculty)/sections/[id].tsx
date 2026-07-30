@@ -408,7 +408,12 @@ export default function SectionDetailScreen() {
 
         {activeTab === 'sessions' ? (
           <>
-            <SectionHeading eyebrow="Class schedule" title="Section sessions" />
+            <SectionHeading
+              eyebrow="Class schedule"
+              title="Section sessions"
+              actionLabel={isTeacher ? 'Create Session' : undefined}
+              onAction={isTeacher ? () => router.push('/(faculty)/sessions/create') : undefined}
+            />
             <View className="gap-3">
               {sessions.map((session) => (
                 <CampusCard key={session.id} onPress={() => router.push({ pathname: '/(faculty)/sessions/[id]', params: { id: session.id } })} accessibilityLabel={`Open session on ${session.date}`} className="p-4">

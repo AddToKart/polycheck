@@ -2,7 +2,31 @@ import { Platform } from 'react-native'
 import { getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient } from '@polycheck/shared'
 import { API_BASE } from './api-config'
 import { getOrCreateTeacherSigningKey } from './signing-key'
-import { cacheSections, cacheSessions, drainOfflineQueue, enqueueOfflineOperation, getCachedSection, getCachedSections, getCachedSession, getCachedSessions, getServerClockOffset, initializeOfflineStore, setOfflineOwner, setServerClockOffset, type OfflineOperationKind, type OfflineSendResult } from './offline-store'
+import {
+  cacheAttendanceRecords,
+  cacheSections,
+  cacheSessions,
+  cacheSubjects,
+  drainOfflineQueue,
+  enqueueOfflineOperation,
+  getCachedAttendanceRecords,
+  getCachedSection,
+  getCachedSections,
+  getCachedSession,
+  getCachedSessions,
+  getCachedSubject,
+  getCachedSubjects,
+  getServerClockOffset,
+  initializeOfflineStore,
+  removeCachedAttendanceAttempt,
+  replaceCachedAttendanceForStudent,
+  replaceCachedSections,
+  replaceCachedSubjects,
+  setOfflineOwner,
+  setServerClockOffset,
+  type OfflineOperationKind,
+  type OfflineSendResult,
+} from './offline-store'
 
 const STORAGE_KEY = 'polycheck-user'
 const TOKEN_KEY = 'polycheck-token'
@@ -292,14 +316,25 @@ export const api = {
   // ── Subjects ──
   async getSubjects(): Promise<Subject[]> {
     try {
-      return await get('/subjects')
+      const subjects = await get<Subject[]>('/subjects')
+      await replaceCachedSubjects(subjects)
+      return subjects
     } catch (error) {
       if (!isNetworkError(error)) throw error
-      return []
+      return getCachedSubjects()
     }
   },
-  getSubject(id: string): Promise<Subject> {
-    return get(`/subjects/${id}`)
+  async getSubject(id: string): Promise<Subject> {
+    try {
+      const subject = await get<Subject>(`/subjects/${id}`)
+      await cacheSubjects([subject])
+      return subject
+    } catch (error) {
+      if (!isNetworkError(error)) throw error
+      const subject = await getCachedSubject(id)
+      if (!subject) throw new Error('Subject not found locally. Please sync while online first.')
+      return subject
+    }
   },
   createSubject(data: CreateSubjectInput): Promise<Subject> { return post('/subjects', data) },
 
@@ -307,7 +342,8 @@ export const api = {
   async getSections(subjectId?: string): Promise<Section[]> {
     try {
       const sections = await get<Section[]>(`/sections${subjectId ? `?subjectId=${subjectId}` : ''}`)
-      await cacheSections(sections)
+      if (subjectId) await cacheSections(sections)
+      else await replaceCachedSections(sections)
       return sections
     } catch (error) {
       if (!isNetworkError(error)) throw error
@@ -344,7 +380,9 @@ export const api = {
   },
   async getStudentSections(studentId: string): Promise<Section[]> {
     try {
-      return await get(`/sections?studentId=${studentId}`)
+      const sections = await get<Section[]>(`/sections?studentId=${studentId}`)
+      await replaceCachedSections(sections)
+      return sections
     } catch (error) {
       if (!isNetworkError(error)) throw error
       return await getCachedSections()
@@ -497,7 +535,9 @@ export const api = {
   async submitScan(sessionId: string, studentId: string, studentName: string, lat: number, lon: number, deviceId: string, qrToken: string, scannedAt?: string, evidence?: ScanEvidenceInput): Promise<AttendanceRecord | { error: string }> {
     const payload = { sessionId, lat, lon, deviceId, qrToken, scannedAt: scannedAt ?? new Date().toISOString(), ...evidence }
     try {
-      return await post('/attendance/scan', payload)
+      const result = await post<AttendanceRecord | { error: string }>('/attendance/scan', payload)
+      if (!('error' in result)) await cacheAttendanceRecords([result])
+      return result
     } catch (error) {
       if (!isNetworkError(error)) throw error
       if (!qrToken) return { error: 'QR token is required' }
@@ -520,7 +560,7 @@ export const api = {
         return { error: 'The QR attendance window has expired' }
       }
       await enqueueOfflineOperation('attendance_scan', payload)
-      return {
+      const record: AttendanceRecord = {
         id: `offline:${sessionId}:${studentId}`,
         sessionId,
         sectionId: tokenPayload.sectionId,
@@ -533,6 +573,8 @@ export const api = {
         tokenSnapshot: qrToken,
         isSynced: false,
       }
+      await cacheAttendanceRecords([record])
+      return record
     }
   },
   async checkAttendance(sessionId: string, _studentId: string, lat: number, lon: number, qrToken?: string, scannedAt?: string): Promise<SubmitAttendanceResult> {
@@ -607,10 +649,12 @@ export const api = {
   },
   async getMyAttendance(studentId: string): Promise<AttendanceRecord[]> {
     try {
-      return await get(`/attendance/student/${studentId}`)
+      const records = await get<AttendanceRecord[]>(`/attendance/student/${studentId}`)
+      await replaceCachedAttendanceForStudent(studentId, records)
+      return getCachedAttendanceRecords(studentId)
     } catch (error) {
       if (!isNetworkError(error)) throw error
-      return []
+      return getCachedAttendanceRecords(studentId)
     }
   },
   getMySubjects(studentId: string): Promise<Subject[]> {
@@ -666,12 +710,17 @@ export const api = {
     await initializeOfflineStore(user.id)
     await drainOfflineQueue(async (kind: OfflineOperationKind, payload) => {
       if (kind === 'attendance_scan') {
-        const response = await post<{ queued: false; results: Array<{ error?: string }> }>('/sync/attendance', {
+        const response = await post<{
+          queued: false
+          results: Array<AttendanceRecord | { error: string }>
+        }>('/sync/attendance', {
           records: [payload],
         })
         const result = response.results[0]
         if (!result) return { outcome: 'retryable', error: 'Attendance sync returned no result' }
-        if (result.error) return classifyAttendanceSyncError(result.error)
+        if ('error' in result) return classifyAttendanceSyncError(result.error)
+        await removeCachedAttendanceAttempt(String(payload.sessionId), user.id)
+        await cacheAttendanceRecords([{ ...result, isSynced: true }])
         return { outcome: 'synced' }
       }
       if (kind === 'scan_attempt') {
@@ -697,7 +746,12 @@ export const api = {
       const serverTime = new Date(health.timestamp).getTime()
       if (Number.isFinite(serverTime)) await setServerClockOffset(serverTime - (startedAt + completedAt) / 2)
       await this.syncOfflineQueue()
-      await Promise.all([this.getSections(), this.getSessions()])
+      await Promise.all([
+        this.getSubjects(),
+        this.getSections(),
+        this.getSessions(),
+        ...(user.role === 'student' ? [this.getMyAttendance(user.id)] : []),
+      ])
     } catch (error) {
       if (!isNetworkError(error)) throw error
     }

@@ -66,7 +66,6 @@ export default function CreateSectionScreen() {
     setSubmitting(true)
     try {
       const created = await api.createSection({ subjectId, section: section.trim(), room: room.trim(), schedule: scheduleEntries, semester })
-      await api.resetEnrollmentCode(created.id)
       router.back()
     } catch (error) {
       Alert.alert('Unable to create section', error instanceof Error ? error.message : 'Please try again.')

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { Alert, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
+import * as Clipboard from 'expo-clipboard'
 import QRCode from 'react-native-qrcode-svg'
 import type { AttendanceRecord, AttendanceStatus, ProofOfClass, Session, Student, User } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
+import { sharePngFile } from '../../../services/file-sharing'
 import { useTheme } from '../../../theme/ThemeContext'
 import MapView, { type StudentMapPin } from '../../../components/MapView'
 import { subscribeToSession } from '../../../services/realtime'
@@ -16,6 +18,7 @@ import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 const FILTERS: Array<AttendanceStatus | 'all'> = ['all', 'present', 'late', 'absent', 'pending', 'disputed']
 const ROSTER_PAGE_SIZE = 20
+type QrSvgHandle = { toDataURL: (callback: (base64: string) => void) => void }
 
 const CardTitle = ({ icon, title, detail }: { icon: keyof typeof MaterialIcons.glyphMap; title: string; detail?: string }) => {
   const { isDark } = useTheme()
@@ -42,6 +45,7 @@ export default function SessionDetailScreen() {
   const [realtimeConnected, setRealtimeConnected] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const qrCodeRef = useRef<QrSvgHandle | null>(null)
 
   const refreshData = useCallback(async () => {
     if (!id) return
@@ -159,6 +163,34 @@ export default function SessionDetailScreen() {
     } catch (error) { Alert.alert('Unable to update attendance', error instanceof Error ? error.message : 'Please try again.') }
   }
 
+  const copyQrToken = async () => {
+    if (!session.qrToken) return
+    await Clipboard.setStringAsync(session.qrToken)
+    Alert.alert('QR token copied', 'The signed session token is ready to paste.')
+  }
+
+  const shareQrToken = async () => {
+    if (!session.qrToken) return
+    await Share.share({
+      title: `${session.subjectName} attendance QR`,
+      message: session.qrToken,
+    })
+  }
+
+  const shareQrImage = async () => {
+    const qrCode = qrCodeRef.current
+    if (!qrCode) {
+      Alert.alert('QR image unavailable', 'Wait for the QR code to finish rendering and try again.')
+      return
+    }
+    try {
+      const base64 = await new Promise<string>((resolve) => qrCode.toDataURL(resolve))
+      await sharePngFile(base64, `polycheck-qr-${session.id}.png`)
+    } catch (error) {
+      Alert.alert('Unable to share QR image', error instanceof Error ? error.message : 'Please try again.')
+    }
+  }
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
       <CampusHeader
@@ -177,9 +209,21 @@ export default function SessionDetailScreen() {
       {isTeacher ? <CampusCard className="mb-5 items-center overflow-hidden bg-maroon dark:bg-[#2A0E11]">
         <View className="mb-4 w-full flex-row items-center"><View className="h-9 w-9 items-center justify-center rounded-xl bg-white/10"><MaterialIcons name="qr-code-2" size={19} color="#FFDF00" /></View><View className="ml-3 flex-1"><Text className="font-sans-bold text-base text-white">Session QR</Text><Text className="mt-1 font-sans text-xs text-white/60">Students scan this code inside the geofence.</Text></View></View>
         {session.qrToken ? <>
-          <Pressable accessibilityRole="button" accessibilityLabel="Open QR code full screen" onPress={() => setShowQrModal(true)} className="rounded-[26px] bg-white p-3"><QRCode value={session.qrToken} size={160} quietZone={6} backgroundColor="#FFFFFF" color="#0A0A0A" /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open QR code full screen" onPress={() => setShowQrModal(true)} className="rounded-[26px] bg-white p-3"><QRCode value={session.qrToken} size={160} quietZone={6} backgroundColor="#FFFFFF" color="#0A0A0A" getRef={(ref: QrSvgHandle | null) => { qrCodeRef.current = ref }} /></Pressable>
           <Text accessibilityLiveRegion="polite" className="mt-4 font-sans-bold text-sm text-golden">{countdown === 'Grace ended' ? 'Grace period ended' : countdown.includes('Grace') ? countdown : countdown ? `Expires in ${countdown}` : 'Active'}</Text>
-          <Pressable accessibilityRole="button" onPress={() => setShowQrModal(true)} className="mt-3 min-h-11 flex-row items-center gap-2 rounded-2xl bg-white/10 px-4"><MaterialIcons name="fullscreen" size={18} color="#FFFFFF" /><Text className="font-sans-bold text-xs text-white">Full screen</Text></Pressable>
+          <View className="mt-3 flex-row flex-wrap justify-center gap-2">
+            {[
+              { label: 'Full screen', icon: 'fullscreen' as const, onPress: () => setShowQrModal(true) },
+              { label: 'Copy token', icon: 'content-copy' as const, onPress: () => { void copyQrToken() } },
+              { label: 'Share token', icon: 'share' as const, onPress: () => { void shareQrToken() } },
+              { label: 'Share image', icon: 'image' as const, onPress: () => { void shareQrImage() } },
+            ].map((action) => (
+              <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress} className="min-h-11 flex-row items-center gap-2 rounded-2xl bg-white/10 px-4">
+                <MaterialIcons name={action.icon} size={18} color="#FFFFFF" />
+                <Text className="font-sans-bold text-xs text-white">{action.label}</Text>
+              </Pressable>
+            ))}
+          </View>
         </> : session.isActive ? <Text className="py-10 font-sans text-sm text-white/60">Generating QR code…</Text> : <View className="w-full items-center py-5"><MaterialIcons name="qr-code-scanner" size={44} color="rgba(255,255,255,.25)" /><Text className="mb-5 mt-3 text-center font-sans text-sm text-white/60">Activate the session and issue a short-lived code.</Text><CampusButton label="Generate QR code" icon="play-arrow" variant="gold" onPress={() => setShowValidityPrompt(true)} /></View>}
       </CampusCard> : null}
 
