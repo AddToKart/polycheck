@@ -56,6 +56,10 @@ services:
       UPLOAD_DIR: /app/backend/uploads
       MAX_PROOF_BYTES: ${MAX_PROOF_BYTES:-5000000}
       STORAGE_DRIVER: local
+      LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-200}
+      LOGIN_IP_RATE_LIMIT: ${LOGIN_IP_RATE_LIMIT:-1000}
+      API_RATE_LIMIT: ${API_RATE_LIMIT:-2000}
+      API_RATE_WINDOW_SECONDS: ${API_RATE_WINDOW_SECONDS:-60}
     volumes:
       - local-proof-uploads:/app/backend/uploads
     ports:

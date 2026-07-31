@@ -21,6 +21,8 @@
     "load:attendance:full": "k6 run -e K6_PROFILE=full performance/attendance-load.js"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "playwright": "^1.62.1",
     "turbo": "^2.10.7",
     "typescript": "~6.0.3"
   },

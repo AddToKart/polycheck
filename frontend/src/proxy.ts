@@ -18,21 +18,24 @@ const contentSecurityPolicy = (nonce: string) => {
       ? []
       : ["'unsafe-eval'", 'http://localhost:*', 'ws://localhost:*', 'http://127.0.0.1:*', 'ws://127.0.0.1:*']
 
+  // Map style JSON + tiles load from the bare apex domains, which a `*.` wildcard
+  // does NOT match. Both apex and wildcard forms are required.
+  const mapSources = [
+    'https://basemaps.cartocdn.com',
+    'https://*.basemaps.cartocdn.com',
+    'https://tile.openstreetmap.org',
+    'https://*.tile.openstreetmap.org',
+  ]
+
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${developmentSources[0] ?? ''}`.trim(),
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com https://*.basemaps.cartocdn.com",
-    "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com",
-    [
-      "connect-src 'self'",
-      ...apiSources(),
-      'https://*.tile.openstreetmap.org',
-      'https://*.basemaps.cartocdn.com',
-      ...developmentSources.slice(1),
-    ].join(' '),
+    "font-src 'self' https://fonts.gstatic.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com",
+    `img-src 'self' data: blob: ${mapSources.join(' ')}`,
+    ["connect-src 'self'", ...apiSources(), ...mapSources, ...developmentSources.slice(1)].join(' '),
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

@@ -15,11 +15,18 @@ import { BetterAuthService } from './better-auth.service'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { DUMMY_PASSWORD_HASH } from './password-policy'
 
-const LOGIN_RATE_LIMIT = 10
-const LOGIN_IP_RATE_LIMIT = 30
-const LOGIN_RATE_WINDOW = 60
-const KEY_PROVISION_RATE_LIMIT = 3
+// Login rate limits are env-tunable so strict production values can be relaxed for
+// local development and E2E automation. Defaults: 10 attempts/identity/min, 30/IP/min.
+const LOGIN_RATE_LIMIT = positiveInt(process.env.LOGIN_RATE_LIMIT, 10)
+const LOGIN_IP_RATE_LIMIT = positiveInt(process.env.LOGIN_IP_RATE_LIMIT, 30)
+const LOGIN_RATE_WINDOW = positiveInt(process.env.LOGIN_RATE_WINDOW_SECONDS, 60)
+const KEY_PROVISION_RATE_LIMIT = positiveInt(process.env.KEY_PROVISION_RATE_LIMIT, 3)
 const KEY_PROVISION_RATE_WINDOW = 3600
+
+function positiveInt(value: string | undefined, fallback: number) {
+  const parsed = value === undefined ? NaN : Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
+}
 
 export interface AuthResult {
   token?: string

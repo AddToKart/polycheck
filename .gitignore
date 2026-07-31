@@ -53,3 +53,8 @@ metro.config.js
 
 # Agents
 .agents
+
+# Playwright (E2E)
+test-results/
+e2e-report/
+e2e-shots/
