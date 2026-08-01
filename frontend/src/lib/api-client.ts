@@ -1,5 +1,5 @@
 import { getRecentCampusDateRange, signQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient } from '@polycheck/shared'
-import { getOrCreateTeacherSigningKey } from './signing-key'
+import { getOrCreateTeacherSigningKey, isSigningKeyProvisioned, markSigningKeyProvisioned } from './signing-key'
 import { API_BASE } from './api-config'
 
 const STORAGE_KEY = 'polycheck-user'
@@ -233,7 +233,12 @@ export const api = {
     ])
     const effectiveGrace = gracePeriodMinutes ?? Math.min(session.gracePeriodMinutes, 60)
     if (effectiveGrace < 0 || effectiveGrace > 60) throw new Error('QR grace must be 0-60 minutes')
-    await post('/auth/provision-key', { publicKey: key.publicKey })
+    // The public key persists server-side and provisioning is rate limited, so
+    // upload it only once per browser/account (see isSigningKeyProvisioned).
+    if (!(await isSigningKeyProvisioned(user.id))) {
+      await post('/auth/provision-key', { publicKey: key.publicKey })
+      await markSigningKeyProvisioned(user.id)
+    }
     const token = signQRToken({
       version: 1,
       sessionId: session.id,

@@ -75,6 +75,9 @@ async function setTokenInStore(token: string | null) {
 
 let currentUser: User | null = null
 let tokenCache: string | null | undefined
+// Tracks teachers whose public key was already uploaded in this app session.
+// Provisioning is rate limited server-side, so it must not repeat per QR generation.
+const provisionedTeacherKeys = new Set<string>()
 const authListeners = new Set<(user: User | null) => void>()
 
 function recentDateRange(days = 30) {
@@ -257,6 +260,7 @@ export const api = {
     if (currentUser.role === 'teacher') {
       const key = await getOrCreateTeacherSigningKey(currentUser.id)
       await post('/auth/provision-key', { publicKey: key.publicKey })
+      provisionedTeacherKeys.add(currentUser.id)
     }
     return currentUser
   },
@@ -461,7 +465,12 @@ export const api = {
       gracePeriodMinutes: effectiveGrace,
     }, key.secretKey)
     try {
-      await post('/auth/provision-key', { publicKey: key.publicKey })
+      // Public key persists server-side and provisioning is rate limited, so only
+      // upload when it was not already provisioned in this session.
+      if (!provisionedTeacherKeys.has(user.id)) {
+        await post('/auth/provision-key', { publicKey: key.publicKey })
+        provisionedTeacherKeys.add(user.id)
+      }
       const activated = await post<Session>(`/sessions/${sessionId}/activate`, { validityMinutes, gracePeriodMinutes: effectiveGrace, token })
       await cacheSessions([activated])
       return activated

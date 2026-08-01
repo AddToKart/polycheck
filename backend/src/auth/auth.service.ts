@@ -20,8 +20,10 @@ import { DUMMY_PASSWORD_HASH } from './password-policy'
 const LOGIN_RATE_LIMIT = positiveInt(process.env.LOGIN_RATE_LIMIT, 10)
 const LOGIN_IP_RATE_LIMIT = positiveInt(process.env.LOGIN_IP_RATE_LIMIT, 30)
 const LOGIN_RATE_WINDOW = positiveInt(process.env.LOGIN_RATE_WINDOW_SECONDS, 60)
+// Key provisioning is rate limited per teacher (default 3/hour) to deter key-rotation
+// abuse. Also env-tunable for local development and E2E automation.
 const KEY_PROVISION_RATE_LIMIT = positiveInt(process.env.KEY_PROVISION_RATE_LIMIT, 3)
-const KEY_PROVISION_RATE_WINDOW = 3600
+const KEY_PROVISION_RATE_WINDOW = positiveInt(process.env.KEY_PROVISION_RATE_WINDOW_SECONDS, 3600)
 
 function positiveInt(value: string | undefined, fallback: number) {
   const parsed = value === undefined ? NaN : Number(value)

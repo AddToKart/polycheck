@@ -37,7 +37,9 @@ function base64ToBytes(value: string): Uint8Array {
 }
 
 function utf8ToBytes(value: string): Uint8Array {
-  return new TextEncoder().encode(value)
+  // Uint8Array.from normalizes array-likes (e.g. some jsdom TextEncoder
+  // implementations) into a genuine typed array — tweetnacl rejects others.
+  return Uint8Array.from(new TextEncoder().encode(value))
 }
 
 function bytesToUtf8(value: Uint8Array): string {

@@ -199,7 +199,8 @@ function StudentDashboardContent() {
       setDisputeFeedback({ type: 'error', message: 'Failed to submit dispute.' })
     }
     setTimeout(() => setDisputeFeedback(null), 3000)
-    setDisputeRecord(null)
+    // Keep the dialog open so the success/error message above stays visible
+    // until the student closes it (mirrors the enroll flow).
     setDisputeReason('')
     setDisputeDescription('')
   }

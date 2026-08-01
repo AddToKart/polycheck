@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { loginFaculty, trackErrors, assertNoErrors } from './helpers'
+import { loginFaculty, trackErrors, assertNoErrors, createDisposableSession } from './helpers'
 
 test.describe('Faculty (Teacher) Flows', () => {
   test.beforeEach(async ({ page }) => {
@@ -112,6 +112,94 @@ test.describe('Faculty (Teacher) Flows', () => {
     await expect(page.getByText('Global Search')).toBeVisible()
     await page.getByPlaceholder(/Search students, subjects, sections/).fill('Reyes')
     await expect(page.getByText(/Alexandra Marie Reyes/i).first()).toBeVisible()
+    assertNoErrors(errors)
+  })
+
+  test('create section flow adds a section to a subject', async ({ page }) => {
+    const errors = trackErrors(page)
+    const sectionName = `E2E-${Date.now() % 100000}`
+    await page.goto('/faculty/sections/create?subjectId=subj-001')
+    await expect(page.getByRole('heading', { name: 'Create Section' })).toBeVisible()
+    await page.getByLabel('Section').fill(sectionName)
+    await page.getByLabel('Room').fill('E2E Room')
+    // Add one schedule entry
+    await page.getByRole('button', { name: /Add/i }).click()
+    await expect(page.getByText('09:00 - 10:30')).toBeVisible()
+    await page.getByRole('button', { name: 'Create Section' }).click()
+    // Lands back on the subject detail page with the new section visible
+    await expect(page).toHaveURL(/\/faculty\/subjects\/subj-001$/, { timeout: 20_000 })
+    await expect(page.getByText(sectionName).first()).toBeVisible()
+    assertNoErrors(errors)
+  })
+
+  test('session QR activation shows scannable QR and ends the session', async ({ page }) => {
+    const errors = trackErrors(page)
+    const sessionId = await createDisposableSession(page)
+    await page.goto(`/faculty/sessions/${sessionId}`)
+    await page.getByRole('button', { name: /Generate QR Code/i }).click()
+    // QR Settings dialog — use a short validity so the flow is fast and capped at 15
+    await expect(page.getByRole('dialog')).toContainText('QR Settings')
+    await page.getByLabel('QR Validity').fill('5')
+    await page.getByLabel('Grace Period').fill('10')
+    await page.getByRole('dialog').getByRole('button', { name: 'Generate', exact: true }).click()
+    // QR image renders and countdown starts
+    await expect(page.getByAltText('Scannable session QR code').first()).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText(/Expires in: \d{2}:\d{2}/)).toBeVisible()
+    await expect(page.getByRole('button', { name: /End Session/i })).toBeVisible()
+    // End session — accept the native confirm dialog
+    page.once('dialog', (dialog) => dialog.accept())
+    await page.getByRole('button', { name: /End Session/i }).click()
+    await expect(page.getByText('Inactive').first()).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByRole('button', { name: /End Session/i })).toHaveCount(0)
+    assertNoErrors(errors)
+  })
+
+  test('teacher can manually cycle a student attendance status during a session', async ({ page }) => {
+    const errors = trackErrors(page)
+    const sessionId = await createDisposableSession(page, { daysFromNow: 11 })
+    await page.goto(`/faculty/sessions/${sessionId}`)
+    await page.getByRole('button', { name: /Generate QR Code/i }).click()
+    await page.getByLabel('QR Validity').fill('5')
+    await page.getByLabel('Grace Period').fill('10')
+    await page.getByRole('dialog').getByRole('button', { name: 'Generate', exact: true }).click()
+    await expect(page.getByAltText('Scannable session QR code').first()).toBeVisible({ timeout: 20_000 })
+    // Fresh session → all students pending; tap first roster row: pending → present → late
+    const firstStudentRow = page.locator('button.w-full.border-b').first()
+    await firstStudentRow.click()
+    await expect(firstStudentRow.getByText('Present')).toBeVisible({ timeout: 20_000 })
+    await firstStudentRow.click()
+    await expect(firstStudentRow.getByText('Late')).toBeVisible({ timeout: 20_000 })
+    assertNoErrors(errors)
+  })
+
+  test('attendance page exports a downloadable CSV', async ({ page }) => {
+    const errors = trackErrors(page)
+    await page.goto('/faculty/attendance')
+    const downloadPromise = page.waitForEvent('download')
+    await page.getByRole('button', { name: /Export CSV/i }).click()
+    const download = await downloadPromise
+    expect(download.suggestedFilename()).toMatch(/^attendance-.*\.csv$/)
+    const file = await download.path()
+    const content = require('fs').readFileSync(file, 'utf8')
+    expect(content.trim().length).toBeGreaterThan(0)
+    assertNoErrors(errors)
+  })
+
+  test('bulk session toggle calculates recurring session count', async ({ page }) => {
+    const errors = trackErrors(page)
+    await page.goto('/faculty/sessions/create')
+    await page.getByLabel('Subject').selectOption({ label: 'Software Engineering (CCIS 3104)' })
+    await page.getByLabel('Section').selectOption('sec-001')
+    await page.getByLabel('Create recurring sessions for the semester').check()
+    // Days prefill from the section schedule → a non-zero count is shown
+    await expect(page.getByText(/[1-9]\d* sessions? will be created/)).toBeVisible()
+    // Deselecting all weekdays drops the count to zero
+    const dayCheckboxes = page.locator('label', { hasText: /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/ }).locator('input[type=checkbox]')
+    const count = await dayCheckboxes.count()
+    for (let i = 0; i < count; i++) {
+      await dayCheckboxes.nth(i).uncheck({ force: true })
+    }
+    await expect(page.getByText(/0 sessions will be created/)).toBeVisible()
     assertNoErrors(errors)
   })
 })

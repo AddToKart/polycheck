@@ -13,7 +13,24 @@ const accountKeys = (teacherId: string) => {
     encrypted: `teacher-signing-encrypted-secret:${account}`,
     public: `teacher-signing-public:${account}`,
     wrapper: `teacher-signing-key-wrapper:${account}`,
+    provisioned: `teacher-signing-provisioned:${account}`,
   }
+}
+
+/**
+ * True when this browser has already uploaded the account's public key to the
+ * server. Provisioning is rate limited server-side, so the client must not
+ * re-upload the same key on every QR generation.
+ */
+export async function isSigningKeyProvisioned(teacherId: string): Promise<boolean> {
+  const keys = accountKeys(teacherId)
+  return Boolean(await idbGet<string>(keys.provisioned))
+}
+
+/** Persist the provisioned marker after a successful public-key upload. */
+export async function markSigningKeyProvisioned(teacherId: string): Promise<void> {
+  const keys = accountKeys(teacherId)
+  await idbPut(keys.provisioned, String(Date.now()))
 }
 
 export async function getOrCreateTeacherSigningKey(teacherId: string) {
@@ -31,6 +48,9 @@ export async function getOrCreateTeacherSigningKey(teacherId: string) {
   const encrypted = await encryptSecret(pair.secretKey, keys.wrapper)
   await idbPut(keys.encrypted, encrypted)
   await idbPut(keys.public, pair.publicKey)
+
+  // A newly generated pair has not been uploaded yet — clear any stale marker
+  await idbDel(keys.provisioned)
 
   // Global keys from earlier releases cannot be attributed safely on a shared
   // browser. Rotate them instead of assigning them to the current account.
@@ -88,6 +108,13 @@ async function idbPut<T>(key: string, value: T): Promise<void> {
   const database = await openDatabase()
   const transaction = database.transaction(STORE, 'readwrite')
   transaction.objectStore(STORE).put(value, key)
+  await transactionDone(transaction)
+}
+
+async function idbDel(key: string): Promise<void> {
+  const database = await openDatabase()
+  const transaction = database.transaction(STORE, 'readwrite')
+  transaction.objectStore(STORE).delete(key)
   await transactionDone(transaction)
 }
 

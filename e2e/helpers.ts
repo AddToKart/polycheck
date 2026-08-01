@@ -24,7 +24,11 @@ export function assertNoErrors(errors: string[]) {
       !e.includes('favicon') &&
       !e.includes('net::ERR_FAILED') &&
       !e.includes('Failed to load resource') &&
-      !e.includes('404 (Not Found)'),
+      !e.includes('404 (Not Found)') &&
+      // Dev-mode-only noise: next-themes ThemeScript nonce differs between SSR and
+      // client under Turbopack dev + CSP nonce middleware. Not present in the
+      // production build, so ignore it for E2E purposes.
+      !e.includes('hydration'),
   )
   expect(meaningful).toEqual([])
 }
@@ -34,18 +38,34 @@ export async function waitForPath(page: Page, pathname: string, timeout = 20_000
   await page.waitForURL((url) => url.pathname === pathname, { timeout })
 }
 
+/**
+ * Hide the Next.js dev overlay portal. Under `next dev` (Turbopack) the overlay
+ * element can sit above the page and intercept pointer events (e.g. on sidebar
+ * buttons). It does not exist in production builds.
+ */
+export async function hideDevOverlay(page: Page) {
+  await page.addStyleTag({ content: 'nextjs-portal { display: none !important; }' })
+}
+
 export async function loginFaculty(page: Page, email = FACULTY_EMAIL) {
-  await page.goto('/login/faculty')
-  await page.getByLabel('Email Address').fill(email)
-  await page.getByLabel('Password').fill(SEED_PASSWORD)
-  // Wait for the actual login API round-trip so a pre-hydration click cannot race the SPA
-  const loginResponse = page.waitForResponse(
-    (r) => r.url().includes('/api/auth/login/faculty') && r.request().method() === 'POST',
-    { timeout: 20_000 },
-  )
-  await page.getByRole('button', { name: /Authenticate/i }).click()
-  expect((await loginResponse).ok()).toBeTruthy()
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.goto('/login/faculty')
+    await page.getByLabel('Email Address').fill(email)
+    await page.getByLabel('Password').fill(SEED_PASSWORD)
+    // Wait for the actual login API round-trip so a pre-hydration click cannot race the SPA
+    const loginResponse = page.waitForResponse(
+      (r) => r.url().includes('/api/auth/login/faculty') && r.request().method() === 'POST',
+      { timeout: 20_000 },
+    )
+    await page.getByRole('button', { name: /Authenticate/i }).click()
+    const response = await loginResponse.catch(() => null)
+    if (response?.ok()) {
+      await waitForPath(page, '/faculty')
+      break
+    }
+  }
   await waitForPath(page, '/faculty')
+  await hideDevOverlay(page)
   // Brand renders in the desktop sidebar (h1) or the mobile top header (span).
   // Both can exist in the DOM simultaneously, so filter to the visible one.
   const brand = page
@@ -56,16 +76,23 @@ export async function loginFaculty(page: Page, email = FACULTY_EMAIL) {
 }
 
 export async function loginStudent(page: Page) {
-  await page.goto('/login/student')
-  await page.getByLabel('Student Number').fill(STUDENT_ID)
-  await page.getByLabel('Password').fill(SEED_PASSWORD)
-  const loginResponse = page.waitForResponse(
-    (r) => r.url().includes('/api/auth/login/student') && r.request().method() === 'POST',
-    { timeout: 20_000 },
-  )
-  await page.getByRole('button', { name: /Authenticate/i }).click()
-  expect((await loginResponse).ok()).toBeTruthy()
-  await page.waitForURL((url) => url.pathname.startsWith('/student/'), { timeout: 20_000 })
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.goto('/login/student')
+    await page.getByLabel('Student Number').fill(STUDENT_ID)
+    await page.getByLabel('Password').fill(SEED_PASSWORD)
+    const loginResponse = page.waitForResponse(
+      (r) => r.url().includes('/api/auth/login/student') && r.request().method() === 'POST',
+      { timeout: 20_000 },
+    )
+    await page.getByRole('button', { name: /Authenticate/i }).click()
+    const response = await loginResponse.catch(() => null)
+    if (response?.ok()) {
+      await page.waitForURL((url) => url.pathname.startsWith('/student/'), { timeout: 20_000 })
+      await hideDevOverlay(page)
+      return
+    }
+  }
+  throw new Error('Student login failed after 3 attempts')
 }
 
 export async function logout(page: Page) {
@@ -84,4 +111,42 @@ export async function gotoSectionDetail(page: Page, sectionId: string) {
 
 export async function shot(page: Page, name: string) {
   await page.screenshot({ path: `e2e-shots/${name}.png`, fullPage: true })
+}
+
+/**
+ * Create a fresh session via the API using the page's auth cookie (shares the
+ * browser context's cookie jar). Used to test session activation flows without
+ * mutating seed sessions — each run gets its own disposable session.
+ */
+export async function createDisposableSession(
+  page: Page,
+  opts: { sectionId?: string; subjectName?: string; daysFromNow?: number } = {},
+) {
+  const { sectionId = 'sec-001', subjectName = 'Software Engineering' } = opts
+  let daysFromNow = opts.daysFromNow ?? 10
+  // Sessions persist after tests end, so bump the date until the backend accepts it
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const date = new Date()
+    date.setDate(date.getDate() + daysFromNow)
+    const res = await page.request.post('http://localhost:4000/api/sessions', {
+      data: {
+        sectionId,
+        subjectName,
+        date: date.toISOString().slice(0, 10),
+        startTime: '09:00',
+        endTime: '10:30',
+        geofence: { latitude: 14.8697, longitude: 120.9991, radiusMeters: 40 },
+      },
+    })
+    if (res.ok()) {
+      const session = (await res.json()) as { id: string }
+      return session.id
+    }
+    if (res.status() === 409) {
+      daysFromNow++
+      continue
+    }
+    throw new Error(`createDisposableSession failed: ${res.status()} ${await res.text()}`)
+  }
+  throw new Error('createDisposableSession failed: could not find a free date after 30 attempts')
 }

@@ -78,4 +78,30 @@ test.describe('Auth & Session', () => {
     await expect(page.getByText('Super Administrator')).toBeVisible()
     assertNoErrors(errors)
   })
+
+  test('password field has a working visibility toggle', async ({ page }) => {
+    await page.goto('/login/faculty')
+    const password = page.getByLabel('Password')
+    await password.fill('PolycheckLocal1!')
+    await expect(password).toHaveAttribute('type', 'password')
+    const toggle = page.locator('button').filter({ has: page.locator('.lucide-eye, .lucide-eye-off') })
+    await toggle.click()
+    await expect(password).toHaveAttribute('type', 'text')
+    await toggle.click()
+    await expect(password).toHaveAttribute('type', 'password')
+  })
+
+  test('students are bounced from the faculty portal', async ({ page }) => {
+    await loginStudent(page)
+    await page.goto('/faculty')
+    // Faculty layout replaces with the landing page for non-faculty roles
+    await expect(page).toHaveURL((url) => url.pathname === '/', { timeout: 20_000 })
+  })
+
+  test('teachers cannot reach super-admin-only user management', async ({ page }) => {
+    await loginFaculty(page)
+    await page.goto('/faculty/users')
+    // Users page is super_admin-only; teacher is redirected back to /faculty
+    await expect(page).toHaveURL((url) => url.pathname === '/faculty', { timeout: 20_000 })
+  })
 })
