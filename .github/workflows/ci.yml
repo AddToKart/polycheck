@@ -61,12 +61,114 @@ jobs:
       - run: pnpm --dir frontend lint
       - run: pnpm --dir frontend test
       - run: pnpm --filter @polycheck/shared build
+      - run: pnpm --dir shared test
       - run: pnpm --filter @polycheck/backend build
       - run: pnpm --filter @polycheck/backend test:ci
       - run: pnpm --filter @polycheck/backend test:e2e
       - run: pnpm --dir frontend build
       - run: pnpm --dir android typecheck
       - run: pnpm --dir android test -- --runInBand
+
+  web-e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: polycheck_test
+          POSTGRES_USER: polycheck
+          POSTGRES_PASSWORD: polycheck-test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U polycheck -d polycheck_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://polycheck:polycheck-test-password@localhost:5432/polycheck_test?schema=public
+      REDIS_URL: redis://localhost:6379/0
+      BETTER_AUTH_SECRET: ci-only-better-auth-secret-at-least-32-characters
+      BETTER_AUTH_URL: http://localhost:4000
+      CORS_ORIGINS: http://localhost:3000
+      FRONTEND_URL: http://localhost:3000
+      TRUST_PROXY: "false"
+      STORAGE_DRIVER: local
+      UPLOAD_DIR: /tmp/polycheck-uploads
+      SEED_PASSWORD: PolycheckLocal1!
+      PORT: "4000"
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+      # The Playwright suite performs ~50 serialized logins; relax the default
+      # identity/IP limits (10/30 per minute) to the docker-local values.
+      LOGIN_RATE_LIMIT: "200"
+      LOGIN_IP_RATE_LIMIT: "1000"
+      API_RATE_LIMIT: "2000"
+      API_RATE_WINDOW_SECONDS: "60"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @polycheck/backend prisma:generate
+      - run: pnpm --filter @polycheck/backend prisma:migrate:deploy
+      - run: pnpm --filter @polycheck/backend prisma:seed
+      - run: pnpm --filter @polycheck/backend build
+      - name: Start backend
+        run: |
+          node backend/dist/main.js > backend.log 2>&1 &
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:4000/api/health/ready > /dev/null 2>&1; then
+              echo "Backend ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Backend failed to become ready"
+          cat backend.log
+          exit 1
+      - name: Build and start frontend
+        run: |
+          pnpm --dir frontend build
+          pnpm --dir frontend start > frontend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/login > /dev/null 2>&1; then
+              echo "Frontend ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Frontend failed to become ready"
+          cat frontend.log
+          exit 1
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run Playwright e2e suite
+        run: pnpm exec playwright test
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e-report/
+            e2e-shots/
+            test-results/
+          retention-days: 7
 
   containers:
     runs-on: ubuntu-latest

@@ -6,6 +6,16 @@ vi.hoisted(() => {
   process.env.NEXT_PUBLIC_ALLOW_QR_FALLBACKS = 'true'
 })
 
+// Shared state for the @zxing/browser mock — lets tests fire the video-decoder
+// result callback (simulating a QR detected in the live camera feed) and
+// control what decodeFromImageUrl resolves to for the upload path.
+const zxingMock = vi.hoisted(() => ({
+  state: {
+    decodeCb: null as ((result: { getText: () => string }) => void) | null,
+    imageToken: '',
+  },
+}))
+
 // ── Module mocks (vi.mock is hoisted) ──────────────────────────────────────
 vi.mock('@/lib/api-client', () => ({
   api: { submitScan: vi.fn() },
@@ -17,8 +27,24 @@ vi.mock('@polycheck/shared/utils', () => ({
 
 vi.mock('@zxing/browser', () => ({
   BrowserQRCodeReader: class BrowserQRCodeReader {
-    decodeFromVideoElement = vi.fn().mockResolvedValue({ stop: vi.fn() })
-    decodeFromImageUrl = vi.fn()
+    decodeFromVideoElement: (
+      video: unknown,
+      cb: (result: { getText: () => string }) => void,
+    ) => Promise<{ stop: () => void }>
+    decodeFromImageUrl: (url: string) => Promise<{ getText: () => string }>
+    constructor() {
+      // Capture the result callback instead of resolving it: the real decoder
+      // is async, so tests can fire it later with a fake QR result.
+      this.decodeFromVideoElement = vi.fn().mockImplementation(
+        (_video: unknown, cb: (result: { getText: () => string }) => void) => {
+          zxingMock.state.decodeCb = cb
+          return Promise.resolve({ stop: vi.fn() })
+        },
+      )
+      this.decodeFromImageUrl = vi.fn().mockImplementation(() =>
+        Promise.resolve({ getText: () => zxingMock.state.imageToken }),
+      )
+    }
   },
 }))
 
@@ -132,6 +158,8 @@ beforeEach(() => {
     validityMinutes: 10,
     gracePeriodMinutes: 5,
   })
+  zxingMock.state.decodeCb = null
+  zxingMock.state.imageToken = ''
 })
 
 describe('ScanQrModal', () => {
@@ -406,5 +434,134 @@ describe('ScanQrModal', () => {
     })
     // Disabled again
     expect(submitBtn).toBeDisabled()
+  })
+
+  // ── Camera decode path (real zxing flow) ──────────────────────────────────
+
+  it('submits a scan with inputChannel "camera" when the live camera decodes a QR', async () => {
+    await act(async () => {
+      render(<ScanQrModal user={mockUser} onClose={vi.fn()} />)
+    })
+
+    // Wait for the zxing reader to attach to the video element and capture
+    // its result callback.
+    await waitFor(() => {
+      expect(zxingMock.state.decodeCb).not.toBeNull()
+    })
+
+    const token = 'camera-token-456'
+    await act(async () => {
+      zxingMock.state.decodeCb!({ getText: () => token })
+    })
+
+    await waitFor(() => {
+      expect(api.submitScan).toHaveBeenCalledWith(
+        'sess-1', 'stu-1', 'Test Student', 14.5863, 120.9842,
+        'web-stu-1', token, expect.any(String),
+        expect.objectContaining({
+          clientAttemptId: expect.any(String),
+          accuracyMeters: 10,
+          inputChannel: 'camera',
+        }),
+      )
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Verified — Present')).toBeTruthy()
+    })
+  })
+
+  it('rejects a camera QR that belongs to a different session', async () => {
+    vi.mocked(decodeTokenPayload).mockReturnValue({
+      version: 1,
+      sessionId: 'other-session',
+      sectionId: 'sec-1',
+      issuedAt: Date.now() - 5000,
+      validityMinutes: 10,
+      gracePeriodMinutes: 5,
+      teacherId: 'teacher-1',
+      teacherName: 'Teacher One',
+    })
+    await act(async () => {
+      render(<ScanQrModal user={mockUser} onClose={vi.fn()} sessionId="sess-1" />)
+    })
+    await waitFor(() => {
+      expect(zxingMock.state.decodeCb).not.toBeNull()
+    })
+    await act(async () => {
+      zxingMock.state.decodeCb!({ getText: () => 'wrong-session-token' })
+    })
+    await waitFor(() => {
+      expect(screen.getByText(/different session/i)).toBeTruthy()
+    })
+    expect(api.submitScan).not.toHaveBeenCalled()
+  })
+
+  // ── Camera denied fallback ────────────────────────────────────────────────
+
+  it('falls back to the upload tab when camera permission is denied', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        getUserMedia: vi.fn().mockRejectedValue(
+          Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' }),
+        ),
+      },
+      configurable: true,
+    })
+    await act(async () => {
+      render(<ScanQrModal user={mockUser} onClose={vi.fn()} />)
+    })
+
+    // The upload tab becomes the active input mode.
+    await waitFor(() => {
+      expect(screen.getByText('Upload QR image')).toBeTruthy()
+    })
+    const decodeBtn = screen.getByRole('button', { name: /read qr & check in/i })
+    expect(decodeBtn).toBeTruthy()
+    expect(decodeBtn).toBeDisabled()
+    // The camera viewfinder is no longer shown.
+    expect(screen.queryByText(/point camera at the qr code/i)).toBeNull()
+  })
+
+  // ── Image upload decode path ──────────────────────────────────────────────
+
+  it('submits a scan with inputChannel "image" from an uploaded QR image', async () => {
+    zxingMock.state.imageToken = 'upload-token-789'
+    await act(async () => {
+      render(<ScanQrModal user={mockUser} onClose={vi.fn()} />)
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Upload QR'))
+    })
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    expect(fileInput).not.toBeNull()
+    const file = new File(['qr-image-bytes'], 'qr.png', { type: 'image/png' })
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [file] } })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByAltText('Uploaded QR')).toBeTruthy()
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /read qr & check in/i }))
+    })
+
+    await waitFor(() => {
+      expect(api.submitScan).toHaveBeenCalledWith(
+        'sess-1', 'stu-1', 'Test Student', 14.5863, 120.9842,
+        'web-stu-1', 'upload-token-789', expect.any(String),
+        expect.objectContaining({
+          clientAttemptId: expect.any(String),
+          accuracyMeters: 10,
+          inputChannel: 'image',
+        }),
+      )
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Verified — Present')).toBeTruthy()
+    })
   })
 })

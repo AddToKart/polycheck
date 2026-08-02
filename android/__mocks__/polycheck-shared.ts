@@ -17,8 +17,20 @@ export function signQRToken(_payload: unknown, _secretKey: string): string {
   return 'signed-token-placeholder'
 }
 
-export function verifyQRToken(_token: string, _publicKey: string): unknown {
-  return { valid: true }
+// Decodes the unsigned payload segment of a QR token (`<base64url(JSON payload)>.<signature>`).
+// Signature verification is intentionally skipped in tests; any parse failure returns null so the
+// offline pipeline can exercise its invalid-signature paths.
+export function verifyQRToken(token: string, _publicKey: string): unknown {
+  try {
+    const encoded = token.split('.')[0]
+    if (!encoded) return null
+    const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4)
+    const decoded = Buffer.from(padded, 'base64').toString('utf8')
+    return decoded ? JSON.parse(decoded) : null
+  } catch {
+    return null
+  }
 }
 
 export function createSigningKeyPair(_seed: Uint8Array) {

@@ -10,6 +10,14 @@ import { ScanValidatorService } from './scan-validator.service'
 import { AttendanceGateway } from '../realtime/attendance.gateway'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { createHash } from 'crypto'
+import {
+  LOCATION_CAPTURED_AT,
+  VALID_TOKEN,
+  makeCachedSession,
+  makeRosterRecord,
+  makeSession,
+  validPayload,
+} from '../../test/test-fixtures'
 
 jest.mock('@polycheck/shared', () => ({
   verifyQRToken: jest.fn(),
@@ -24,55 +32,6 @@ const mockedHaversineDistance = haversineDistance as jest.MockedFunction<typeof 
 const studentUser: RequestUser = { id: 'stu-1', role: 'student', studentId: 'S-1' }
 const teacherUser: RequestUser = { id: 'teacher-1', role: 'teacher' }
 const adminUser: RequestUser = { id: 'admin-1', role: 'super_admin', scope: 'institution' }
-
-const VALID_TOKEN = 't'.repeat(100)
-const ISSUED_AT = Date.now() - 30_000 // 30 seconds ago
-const LOCATION_CAPTURED_AT = new Date().toISOString()
-
-function makeRosterRecord(overrides: any = {}) {
-  return {
-    id: 'rec-1',
-    sessionId: 'sess-1',
-    sectionId: 'sec-1',
-    studentId: 'stu-1',
-    studentName: 'Jane Doe',
-    studentProgram: 'BSIT',
-    timestamp: new Date(ISSUED_AT),
-    status: 'pending',
-    latitude: 14.6,
-    longitude: 121.0,
-    deviceId: null,
-    tokenSnapshot: null,
-    isSynced: true,
-    syncedAt: new Date(),
-    disputeReason: null,
-    disputeDescription: null,
-    disputeResolved: false,
-    manuallySet: false,
-    ...overrides,
-  }
-}
-
-function cachedSession(overrides: any = {}) {
-  return {
-    id: 'sess-1',
-    sectionId: 'sec-1',
-    teacherId: 'teacher-1',
-    subjectName: 'CS 101',
-    qrValidityMinutes: 10,
-    gracePeriodMinutes: 5,
-    geofenceLatitude: 14.6,
-    geofenceLongitude: 121.0,
-    geofenceRadiusMeters: 50,
-    isActive: true,
-    endedAt: null,
-    qrToken: VALID_TOKEN,
-    qrTokenExpiresAt: null,
-    qrGeneratedAt: new Date(ISSUED_AT).toISOString(),
-    teacherPublicKey: 'pk',
-    ...overrides,
-  }
-}
 
 describe('AttendanceService', () => {
   let service: AttendanceService
@@ -217,19 +176,6 @@ describe('AttendanceService', () => {
     })
   })
 
-  // Happy path token payload
-  const validPayload = (overrides: any = {}) => ({
-    version: 1,
-    sessionId: 'sess-1',
-    sectionId: 'sec-1',
-    teacherId: 'teacher-1',
-    issuedAt: ISSUED_AT,
-    validityMinutes: 10,
-    gracePeriodMinutes: 5,
-    teacherName: 'T',
-    ...overrides,
-  })
-
   describe('validateScan (via check)', () => {
     const checkArgs = {
       sessionId: 'sess-1',
@@ -252,7 +198,7 @@ describe('AttendanceService', () => {
     })
 
     it('returns not_enrolled when student is not enrolled', async () => {
-      redis.getJson.mockResolvedValue(cachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue(null)
       // recordScanAttempt: session not fetched since we use cached path... but recordScanAttempt re-fetches by id.
       // Provide a session so enrollment lookup happens (returns null -> return).
@@ -263,7 +209,7 @@ describe('AttendanceService', () => {
     })
 
     it('returns invalid_signature when teacher signing key unavailable', async () => {
-      redis.getJson.mockResolvedValue({ ...cachedSession(), teacherPublicKey: undefined })
+      redis.getJson.mockResolvedValue({ ...makeCachedSession(), teacherPublicKey: undefined })
       prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: null })
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       prisma.session.findUnique.mockResolvedValue({ id: 'sess-1', sectionId: 'sec-1' })
@@ -274,7 +220,7 @@ describe('AttendanceService', () => {
     })
 
     it('returns invalid_signature when verifyQRToken returns null', async () => {
-      redis.getJson.mockResolvedValue(cachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(null)
       prisma.session.findUnique.mockResolvedValue({ id: 'sess-1', sectionId: 'sec-1' })
@@ -284,7 +230,7 @@ describe('AttendanceService', () => {
     })
 
     it('returns token_mismatch when payload sessionId does not match session', async () => {
-      redis.getJson.mockResolvedValue(cachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload({ sessionId: 'sess-other' }))
       prisma.session.findUnique.mockResolvedValue({ id: 'sess-1', sectionId: 'sec-1' })
@@ -294,7 +240,7 @@ describe('AttendanceService', () => {
     })
 
     it('returns token_mismatch when token differs from session.qrToken', async () => {
-      redis.getJson.mockResolvedValue(cachedSession({ qrToken: 'other-stored-token' }))
+      redis.getJson.mockResolvedValue(makeCachedSession({ qrToken: 'other-stored-token' }))
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload())
       prisma.session.findUnique.mockResolvedValue({ id: 'sess-1', sectionId: 'sec-1' })
@@ -304,7 +250,7 @@ describe('AttendanceService', () => {
     })
 
     it('returns outside_geofence when coordinates fall outside radius', async () => {
-      redis.getJson.mockResolvedValue(cachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload())
       mockedHaversineDistance.mockReturnValue(100)
@@ -316,7 +262,7 @@ describe('AttendanceService', () => {
     })
 
     it('returns present for valid scan within validity window', async () => {
-      redis.getJson.mockResolvedValue(cachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload())
       mockedHaversineDistance.mockReturnValue(0)
@@ -329,7 +275,7 @@ describe('AttendanceService', () => {
     it('returns late for valid scan after validity window expired', async () => {
       // validity is 10 minutes; issued 30s ago -> not late yet. Make issuedAt 11+ minutes ago.
       const issuedAtLate = Date.now() - 11 * 60_000
-      redis.getJson.mockResolvedValue(cachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload({ issuedAt: issuedAtLate }))
       mockedHaversineDistance.mockReturnValue(0)
@@ -341,7 +287,7 @@ describe('AttendanceService', () => {
 
     it('rejects scans after both validity and grace windows expire', async () => {
       const issuedAtExpired = Date.now() - 16 * 60_000
-      redis.getJson.mockResolvedValue(cachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload({ issuedAt: issuedAtExpired }))
       mockedHaversineDistance.mockReturnValue(0)
@@ -405,9 +351,9 @@ describe('AttendanceService', () => {
 
     it('rejects duplicate submission (updateMany count 0)', async () => {
       // ensureOfflineActivation: session has qrToken so returns early.
-      prisma.session.findUnique.mockResolvedValueOnce(cachedSession())
+      prisma.session.findUnique.mockResolvedValueOnce(makeCachedSession())
       // validateScan uses cache:
-      redis.getJson.mockResolvedValue(cachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload())
       mockedHaversineDistance.mockReturnValue(0)
@@ -420,8 +366,8 @@ describe('AttendanceService', () => {
       // updateMany returns 0 -> duplicate
       prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 0 })
       // recordScanAttempt after duplicate path: still needs session lookup
-      // prisma.session.findUnique already mocked via cachedSession() once above; re-mock
-      prisma.session.findUnique.mockResolvedValue(cachedSession())
+      // prisma.session.findUnique already mocked via makeCachedSession() once above; re-mock
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
 
       const result = await service.submit(studentUser, submitArgs)
       expect(result.success).toBe(false)
@@ -430,8 +376,8 @@ describe('AttendanceService', () => {
     })
 
     it('successful submission updates record and emits attendance updated', async () => {
-      prisma.session.findUnique.mockResolvedValue(cachedSession())
-      redis.getJson.mockResolvedValue(cachedSession())
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload())
       mockedHaversineDistance.mockReturnValue(0)
@@ -457,8 +403,8 @@ describe('AttendanceService', () => {
     })
 
     it('accepts legacy missing evidence only as disputed and audits the missing fields', async () => {
-      prisma.session.findUnique.mockResolvedValue(cachedSession())
-      redis.getJson.mockResolvedValue(cachedSession())
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload())
       mockedHaversineDistance.mockReturnValue(0)
@@ -494,8 +440,8 @@ describe('AttendanceService', () => {
     })
 
     it('persists accepted evidence and links it atomically to attendance', async () => {
-      prisma.session.findUnique.mockResolvedValue(cachedSession())
-      redis.getJson.mockResolvedValue(cachedSession())
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload())
       mockedHaversineDistance.mockReturnValue(8)
@@ -529,8 +475,8 @@ describe('AttendanceService', () => {
     })
 
     it('denies mocked location while preserving evidence without mutating attendance', async () => {
-      prisma.session.findUnique.mockResolvedValue(cachedSession())
-      redis.getJson.mockResolvedValue(cachedSession())
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload())
 
@@ -556,8 +502,8 @@ describe('AttendanceService', () => {
     })
 
     it('denies geofence uncertainty when accuracy extends beyond the radius', async () => {
-      prisma.session.findUnique.mockResolvedValue(cachedSession())
-      redis.getJson.mockResolvedValue(cachedSession())
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload())
       mockedHaversineDistance.mockReturnValue(45)
@@ -577,8 +523,8 @@ describe('AttendanceService', () => {
       ['stale_location', { accuracyMeters: 5, locationCapturedAt: new Date(Date.now() - 3 * 60_000).toISOString() }],
       ['poor_location_accuracy', { accuracyMeters: 51, locationCapturedAt: new Date().toISOString() }],
     ])('denies %s evidence without changing attendance', async (reason, evidence) => {
-      prisma.session.findUnique.mockResolvedValue(cachedSession())
-      redis.getJson.mockResolvedValue(cachedSession())
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload())
 
@@ -589,8 +535,8 @@ describe('AttendanceService', () => {
     })
 
     it('measures location freshness in the client clock domain', async () => {
-      prisma.session.findUnique.mockResolvedValue(cachedSession())
-      redis.getJson.mockResolvedValue(cachedSession())
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload())
       prisma.attendanceRecord.findUnique.mockResolvedValue(makeRosterRecord())
@@ -645,8 +591,8 @@ describe('AttendanceService', () => {
     })
 
     it('disputes submission with suspicious coordinates', async () => {
-      prisma.session.findUnique.mockResolvedValue(cachedSession())
-      redis.getJson.mockResolvedValue(cachedSession())
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload())
       mockedHaversineDistance.mockReturnValue(0)
@@ -686,8 +632,8 @@ describe('AttendanceService', () => {
     })
 
     it('throws NotFoundException when roster entry missing', async () => {
-      prisma.session.findUnique.mockResolvedValue(cachedSession())
-      redis.getJson.mockResolvedValue(cachedSession())
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload())
       mockedHaversineDistance.mockReturnValue(0)
@@ -700,8 +646,8 @@ describe('AttendanceService', () => {
     it('marks a valid but delayed offline sync as disputed', async () => {
       const issuedAt = Date.now() - 20 * 60_000
       const scannedAt = new Date(issuedAt + 2 * 60_000).toISOString()
-      prisma.session.findUnique.mockResolvedValue(cachedSession({ isActive: false, endedAt: new Date() }))
-      redis.getJson.mockResolvedValue(cachedSession({ isActive: false, endedAt: new Date() }))
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession({ isActive: false, endedAt: new Date() }))
+      redis.getJson.mockResolvedValue(makeCachedSession({ isActive: false, endedAt: new Date() }))
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload({ issuedAt }))
       mockedHaversineDistance.mockReturnValue(0)
@@ -956,24 +902,3 @@ describe('AttendanceService', () => {
     })
   })
 })
-
-function makeSession(overrides: any = {}) {
-  return {
-    id: 'sess-1',
-    sectionId: 'sec-1',
-    teacherId: 'teacher-1',
-    subjectName: 'CS 101',
-    date: '2026-07-14',
-    startTime: '10:00',
-    endTime: '11:00',
-    qrValidityMinutes: 10,
-    gracePeriodMinutes: 5,
-    geofenceLatitude: 14.6,
-    geofenceLongitude: 121.0,
-    geofenceRadiusMeters: 50,
-    isActive: true,
-    endedAt: null,
-    qrToken: VALID_TOKEN,
-    ...overrides,
-  }
-}

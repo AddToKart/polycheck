@@ -508,8 +508,13 @@ describe('offline-store', () => {
           sessionId: `s${i}`,
         })
       }
-      const countBefore = await getPendingSyncCount()
-      expect(countBefore).toBeGreaterThanOrEqual(100)
+      expect(await getPendingSyncCount()).toBe(105)
+
+      const sendFn = jest.fn().mockResolvedValue({ outcome: 'synced' })
+      await drainOfflineQueue(sendFn)
+
+      expect(sendFn).toHaveBeenCalledTimes(100)
+      expect(await getPendingSyncCount()).toBe(5)
     })
   })
 

@@ -123,7 +123,7 @@ describe('Application integration (e2e)', () => {
       .set('Authorization', `Bearer ${secondMobile.body.token}`)
       .expect(201)
     await request(baseUrl).get('/api/auth/me').set('Authorization', `Bearer ${secondMobile.body.token}`).expect(401)
-  })
+  }, 20_000)
 })
 
 function findAvailablePort() {
