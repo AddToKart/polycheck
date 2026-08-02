@@ -1,8 +1,8 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
-import type { Session } from '@prisma/client'
+import type { Session } from '../prisma/client'
 import { ProofStorageService } from './proof-storage.service'
 
 interface UploadProofInput {
@@ -14,6 +14,8 @@ interface UploadProofInput {
 
 @Injectable()
 export class ProofsService {
+  private readonly logger = new Logger(ProofsService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
@@ -71,20 +73,21 @@ export class ProofsService {
   async remove(user: RequestUser, id: string) {
     const proof = await this.prisma.proofOfClass.findUnique({
       where: { id },
-      include: {
-        session: {
-          select: { teacherId: true, section: { select: { teacher: { select: { department: true } } } } },
-        },
-      },
+      include: { session: { select: { teacherId: true } } },
     })
     if (!proof) throw new NotFoundException('Proof not found')
     const isSessionTeacher = user.role === 'teacher' && proof.session.teacherId === user.id
-    const isSuperAdmin = user.role === 'super_admin'
-    if (!isSessionTeacher && !isSuperAdmin) {
-      throw new ForbiddenException('Only the session teacher or a super admin can delete proof')
-    }
+    if (!isSessionTeacher) throw new ForbiddenException('Only the session teacher can delete proof')
     await this.prisma.proofOfClass.delete({ where: { id } })
-    await this.storage.remove(proof.photoUrl)
+    try {
+      await this.storage.remove(proof.photoUrl)
+    } catch (error) {
+      this.logger.error(
+        `Proof ${proof.id} was deleted but its stored object could not be removed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    }
     return true
   }
 

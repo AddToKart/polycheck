@@ -36,7 +36,7 @@ export class ProofsController {
   }
 
   @Delete(':id')
-  @Roles('teacher', 'super_admin')
+  @Roles('teacher')
   remove(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.proofs.remove(req.user, id)
   }

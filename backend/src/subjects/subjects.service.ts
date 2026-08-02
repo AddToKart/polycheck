@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '../prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import type { CreateSubjectDto } from './dto/create-subject.dto'
 import type { UpdateSubjectDto } from './dto/update-subject.dto'

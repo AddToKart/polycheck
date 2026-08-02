@@ -27,15 +27,6 @@ describe('SyncService', () => {
     expect(metrics.configureBullMq).toHaveBeenCalledWith(false)
   })
 
-  it('derives a stable queue id from the student and batch payload', () => {
-    const service = new SyncService({ syncScan: jest.fn() } as never)
-    const batchId = (service as unknown as { batchId(userId: string, records: object[]): string }).batchId.bind(service)
-    const records = [{ sessionId: 'session-1', clientAttemptId: 'attempt-1' }]
-
-    expect(batchId('student-1', records)).toBe(batchId('student-1', records))
-    expect(batchId('student-2', records)).not.toBe(batchId('student-1', records))
-  })
-
   it('observes queue wait and successful processing duration without job identifiers', async () => {
     const attendance = { syncScan: jest.fn().mockResolvedValue({ id: 'record-1' }) }
     const metrics = { observeBullMqJob: jest.fn() }

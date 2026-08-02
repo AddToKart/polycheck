@@ -100,4 +100,47 @@ describe('SectionsService', () => {
       orderBy: { enrolledAt: 'asc' },
     })
   })
+
+  it('increments the cached student count atomically when enrolling', async () => {
+    const tx = {
+      enrollment: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'enrollment-2' }),
+      },
+      section: { update: jest.fn().mockResolvedValue({}) },
+    }
+    const prisma = {
+      section: { findUnique: jest.fn().mockResolvedValue(section) },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: 'student-2', role: 'student' }) },
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
+    }
+    const service = new SectionsService(prisma as never)
+
+    await service.enrollStudent('section-1', 'teacher-1', 'student-2')
+
+    expect(tx.section.update).toHaveBeenCalledWith({
+      where: { id: 'section-1' },
+      data: { studentCount: { increment: 1 } },
+    })
+  })
+
+  it('decrements the cached student count atomically when removing an enrollment', async () => {
+    const tx = {
+      enrollment: { delete: jest.fn().mockResolvedValue({}) },
+      section: { update: jest.fn().mockResolvedValue({}) },
+    }
+    const prisma = {
+      section: { findUnique: jest.fn().mockResolvedValue(section) },
+      enrollment: { findUnique: jest.fn().mockResolvedValue({ id: 'enrollment-1' }) },
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
+    }
+    const service = new SectionsService(prisma as never)
+
+    await service.removeStudent('section-1', 'teacher-1', 'student-1')
+
+    expect(tx.section.update).toHaveBeenCalledWith({
+      where: { id: 'section-1' },
+      data: { studentCount: { decrement: 1 } },
+    })
+  })
 })

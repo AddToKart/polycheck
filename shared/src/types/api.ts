@@ -185,78 +185,89 @@ export interface DashboardOverview {
 }
 
 export interface ApiClient {
-  loginStudent(studentId: string, password?: string): User | null
-  loginFaculty(email: string, password?: string): User | null
-  logout(): void
+  loginStudent(studentId: string, password?: string): Promise<User | null>
+  loginFaculty(email: string, password?: string): Promise<User | null>
+  logout(): Promise<void>
+  restoreSession(): Promise<User | null>
   getCurrentUser(): User | null
 
-  getSubjects(): Subject[]
-  getSubject(id: string): Subject | undefined
-  createSubject(data: CreateSubjectInput): Subject
+  getSubjects(): Promise<Subject[]>
+  getSubject(id: string): Promise<Subject>
+  createSubject(data: CreateSubjectInput): Promise<Subject>
 
-  getSections(subjectId?: string): Section[]
-  getSection(id: string): Section | undefined
-  createSection(data: CreateSectionInput): Section
-  getSectionStudents(sectionId: string): (Student & { attendance: { present: number; late: number; absent: number } })[]
-  getStudentSections(studentId: string): Section[]
-  getStudentsForSection(sectionId: string): Student[]
-  resetEnrollmentCode(sectionId: string): string
-  disableEnrollmentCode(sectionId: string): void
-  removeStudentFromSection(sectionId: string, studentId: string): boolean
-  getEnrollments(sectionId?: string): Enrollment[]
+  getSections(subjectId?: string): Promise<Section[]>
+  getSection(id: string): Promise<Section>
+  createSection(data: CreateSectionInput): Promise<Section>
+  getSectionStudents(sectionId: string): Promise<
+    (Student & { attendance: { present: number; late: number; absent: number; disputed: number } })[]
+  >
+  getStudentSections(studentId: string): Promise<Section[]>
+  getStudentsForSection(sectionId: string): Promise<Student[]>
+  resetEnrollmentCode(sectionId: string): Promise<{ enrollmentCode: string }>
+  disableEnrollmentCode(sectionId: string): Promise<void>
+  removeStudentFromSection(sectionId: string, studentId: string): Promise<boolean>
+  getEnrollments(sectionId?: string): Promise<Enrollment[]>
+  enrollByCode(enrollmentCode: string): Promise<Enrollment>
 
-  getSessions(sectionId?: string): Session[]
-  getSession(id: string): Session | undefined
-  createSession(data: CreateSessionInput): Session
-  generateQrCode(sessionId: string, validityMinutes: number, gracePeriodMinutes?: number): Session | undefined
-  endSession(sessionId: string): Session | undefined
+  getSessions(sectionId?: string): Promise<Session[]>
+  getSession(id: string): Promise<Session>
+  createSession(data: CreateSessionInput): Promise<Session>
+  generateQrCode(sessionId: string, validityMinutes: number, gracePeriodMinutes?: number): Promise<Session>
+  endSession(sessionId: string): Promise<Session>
 
-  getAttendanceRecords(sessionId?: string): AttendanceRecord[]
-  getAttendanceSummaries(teacherId?: string): AttendanceSummary[]
+  getAttendanceRecords(sessionId?: string): Promise<AttendanceRecord[]>
+  getAttendanceSummaries(teacherId?: string): Promise<AttendanceSummary[]>
   getAttendanceReport(filters?: AttendanceReportFilters): Promise<AttendanceReport>
   getDashboardOverview(filters?: Pick<AttendanceReportFilters, 'startDate' | 'endDate'>): Promise<DashboardOverview>
-  getAttendanceForStudent(studentId: string): AttendanceRecord[]
-  getStudentAttendanceForSection(studentId: string, sectionId: string): AttendanceRecord[]
-  addAttendanceRecord(record: AttendanceRecord): AttendanceRecord
-  updateAttendanceStatus(recordId: string, status: AttendanceStatus): AttendanceRecord | undefined
+  getAttendanceForStudent(studentId: string): Promise<AttendanceRecord[]>
+  getStudentAttendanceForSection(studentId: string, sectionId: string): Promise<AttendanceRecord[]>
+  addAttendanceRecord(record: AttendanceRecord): Promise<AttendanceRecord>
+  updateAttendanceStatus(recordId: string, status: AttendanceStatus): Promise<AttendanceRecord>
   submitScan(sessionId: string, studentId: string, studentName: string, lat: number, lon: number, deviceId: string, qrToken: string, scannedAt?: string, evidence?: ScanEvidenceInput): Promise<AttendanceRecord | { error: string }>
-  checkAttendance(sessionId: string, studentId: string, lat: number, lon: number): SubmitAttendanceResult
+  checkAttendance(
+    sessionId: string,
+    studentId: string,
+    lat: number,
+    lon: number,
+    qrToken?: string,
+    scannedAt?: string,
+  ): Promise<SubmitAttendanceResult>
 
-  getDisputedRecords(sessionId?: string, filters?: { search?: string; status?: 'pending' | 'resolved' | 'all' }): AttendanceRecord[]
-  resolveDispute(recordId: string, resolution: 'accept' | 'reject' | 'override', newStatus?: AttendanceStatus): AttendanceRecord | undefined
-  submitDispute(data: DisputeInput): AttendanceRecord | undefined
+  getDisputedRecords(sessionId?: string, filters?: { search?: string; status?: 'pending' | 'resolved' | 'all' }): Promise<AttendanceRecord[]>
+  resolveDispute(recordId: string, resolution: 'accept' | 'reject' | 'override', newStatus?: AttendanceStatus): Promise<AttendanceRecord>
+  submitDispute(data: DisputeInput): Promise<AttendanceRecord>
 
-  getStudents(): Student[]
-  getStudent(id: string): Student | undefined
-  getTeachers(): Teacher[]
-  createTeacher(data: CreateTeacherInput): Teacher
-  createStudent(data: CreateStudentInput): Student
-  resetUserPassword(id: string, password: string): ResetUserPasswordResult
-  setUserStatus(id: string, isActive: boolean): User
-  getSettings(): { key: string; value: string; updatedAt: string }[]
-  setSetting(key: string, value: string): { key: string; value: string; updatedAt: string }
-  getMyAttendance(studentId: string): AttendanceRecord[]
-  getMySubjects(studentId: string): Subject[]
+  getStudents(): Promise<Student[]>
+  getStudent(id: string): Promise<Student>
+  getTeachers(): Promise<Teacher[]>
+  createTeacher(data: CreateTeacherInput): Promise<Teacher>
+  createStudent(data: CreateStudentInput): Promise<Student>
+  resetUserPassword(id: string, password: string): Promise<ResetUserPasswordResult>
+  setUserStatus(id: string, isActive: boolean): Promise<User>
+  getSettings(): Promise<{ key: string; value: string; updatedAt: string }[]>
+  setSetting(key: string, value: string): Promise<{ key: string; value: string; updatedAt: string }>
+  getMyAttendance(studentId: string): Promise<AttendanceRecord[]>
+  getMySubjects(studentId: string): Promise<Subject[]>
 
-  getSectionSessions(sectionId: string): Session[]
+  getSectionSessions(sectionId: string): Promise<Session[]>
 
-  assignSectionRole(sectionId: string, studentId: string, role: SectionRoleType): SectionRole
-  removeSectionRole(sectionId: string, studentId: string, role: SectionRoleType): boolean
-  getSectionRoles(sectionId: string): SectionRole[]
-  getStudentRoles(studentId: string): SectionRole[]
+  assignSectionRole(sectionId: string, studentId: string, role: SectionRoleType): Promise<SectionRole>
+  removeSectionRole(sectionId: string, studentId: string, role: SectionRoleType): Promise<boolean>
+  getSectionRoles(sectionId: string): Promise<SectionRole[]>
+  getStudentRoles(studentId: string): Promise<SectionRole[]>
 
-  grantSessionPermission(sectionId: string, studentId: string): SessionPermission
-  revokeSessionPermission(sectionId: string, studentId: string): boolean
-  checkSessionPermission(sectionId: string, studentId: string): boolean
-  getActiveSessionPermissions(sectionId: string): SessionPermission[]
+  grantSessionPermission(sectionId: string, studentId: string): Promise<SessionPermission>
+  revokeSessionPermission(sectionId: string, studentId: string): Promise<boolean>
+  checkSessionPermission(sectionId: string, studentId: string): Promise<boolean>
+  getActiveSessionPermissions(sectionId: string): Promise<SessionPermission[]>
 
-  uploadProofOfClass(data: { sectionId: string; sessionId: string; photoData: string; description?: string; uploadedBy: string; uploadedByStudentName: string }): ProofOfClass
-  getProofsOfClass(sessionId: string): ProofOfClass[]
-  deleteProofOfClass(proofId: string): boolean
+  uploadProofOfClass(data: { sectionId: string; sessionId: string; photoData: string; description?: string; uploadedBy: string; uploadedByStudentName: string }): Promise<ProofOfClass>
+  getProofsOfClass(sessionId: string): Promise<ProofOfClass[]>
+  deleteProofOfClass(proofId: string): Promise<boolean>
 
-  enrollStudent(data: EnrollStudentInput): boolean
-  getCalendarEvents(userId: string, startDate: string, endDate: string): CalendarEvent[]
-  createBulkSessions(data: BulkSessionInput): Session[]
+  enrollStudent(data: EnrollStudentInput): Promise<boolean>
+  getCalendarEvents(userId: string, startDate: string, endDate: string): Promise<CalendarEvent[]>
+  createBulkSessions(data: BulkSessionInput): Promise<Session[]>
   exportAttendanceCsv(filters?: AttendanceReportFilters): Promise<string>
-  search(query: string): { students: Student[]; sections: Section[]; sessions: Session[] }
+  search(query: string): Promise<{ students: Student[]; sections: Section[]; sessions: Session[] }>
 }

@@ -3,7 +3,8 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useFocusEffect } from 'expo-router'
-import type { AttendanceRecord, CalendarEvent, ScheduleDay, Section, Subject } from '@polycheck/shared'
+import { formatCampusDate, type AttendanceRecord, type CalendarEvent, type Section, type Session, type Subject } from '@polycheck/shared'
+import { generateStudentCalendarEvents } from '@polycheck/shared/utils'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 import { CampusHeader } from '../../components/CampusHeader'
@@ -16,9 +17,8 @@ import {
 } from '../../components/StudentCalendarViews'
 
 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
 
-const formatDate = (date: Date) => date.toISOString().split('T')[0]
+const formatDate = (date: Date) => formatCampusDate(date)
 const getMonthName = (month: number) => ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][month]
 
 export default function ScheduleScreen() {
@@ -32,16 +32,18 @@ export default function ScheduleScreen() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
 
   const [sections, setSections] = useState<Section[]>([])
+  const [sessions, setSessions] = useState<Session[]>([])
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
   const [subjects, setSubjects] = useState<Record<string, Subject>>({})
 
   useFocusEffect(useCallback(() => {
     if (!studentId) return
     let active = true
-    void Promise.all([api.getStudentSections(studentId), api.getMyAttendance(studentId), api.getSubjects()])
-      .then(([sec, att, sub]) => {
+    void Promise.all([api.getStudentSections(studentId), api.getSessions(), api.getMyAttendance(studentId), api.getSubjects()])
+      .then(([sec, sessionList, att, sub]) => {
         if (!active) return
         setSections(sec)
+        setSessions(sessionList)
         setAttendanceRecords(att)
         setSubjects(Object.fromEntries(sub.map((s) => [s.id, s])))
       })
@@ -88,81 +90,21 @@ export default function ScheduleScreen() {
     const map = new Map<string, CalendarEvent[]>()
     const rangeStart = viewMode === 'month' ? monthDays[0] : new Date(`${weekDays[0].date}T00:00:00`)
     const rangeEnd = viewMode === 'month' ? monthDays[monthDays.length - 1] : new Date(`${weekDays[6].date}T23:59:59`)
-
-    const pushEvent = (event: CalendarEvent) => {
+    const events = generateStudentCalendarEvents(
+      sections,
+      sessions,
+      attendanceRecords,
+      (subjectId) => subjects[subjectId],
+      formatDate(rangeStart),
+      formatDate(rangeEnd),
+    )
+    for (const event of events) {
       const existing = map.get(event.date) ?? []
       existing.push(event)
       map.set(event.date, existing)
     }
-
-    const curr = new Date(rangeStart)
-    while (curr <= rangeEnd) {
-      const dateStr = formatDate(curr)
-      const dayNum = curr.getDay()
-      const dayName = dayNames[dayNum]
-
-      sections.forEach((section) => {
-        const parentSubject = subjects[section.subjectId]
-        section.schedule.forEach((scheduleDay: ScheduleDay) => {
-          if (dayMap[scheduleDay.day] === dayNum) {
-            pushEvent({
-              id: `sched-${section.id}-${dateStr}-${scheduleDay.startTime}`,
-              title: parentSubject?.name ?? 'Class',
-              subjectName: parentSubject?.name ?? 'Class',
-              subjectCode: parentSubject?.code,
-              sectionId: section.id,
-              sectionName: section.section,
-              teacherName: section.teacherName,
-              date: dateStr,
-              startTime: scheduleDay.startTime,
-              endTime: scheduleDay.endTime,
-              room: scheduleDay.room || section.room,
-              type: 'schedule',
-              status: 'inactive',
-            })
-          }
-        })
-      })
-      curr.setDate(curr.getDate() + 1)
-    }
-
-    attendanceRecords.forEach((record) => {
-      if (!record || typeof record.timestamp !== 'string' || !record.timestamp) return
-      const section = sections.find((s) => s.id === record.sectionId)
-      const parentSubject = section ? subjects[section.subjectId] : undefined
-      const parts = record.timestamp.split('T')
-      const recordDate = parts[0]
-      const recordTime = parts[1] ? parts[1].substring(0, 5) : '09:00'
-
-      const dayEvents = map.get(recordDate) ?? []
-      const index = dayEvents.findIndex((e) => e.sectionId === record.sectionId)
-
-      const sessionEvent: CalendarEvent = {
-        id: `att-${record.id}`,
-        title: parentSubject?.name ?? 'Class',
-        subjectName: parentSubject?.name ?? 'Class',
-        subjectCode: parentSubject?.code,
-        sectionId: record.sectionId,
-        sectionName: section?.section ?? '',
-        teacherName: section?.teacherName,
-        date: recordDate,
-        startTime: recordTime,
-        endTime: recordTime,
-        room: section?.room,
-        type: 'session',
-        status: 'completed',
-        studentStatus: (record.status === 'present' || record.status === 'late' || record.status === 'absent') ? record.status : undefined,
-      }
-
-      if (index >= 0) {
-        dayEvents[index] = { ...dayEvents[index], ...sessionEvent, type: 'session' }
-      } else {
-        pushEvent(sessionEvent)
-      }
-    })
-
     return map
-  }, [sections, attendanceRecords, subjects, monthDays, weekDays, viewMode])
+  }, [sections, sessions, attendanceRecords, subjects, monthDays, weekDays, viewMode])
 
   const selectedDayEvents = useMemo(() => {
     if (!selectedDay) return []

@@ -3,7 +3,7 @@ import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validato
 import { Roles } from '../common/decorators/roles.decorator'
 import { DisputesService } from './disputes.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
-import type { AttendanceStatus } from '@prisma/client'
+import type { AttendanceStatus } from '../prisma/client'
 
 class SubmitDisputeDto {
   @IsString() @MaxLength(128) recordId!: string

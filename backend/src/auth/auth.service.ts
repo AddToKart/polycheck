@@ -10,16 +10,25 @@ import {
 import { compare } from 'bcryptjs'
 import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
-import type { User } from '@prisma/client'
+import type { User } from '../prisma/client'
 import { BetterAuthService } from './better-auth.service'
 import { EventEmitter2 } from '@nestjs/event-emitter'
+import { DUMMY_PASSWORD_HASH } from './password-policy'
 
-const DUMMY_HASH = '$2a$10$R9h/lIPzMRgGq1V468UTuOr.164R5.h2.4yXG5Wv4Jz/aGv1Vv8a.'
-const LOGIN_RATE_LIMIT = 10
-const LOGIN_IP_RATE_LIMIT = 30
-const LOGIN_RATE_WINDOW = 60
-const KEY_PROVISION_RATE_LIMIT = 3
-const KEY_PROVISION_RATE_WINDOW = 3600
+// Login rate limits are env-tunable so strict production values can be relaxed for
+// local development and E2E automation. Defaults: 10 attempts/identity/min, 30/IP/min.
+const LOGIN_RATE_LIMIT = positiveInt(process.env.LOGIN_RATE_LIMIT, 10)
+const LOGIN_IP_RATE_LIMIT = positiveInt(process.env.LOGIN_IP_RATE_LIMIT, 30)
+const LOGIN_RATE_WINDOW = positiveInt(process.env.LOGIN_RATE_WINDOW_SECONDS, 60)
+// Key provisioning is rate limited per teacher (default 3/hour) to deter key-rotation
+// abuse. Also env-tunable for local development and E2E automation.
+const KEY_PROVISION_RATE_LIMIT = positiveInt(process.env.KEY_PROVISION_RATE_LIMIT, 3)
+const KEY_PROVISION_RATE_WINDOW = positiveInt(process.env.KEY_PROVISION_RATE_WINDOW_SECONDS, 3600)
+
+function positiveInt(value: string | undefined, fallback: number) {
+  const parsed = value === undefined ? NaN : Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
+}
 
 export interface AuthResult {
   token?: string
@@ -62,7 +71,7 @@ export class AuthService {
     await this.assertLoginWithinLimit('student', normalizedStudentId, clientAddress)
 
     const user = await this.prisma.user.findUnique({ where: { studentId: normalizedStudentId } })
-    const isValidPassword = await compare(password, user?.password ?? DUMMY_HASH)
+    const isValidPassword = await compare(password, user?.password ?? DUMMY_PASSWORD_HASH)
 
     if (!user || !isValidPassword) {
       throw new UnauthorizedException('Invalid student ID or password')
@@ -88,7 +97,7 @@ export class AuthService {
     await this.assertLoginWithinLimit('faculty', normalizedEmail, clientAddress)
 
     const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } })
-    const isValidPassword = await compare(password, user?.password ?? DUMMY_HASH)
+    const isValidPassword = await compare(password, user?.password ?? DUMMY_PASSWORD_HASH)
 
     if (!user || !isValidPassword) {
       throw new UnauthorizedException('Invalid email or password')
@@ -130,7 +139,9 @@ export class AuthService {
       data: { teacherPublicKey: publicKey },
     })
 
-    this.logger.log(`Signing key provisioned for user ${userId} (previous key: ${previousKey ? 'replaced' : 'first provision'})`)
+    this.logger.log(
+      `Signing key provisioned for user ${userId} (previous key: ${previousKey ? 'replaced' : 'first provision'})`,
+    )
     this.events.emit('auth.key-provisioned', { userId, hadPreviousKey: !!previousKey })
 
     return { message: 'Public key provisioned successfully' }
@@ -162,11 +173,7 @@ export class AuthService {
   private async assertLoginWithinLimit(kind: 'student' | 'faculty', identifier: string, clientAddress: string) {
     const address = clientAddress || 'unknown'
     const [identityAllowed, addressAllowed] = await Promise.all([
-      this.redis.consumeRateLimit(
-        `login:${kind}:identity:${identifier}`,
-        LOGIN_RATE_LIMIT,
-        LOGIN_RATE_WINDOW,
-      ),
+      this.redis.consumeRateLimit(`login:${kind}:identity:${identifier}`, LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW),
       this.redis.consumeRateLimit(`login:${kind}:ip:${address}`, LOGIN_IP_RATE_LIMIT, LOGIN_RATE_WINDOW),
     ])
     if (!identityAllowed || !addressAllowed) {

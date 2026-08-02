@@ -1,4 +1,4 @@
-import type { Section, Session } from '@polycheck/shared'
+import type { AttendanceRecord, Section, Session, Subject } from '@polycheck/shared'
 
 // Mock all native dependencies
 jest.mock('expo-secure-store', () => ({
@@ -21,9 +21,14 @@ jest.mock('@polycheck/shared', () => ({
   signQRToken: jest.fn(),
   verifyQRToken: jest.fn(),
 }))
+jest.mock('../services/offline-crypto', () => ({
+  encryptOfflineValue: jest.fn(async (value: unknown) => `encrypted:${JSON.stringify(value)}`),
+  decryptOfflineValue: jest.fn(async (value: string) => JSON.parse(value.slice('encrypted:'.length))),
+}))
 
 // Create in-memory SQLite mock with basic query handling
-const tables: Record<string, unknown[]> = {}
+const tables: Record<string, Array<Record<string, any>>> = {}
+let schemaVersion = 0
 
 function execSql(sql: string) {
   const createMatch = sql.match(/CREATE TABLE IF NOT EXISTS (\w+)/g)
@@ -33,31 +38,49 @@ function execSql(sql: string) {
       if (!tables[name]) tables[name] = []
     }
   }
+  const dropMatches = sql.match(/DROP TABLE IF EXISTS (\w+)/g)
+  if (dropMatches) {
+    for (const match of dropMatches) delete tables[match.replace(/DROP TABLE IF EXISTS\s+/, '')]
+  }
+  const version = sql.match(/PRAGMA user_version\s*=\s*(\d+)/)
+  if (version) schemaVersion = Number(version[1])
 }
 
 function runSql(sql: string, ...params: unknown[]) {
-  // INSERT OR IGNORE INTO sync_queue (id, kind, payload, created_at) VALUES (?, ?, ?, ?)
-  if (/INSERT\s+OR\s+IGNORE/i.test(sql) && /sync_queue/i.test(sql)) {
-    const id = params[0]
-    if (!tables.sync_queue) tables.sync_queue = []
-    const exists = tables.sync_queue.some((r: any) => r.id === id)
+  if (/INSERT\s+OR\s+IGNORE/i.test(sql) && /sync_queue_v2/i.test(sql)) {
+    const [ownerId, id, kind, payload, createdAt] = params
+    if (!tables.sync_queue_v2) tables.sync_queue_v2 = []
+    const exists = tables.sync_queue_v2.some((r: any) => r.owner_id === ownerId && r.id === id)
     if (!exists) {
-      tables.sync_queue.push({ id, kind: params[1], payload: params[2], attempts: 0, last_error: null, created_at: params[3] })
+      tables.sync_queue_v2.push({
+        owner_id: ownerId,
+        id,
+        kind,
+        payload,
+        attempts: 0,
+        last_error: null,
+        created_at: createdAt,
+      })
     }
     return { changes: exists ? 0 : 1 }
   }
 
-  // INSERT INTO sync_metadata ... ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-  if (/sync_metadata/i.test(sql) && /ON CONFLICT/i.test(sql)) {
-    if (!tables.sync_metadata) tables.sync_metadata = []
-    const value = params[0]   // ? for value
-    const updatedAt = params[1] // ? for updated_at
-    const existing = tables.sync_metadata.find((r: any) => r.key === 'server_clock_offset_ms')
+  if (/sync_metadata_v2/i.test(sql) && /ON CONFLICT/i.test(sql)) {
+    if (!tables.sync_metadata_v2) tables.sync_metadata_v2 = []
+    const [ownerId, value, updatedAt] = params
+    const existing = tables.sync_metadata_v2.find(
+      (r: any) => r.owner_id === ownerId && r.key === 'server_clock_offset_ms',
+    )
     if (existing) {
       existing.value = value
       existing.updated_at = updatedAt
     } else {
-      tables.sync_metadata.push({ key: 'server_clock_offset_ms', value, updated_at: updatedAt })
+      tables.sync_metadata_v2.push({
+        owner_id: ownerId,
+        key: 'server_clock_offset_ms',
+        value,
+        updated_at: updatedAt,
+      })
     }
     return { changes: 1 }
   }
@@ -71,18 +94,22 @@ function runSql(sql: string, ...params: unknown[]) {
     const row: Record<string, unknown> = {}
     cols.forEach((col, i) => { if (i < params.length) row[col] = params[i] })
     if (!tables[tableName]) tables[tableName] = []
-    const existing = tables[tableName].find((r: any) => r[cols[0]] === row[cols[0]])
+    const existing = tables[tableName].find(
+      (r: any) => r.owner_id === row.owner_id && r.id === row.id,
+    )
     if (existing) Object.assign(existing, row)
     else tables[tableName].push(row)
     return { changes: 1 }
   }
 
-  // UPDATE ... SET ... WHERE col = ?
   if (/UPDATE\s+(\w+)/i.test(sql)) {
     const tableName = sql.match(/UPDATE\s+(\w+)/i)![1]
-    const whereCol = sql.match(/WHERE\s+(\w+)\s*=\s*\?/)?.[1]
-    if (!whereCol) return { changes: 0 }
-    const row = (tables[tableName] || []).find((r: any) => r[whereCol] === params[params.length - 1])
+    const whereCols = [...sql.matchAll(/(?:WHERE|AND)\s+(\w+)\s*=\s*\?/gi)].map((match) => match[1])
+    if (!whereCols.length) return { changes: 0 }
+    const whereValues = params.slice(params.length - whereCols.length)
+    const row = (tables[tableName] || []).find((candidate: any) =>
+      whereCols.every((column, index) => candidate[column] === whereValues[index]),
+    )
     if (row) {
       const setClause = sql.match(/SET\s+([\s\S]+?)\s+WHERE/i)?.[1] || ''
       const setParts = setClause.split(',').map((s) => s.trim().split('=').map((c) => c.trim()))
@@ -92,13 +119,16 @@ function runSql(sql: string, ...params: unknown[]) {
     return { changes: 0 }
   }
 
-  // DELETE FROM ... WHERE col = ?
   if (/DELETE\s+FROM/i.test(sql)) {
     const tableName = sql.match(/FROM\s+(\w+)/i)![1]
-    const whereCol = sql.match(/WHERE\s+(\w+)\s*=\s*\?/)?.[1]
-    if (!whereCol || !tables[tableName]) return { changes: 0 }
+    const whereCols = [...sql.matchAll(/(?:WHERE|AND)\s+(\w+)\s*=\s*\?/gi)].map((match) => match[1])
+    if (!tables[tableName]) return { changes: 0 }
     const before = tables[tableName].length
-    tables[tableName] = tables[tableName].filter((r: any) => r[whereCol] !== params[0])
+    tables[tableName] = whereCols.length
+      ? tables[tableName].filter(
+          (candidate: any) => !whereCols.every((column, index) => candidate[column] === params[index]),
+        )
+      : []
     return { changes: before - tables[tableName].length }
   }
 
@@ -106,13 +136,15 @@ function runSql(sql: string, ...params: unknown[]) {
 }
 
 function querySql(sql: string, ...params: unknown[]) {
+  if (/PRAGMA user_version/i.test(sql)) return [{ user_version: schemaVersion }]
   const tableName = sql.match(/FROM\s+(\w+)/i)?.[1]
   if (!tableName || !tables[tableName]) return sql.includes('COUNT(*)') ? [{ count: 0 }] : []
   let rows: any[] = [...tables[tableName]]
 
-  // WHERE col = ? (parameterized)
-  const paramWhere = sql.match(/WHERE\s+(\w+)\s*=\s*\?/)
-  if (paramWhere) rows = rows.filter((r) => r[paramWhere[1]] === params[0])
+  const whereColumns = [...sql.matchAll(/(?:WHERE|AND)\s+(\w+)\s*=\s*\?/gi)].map((match) => match[1])
+  if (whereColumns.length) {
+    rows = rows.filter((row) => whereColumns.every((column, index) => row[column] === params[index]))
+  }
 
   // WHERE col = 'literal' (string literal, no parameter)
   const literalWhere = sql.match(/WHERE\s+(\w+)\s*=\s*'([^']+)'/)
@@ -141,20 +173,33 @@ jest.mock('expo-sqlite', () => ({
     getFirstAsync: jest.fn().mockImplementation((sql: string, ...args: unknown[]) => Promise.resolve(querySql(sql, ...args)[0] ?? null)),
     withTransactionAsync: jest.fn().mockImplementation((fn: () => Promise<void>) => fn()),
   }),
-  _resetDatabase: jest.fn().mockImplementation(() => { for (const k of Object.keys(tables)) delete tables[k] }),
+  _resetDatabase: jest.fn().mockImplementation(() => {
+    for (const k of Object.keys(tables)) delete tables[k]
+    schemaVersion = 2
+  }),
 }))
 
 import {
   initializeOfflineStore,
+  cacheSubjects,
+  getCachedSubjects,
+  getCachedSubject,
+  replaceCachedSubjects,
   cacheSections,
   getCachedSections,
   getCachedSection,
+  replaceCachedSections,
   cacheSessions,
   getCachedSessions,
   getCachedSession,
+  cacheAttendanceRecords,
+  getCachedAttendanceRecords,
+  replaceCachedAttendanceForStudent,
+  removeCachedAttendanceAttempt,
   enqueueOfflineOperation,
   drainOfflineQueue,
   getPendingSyncCount,
+  setOfflineOwner,
   setServerClockOffset,
   getServerClockOffset,
 } from '../services/offline-store'
@@ -177,27 +222,74 @@ const mockSection: Section = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 }
 
+const mockSubject: Subject = {
+  id: 'subj-1',
+  name: 'Data Structures',
+  code: 'COMP 201',
+  description: 'Core data structures and algorithms',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+}
+
 const mockSession: Session = {
   id: 'sess-test-1',
   sectionId: 'sec-test-1',
   subjectName: 'Data Structures',
   teacherId: 't-001',
-  teacherName: 'Prof. Test',
   date: '2026-07-15',
   startTime: '08:00',
   endTime: '11:00',
+  geofence: {
+    latitude: 14.5995,
+    longitude: 120.9842,
+    radiusMeters: 50,
+  },
   isActive: false,
   isRescheduled: false,
   qrValidityMinutes: 20,
   gracePeriodMinutes: 15,
   createdAt: '2026-01-01T00:00:00.000Z',
-  updatedAt: '2026-01-01T00:00:00.000Z',
+}
+
+const mockAttendance: AttendanceRecord = {
+  id: 'att-test-1',
+  sessionId: 'sess-test-1',
+  sectionId: 'sec-test-1',
+  studentId: 'student-1',
+  studentName: 'Student Test',
+  timestamp: '2026-07-15T08:01:00.000Z',
+  status: 'present',
+  coordinates: { latitude: 14.5995, longitude: 120.9842 },
+  isSynced: true,
 }
 
 describe('offline-store', () => {
   beforeEach(async () => {
     _resetDatabase()
-    await initializeOfflineStore()
+    await initializeOfflineStore('user-1')
+  })
+
+  describe('subject caching', () => {
+    it('caches and retrieves subjects', async () => {
+      await cacheSubjects([mockSubject])
+      expect(await getCachedSubjects()).toEqual([mockSubject])
+      expect(await getCachedSubject(mockSubject.id)).toEqual(mockSubject)
+    })
+
+    it('isolates subjects between authenticated accounts', async () => {
+      await cacheSubjects([mockSubject])
+      await initializeOfflineStore('user-2')
+      expect(await getCachedSubjects()).toEqual([])
+    })
+
+    it('removes subjects no longer returned by the server', async () => {
+      const removed = { ...mockSubject, id: 'subj-removed' }
+      await cacheSubjects([mockSubject, removed])
+
+      await replaceCachedSubjects([mockSubject])
+
+      expect(await getCachedSubjects()).toEqual([mockSubject])
+    })
   })
 
   describe('section caching', () => {
@@ -241,6 +333,24 @@ describe('offline-store', () => {
       await cacheSections([mockSection, section2])
       const sections = await getCachedSections()
       expect(sections).toHaveLength(2)
+    })
+
+    it('isolates cached sections between authenticated accounts', async () => {
+      await cacheSections([mockSection])
+      await initializeOfflineStore('user-2')
+      expect(await getCachedSections()).toEqual([])
+
+      setOfflineOwner('user-1')
+      expect(await getCachedSections()).toHaveLength(1)
+    })
+
+    it('removes sections no longer returned by the server', async () => {
+      const removed = { ...mockSection, id: 'sec-removed' }
+      await cacheSections([mockSection, removed])
+
+      await replaceCachedSections([mockSection])
+
+      expect(await getCachedSections()).toEqual([mockSection])
     })
   })
 
@@ -290,6 +400,44 @@ describe('offline-store', () => {
     })
   })
 
+  describe('attendance caching', () => {
+    it('caches and filters attendance by student', async () => {
+      const other = { ...mockAttendance, id: 'att-test-2', studentId: 'student-2' }
+      await cacheAttendanceRecords([mockAttendance, other])
+
+      expect(await getCachedAttendanceRecords('student-1')).toEqual([mockAttendance])
+      expect(await getCachedAttendanceRecords()).toHaveLength(2)
+    })
+
+    it('replaces server records while preserving unsynced scans', async () => {
+      const pending: AttendanceRecord = {
+        ...mockAttendance,
+        id: 'offline:sess-test-2:student-1',
+        sessionId: 'sess-test-2',
+        status: 'late',
+        isSynced: false,
+      }
+      await cacheAttendanceRecords([mockAttendance, pending])
+      const updated = { ...mockAttendance, status: 'late' as const }
+
+      await replaceCachedAttendanceForStudent('student-1', [updated])
+
+      const records = await getCachedAttendanceRecords('student-1')
+      expect(records).toHaveLength(2)
+      expect(records).toContainEqual(updated)
+      expect(records).toContainEqual(pending)
+    })
+
+    it('removes a pending attempt after authoritative synchronization', async () => {
+      const pending = { ...mockAttendance, id: 'offline:sess-test-1:student-1', isSynced: false }
+      await cacheAttendanceRecords([pending])
+
+      await removeCachedAttendanceAttempt('sess-test-1', 'student-1')
+
+      expect(await getCachedAttendanceRecords('student-1')).toEqual([])
+    })
+  })
+
   describe('sync queue', () => {
     it('enqueues and counts pending operations', async () => {
       await enqueueOfflineOperation('attendance_scan', { sessionId: 's1', studentId: 'st1' })
@@ -324,9 +472,9 @@ describe('offline-store', () => {
       await enqueueOfflineOperation('attendance_scan', { sessionId: 's1' })
       const sendFn = jest.fn().mockResolvedValue({ outcome: 'terminal', error: 'signature invalid' })
       await drainOfflineQueue(sendFn)
-      // Should still be in queue but marked as terminal
+      // Terminal operations remain quarantined but are no longer pending.
       const count = await getPendingSyncCount()
-      expect(count).toBe(1)
+      expect(count).toBe(0)
     })
 
     it('stops on first retryable error', async () => {
@@ -340,21 +488,33 @@ describe('offline-store', () => {
       expect(count).toBe(2) // both still in queue
     })
 
+    it('keeps retryable attendance queued beyond five temporary failures', async () => {
+      await enqueueOfflineOperation('attendance_scan', { clientAttemptId: 'durable-1', sessionId: 's1' })
+      const retry = jest.fn().mockResolvedValue({ outcome: 'retryable', error: 'network' })
+
+      for (let attempt = 0; attempt < 6; attempt++) await drainOfflineQueue(retry)
+
+      expect(retry).toHaveBeenCalledTimes(6)
+      expect(await getPendingSyncCount()).toBe(1)
+
+      await drainOfflineQueue(jest.fn().mockResolvedValue({ outcome: 'synced' }))
+      expect(await getPendingSyncCount()).toBe(0)
+    })
+
     it('processes at most 100 items per drain', async () => {
-      // Enqueue more than 100 items — some via direct SQL since enqueue uses INSERT OR IGNORE
-      const db = await (await import('expo-sqlite')).openDatabaseAsync('polycheck.db')
       for (let i = 0; i < 105; i++) {
-        await db.runAsync(
-          'INSERT OR IGNORE INTO sync_queue (id, kind, payload, attempts, created_at) VALUES (?, ?, ?, ?, ?)',
-          `op-${i}`,
-          'attendance_scan',
-          JSON.stringify({ sessionId: `s${i}` }),
-          0,
-          new Date().toISOString(),
-        )
+        await enqueueOfflineOperation('attendance_scan', {
+          clientAttemptId: `op-${i}`,
+          sessionId: `s${i}`,
+        })
       }
-      const countBefore = await getPendingSyncCount()
-      expect(countBefore).toBeGreaterThanOrEqual(100)
+      expect(await getPendingSyncCount()).toBe(105)
+
+      const sendFn = jest.fn().mockResolvedValue({ outcome: 'synced' })
+      await drainOfflineQueue(sendFn)
+
+      expect(sendFn).toHaveBeenCalledTimes(100)
+      expect(await getPendingSyncCount()).toBe(5)
     })
   })
 

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config'
 import { compare, hash } from 'bcryptjs'
 import type { BetterAuthOptions } from 'better-auth'
 import { PrismaService } from '../prisma/prisma.service'
+import { PASSWORD_HASH_COST } from './password-policy'
 
 interface BetterAuthRuntime {
   api: {
@@ -70,7 +71,7 @@ export class BetterAuthService implements OnModuleInit {
         maxPasswordLength: 128,
         revokeSessionsOnPasswordReset: true,
         password: {
-          hash: (password) => hash(password, 12),
+          hash: (password) => hash(password, PASSWORD_HASH_COST),
           verify: ({ hash: passwordHash, password }) => compare(password, passwordHash),
         },
       },

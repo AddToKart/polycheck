@@ -103,7 +103,9 @@ export default function StudentSubjectsListScreen() {
                   </View>
                   <View className="mt-5 flex-row items-center gap-3 border-t border-line pt-4 dark:border-line-dark">
                     <View className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10">
-                      <View className="h-full rounded-full bg-golden" style={{ width: `${rate}%` }} />
+                      <View style={{ width: `${rate}%` }}>
+                        <View className="h-full w-full rounded-full bg-golden" />
+                      </View>
                     </View>
                     <Text className="font-sans-bold text-xs text-muted dark:text-zinc-300">{records.length ? `${rate}%` : 'No records'}</Text>
                   </View>

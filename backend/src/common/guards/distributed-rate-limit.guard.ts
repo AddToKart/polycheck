@@ -5,8 +5,15 @@ import { RedisService } from '../../infrastructure/redis.service'
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator'
 import type { AuthenticatedRequest } from '../types/authenticated-request'
 
-const REQUEST_LIMIT = 120
-const WINDOW_SECONDS = 60
+// Per-user API rate limit, env-tunable so strict production values can be relaxed
+// for local development and E2E automation. Default: 120 requests/user/60s.
+const REQUEST_LIMIT = positiveInt(process.env.API_RATE_LIMIT, 120)
+const WINDOW_SECONDS = positiveInt(process.env.API_RATE_WINDOW_SECONDS, 60)
+
+function positiveInt(value: string | undefined, fallback: number) {
+  const parsed = value === undefined ? NaN : Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
+}
 
 @Injectable()
 export class DistributedRateLimitGuard implements CanActivate {

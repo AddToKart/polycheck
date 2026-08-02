@@ -3,9 +3,9 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import * as Clipboard from 'expo-clipboard'
-import type { AttendanceReport, Subject, Teacher, User } from '@polycheck/shared'
+import { getRecentCampusDateRange, type AttendanceReport, type Subject, type Teacher, type User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
+import { shareCsvFile } from '../../services/file-sharing'
 import { useTheme } from '../../theme/ThemeContext'
 import DatePickerModal from '../../components/DatePickerModal'
 import { CampusHeader } from '../../components/CampusHeader'
@@ -17,22 +17,7 @@ import {
   AttendanceSummaryCard,
 } from '../../components/AttendanceReportCards'
 
-const campusDateFormatter = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'Asia/Manila',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
-
-const campusDate = (date = new Date()) => {
-  const parts = new Map(campusDateFormatter.formatToParts(date).map((part) => [part.type, part.value]))
-  return `${parts.get('year')}-${parts.get('month')}-${parts.get('day')}`
-}
-
-const defaultEndDate = campusDate()
-const defaultStart = new Date(`${defaultEndDate}T00:00:00.000Z`)
-defaultStart.setUTCDate(defaultStart.getUTCDate() - 29)
-const defaultStartDate = defaultStart.toISOString().slice(0, 10)
+const { startDate: defaultStartDate, endDate: defaultEndDate } = getRecentCampusDateRange(30)
 
 type ReportSelectProps = {
   label: string
@@ -157,8 +142,7 @@ export default function FacultyReportsScreen() {
         subjectId: selectedSubject || undefined,
         teacherId: selectedTeacher || undefined,
       })
-      await Clipboard.setStringAsync(csv)
-      Alert.alert('Report copied', 'The filtered attendance CSV is ready in your clipboard.')
+      await shareCsvFile(csv, `polycheck-report-${startDate}-to-${endDate}.csv`, 'Export filtered attendance report')
     } catch (error) {
       Alert.alert('Export failed', error instanceof Error ? error.message : 'Please narrow the report filters.')
     }

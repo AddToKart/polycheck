@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { randomUUID } from 'node:crypto'
-import { createClient } from 'redis'
+import { createClient, type RedisClientType } from 'redis'
 
 const MAX_LOCAL_FALLBACK_ENTRIES = 10_000
 const RELEASE_LOCK_SCRIPT = `
@@ -14,7 +14,7 @@ return 0
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name)
-  private client: ReturnType<typeof createClient> | null = null
+  private client: RedisClientType | null = null
   private readonly localValues = new Map<string, { value: string; expiresAt: number }>()
   private readonly localRateLimits = new Map<string, { count: number; expiresAt: number }>()
   private readonly requireDistributedState: boolean

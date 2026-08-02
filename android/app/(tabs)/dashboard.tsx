@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
-import { router } from 'expo-router'
-import type { AttendanceRecord, AttendanceStatus, ScheduleDay, Section, Subject } from '@polycheck/shared'
+import { router, useFocusEffect } from 'expo-router'
+import { formatCampusDate, type AttendanceRecord, type AttendanceStatus, type Section, type Session, type Subject } from '@polycheck/shared'
+import { generateStudentCalendarEvents } from '@polycheck/shared/utils'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 import { CampusHeader } from '../../components/CampusHeader'
@@ -17,8 +18,6 @@ import {
   SectionHeading,
 } from '../../components/CampusPrimitives'
 import { IdCardModal } from '../../components/IdCardModal'
-
-const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const greeting = () => {
   const hour = new Date().getHours()
@@ -45,23 +44,26 @@ export default function DashboardScreen() {
 
   const [mySections, setMySections] = useState<Section[]>([])
   const [myAttendance, setMyAttendance] = useState<AttendanceRecord[]>([])
+  const [sessions, setSessions] = useState<Session[]>([])
   const [subjects, setSubjects] = useState<Record<string, Subject>>({})
 
   const loadDashboard = useCallback(async () => {
     if (!student) return
-    const [sections, attendance, allSubjects] = await Promise.all([
+    const [sections, attendance, allSubjects, allSessions] = await Promise.all([
       api.getStudentSections(student.id),
       api.getMyAttendance(student.id),
       api.getSubjects(),
+      api.getSessions(),
     ])
     setMySections(sections)
     setMyAttendance(attendance)
+    setSessions(allSessions)
     setSubjects(Object.fromEntries(allSubjects.map((subject) => [subject.id, subject])))
   }, [student?.id])
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     void loadDashboard().catch(() => undefined)
-  }, [loadDashboard])
+  }, [loadDashboard]))
 
   const attendanceTotals = useMemo(() => myAttendance.reduce(
     (totals, record) => ({ ...totals, [record.status]: totals[record.status] + 1 }),
@@ -71,11 +73,15 @@ export default function DashboardScreen() {
   const attendanceRate = myAttendance.length > 0
     ? Math.round((attendanceTotals.present / myAttendance.length) * 100)
     : 0
-  const todayName = dayNames[new Date().getDay()]
-  const todaySchedule = useMemo(
-    () => mySections.filter((section) => section.schedule.some((day) => day.day === todayName)),
-    [mySections, todayName],
-  )
+  const today = formatCampusDate()
+  const todaySchedule = useMemo(() => generateStudentCalendarEvents(
+    mySections,
+    sessions,
+    myAttendance,
+    (subjectId) => subjects[subjectId],
+    today,
+    today,
+  ), [mySections, sessions, myAttendance, subjects, today])
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
@@ -171,28 +177,33 @@ export default function DashboardScreen() {
         <View className="mb-7 gap-3">
           {todaySchedule.length === 0 ? (
             <CampusEmptyState icon="event-available" title="YOUR DAY IS CLEAR" description="There are no enrolled classes scheduled for today." />
-          ) : todaySchedule.map((section) => {
-            const parent = subjects[section.subjectId]
-            const schedule = section.schedule.find((day: ScheduleDay) => day.day === todayName)
-            const status = myAttendance.find((record) => record.sectionId === section.id)?.status ?? 'pending'
+          ) : todaySchedule.map((event) => {
+            const section = mySections.find((candidate) => candidate.id === event.sectionId)
+            const status = event.studentStatus ?? 'pending'
 
             return (
               <CampusCard
-                key={section.id}
-                onPress={() => router.push(`/(tabs)/subject-info/${section.id}`)}
-                accessibilityLabel={`Open ${parent?.name ?? 'class'} details`}
+                key={event.id}
+                onPress={() => router.push(`/(tabs)/subject-info/${event.sectionId}`)}
+                accessibilityLabel={`Open ${event.subjectName || 'class'} details`}
                 className="p-4 rounded-none border-l-4 border-l-maroon dark:border-l-golden"
               >
                 <View className="flex-row items-center gap-4">
                   <View className="h-12 w-12 items-center justify-center rounded-none bg-maroon dark:bg-golden">
-                    <Text className="font-sans-bold text-xs text-white dark:text-maroon-dark">{schedule?.startTime ?? '—'}</Text>
+                    <Text className="font-sans-bold text-xs text-white dark:text-maroon-dark">{event.startTime || '—'}</Text>
                   </View>
                   <View className="flex-1">
-                    <Text className="font-sans-bold text-base text-ink dark:text-white" numberOfLines={1}>{parent?.name ?? 'Class'}</Text>
+                    <Text className="font-sans-bold text-base text-ink dark:text-white" numberOfLines={1}>{event.subjectName || 'Class'}</Text>
                     <Text className="mt-1 font-sans text-xs text-muted dark:text-zinc-400 uppercase tracking-wider">
-                      {parent?.code} · Sec {section.section} · {section.room || 'Room TBA'}
+                      {event.subjectCode || 'Class'} · Sec {section?.section || event.sectionName} · {event.room || section?.room || 'Room TBA'}
                     </Text>
-                    <View className="mt-3"><AttendanceStatusPill status={status} /></View>
+                    <View className="mt-3">
+                      {event.status === 'moved' ? (
+                        <Text className="font-sans-bold text-[10px] uppercase tracking-wider text-maroon dark:text-golden">
+                          Moved to {event.rescheduledTo?.date} at {event.rescheduledTo?.startTime}
+                        </Text>
+                      ) : <AttendanceStatusPill status={status} />}
+                    </View>
                   </View>
                   <MaterialIcons name="chevron-right" size={22} color={isDark ? '#A1A1AA' : '#746C6E'} />
                 </View>
@@ -229,7 +240,9 @@ export default function DashboardScreen() {
                     <Text className="mt-1 font-sans text-xs text-muted dark:text-zinc-400 uppercase tracking-wider">{parent?.code} · Sec {section.section} · {section.teacherName}</Text>
                     <View className="mt-4 flex-row items-center gap-3">
                       <View className="h-2 flex-1 overflow-hidden rounded-none bg-zinc-100 dark:bg-white/10">
-                        <View className="h-full bg-golden" style={{ width: `${rate}%` }} />
+                        <View style={{ width: `${rate}%` }}>
+                          <View className="h-full w-full bg-golden" />
+                        </View>
                       </View>
                       <Text className="w-9 text-right font-sans-bold text-xs text-muted dark:text-zinc-300">{records.length ? `${rate}%` : '—'}</Text>
                     </View>

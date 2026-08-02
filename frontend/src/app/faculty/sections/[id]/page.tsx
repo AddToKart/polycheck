@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Search, Key, RefreshCw, Ban, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle } from 'lucide-react'
+import { ArrowLeft, Search, Key, RefreshCw, Ban, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle, CalendarDays } from 'lucide-react'
 import { api } from '@/lib/api-client'
-import type { User, Section, Student, SectionRole, SessionPermission } from '@polycheck/shared'
+import type { User, Section, Session, Student, SectionRole, SessionPermission } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,7 @@ export default function SectionDetailPage() {
   const id = params.id as string
   const [user, setUser] = useState<User | null>(null)
   const [section, setSection] = useState<Section | null>(null)
+  const [sessions, setSessions] = useState<Session[]>([])
   const [students, setStudents] = useState<(Student & { attendance: { present: number; late: number; absent: number } })[]>([])
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
@@ -59,7 +60,12 @@ export default function SectionDetailPage() {
         return
       }
       setSection(sec)
-      setStudents(await api.getSectionStudents(id))
+      const [sectionStudents, sectionSessions] = await Promise.all([
+        api.getSectionStudents(id),
+        api.getSectionSessions(id),
+      ])
+      setStudents(sectionStudents)
+      setSessions(sectionSessions)
       if (cu?.role === 'teacher') {
         setSectionRoles(await api.getSectionRoles(id))
         setSessionPermissions(await api.getActiveSessionPermissions(id))
@@ -457,6 +463,52 @@ export default function SectionDetailPage() {
             </CardContent>
           </Card>
           </>}
+
+          <Card className="mb-6 border-t-4 border-t-maroon dark:border-t-golden">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="flex items-center gap-2 text-base text-zinc-800 dark:text-zinc-100">
+                <CalendarDays className="h-5 w-5 text-maroon dark:text-golden" />
+                Section Sessions
+              </CardTitle>
+              {user.role === 'teacher' && (
+                <Button size="sm" asChild>
+                  <Link href="/faculty/sessions/create">Create Session</Link>
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent>
+              {sessions.length === 0 ? (
+                <p className="py-6 text-center text-sm text-zinc-400">No sessions have been created for this section.</p>
+              ) : (
+                <div className="divide-y divide-zinc-200 border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+                  {[...sessions].sort((a, b) => b.date.localeCompare(a.date)).map((session) => (
+                    <Link
+                      key={session.id}
+                      href={`/faculty/sessions/${session.id}`}
+                      className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                    >
+                      <div>
+                        <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">
+                          {new Date(`${session.date}T00:00:00`).toLocaleDateString('en-PH', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })}
+                        </p>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {session.startTime}–{session.endTime}{session.room ? ` · ${session.room}` : ''}
+                        </p>
+                      </div>
+                      <Badge variant={session.isActive ? 'active' : 'inactive'}>
+                        {session.isActive ? 'Active' : 'Completed'}
+                      </Badge>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Attendance Overview */}
           <div className="grid grid-cols-3 gap-4 mb-6">

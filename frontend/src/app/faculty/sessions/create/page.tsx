@@ -5,14 +5,13 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { CalendarCheck, MapPin } from 'lucide-react'
 import { api } from '@/lib/api-client'
-import type { User, Subject, Section, Session } from '@polycheck/shared'
+import { formatCampusDate, type User, type Subject, type Section, type Session } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import MapPicker from '@/components/MapPicker'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 
 export default function CreateSessionPage() {
   const router = useRouter()
@@ -22,7 +21,7 @@ export default function CreateSessionPage() {
 
   const [subjectId, setSubjectId] = useState('')
   const [sectionId, setSectionId] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(() => formatCampusDate())
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')
   const [room, setRoom] = useState('')
@@ -30,11 +29,11 @@ export default function CreateSessionPage() {
   const [longitude, setLongitude] = useState(120.9991)
   const [radius, setRadius] = useState(40)
   const [bulkMode, setBulkMode] = useState(false)
-  const [bulkStartDate, setBulkStartDate] = useState(new Date().toISOString().slice(0, 10))
+  const [bulkStartDate, setBulkStartDate] = useState(() => formatCampusDate())
   const [bulkEndDate, setBulkEndDate] = useState(() => {
     const d = new Date()
     d.setMonth(d.getMonth() + 4)
-    return d.toISOString().slice(0, 10)
+    return formatCampusDate(d)
   })
   const [bulkDays, setBulkDays] = useState<string[]>([])
   const [isRescheduled, setIsRescheduled] = useState(false)
@@ -98,7 +97,7 @@ export default function CreateSessionPage() {
       const dayName = dayNames[d.getDay()]
       const sched = selectedSection.schedule.find((s) => s.day === dayName)
       if (sched) {
-        const dateStr = d.toISOString().slice(0, 10)
+        const dateStr = formatCampusDate(d)
         const dateLabel = d.toLocaleDateString('en-US', {
           weekday: 'short',
           month: 'short',

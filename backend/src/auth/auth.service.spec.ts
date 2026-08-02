@@ -1,12 +1,13 @@
 import { Test } from '@nestjs/testing'
 import { ForbiddenException, HttpException, HttpStatus, NotFoundException, UnauthorizedException } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
-import { hashSync } from 'bcryptjs'
+import { getRounds, hashSync } from 'bcryptjs'
 import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import { AuthService } from './auth.service'
 import { BetterAuthService } from './better-auth.service'
-import type { User } from '@prisma/client'
+import type { User } from '../prisma/client'
+import { DUMMY_PASSWORD_HASH, PASSWORD_HASH_COST } from './password-policy'
 
 const VALID_PASSWORD = 'correct-horse-battery-staple'
 const VALID_HASH = hashSync(VALID_PASSWORD, 10)
@@ -36,6 +37,11 @@ function buildUser(overrides: Partial<User> = {}): User {
 }
 
 describe('AuthService', () => {
+  it('uses the same bcrypt work factor for real and unknown-account checks', () => {
+    expect(getRounds(DUMMY_PASSWORD_HASH)).toBe(PASSWORD_HASH_COST)
+    expect(PASSWORD_HASH_COST).toBe(12)
+  })
+
   let service: AuthService
   let prisma: { user: { findUnique: jest.Mock; update: jest.Mock } }
   let redis: {
@@ -111,7 +117,7 @@ describe('AuthService', () => {
     it('rejects unknown student and exercises DUMMY_HASH compare (timing safety)', async () => {
       prisma.user.findUnique.mockResolvedValue(null)
       await expect(service.loginStudent('S-999', VALID_PASSWORD)).rejects.toThrow(UnauthorizedException)
-      expect(redis.consumeRateLimit).toHaveBeenCalledWith('login:student:identity:S-999:unknown', 10, 60)
+      expect(redis.consumeRateLimit).toHaveBeenCalledWith('login:student:identity:S-999', 10, 60)
       expect(redis.consumeRateLimit).toHaveBeenCalledWith('login:student:ip:unknown', 30, 60)
     })
 
@@ -180,7 +186,7 @@ describe('AuthService', () => {
     it('rate limits per normalized email and client address', async () => {
       redis.consumeRateLimit.mockResolvedValue(false)
       await expect(service.loginFaculty('Teacher@PUP.edu', VALID_PASSWORD, '127.0.0.1')).rejects.toThrow(HttpException)
-      expect(redis.consumeRateLimit).toHaveBeenCalledWith('login:faculty:identity:teacher@pup.edu:127.0.0.1', 10, 60)
+      expect(redis.consumeRateLimit).toHaveBeenCalledWith('login:faculty:identity:teacher@pup.edu', 10, 60)
       expect(redis.consumeRateLimit).toHaveBeenCalledWith('login:faculty:ip:127.0.0.1', 30, 60)
     })
   })

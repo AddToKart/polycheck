@@ -95,6 +95,8 @@ export default function StudentSessionDetailScreen() {
     { label: 'Time', value: `${session.startTime}–${session.endTime}`, icon: 'access-time' },
     { label: 'Status', value: session.isActive ? 'Active now' : 'Completed', icon: session.isActive ? 'radio-button-checked' : 'check-circle' },
     { label: 'Room', value: session.room || 'TBA', icon: 'room' },
+    { label: 'QR validity', value: `${session.qrValidityMinutes} min`, icon: 'qr-code-2' },
+    { label: 'Grace period', value: `${session.gracePeriodMinutes} min`, icon: 'timer' },
   ]
 
   return (
@@ -109,7 +111,7 @@ export default function StudentSessionDetailScreen() {
       <ScrollView className="flex-1" contentContainerClassName="px-4 pb-24">
         <CampusCard className="mb-7">
           <Text className="mb-4 font-sans-bold text-[10px] uppercase tracking-[1.5px] text-muted dark:text-zinc-500">Session details</Text>
-          <View className="flex-row gap-3">
+          <View className="flex-row flex-wrap gap-3">
             {sessionStats.map((stat) => (
               <View key={stat.label} className="min-w-[30%] flex-1 rounded-2xl bg-zinc-50 p-3 dark:bg-white/5">
                 <MaterialIcons name={stat.icon} size={18} color={isDark ? '#FFDF00' : '#7B1113'} />

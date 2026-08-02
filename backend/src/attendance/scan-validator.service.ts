@@ -14,6 +14,9 @@ import {
   type ScanValidation,
 } from './types'
 
+const MAX_QR_VALIDITY_MINUTES = 15
+const MAX_QR_GRACE_MINUTES = 60
+
 @Injectable()
 export class ScanValidatorService {
   constructor(
@@ -121,6 +124,15 @@ export class ScanValidatorService {
     if (!teacherPublicKey) return failed('disputed', 'invalid_signature', 'Teacher signing key is unavailable')
     const payload = verifyQRToken(evidence.qrToken, teacherPublicKey)
     if (!payload) return failed('disputed', 'invalid_signature', 'QR token signature is invalid')
+    if (
+      !Number.isInteger(payload.validityMinutes) ||
+      payload.validityMinutes < 1 ||
+      payload.validityMinutes > MAX_QR_VALIDITY_MINUTES ||
+      !Number.isInteger(payload.gracePeriodMinutes) ||
+      payload.gracePeriodMinutes < 0 ||
+      payload.gracePeriodMinutes > MAX_QR_GRACE_MINUTES
+    )
+      return failed('disputed', 'token_mismatch', 'QR token timing is outside the allowed policy')
     if (
       (session.qrToken && evidence.qrToken !== session.qrToken) ||
       payload.sessionId !== session.id ||

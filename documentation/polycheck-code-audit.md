@@ -3,6 +3,20 @@ Repo: `AddToKart/polycheck` — Turborepo monorepo (NestJS backend, Next.js fron
 
 *Updated with a deeper second pass: every controller/service's authorization logic, the realtime gateway, the Redis fallback path, idempotency handling, cascade-delete behavior, and both frontends' token/key storage. One earlier finding is corrected in §2 ("sync batch size").*
 
+## Remediation update - July 30, 2026
+
+A full backend, web, and Android follow-up audit was remediated on `dev/audit-remediation`. The current implementation now includes:
+
+- account-scoped, authenticated encryption for Android SQLite cache and sync data, with unattributable plaintext v1 cache/queue rows removed during migration;
+- account-scoped teacher signing keys that fail closed when secure storage is incomplete or unavailable;
+- corrected student session scoping, teacher-only proof deletion, constant-cost unknown-account password checks, and strict 15-minute QR/60-minute grace limits;
+- database-enforced session time uniqueness with stable conflict responses for concurrent session creation and enrollment;
+- authenticated Swagger access without query-string credentials, nonce-based frontend CSP, and focus-managed accessible scanner/session/dispute dialogs;
+- aligned shared async API contracts, Asia/Manila calendar boundaries, parallel dashboard loading, scanner teardown race protection, and bounded mobile list rendering; and
+- Android unit tests in CI alongside the existing backend, e2e, frontend, typecheck, lint, migration, and production build gates.
+
+The detailed sections below remain historical snapshots. Use the dated remediation summaries and current code when a snapshot statement conflicts with the implementation.
+
 ## Remediation update - July 18, 2026
 
 The implementation findings from this audit have now been remediated:

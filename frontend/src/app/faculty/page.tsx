@@ -389,8 +389,8 @@ function SuperAdminDashboard({ user }: { user: User }) {
           <CardContent className="p-8">
             <div className="flex items-end justify-between h-48 gap-2">
               {weeklyTrends.map((day) => (
-                <div key={day.day} className="flex-1 flex flex-col justify-end items-center group">
-                  <div className="w-full flex flex-col justify-end gap-[1px]">
+                <div key={day.day} className="flex-1 h-full flex flex-col justify-end items-center group">
+                  <div className="w-full flex-1 flex flex-col justify-end gap-[1px]">
                     <div className="w-full bg-maroon-dark dark:bg-maroon transition-all" style={{ height: `${day.absent}%` }} title={`Absent: ${day.absent}%`} />
                     <div className="w-full bg-golden transition-all" style={{ height: `${day.late}%` }} title={`Late: ${day.late}%`} />
                     <div className="w-full bg-maroon dark:bg-white transition-all group-hover:opacity-90" style={{ height: `${day.present}%` }} title={`Present: ${day.present}%`} />
@@ -426,6 +426,13 @@ function SuperAdminDashboard({ user }: { user: User }) {
           </CardHeader>
           <CardContent className="p-0 flex-1 flex flex-col">
             <div className="flex-1">
+              {anomalies.length === 0 && (
+                <div className="p-8 text-center">
+                  <ShieldCheck className="w-8 h-8 text-zinc-300 dark:text-zinc-700 mx-auto mb-3" />
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">No anomalies detected</p>
+                  <p className="text-xs text-zinc-400 mt-1">Disputed records will appear here for review.</p>
+                </div>
+              )}
               {anomalies.map((anomaly, idx) => (
                 <div key={anomaly.id} className={`p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-colors ${idx !== 0 ? 'border-t border-zinc-200 dark:border-zinc-800' : ''}`}>
                   <div className="flex justify-between items-start mb-2">

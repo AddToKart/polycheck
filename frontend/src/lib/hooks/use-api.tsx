@@ -1,40 +1,54 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 
-interface UseApiState<T> {
+interface UseApiState<T, Args extends unknown[]> {
   data: T | null
   loading: boolean
   error: string | null
-  execute: (...args: any[]) => Promise<T | null>
+  execute: (...args: Args) => Promise<T | null>
   reset: () => void
 }
 
-export function useApi<T>(
-  apiFn: (...args: any[]) => T | null | Promise<T | null>,
-  ...args: any[]
-): UseApiState<T> {
+export function useApi<T, Args extends unknown[]>(
+  apiFn: (...args: Args) => T | null | Promise<T | null>,
+  ...args: Args
+): UseApiState<T, Args> {
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const argsRef = useRef(args)
-  argsRef.current = args
+  const requestIdRef = useRef(0)
+  const mountedRef = useRef(true)
 
-  const execute = useCallback(async (...executeArgs: any[]) => {
+  useEffect(() => {
+    argsRef.current = args
+  }, [args])
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false
+    },
+    [],
+  )
+
+  const execute = useCallback(async (...executeArgs: Args) => {
+    const requestId = ++requestIdRef.current
     setLoading(true)
     setError(null)
     try {
       const result = await apiFn(...(executeArgs.length ? executeArgs : argsRef.current))
-      setData(result)
+      if (mountedRef.current && requestId === requestIdRef.current) setData(result)
       return result
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'An error occurred'
-      setError(msg)
+      if (mountedRef.current && requestId === requestIdRef.current) setError(msg)
       return null
     } finally {
-      setLoading(false)
+      if (mountedRef.current && requestId === requestIdRef.current) setLoading(false)
     }
   }, [apiFn])
 
   const reset = useCallback(() => {
+    requestIdRef.current += 1
     setData(null)
     setLoading(false)
     setError(null)

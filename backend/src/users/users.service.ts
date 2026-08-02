@@ -4,9 +4,10 @@ import type { RequestUser } from '../auth/authenticated-principal'
 import { ConflictException } from '@nestjs/common'
 import { hash } from 'bcryptjs'
 import type { CreateStudentDto, CreateTeacherDto } from './dto/manage-user.dto'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '../prisma/client'
 import { randomUUID } from 'crypto'
 import { EventEmitter2 } from '@nestjs/event-emitter'
+import { PASSWORD_HASH_COST } from '../auth/password-policy'
 
 @Injectable()
 export class UsersService {
@@ -173,7 +174,7 @@ export class UsersService {
       select: { id: true },
     })
     if (exists) throw new ConflictException('A user with this email already exists')
-    const password = await hash(dto.password, 12)
+    const password = await hash(dto.password, PASSWORD_HASH_COST)
     const id = randomUUID()
     const now = new Date()
     try {
@@ -226,7 +227,7 @@ export class UsersService {
     })
     if (exists) throw new ConflictException('A user with this student ID or email already exists')
 
-    const password = await hash(dto.password, 12)
+    const password = await hash(dto.password, PASSWORD_HASH_COST)
     const id = randomUUID()
     const now = new Date()
     try {
@@ -286,7 +287,7 @@ export class UsersService {
     }
     this.assertDepartmentScope(user, target.department ?? undefined)
 
-    const passwordHash = await hash(password, 12)
+    const passwordHash = await hash(password, PASSWORD_HASH_COST)
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id },

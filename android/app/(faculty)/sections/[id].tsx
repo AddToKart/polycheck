@@ -205,7 +205,9 @@ export default function SectionDetailScreen() {
                     </View>
 
                     <View className="mt-3 h-2 overflow-hidden rounded-none bg-zinc-100 dark:bg-white/10">
-                      <View className="h-full bg-golden" style={{ width: `${rate}%` }} />
+                      <View style={{ width: `${rate}%` }}>
+                        <View className="h-full w-full bg-golden" />
+                      </View>
                     </View>
 
                     <View className="mt-3 flex-row gap-2">
@@ -406,7 +408,12 @@ export default function SectionDetailScreen() {
 
         {activeTab === 'sessions' ? (
           <>
-            <SectionHeading eyebrow="Class schedule" title="Section sessions" />
+            <SectionHeading
+              eyebrow="Class schedule"
+              title="Section sessions"
+              actionLabel={isTeacher ? 'Create Session' : undefined}
+              onAction={isTeacher ? () => router.push('/(faculty)/sessions/create') : undefined}
+            />
             <View className="gap-3">
               {sessions.map((session) => (
                 <CampusCard key={session.id} onPress={() => router.push({ pathname: '/(faculty)/sessions/[id]', params: { id: session.id } })} accessibilityLabel={`Open session on ${session.date}`} className="p-4">

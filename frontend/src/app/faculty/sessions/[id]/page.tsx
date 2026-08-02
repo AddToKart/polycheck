@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { ArrowLeft, QrCode, Timer, Play, StopCircle, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2, Copy, Download, Check, X } from 'lucide-react'
+import { ArrowLeft, QrCode, Timer, Play, StopCircle, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2, Copy, Download, Check } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Session, AttendanceRecord, AttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -11,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { LoadingSpinner } from '@/lib/hooks'
 import { useNotifications } from '@/lib/notifications'
 import CampusMap from '@/components/CampusMap'
@@ -167,6 +168,7 @@ export default function SessionDetailPage() {
   const lateCount = records.filter((r) => r.status === 'late').length
   const absentCount = records.filter((r) => r.status === 'absent').length
   const pendingCount = records.filter((r) => r.status === 'pending').length
+  const disputedCount = records.filter((r) => r.status === 'disputed').length
   const studentMap = new Map(records.map((r) => [r.studentId, r]))
 
   const handleCopyToken = async (e?: React.MouseEvent) => {
@@ -278,9 +280,14 @@ export default function SessionDetailPage() {
               <div className="flex flex-col items-center py-4">
                 {qrDataUrl ? (
                   <>
-                    <div className="cursor-pointer" onClick={() => setShowQrModal(true)}>
+                    <button
+                      type="button"
+                      className="cursor-pointer"
+                      onClick={() => setShowQrModal(true)}
+                      aria-label="Open session QR code in full screen"
+                    >
                       <Image src={qrDataUrl} width={180} height={180} unoptimized alt="Scannable session QR code" />
-                    </div>
+                    </button>
                     {countdown && (
                       <p className={`text-sm mt-2 font-mono ${countdown === 'Grace ended' ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
                         {countdown.includes('Grace') ? countdown : `Expires in: ${countdown}`}
@@ -424,6 +431,7 @@ export default function SessionDetailPage() {
                   { label: 'Late', value: lateCount, color: 'text-[#7B1113] dark:text-[#FF6B6B]' },
                   { label: 'Absent', value: absentCount, color: 'text-[#4A0A0B] dark:text-[#FF4F5A]' },
                   { label: 'Pending', value: pendingCount, color: 'text-gray-400' },
+                  { label: 'Disputed', value: disputedCount, color: 'text-[#7B1113] dark:text-[#FFDF00]' },
                 ].map((s) => (
                   <div key={s.label} className="text-center">
                     <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
@@ -434,7 +442,7 @@ export default function SessionDetailPage() {
 
               {/* Filters */}
               <div className="flex gap-2 mb-4 flex-wrap">
-                {(['all', 'present', 'late', 'absent', 'pending'] as const).map((f) => (
+                {(['all', 'present', 'late', 'absent', 'pending', 'disputed'] as const).map((f) => (
                   <button
                     key={f}
                     className={`px-3 py-1 text-xs border ${filter === f ? 'bg-[#7B1113] dark:bg-[#FFDF00] border-[#7B1113] dark:border-[#FFDF00] text-white dark:text-[#4A0A0B]' : 'bg-gray-100 dark:bg-[#121215] border-gray-300 dark:border-[rgba(245,168,0,0.15)] text-gray-500 dark:text-gray-400'}`}
@@ -489,20 +497,21 @@ export default function SessionDetailPage() {
         </div>
       </div>
 
-      {/* Validity Prompt Modal */}
-      {isTeacher && showValidityPrompt && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowValidityPrompt(false)}>
-          <div className="bg-white dark:bg-[#121215] dark:border dark:border-[rgba(245,168,0,0.15)] p-8 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
+      <Dialog open={isTeacher && showValidityPrompt} onOpenChange={setShowValidityPrompt}>
+        <DialogContent className="max-w-sm dark:bg-[#121215] dark:border-[rgba(245,168,0,0.15)] p-8">
+          <DialogHeader className="items-center text-center">
             <Timer className="w-10 h-10 text-[#7B1113] dark:text-[#FFDF00] mx-auto mb-3" />
-            <h3 className="text-lg font-heading font-bold text-center dark:text-white mb-2">QR Settings</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 text-center mb-6">
+            <DialogTitle className="dark:text-white">QR Settings</DialogTitle>
+            <DialogDescription className="text-xs text-center">
               Set the duration for this session. After validity expires, scans are marked Late. After the grace period ends, scans are blocked.
-            </p>
+            </DialogDescription>
+          </DialogHeader>
             <div className="space-y-4 mb-6">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">QR Validity</label>
+                <label htmlFor="qr-validity" className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">QR Validity</label>
                 <div className="flex items-center gap-2">
                   <Input
+                    id="qr-validity"
                     type="number"
                     className="w-full text-center font-bold"
                     value={validityMinutes}
@@ -514,9 +523,10 @@ export default function SessionDetailPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Grace Period</label>
+                <label htmlFor="grace-period" className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Grace Period</label>
                 <div className="flex items-center gap-2">
                   <Input
+                    id="grace-period"
                     type="number"
                     className="w-full text-center font-bold"
                     value={graceMinutes}
@@ -532,31 +542,19 @@ export default function SessionDetailPage() {
               <Button variant="outline" className="flex-1" onClick={() => setShowValidityPrompt(false)}>Cancel</Button>
               <Button className="flex-1 bg-[#7B1113] hover:bg-[#4A0A0B] dark:bg-[#FFDF00] dark:hover:bg-[#E09A00] dark:text-[#4A0A0B]" onClick={handleGenerateQr}>Generate</Button>
             </div>
-          </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
-      {/* Full Screen QR Modal */}
-      {isTeacher && showQrModal && qrDataUrl && (
-        <div
-          className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-6"
-          onClick={() => setShowQrModal(false)}
-        >
-          <div
-            className="bg-white dark:bg-[#121215] border-2 border-zinc-300 dark:border-zinc-800 p-8 flex flex-col items-center gap-6 max-w-lg w-full shadow-2xl relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setShowQrModal(false)}
-              className="absolute top-4 right-4 p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 transition-colors"
-              aria-label="Close full screen view"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
+      <Dialog open={isTeacher && showQrModal && Boolean(qrDataUrl)} onOpenChange={setShowQrModal}>
+        <DialogContent className="max-w-lg border-2 border-zinc-300 dark:border-zinc-800 p-8 flex flex-col items-center gap-6 shadow-2xl">
+          {qrDataUrl && (
+            <>
             <div className="text-center">
               <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Class Session QR Code</p>
-              <h2 className="text-xl font-heading font-bold text-[#7B1113] dark:text-[#FFDF00]">{session.subjectName}</h2>
+              <DialogTitle className="text-xl text-[#7B1113] dark:text-[#FFDF00]">{session.subjectName}</DialogTitle>
+              <DialogDescription className="sr-only">
+                Full-screen QR code for students to scan for this attendance session.
+              </DialogDescription>
             </div>
 
             <div className="p-4 bg-white border border-zinc-200 shadow-inner">
@@ -585,9 +583,10 @@ export default function SessionDetailPage() {
                 <Download className="w-4 h-4 mr-2 text-[#FFDF00]" /> Save Image
               </Button>
             </div>
-          </div>
-        </div>
-      )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

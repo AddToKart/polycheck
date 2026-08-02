@@ -1,8 +1,15 @@
 import 'dotenv/config'
-import { PrismaClient, UserRole, DayOfWeek, AttendanceStatus, SectionRoleType } from '@prisma/client'
-import { hash } from 'bcryptjs'
+import {
+  AttendanceStatus,
+  createPrismaAdapter,
+  DayOfWeek,
+  PrismaClient,
+  SectionRoleType,
+  UserRole,
+} from '../src/prisma/client'
+import { compare, hash } from 'bcryptjs'
 
-const prisma = new PrismaClient()
+const prisma = new PrismaClient({ adapter: createPrismaAdapter() })
 
 async function main() {
   if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
@@ -126,14 +133,24 @@ async function main() {
   for (const user of users) {
     const { password: _password, ...profile } = user
     const authEmail = `u-${user.id}@auth.polycheck.invalid`
+    // Refresh stored credentials only when they do not already match the current
+    // seed password: re-seeding with the same SEED_PASSWORD stays a no-op, while a
+    // stale hash (older seed, changed SEED_PASSWORD) is healed in place. Both the
+    // service-facing hash (user.password) and the Better Auth credential row
+    // (authAccount.password) must move together or logins 401.
+    const existing = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { password: true },
+    })
+    const needsPasswordRefresh = !existing || !(await compare(password, existing.password))
     await prisma.user.upsert({
       where: { id: user.id },
-      update: { ...profile, authEmail },
+      update: needsPasswordRefresh ? { ...profile, password, authEmail } : { ...profile, authEmail },
       create: { ...user, authEmail },
     })
     await prisma.authAccount.upsert({
       where: { providerId_accountId: { providerId: 'credential', accountId: user.id } },
-      update: {},
+      update: needsPasswordRefresh ? { password } : {},
       create: {
         id: `credential-${user.id}`,
         accountId: user.id,

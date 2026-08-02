@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api-client'
-import type { User, AttendanceReport } from '@polycheck/shared'
+import { formatCampusDate, getRecentCampusDateRange, type User, type AttendanceReport } from '@polycheck/shared'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,22 +12,7 @@ import StatusBadge from '@/components/StatusBadge'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Download, ChevronRight, CalendarDays } from 'lucide-react'
 
-const campusDateFormatter = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'Asia/Manila',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
-
-const campusDate = (date = new Date()) => {
-  const parts = new Map(campusDateFormatter.formatToParts(date).map((part) => [part.type, part.value]))
-  return `${parts.get('year')}-${parts.get('month')}-${parts.get('day')}`
-}
-
-const defaultToDate = campusDate()
-const defaultFrom = new Date(`${defaultToDate}T00:00:00.000Z`)
-defaultFrom.setUTCDate(defaultFrom.getUTCDate() - 29)
-const defaultFromDate = defaultFrom.toISOString().slice(0, 10)
+const { startDate: defaultFromDate, endDate: defaultToDate } = getRecentCampusDateRange(30)
 
 export default function AttendanceOverviewPage() {
   const router = useRouter()
@@ -73,7 +58,7 @@ export default function AttendanceOverviewPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `attendance-${new Date().toISOString().slice(0, 10)}.csv`
+    a.download = `attendance-${formatCampusDate()}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }

@@ -130,6 +130,18 @@ describe('SessionsService', () => {
       expect(where.sectionId).toEqual({ in: ['sec-1', 'sec-2'] })
     })
 
+    it('does not let an explicit section filter escape a student enrollment scope', async () => {
+      prisma.enrollment.findMany.mockResolvedValue([{ sectionId: 'sec-1' }])
+      prisma.session.findMany.mockResolvedValue([])
+      prisma.user.findMany.mockResolvedValue([])
+
+      await service.findAll(studentUser, 'sec-other')
+
+      expect(prisma.session.findMany.mock.calls[0][0]?.where).toEqual({
+        AND: [{ sectionId: { in: ['sec-1'] } }, { sectionId: 'sec-other' }],
+      })
+    })
+
     it('passes sectionId filter when provided', async () => {
       prisma.session.findMany.mockResolvedValue([])
       prisma.user.findMany.mockResolvedValue([])
@@ -218,6 +230,12 @@ describe('SessionsService', () => {
     it('forbids teacher who does not own the section', async () => {
       prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-other', subject: { name: 'CS 101' } })
       await expect(service.create(dto, teacherUser)).rejects.toThrow(ForbiddenException)
+    })
+
+    it('rejects impossible calendar dates before writing a session', async () => {
+      await expect(service.create({ ...dto, date: '2026-02-30' }, teacherUser)).rejects.toThrow(BadRequestException)
+      expect(prisma.section.findUnique).not.toHaveBeenCalled()
+      expect(prisma.session.create).not.toHaveBeenCalled()
     })
 
     it('throws NotFoundException when section does not exist', async () => {
@@ -549,6 +567,14 @@ describe('SessionsService', () => {
       await expect(
         service.createBulk({ ...dto, startDate: '2026-07-15', endDate: '2026-07-13' }, teacherUser),
       ).rejects.toThrow(BadRequestException)
+    })
+
+    it('throws BadRequestException for impossible bulk calendar dates', async () => {
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      await expect(service.createBulk({ ...dto, startDate: '2026-02-30' }, teacherUser)).rejects.toThrow(
+        BadRequestException,
+      )
+      expect(prisma.session.findMany).not.toHaveBeenCalled()
     })
 
     it('throws BadRequestException when date range exceeds 366 days', async () => {

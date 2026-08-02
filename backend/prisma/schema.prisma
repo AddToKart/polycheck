@@ -1,10 +1,11 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client"
+  output        = "../src/generated/prisma"
+  moduleFormat  = "cjs"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
@@ -234,6 +235,7 @@ model Session {
   @@index([isActive])
   @@index([teacherId, date])
   @@index([sectionId, date])
+  @@unique([sectionId, date, startTime, endTime])
 }
 
 model ScanAttempt {

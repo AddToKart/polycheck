@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./api-config', () => ({ API_BASE: 'https://api.polycheck.test/api' }))
-vi.mock('./signing-key', () => ({ getOrCreateTeacherSigningKey: vi.fn() }))
+vi.mock('./signing-key', () => ({
+  getOrCreateTeacherSigningKey: vi.fn(),
+  isSigningKeyProvisioned: vi.fn(),
+  markSigningKeyProvisioned: vi.fn(),
+}))
 
 const student = {
   id: 'student-1',
@@ -122,6 +126,25 @@ describe('real API client', () => {
     )
   })
 
+  it('aborts browser API requests that exceed the production timeout', async () => {
+    vi.useFakeTimers()
+    vi.mocked(fetch).mockImplementation(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+        }),
+    )
+    const { api } = await import('./api-client')
+
+    try {
+      const request = expect(api.getSubjects()).rejects.toMatchObject({ name: 'AbortError' })
+      await vi.advanceTimersByTimeAsync(15_000)
+      await request
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('getSections passes subjectId query parameter', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse([]))
     const { api } = await import('./api-client')
@@ -177,6 +200,39 @@ describe('real API client', () => {
 
     await expect(api.generateQrCode('sess-1', 0)).rejects.toThrow('QR validity must be 1-15 minutes')
     await expect(api.generateQrCode('sess-1', 20)).rejects.toThrow('QR validity must be 1-15 minutes')
+  })
+
+  it('generateQrCode provisions the signing key only once per account', async () => {
+    const { api } = await import('./api-client')
+    const { getOrCreateTeacherSigningKey, isSigningKeyProvisioned, markSigningKeyProvisioned } = await import('./signing-key')
+    const { createSigningKeyPair } = await import('@polycheck/shared')
+    const pair = createSigningKeyPair(crypto.getRandomValues(new Uint8Array(32)))
+    vi.mocked(getOrCreateTeacherSigningKey).mockResolvedValue(pair)
+
+    // /auth/me resolves to the mocked teacher user first
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(teacher))
+    await api.restoreSession()
+    expect(api.getCurrentUser()?.role).toBe('teacher')
+    // Fresh Response per request (session GET, provision, activate)
+    vi.mocked(fetch).mockImplementation(async () => jsonResponse({ id: 'sess-1' }))
+
+    // First generation: not provisioned yet → uploads the key once
+    vi.mocked(isSigningKeyProvisioned).mockResolvedValueOnce(false)
+    await api.generateQrCode('sess-1', 5, 10)
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.polycheck.test/api/auth/provision-key',
+      expect.objectContaining({ body: expect.stringContaining(pair.publicKey) }),
+    )
+    expect(markSigningKeyProvisioned).toHaveBeenCalledWith('teacher-1')
+
+    // Second generation: already provisioned → no re-upload
+    vi.mocked(fetch).mockClear()
+    vi.mocked(isSigningKeyProvisioned).mockResolvedValueOnce(true)
+    await api.generateQrCode('sess-1', 5, 10)
+    const provisionCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(([url]) => String(url).includes('/auth/provision-key'))
+    expect(provisionCalls).toHaveLength(0)
   })
 
   it('search queries the search endpoint', async () => {
@@ -241,7 +297,7 @@ describe('real API client', () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse(true))
     const { api } = await import('./api-client')
 
-    const result = await api.enrollStudent({ sectionId: 'sec-1', studentId: 'stu-1', studentName: 'Test', enrollmentCode: 'CODE' })
+    const result = await api.enrollStudent({ sectionId: 'sec-1', studentId: 'stu-1', studentName: 'Test' })
     expect(result).toBe(true)
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining('/sections/sec-1/enroll-student'),

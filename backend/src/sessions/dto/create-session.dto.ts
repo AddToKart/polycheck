@@ -30,8 +30,8 @@ export class CreateSessionDto {
   @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) startTime!: string
   @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) endTime!: string
   @IsOptional() @IsString() @MaxLength(100) room?: string
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(180) qrValidityMinutes?: number
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(180) gracePeriodMinutes?: number
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(15) qrValidityMinutes?: number
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(60) gracePeriodMinutes?: number
   @ValidateNested() @Type(() => GeofenceDto) geofence!: GeofenceDto
   @IsOptional() @IsBoolean() isRescheduled?: boolean
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) rescheduledFromDate?: string
@@ -58,7 +58,7 @@ export class CreateBulkSessionsDto {
   @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) startTime!: string
   @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) endTime!: string
   @IsOptional() @IsString() @MaxLength(100) room?: string
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(180) qrValidityMinutes?: number
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(180) gracePeriodMinutes?: number
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(15) qrValidityMinutes?: number
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(60) gracePeriodMinutes?: number
   @ValidateNested() @Type(() => GeofenceDto) geofence!: GeofenceDto
 }

@@ -4,8 +4,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import { GeofenceService } from './geofence.service'
 import type { RequestUser } from '../auth/authenticated-principal'
-import type { ScanEvidence } from './types'
-import { createHash } from 'crypto'
+import { ISSUED_AT, makeCachedSession, makeEvidence, validPayload } from '../../test/test-fixtures'
 
 jest.mock('@polycheck/shared', () => ({
   verifyQRToken: jest.fn(),
@@ -18,60 +17,6 @@ const mockedVerify = verifyQRToken as jest.MockedFunction<typeof verifyQRToken>
 const mockedHaversine = haversineDistance as jest.MockedFunction<typeof haversineDistance>
 
 const studentUser: RequestUser = { id: 'stu-1', role: 'student', studentId: 'S-1' }
-const ISSUED_AT = Date.now() - 30_000
-
-function makeEvidence(overrides: Partial<ScanEvidence> = {}): ScanEvidence {
-  // locationCapturedAt is anchored to ISSUED_AT + 2s (well within the ±30s
-  // stale-location window) so that test timing differences cannot push the age
-  // past the threshold and trigger stale_location before the check under test.
-  return {
-    sessionId: 'sess-1',
-    latitude: 14.5863,
-    longitude: 121.0,
-    qrToken: 't'.repeat(100),
-    deviceId: 'device-1',
-    clientAttemptId: 'attempt-1',
-    accuracyMeters: 10,
-    locationCapturedAt: new Date(ISSUED_AT + 2_000).toISOString(),
-    scannedAt: new Date(ISSUED_AT).toISOString(),
-    inputChannel: 'camera',
-    mocked: false,
-    ...overrides,
-  }
-}
-
-function makeCachedSession(overrides: any = {}) {
-  return {
-    id: 'sess-1',
-    sectionId: 'sec-1',
-    teacherId: 'teacher-1',
-    subjectName: 'CS 101',
-    qrValidityMinutes: 10,
-    gracePeriodMinutes: 5,
-    geofenceLatitude: 14.5863,
-    geofenceLongitude: 121.0,
-    geofenceRadiusMeters: 50,
-    isActive: true,
-    endedAt: null,
-    qrToken: 't'.repeat(100),
-    qrTokenExpiresAt: null,
-    qrGeneratedAt: new Date(ISSUED_AT).toISOString(),
-    teacherPublicKey: 'pk-test',
-    ...overrides,
-  }
-}
-
-function validPayload(overrides: any = {}) {
-  return {
-    sessionId: 'sess-1',
-    sectionId: 'sec-1',
-    teacherId: 'teacher-1',
-    issuedAt: ISSUED_AT,
-    validityMinutes: 10,
-    gracePeriodMinutes: 5,
-    ...overrides,
-  }
-}
 
 describe('ScanValidatorService', () => {
   let service: ScanValidatorService
@@ -153,6 +98,13 @@ describe('ScanValidatorService', () => {
       expect(result.reason).toBe('token_mismatch')
     })
 
+    it('rejects a signed token whose timing exceeds policy', async () => {
+      mockedVerify.mockReturnValue(validPayload({ validityMinutes: 60 }) as any)
+      const result = await service.validateScan(studentUser, makeEvidence(), true, new Date())
+      expect(result.success).toBe(false)
+      expect(result.reason).toBe('token_mismatch')
+    })
+
     it('returns absent when session is inactive (online)', async () => {
       redis.getJson.mockResolvedValue({ ...cached, isActive: false })
       const result = await service.validateScan(studentUser, makeEvidence(), false, new Date())
@@ -198,12 +150,7 @@ describe('ScanValidatorService', () => {
     })
 
     it('returns disputed for poor location accuracy', async () => {
-      const result = await service.validateScan(
-        studentUser,
-        makeEvidence({ accuracyMeters: 100 }),
-        false,
-        new Date(),
-      )
+      const result = await service.validateScan(studentUser, makeEvidence({ accuracyMeters: 100 }), false, new Date())
       expect(result.success).toBe(false)
       expect(result.status).toBe('disputed')
       expect(result.reason).toBe('poor_location_accuracy')

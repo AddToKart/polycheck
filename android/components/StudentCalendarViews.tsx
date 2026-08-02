@@ -1,6 +1,6 @@
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
-import type { AttendanceStatus, CalendarEvent } from '@polycheck/shared'
+import { formatCampusDate, type AttendanceStatus, type CalendarEvent } from '@polycheck/shared'
 import { useTheme } from '../theme/ThemeContext'
 import { AttendanceStatusPill, CampusCard, CampusEmptyState } from './CampusPrimitives'
 
@@ -62,7 +62,7 @@ export const StudentMonthCalendar = ({
         <View key={weekIdx} className="flex-row justify-between">
           {flatDays.slice(weekIdx * 7, (weekIdx + 1) * 7).map((day, dayIdx) => {
             if (!day) return <View key={`empty-${weekIdx}-${dayIdx}`} className="aspect-square flex-1" />
-            const date = day.toISOString().split('T')[0]
+            const date = formatCampusDate(day)
             const isToday = date === today
             const selected = date === selectedDay
             const dayEvents = eventsByDate.get(date) ?? []

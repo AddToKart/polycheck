@@ -9,6 +9,7 @@ import {
 import { api } from '@/lib/api-client'
 import { decodeTokenPayload } from '@polycheck/shared/utils'
 import type { ScanInputChannel, Student } from '@polycheck/shared'
+import type { IScannerControls } from '@zxing/browser'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -62,13 +63,16 @@ interface ScanQrModalProps {
 export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalProps) {
   // ── Camera refs ──────────────────────────────────────────────────────────
   const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const scanLoopRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(null)
+  const zxingControlsRef = useRef<IScannerControls | null>(null)
+  const cameraRequestRef = useRef(0)
   const scannedRef = useRef(false)
   const handleTokenRef = useRef<(token: string, channel: ScanInputChannel) => Promise<void>>(async () => {})
   // BarcodeDetector not yet in TS lib typings
   const detectorRef = useRef<BarcodeDetector | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
 
   // ── Upload refs ──────────────────────────────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -91,10 +95,13 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
 
   // ── Camera lifecycle ─────────────────────────────────────────────────────
   const stopCamera = useCallback(() => {
+    cameraRequestRef.current += 1
     if (scanLoopRef.current) {
       cancelAnimationFrame(scanLoopRef.current)
       scanLoopRef.current = null
     }
+    zxingControlsRef.current?.stop()
+    zxingControlsRef.current = null
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop())
       streamRef.current = null
@@ -106,6 +113,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
 
   const startCamera = useCallback(async (overrideFacingMode?: 'environment' | 'user') => {
     const targetFacing = overrideFacingMode || facingMode
+    const requestId = ++cameraRequestRef.current
     setPhase('requesting-camera')
     setCameraError('')
     try {
@@ -117,13 +125,22 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
         video: { facingMode: targetFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
       })
+      if (requestId !== cameraRequestRef.current) {
+        stream.getTracks().forEach((track) => track.stop())
+        return
+      }
       streamRef.current = stream
       if (videoRef.current) {
         videoRef.current.srcObject = stream
         await videoRef.current.play()
+      } else {
+        stream.getTracks().forEach((track) => track.stop())
+        streamRef.current = null
+        return
       }
-      setPhase('scanning')
+      if (requestId === cameraRequestRef.current) setPhase('scanning')
     } catch (err: unknown) {
+      if (requestId !== cameraRequestRef.current) return
       const msg =
         err instanceof Error && err.name === 'NotAllowedError'
           ? 'Camera access denied. Enable camera permission to scan attendance QR codes.'
@@ -165,11 +182,19 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
 
     const detector = detectorRef.current
 
-    const loop = async () => {
+    let cancelled = false
+    let lastAttemptAt = 0
+    const loop = async (timestamp: number) => {
+      if (cancelled) return
       if (!videoRef.current || videoRef.current.readyState < 2) {
         scanLoopRef.current = requestAnimationFrame(loop)
         return
       }
+      if (timestamp - lastAttemptAt < 100) {
+        scanLoopRef.current = requestAnimationFrame(loop)
+        return
+      }
+      lastAttemptAt = timestamp
       if (detector) {
         try {
           const codes = await detector.detect(videoRef.current)
@@ -180,33 +205,35 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
         } catch {
           // detector not ready — continue
         }
-      } else if (canvasRef.current) {
-        // zxing fallback — lazy import
-        try {
-          const ctx = canvasRef.current.getContext('2d')
-          if (ctx && videoRef.current) {
-            canvasRef.current.width = videoRef.current.videoWidth
-            canvasRef.current.height = videoRef.current.videoHeight
-            ctx.drawImage(videoRef.current, 0, 0)
-            const { BrowserQRCodeReader } = await import('@zxing/browser')
-            const reader = new BrowserQRCodeReader()
-            const imgData = canvasRef.current.toDataURL()
-            const result = await reader.decodeFromImageUrl(imgData)
-            if (result) {
-              await processScanResult(result.getText())
-              return
-            }
-          }
-        } catch {
-          // no QR in this frame
-        }
       }
       scanLoopRef.current = requestAnimationFrame(loop)
     }
 
-    scanLoopRef.current = requestAnimationFrame(loop)
+    if (detector) {
+      scanLoopRef.current = requestAnimationFrame(loop)
+    } else {
+      void import('@zxing/browser')
+        .then(async ({ BrowserQRCodeReader }) => {
+          if (cancelled || !videoRef.current) return
+          const reader = new BrowserQRCodeReader(undefined, {
+            delayBetweenScanAttempts: 200,
+            delayBetweenScanSuccess: 500,
+          })
+          const controls = await reader.decodeFromVideoElement(videoRef.current, (result) => {
+            if (result && !cancelled) void processScanResult(result.getText())
+          })
+          if (cancelled) controls.stop()
+          else zxingControlsRef.current = controls
+        })
+        .catch(() => {
+          if (!cancelled) setCameraError('This browser could not start the QR decoder.')
+        })
+    }
     return () => {
+      cancelled = true
       if (scanLoopRef.current) cancelAnimationFrame(scanLoopRef.current)
+      zxingControlsRef.current?.stop()
+      zxingControlsRef.current = null
     }
   }, [phase, processScanResult])
 
@@ -459,11 +486,32 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
 
   // ── Escape key ───────────────────────────────────────────────────────────
   useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    closeButtonRef.current?.focus()
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { stopCamera(); onClose() }
+      if (e.key !== 'Tab' || !panelRef.current) return
+      const focusable = Array.from(
+        panelRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        ),
+      )
+      if (!focusable.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      previouslyFocused?.focus()
+    }
   }, [onClose, stopCamera])
 
   // ── Close ────────────────────────────────────────────────────────────────
@@ -522,22 +570,28 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
       className="fixed inset-0 z-50 flex items-center justify-center bg-pup-black/90 backdrop-blur-sm"
       aria-modal="true"
       role="dialog"
-      aria-label="Scan attendance QR code"
+      aria-labelledby="scan-qr-title"
       onClick={(e) => { if (e.target === e.currentTarget) handleClose() }}
     >
       {/* Panel */}
-      <div className="relative w-full max-w-lg mx-4 bg-background border-2 border-zinc-300 dark:border-zinc-800 shadow-2xl flex flex-col h-[540px] max-h-[92dvh] overflow-hidden">
+      <div
+        ref={panelRef}
+        className="relative w-full max-w-lg mx-4 bg-background border-2 border-zinc-300 dark:border-zinc-800 shadow-2xl flex flex-col h-[540px] max-h-[92dvh] overflow-hidden"
+      >
 
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-maroon text-white shrink-0">
           <div className="flex items-center gap-3">
             <QrCode className="w-5 h-5 text-golden" />
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/70">Attendance Check-in</p>
+              <p id="scan-qr-title" className="text-[10px] font-bold uppercase tracking-widest text-white/70">
+                Scan attendance QR code
+              </p>
               <p className="text-sm font-bold text-golden font-heading">{user.fullName}</p>
             </div>
           </div>
           <button
+            ref={closeButtonRef}
             onClick={handleClose}
             className="p-1.5 hover:bg-white/10 transition-colors rounded-none"
             aria-label="Close scanner"
@@ -658,8 +712,6 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
                   className="w-full h-full object-cover"
                   aria-label="Camera viewfinder"
                 />
-                <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
-
                 {/* Overlay */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="absolute inset-0 bg-pup-black/40" />

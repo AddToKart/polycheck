@@ -11,11 +11,10 @@ module.exports = {
     '^expo-constants$': '<rootDir>/__mocks__/expo-constants.ts',
     '^react-native$': '<rootDir>/__mocks__/react-native.ts',
     '^@polycheck/shared$': '<rootDir>/__mocks__/polycheck-shared.ts',
-    '^@polycheck/shared/(.*)$': '<rootDir>/__mocks__/polycheck-shared-$1.ts',
   },
   transformIgnorePatterns: ['node_modules/(?!(@polycheck)/)'],
   testPathIgnorePatterns: ['/node_modules/', '/dist/'],
   transform: {
-    '^.+\\.tsx?$': ['ts-jest', { diagnostics: false }],
+    '^.+\.tsx?$': ['ts-jest', { diagnostics: true }],
   },
 }

@@ -97,20 +97,28 @@ export default function StudentDetailScreen() {
       />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 12 }} showsVerticalScrollIndicator={false}>
       <SectionHeading eyebrow="Digital credential" title="PUP student ID" />
-      <Pressable accessibilityRole="button" accessibilityLabel={`Student ID card, showing ${isFlipped ? 'back' : 'front'}. Tap to flip.`} accessibilityHint="Shows identity and verification details" onPress={flip} className="mb-3 w-full self-center" style={{ maxWidth: 390, aspectRatio: 1.586 }}>
-        <Animated.View pointerEvents={isFlipped ? 'none' : 'auto'} className="absolute h-full w-full overflow-hidden rounded-[26px] border-2 border-maroon/20 bg-[#FDFBF7] shadow-lg dark:border-golden/20 dark:bg-[#151013]" style={{ backfaceVisibility: 'hidden', transform: [{ rotateY: frontRotation }] }}>
+      <View className="mb-3 w-full items-center">
+      <View style={{ width: '100%', maxWidth: 390, aspectRatio: 1.586 }}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Student ID card, showing ${isFlipped ? 'back' : 'front'}. Tap to flip.`} accessibilityHint="Shows identity and verification details" onPress={flip} className="h-full w-full">
+        <Animated.View pointerEvents={isFlipped ? 'none' : 'auto'} style={{ position: 'absolute', height: '100%', width: '100%', backfaceVisibility: 'hidden', transform: [{ rotateY: frontRotation }] }}>
+          <View className="h-full w-full overflow-hidden rounded-[26px] border-2 border-maroon/20 bg-[#FDFBF7] shadow-lg dark:border-golden/20 dark:bg-[#151013]">
           <View className="flex-row items-center gap-3 bg-maroon px-4 py-3"><Image source={require('../../../assets/pup-logo.png')} className="h-9 w-9" /><View className="flex-1"><Text className="font-sans-bold text-[8px] uppercase tracking-[1.5px] text-golden">Polytechnic University of the Philippines</Text><Text className="mt-1 font-sans-bold text-[10px] uppercase tracking-[1px] text-white">Student identification card</Text></View></View>
           <View className="flex-1 flex-row">
             <View className="w-[34%] items-center justify-center border-r-2 border-maroon/15 p-3 dark:border-golden/15"><View className="aspect-[3/4] w-full items-center justify-center rounded-xl border-2 border-maroon/15 bg-white dark:border-golden/15 dark:bg-zinc-900"><View className="h-12 w-12 items-center justify-center rounded-full bg-maroon dark:bg-golden"><Text className="font-heading text-xl text-white dark:text-maroon-dark">{student.fullName.split(' ').map((part) => part[0]).join('').slice(0, 2)}</Text></View></View><View className="mt-3 h-5 w-full justify-end border-b border-zinc-400"><Text className="text-center font-sans text-[6px] text-zinc-500 dark:text-zinc-400">SIGNATURE</Text></View></View>
             <View className="flex-1 justify-center gap-3 p-4"><IdLabel label="Student number" value={student.studentId} prominent /><IdLabel label="Full name" value={student.fullName} /><View className="flex-row gap-3"><View className="flex-1"><IdLabel label="Program" value={student.program} /></View><View className="flex-1"><IdLabel label="Validity" value="2026–2027" /></View></View></View>
           </View>
+          </View>
         </Animated.View>
 
-        <Animated.View pointerEvents={isFlipped ? 'auto' : 'none'} className="absolute h-full w-full overflow-hidden rounded-[26px] border-2 border-maroon/20 bg-[#FDFBF7] shadow-lg dark:border-golden/20 dark:bg-[#151013]" style={{ backfaceVisibility: 'hidden', transform: [{ rotateY: backRotation }] }}>
+        <Animated.View pointerEvents={isFlipped ? 'auto' : 'none'} style={{ position: 'absolute', height: '100%', width: '100%', backfaceVisibility: 'hidden', transform: [{ rotateY: backRotation }] }}>
+          <View className="h-full w-full overflow-hidden rounded-[26px] border-2 border-maroon/20 bg-[#FDFBF7] shadow-lg dark:border-golden/20 dark:bg-[#151013]">
           <View className="mt-4 h-12 w-full bg-zinc-900" />
           <View className="flex-1 flex-row p-4"><View className="flex-[2] justify-between pr-4"><View><Text className="font-sans-bold text-[8px] uppercase tracking-[1.5px] text-maroon dark:text-golden">Conditions of use</Text><Text className="mt-2 font-sans text-[8px] leading-3 text-zinc-600 dark:text-zinc-300">This card is non-transferable and remains the property of PUP. Report a lost card immediately.</Text></View><View><Text className="font-sans-bold text-[7px] uppercase tracking-[1px] text-zinc-500">In case of emergency</Text><View className="mt-2 h-4 border-b border-zinc-400" /><View className="mt-1 h-4 border-b border-zinc-400" /></View></View><View className="flex-1 items-center justify-center border-l-2 border-dashed border-maroon/15 pl-4 dark:border-golden/15"><View className="rounded-xl bg-white p-1"><QRCode value={student.studentId} size={70} backgroundColor="#FFFFFF" color="#0A0A0A" /></View><Text className="mt-2 text-center font-sans-bold text-[6px] tracking-[1.5px] text-zinc-500">SCAN TO VERIFY</Text></View></View>
+          </View>
         </Animated.View>
       </Pressable>
+      </View>
+      </View>
       <Text className="mb-7 text-center font-sans-bold text-[10px] uppercase tracking-[1.3px] text-muted dark:text-zinc-500">Tap the card to view the {isFlipped ? 'front' : 'back'}</Text>
 
       {isTeacher ? <CampusButton label="Remove from section" icon="person-remove" variant="secondary" onPress={remove} className="mb-7 border-red-300 dark:border-red-800" /> : null}

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { api } from '@/lib/api-client'
-import type { Student, Section, AttendanceRecord, StudentDisputeReason, Subject, Session } from '@polycheck/shared'
+import type { Student, Section, AttendanceRecord, AttendanceStatus, StudentDisputeReason, Subject, Session, CalendarEvent } from '@polycheck/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sidebar } from '@/components/layout/sidebar'
 import StatusBadge from '@/components/StatusBadge'
@@ -37,8 +37,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { getWeekDays, getDayName, getDayNameFull, formatDate, formatTime, isSameDay, getDateRangeForWeek } from '@/lib/calendar-utils'
-import type { CalendarEvent } from '@polycheck/shared'
-import { generateStudentCalendarEvents } from '@polycheck/shared/utils'
+import { formatCampusDate, generateStudentCalendarEvents } from '@polycheck/shared/utils'
 
 type NavTab = 'dashboard' | 'subjects' | 'schedule' | 'attendance'
 
@@ -56,7 +55,6 @@ function StudentDashboardContent() {
   const [sections, setSections] = useState<Section[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
-  const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard')
 
   useEffect(() => {
@@ -68,6 +66,7 @@ function StudentDashboardContent() {
     }
   }, [searchParams])
   const [attendancePage, setAttendancePage] = useState(0)
+  const [attendanceFilter, setAttendanceFilter] = useState<'all' | AttendanceStatus>('all')
   const [isIdModalOpen, setIsIdModalOpen] = useState(false)
   const [isIdFlipped, setIsIdFlipped] = useState(false)
   const [scheduleDate, setScheduleDate] = useState(new Date())
@@ -95,6 +94,17 @@ function StudentDashboardContent() {
     }
     return map
   }, [allSubjects])
+  const todayEvents = useMemo(() => {
+    const today = formatCampusDate()
+    return generateStudentCalendarEvents(
+      sections,
+      sessions,
+      records,
+      (id) => subjectMap.get(id),
+      today,
+      today,
+    ).sort((a, b) => a.startTime.localeCompare(b.startTime))
+  }, [records, sections, sessions, subjectMap])
 
   const handleEnrollSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -123,18 +133,12 @@ function StudentDashboardContent() {
     // Refresh student's enrolled subjects list
     const updatedSections = await api.getStudentSections(user!.id)
     setSections(updatedSections)
-    const updatedRecords = await api.getAttendanceForStudent(user!.id)
-    const updatedSessions = await api.getSessions()
-    const todayStr = new Date().toISOString().slice(0, 10)
-    const evs = generateStudentCalendarEvents(
-      updatedSections,
-      updatedSessions,
-      updatedRecords,
-      (id) => subjectMap.get(id),
-      todayStr,
-      todayStr
-    ).sort((a, b) => a.startTime.localeCompare(b.startTime))
-    setTodayEvents(evs)
+    const [updatedRecords, updatedSessions] = await Promise.all([
+      api.getAttendanceForStudent(user!.id),
+      api.getSessions(),
+    ])
+    setRecords(updatedRecords)
+    setSessions(updatedSessions)
   }
 
   useEffect(() => {
@@ -150,38 +154,23 @@ function StudentDashboardContent() {
       setUser(cu as Student)
       if (cu.studentId) {
         try {
-          const studentSections = await api.getStudentSections(cu.id)
-          const studentRecords = await api.getAttendanceForStudent(cu.id)
-          const allSessions = await api.getSessions()
+          const [studentSections, studentRecords, allSessions, subjects] = await Promise.all([
+            api.getStudentSections(cu.id),
+            api.getAttendanceForStudent(cu.id),
+            api.getSessions(),
+            api.getSubjects(),
+          ])
           setSections(studentSections)
           setRecords(studentRecords)
           setSessions(allSessions)
-
-          const todayStr = new Date().toISOString().slice(0, 10)
-          const evs = generateStudentCalendarEvents(
-            studentSections,
-            allSessions,
-            studentRecords,
-            (id) => subjectMap.get(id),
-            todayStr,
-            todayStr
-          ).sort((a, b) => a.startTime.localeCompare(b.startTime))
-          setTodayEvents(evs)
+          setAllSubjects(subjects)
         } catch {
           // Graceful fallback if initial background fetch fails
         }
       }
     }
     fn()
-  }, [router, subjectMap])
-
-  useEffect(() => {
-    const fetchData = async () => {
-      const subjects = await api.getSubjects()
-      setAllSubjects(subjects)
-    }
-    fetchData()
-  }, [])
+  }, [router])
 
   useEffect(() => {
     setAttendancePage(0)
@@ -210,7 +199,8 @@ function StudentDashboardContent() {
       setDisputeFeedback({ type: 'error', message: 'Failed to submit dispute.' })
     }
     setTimeout(() => setDisputeFeedback(null), 3000)
-    setDisputeRecord(null)
+    // Keep the dialog open so the success/error message above stays visible
+    // until the student closes it (mirrors the enroll flow).
     setDisputeReason('')
     setDisputeDescription('')
   }
@@ -220,11 +210,17 @@ const ATTENDANCE_PAGE_SIZE = 8
     () => [...records].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
     [records]
   )
-  const attendancePageCount = Math.max(1, Math.ceil(sortedRecords.length / ATTENDANCE_PAGE_SIZE))
-  const pagedRecords = useMemo(
-    () => sortedRecords.slice(attendancePage * ATTENDANCE_PAGE_SIZE, (attendancePage + 1) * ATTENDANCE_PAGE_SIZE),
-    [sortedRecords, attendancePage]
+  const filteredAttendanceRecords = useMemo(
+    () => attendanceFilter === 'all' ? sortedRecords : sortedRecords.filter((record) => record.status === attendanceFilter),
+    [attendanceFilter, sortedRecords],
   )
+  const attendancePageCount = Math.max(1, Math.ceil(filteredAttendanceRecords.length / ATTENDANCE_PAGE_SIZE))
+  const pagedRecords = useMemo(
+    () => filteredAttendanceRecords.slice(attendancePage * ATTENDANCE_PAGE_SIZE, (attendancePage + 1) * ATTENDANCE_PAGE_SIZE),
+    [filteredAttendanceRecords, attendancePage]
+  )
+
+  useEffect(() => setAttendancePage(0), [attendanceFilter])
 
   if (!user) return null
 
@@ -766,6 +762,20 @@ const ATTENDANCE_PAGE_SIZE = 8
                   <Clock className="w-4 h-4 text-maroon dark:text-golden" />
                   Full Attendance Audit
                 </CardTitle>
+                <div className="flex flex-wrap gap-2 pt-4">
+                  {(['all', 'present', 'late', 'absent', 'pending', 'disputed'] as const).map((status) => (
+                    <Button
+                      key={status}
+                      type="button"
+                      size="sm"
+                      variant={attendanceFilter === status ? 'default' : 'outline'}
+                      className="h-8 rounded-none text-[10px] font-bold uppercase tracking-wider"
+                      onClick={() => setAttendanceFilter(status)}
+                    >
+                      {status}
+                    </Button>
+                  ))}
+                </div>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -810,10 +820,10 @@ const ATTENDANCE_PAGE_SIZE = 8
                           </td>
                         </tr>
                       ))}
-                      {records.length === 0 && (
+                      {filteredAttendanceRecords.length === 0 && (
                         <tr>
                           <td colSpan={4} className="px-6 py-16 text-center text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest">
-                            Audit log is empty
+                            No {attendanceFilter === 'all' ? '' : `${attendanceFilter} `}attendance records
                           </td>
                         </tr>
                       )}
@@ -826,7 +836,7 @@ const ATTENDANCE_PAGE_SIZE = 8
               {attendancePageCount > 1 && (
                 <div className="flex flex-col sm:flex-row items-center justify-between border-t border-zinc-200 dark:border-zinc-800 px-6 py-4 bg-zinc-50/50 dark:bg-zinc-900/30 gap-4">
                   <div className="text-xs text-zinc-500 uppercase tracking-widest font-bold">
-                    Showing {attendancePage * ATTENDANCE_PAGE_SIZE + 1} - {Math.min((attendancePage + 1) * ATTENDANCE_PAGE_SIZE, records.length)} of {records.length} scans
+                    Showing {attendancePage * ATTENDANCE_PAGE_SIZE + 1} - {Math.min((attendancePage + 1) * ATTENDANCE_PAGE_SIZE, filteredAttendanceRecords.length)} of {filteredAttendanceRecords.length} scans
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap justify-center">
                     <Button

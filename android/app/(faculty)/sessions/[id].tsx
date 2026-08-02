@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { Alert, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
+import * as Clipboard from 'expo-clipboard'
 import QRCode from 'react-native-qrcode-svg'
 import type { AttendanceRecord, AttendanceStatus, ProofOfClass, Session, Student, User } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
+import { sharePngFile } from '../../../services/file-sharing'
 import { useTheme } from '../../../theme/ThemeContext'
 import MapView, { type StudentMapPin } from '../../../components/MapView'
 import { subscribeToSession } from '../../../services/realtime'
@@ -15,6 +17,8 @@ import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 const FILTERS: Array<AttendanceStatus | 'all'> = ['all', 'present', 'late', 'absent', 'pending', 'disputed']
+const ROSTER_PAGE_SIZE = 20
+type QrSvgHandle = { toDataURL: (callback: (base64: string) => void) => void }
 
 const CardTitle = ({ icon, title, detail }: { icon: keyof typeof MaterialIcons.glyphMap; title: string; detail?: string }) => {
   const { isDark } = useTheme()
@@ -29,6 +33,7 @@ export default function SessionDetailScreen() {
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [enrolledStudents, setEnrolledStudents] = useState<Student[]>([])
   const [filter, setFilter] = useState<AttendanceStatus | 'all'>('all')
+  const [rosterPage, setRosterPage] = useState(1)
   const [proofsOfClass, setProofsOfClass] = useState<ProofOfClass[]>([])
   const [showQrModal, setShowQrModal] = useState(false)
   const [showValidityPrompt, setShowValidityPrompt] = useState(false)
@@ -40,6 +45,7 @@ export default function SessionDetailScreen() {
   const [realtimeConnected, setRealtimeConnected] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const qrCodeRef = useRef<QrSvgHandle | null>(null)
 
   const refreshData = useCallback(async () => {
     if (!id) return
@@ -109,6 +115,16 @@ export default function SessionDetailScreen() {
   const visibleRecords = filter === 'all' ? records : records.filter((record) => record.status === filter)
   const visibleStudentIds = new Set(visibleRecords.map((record) => record.studentId))
   const studentMap = new Map(records.map((record) => [record.studentId, record]))
+  const filteredStudents = enrolledStudents.filter((student) => {
+    const status = studentMap.get(student.id)?.status ?? 'pending'
+    return filter === 'all' || visibleStudentIds.has(student.id) || status === filter
+  })
+  const rosterPageCount = Math.max(1, Math.ceil(filteredStudents.length / ROSTER_PAGE_SIZE))
+  const safeRosterPage = Math.min(rosterPage, rosterPageCount)
+  const pagedStudents = filteredStudents.slice(
+    (safeRosterPage - 1) * ROSTER_PAGE_SIZE,
+    safeRosterPage * ROSTER_PAGE_SIZE,
+  )
   const counts = {
     present: records.filter((record) => record.status === 'present').length,
     late: records.filter((record) => record.status === 'late').length,
@@ -147,6 +163,34 @@ export default function SessionDetailScreen() {
     } catch (error) { Alert.alert('Unable to update attendance', error instanceof Error ? error.message : 'Please try again.') }
   }
 
+  const copyQrToken = async () => {
+    if (!session.qrToken) return
+    await Clipboard.setStringAsync(session.qrToken)
+    Alert.alert('QR token copied', 'The signed session token is ready to paste.')
+  }
+
+  const shareQrToken = async () => {
+    if (!session.qrToken) return
+    await Share.share({
+      title: `${session.subjectName} attendance QR`,
+      message: session.qrToken,
+    })
+  }
+
+  const shareQrImage = async () => {
+    const qrCode = qrCodeRef.current
+    if (!qrCode) {
+      Alert.alert('QR image unavailable', 'Wait for the QR code to finish rendering and try again.')
+      return
+    }
+    try {
+      const base64 = await new Promise<string>((resolve) => qrCode.toDataURL(resolve))
+      await sharePngFile(base64, `polycheck-qr-${session.id}.png`)
+    } catch (error) {
+      Alert.alert('Unable to share QR image', error instanceof Error ? error.message : 'Please try again.')
+    }
+  }
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
       <CampusHeader
@@ -165,9 +209,21 @@ export default function SessionDetailScreen() {
       {isTeacher ? <CampusCard className="mb-5 items-center overflow-hidden bg-maroon dark:bg-[#2A0E11]">
         <View className="mb-4 w-full flex-row items-center"><View className="h-9 w-9 items-center justify-center rounded-xl bg-white/10"><MaterialIcons name="qr-code-2" size={19} color="#FFDF00" /></View><View className="ml-3 flex-1"><Text className="font-sans-bold text-base text-white">Session QR</Text><Text className="mt-1 font-sans text-xs text-white/60">Students scan this code inside the geofence.</Text></View></View>
         {session.qrToken ? <>
-          <Pressable accessibilityRole="button" accessibilityLabel="Open QR code full screen" onPress={() => setShowQrModal(true)} className="rounded-[26px] bg-white p-3"><QRCode value={session.qrToken} size={160} quietZone={6} backgroundColor="#FFFFFF" color="#0A0A0A" /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open QR code full screen" onPress={() => setShowQrModal(true)} className="rounded-[26px] bg-white p-3"><QRCode value={session.qrToken} size={160} quietZone={6} backgroundColor="#FFFFFF" color="#0A0A0A" getRef={(ref: QrSvgHandle | null) => { qrCodeRef.current = ref }} /></Pressable>
           <Text accessibilityLiveRegion="polite" className="mt-4 font-sans-bold text-sm text-golden">{countdown === 'Grace ended' ? 'Grace period ended' : countdown.includes('Grace') ? countdown : countdown ? `Expires in ${countdown}` : 'Active'}</Text>
-          <Pressable accessibilityRole="button" onPress={() => setShowQrModal(true)} className="mt-3 min-h-11 flex-row items-center gap-2 rounded-2xl bg-white/10 px-4"><MaterialIcons name="fullscreen" size={18} color="#FFFFFF" /><Text className="font-sans-bold text-xs text-white">Full screen</Text></Pressable>
+          <View className="mt-3 flex-row flex-wrap justify-center gap-2">
+            {[
+              { label: 'Full screen', icon: 'fullscreen' as const, onPress: () => setShowQrModal(true) },
+              { label: 'Copy token', icon: 'content-copy' as const, onPress: () => { void copyQrToken() } },
+              { label: 'Share token', icon: 'share' as const, onPress: () => { void shareQrToken() } },
+              { label: 'Share image', icon: 'image' as const, onPress: () => { void shareQrImage() } },
+            ].map((action) => (
+              <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress} className="min-h-11 flex-row items-center gap-2 rounded-2xl bg-white/10 px-4">
+                <MaterialIcons name={action.icon} size={18} color="#FFFFFF" />
+                <Text className="font-sans-bold text-xs text-white">{action.label}</Text>
+              </Pressable>
+            ))}
+          </View>
         </> : session.isActive ? <Text className="py-10 font-sans text-sm text-white/60">Generating QR code…</Text> : <View className="w-full items-center py-5"><MaterialIcons name="qr-code-scanner" size={44} color="rgba(255,255,255,.25)" /><Text className="mb-5 mt-3 text-center font-sans text-sm text-white/60">Activate the session and issue a short-lived code.</Text><CampusButton label="Generate QR code" icon="play-arrow" variant="gold" onPress={() => setShowValidityPrompt(true)} /></View>}
       </CampusCard> : null}
 
@@ -204,15 +260,15 @@ export default function SessionDetailScreen() {
         <View className="border-b border-line px-4 pb-3 pt-4 dark:border-line-dark"><View className="flex-row items-center justify-between"><Text className="font-sans-bold text-sm text-ink dark:text-white">{enrolledStudents.length} enrolled students</Text><Text accessibilityLiveRegion="polite" className="font-sans text-[10px] text-muted dark:text-zinc-500">{refreshLabel}</Text></View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 pt-4">{FILTERS.map((status) => {
             const active = filter === status
-            return <Pressable key={status} accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => setFilter(status)} className={`min-h-11 justify-center rounded-full border px-4 ${active ? 'border-maroon bg-maroon dark:border-golden dark:bg-golden' : 'border-line bg-white dark:border-line-dark dark:bg-surface-dark'}`}><Text className={`font-sans-bold text-xs capitalize ${active ? 'text-white dark:text-maroon-dark' : 'text-muted dark:text-zinc-400'}`}>{status}</Text></Pressable>
+            return <Pressable key={status} accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => { setFilter(status); setRosterPage(1) }} className={`min-h-11 justify-center rounded-full border px-4 ${active ? 'border-maroon bg-maroon dark:border-golden dark:bg-golden' : 'border-line bg-white dark:border-line-dark dark:bg-surface-dark'}`}><Text className={`font-sans-bold text-xs capitalize ${active ? 'text-white dark:text-maroon-dark' : 'text-muted dark:text-zinc-400'}`}>{status}</Text></Pressable>
           })}</ScrollView>
         </View>
-        {!enrolledStudents.length ? <View className="p-4"><CampusEmptyState icon="group-off" title="No enrolled students" description="Add students from the section details screen." /></View> : enrolledStudents.map((student) => {
+        {!filteredStudents.length ? <View className="p-4"><CampusEmptyState icon="group-off" title={enrolledStudents.length ? 'No matching students' : 'No enrolled students'} description={enrolledStudents.length ? 'Choose a different attendance filter.' : 'Add students from the section details screen.'} /></View> : pagedStudents.map((student) => {
           const record = studentMap.get(student.id)
           const status = record?.status ?? 'pending'
-          if (filter !== 'all' && !visibleStudentIds.has(student.id) && status !== filter) return null
           return <Pressable key={student.id} disabled={!isTeacher} accessibilityRole={isTeacher ? 'button' : undefined} accessibilityLabel={isTeacher ? `Change ${student.fullName} attendance, currently ${status}` : undefined} onPress={() => void override(student.id, status)} className="min-h-16 flex-row items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 dark:border-line-dark"><View className="h-11 w-11 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10"><Text className="font-sans-bold text-xs text-maroon dark:text-golden">{student.fullName.split(' ').map((part) => part[0]).join('').slice(0, 2)}</Text></View><View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">{student.fullName}</Text><Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">{student.studentId}{record?.manuallySet ? ' · Manual override' : ''}</Text></View><AttendanceStatusPill status={status} />{isTeacher ? <MaterialIcons name="chevron-right" size={19} color="#746C6E" /> : null}</Pressable>
         })}
+        {rosterPageCount > 1 ? <View className="flex-row items-center justify-between border-t border-line px-4 py-3 dark:border-line-dark"><CampusButton className="min-h-11 px-3" label="Previous" variant="secondary" disabled={safeRosterPage === 1} onPress={() => setRosterPage((page) => Math.max(1, page - 1))} /><Text className="font-sans-medium text-xs text-muted dark:text-zinc-400">Page {safeRosterPage} of {rosterPageCount}</Text><CampusButton className="min-h-11 px-3" label="Next" variant="secondary" disabled={safeRosterPage === rosterPageCount} onPress={() => setRosterPage((page) => Math.min(rosterPageCount, page + 1))} /></View> : null}
       </CampusCard>
 
       {isTeacher && session.isActive ? <CampusButton label="End session" icon="stop" onPress={endSession} className="border-red-600 bg-red-600 dark:border-red-600 dark:bg-red-600" /> : null}

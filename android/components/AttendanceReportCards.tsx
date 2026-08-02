@@ -85,7 +85,11 @@ export const AttendanceSummaryCard = ({ summary, onPress }: { summary: Attendanc
         {onPress ? <MaterialIcons name="chevron-right" size={21} color="#746C6E" /> : null}
       </View>
       <View className="mt-4 h-2 flex-row overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10">
-        {summaryStatus.map((status) => summary[status.key] > 0 ? <View key={status.key} className={status.color} style={{ flex: summary[status.key] }} /> : null)}
+        {summaryStatus.map((status) => summary[status.key] > 0 ? (
+          <View key={status.key} style={{ flex: summary[status.key] }}>
+            <View className={`h-full w-full ${status.color}`} />
+          </View>
+        ) : null)}
       </View>
       <View className="mt-4 flex-row flex-wrap gap-x-4 gap-y-2">
         {summaryStatus.map((status) => <View key={status.key} className="flex-row items-center gap-1.5"><View className={`h-2 w-2 rounded-full ${status.color}`} /><Text className={`font-sans-bold text-[10px] ${status.text}`}>{summary[status.key]} {status.label}</Text></View>)}
@@ -100,7 +104,11 @@ export const AttendanceDistributionCard = ({ totals }: { totals: AttendanceRepor
     <CampusCard className="mb-7">
       <Text className="font-sans-bold text-[10px] uppercase tracking-[1.5px] text-muted dark:text-zinc-500">Record distribution</Text>
       <View className="mt-4 h-3 flex-row overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10">
-        {summaryStatus.map((status) => totals[status.key] > 0 ? <View key={status.key} className={status.color} style={{ flex: totals[status.key] }} /> : null)}
+        {summaryStatus.map((status) => totals[status.key] > 0 ? (
+          <View key={status.key} style={{ flex: totals[status.key] }}>
+            <View className={`h-full w-full ${status.color}`} />
+          </View>
+        ) : null)}
       </View>
       <View className="mt-5 gap-3">
         {summaryStatus.map((status) => (

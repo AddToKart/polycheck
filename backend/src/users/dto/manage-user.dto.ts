@@ -38,9 +38,9 @@ export class CreateStudentDto {
   studentId!: string
   @IsOptional() @IsEmail() @MaxLength(254) email?: string
   @IsStrongPassword() password!: string
-  @IsOptional() @IsString() @MinLength(2) @MaxLength(150) program?: string
+  @IsString() @MinLength(2) @MaxLength(150) program!: string
   @Type(() => Number) @IsInt() @Min(1) @Max(8) yearLevel!: number
-  @IsOptional() @IsString() @MinLength(2) @MaxLength(100) department?: string
+  @IsString() @MinLength(2) @MaxLength(100) department!: string
 }
 
 export class ResetPasswordDto {

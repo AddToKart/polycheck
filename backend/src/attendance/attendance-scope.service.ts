@@ -2,8 +2,9 @@ import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/com
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { AttendanceListQueryDto, AttendanceReportQueryDto } from './dto/attendance.dto'
-import { RAW_DATE_RANGE_DAYS, RAW_ATTENDANCE_LIMIT, REPORT_DATE_RANGE_DAYS, REPORT_SECTION_LIMIT } from './types'
-import type { Prisma } from '@prisma/client'
+import { RAW_DATE_RANGE_DAYS } from './types'
+import type { Prisma } from '../prisma/client'
+import { formatCampusDate } from '@polycheck/shared'
 
 @Injectable()
 export class AttendanceScopeService {
@@ -89,7 +90,7 @@ export class AttendanceScopeService {
     maximumDays: number,
     defaultDays: number,
   ) {
-    const endDate = requestedEnd ?? new Date().toISOString().slice(0, 10)
+    const endDate = requestedEnd ?? formatCampusDate()
     const parsedEnd = this.parseDate(endDate)
     const defaultStart = new Date(parsedEnd)
     defaultStart.setUTCDate(defaultStart.getUTCDate() - (defaultDays - 1))
