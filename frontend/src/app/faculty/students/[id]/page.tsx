@@ -91,7 +91,7 @@ export default function StudentDetailPage() {
     const existing = records.find((r) => r.sessionId === session.id)
     if (existing) return
     const newRecord: AttendanceRecord = {
-      id: `a-manual-${Date.now()}`,
+      id: crypto.randomUUID(),
       sessionId: session.id,
       sectionId,
       studentId,

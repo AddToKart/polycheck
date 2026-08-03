@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Download, Filter } from 'lucide-react'
 import { api } from '@/lib/api-client'
+import { pupColors } from '@/lib/colors'
 import { formatCampusDate, getRecentCampusDateRange, type User, type Subject, type Teacher, type AttendanceReport } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -203,19 +204,19 @@ export default function ReportsPage() {
                     <circle cx="70" cy="70" r="60" fill="none" stroke="#E4E4E7" strokeWidth="20" />
                     {total.total > 0 && (
                       <>
-                        <circle cx="70" cy="70" r="60" fill="none" stroke="#FFDF00" strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.golden} strokeWidth="20"
                           strokeDasharray={`${(total.present / total.total) * 377} 377`}
                           strokeDashoffset="0"
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke="#7B1113" strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.maroon} strokeWidth="20"
                           strokeDasharray={`${(total.late / total.total) * 377} 377`}
                           strokeDashoffset={-((total.present / total.total) * 377)}
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke="#4A0A0B" strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.maroonDark} strokeWidth="20"
                           strokeDasharray={`${(total.absent / total.total) * 377} 377`}
                           strokeDashoffset={-(((total.present + total.late) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
@@ -240,9 +241,9 @@ export default function ReportsPage() {
                   </svg>
                   <div className="space-y-3">
                     {[
-                      { label: 'Present', count: total.present, pct: presentPct, color: '#FFDF00', textColor: 'text-golden' },
-                      { label: 'Late', count: total.late, pct: latePct, color: '#7B1113', textColor: 'text-maroon' },
-                      { label: 'Absent', count: total.absent, pct: absentPct, color: '#4A0A0B', textColor: 'text-maroon-dark' },
+                      { label: 'Present', count: total.present, pct: presentPct, color: pupColors.golden, textColor: 'text-golden' },
+                      { label: 'Late', count: total.late, pct: latePct, color: pupColors.maroon, textColor: 'text-maroon' },
+                      { label: 'Absent', count: total.absent, pct: absentPct, color: pupColors.maroonDark, textColor: 'text-maroon-dark' },
                       { label: 'Pending', count: total.pending, pct: pendingPct, color: '#A1A1AA', textColor: 'text-zinc-500' },
                       { label: 'Disputed', count: total.disputed, pct: disputedPct, color: '#D97706', textColor: 'text-amber-600' },
                     ].map((item) => (

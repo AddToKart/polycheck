@@ -7,6 +7,7 @@ import { router } from 'expo-router'
 import type { Student, Teacher, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
+import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
 import { CampusFormField } from '../../components/CampusFormField'
@@ -21,7 +22,7 @@ const AccountSheet = ({ visible, title, description, children, onClose }: { visi
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 justify-end bg-black/80" onPress={onClose}>
-        <Pressable onPress={() => undefined} className="max-h-[92%] rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-[#161214]">
+        <Pressable onPress={() => undefined} className="max-h-[92%] rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-surface-dark">
           <View className="mb-4 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
           <View className="mb-2 flex-row items-start gap-4">
             <View className="flex-1">
@@ -47,13 +48,13 @@ const UserCard = ({ account, busy, onStatus, onReset }: { account: Teacher | Stu
       <View className="h-12 w-12 items-center justify-center rounded-2xl bg-maroon dark:bg-golden"><Text className="font-sans-bold text-sm text-white dark:text-maroon-dark">{initials(account.fullName)}</Text></View>
       <View className="flex-1"><Text className="font-sans-bold text-base text-ink dark:text-white">{account.fullName}</Text><Text className="mt-1 font-sans text-xs text-muted dark:text-zinc-400" numberOfLines={1}>{account.email || 'No email on file'}</Text></View>
       <Pressable disabled={busy} accessibilityRole="switch" accessibilityLabel={`${account.isActive ? 'Disable' : 'Enable'} ${account.fullName}`} accessibilityState={{ checked: account.isActive, disabled: busy }} onPress={onStatus} className={`min-h-11 min-w-20 items-center justify-center rounded-full border px-3 ${account.isActive ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30' : 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30'}`}>
-        {busy ? <ActivityIndicator size="small" color={isDark ? '#FFDF00' : '#7B1113'} /> : <Text className={`font-sans-bold text-[10px] ${account.isActive ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>{account.isActive ? 'Active' : 'Inactive'}</Text>}
+        {busy ? <ActivityIndicator size="small" color={isDark ? pupColors.golden : pupColors.maroon} /> : <Text className={`font-sans-bold text-[10px] ${account.isActive ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>{account.isActive ? 'Active' : 'Inactive'}</Text>}
       </Pressable>
     </View>
     <View className="mt-4 gap-2 border-t border-line pt-4 dark:border-line-dark">
       <View className="flex-row items-center gap-2"><MaterialIcons name={student ? 'fingerprint' : 'business'} size={16} color={isDark ? '#A1A1AA' : '#746C6E'} /><Text className="font-sans text-xs text-muted dark:text-zinc-400">{student ? student.studentId : account.department}</Text></View>
       {student ? <View className="flex-row items-center gap-2"><MaterialIcons name="school" size={16} color={isDark ? '#A1A1AA' : '#746C6E'} /><Text className="font-sans text-xs text-muted dark:text-zinc-400">{student.program} · Year {student.yearLevel}</Text></View> : null}
-      <Pressable accessibilityRole="button" accessibilityLabel={`Reset password for ${account.fullName}`} onPress={onReset} className="mt-2 min-h-11 flex-row items-center gap-2 self-start rounded-xl bg-maroon/5 px-3 dark:bg-golden/10"><MaterialIcons name="key" size={16} color={isDark ? '#FFDF00' : '#7B1113'} /><Text className="font-sans-bold text-xs text-maroon dark:text-golden">Reset password</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Reset password for ${account.fullName}`} onPress={onReset} className="mt-2 min-h-11 flex-row items-center gap-2 self-start rounded-xl bg-maroon/5 px-3 dark:bg-golden/10"><MaterialIcons name="key" size={16} color={isDark ? pupColors.golden : pupColors.maroon} /><Text className="font-sans-bold text-xs text-maroon dark:text-golden">Reset password</Text></Pressable>
     </View>
   </CampusCard>
 }
@@ -155,12 +156,12 @@ export default function FacultyUsersScreen() {
   const visibleAccounts: Array<Student | Teacher> = activeTab === 'teachers' ? teachers : students
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
       <CampusHeader eyebrow="Account administration" title="Campus users" subtitle="Create accounts, manage access, and reset credentials securely." actions={<><CampusIconButton inverse icon="settings" label="Institution settings" onPress={() => router.push('/(faculty)/settings' as never)} /><CampusIconButton inverse icon="person-add" label={`Add ${activeTab === 'teachers' ? 'teacher' : 'student'}`} onPress={openCreate} /><CampusIconButton inverse icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle theme" onPress={toggle} /></>} />
       <View className="mx-4 mt-2 flex-row rounded-2xl bg-zinc-200/70 p-1 dark:bg-white/5">
         {([{ id: 'teachers', label: `Teachers · ${teachers.length}`, icon: 'people' }, { id: 'students', label: `Students · ${students.length}`, icon: 'school' }] as const).map((tab) => {
           const active = activeTab === tab.id
-          return <Pressable key={tab.id} accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => setActiveTab(tab.id)} className={`min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-xl ${active ? 'bg-maroon dark:bg-golden' : ''}`}><MaterialIcons name={tab.icon} size={17} color={active ? isDark ? '#4A0A0B' : '#FFFFFF' : '#746C6E'} /><Text className={`font-sans-bold text-xs ${active ? 'text-white dark:text-maroon-dark' : 'text-muted dark:text-zinc-400'}`}>{tab.label}</Text></Pressable>
+          return <Pressable key={tab.id} accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => setActiveTab(tab.id)} className={`min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-xl ${active ? 'bg-maroon dark:bg-golden' : ''}`}><MaterialIcons name={tab.icon} size={17} color={active ? isDark ? pupColors.maroonDark : '#FFFFFF' : '#746C6E'} /><Text className={`font-sans-bold text-xs ${active ? 'text-white dark:text-maroon-dark' : 'text-muted dark:text-zinc-400'}`}>{tab.label}</Text></Pressable>
         })}
       </View>
       <FlatList<Student | Teacher>

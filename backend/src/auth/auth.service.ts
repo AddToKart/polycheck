@@ -8,6 +8,7 @@ import {
   Logger,
 } from '@nestjs/common'
 import { compare } from 'bcryptjs'
+import { createHash } from 'crypto'
 import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import type { User } from '../prisma/client'
@@ -24,6 +25,10 @@ const LOGIN_RATE_WINDOW = positiveInt(process.env.LOGIN_RATE_WINDOW_SECONDS, 60)
 // abuse. Also env-tunable for local development and E2E automation.
 const KEY_PROVISION_RATE_LIMIT = positiveInt(process.env.KEY_PROVISION_RATE_LIMIT, 3)
 const KEY_PROVISION_RATE_WINDOW = positiveInt(process.env.KEY_PROVISION_RATE_WINDOW_SECONDS, 3600)
+// Key revocation is rate limited like provisioning (default 3/hour) to deter
+// repeated revoke/flood abuse while still allowing a compromised key to be
+// invalidated immediately.
+const KEY_REVOKE_RATE_LIMIT = positiveInt(process.env.KEY_REVOKE_RATE_LIMIT, 3)
 
 function positiveInt(value: string | undefined, fallback: number) {
   const parsed = value === undefined ? NaN : Number(value)
@@ -145,6 +150,51 @@ export class AuthService {
     this.events.emit('auth.key-provisioned', { userId, hadPreviousKey: !!previousKey })
 
     return { message: 'Public key provisioned successfully' }
+  }
+
+  /**
+   * Immediately invalidates the teacher's current signing key. All outstanding
+   * QR tokens fail server-side signature verification until a new key is
+   * provisioned. The revoked key's fingerprint is emitted for audit.
+   */
+  async revokeKey(userId: string) {
+    const withinLimit = await this.redis.consumeRateLimit(
+      `auth:key-revoke:${userId}`,
+      KEY_REVOKE_RATE_LIMIT,
+      KEY_PROVISION_RATE_WINDOW,
+    )
+    if (!withinLimit) {
+      this.logger.warn(`Rate limited key revocation attempt for user ${userId}`)
+      throw new HttpException('Too many key revocation attempts. Try again later.', HttpStatus.TOO_MANY_REQUESTS)
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, teacherPublicKey: true },
+    })
+    if (!user) throw new NotFoundException('User not found')
+    if (!user.teacherPublicKey) {
+      return { revoked: false, message: 'No signing key is currently provisioned' }
+    }
+
+    const fingerprint = createHash('sha256').update(user.teacherPublicKey).digest('hex')
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { teacherPublicKey: null },
+    })
+
+    // Invalidate cached active-session records for this teacher: scan
+    // validation prefers the Redis-cached signing key, so without this the
+    // revoked key would keep verifying QR tokens until the cache TTL expires.
+    const activeSessions = await this.prisma.session.findMany({
+      where: { teacherId: userId, isActive: true },
+      select: { id: true },
+    })
+    await Promise.all(activeSessions.map((session) => this.redis.delete(`active-session:${session.id}`)))
+
+    this.events.emit('auth.key-revoked', { userId, fingerprint })
+    this.logger.warn(`Signing key revoked for user ${userId} (fingerprint ${fingerprint.slice(0, 12)})`)
+    return { revoked: true, message: 'Signing key revoked. Provision a new key before generating QR tokens.' }
   }
 
   async logout(headers: Headers) {

@@ -2,6 +2,7 @@ import { Modal, Pressable, ScrollView, Text, View } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import { formatCampusDate, type AttendanceStatus, type CalendarEvent } from '@polycheck/shared'
 import { useTheme } from '../theme/ThemeContext'
+import { pupColors } from '../theme/colors'
 import { AttendanceStatusPill, CampusCard, CampusEmptyState } from './CampusPrimitives'
 
 type EventMap = Map<string, CalendarEvent[]>
@@ -113,7 +114,7 @@ export const StudentWeekCalendar = ({
       <Text className="font-sans-bold text-[9px] uppercase tracking-widest text-maroon dark:text-golden">
         Swipe sideways to view all 7 days (Sun–Sat)
       </Text>
-      <MaterialIcons name="swipe" size={16} color="#7B1113" />
+      <MaterialIcons name="swipe" size={16} color={pupColors.maroon} />
     </View>
 
     {/* Horizontal Week Viewport */}
@@ -209,14 +210,14 @@ export const StudentCalendarEventModal = ({
     <Modal visible={Boolean(event)} transparent animationType="fade" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.80)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
         {event ? (
-          <View style={{ width: '100%', borderRadius: 0, borderWidth: 1, borderTopWidth: 5, borderTopColor: '#FFDF00', borderColor: isDark ? '#30272A' : '#7B1113', backgroundColor: isDark ? '#171316' : '#FFFFFF', padding: 20 }}>
+          <View className="w-full border border-t-[5px] border-t-golden border-maroon bg-white p-5 dark:border-maroon-line dark:bg-surface-dark">
             <View className="mb-3 flex-row items-center justify-between border-b border-line pb-2 dark:border-line-dark">
               <View>
                 <Text className="font-sans-bold text-[10px] uppercase tracking-[2px] text-maroon dark:text-golden">Class Detail</Text>
                 <Text className="font-sans-bold text-lg font-bold text-ink dark:text-white">{event.subjectName}</Text>
               </View>
               <Pressable accessibilityRole="button" onPress={onClose} className="h-9 w-9 items-center justify-center rounded-none border border-line bg-zinc-100 dark:border-line-dark dark:bg-white/5">
-                <MaterialIcons name="close" size={18} color={isDark ? '#FFFFFF' : '#4A0A0B'} />
+                <MaterialIcons name="close" size={18} color={isDark ? '#FFFFFF' : pupColors.maroonDark} />
               </Pressable>
             </View>
 

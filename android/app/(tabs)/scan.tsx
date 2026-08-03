@@ -25,6 +25,7 @@ import * as ImagePicker from 'expo-image-picker'
 import * as Location from 'expo-location'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
+import { pupColors } from '../../theme/colors'
 import { CampusIconButton } from '../../components/CampusPrimitives'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
@@ -221,7 +222,7 @@ export default function ScanScreen() {
   const presentation = result ? resultPresentation[result.status] : null
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0A0A0E' }}>
+    <View style={{ flex: 1, backgroundColor: '#0A0A0E' }} testID="student-scan-screen">
       {/* Full-bleed Camera Viewport */}
       {cameraPermission?.granted ? (
         <CameraView
@@ -253,7 +254,7 @@ export default function ScanScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <View style={{ width: 10, height: 10, borderRadius: 0, backgroundColor: '#34D399' }} />
             <View>
-              <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 9, textTransform: 'uppercase', letterSpacing: 2, color: '#FFDF00' }}>Polycheck Scanner</Text>
+              <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 9, textTransform: 'uppercase', letterSpacing: 2, color: pupColors.golden }}>Polycheck Scanner</Text>
               <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 14, textTransform: 'uppercase', letterSpacing: 1, color: '#FFFFFF' }}>
                 {activeSession ? activeSession.subjectName : 'Live Attendance Check'}
               </Text>
@@ -269,6 +270,7 @@ export default function ScanScreen() {
             <CampusIconButton
               icon="close"
               label="Close scanner"
+              testID="scan-close"
               onPress={() => router.replace('/(tabs)/dashboard')}
               inverse
             />
@@ -292,18 +294,18 @@ export default function ScanScreen() {
               }}
             >
               {/* Corner Bracket Guides */}
-              <View style={{ position: 'absolute', left: 0, top: 0, width: 40, height: 40, borderLeftWidth: 4, borderTopWidth: 4, borderColor: '#FFDF00' }} />
-              <View style={{ position: 'absolute', right: 0, top: 0, width: 40, height: 40, borderRightWidth: 4, borderTopWidth: 4, borderColor: '#FFDF00' }} />
-              <View style={{ position: 'absolute', bottom: 0, left: 0, width: 40, height: 40, borderBottomWidth: 4, borderLeftWidth: 4, borderColor: '#FFDF00' }} />
-              <View style={{ position: 'absolute', bottom: 0, right: 0, width: 40, height: 40, borderBottomWidth: 4, borderRightWidth: 4, borderColor: '#FFDF00' }} />
+              <View style={{ position: 'absolute', left: 0, top: 0, width: 40, height: 40, borderLeftWidth: 4, borderTopWidth: 4, borderColor: pupColors.golden }} />
+              <View style={{ position: 'absolute', right: 0, top: 0, width: 40, height: 40, borderRightWidth: 4, borderTopWidth: 4, borderColor: pupColors.golden }} />
+              <View style={{ position: 'absolute', bottom: 0, left: 0, width: 40, height: 40, borderBottomWidth: 4, borderLeftWidth: 4, borderColor: pupColors.golden }} />
+              <View style={{ position: 'absolute', bottom: 0, right: 0, width: 40, height: 40, borderBottomWidth: 4, borderRightWidth: 4, borderColor: pupColors.golden }} />
 
               {/* Animated Laser Scanning Line */}
               <Animated.View
                 style={{
                   transform: [{ translateY: laserTranslateY }],
                   height: 3,
-                  backgroundColor: '#FFDF00',
-                  shadowColor: '#FFDF00',
+                  backgroundColor: pupColors.golden,
+                  shadowColor: pupColors.golden,
                   shadowOffset: { width: 0, height: 0 },
                   shadowOpacity: 0.9,
                   shadowRadius: 6,
@@ -322,8 +324,8 @@ export default function ScanScreen() {
           </View>
         ) : (
           <View style={{ alignItems: 'center', borderRadius: 0, borderWidth: 1, borderColor: 'rgba(255, 223, 0, 0.30)', backgroundColor: 'rgba(0, 0, 0, 0.85)', padding: 32 }}>
-            <View style={{ width: 64, height: 64, borderRadius: 0, borderWidth: 2, borderColor: '#FFDF00', backgroundColor: 'rgba(255, 223, 0, 0.10)', alignItems: 'center', justifyContent: 'center' }}>
-              <MaterialIcons name="camera-alt" size={32} color="#FFDF00" />
+            <View style={{ width: 64, height: 64, borderRadius: 0, borderWidth: 2, borderColor: pupColors.golden, backgroundColor: 'rgba(255, 223, 0, 0.10)', alignItems: 'center', justifyContent: 'center' }}>
+              <MaterialIcons name="camera-alt" size={32} color={pupColors.golden} />
             </View>
             <Text style={{ marginTop: 20, fontFamily: 'DMSans_700Bold', fontSize: 20, textTransform: 'uppercase', letterSpacing: 1, color: '#FFFFFF' }}>Camera Access Needed</Text>
             <Text style={{ marginTop: 8, maxWidth: 280, textAlign: 'center', fontFamily: 'DMSans_400Regular', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255, 255, 255, 0.70)' }}>
@@ -333,9 +335,9 @@ export default function ScanScreen() {
               accessibilityRole="button"
               accessibilityLabel="Enable camera access"
               onPress={requestPermission}
-              style={{ marginTop: 24, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 0, backgroundColor: '#FFDF00', paddingHorizontal: 32 }}
+              style={{ marginTop: 24, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 0, backgroundColor: pupColors.golden, paddingHorizontal: 32 }}
             >
-              <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.5, color: '#4A0A0B' }}>Enable Camera</Text>
+              <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.5, color: pupColors.maroonDark }}>Enable Camera</Text>
             </Pressable>
           </View>
         )}
@@ -359,7 +361,7 @@ export default function ScanScreen() {
           }}
           className={presentation.classes}
         >
-          <MaterialIcons name={presentation.icon} size={24} color="#FFDF00" />
+          <MaterialIcons name={presentation.icon} size={24} color={pupColors.golden} />
           <View style={{ flex: 1 }}>
             <Text accessibilityLiveRegion="assertive" style={{ fontFamily: 'DMSans_700Bold', fontSize: 14, textTransform: 'uppercase', letterSpacing: 1, color: '#FFFFFF' }}>
               {presentation.title}
@@ -396,11 +398,11 @@ export default function ScanScreen() {
                 {activeSession.startTime}–{activeSession.endTime} · {activeSession.geofence.radiusMeters}m Geofence
               </Text>
             </View>
-            <MaterialIcons name="verified-user" size={20} color="#FFDF00" />
+            <MaterialIcons name="verified-user" size={20} color={pupColors.golden} />
           </View>
         ) : (
           <View style={{ marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 0, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.20)', backgroundColor: 'rgba(255, 255, 255, 0.10)', padding: 12 }}>
-            <MaterialIcons name="info-outline" size={20} color="#FFDF00" />
+            <MaterialIcons name="info-outline" size={20} color={pupColors.golden} />
             <Text style={{ flex: 1, fontFamily: 'DMSans_400Regular', fontSize: 12, lineHeight: 20, color: 'rgba(255, 255, 255, 0.85)' }}>
               Point your camera at your instructor’s QR code to verify attendance.
             </Text>
@@ -427,9 +429,9 @@ export default function ScanScreen() {
             })}
           >
             {decodingImage ? (
-              <ActivityIndicator size="small" color="#FFDF00" />
+              <ActivityIndicator size="small" color={pupColors.golden} />
             ) : (
-              <MaterialIcons name="image" size={18} color="#FFDF00" />
+              <MaterialIcons name="image" size={18} color={pupColors.golden} />
             )}
             <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.2, color: '#FFFFFF' }}>
               {decodingImage ? 'Reading…' : 'Upload QR Image'}
@@ -439,6 +441,7 @@ export default function ScanScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Enter a QR token manually"
+            testID="scan-manual-open"
             onPress={() => setShowManual(true)}
             style={({ pressed }) => ({
               minHeight: 48,
@@ -453,7 +456,7 @@ export default function ScanScreen() {
               backgroundColor: pressed ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.12)',
             })}
           >
-            <MaterialIcons name="keyboard" size={18} color="#FFDF00" />
+            <MaterialIcons name="keyboard" size={18} color={pupColors.golden} />
             <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.2, color: '#FFFFFF' }}>Enter Code</Text>
           </Pressable>
         </View>
@@ -462,10 +465,10 @@ export default function ScanScreen() {
       {/* Manual Entry Fallback Modal */}
       <Modal visible={showManual} transparent animationType="fade" onRequestClose={() => setShowManual(false)}>
         <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0, 0, 0, 0.80)', padding: 20 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={{ borderRadius: 0, borderWidth: 1, borderTopWidth: 4, borderTopColor: '#FFDF00', borderColor: isDark ? 'rgba(255,255,255,0.18)' : '#E8E2E3', backgroundColor: isDark ? '#171316' : '#FFFFFF', padding: 20 }}>
+          <View className="border border-t-4 border-t-golden border-zinc-200 bg-white p-5 dark:border-white/20 dark:bg-surface-dark">
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 9, textTransform: 'uppercase', letterSpacing: 2, color: isDark ? '#FFDF00' : '#7B1113' }}>Fallback Check-in</Text>
+                <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 9, textTransform: 'uppercase', letterSpacing: 2, color: isDark ? pupColors.golden : pupColors.maroon }}>Fallback Check-in</Text>
                 <Text style={{ marginTop: 4, fontFamily: 'DMSans_700Bold', fontSize: 22, color: isDark ? '#FFFFFF' : '#211A1B' }}>Enter QR Token</Text>
               </View>
               <Pressable
@@ -474,20 +477,22 @@ export default function ScanScreen() {
                 onPress={() => setShowManual(false)}
                 style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 0, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.15)' : '#E8E2E3', backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F4F4F5' }}
               >
-                <MaterialIcons name="close" size={20} color={isDark ? '#FFFFFF' : '#4A0A0B'} />
+                <MaterialIcons name="close" size={20} color={isDark ? '#FFFFFF' : pupColors.maroonDark} />
               </Pressable>
             </View>
             <Text style={{ marginTop: 8, fontFamily: 'DMSans_400Regular', fontSize: 12, lineHeight: 18, color: isDark ? 'rgba(255,255,255,0.65)' : '#746C6E' }}>
               Paste the token from your instructor. Live location will still be verified.
             </Text>
             <TextInput
+              accessibilityLabel="QR token"
+              testID="scan-manual-input"
               style={{
                 marginTop: 16,
                 minHeight: 100,
                 borderRadius: 0,
                 borderWidth: 1,
                 borderColor: isDark ? 'rgba(255,255,255,0.20)' : '#E8E2E3',
-                backgroundColor: isDark ? '#0B0B0E' : '#F9F8F8',
+                backgroundColor: isDark ? pupColors.campusDark : pupColors.campus,
                 padding: 16,
                 fontFamily: 'monospace',
                 fontSize: 12,
@@ -495,7 +500,7 @@ export default function ScanScreen() {
                 textAlignVertical: 'top',
               }}
               placeholder="Paste token here"
-              placeholderTextColor={isDark ? 'rgba(255,255,255,0.40)' : '#A39B9D'}
+              placeholderTextColor={isDark ? 'rgba(255,255,255,0.40)' : pupColors.mutedLight}
               autoFocus
               multiline
               value={manualToken}
@@ -503,6 +508,8 @@ export default function ScanScreen() {
             />
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Verify and check in"
+              testID="scan-manual-submit"
               disabled={!manualToken.trim()}
               style={{
                 marginTop: 16,
@@ -510,7 +517,7 @@ export default function ScanScreen() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderRadius: 0,
-                backgroundColor: '#7B1113',
+                backgroundColor: pupColors.maroon,
                 opacity: manualToken.trim() ? 1 : 0.4,
               }}
               onPress={() => {

@@ -3,6 +3,7 @@ import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform } from 'react
 import { WebView } from 'react-native-webview'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useTheme } from '../theme/ThemeContext'
+import { pupColors } from '../theme/colors'
 import { fonts } from '../theme/typography'
 import { pupSantaMaria } from '@polycheck/shared/map'
 
@@ -38,11 +39,11 @@ function html(
   isDark: boolean,
   studentPins: StudentMapPin[],
 ) {
-  const accentColor = isDark ? '#FFDF00' : '#7B1113'
+  const accentColor = isDark ? pupColors.golden : pupColors.maroon
 
   const statusColors: Record<string, string> = {
     present: '#22C55E',
-    late: '#FFDF00',
+    late: pupColors.golden,
     absent: '#EF4444',
     pending: '#9CA3AF',
     disputed: '#F59E0B',
@@ -102,9 +103,9 @@ function html(
   .student-popup .time { font-size: 10px; color: #999; }
   .student-popup .device { font-size: 10px; color: #aaa; margin-top: 2px; }
   ${isDark ? `
-  .leaflet-container { background: #0A0A0C !important; }
-  .leaflet-popup-content-wrapper { background: #121215 !important; color: #fff !important; border: 1px solid rgba(245,168,0,0.15) !important; border-radius: 0 !important; }
-  .leaflet-popup-tip { background: #121215 !important; border: 1px solid rgba(245,168,0,0.15) !important; }
+  .leaflet-container { background: ${pupColors.campusDark} !important; }
+  .leaflet-popup-content-wrapper { background: ${pupColors.surfaceDark} !important; color: #fff !important; border: 1px solid rgba(255,223,0,0.15) !important; border-radius: 0 !important; }
+  .leaflet-popup-tip { background: ${pupColors.surfaceDark} !important; border: 1px solid rgba(255,223,0,0.15) !important; }
   .student-popup .id { color: #999; }
   .student-popup .time { color: #666; }
   .student-popup .device { color: #666; }
@@ -162,6 +163,7 @@ function html(
 
   var statusColors = ${JSON.stringify(statusColors)};
   var statusLabels = { present: 'Present', late: 'Late', absent: 'Absent', pending: 'Pending', disputed: 'Disputed' };
+  var lateStatusTextColor = '${pupColors.maroonDark}';
 
   var pinMarkers = [];
   function updatePins(pins) {
@@ -182,7 +184,7 @@ function html(
         '<div class="name">' + p.label + '</div>' +
         '<div class="id">' + (p.program ? p.id + ' · ' + p.program : p.id) + '</div>' +
         '<div class="status-row">' +
-          '<span class="status" style="background:' + color + ';color:' + (p.status === 'late' ? '#4A0A0B' : '#fff') + '">' + (statusLabels[p.status] || p.status) + '</span>' +
+          '<span class="status" style="background:' + color + ';color:' + (p.status === 'late' ? lateStatusTextColor : '#fff') + '">' + (statusLabels[p.status] || p.status) + '</span>' +
           '<span class="time">' + new Date(p.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) + '</span>' +
         '</div>' +
         (p.deviceId && p.deviceId !== 'manual' ? '<div class="device">Device: ' + p.deviceId + '</div>' : '') +
@@ -344,7 +346,7 @@ export default function MapView({ latitude, longitude, radius, interactive, rece
             <View style={styles.legendOverlay} pointerEvents="none">
               <Text style={styles.legendText}>
                 <Text style={{color: '#22C55E'}}>●</Text> Present{'  '}
-                <Text style={{color: '#FFDF00'}}>●</Text> Late{'  '}
+                <Text style={{color: pupColors.golden}}>●</Text> Late{'  '}
                 <Text style={{color: '#EF4444'}}>●</Text> Absent{'  '}
                 <Text style={{color: '#9CA3AF'}}>●</Text> Pending
               </Text>
@@ -355,7 +357,7 @@ export default function MapView({ latitude, longitude, radius, interactive, rece
         {interactive && (
           <>
             <View style={[styles.hintRow, isDark && styles.hintRowDark]}>
-              <MaterialIcons name="touch-app" size={14} color={isDark ? '#FFDF00' : '#888'} />
+              <MaterialIcons name="touch-app" size={14} color={isDark ? pupColors.golden : '#888'} />
               <Text style={[styles.hintText, isDark && styles.hintTextDark]}>Drag the pin or tap the map to set location</Text>
             </View>
 
@@ -404,7 +406,7 @@ export default function MapView({ latitude, longitude, radius, interactive, rece
           <View style={[styles.fsOverlay, isDark && styles.fsOverlayDark]}>
             <View style={[styles.fsHeader, isDark && styles.fsHeaderDark]}>
               <TouchableOpacity onPress={() => setFullscreen(false)} style={styles.fsCloseBtn} accessibilityRole="button" accessibilityLabel="Close full screen map">
-                <MaterialIcons name="close" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
+                <MaterialIcons name="close" size={24} color={isDark ? pupColors.golden : pupColors.maroon} />
               </TouchableOpacity>
               <Text style={[styles.fsTitle, isDark && styles.textWhite]}>Set Location</Text>
               <View style={{ width: 40 }} />
@@ -428,7 +430,7 @@ export default function MapView({ latitude, longitude, radius, interactive, rece
               />
             </View>
             <View style={[styles.fsCoords, isDark && styles.fsCoordsDark]}>
-              <MaterialIcons name="location-on" size={16} color="#FFDF00" />
+              <MaterialIcons name="location-on" size={16} color={pupColors.golden} />
               <Text style={[styles.fsCoordsText, isDark && styles.textWhite]}>{latitude.toFixed(6)}, {longitude.toFixed(6)}</Text>
             </View>
           </View>
@@ -473,8 +475,8 @@ const styles = StyleSheet.create({
   radiusSection: { marginTop: 16 },
   radiusLabel: { fontSize: 13, fontFamily: fonts.bodyMedium, color: '#666', marginBottom: 8 },
   radiusLabelDark: { color: 'rgba(255,255,255,0.5)' },
-  radiusValue: { fontFamily: fonts.bodyBold, color: '#7B1113' },
-  radiusValueDark: { color: '#FFDF00' },
+  radiusValue: { fontFamily: fonts.bodyBold, color: pupColors.maroon },
+  radiusValueDark: { color: pupColors.golden },
   sliderTrack: {
     height: 32,
     justifyContent: 'center',
@@ -494,20 +496,20 @@ const styles = StyleSheet.create({
   },
   sliderFill: {
     height: 4,
-    backgroundColor: '#7B1113',
+    backgroundColor: pupColors.maroon,
     borderRadius: 2,
     position: 'absolute',
     left: 0,
     top: 14,
   },
   sliderFillDark: {
-    backgroundColor: '#FFDF00',
+    backgroundColor: pupColors.golden,
   },
   sliderThumb: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#7B1113',
+    backgroundColor: pupColors.maroon,
     position: 'absolute',
     top: 4,
     marginLeft: -12,
@@ -526,8 +528,8 @@ const styles = StyleSheet.create({
     }),
   },
   sliderThumbDark: {
-    backgroundColor: '#FFDF00',
-    borderColor: '#121215',
+    backgroundColor: pupColors.golden,
+    borderColor: pupColors.surfaceDark,
   },
   sliderEndLabels: {
     flexDirection: 'row',
@@ -543,7 +545,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   fsOverlayDark: {
-    backgroundColor: '#0A0A0C',
+    backgroundColor: pupColors.campusDark,
   },
   fsHeader: {
     flexDirection: 'row',
@@ -557,8 +559,8 @@ const styles = StyleSheet.create({
     borderBottomColor: '#EEE',
   },
   fsHeaderDark: {
-    backgroundColor: '#0A0A0C',
-    borderBottomColor: '#1C1C21',
+    backgroundColor: pupColors.campusDark,
+    borderBottomColor: pupColors.lineDark,
   },
   fsCloseBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   fsTitle: { fontSize: 17, fontWeight: '600', fontFamily: fonts.bodySemiBold, color: '#1A1A1A' },
@@ -575,8 +577,8 @@ const styles = StyleSheet.create({
     borderTopColor: '#EEE',
   },
   fsCoordsDark: {
-    backgroundColor: '#121215',
-    borderTopColor: '#1C1C21',
+    backgroundColor: pupColors.surfaceDark,
+    borderTopColor: pupColors.lineDark,
   },
   fsCoordsText: { fontSize: 13, fontFamily: fonts.mono, color: '#333' },
 })

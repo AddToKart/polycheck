@@ -6,6 +6,7 @@ import { router, useFocusEffect } from 'expo-router'
 import type { AttendanceRecord, AttendanceStatus, StudentDisputeReason } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
+import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { AttendanceStatusPill, CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
 import { AttendanceDisputeModal, AttendanceRecordDetailModal } from '../../components/AttendanceRecordModals'
@@ -105,7 +106,7 @@ export default function HistoryScreen() {
   if (!student) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark">
-        <ActivityIndicator size="large" color="#7B1113" />
+        <ActivityIndicator size="large" color={pupColors.maroon} />
       </SafeAreaView>
     )
   }
@@ -147,7 +148,7 @@ export default function HistoryScreen() {
   )
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
       <CampusHeader
         eyebrow="Personal Attendance"
         title="Audit History"
@@ -182,7 +183,7 @@ export default function HistoryScreen() {
           >
             <View className="flex-row items-center gap-3">
               <View className="h-10 w-10 items-center justify-center rounded-none bg-maroon/5 dark:bg-golden/10 border border-maroon/10 dark:border-golden/20">
-                <MaterialIcons name={statusIcons[record.status]} size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
+                <MaterialIcons name={statusIcons[record.status]} size={20} color={isDark ? pupColors.golden : pupColors.maroon} />
               </View>
               <View className="flex-1">
                 <Text className="font-sans-bold text-sm text-ink dark:text-white" numberOfLines={1}>{subjectNameFor(record)}</Text>

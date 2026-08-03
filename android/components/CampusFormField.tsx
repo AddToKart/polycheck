@@ -2,6 +2,7 @@ import type { ComponentProps } from 'react'
 import { Text, TextInput, View } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useTheme } from '../theme/ThemeContext'
+import { pupColors } from '../theme/colors'
 
 type CampusFormFieldProps = Omit<ComponentProps<typeof TextInput>, 'className' | 'style'> & {
   label: string
@@ -21,7 +22,7 @@ export const CampusFormField = ({ label, hint, icon, className, multiline, ...in
           accessibilityLabel={label}
           className={`min-h-14 flex-1 py-4 font-sans text-sm text-ink dark:text-white ${icon ? 'px-3' : 'px-0'} ${multiline ? 'min-h-24' : ''}`}
           style={multiline ? { textAlignVertical: 'top' } : undefined}
-          placeholderTextColor={isDark ? '#777177' : '#A39B9D'}
+          placeholderTextColor={isDark ? pupColors.muted : pupColors.mutedLight}
           multiline={multiline}
           {...inputProps}
         />

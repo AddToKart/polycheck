@@ -15,6 +15,7 @@ import { AttendanceGateway } from '../realtime/attendance.gateway'
 import { RedisService } from '../infrastructure/redis.service'
 import { Prisma, type Session } from '../prisma/client'
 import { parseIsoDate } from '../common/utils/iso-date'
+import { adminSessionWhere, assertSectionInAdminScope } from '../common/admin-scope'
 
 const AUTO_END_LOCK_TTL_SECONDS = 5 * 60
 const MAX_QR_VALIDITY_MINUTES = 15
@@ -328,13 +329,7 @@ export class SessionsService {
 
   private async sessionScope(user: RequestUser, sectionId?: string) {
     if (user.role === 'super_admin') {
-      const adminScope =
-        user.scope === 'institution'
-          ? {}
-          : user.department
-            ? { section: { teacher: { department: user.department } } }
-            : { id: { in: [] as string[] } }
-      return { ...adminScope, ...(sectionId ? { sectionId } : {}) }
+      return { ...adminSessionWhere(user), ...(sectionId ? { sectionId } : {}) }
     }
     if (user.role === 'teacher') return { teacherId: user.id, ...(sectionId ? { sectionId } : {}) }
     const sections = await this.prisma.enrollment.findMany({
@@ -349,13 +344,8 @@ export class SessionsService {
 
   private async assertAccess(sectionId: string, user: RequestUser, teacherId: string) {
     if (user.role === 'super_admin') {
-      if (user.scope === 'institution') return
-      const section = await this.prisma.section.findFirst({
-        where: { id: sectionId, teacher: { department: user.department ?? '__no_department__' } },
-        select: { id: true },
-      })
-      if (section) return
-      throw new ForbiddenException('This session is outside your administrative scope')
+      await assertSectionInAdminScope(user, sectionId, this.prisma, 'This session')
+      return
     }
     if (user.role === 'teacher' && teacherId === user.id) return
     const enrollment = await this.prisma.enrollment.findUnique({

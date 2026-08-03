@@ -6,7 +6,9 @@ import { router, useLocalSearchParams } from 'expo-router'
 import type { ProofOfClass, Section, Session, Student, Subject } from '@polycheck/shared'
 import * as ImagePicker from 'expo-image-picker'
 import { api } from '../../../../../services/api-client'
+import { useAuthGate } from '../../../../../hooks/use-auth-gate'
 import { useTheme } from '../../../../../theme/ThemeContext'
+import { pupColors } from '../../../../../theme/colors'
 import { CampusHeader } from '../../../../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, SectionHeading } from '../../../../../components/CampusPrimitives'
 import { CampusFormField } from '../../../../../components/CampusFormField'
@@ -14,6 +16,7 @@ import { CampusFormField } from '../../../../../components/CampusFormField'
 export default function StudentSessionDetailScreen() {
   const { isDark } = useTheme()
   const { id: sectionId, sessionId } = useLocalSearchParams<{ id: string; sessionId: string }>()
+  const currentUser = useAuthGate(['student'])
   const [user, setUser] = useState<Student | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [section, setSection] = useState<Section | null>(null)
@@ -26,15 +29,11 @@ export default function StudentSessionDetailScreen() {
   const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
-    const currentUser = api.getCurrentUser()
-    if (!currentUser || currentUser.role !== 'student') {
-      router.replace('/')
-      return
-    }
+    if (!currentUser) return
     const student = currentUser as Student
     setUser(student)
     void api.getStudentRoles(student.id).then((roles) => setIsQac(roles.some((role) => role.sectionId === sectionId && role.role === 'qac')))
-  }, [sectionId])
+  }, [sectionId, currentUser])
 
   useEffect(() => {
     if (!sessionId || !sectionId) return
@@ -114,7 +113,7 @@ export default function StudentSessionDetailScreen() {
           <View className="flex-row flex-wrap gap-3">
             {sessionStats.map((stat) => (
               <View key={stat.label} className="min-w-[30%] flex-1 rounded-2xl bg-zinc-50 p-3 dark:bg-white/5">
-                <MaterialIcons name={stat.icon} size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
+                <MaterialIcons name={stat.icon} size={18} color={isDark ? pupColors.golden : pupColors.maroon} />
                 <Text className="mt-3 font-sans-bold text-[9px] uppercase tracking-[1px] text-muted dark:text-zinc-500">{stat.label}</Text>
                 <Text className="mt-1 font-sans-bold text-xs text-ink dark:text-white">{stat.value}</Text>
               </View>
@@ -126,7 +125,7 @@ export default function StudentSessionDetailScreen() {
         {isQac ? (
           <CampusCard className="mb-5">
             <View className="flex-row items-start gap-3">
-              <View className="h-11 w-11 items-center justify-center rounded-2xl bg-golden/15"><MaterialIcons name="camera-alt" size={21} color={isDark ? '#FFDF00' : '#7B1113'} /></View>
+              <View className="h-11 w-11 items-center justify-center rounded-2xl bg-golden/15"><MaterialIcons name="camera-alt" size={21} color={isDark ? pupColors.golden : pupColors.maroon} /></View>
               <View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">QAC evidence upload</Text><Text className="mt-1 font-sans text-xs leading-5 text-muted dark:text-zinc-400">Capture the classroom during this session for the audit record.</Text></View>
             </View>
             <CampusButton label={showUpload ? 'Hide uploader' : 'Add proof photo'} icon={showUpload ? 'close' : 'add-a-photo'} variant="secondary" onPress={() => setShowUpload((visible) => !visible)} className="mt-4" />
@@ -139,7 +138,7 @@ export default function StudentSessionDetailScreen() {
                   onPress={() => void captureProofPhoto()}
                   className="aspect-video overflow-hidden rounded-3xl border border-dashed border-line bg-zinc-100 dark:border-line-dark dark:bg-white/5"
                 >
-                  {uploadedPhoto ? <Image source={{ uri: uploadedPhoto }} className="h-full w-full" resizeMode="cover" /> : <View className="flex-1 items-center justify-center"><MaterialIcons name="add-a-photo" size={28} color={isDark ? '#FFDF00' : '#7B1113'} /><Text className="mt-2 font-sans-bold text-xs text-muted dark:text-zinc-400">Tap to capture</Text></View>}
+                  {uploadedPhoto ? <Image source={{ uri: uploadedPhoto }} className="h-full w-full" resizeMode="cover" /> : <View className="flex-1 items-center justify-center"><MaterialIcons name="add-a-photo" size={28} color={isDark ? pupColors.golden : pupColors.maroon} /><Text className="mt-2 font-sans-bold text-xs text-muted dark:text-zinc-400">Tap to capture</Text></View>}
                 </Pressable>
                 <CampusFormField label="Description" value={photoDescription} onChangeText={setPhotoDescription} placeholder="Optional note about this class photo" className="mt-4" />
                 <View className="mt-4 flex-row gap-3">

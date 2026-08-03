@@ -3,10 +3,12 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { getRecentCampusDateRange, type AttendanceReport, type Subject, type Teacher, type User } from '@polycheck/shared'
+import { getRecentCampusDateRange, type AttendanceReport, type Subject, type Teacher } from '@polycheck/shared'
 import { api } from '../../services/api-client'
+import { useAuthGate } from '../../hooks/use-auth-gate'
 import { shareCsvFile } from '../../services/file-sharing'
 import { useTheme } from '../../theme/ThemeContext'
+import { pupColors } from '../../theme/colors'
 import DatePickerModal from '../../components/DatePickerModal'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../components/CampusPrimitives'
@@ -44,7 +46,7 @@ const ReportSelect = ({ label, value, placeholder, options, open, onToggle, onSe
         className="min-h-14 flex-row items-center justify-between rounded-2xl border border-line bg-zinc-50 px-4 dark:border-line-dark dark:bg-white/5"
       >
         <Text className="flex-1 font-sans-semibold text-sm text-ink dark:text-white" numberOfLines={1}>{selectedLabel}</Text>
-        <MaterialIcons name={open ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
+        <MaterialIcons name={open ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={22} color={isDark ? pupColors.golden : pupColors.maroon} />
       </Pressable>
       {open ? (
         <View className="mt-2 overflow-hidden rounded-2xl border border-line bg-white dark:border-line-dark dark:bg-[#1A1517]">
@@ -60,7 +62,7 @@ const ReportSelect = ({ label, value, placeholder, options, open, onToggle, onSe
               className="min-h-12 flex-row items-center justify-between border-b border-line px-4 last:border-b-0 dark:border-line-dark"
             >
               <Text className={`flex-1 font-sans-medium text-sm ${option.id === value ? 'text-maroon dark:text-golden' : 'text-ink dark:text-white'}`}>{option.label}</Text>
-              {option.id === value ? <MaterialIcons name="check" size={18} color={isDark ? '#FFDF00' : '#7B1113'} /> : null}
+              {option.id === value ? <MaterialIcons name="check" size={18} color={isDark ? pupColors.golden : pupColors.maroon} /> : null}
             </Pressable>
           ))}
         </View>
@@ -71,7 +73,7 @@ const ReportSelect = ({ label, value, placeholder, options, open, onToggle, onSe
 
 export default function FacultyReportsScreen() {
   const { isDark, toggle } = useTheme()
-  const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const currentUser = useAuthGate(['super_admin'])
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [report, setReport] = useState<AttendanceReport | null>(null)
@@ -86,19 +88,14 @@ export default function FacultyReportsScreen() {
   const [endPickerVisible, setEndPickerVisible] = useState(false)
 
   useEffect(() => {
-    const user = api.getCurrentUser()
-    if (!user || user.role !== 'super_admin') {
-      router.replace('/(faculty)/dashboard')
-      return
-    }
-    setCurrentUser(user)
+    if (!currentUser) return
     void Promise.all([api.getSubjects(), api.getTeachers()])
       .then(([nextSubjects, nextTeachers]) => {
         setSubjects(nextSubjects)
         setTeachers(nextTeachers)
       })
       .catch(() => Alert.alert('Unable to load filters', 'Subject and teacher choices are temporarily unavailable.'))
-  }, [])
+  }, [currentUser])
 
   useEffect(() => {
     if (!currentUser || !startDate || !endDate) return
@@ -154,7 +151,7 @@ export default function FacultyReportsScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
       <CampusHeader
         eyebrow="Institution oversight"
         title="Attendance reports"
@@ -172,7 +169,7 @@ export default function FacultyReportsScreen() {
         <CampusCard className="mb-4 gap-4 p-4">
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center gap-2">
-              <MaterialIcons name="tune" size={19} color={isDark ? '#FFDF00' : '#7B1113'} />
+              <MaterialIcons name="tune" size={19} color={isDark ? pupColors.golden : pupColors.maroon} />
               <Text className="font-sans-bold text-sm text-ink dark:text-white">Report scope</Text>
             </View>
             {isFiltered ? (
@@ -224,7 +221,7 @@ export default function FacultyReportsScreen() {
 
         {loading ? (
           <View accessibilityRole="progressbar" className="items-center py-16">
-            <ActivityIndicator size="large" color={isDark ? '#FFDF00' : '#7B1113'} />
+            <ActivityIndicator size="large" color={isDark ? pupColors.golden : pupColors.maroon} />
             <Text className="mt-4 font-sans-medium text-sm text-muted dark:text-zinc-400">Building the report…</Text>
           </View>
         ) : (

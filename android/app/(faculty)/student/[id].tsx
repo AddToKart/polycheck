@@ -6,10 +6,12 @@ import { router, useLocalSearchParams } from 'expo-router'
 import type { AttendanceRecord, AttendanceStatus, Session, Student } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
 import { useTheme } from '../../../theme/ThemeContext'
+import { pupColors } from '../../../theme/colors'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
 import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
 import QRCode from 'react-native-qrcode-svg'
+import * as Crypto from 'expo-crypto'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 const SESSION_PAGE_SIZE = 5
@@ -53,7 +55,7 @@ export default function StudentDetailScreen() {
     setIsFlipped((value) => !value)
   }
 
-  if (loading || !student) return <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark"><ActivityIndicator size="large" color={isDark ? '#FFDF00' : '#7B1113'} /><Text className="mt-4 font-sans text-sm text-muted dark:text-zinc-400">Loading student profile…</Text></SafeAreaView>
+  if (loading || !student) return <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark"><ActivityIndicator size="large" color={isDark ? pupColors.golden : pupColors.maroon} /><Text className="mt-4 font-sans text-sm text-muted dark:text-zinc-400">Loading student profile…</Text></SafeAreaView>
 
   const isTeacher = api.getCurrentUser()?.role === 'teacher'
   const frontRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['0deg', '180deg'] })
@@ -81,13 +83,13 @@ export default function StudentDetailScreen() {
 
   const addAbsent = async (session: Session) => {
     if (records.some((record) => record.sessionId === session.id)) return
-    const newRecord: AttendanceRecord = { id: `a-manual-${Date.now()}`, sessionId: session.id, sectionId: sectionId!, studentId: studentId!, studentName: student.fullName, studentProgram: student.program, timestamp: new Date().toISOString(), status: 'absent', coordinates: { latitude: 0, longitude: 0 }, isSynced: false, notes: 'Manually marked by teacher', manuallySet: true }
+    const newRecord: AttendanceRecord = { id: Crypto.randomUUID(), sessionId: session.id, sectionId: sectionId!, studentId: studentId!, studentName: student.fullName, studentProgram: student.program, timestamp: new Date().toISOString(), status: 'absent', coordinates: { latitude: 0, longitude: 0 }, isSynced: false, notes: 'Manually marked by teacher', manuallySet: true }
     await api.addAttendanceRecord(newRecord)
     setRecords((previous) => [...previous, newRecord])
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
       <CampusHeader
         eyebrow="Student record"
         title={student.fullName}

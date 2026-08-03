@@ -6,6 +6,7 @@ import { router } from 'expo-router'
 import type { Section, Subject, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
+import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
 
@@ -36,7 +37,7 @@ export default function FacultySubjectsScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
       <CampusHeader
         eyebrow={isSuper ? 'Institution catalog' : 'Teaching catalog'}
         title={isSuper ? 'Subject directory' : 'My subjects'}
@@ -80,7 +81,7 @@ export default function FacultySubjectsScreen() {
                       <MaterialIcons name="view-list" size={18} color={isDark ? '#A1A1AA' : '#746C6E'} />
                       <Text className="font-sans-medium text-xs text-muted dark:text-zinc-400">{sectionCount} section{sectionCount === 1 ? '' : 's'}</Text>
                     </View>
-                    <MaterialIcons name="arrow-forward" size={19} color={isDark ? '#FFDF00' : '#7B1113'} />
+                    <MaterialIcons name="arrow-forward" size={19} color={isDark ? pupColors.golden : pupColors.maroon} />
                   </View>
                 </View>
               </View>

@@ -5,6 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { api } from '../../services/api-client'
 import { fonts } from '../../theme/typography'
+import { pupColors } from '../../theme/colors'
 import { useTheme } from '../../theme/ThemeContext'
 
 function TabIcon({ name, color }: { name: keyof typeof MaterialIcons.glyphMap; focused: boolean; color: any }) {
@@ -47,6 +48,7 @@ function MoreSheet({ visible, onClose, isDark, isSuper }: { visible: boolean; on
       <Pressable className="flex-1 bg-black/50" onPress={onClose}>
         <View className="flex-1" />
         <Animated.View
+          testID="faculty-more-sheet"
           className="rounded-none border-t-4 border-t-golden bg-white px-4 pt-3 dark:border-line-dark dark:bg-[#151013]"
           style={{ transform: [{ translateY: slideAnim }], paddingBottom: insets.bottom + 16 }}
           onStartShouldSetResponder={() => true}
@@ -67,7 +69,7 @@ function MoreSheet({ visible, onClose, isDark, isSuper }: { visible: boolean; on
               className="mb-2 min-h-14 flex-row items-center gap-4 rounded-none border border-line border-l-4 border-l-maroon bg-zinc-50 px-3 py-3 dark:border-line-dark dark:border-l-golden dark:bg-white/5"
             >
               <View className="h-10 w-10 items-center justify-center rounded-none bg-maroon dark:bg-golden">
-                <MaterialIcons name={item.icon} size={20} color={isDark ? '#4A0A0B' : '#FFFFFF'} />
+                <MaterialIcons name={item.icon} size={20} color={isDark ? pupColors.maroonDark : '#FFFFFF'} />
               </View>
               <View className="flex-1">
                 <Text className="font-sans-bold text-sm text-ink dark:text-white uppercase tracking-wider">{item.label}</Text>
@@ -94,7 +96,7 @@ export default function FacultyLayout() {
     bottom: Math.max(insets.bottom, 12),
     left: 16,
     right: 16,
-    backgroundColor: isDark ? '#1F0B0E' : '#7B1113',
+    backgroundColor: isDark ? pupColors.maroonInk : pupColors.maroon,
     borderRadius: 32,
     borderWidth: 0,
     height: 62,
@@ -121,7 +123,7 @@ export default function FacultyLayout() {
         key={isDark ? 'dark' : 'light'}
         screenOptions={({ route }) => ({
           headerShown: false,
-          tabBarActiveTintColor: '#FFDF00',
+          tabBarActiveTintColor: pupColors.golden,
           tabBarInactiveTintColor: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.65)',
           tabBarStyle: route.name === 'sessions/create' || route.name === 'sessions/[id]' || route.name === 'subjects/create' || route.name === 'subjects/[id]' || route.name === 'subjects/[id]/sessions' || route.name === 'sections/create' || route.name === 'sections/[id]' || route.name === 'student/[id]' || route.name === 'settings' ? { display: 'none' } : tabStyle,
           tabBarLabelStyle: labelStyle,
@@ -143,16 +145,17 @@ export default function FacultyLayout() {
           },
         })}
       >
-        <Tabs.Screen name="dashboard" options={{ title: 'Dashboard', tabBarLabel: 'Dashboard' }} />
-        <Tabs.Screen name="subjects" options={{ title: 'Subjects', tabBarLabel: 'Subjects' }} />
-        <Tabs.Screen name="sessions" options={{ title: 'Sessions', tabBarLabel: 'Sessions', href: isSuper ? null : undefined }} />
-        <Tabs.Screen name="disputes" options={{ title: 'Disputes', tabBarLabel: 'Disputes', href: isSuper ? null : undefined }} />
+        <Tabs.Screen name="dashboard" options={{ title: 'Dashboard', tabBarLabel: 'Dashboard', tabBarButtonTestID: 'faculty-tab-dashboard' }} />
+        <Tabs.Screen name="subjects" options={{ title: 'Subjects', tabBarLabel: 'Subjects', tabBarButtonTestID: 'faculty-tab-subjects' }} />
+        <Tabs.Screen name="sessions" options={{ title: 'Sessions', tabBarLabel: 'Sessions', href: isSuper ? null : undefined, tabBarButtonTestID: 'faculty-tab-sessions' }} />
+        <Tabs.Screen name="disputes" options={{ title: 'Disputes', tabBarLabel: 'Disputes', href: isSuper ? null : undefined, tabBarButtonTestID: 'faculty-tab-disputes' }} />
         {/* More tab — opens bottom sheet instead of navigating */}
         <Tabs.Screen
           name="more-tab"
           options={{
             title: 'More',
             tabBarLabel: 'More',
+            tabBarButtonTestID: 'faculty-tab-more',
           }}
           listeners={{
             tabPress: (e) => {
@@ -178,11 +181,11 @@ export default function FacultyLayout() {
         <Tabs.Screen name="schedule" options={{ href: null }} />
         <Tabs.Screen
           name="users"
-          options={{ title: 'Users', tabBarLabel: 'Users', href: isSuper ? undefined : null }}
+          options={{ title: 'Users', tabBarLabel: 'Users', href: isSuper ? undefined : null, tabBarButtonTestID: 'admin-tab-users' }}
         />
         <Tabs.Screen
           name="reports"
-          options={{ title: 'Reports', tabBarLabel: 'Reports', href: isSuper ? undefined : null }}
+          options={{ title: 'Reports', tabBarLabel: 'Reports', href: isSuper ? undefined : null, tabBarButtonTestID: 'admin-tab-reports' }}
         />
       </Tabs>
 

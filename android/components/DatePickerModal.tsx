@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Modal, Pressable, Text, View } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
+import { pupColors } from '../theme/colors'
 
 type DatePickerModalProps = {
   visible: boolean
@@ -64,8 +65,8 @@ export default function DatePickerModal({ visible, onClose, onSelectDate, value,
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
     <Pressable accessibilityRole="button" accessibilityLabel="Close date picker" className="flex-1 items-center justify-center bg-black/60 p-5" onPress={onClose}>
       <Pressable accessibilityRole="none" onPress={() => undefined} className="w-full max-w-[360px] overflow-hidden rounded-[30px] border border-line bg-white shadow-xl dark:border-line-dark dark:bg-[#151013]">
-        <View className="bg-maroon px-5 pb-5 pt-4 dark:bg-[#2A0E11]"><Text className="font-sans-bold text-[9px] uppercase tracking-[2px] text-golden">{title}</Text><Text accessibilityLiveRegion="polite" className="mt-2 font-heading text-2xl text-white">{selectedDay ? `${MONTHS[currentMonth]} ${selectedDay}, ${currentYear}` : 'Select a date'}</Text></View>
-        <View className="flex-row items-center justify-between px-3 py-3"><Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => changeMonth(-1)} className="h-12 w-12 items-center justify-center rounded-2xl bg-zinc-100 dark:bg-white/5"><MaterialIcons name="chevron-left" size={24} color={isDark ? '#FFDF00' : '#7B1113'} /></Pressable><Text className="font-sans-bold text-sm text-ink dark:text-white">{MONTHS[currentMonth]} {currentYear}</Text><Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => changeMonth(1)} className="h-12 w-12 items-center justify-center rounded-2xl bg-zinc-100 dark:bg-white/5"><MaterialIcons name="chevron-right" size={24} color={isDark ? '#FFDF00' : '#7B1113'} /></Pressable></View>
+        <View className="bg-maroon px-5 pb-5 pt-4 dark:bg-maroon-deep"><Text className="font-sans-bold text-[9px] uppercase tracking-[2px] text-golden">{title}</Text><Text accessibilityLiveRegion="polite" className="mt-2 font-heading text-2xl text-white">{selectedDay ? `${MONTHS[currentMonth]} ${selectedDay}, ${currentYear}` : 'Select a date'}</Text></View>
+        <View className="flex-row items-center justify-between px-3 py-3"><Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => changeMonth(-1)} className="h-12 w-12 items-center justify-center rounded-2xl bg-zinc-100 dark:bg-white/5"><MaterialIcons name="chevron-left" size={24} color={isDark ? pupColors.golden : pupColors.maroon} /></Pressable><Text className="font-sans-bold text-sm text-ink dark:text-white">{MONTHS[currentMonth]} {currentYear}</Text><Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => changeMonth(1)} className="h-12 w-12 items-center justify-center rounded-2xl bg-zinc-100 dark:bg-white/5"><MaterialIcons name="chevron-right" size={24} color={isDark ? pupColors.golden : pupColors.maroon} /></Pressable></View>
         <View className="px-4 pb-4">
           <View className="mb-1 flex-row">{WEEK_DAYS.map((day, index) => <View key={day} className="flex-1 items-center py-2"><Text className={`font-sans-bold text-[10px] ${index === 0 ? 'text-red-500' : 'text-muted dark:text-zinc-500'}`}>{day}</Text></View>)}</View>
           {rows.map((row, rowIndex) => <View key={rowIndex} className="flex-row">{row.map((day, dayIndex) => {

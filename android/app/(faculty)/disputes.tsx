@@ -5,7 +5,9 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import type { AttendanceRecord, DisputeReason, Section, Session, Subject, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
+import { useAuthGate } from '../../hooks/use-auth-gate'
 import { useTheme } from '../../theme/ThemeContext'
+import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
 
@@ -43,6 +45,7 @@ const DetailRow = ({ label, value }: { label: string; value: string }) => (
 
 export default function DisputesScreen() {
   const { isDark, toggle } = useTheme()
+  const currentUser = useAuthGate(['teacher', 'super_admin'])
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [disputes, setDisputes] = useState<AttendanceRecord[]>([])
@@ -56,11 +59,7 @@ export default function DisputesScreen() {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
-    const currentUser = api.getCurrentUser()
-    if (!currentUser || (currentUser.role !== 'teacher' && currentUser.role !== 'super_admin')) {
-      router.replace('/')
-      return
-    }
+    if (!currentUser) return
     setUser(currentUser)
     void Promise.all([api.getSubjects(), api.getDisputedRecords(undefined, { status: 'all' }), api.getSections(), api.getSessions()])
       .then(([nextSubjects, nextDisputes, sectionList, sessionList]) => {
@@ -70,7 +69,7 @@ export default function DisputesScreen() {
         setSessions(Object.fromEntries(sessionList.map((session) => [session.id, session])))
       })
       .catch(() => Alert.alert('Unable to load disputes', 'Please check your connection and try again.'))
-  }, [])
+  }, [currentUser])
 
   const pendingCount = disputes.filter((record) => record.status === 'disputed').length
   const resolvedCount = disputes.filter((record) => record.disputeResolved).length
@@ -137,7 +136,7 @@ export default function DisputesScreen() {
   const selectedSession = selectedRecord ? sessions[selectedRecord.sessionId] : undefined
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
       <CampusHeader
         eyebrow="Attendance integrity"
         title="Disputed records"
@@ -182,21 +181,21 @@ export default function DisputesScreen() {
           return (
             <CampusCard key={subject.subjectId} className="p-0">
               <Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setExpandedSubjects((value) => ({ ...value, [subject.subjectId]: !value[subject.subjectId] }))} className="min-h-16 flex-row items-center gap-3 px-4 py-3">
-                <View className="h-11 w-11 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10"><MaterialIcons name="menu-book" size={20} color={isDark ? '#FFDF00' : '#7B1113'} /></View>
+                <View className="h-11 w-11 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10"><MaterialIcons name="menu-book" size={20} color={isDark ? pupColors.golden : pupColors.maroon} /></View>
                 <View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white" numberOfLines={1}>{subject.subjectName}</Text><Text className="mt-0.5 font-sans text-xs text-muted dark:text-zinc-400">{subject.subjectCode} · {count} records</Text></View>
-                <MaterialIcons name={expanded ? 'expand-less' : 'expand-more'} size={23} color={isDark ? '#FFDF00' : '#7B1113'} />
+                <MaterialIcons name={expanded ? 'expand-less' : 'expand-more'} size={23} color={isDark ? pupColors.golden : pupColors.maroon} />
               </Pressable>
               {expanded ? <View className="gap-3 border-t border-line p-3 dark:border-line-dark">{subject.sections.map((section) => {
                 const sectionExpanded = !!expandedSections[section.sectionId]
                 const sectionCount = section.sessions.reduce((sum, session) => sum + session.records.length, 0)
                 return <View key={section.sectionId} className="overflow-hidden rounded-2xl bg-zinc-50 dark:bg-white/5">
                   <Pressable accessibilityRole="button" accessibilityState={{ expanded: sectionExpanded }} onPress={() => setExpandedSections((value) => ({ ...value, [section.sectionId]: !value[section.sectionId] }))} className="min-h-13 flex-row items-center gap-2 px-4 py-3">
-                    <MaterialIcons name="layers" size={18} color={isDark ? '#FFDF00' : '#7B1113'} /><Text className="flex-1 font-sans-bold text-xs text-ink dark:text-white">{section.sectionName}</Text><Text className="font-sans text-[10px] text-muted dark:text-zinc-400">{sectionCount} records</Text><MaterialIcons name={sectionExpanded ? 'expand-less' : 'expand-more'} size={20} color="#746C6E" />
+                    <MaterialIcons name="layers" size={18} color={isDark ? pupColors.golden : pupColors.maroon} /><Text className="flex-1 font-sans-bold text-xs text-ink dark:text-white">{section.sectionName}</Text><Text className="font-sans text-[10px] text-muted dark:text-zinc-400">{sectionCount} records</Text><MaterialIcons name={sectionExpanded ? 'expand-less' : 'expand-more'} size={20} color="#746C6E" />
                   </Pressable>
                   {sectionExpanded ? <View className="gap-4 border-t border-line px-3 py-4 dark:border-line-dark">{section.sessions.map((session) => <View key={session.sessionId} className="gap-2">
-                    <View className="flex-row items-center gap-2"><MaterialIcons name="event" size={15} color={isDark ? '#FFDF00' : '#7B1113'} /><Text className="font-sans-semibold text-[11px] text-muted dark:text-zinc-400">{session.sessionDate}{session.sessionTime ? ` · ${session.sessionTime}` : ''}</Text></View>
+                    <View className="flex-row items-center gap-2"><MaterialIcons name="event" size={15} color={isDark ? pupColors.golden : pupColors.maroon} /><Text className="font-sans-semibold text-[11px] text-muted dark:text-zinc-400">{session.sessionDate}{session.sessionTime ? ` · ${session.sessionTime}` : ''}</Text></View>
                     {session.records.map((record) => <Pressable key={record.id} accessibilityRole="button" accessibilityLabel={`Review ${record.studentName} dispute`} onPress={() => setSelectedRecord(record)} className="rounded-2xl border border-line bg-white p-4 dark:border-line-dark dark:bg-surface-dark">
-                      <View className="flex-row items-center gap-3"><View className="h-10 w-10 items-center justify-center rounded-xl bg-golden/20"><MaterialIcons name={record.disputeReason ? DISPUTE_ICONS[record.disputeReason] : 'warning'} size={19} color="#7B1113" /></View><View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">{record.studentName}</Text><Text className="mt-1 font-sans text-xs text-muted dark:text-zinc-400">{record.disputeReason ? DISPUTE_LABELS[record.disputeReason] : 'Unknown reason'}</Text></View><MaterialIcons name="chevron-right" size={20} color="#746C6E" /></View>
+                      <View className="flex-row items-center gap-3"><View className="h-10 w-10 items-center justify-center rounded-xl bg-golden/20"><MaterialIcons name={record.disputeReason ? DISPUTE_ICONS[record.disputeReason] : 'warning'} size={19} color={pupColors.maroon} /></View><View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">{record.studentName}</Text><Text className="mt-1 font-sans text-xs text-muted dark:text-zinc-400">{record.disputeReason ? DISPUTE_LABELS[record.disputeReason] : 'Unknown reason'}</Text></View><MaterialIcons name="chevron-right" size={20} color="#746C6E" /></View>
                     </Pressable>)}
                   </View>)}</View> : null}
                 </View>
@@ -212,7 +211,7 @@ export default function DisputesScreen() {
             <View className="mb-5 h-1.5 w-12 self-center rounded-full bg-zinc-300 dark:bg-zinc-700" />
             <ScrollView showsVerticalScrollIndicator={false}>
               <View className="mb-5 flex-row items-start gap-4">
-                <View className="h-14 w-14 items-center justify-center rounded-2xl bg-golden"><MaterialIcons name="gavel" size={26} color="#4A0A0B" /></View>
+                <View className="h-14 w-14 items-center justify-center rounded-2xl bg-golden"><MaterialIcons name="gavel" size={26} color={pupColors.maroonDark} /></View>
                 <View className="flex-1"><Text className="font-sans-bold text-[10px] uppercase tracking-[1.5px] text-maroon dark:text-golden">{selectedRecord.disputeResolved ? 'Decision archive' : 'Teacher review'}</Text><Text className="mt-1 font-heading text-2xl text-ink dark:text-white">{selectedRecord.studentName}</Text></View>
                 <Pressable accessibilityRole="button" accessibilityLabel="Close review" onPress={() => setSelectedRecord(null)} className="h-11 w-11 items-center justify-center rounded-2xl bg-zinc-100 dark:bg-white/5"><MaterialIcons name="close" size={21} color={isDark ? '#FFFFFF' : '#181113'} /></Pressable>
               </View>

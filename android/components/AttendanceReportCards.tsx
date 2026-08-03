@@ -2,6 +2,7 @@ import { Pressable, Text, View } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import type { AttendanceReport, AttendanceReportSummary } from '@polycheck/shared'
 import { useTheme } from '../theme/ThemeContext'
+import { pupColors } from '../theme/colors'
 import { CampusCard } from './CampusPrimitives'
 
 export const AttendanceDateRangeCard = ({
@@ -25,7 +26,7 @@ export const AttendanceDateRangeCard = ({
       <Text className="mb-2 font-sans-bold text-[10px] uppercase tracking-[1.2px] text-muted dark:text-zinc-500">{label}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={`${label} date ${value}`} onPress={onPress} className="min-h-12 flex-row items-center justify-between rounded-2xl border border-line bg-zinc-50 px-3 dark:border-line-dark dark:bg-white/5">
         <Text className="font-sans-semibold text-xs text-ink dark:text-white">{value}</Text>
-        <MaterialIcons name="event" size={17} color={isDark ? '#FFDF00' : '#7B1113'} />
+        <MaterialIcons name="event" size={17} color={isDark ? pupColors.golden : pupColors.maroon} />
       </Pressable>
     </View>
   )
@@ -33,7 +34,7 @@ export const AttendanceDateRangeCard = ({
   return (
     <CampusCard className="mb-5 p-4">
       <View className="mb-4 flex-row items-center justify-between">
-        <View className="flex-row items-center gap-2"><MaterialIcons name="date-range" size={19} color={isDark ? '#FFDF00' : '#7B1113'} /><Text className="font-sans-bold text-sm text-ink dark:text-white">Date range</Text></View>
+        <View className="flex-row items-center gap-2"><MaterialIcons name="date-range" size={19} color={isDark ? pupColors.golden : pupColors.maroon} /><Text className="font-sans-bold text-sm text-ink dark:text-white">Date range</Text></View>
         {filtered && onReset ? <Pressable accessibilityRole="button" onPress={onReset} className="min-h-10 justify-center px-2"><Text className="font-sans-bold text-xs text-maroon dark:text-golden">Reset</Text></Pressable> : null}
       </View>
       <View className="flex-row gap-3"><DateButton label="From" value={startDate} onPress={onStartPress} /><DateButton label="To" value={endDate} onPress={onEndPress} /></View>

@@ -6,6 +6,7 @@ import { router } from 'expo-router'
 import type { Section, Session, Subject, User } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
 import { useTheme } from '../../../theme/ThemeContext'
+import { pupColors } from '../../../theme/colors'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
 
@@ -41,7 +42,7 @@ export default function FacultySessionsScreen() {
   const isSuper = user.role === 'super_admin'
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
       <CampusHeader
         eyebrow={isSuper ? 'Session oversight' : 'Attendance workspace'}
         title={isSuper ? 'Session monitoring' : 'Class sessions'}
@@ -77,7 +78,7 @@ export default function FacultySessionsScreen() {
                   >
                     <View className="flex-row items-center gap-4">
                       <View className={`h-14 w-14 items-center justify-center rounded-[20px] ${session.isActive ? 'bg-golden' : 'bg-maroon/5 dark:bg-white/5'}`}>
-                        <MaterialIcons name={session.isActive ? 'radio-button-checked' : 'event'} size={22} color={session.isActive ? '#4A0A0B' : isDark ? '#FFDF00' : '#7B1113'} />
+                        <MaterialIcons name={session.isActive ? 'radio-button-checked' : 'event'} size={22} color={session.isActive ? pupColors.maroonDark : isDark ? pupColors.golden : pupColors.maroon} />
                       </View>
                       <View className="flex-1">
                         <Text className="font-sans-bold text-base text-ink dark:text-white">

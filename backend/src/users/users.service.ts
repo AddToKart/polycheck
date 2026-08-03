@@ -7,6 +7,7 @@ import type { CreateStudentDto, CreateTeacherDto } from './dto/manage-user.dto'
 import { Prisma } from '../prisma/client'
 import { randomUUID } from 'crypto'
 import { EventEmitter2 } from '@nestjs/event-emitter'
+import { adminCanAccessUser, adminUserWhere } from '../common/admin-scope'
 import { PASSWORD_HASH_COST } from '../auth/password-policy'
 
 @Injectable()
@@ -22,12 +23,7 @@ export class UsersService {
     }
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
-        where:
-          user.scope === 'institution'
-            ? undefined
-            : user.department
-              ? { department: user.department }
-              : { id: { in: [] } },
+        where: adminUserWhere(user),
         select: {
           id: true,
           studentId: true,
@@ -47,12 +43,7 @@ export class UsersService {
         skip: pagination?.offset ?? 0,
       }),
       this.prisma.user.count({
-        where:
-          user.scope === 'institution'
-            ? undefined
-            : user.department
-              ? { department: user.department }
-              : { id: { in: [] } },
+        where: adminUserWhere(user),
       }),
     ])
     return {
@@ -72,10 +63,7 @@ export class UsersService {
     if (!target) throw new NotFoundException('User not found')
 
     const canAccessOwnProfile = user.id === id
-    const canAccessAsSuperAdmin =
-      user.role === 'super_admin'
-        ? user.scope === 'institution' || (!!user.department && target.department === user.department)
-        : false
+    const canAccessAsSuperAdmin = adminCanAccessUser(user, target.department)
     const canAccessStudentInOwnSection =
       user.role === 'teacher' && target.role === 'student'
         ? await this.prisma.enrollment.findFirst({
@@ -112,7 +100,7 @@ export class UsersService {
     return this.prisma.user.findMany({
       where: {
         role: 'teacher',
-        ...(user.scope === 'institution' ? {} : user.department ? { department: user.department } : { id: { in: [] } }),
+        ...(adminUserWhere(user) ?? {}),
       },
       select: {
         id: true,
@@ -137,11 +125,7 @@ export class UsersService {
       where: {
         role: 'student',
         ...(user.role === 'super_admin'
-          ? user.scope === 'institution'
-            ? {}
-            : user.department
-              ? { department: user.department }
-              : { id: { in: [] } }
+          ? { ...(adminUserWhere(user) ?? {}) }
           : { isActive: true, enrollments: { some: { section: { teacherId: user.id } } } }),
       },
       select: {
@@ -320,7 +304,7 @@ export class UsersService {
     })
     if (!target) throw new NotFoundException('User not found')
     if (target.role === 'super_admin') throw new ForbiddenException('Super Admin accounts cannot be disabled here')
-    if (user.scope !== 'institution' && target.department !== user.department) {
+    if (!adminCanAccessUser(user, target.department)) {
       throw new ForbiddenException('This account is outside your administrative scope')
     }
     const [updated] = await this.prisma.$transaction([
@@ -353,8 +337,7 @@ export class UsersService {
 
   private assertDepartmentScope(user: RequestUser, department?: string) {
     this.assertSuperAdmin(user)
-    if (user.scope === 'institution') return
-    if (user.department && department === user.department) return
+    if (adminCanAccessUser(user, department)) return
     throw new ForbiddenException('Department administrators can only manage accounts in their own department')
   }
 

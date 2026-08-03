@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/com
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { parseIsoDate } from '../common/utils/iso-date'
+import { adminRecordWhere, adminSectionWhere, adminSessionWhere, adminUserWhere } from '../common/admin-scope'
 import type { Prisma } from '../prisma/client'
 
 const CALENDAR_RESULT_LIMIT = 2_000
@@ -248,11 +249,7 @@ export class DashboardService {
             where: {
               role: 'student',
               ...(user.role === 'teacher' ? { enrollments: { some: { section: { teacherId: user.id } } } } : {}),
-              ...(user.role === 'super_admin' && user.scope !== 'institution'
-                ? user.department
-                  ? { department: user.department }
-                  : { id: { in: [] } }
-                : {}),
+              ...(user.role === 'super_admin' ? { ...(adminUserWhere(user) ?? {}) } : {}),
               OR: [
                 { fullName: { contains: query, mode: 'insensitive' } },
                 { studentId: { contains: query, mode: 'insensitive' } },
@@ -362,18 +359,8 @@ export class DashboardService {
       return { faculty: 1, students: students.length, subjects: subjects.length, sections }
     }
 
-    const department = user.scope === 'institution' ? undefined : user.department
-    const inaccessible = user.scope !== 'institution' && !department
-    const teacherWhere: Prisma.UserWhereInput = {
-      role: 'teacher',
-      ...(department ? { department } : {}),
-      ...(inaccessible ? { id: { in: [] } } : {}),
-    }
-    const studentWhere: Prisma.UserWhereInput = {
-      role: 'student',
-      ...(department ? { department } : {}),
-      ...(inaccessible ? { id: { in: [] } } : {}),
-    }
+    const teacherWhere: Prisma.UserWhereInput = { role: 'teacher', ...(adminUserWhere(user) ?? {}) }
+    const studentWhere: Prisma.UserWhereInput = { role: 'student', ...(adminUserWhere(user) ?? {}) }
     const sectionWhere = this.sectionScope(user)
     const [faculty, students, subjects, sections] = await Promise.all([
       this.prisma.user.count({ where: teacherWhere }),
@@ -451,8 +438,7 @@ export class DashboardService {
 
   private sectionScope(user: RequestUser): Prisma.SectionWhereInput {
     if (user.role === 'super_admin') {
-      if (user.scope === 'institution') return {}
-      return user.department ? { teacher: { department: user.department } } : { id: { in: [] } }
+      return adminSectionWhere(user)
     }
     if (user.role === 'teacher') return { teacherId: user.id }
     return { enrollments: { some: { studentId: user.id } } }
@@ -460,8 +446,7 @@ export class DashboardService {
 
   private sessionScope(user: RequestUser): Prisma.SessionWhereInput {
     if (user.role === 'super_admin') {
-      if (user.scope === 'institution') return {}
-      return user.department ? { section: { teacher: { department: user.department } } } : { id: { in: [] } }
+      return adminSessionWhere(user)
     }
     if (user.role === 'teacher') return { teacherId: user.id }
     return { section: { enrollments: { some: { studentId: user.id } } } }
@@ -469,10 +454,7 @@ export class DashboardService {
 
   private async recordScope(user: RequestUser): Promise<Prisma.AttendanceRecordWhereInput> {
     if (user.role === 'super_admin') {
-      if (user.scope === 'institution') return {}
-      return user.department
-        ? { session: { section: { teacher: { department: user.department } } } }
-        : { id: { in: [] } }
+      return adminRecordWhere(user)
     }
     if (user.role === 'teacher') return { session: { teacherId: user.id } }
     return { studentId: user.id }

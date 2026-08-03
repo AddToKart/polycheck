@@ -31,6 +31,14 @@ export default function SectionDetailPage() {
 
   const [sectionRoles, setSectionRoles] = useState<SectionRole[]>([])
   const [sessionPermissions, setSessionPermissions] = useState<SessionPermission[]>([])
+  const [expiredPermissionIds, setExpiredPermissionIds] = useState<Set<string>>(new Set())
+  const applyPermissions = (permissions: SessionPermission[]) => {
+    const now = Date.now()
+    setSessionPermissions(permissions)
+    setExpiredPermissionIds(
+      new Set(permissions.filter((permission) => new Date(permission.expiresAt).getTime() <= now).map((permission) => permission.studentId)),
+    )
+  }
   const [presidentSelectOpen, setPresidentSelectOpen] = useState(false)
   const [qacSelectOpen, setQacSelectOpen] = useState(false)
   const [allStudents, setAllStudents] = useState<Student[]>([])
@@ -68,7 +76,7 @@ export default function SectionDetailPage() {
       setSessions(sectionSessions)
       if (cu?.role === 'teacher') {
         setSectionRoles(await api.getSectionRoles(id))
-        setSessionPermissions(await api.getActiveSessionPermissions(id))
+        applyPermissions(await api.getActiveSessionPermissions(id))
       }
       const subj = await api.getSubject(sec.subjectId)
       setSubjectName(subj?.name ?? '')
@@ -330,7 +338,7 @@ export default function SectionDetailPage() {
                   const pres = sectionRoles.find((r) => r.role === 'president')
                   if (pres) {
                     const perm = sessionPermissions.find((p) => p.studentId === pres.studentId)
-                    const isExpired = perm ? Date.now() >= new Date(perm.expiresAt).getTime() : true
+                    const isExpired = perm ? expiredPermissionIds.has(perm.studentId) : true
                     return (
                       <div className="flex items-center justify-between bg-zinc-50 dark:bg-zinc-900 p-3 border border-zinc-200 dark:border-zinc-800 mb-2">
                         <div className="flex items-center gap-3">
@@ -356,14 +364,14 @@ export default function SectionDetailPage() {
                           {perm && !isExpired ? (
                             <Button variant="outline" size="sm" className="text-red-500 border-red-500 text-xs" onClick={async () => {
                               await api.revokeSessionPermission(id, pres.studentId)
-                              setSessionPermissions(await api.getActiveSessionPermissions(id))
+                              applyPermissions(await api.getActiveSessionPermissions(id))
                             }}>
                               <XCircle className="w-3 h-3 mr-1" /> Revoke
                             </Button>
                           ) : (
                             <Button variant="default" size="sm" className="text-xs" onClick={async () => {
                               await api.grantSessionPermission(id, pres.studentId)
-                              setSessionPermissions(await api.getActiveSessionPermissions(id))
+                              applyPermissions(await api.getActiveSessionPermissions(id))
                             }}>
                               <CheckCircle className="w-3 h-3 mr-1" /> Grant 24hr
                             </Button>

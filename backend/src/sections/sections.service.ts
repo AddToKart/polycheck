@@ -11,6 +11,7 @@ import type { CreateSectionDto } from './dto/create-section.dto'
 import type { UpdateSectionDto } from './dto/update-section.dto'
 import { DayOfWeek, Prisma } from '../prisma/client'
 import { randomInt } from 'crypto'
+import { adminCanAccessSection, adminEnrollmentWhere, adminSectionWhere } from '../common/admin-scope'
 
 const sectionInclude = {
   subject: { select: { id: true, name: true, code: true } },
@@ -29,7 +30,7 @@ export class SectionsService {
       const sections = await this.prisma.section.findMany({
         where: {
           ...(subjectId ? { subjectId } : {}),
-          ...this.superAdminSectionScope(user),
+          ...adminSectionWhere(user),
         },
         include: sectionInclude,
         orderBy: [{ semester: 'desc' }, { section: 'asc' }],
@@ -71,11 +72,7 @@ export class SectionsService {
     if (user.role === 'teacher' && section.teacherId !== user.id) {
       throw new ForbiddenException('You can only view your own sections')
     }
-    if (
-      user.role === 'super_admin' &&
-      user.scope !== 'institution' &&
-      (!user.department || section.teacher.department !== user.department)
-    ) {
+    if (user.role === 'super_admin' && !adminCanAccessSection(user, section.teacher.department)) {
       throw new ForbiddenException('This section is outside your administrative scope')
     }
 
@@ -354,7 +351,7 @@ export class SectionsService {
     } else if (user.scope === 'institution') {
       where = {}
     } else {
-      where = user.department ? { section: { teacher: { department: user.department } } } : { id: { in: [] } }
+      where = adminEnrollmentWhere(user)
     }
 
     return this.prisma.enrollment.findMany({
@@ -415,11 +412,6 @@ export class SectionsService {
       createdAt: section.createdAt,
       updatedAt: section.updatedAt,
     }
-  }
-
-  private superAdminSectionScope(user: RequestUser) {
-    if (user.scope === 'institution') return {}
-    return user.department ? { teacher: { department: user.department } } : { id: { in: [] as string[] } }
   }
 
   private assertScheduleRanges(schedule: Array<{ startTime?: string; endTime?: string }>) {

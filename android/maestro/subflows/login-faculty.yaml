@@ -1,0 +1,13 @@
+- tapOn:
+    id: landing-faculty-login
+- assertVisible:
+    id: faculty-login-screen
+- tapOn:
+    id: faculty-login-identity
+- inputText: "${E2E_FACULTY_EMAIL}"
+- tapOn:
+    id: faculty-login-password
+- inputText: "${E2E_PASSWORD}"
+- hideKeyboard
+- tapOn:
+    id: faculty-login-submit

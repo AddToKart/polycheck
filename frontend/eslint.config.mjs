@@ -7,10 +7,9 @@ const eslintConfig = defineConfig([
   ...nextTs,
   {
     rules: {
+      // set-state-in-effect stays off: several screens intentionally sync
+      // camera/theme/login state from effects (e.g. ScanQrModal, ThemeToggle).
       "react-hooks/set-state-in-effect": "off",
-      "react-hooks/rules-of-hooks": "off",
-      "react-hooks/static-components": "off",
-      "react-hooks/purity": "off",
       "@next/next/no-html-link-for-pages": "off",
       "@typescript-eslint/no-explicit-any": "off",
       "prefer-const": "off"

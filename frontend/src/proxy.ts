@@ -1,10 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { API_BASE } from './lib/api-config'
 
-const apiSources = () => {
-  const configured = process.env.NEXT_PUBLIC_API_URL?.trim()
-  if (!configured) return []
+const apiSources = (apiBase: string) => {
   try {
-    const url = new URL(configured)
+    const url = new URL(apiBase)
     const websocketProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     return [url.origin, `${websocketProtocol}//${url.host}`]
   } catch {
@@ -12,7 +11,7 @@ const apiSources = () => {
   }
 }
 
-const contentSecurityPolicy = (nonce: string) => {
+export const contentSecurityPolicy = (nonce: string, apiBase = API_BASE) => {
   const developmentSources =
     process.env.NODE_ENV === 'production'
       ? []
@@ -35,7 +34,7 @@ const contentSecurityPolicy = (nonce: string) => {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com",
     `img-src 'self' data: blob: ${mapSources.join(' ')}`,
-    ["connect-src 'self'", ...apiSources(), ...mapSources, ...developmentSources.slice(1)].join(' '),
+    ["connect-src 'self'", ...apiSources(apiBase), ...mapSources, ...developmentSources.slice(1)].join(' '),
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

@@ -15,6 +15,8 @@ import { ErrorCode } from '../constants/error-codes'
 import { RedisService } from '../../infrastructure/redis.service'
 
 const IDEMPOTENCY_TTL_SECONDS = 10 * 60
+// Response bodies above this size are replaced by a compact terminal marker.
+const IDEMPOTENCY_MAX_STORED_BYTES = 64 * 1024
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 const VALID_KEY = /^[A-Za-z0-9._:-]{8,128}$/
 
@@ -27,10 +29,11 @@ interface IdempotentRequest {
 }
 
 interface StoredResponse {
-  body: unknown
+  body?: unknown
   fingerprint: string
   statusCode: number
   contentType?: string
+  replayable?: boolean
 }
 
 @Injectable()
@@ -63,6 +66,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
       if (stored.fingerprint !== fingerprint) {
         throw new ConflictException('Idempotency-Key was already used with a different request payload')
       }
+      this.assertReplayable(stored)
       response.status(stored.statusCode)
       if (stored.contentType) response.type(stored.contentType)
       return of(stored.body)
@@ -75,6 +79,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
         if (completed.fingerprint !== fingerprint) {
           throw new ConflictException('Idempotency-Key was already used with a different request payload')
         }
+        this.assertReplayable(completed)
         response.status(completed.statusCode)
         if (completed.contentType) response.type(completed.contentType)
         return of(completed.body)
@@ -92,23 +97,43 @@ export class IdempotencyInterceptor implements NestInterceptor {
     }
 
     return next.handle().pipe(
-      mergeMap((body) =>
-        from(
-          this.redis
-            .setJson(
-              responseKey,
-              {
-                body,
+      mergeMap((body) => {
+        const stored: StoredResponse = {
+          body,
+          fingerprint,
+          statusCode: response.statusCode,
+          contentType: response.getHeader('content-type')?.toString(),
+          replayable: true,
+        }
+        const serialized = JSON.stringify(stored)
+        // Preserve idempotency without retaining a large body: the compact
+        // terminal marker makes later retries fail closed instead of running
+        // the completed mutation again.
+        const valueToStore: StoredResponse =
+          Buffer.byteLength(serialized, 'utf8') <= IDEMPOTENCY_MAX_STORED_BYTES
+            ? stored
+            : {
                 fingerprint,
                 statusCode: response.statusCode,
                 contentType: response.getHeader('content-type')?.toString(),
-              },
-              IDEMPOTENCY_TTL_SECONDS,
-            )
-            .then(() => this.redis.delete(lockKey)),
-        ).pipe(map(() => body)),
-      ),
+                replayable: false,
+              }
+        const persist = this.redis
+          .setJson(responseKey, valueToStore, IDEMPOTENCY_TTL_SECONDS)
+          .then(() => this.redis.delete(lockKey))
+        return from(persist).pipe(map(() => body))
+      }),
       catchError((error: unknown) => from(this.redis.delete(lockKey)).pipe(mergeMap(() => throwError(() => error)))),
     )
+  }
+
+  private assertReplayable(stored: StoredResponse) {
+    if (stored.replayable !== false) return
+    throw new ConflictException({
+      statusCode: 409,
+      error: 'Conflict',
+      code: ErrorCode.IDEMPOTENCY_RESPONSE_UNAVAILABLE,
+      message: 'This request already completed, but its response was too large to replay safely',
+    })
   }
 }

@@ -3,6 +3,7 @@ import { Pressable, Text, View } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import type { AttendanceStatus } from '@polycheck/shared'
 import { useTheme } from '../theme/ThemeContext'
+import { pupColors } from '../theme/colors'
 
 const joinClasses = (...classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(' ')
 
@@ -11,20 +12,22 @@ type CampusCardProps = {
   className?: string
   onPress?: () => void
   accessibilityLabel?: string
+  testID?: string
 }
 
-export const CampusCard = ({ children, className, onPress, accessibilityLabel }: CampusCardProps) => {
+export const CampusCard = ({ children, className, onPress, accessibilityLabel, testID }: CampusCardProps) => {
   const classes = joinClasses(
     'rounded-none border border-line bg-white p-5 dark:border-line-dark dark:bg-surface-dark border-l-4 border-l-maroon dark:border-l-golden',
     className,
   )
 
-  if (!onPress) return <View className={classes}>{children}</View>
+  if (!onPress) return <View className={classes} testID={testID}>{children}</View>
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      testID={testID}
       className={classes}
       onPress={onPress}
     >
@@ -38,14 +41,16 @@ type CampusIconButtonProps = {
   label: string
   onPress: () => void
   inverse?: boolean
+  testID?: string
 }
 
-export const CampusIconButton = ({ icon, label, onPress, inverse = false }: CampusIconButtonProps) => {
+export const CampusIconButton = ({ icon, label, onPress, inverse = false, testID }: CampusIconButtonProps) => {
   const { isDark } = useTheme()
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      testID={testID}
       hitSlop={8}
       onPress={onPress}
       className={joinClasses(
@@ -55,7 +60,7 @@ export const CampusIconButton = ({ icon, label, onPress, inverse = false }: Camp
           : 'border-line bg-white dark:border-line-dark dark:bg-surface-dark',
       )}
     >
-      <MaterialIcons name={icon} size={20} color={inverse ? '#FFFFFF' : isDark ? '#FFDF00' : '#7B1113'} />
+      <MaterialIcons name={icon} size={20} color={inverse ? '#FFFFFF' : isDark ? pupColors.golden : pupColors.maroon} />
     </Pressable>
   )
 }
@@ -67,6 +72,7 @@ type CampusButtonProps = {
   variant?: 'primary' | 'secondary' | 'gold'
   disabled?: boolean
   className?: string
+  testID?: string
 }
 
 export const CampusButton = ({
@@ -76,6 +82,7 @@ export const CampusButton = ({
   variant = 'primary',
   disabled = false,
   className,
+  testID,
 }: CampusButtonProps) => {
   const { isDark } = useTheme()
   const variants = {
@@ -89,15 +96,16 @@ export const CampusButton = ({
     gold: 'text-maroon-dark',
   }
   const iconColor = variant === 'secondary'
-    ? isDark ? '#FFDF00' : '#7B1113'
+    ? isDark ? pupColors.golden : pupColors.maroon
     : variant === 'primary'
-      ? isDark ? '#4A0A0B' : '#FFFFFF'
-      : '#4A0A0B'
+      ? isDark ? pupColors.maroonDark : '#FFFFFF'
+      : pupColors.maroonDark
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      testID={testID}
       disabled={disabled}
       onPress={onPress}
       className={joinClasses(
@@ -134,7 +142,7 @@ export const SectionHeading = ({ title, eyebrow, actionLabel, onAction }: Sectio
     {actionLabel && onAction ? (
       <Pressable accessibilityRole="button" onPress={onAction} className="min-h-10 flex-row items-center gap-1 px-2">
         <Text className="font-sans-bold text-xs uppercase tracking-wider text-maroon dark:text-golden">{actionLabel}</Text>
-        <MaterialIcons name="arrow-forward" size={16} color={isDark ? '#FFDF00' : '#7B1113'} />
+        <MaterialIcons name="arrow-forward" size={16} color={isDark ? pupColors.golden : pupColors.maroon} />
       </Pressable>
     ) : null}
   </View>
@@ -153,12 +161,12 @@ export const MetricTile = ({ label, value, icon, emphasis = 'brand' }: MetricTil
     ? { bg: 'bg-red-50 dark:bg-red-950/20', icon: '#DC2626', value: 'text-red-700 dark:text-red-300' }
     : emphasis === 'neutral'
       ? { bg: 'bg-zinc-100 dark:bg-white/5', icon: '#746C6E', value: 'text-ink dark:text-white' }
-      : { bg: 'bg-maroon/5 dark:bg-golden/10', icon: '#7B1113', value: 'text-maroon dark:text-golden' }
+      : { bg: 'bg-maroon/5 dark:bg-golden/10', icon: pupColors.maroon, value: 'text-maroon dark:text-golden' }
 
   return (
     <View className="min-w-[46%] flex-1 rounded-none border border-line bg-white p-4 dark:border-line-dark dark:bg-surface-dark border-t-4 border-t-maroon dark:border-t-golden">
       <View className={joinClasses('mb-3 h-9 w-9 items-center justify-center rounded-none', colors.bg)}>
-        <MaterialIcons name={icon} size={18} color={emphasis === 'brand' && isDark ? '#FFDF00' : colors.icon} />
+        <MaterialIcons name={icon} size={18} color={emphasis === 'brand' && isDark ? pupColors.golden : colors.icon} />
       </View>
       <Text className={joinClasses('font-sans-bold text-3xl font-bold leading-8', colors.value)}>{value}</Text>
       <Text className="mt-1 font-sans-bold text-[10px] uppercase tracking-wider text-muted dark:text-zinc-400">{label}</Text>
@@ -199,7 +207,7 @@ export const CampusEmptyState = ({ icon, title, description }: CampusEmptyStateP
   return (
     <View className="items-center rounded-none border border-dashed border-line bg-white/70 px-6 py-10 dark:border-line-dark dark:bg-surface-dark/70">
       <View className="mb-3 h-12 w-12 items-center justify-center rounded-none bg-maroon/5 dark:bg-golden/10">
-        <MaterialIcons name={icon} size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
+        <MaterialIcons name={icon} size={24} color={isDark ? pupColors.golden : pupColors.maroon} />
       </View>
       <Text className="font-sans-bold text-base font-bold text-ink dark:text-white uppercase tracking-wider">{title}</Text>
       <Text className="mt-2 max-w-64 text-center font-sans text-xs leading-5 text-muted dark:text-zinc-400">

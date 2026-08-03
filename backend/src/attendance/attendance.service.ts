@@ -18,6 +18,7 @@ import { AttendanceReportService } from './attendance-report.service'
 import { GeofenceService } from './geofence.service'
 import { verifyQRToken } from '@polycheck/shared'
 import { RAW_ATTENDANCE_LIMIT, type ScanEvidence, type ScanValidation } from './types'
+import { assertStudentInAdminScope } from '../common/admin-scope'
 
 @Injectable()
 export class AttendanceService {
@@ -74,17 +75,7 @@ export class AttendanceService {
       if (!section || section.teacherId !== user.id)
         throw new ForbiddenException('You cannot view this student attendance')
     }
-    if (user.role === 'super_admin' && user.scope !== 'institution') {
-      const allowed = await this.prisma.enrollment.findFirst({
-        where: {
-          studentId,
-          ...(sectionId ? { sectionId } : {}),
-          section: { teacher: { department: user.department ?? '__no_department__' } },
-        },
-        select: { id: true },
-      })
-      if (!allowed) throw new ForbiddenException('This student is outside your administrative scope')
-    }
+    await assertStudentInAdminScope(user, studentId, this.prisma, sectionId)
     const records = await this.prisma.attendanceRecord.findMany({
       where: { studentId, ...(sectionId ? { sectionId } : {}) },
       orderBy: { timestamp: 'desc' },

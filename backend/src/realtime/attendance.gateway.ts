@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { SessionAuthenticator } from '../auth/session-authenticator.service'
 import { OnEvent } from '@nestjs/event-emitter'
+import { adminSectionInScope } from '../common/admin-scope'
 
 type SocketUser = RequestUser
 
@@ -124,12 +125,7 @@ export class AttendanceGateway implements OnGatewayInit {
 
   private async assertSessionAccess(user: SocketUser, session: { sectionId: string; teacherId: string }) {
     if (user.role === 'super_admin') {
-      if (user.scope === 'institution') return
-      const allowed = await this.prisma.section.findFirst({
-        where: { id: session.sectionId, teacher: { department: user.department ?? '__no_department__' } },
-        select: { id: true },
-      })
-      if (allowed) return
+      if (await adminSectionInScope(user, session.sectionId, this.prisma)) return
     }
     if (user.role === 'teacher' && session.teacherId === user.id) return
     // Students intentionally cannot join roster rooms: attendance updates contain classmates' identifiers.

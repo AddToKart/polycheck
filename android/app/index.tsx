@@ -3,13 +3,14 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useTheme } from '../theme/ThemeContext'
+import { pupColors } from '../theme/colors'
 import { CampusIconButton } from '../components/CampusPrimitives'
 
 export default function LandingScreen() {
   const { isDark, toggle } = useTheme()
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#171316' : '#7B1113' }}>
+    <SafeAreaView className="flex-1 bg-maroon dark:bg-surface-dark" testID="landing-screen">
       <View style={{ flex: 1, paddingHorizontal: 24, paddingVertical: 16 }}>
         {/* Top bar */}
         <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
@@ -48,7 +49,7 @@ export default function LandingScreen() {
             style={{
               width: 44,
               height: 4,
-              backgroundColor: '#FFDF00',
+              backgroundColor: pupColors.golden,
               marginTop: 12,
               marginBottom: 12,
             }}
@@ -73,6 +74,7 @@ export default function LandingScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Sign in as student"
+              testID="landing-student-login"
               onPress={() => router.push('/(auth)/student-login')}
               style={({ pressed }) => ({
                 flexDirection: 'row',
@@ -81,7 +83,7 @@ export default function LandingScreen() {
                 borderRadius: 0,
                 borderWidth: 1,
                 borderLeftWidth: 5,
-                borderLeftColor: '#FFDF00',
+                borderLeftColor: pupColors.golden,
                 borderColor: 'rgba(255, 255, 255, 0.25)',
                 backgroundColor: pressed ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.12)',
                 paddingHorizontal: 20,
@@ -101,7 +103,7 @@ export default function LandingScreen() {
                   justifyContent: 'center',
                 }}
               >
-                <MaterialIcons name="school" size={24} color="#FFDF00" />
+                <MaterialIcons name="school" size={24} color={pupColors.golden} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text
@@ -132,6 +134,7 @@ export default function LandingScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Sign in as faculty"
+              testID="landing-faculty-login"
               onPress={() => router.push('/(auth)/faculty-login')}
               style={({ pressed }) => ({
                 flexDirection: 'row',
@@ -140,7 +143,7 @@ export default function LandingScreen() {
                 borderRadius: 0,
                 borderWidth: 1,
                 borderLeftWidth: 5,
-                borderLeftColor: '#FFDF00',
+                borderLeftColor: pupColors.golden,
                 borderColor: 'rgba(255, 255, 255, 0.25)',
                 backgroundColor: pressed ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.12)',
                 paddingHorizontal: 20,
@@ -160,7 +163,7 @@ export default function LandingScreen() {
                   justifyContent: 'center',
                 }}
               >
-                <MaterialIcons name="badge" size={24} color="#FFDF00" />
+                <MaterialIcons name="badge" size={24} color={pupColors.golden} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text

@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, Tex
 import { MaterialIcons } from '@expo/vector-icons'
 import type { AttendanceRecord, StudentDisputeReason } from '@polycheck/shared'
 import { useTheme } from '../theme/ThemeContext'
+import { pupColors } from '../theme/colors'
 import { AttendanceStatusPill, CampusButton } from './CampusPrimitives'
 
 type DetailModalProps = {
@@ -22,7 +23,7 @@ const ModalHeading = ({ eyebrow, title, onClose }: { eyebrow: string; title: str
         <Text className="mt-1 font-heading text-2xl text-ink dark:text-white">{title}</Text>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} className="h-10 w-10 items-center justify-center rounded-none border border-line bg-zinc-100 dark:border-line-dark dark:bg-white/5">
-        <MaterialIcons name="close" size={20} color={isDark ? '#FFFFFF' : '#4A0A0B'} />
+        <MaterialIcons name="close" size={20} color={isDark ? '#FFFFFF' : pupColors.maroonDark} />
       </Pressable>
     </View>
   )
@@ -131,7 +132,7 @@ export const AttendanceDisputeModal = ({ visible, submitting, onClose, onSubmit 
               value={description}
               onChangeText={setDescription}
               placeholder="Describe what happened so your instructor can review it."
-              placeholderTextColor={isDark ? '#777177' : '#A39B9D'}
+              placeholderTextColor={isDark ? pupColors.muted : pupColors.mutedLight}
               multiline
               maxLength={500}
             />

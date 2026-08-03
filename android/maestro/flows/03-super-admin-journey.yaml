@@ -1,0 +1,36 @@
+appId: edu.pup.polycheck
+name: Super-admin oversight navigation
+tags:
+  - smoke
+  - super-admin
+env:
+  E2E_FACULTY_EMAIL: ${E2E_FACULTY_EMAIL || "mcreyes@pup.edu.ph"}
+  E2E_PASSWORD: ${E2E_PASSWORD || "PolycheckLocal1!"}
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+- assertVisible:
+    id: landing-screen
+- runFlow: ../subflows/login-faculty.yaml
+- extendedWaitUntil:
+    visible:
+      id: super-admin-dashboard-screen
+    timeout: 20000
+
+- tapOn:
+    id: faculty-tab-subjects
+- assertVisible: Subject directory
+- tapOn:
+    id: admin-tab-users
+- assertVisible: Campus users
+- tapOn:
+    id: admin-tab-reports
+- assertVisible: Attendance reports
+- tapOn:
+    id: faculty-tab-more
+- assertVisible:
+    id: faculty-more-sheet
+- tapOn: Session Monitoring
+- assertVisible: Session monitoring

@@ -2,6 +2,7 @@ import { Platform } from 'react-native'
 import { Tabs } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { pupColors } from '../../theme/colors'
 import { useTheme } from '../../theme/ThemeContext'
 
 const iconMap: Record<string, keyof typeof MaterialIcons.glyphMap> = {
@@ -21,14 +22,14 @@ export default function TabLayout() {
       key={isDark ? 'dark' : 'light'}
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: '#FFDF00',
+        tabBarActiveTintColor: pupColors.golden,
         tabBarInactiveTintColor: 'rgba(255,255,255,0.70)',
         tabBarStyle: {
           position: 'absolute',
           bottom: bottomMargin,
           left: 16,
           right: 16,
-          backgroundColor: isDark ? '#1F0B0E' : '#7B1113',
+          backgroundColor: isDark ? pupColors.maroonInk : pupColors.maroon,
           borderRadius: 32,
           borderWidth: 0,
           height: 64,
@@ -74,12 +75,12 @@ export default function TabLayout() {
         },
       })}
     >
-      <Tabs.Screen name="dashboard" options={{ title: 'Home', tabBarLabel: 'Home' }} />
-      <Tabs.Screen name="schedule" options={{ title: 'Schedule', tabBarLabel: 'Schedule' }} />
+      <Tabs.Screen name="dashboard" options={{ title: 'Home', tabBarLabel: 'Home', tabBarButtonTestID: 'student-tab-home' }} />
+      <Tabs.Screen name="schedule" options={{ title: 'Schedule', tabBarLabel: 'Schedule', tabBarButtonTestID: 'student-tab-schedule' }} />
       <Tabs.Screen name="enroll" options={{ href: null }} />
-      <Tabs.Screen name="scan" options={{ title: 'Scan', tabBarLabel: 'Scan' }} />
+      <Tabs.Screen name="scan" options={{ title: 'Scan', tabBarLabel: 'Scan', tabBarButtonTestID: 'student-tab-scan' }} />
       <Tabs.Screen name="id-card" options={{ href: null }} />
-      <Tabs.Screen name="history" options={{ title: 'Audit', tabBarLabel: 'Audit' }} />
+      <Tabs.Screen name="history" options={{ title: 'Audit', tabBarLabel: 'Audit', tabBarButtonTestID: 'student-tab-audit' }} />
       <Tabs.Screen name="subject-info/[id]" options={{ href: null }} />
       <Tabs.Screen name="subject-info/[id]/create-session" options={{ href: null }} />
       <Tabs.Screen name="subject-info/[id]/sessions/[sessionId]" options={{ href: null }} />

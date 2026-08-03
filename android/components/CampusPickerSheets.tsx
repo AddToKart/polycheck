@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useTheme } from '../theme/ThemeContext'
+import { pupColors } from '../theme/colors'
 import { CampusButton } from './CampusPrimitives'
 
 export const formatCampusTime = (value: string) => {
@@ -17,7 +18,7 @@ export const CampusPickerField = ({ label, value, placeholder, onPress, icon = '
     <Text className="mb-2 font-sans-bold text-xs text-ink dark:text-zinc-200">{label}</Text>
     <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${value || placeholder}`} onPress={onPress} className="min-h-14 flex-row items-center rounded-2xl border border-line bg-zinc-50 px-4 dark:border-line-dark dark:bg-white/5">
       <Text className={`flex-1 font-sans text-sm ${value ? 'text-ink dark:text-white' : 'text-muted dark:text-zinc-500'}`}>{value || placeholder}</Text>
-      <MaterialIcons name={icon} size={21} color={isDark ? '#FFDF00' : '#7B1113'} />
+      <MaterialIcons name={icon} size={21} color={isDark ? pupColors.golden : pupColors.maroon} />
     </Pressable>
   </View>
 }
@@ -27,7 +28,7 @@ export const ChoiceSheet = ({ visible, title, options, value, onSelect, onClose 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 justify-end bg-black/80" onPress={onClose}>
-        <Pressable onPress={() => undefined} className="max-h-[75%] rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-[#161214]">
+        <Pressable onPress={() => undefined} className="max-h-[75%] rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-surface-dark">
           <View className="mb-4 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
           <View className="mb-4 flex-row items-center justify-between border-b border-line pb-3 dark:border-line-dark">
             <Text className="font-heading text-2xl text-ink dark:text-white">{title}</Text>
@@ -47,7 +48,7 @@ export const ChoiceSheet = ({ visible, title, options, value, onSelect, onClose 
                   className={`mb-2.5 min-h-14 flex-row items-center rounded-2xl border px-4 ${active ? 'border-maroon bg-maroon/10 dark:border-golden dark:bg-golden/15' : 'border-zinc-300 bg-zinc-50 dark:border-zinc-700 dark:bg-surface-dark'}`}
                 >
                   <Text className={`flex-1 font-sans-bold text-sm ${active ? 'text-maroon dark:text-golden' : 'text-ink dark:text-white'}`}>{option.label}</Text>
-                  {active ? <MaterialIcons name="check-circle" size={22} color={isDark ? '#FFDF00' : '#7B1113'} /> : null}
+                  {active ? <MaterialIcons name="check-circle" size={22} color={isDark ? pupColors.golden : pupColors.maroon} /> : null}
                 </Pressable>
               )
             })}
@@ -67,7 +68,7 @@ export const TimePickerSheet = ({ visible, title = 'Select time', value, onChang
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 justify-end bg-black/80" onPress={onClose}>
-        <Pressable onPress={() => undefined} className="rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-[#161214]">
+        <Pressable onPress={() => undefined} className="rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-surface-dark">
           <View className="mb-4 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
           <Text className="mb-5 font-heading text-2xl text-ink dark:text-white">{title}</Text>
           <View className="mb-5 h-64 flex-row gap-3">

@@ -5,6 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { api } from '../services/api-client'
 import { useTheme } from '../theme/ThemeContext'
+import { pupColors } from '../theme/colors'
 import { CampusIconButton } from './CampusPrimitives'
 import { CampusHeader } from './CampusHeader'
 
@@ -47,7 +48,7 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#171316' : '#7B1113' }}>
+    <SafeAreaView className="flex-1 bg-maroon dark:bg-surface-dark" testID={`${portal}-login-screen`}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           style={{ flex: 1 }}
@@ -80,7 +81,7 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
               borderRadius: 0,
               borderWidth: 1,
               borderTopWidth: 4,
-              borderTopColor: '#FFDF00',
+              borderTopColor: pupColors.golden,
               borderColor: isDark ? 'rgba(255,255,255,0.18)' : '#E8E2E3',
               backgroundColor: isDark ? '#1F191D' : '#FFFFFF',
               padding: 24,
@@ -132,14 +133,15 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
                 borderRadius: 0,
                 borderWidth: 1,
                 borderColor: isDark ? 'rgba(255,255,255,0.20)' : '#E8E2E3',
-                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F9F8F8',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : pupColors.campus,
                 paddingHorizontal: 14,
                 marginBottom: 20,
               }}
             >
-              <MaterialIcons name={isStudent ? 'badge' : 'mail'} size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
+              <MaterialIcons name={isStudent ? 'badge' : 'mail'} size={18} color={isDark ? pupColors.golden : pupColors.maroon} />
               <TextInput
                 accessibilityLabel={identityLabel}
+                testID={`${portal}-login-identity`}
                 style={{
                   flex: 1,
                   paddingHorizontal: 10,
@@ -149,7 +151,7 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
                   color: isDark ? '#FFFFFF' : '#211A1B',
                 }}
                 placeholder={identityPlaceholder}
-                placeholderTextColor={isDark ? 'rgba(255,255,255,0.40)' : '#A39B9D'}
+                placeholderTextColor={isDark ? 'rgba(255,255,255,0.40)' : pupColors.mutedLight}
                 value={identity}
                 onChangeText={setIdentity}
                 autoCapitalize="none"
@@ -179,14 +181,15 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
                 borderRadius: 0,
                 borderWidth: 1,
                 borderColor: isDark ? 'rgba(255,255,255,0.20)' : '#E8E2E3',
-                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F9F8F8',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : pupColors.campus,
                 paddingHorizontal: 14,
                 marginBottom: 12,
               }}
             >
-              <MaterialIcons name="lock" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
+              <MaterialIcons name="lock" size={18} color={isDark ? pupColors.golden : pupColors.maroon} />
               <TextInput
                 accessibilityLabel="Password"
+                testID={`${portal}-login-password`}
                 style={{
                   flex: 1,
                   paddingHorizontal: 10,
@@ -196,7 +199,7 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
                   color: isDark ? '#FFFFFF' : '#211A1B',
                 }}
                 placeholder="Enter your password"
-                placeholderTextColor={isDark ? 'rgba(255,255,255,0.40)' : '#A39B9D'}
+                placeholderTextColor={isDark ? 'rgba(255,255,255,0.40)' : pupColors.mutedLight}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!passwordVisible}
@@ -233,6 +236,7 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Sign in"
+              testID={`${portal}-login-submit`}
               disabled={loading}
               onPress={handleLogin}
               style={({ pressed }) => ({
@@ -242,7 +246,7 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
                 justifyContent: 'center',
                 gap: 8,
                 borderRadius: 0,
-                backgroundColor: '#7B1113',
+                backgroundColor: pupColors.maroon,
                 opacity: loading ? 0.6 : pressed ? 0.88 : 1,
               })}
             >

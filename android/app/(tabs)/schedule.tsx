@@ -7,6 +7,7 @@ import { formatCampusDate, type AttendanceRecord, type CalendarEvent, type Secti
 import { generateStudentCalendarEvents } from '@polycheck/shared/utils'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
+import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusIconButton, CampusEmptyState, SectionHeading } from '../../components/CampusPrimitives'
 import {
@@ -126,8 +127,8 @@ export default function ScheduleScreen() {
 
   if (!studentId) {
     return (
-      <SafeAreaView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
-        <ActivityIndicator size="large" color="#7B1113" />
+      <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark">
+        <ActivityIndicator size="large" color={pupColors.maroon} />
       </SafeAreaView>
     )
   }
@@ -137,7 +138,7 @@ export default function ScheduleScreen() {
     : `${new Date(`${weekDays[0].date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} – ${new Date(`${weekDays[6].date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}`
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
       <CampusHeader
         eyebrow="Class Calendar"
         title="My Schedule"
@@ -165,14 +166,14 @@ export default function ScheduleScreen() {
 
         <View className="mb-3 flex-row items-center justify-between rounded-none border border-line bg-white p-2 dark:border-line-dark dark:bg-surface-dark">
           <Pressable accessibilityRole="button" accessibilityLabel="Previous date range" onPress={() => shiftRange(-1)} className="h-10 w-10 items-center justify-center rounded-none border border-line bg-zinc-50 dark:border-line-dark dark:bg-white/5">
-            <MaterialIcons name="chevron-left" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
+            <MaterialIcons name="chevron-left" size={22} color={isDark ? pupColors.golden : pupColors.maroon} />
           </Pressable>
           <Pressable accessibilityRole="button" onPress={goToToday} className="flex-1 items-center px-2">
             <Text className="font-sans-bold text-sm text-ink dark:text-white uppercase tracking-wider">{displayedRange}</Text>
             <Text className="mt-0.5 font-sans-bold text-[9px] uppercase tracking-widest text-maroon dark:text-golden">Return to Today</Text>
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Next date range" onPress={() => shiftRange(1)} className="h-10 w-10 items-center justify-center rounded-none border border-line bg-zinc-50 dark:border-line-dark dark:bg-white/5">
-            <MaterialIcons name="chevron-right" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
+            <MaterialIcons name="chevron-right" size={22} color={isDark ? pupColors.golden : pupColors.maroon} />
           </Pressable>
         </View>
       </View>

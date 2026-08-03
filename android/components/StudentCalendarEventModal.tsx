@@ -3,6 +3,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import type { CalendarEvent } from '@polycheck/shared'
 import { formatTime } from '@polycheck/shared/utils'
 import { useTheme } from '../theme/ThemeContext'
+import { pupColors } from '../theme/colors'
 import { AttendanceStatusPill, CampusButton } from './CampusPrimitives'
 
 const EventDetailRow = ({ icon, label, value }: { icon: keyof typeof MaterialIcons.glyphMap; label: string; value: string }) => {
@@ -10,7 +11,7 @@ const EventDetailRow = ({ icon, label, value }: { icon: keyof typeof MaterialIco
   return (
     <View className="flex-row items-center gap-3 border-b border-line py-3 dark:border-line-dark">
       <View className="h-9 w-9 items-center justify-center rounded-xl bg-maroon/5 dark:bg-golden/10">
-        <MaterialIcons name={icon} size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
+        <MaterialIcons name={icon} size={18} color={isDark ? pupColors.golden : pupColors.maroon} />
       </View>
       <Text className="w-14 font-sans text-xs text-muted dark:text-zinc-500">{label}</Text>
       <Text className="flex-1 text-right font-sans-bold text-xs text-ink dark:text-white">{value}</Text>

@@ -6,7 +6,9 @@ import { router } from 'expo-router'
 import type { AttendanceRecord, CalendarEvent, User } from '@polycheck/shared'
 import { formatDate, formatTime, getDateRangeForMonth, getMonthDays, getMonthName, getWeekDays } from '@polycheck/shared/utils'
 import { api } from '../../services/api-client'
+import { useAuthGate } from '../../hooks/use-auth-gate'
 import { useTheme } from '../../theme/ThemeContext'
+import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../components/CampusPrimitives'
 import { StudentMonthCalendar, StudentWeekCalendar } from '../../components/StudentCalendarViews'
@@ -16,7 +18,7 @@ const EventDetail = ({ icon, label, value }: { icon: keyof typeof MaterialIcons.
   return (
     <View className="flex-row items-center gap-3 border-b border-line py-3 dark:border-line-dark">
       <View className="h-9 w-9 items-center justify-center rounded-xl bg-maroon/5 dark:bg-golden/10">
-        <MaterialIcons name={icon} size={18} color={isDark ? '#FFDF00' : '#7B1113'} />
+        <MaterialIcons name={icon} size={18} color={isDark ? pupColors.golden : pupColors.maroon} />
       </View>
       <Text className="w-14 font-sans text-xs text-muted dark:text-zinc-500">{label}</Text>
       <Text className="flex-1 text-right font-sans-bold text-xs text-ink dark:text-white">{value}</Text>
@@ -26,6 +28,7 @@ const EventDetail = ({ icon, label, value }: { icon: keyof typeof MaterialIcons.
 
 export default function FacultyScheduleScreen() {
   const { isDark, toggle } = useTheme()
+  const currentUser = useAuthGate(['teacher'])
   const [user, setUser] = useState<User | null>(null)
   const [viewMode, setViewMode] = useState<'month' | 'week'>('month')
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -35,14 +38,10 @@ export default function FacultyScheduleScreen() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
 
   useEffect(() => {
-    const currentUser = api.getCurrentUser()
-    if (!currentUser || currentUser.role !== 'teacher') {
-      router.replace(currentUser?.role === 'super_admin' ? '/(faculty)/dashboard' : '/')
-      return
-    }
+    if (!currentUser) return
     setUser(currentUser)
     setSelectedDay(formatDate(new Date()))
-  }, [])
+  }, [currentUser])
 
   useEffect(() => {
     if (!user) return
@@ -87,7 +86,7 @@ export default function FacultyScheduleScreen() {
     : `${new Date(`${weekDays[0].date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} – ${new Date(`${weekDays[6].date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}`
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
       <CampusHeader
         eyebrow="Faculty calendar"
         title="Teaching schedule"
@@ -112,14 +111,14 @@ export default function FacultyScheduleScreen() {
 
         <View className="my-3 flex-row items-center gap-2">
           <Pressable accessibilityRole="button" accessibilityLabel="Previous period" onPress={() => move(-1)} className="h-12 w-12 items-center justify-center rounded-2xl border border-line bg-white dark:border-line-dark dark:bg-surface-dark">
-            <MaterialIcons name="chevron-left" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
+            <MaterialIcons name="chevron-left" size={24} color={isDark ? pupColors.golden : pupColors.maroon} />
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Go to today" onPress={() => { const today = new Date(); setCurrentDate(today); setSelectedDay(formatDate(today)) }} className="min-h-12 justify-center rounded-2xl border border-maroon px-4 dark:border-golden">
             <Text className="font-sans-bold text-xs text-maroon dark:text-golden">Today</Text>
           </Pressable>
           <Text className="flex-1 text-center font-sans-bold text-sm text-ink dark:text-white">{displayRange}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Next period" onPress={() => move(1)} className="h-12 w-12 items-center justify-center rounded-2xl border border-line bg-white dark:border-line-dark dark:bg-surface-dark">
-            <MaterialIcons name="chevron-right" size={24} color={isDark ? '#FFDF00' : '#7B1113'} />
+            <MaterialIcons name="chevron-right" size={24} color={isDark ? pupColors.golden : pupColors.maroon} />
           </Pressable>
         </View>
 
@@ -185,7 +184,7 @@ export default function FacultyScheduleScreen() {
       <Modal visible={!!selectedEvent} transparent animationType="slide" onRequestClose={() => setSelectedEvent(null)}>
         <Pressable className="flex-1 justify-end bg-black/80" onPress={() => setSelectedEvent(null)}>
           {selectedEvent ? (
-            <Pressable onPress={() => undefined} className="rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-[#161214]">
+            <Pressable onPress={() => undefined} className="rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-surface-dark">
               <View className="mb-4 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
               <Text className="font-sans-bold text-[10px] uppercase tracking-[1.5px] text-maroon dark:text-golden">{selectedEvent.status === 'moved' ? 'Rescheduled slot' : selectedEvent.type === 'session' ? 'Class session' : 'Scheduled class'}</Text>
               <Text className="mt-1 font-heading text-2xl text-ink dark:text-white">{selectedEvent.subjectName}</Text>

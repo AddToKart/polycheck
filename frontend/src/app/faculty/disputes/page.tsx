@@ -265,12 +265,12 @@ export default function DisputesPage() {
   if (!user) return null
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-[#F5F5F5] dark:bg-[#0A0A0C]">
+    <div className="flex flex-col md:flex-row min-h-screen bg-zinc-100 dark:bg-pup-black">
       <Sidebar user={user} onLogout={() => { api.logout(); router.push('/') }} />
       <div className="flex-1 overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-[#0A0A0C] border-b border-zinc-300/80 dark:border-[#1C1C21]">
+        <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-300/80 dark:border-zinc-800">
           <div>
-            <h1 className="text-xl font-heading font-bold text-[#4A0A0B] dark:text-[#FFDF00]">Disputed Records</h1>
+            <h1 className="text-xl font-heading font-bold text-maroon-dark dark:text-golden">Disputed Records</h1>
             <p className="text-xs text-gray-400 dark:text-gray-500">
               {pendingCount} pending, {resolvedCount} resolved
             </p>
@@ -304,7 +304,7 @@ export default function DisputesPage() {
 
           {/* Search & Subject Filters Row */}
           <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative flex items-center bg-white dark:bg-[#121215] border border-zinc-300 dark:border-zinc-800">
+            <div className="flex-1 relative flex items-center bg-white dark:bg-surface-dark border border-zinc-300 dark:border-zinc-800">
               <input
                 type="text"
                 placeholder="Search student or ID..."
@@ -326,7 +326,7 @@ export default function DisputesPage() {
             <select
               value={selectedSubjectId}
               onChange={(e) => { setSelectedSubjectId(e.target.value); setExpandedSubjects({}); setExpandedSections({}); }}
-              className="px-4 py-2 border border-zinc-300 dark:border-zinc-800 rounded-none bg-white dark:bg-[#121215] text-sm focus:outline-none dark:text-zinc-300 cursor-pointer min-w-[200px]"
+              className="px-4 py-2 border border-zinc-300 dark:border-zinc-800 rounded-none bg-white dark:bg-surface-dark text-sm focus:outline-none dark:text-zinc-300 cursor-pointer min-w-[200px]"
             >
               <option value="all">All Subjects</option>
               {subjects.map((subj) => (
@@ -340,7 +340,7 @@ export default function DisputesPage() {
           {/* Grouped Disputes Cards */}
           <div className="space-y-4">
             {records.length === 0 ? (
-              <Card className="rounded-none dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215]">
+              <Card className="rounded-none dark:border-golden/15 dark:bg-surface-dark">
                 <CardContent className="p-12 text-center">
                   <CheckCircle className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mx-auto mb-4" />
                   <h2 className="text-lg font-heading font-bold dark:text-white mb-2">No {activeTab} disputes found</h2>
@@ -361,23 +361,23 @@ export default function DisputesPage() {
                 return (
                   <Card 
                     key={subj.subjectId} 
-                    className="rounded-none border border-zinc-200 dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215] overflow-hidden"
+                    className="rounded-none border border-zinc-200 dark:border-golden/15 dark:bg-surface-dark overflow-hidden"
                   >
                     {/* Subject Header (Collapsible) */}
                     <button
                       type="button"
-                      className="w-full flex items-center justify-between px-5 py-4 bg-zinc-50 dark:bg-[#1C1C21] border-b border-zinc-200 dark:border-[#2C2C35] cursor-pointer select-none text-left"
+                      className="w-full flex items-center justify-between px-5 py-4 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 cursor-pointer select-none text-left"
                       onClick={() => toggleSubject(subj.subjectId)}
                       aria-expanded={isSubjExpanded}
                     >
                       <div className="flex items-center gap-3">
-                        <BookOpen className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
-                        <h2 className="text-sm font-bold text-[#4A0A0B] dark:text-[#FFDF00] uppercase tracking-wide">
+                        <BookOpen className="w-5 h-5 text-maroon dark:text-golden" />
+                        <h2 className="text-sm font-bold text-maroon-dark dark:text-golden uppercase tracking-wide">
                           {subj.subjectName} ({subj.subjectCode})
                         </h2>
                       </div>
                       <div className="flex items-center gap-3">
-                        <Badge className="bg-[#7B1113] hover:bg-[#7B1113] dark:bg-[#FFDF00] dark:text-[#4A0A0B] rounded-none px-2.5 py-0.5 text-xs font-bold">
+                        <Badge className="bg-maroon hover:bg-maroon dark:bg-golden dark:text-maroon-dark rounded-none px-2.5 py-0.5 text-xs font-bold">
                           {subjectDisputesCount}
                         </Badge>
                         {isSubjExpanded ? (
@@ -408,7 +408,7 @@ export default function DisputesPage() {
                                 aria-expanded={isSecExpanded}
                               >
                                 <div className="flex items-center gap-2">
-                                  <Layers className="w-4 h-4 text-zinc-400 dark:text-[#FFDF00]" />
+                                  <Layers className="w-4 h-4 text-zinc-400 dark:text-golden" />
                                   <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
                                     {sec.sectionName}
                                   </h3>
@@ -446,7 +446,7 @@ export default function DisputesPage() {
                                             <button
                                               type="button"
                                               key={record.id}
-                                              className="text-left rounded-none border border-zinc-200 dark:border-[rgba(245,168,0,0.15)] dark:bg-[#0A0A0C] hover:bg-zinc-50/50 dark:hover:bg-[#121215] cursor-pointer transition-colors"
+                                              className="text-left rounded-none border border-zinc-200 dark:border-golden/15 dark:bg-pup-black hover:bg-zinc-50/50 dark:hover:bg-surface-dark cursor-pointer transition-colors"
                                               onClick={() => setSelectedRecord(record)}
                                               aria-label={`${activeTab === 'pending' ? 'Review' : 'View'} dispute from ${record.studentName}`}
                                             >
@@ -497,7 +497,7 @@ export default function DisputesPage() {
           if (!open) setSelectedRecord(null)
         }}
       >
-        <DialogContent className="max-w-md dark:bg-[#121215] dark:border-[rgba(245,168,0,0.15)] p-8">
+        <DialogContent className="max-w-md dark:bg-surface-dark dark:border-golden/15 p-8">
           {selectedRecord && (
             <>
             <DialogHeader className="items-center text-center">
@@ -505,7 +505,7 @@ export default function DisputesPage() {
             <DialogTitle className="dark:text-white">
               {selectedRecord.disputeResolved ? 'Dispute Archive' : 'Review Dispute'}
             </DialogTitle>
-            <DialogDescription className="font-semibold text-[#7B1113] dark:text-[#FFDF00]">{selectedRecord.studentName}</DialogDescription>
+            <DialogDescription className="font-semibold text-maroon dark:text-golden">{selectedRecord.studentName}</DialogDescription>
             </DialogHeader>
 
             {(() => {
@@ -513,11 +513,11 @@ export default function DisputesPage() {
               const rSubj = rSec ? subjectMap.get(rSec.subjectId) : undefined
               const rSess = sessionMap.get(selectedRecord.sessionId)
               return (
-                <div className="bg-zinc-50 dark:bg-[#0A0A0C] border border-zinc-200 dark:border-zinc-800 p-4 mb-4 space-y-2 text-sm rounded-none">
+                <div className="bg-zinc-50 dark:bg-pup-black border border-zinc-200 dark:border-zinc-800 p-4 mb-4 space-y-2 text-sm rounded-none">
                   {selectedRecord.disputeResolved && (
-                    <div className="flex gap-2 pb-2 mb-2 border-b border-zinc-200 dark:border-[#2C2C35] items-center">
+                    <div className="flex gap-2 pb-2 mb-2 border-b border-zinc-200 dark:border-zinc-800 items-center">
                       <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
-                      <span className="text-xs font-bold text-green-600 dark:text-[#FFDF00]">
+                      <span className="text-xs font-bold text-green-600 dark:text-golden">
                         RESOLVED AS {selectedRecord.status.toUpperCase()}
                       </span>
                     </div>
@@ -570,7 +570,7 @@ export default function DisputesPage() {
                 </div>
               </>
             ) : (
-              <div className="text-center py-3 bg-zinc-100 dark:bg-[#0A0A0C] border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400 mb-4 rounded-none">
+              <div className="text-center py-3 bg-zinc-100 dark:bg-pup-black border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400 mb-4 rounded-none">
                 {selectedRecord.disputeResolved
                   ? 'This dispute has been resolved and logged in history.'
                   : 'This dispute is awaiting action from the assigned teacher.'}

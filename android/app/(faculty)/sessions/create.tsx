@@ -7,6 +7,7 @@ import * as Location from 'expo-location'
 import { formatCampusDate, type Section, type Session, type Subject, type User } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
 import { useTheme } from '../../../theme/ThemeContext'
+import { pupColors } from '../../../theme/colors'
 import MapView from '../../../components/MapView'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard, SectionHeading } from '../../../components/CampusPrimitives'
@@ -183,7 +184,7 @@ export default function CreateSessionScreen() {
 
       <SectionHeading eyebrow="Step three" title="Set the attendance area" />
       <CampusCard className="mb-7 p-4">
-        <View className="mb-3 flex-row items-start justify-between gap-3"><View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">Geofence</Text><Text className="mt-1 font-sans text-xs leading-5 text-muted dark:text-zinc-400">Drag the pin or tap the map. Use the radius control to define the accepted scan area.</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Use my current location" disabled={locating} onPress={() => void useMyLocation()} className="min-h-11 flex-row items-center gap-2 rounded-2xl bg-maroon/5 px-3 dark:bg-golden/10">{locating ? <ActivityIndicator size="small" color={isDark ? '#FFDF00' : '#7B1113'} /> : <MaterialIcons name="my-location" size={17} color={isDark ? '#FFDF00' : '#7B1113'} />}<Text className="font-sans-bold text-[10px] text-maroon dark:text-golden">{locating ? 'Locating…' : 'Use mine'}</Text></Pressable></View>
+        <View className="mb-3 flex-row items-start justify-between gap-3"><View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">Geofence</Text><Text className="mt-1 font-sans text-xs leading-5 text-muted dark:text-zinc-400">Drag the pin or tap the map. Use the radius control to define the accepted scan area.</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Use my current location" disabled={locating} onPress={() => void useMyLocation()} className="min-h-11 flex-row items-center gap-2 rounded-2xl bg-maroon/5 px-3 dark:bg-golden/10">{locating ? <ActivityIndicator size="small" color={isDark ? pupColors.golden : pupColors.maroon} /> : <MaterialIcons name="my-location" size={17} color={isDark ? pupColors.golden : pupColors.maroon} />}<Text className="font-sans-bold text-[10px] text-maroon dark:text-golden">{locating ? 'Locating…' : 'Use mine'}</Text></Pressable></View>
         <View className="overflow-hidden rounded-2xl" onTouchStart={() => setMapFocus(true)} onTouchEnd={() => setMapFocus(false)} onTouchCancel={() => setMapFocus(false)}><MapView latitude={latitude} longitude={longitude} radius={radius} interactive recenterSignal={recenterKey} onLocationChange={(nextLatitude, nextLongitude) => { setLatitude(nextLatitude); setLongitude(nextLongitude) }} onRadiusChange={setRadius} /></View>
         <View className="mt-3 flex-row justify-between"><Text className="font-sans text-[10px] text-muted dark:text-zinc-500">{latitude.toFixed(5)}, {longitude.toFixed(5)}</Text><Text className="font-sans-bold text-[10px] text-maroon dark:text-golden">{radius} m radius</Text></View>
       </CampusCard>

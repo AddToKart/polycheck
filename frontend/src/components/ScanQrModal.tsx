@@ -541,7 +541,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
         ? {
             icon: Clock,
             iconColor: 'text-white',
-            bg: 'bg-[#7B1113] border-white/30',
+            bg: 'bg-maroon border-white/30',
             title: 'Recorded — Late',
           }
         : {

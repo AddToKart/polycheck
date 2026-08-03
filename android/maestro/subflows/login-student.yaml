@@ -1,0 +1,17 @@
+- tapOn:
+    id: landing-student-login
+- assertVisible:
+    id: student-login-screen
+- tapOn:
+    id: student-login-identity
+- inputText: "${E2E_STUDENT_ID}"
+- tapOn:
+    id: student-login-password
+- inputText: "${E2E_PASSWORD}"
+- hideKeyboard
+- tapOn:
+    id: student-login-submit
+- extendedWaitUntil:
+    visible:
+      id: student-dashboard-screen
+    timeout: 20000

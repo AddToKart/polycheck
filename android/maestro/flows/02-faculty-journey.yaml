@@ -1,0 +1,41 @@
+appId: edu.pup.polycheck
+name: Faculty workspace navigation
+tags:
+  - smoke
+  - faculty
+env:
+  E2E_FACULTY_EMAIL: ${E2E_FACULTY_EMAIL || "jmdelacruz@pup.edu.ph"}
+  E2E_PASSWORD: ${E2E_PASSWORD || "PolycheckLocal1!"}
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+- assertVisible:
+    id: landing-screen
+- runFlow: ../subflows/login-faculty.yaml
+- extendedWaitUntil:
+    visible:
+      id: faculty-dashboard-screen
+    timeout: 20000
+
+- tapOn:
+    id: faculty-tab-subjects
+- assertVisible: My subjects
+- tapOn:
+    id: faculty-tab-sessions
+- assertVisible: Class sessions
+- tapOn:
+    id: faculty-tab-disputes
+- assertVisible: Disputed records
+- tapOn:
+    id: faculty-tab-more
+- assertVisible:
+    id: faculty-more-sheet
+- tapOn: Schedule
+- assertVisible: Teaching schedule
+- back
+- tapOn:
+    id: faculty-tab-dashboard
+- assertVisible:
+    id: faculty-dashboard-screen

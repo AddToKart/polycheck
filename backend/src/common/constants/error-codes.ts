@@ -20,6 +20,7 @@ export const ErrorCode = {
   UNAUTHORIZED: 'unauthorized',
   VALIDATION_FAILED: 'validation_failed',
   IDEMPOTENCY_REPLAY: 'idempotency_replay',
+  IDEMPOTENCY_RESPONSE_UNAVAILABLE: 'idempotency_response_unavailable',
 } as const
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode]

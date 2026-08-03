@@ -26,7 +26,7 @@ export default function SubjectDetailScreen() {
   if (!subject) return null
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
       <CampusHeader
         eyebrow={subject.code}
         title={subject.name}

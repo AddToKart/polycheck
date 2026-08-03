@@ -21,11 +21,11 @@ import QRCode from 'qrcode'
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 
 const STATUS_STYLES: Record<string, string> = {
-  present: 'bg-[#FFDF00] text-[#4A0A0B]',
-  late: 'bg-[#7B1113] text-white',
-  absent: 'bg-[#4A0A0B] text-[#FFDF00] border border-[#FFDF00]',
+  present: 'bg-golden text-maroon-dark',
+  late: 'bg-maroon text-white',
+  absent: 'bg-maroon-dark text-golden border border-golden',
   pending: 'bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
-  disputed: 'bg-[#4A0A0B] text-[#FFDF00] border border-[#FFDF00]',
+  disputed: 'bg-maroon-dark text-golden border border-golden',
 }
 
 export default function SessionDetailPage() {
@@ -86,23 +86,13 @@ export default function SessionDetailPage() {
       setUser(cu)
       await refreshData()
       if (id) {
-        const sections = await api.getSections()
-        let foundSection = null
-        for (const s of sections) {
-          const ses = await api.getSectionSessions(s.id)
-          if (ses.some((se) => se.id === id)) {
-            foundSection = s
-            break
-          }
+        const section = await api.getSection((await api.getSession(id)).sectionId)
+        if (cu.role === 'teacher' && section.teacherId !== cu.id) {
+          router.push('/faculty')
+          return
         }
-        if (foundSection) {
-          if (cu.role === 'teacher' && foundSection.teacherId !== cu.id) {
-            router.push('/faculty')
-            return
-          }
-          const students = await api.getSectionStudents(foundSection.id)
-          setEnrolledStudents(students as Student[])
-        }
+        const students = await api.getSectionStudents(section.id)
+        setEnrolledStudents(students as Student[])
       }
       setLoading(false)
     }
@@ -157,7 +147,7 @@ export default function SessionDetailPage() {
   }, [session])
 
   if (loading) return (
-    <div className="flex h-screen bg-[#F5F5F5] dark:bg-[#0A0A0C] items-center justify-center">
+    <div className="flex h-screen bg-zinc-100 dark:bg-pup-black items-center justify-center">
       <LoadingSpinner size="lg" />
     </div>
   )
@@ -226,7 +216,7 @@ export default function SessionDetailPage() {
       const student = enrolledStudents.find((s) => s.id === studentId)
       const now = new Date()
       await api.addAttendanceRecord({
-        id: `a-manual-${records.length}`,
+        id: crypto.randomUUID(),
         sessionId: session.id,
         sectionId: session.sectionId,
         studentId,
@@ -247,16 +237,16 @@ export default function SessionDetailPage() {
   const handleLogout = () => { api.logout(); router.push('/') }
 
   return (
-    <div className="flex h-screen bg-[#F5F5F5] dark:bg-[#0A0A0C]">
+    <div className="flex h-screen bg-zinc-100 dark:bg-pup-black">
       <Sidebar user={user} onLogout={handleLogout} backHref="/faculty/sessions" backLabel="Back to Sessions" />
       <div className="flex-1 overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-[#0A0A0C] border-b border-gray-200 dark:border-[#1C1C21]">
+        <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-pup-black border-b border-gray-200 dark:border-zinc-800">
           <div className="flex items-center gap-3">
             <button onClick={() => router.back()} className="p-1 hover:opacity-70">
-              <ArrowLeft className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
+              <ArrowLeft className="w-5 h-5 text-maroon dark:text-golden" />
             </button>
             <div>
-              <h1 className="text-xl font-heading font-bold text-[#4A0A0B] dark:text-[#FFDF00]">{session.subjectName}</h1>
+              <h1 className="text-xl font-heading font-bold text-maroon-dark dark:text-golden">{session.subjectName}</h1>
               <p className="text-xs text-gray-400 dark:text-gray-500">
                 {new Date(session.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · {session.startTime}-{session.endTime}
               </p>
@@ -264,17 +254,17 @@ export default function SessionDetailPage() {
           </div>
           <div className="flex items-center gap-2">
             <button onClick={refreshData} className="p-2 hover:opacity-70">
-              <RefreshCw className="w-4 h-4 text-[#7B1113] dark:text-[#FFDF00]" />
+              <RefreshCw className="w-4 h-4 text-maroon dark:text-golden" />
             </button>
           </div>
         </div>
 
         <div className="p-6 space-y-6 max-w-4xl mx-auto">
           {/* QR Code Card */}
-          {isTeacher && <Card className="dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215]">
+          {isTeacher && <Card className="dark:border-golden/15 dark:bg-surface-dark">
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-4">
-                <QrCode className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
+                <QrCode className="w-5 h-5 text-maroon dark:text-golden" />
                 <h2 className="text-base font-bold dark:text-white">QR Code</h2>
               </div>
               <div className="flex flex-col items-center py-4">
@@ -305,7 +295,7 @@ export default function SessionDetailPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#7B1113] dark:text-[#FFDF00] border-[#7B1113]/30 dark:border-[#FFDF00]/30 hover:bg-[#7B1113]/10 dark:hover:bg-[#FFDF00]/10"
+                        className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-maroon dark:text-golden border-maroon/30 dark:border-golden/30 hover:bg-maroon/10 dark:hover:bg-golden/10"
                         onClick={handleCopyToken}
                       >
                         {copiedToken ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
@@ -317,7 +307,7 @@ export default function SessionDetailPage() {
                         className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider border-zinc-300 dark:border-zinc-700"
                         onClick={handleDownloadQr}
                       >
-                        <Download className="w-3.5 h-3.5 text-[#7B1113] dark:text-[#FFDF00]" /> Save Image
+                        <Download className="w-3.5 h-3.5 text-maroon dark:text-golden" /> Save Image
                       </Button>
                     </div>
                   </>
@@ -326,7 +316,7 @@ export default function SessionDetailPage() {
                 ) : (
                   <>
                     <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">Generate a QR code to start the session</p>
-                    <Button className="bg-[#7B1113] hover:bg-[#4A0A0B] dark:bg-[#FFDF00] dark:hover:bg-[#E09A00] dark:text-[#4A0A0B] flex items-center gap-2" onClick={() => setShowValidityPrompt(true)}>
+                    <Button className="bg-maroon hover:bg-maroon-dark dark:bg-golden dark:hover:bg-golden-dark dark:text-maroon-dark flex items-center gap-2" onClick={() => setShowValidityPrompt(true)}>
                       <Play className="w-4 h-4" /> Generate QR Code
                     </Button>
                   </>
@@ -336,10 +326,10 @@ export default function SessionDetailPage() {
           </Card>}
 
           {/* Session Info */}
-          <Card className="dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215]">
+          <Card className="dark:border-golden/15 dark:bg-surface-dark">
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-4">
-                <Timer className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
+                <Timer className="w-5 h-5 text-maroon dark:text-golden" />
                 <h2 className="text-base font-bold dark:text-white">Session Info</h2>
               </div>
               <div className="flex gap-6 flex-wrap">
@@ -368,7 +358,7 @@ export default function SessionDetailPage() {
           </Card>
 
           {/* Campus Map Card */}
-          <Card className="dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215]">
+          <Card className="dark:border-golden/15 dark:bg-surface-dark">
             <CardContent className="p-6">
               <CampusMap
                 session={session}
@@ -380,10 +370,10 @@ export default function SessionDetailPage() {
           </Card>
 
           {/* Proof of Class */}
-          <Card className="dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215]">
+          <Card className="dark:border-golden/15 dark:bg-surface-dark">
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-4">
-                <Camera className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
+                <Camera className="w-5 h-5 text-maroon dark:text-golden" />
                 <h2 className="text-base font-bold dark:text-white">Proof of Class</h2>
                 <span className="text-xs text-gray-400 dark:text-gray-500">({proofsOfClass.length})</span>
               </div>
@@ -392,7 +382,7 @@ export default function SessionDetailPage() {
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {proofsOfClass.map((poc) => (
-                    <div key={poc.id} className="border border-gray-200 dark:border-[rgba(245,168,0,0.15)] p-3 bg-gray-50 dark:bg-[#0A0A0C]">
+                    <div key={poc.id} className="border border-gray-200 dark:border-golden/15 p-3 bg-gray-50 dark:bg-pup-black">
                       <div className="w-full aspect-video bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center mb-2">
                         <Camera className="w-8 h-8 text-zinc-400" />
                       </div>
@@ -415,10 +405,10 @@ export default function SessionDetailPage() {
           </Card>
 
           {/* Student Roster */}
-          <Card className="dark:border-[rgba(245,168,0,0.15)] dark:bg-[#121215]">
+          <Card className="dark:border-golden/15 dark:bg-surface-dark">
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-2">
-                <Users className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
+                <Users className="w-5 h-5 text-maroon dark:text-golden" />
                 <h2 className="text-base font-bold dark:text-white">Student Roster</h2>
                 <span className="text-xs text-gray-400 dark:text-gray-500">({enrolledStudents.length})</span>
               </div>
@@ -427,11 +417,11 @@ export default function SessionDetailPage() {
               {/* Summary */}
               <div className="flex justify-around mb-4">
                 {[
-                  { label: 'Present', value: presentCount, color: 'text-[#FFDF00]' },
-                  { label: 'Late', value: lateCount, color: 'text-[#7B1113] dark:text-[#FF6B6B]' },
-                  { label: 'Absent', value: absentCount, color: 'text-[#4A0A0B] dark:text-[#FF4F5A]' },
+                  { label: 'Present', value: presentCount, color: 'text-golden' },
+                  { label: 'Late', value: lateCount, color: 'text-maroon dark:text-[#FF6B6B]' },
+                  { label: 'Absent', value: absentCount, color: 'text-maroon-dark dark:text-[#FF4F5A]' },
                   { label: 'Pending', value: pendingCount, color: 'text-gray-400' },
-                  { label: 'Disputed', value: disputedCount, color: 'text-[#7B1113] dark:text-[#FFDF00]' },
+                  { label: 'Disputed', value: disputedCount, color: 'text-maroon dark:text-golden' },
                 ].map((s) => (
                   <div key={s.label} className="text-center">
                     <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
@@ -445,7 +435,7 @@ export default function SessionDetailPage() {
                 {(['all', 'present', 'late', 'absent', 'pending', 'disputed'] as const).map((f) => (
                   <button
                     key={f}
-                    className={`px-3 py-1 text-xs border ${filter === f ? 'bg-[#7B1113] dark:bg-[#FFDF00] border-[#7B1113] dark:border-[#FFDF00] text-white dark:text-[#4A0A0B]' : 'bg-gray-100 dark:bg-[#121215] border-gray-300 dark:border-[rgba(245,168,0,0.15)] text-gray-500 dark:text-gray-400'}`}
+                    className={`px-3 py-1 text-xs border ${filter === f ? 'bg-maroon dark:bg-golden border-maroon dark:border-golden text-white dark:text-maroon-dark' : 'bg-gray-100 dark:bg-surface-dark border-gray-300 dark:border-golden/15 text-gray-500 dark:text-gray-400'}`}
                     onClick={() => setFilter(f)}
                   >
                     {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -465,7 +455,7 @@ export default function SessionDetailPage() {
                     return (
                       <button
                         key={student.id}
-                        className={`w-full flex items-center justify-between px-3 py-2.5 border-b border-gray-100 dark:border-[#222] text-left ${isTeacher ? 'hover:bg-gray-50 dark:hover:bg-[#1C1C21]' : 'cursor-default'}`}
+                        className={`w-full flex items-center justify-between px-3 py-2.5 border-b border-gray-100 dark:border-zinc-900 text-left ${isTeacher ? 'hover:bg-gray-50 dark:hover:bg-zinc-900' : 'cursor-default'}`}
                         onClick={() => { if (isTeacher) handleManualOverride(student.id, status) }}
                         disabled={!isTeacher}
                       >
@@ -474,7 +464,7 @@ export default function SessionDetailPage() {
                           <p className="text-xs text-gray-400 dark:text-gray-500">{student.studentId}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          {record?.manuallySet && <Edit3 className="w-3.5 h-3.5 text-[#7B1113] dark:text-[#FFDF00]" />}
+                          {record?.manuallySet && <Edit3 className="w-3.5 h-3.5 text-maroon dark:text-golden" />}
                           <span className={`px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[status] || STATUS_STYLES.pending}`}>
                             {status.charAt(0).toUpperCase() + status.slice(1)}
                           </span>
@@ -498,9 +488,9 @@ export default function SessionDetailPage() {
       </div>
 
       <Dialog open={isTeacher && showValidityPrompt} onOpenChange={setShowValidityPrompt}>
-        <DialogContent className="max-w-sm dark:bg-[#121215] dark:border-[rgba(245,168,0,0.15)] p-8">
+        <DialogContent className="max-w-sm dark:bg-surface-dark dark:border-golden/15 p-8">
           <DialogHeader className="items-center text-center">
-            <Timer className="w-10 h-10 text-[#7B1113] dark:text-[#FFDF00] mx-auto mb-3" />
+            <Timer className="w-10 h-10 text-maroon dark:text-golden mx-auto mb-3" />
             <DialogTitle className="dark:text-white">QR Settings</DialogTitle>
             <DialogDescription className="text-xs text-center">
               Set the duration for this session. After validity expires, scans are marked Late. After the grace period ends, scans are blocked.
@@ -540,7 +530,7 @@ export default function SessionDetailPage() {
             </div>
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setShowValidityPrompt(false)}>Cancel</Button>
-              <Button className="flex-1 bg-[#7B1113] hover:bg-[#4A0A0B] dark:bg-[#FFDF00] dark:hover:bg-[#E09A00] dark:text-[#4A0A0B]" onClick={handleGenerateQr}>Generate</Button>
+              <Button className="flex-1 bg-maroon hover:bg-maroon-dark dark:bg-golden dark:hover:bg-golden-dark dark:text-maroon-dark" onClick={handleGenerateQr}>Generate</Button>
             </div>
         </DialogContent>
       </Dialog>
@@ -551,7 +541,7 @@ export default function SessionDetailPage() {
             <>
             <div className="text-center">
               <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Class Session QR Code</p>
-              <DialogTitle className="text-xl text-[#7B1113] dark:text-[#FFDF00]">{session.subjectName}</DialogTitle>
+              <DialogTitle className="text-xl text-maroon dark:text-golden">{session.subjectName}</DialogTitle>
               <DialogDescription className="sr-only">
                 Full-screen QR code for students to scan for this attendance session.
               </DialogDescription>
@@ -571,16 +561,16 @@ export default function SessionDetailPage() {
               <Button
                 variant="outline"
                 onClick={handleCopyToken}
-                className="flex-1 rounded-none border-zinc-300 dark:border-zinc-700 text-xs font-bold uppercase tracking-widest text-[#7B1113] dark:text-[#FFDF00]"
+                className="flex-1 rounded-none border-zinc-300 dark:border-zinc-700 text-xs font-bold uppercase tracking-widest text-maroon dark:text-golden"
               >
                 {copiedToken ? <Check className="w-4 h-4 mr-2 text-green-500" /> : <Copy className="w-4 h-4 mr-2" />}
                 {copiedToken ? 'Copied Token!' : 'Copy Token'}
               </Button>
               <Button
                 onClick={handleDownloadQr}
-                className="flex-1 rounded-none bg-[#7B1113] hover:bg-[#4A0A0B] text-white text-xs font-bold uppercase tracking-widest"
+                className="flex-1 rounded-none bg-maroon hover:bg-maroon-dark text-white text-xs font-bold uppercase tracking-widest"
               >
-                <Download className="w-4 h-4 mr-2 text-[#FFDF00]" /> Save Image
+                <Download className="w-4 h-4 mr-2 text-golden" /> Save Image
               </Button>
             </div>
             </>

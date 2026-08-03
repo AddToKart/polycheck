@@ -53,8 +53,15 @@ metro.config.js
 
 # Agents
 .agents
+.commandcode/
 
 # Playwright (E2E)
 test-results/
 e2e-report/
 e2e-shots/
+
+# Maestro (mobile E2E)
+android/maestro-artifacts/
+android/maestro-report.xml
+mobile-e2e-artifacts/
+mobile-e2e-report.xml

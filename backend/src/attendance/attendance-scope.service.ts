@@ -5,6 +5,7 @@ import type { AttendanceListQueryDto, AttendanceReportQueryDto } from './dto/att
 import { RAW_DATE_RANGE_DAYS } from './types'
 import type { Prisma } from '../prisma/client'
 import { formatCampusDate } from '@polycheck/shared'
+import { adminRecordWhere, adminSessionWhere } from '../common/admin-scope'
 
 @Injectable()
 export class AttendanceScopeService {
@@ -12,13 +13,7 @@ export class AttendanceScopeService {
 
   async recordScope(user: RequestUser, sessionId?: string) {
     if (user.role === 'super_admin') {
-      const adminScope =
-        user.scope === 'institution'
-          ? {}
-          : user.department
-            ? { session: { section: { teacher: { department: user.department } } } }
-            : { id: { in: [] as string[] } }
-      return { ...adminScope, ...(sessionId ? { sessionId } : {}) }
+      return { ...adminRecordWhere(user), ...(sessionId ? { sessionId } : {}) }
     }
     if (user.role === 'teacher') return { session: { teacherId: user.id }, ...(sessionId ? { sessionId } : {}) }
     return { studentId: user.id, ...(sessionId ? { sessionId } : {}) }
@@ -26,10 +21,7 @@ export class AttendanceScopeService {
 
   async sessionScope(user: RequestUser) {
     if (user.role === 'super_admin') {
-      if (user.scope === 'institution') return {}
-      return user.department
-        ? { section: { teacher: { department: user.department } } }
-        : { id: { in: [] as string[] } }
+      return adminSessionWhere(user)
     }
     if (user.role === 'teacher') return { teacherId: user.id }
     const enrollments = await this.prisma.enrollment.findMany({

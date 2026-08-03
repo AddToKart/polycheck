@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo } from 'react'
 import type * as MapLibreGL from 'maplibre-gl'
 import { useMap } from '@/components/ui/map'
+import { pupColors } from '@/lib/colors'
 
 function computeCirclePoints(
   lat: number,
@@ -64,7 +65,7 @@ export default function GeofenceCircle({
       type: 'fill',
       source: sourceId,
       paint: {
-        'fill-color': '#7B1113',
+        'fill-color': pupColors.maroon,
         'fill-opacity': 0.1,
       },
     })
@@ -75,7 +76,7 @@ export default function GeofenceCircle({
       source: sourceId,
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: {
-        'line-color': '#7B1113',
+        'line-color': pupColors.maroon,
         'line-width': 2,
         'line-opacity': 0.6,
         'line-dasharray': [4, 3],

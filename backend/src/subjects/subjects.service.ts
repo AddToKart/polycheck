@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import type { CreateSubjectDto } from './dto/create-subject.dto'
 import type { UpdateSubjectDto } from './dto/update-subject.dto'
 import type { RequestUser } from '../auth/authenticated-principal'
+import { adminSubjectWhere } from '../common/admin-scope'
 
 @Injectable()
 export class SubjectsService {
@@ -86,15 +87,7 @@ export class SubjectsService {
 
   private subjectScope(user: RequestUser) {
     if (user.role === 'super_admin') {
-      if (user.scope === 'institution') return undefined
-      return user.department
-        ? {
-            OR: [
-              { createdBy: { department: user.department } },
-              { sections: { some: { teacher: { department: user.department } } } },
-            ],
-          }
-        : { id: { in: [] as string[] } }
+      return adminSubjectWhere(user)
     }
     if (user.role === 'teacher') {
       return {

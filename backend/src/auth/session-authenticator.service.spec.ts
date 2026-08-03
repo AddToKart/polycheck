@@ -2,22 +2,15 @@ import { Test } from '@nestjs/testing'
 import { UnauthorizedException } from '@nestjs/common'
 import { SessionAuthenticator } from './session-authenticator.service'
 import { BetterAuthService } from './better-auth.service'
-import { PrismaService } from '../prisma/prisma.service'
 
 describe('SessionAuthenticator', () => {
   let service: SessionAuthenticator
   let betterAuth: any
-  let prisma: any
 
   beforeEach(async () => {
     betterAuth = { auth: { api: { getSession: jest.fn() } } }
-    prisma = { authSession: { findUnique: jest.fn() } }
     const module = await Test.createTestingModule({
-      providers: [
-        SessionAuthenticator,
-        { provide: BetterAuthService, useValue: betterAuth },
-        { provide: PrismaService, useValue: prisma },
-      ],
+      providers: [SessionAuthenticator, { provide: BetterAuthService, useValue: betterAuth }],
     }).compile()
     service = module.get(SessionAuthenticator)
     jest.clearAllMocks()
@@ -27,9 +20,8 @@ describe('SessionAuthenticator', () => {
     return new Headers({ cookie })
   }
 
-  const sessionRow = {
-    id: 'auth-sess-1',
-    generation: 2,
+  const resolved = {
+    session: { id: 'auth-sess-1', generation: 2 },
     user: {
       id: 'user-1',
       isActive: true,
@@ -47,34 +39,24 @@ describe('SessionAuthenticator', () => {
     await expect(service.authenticate(makeHeaders())).rejects.toThrow(UnauthorizedException)
   })
 
-  it('throws when authSession is not found', async () => {
-    betterAuth.auth.api.getSession.mockResolvedValue({ session: { id: 'auth-sess-1' } })
-    prisma.authSession.findUnique.mockResolvedValue(null)
-    await expect(service.authenticate(makeHeaders())).rejects.toThrow(UnauthorizedException)
-  })
-
   it('throws when user is inactive', async () => {
-    betterAuth.auth.api.getSession.mockResolvedValue({ session: { id: 'auth-sess-1' } })
-    prisma.authSession.findUnique.mockResolvedValue({
-      ...sessionRow,
-      user: { ...sessionRow.user, isActive: false },
+    betterAuth.auth.api.getSession.mockResolvedValue({
+      ...resolved,
+      user: { ...resolved.user, isActive: false },
     })
     await expect(service.authenticate(makeHeaders())).rejects.toThrow(UnauthorizedException)
   })
 
   it('throws when authVersion mismatch (session was replaced)', async () => {
-    betterAuth.auth.api.getSession.mockResolvedValue({ session: { id: 'auth-sess-1' } })
-    prisma.authSession.findUnique.mockResolvedValue({
-      ...sessionRow,
-      generation: 1,
-      user: { ...sessionRow.user, authVersion: 2 },
+    betterAuth.auth.api.getSession.mockResolvedValue({
+      ...resolved,
+      session: { ...resolved.session, generation: 1 },
     })
     await expect(service.authenticate(makeHeaders())).rejects.toThrow(UnauthorizedException)
   })
 
   it('returns RequestUser on valid session', async () => {
-    betterAuth.auth.api.getSession.mockResolvedValue({ session: { id: 'auth-sess-1' } })
-    prisma.authSession.findUnique.mockResolvedValue(sessionRow)
+    betterAuth.auth.api.getSession.mockResolvedValue(resolved)
     const user = await service.authenticate(makeHeaders())
     expect(user).toEqual({
       id: 'user-1',
@@ -88,8 +70,7 @@ describe('SessionAuthenticator', () => {
   })
 
   it('passes headers to BetterAuth getSession', async () => {
-    betterAuth.auth.api.getSession.mockResolvedValue({ session: { id: 'auth-sess-1' } })
-    prisma.authSession.findUnique.mockResolvedValue(sessionRow)
+    betterAuth.auth.api.getSession.mockResolvedValue(resolved)
     const headers = makeHeaders('session=xyz')
     await service.authenticate(headers)
     expect(betterAuth.auth.api.getSession).toHaveBeenCalledWith({
