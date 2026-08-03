@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
+import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusIconButton } from '../../components/CampusPrimitives'
 import { CampusFormField } from '../../components/CampusFormField'
@@ -50,7 +51,7 @@ export default function InstitutionSettingsScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
       <CampusHeader
         eyebrow="Super administrator"
         title="Institution settings"
@@ -58,7 +59,7 @@ export default function InstitutionSettingsScreen() {
         onBack={() => router.back()}
         actions={<CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />}
       />
-      {loading ? <View className="flex-1 items-center justify-center"><ActivityIndicator size="large" color="#7B1113" /></View> : (
+      {loading ? <View className="flex-1 items-center justify-center"><ActivityIndicator size="large" color={pupColors.maroon} /></View> : (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }} keyboardShouldPersistTaps="handled">
           <CampusCard>
             <Text className="font-heading text-xl text-ink dark:text-white">University defaults</Text>

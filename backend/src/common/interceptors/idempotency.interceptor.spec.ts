@@ -98,4 +98,30 @@ describe('IdempotencyInterceptor', () => {
     await expect(firstValueFrom(stream)).rejects.toThrow('failed')
     expect(redis.delete).toHaveBeenCalledWith(expect.stringContaining('idempotency:lock:'))
   })
+
+  it('stores a terminal marker for oversized responses so replay cannot re-execute', async () => {
+    const bigBody = { data: 'x'.repeat(70 * 1024) }
+    const next = { handle: jest.fn(() => of(bigBody)) } as CallHandler
+    const result = await firstValueFrom(await interceptor.intercept(context, next))
+
+    expect(result).toEqual(bigBody)
+    expect(redis.setJson).toHaveBeenCalledWith(
+      expect.stringContaining('idempotency:response:'),
+      expect.objectContaining({
+        fingerprint: expect.any(String),
+        statusCode: 201,
+        contentType: 'application/json',
+        replayable: false,
+      }),
+      600,
+    )
+    const marker = redis.setJson.mock.calls[0][1]
+    expect(marker).not.toHaveProperty('body')
+    expect(redis.delete).toHaveBeenCalledWith(expect.stringContaining('idempotency:lock:'))
+
+    redis.getJson.mockResolvedValueOnce(marker)
+    const replayNext = { handle: jest.fn(() => of({ id: 'duplicate' })) } as CallHandler
+    await expect(interceptor.intercept(context, replayNext)).rejects.toThrow(ConflictException)
+    expect(replayNext.handle).not.toHaveBeenCalled()
+  })
 })

@@ -6,7 +6,9 @@ import { router, useLocalSearchParams } from 'expo-router'
 import * as Clipboard from 'expo-clipboard'
 import type { Section, SectionRole, Session, SessionPermission, Student, Subject } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
+import { useAuthGate } from '../../../hooks/use-auth-gate'
 import { useTheme } from '../../../theme/ThemeContext'
+import { pupColors } from '../../../theme/colors'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
 import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
@@ -20,6 +22,7 @@ type ViewTab = 'roster' | 'details' | 'sessions'
 export default function SectionDetailScreen() {
   const { isDark, toggle } = useTheme()
   const { id } = useLocalSearchParams<{ id: string }>()
+  const currentUser = useAuthGate(['teacher', 'super_admin'])
   const [section, setSection] = useState<Section | null>(null)
   const [students, setStudents] = useState<Array<Student & { attendance: { present: number; late: number; absent: number; disputed: number } }>>([])
   const [allStudents, setAllStudents] = useState<Student[]>([])
@@ -40,8 +43,7 @@ export default function SectionDetailScreen() {
   const refreshPermissions = useCallback(async () => { if (id) setSessionPermissions(await api.getActiveSessionPermissions(id)) }, [id])
 
   useEffect(() => {
-    if (!id) return
-    const currentUser = api.getCurrentUser()
+    if (!id || !currentUser) return
     void (async () => {
       const [nextSection, nextStudents, nextSessions] = await Promise.all([
         api.getSection(id),
@@ -64,7 +66,7 @@ export default function SectionDetailScreen() {
       }
       setParentSubject(await api.getSubject(nextSection.subjectId))
     })().catch(() => router.back())
-  }, [id])
+  }, [id, currentUser])
 
   const enrolledIds = useMemo(() => new Set(students.map((student) => student.id)), [students])
   const enrollCandidates = useMemo(() => {
@@ -145,7 +147,7 @@ export default function SectionDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
       <CampusHeader
         eyebrow="Section workspace"
         title={`${parentSubject?.name ?? 'Subject'} · ${section.section}`}
@@ -181,7 +183,7 @@ export default function SectionDetailScreen() {
             <AttendanceMetricGrid metrics={[{ label: 'Present', value: totalPresent, tone: 'success' }, { label: 'Late', value: totalLate, tone: 'warning' }, { label: 'Absent', value: totalAbsent, tone: 'danger' }]} />
 
             <View className="mb-4 min-h-14 flex-row items-center rounded-none border border-zinc-300 bg-white px-4 dark:border-zinc-700 dark:bg-surface-dark">
-              <MaterialIcons name="search" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
+              <MaterialIcons name="search" size={20} color={isDark ? pupColors.golden : pupColors.maroon} />
               <TextInput accessibilityLabel="Search enrolled students" className="h-full flex-1 px-3 font-sans text-sm text-ink dark:text-white" placeholder="Search roster by student name or ID..." placeholderTextColor={isDark ? '#71717A' : '#8A8284'} value={search} onChangeText={setSearch} />
               {search ? <Pressable accessibilityRole="button" onPress={() => setSearch('')} className="h-10 w-10 items-center justify-center"><MaterialIcons name="close" size={18} color="#746C6E" /></Pressable> : null}
             </View>
@@ -247,7 +249,7 @@ export default function SectionDetailScreen() {
                   { icon: 'school' as const, label: 'Semester', value: section.semester },
                 ].map((item) => (
                   <View key={item.label} className="flex-1 rounded-none border border-line bg-zinc-50 p-3.5 dark:border-line-dark dark:bg-white/5">
-                    <MaterialIcons name={item.icon} size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
+                    <MaterialIcons name={item.icon} size={20} color={isDark ? pupColors.golden : pupColors.maroon} />
                     <Text className="mt-2.5 font-sans-bold text-[9px] uppercase tracking-[1px] text-muted dark:text-zinc-500">{item.label}</Text>
                     <Text className="mt-1 font-sans-bold text-sm text-ink dark:text-white">{item.value}</Text>
                   </View>
@@ -264,10 +266,10 @@ export default function SectionDetailScreen() {
               </View>
             </CampusCard>
 
-            <CampusCard className="mb-5 overflow-hidden border-l-4 border-l-golden bg-maroon p-4.5 dark:bg-[#2A0E11]">
+            <CampusCard className="mb-5 overflow-hidden border-l-4 border-l-golden bg-maroon p-4.5 dark:bg-maroon-deep">
               <View className="flex-row items-center gap-3.5">
                 <View className="h-11 w-11 items-center justify-center rounded-none bg-white/10">
-                  <MaterialIcons name="vpn-key" size={22} color="#FFDF00" />
+                  <MaterialIcons name="vpn-key" size={22} color={pupColors.golden} />
                 </View>
                 <View className="flex-1">
                   <Text className="font-sans-bold text-xs uppercase tracking-wider text-white/80">Enrollment code</Text>
@@ -279,7 +281,7 @@ export default function SectionDetailScreen() {
                 </View>
                 {section.enrollmentCode ? (
                   <Pressable accessibilityRole="button" accessibilityLabel="Copy enrollment code" onPress={() => void copyCode()} className="h-12 w-12 items-center justify-center rounded-none border border-golden/50 bg-golden/20 active:bg-golden/30">
-                    <MaterialIcons name="content-copy" size={20} color="#FFDF00" />
+                    <MaterialIcons name="content-copy" size={20} color={pupColors.golden} />
                   </Pressable>
                 ) : null}
               </View>
@@ -369,18 +371,18 @@ export default function SectionDetailScreen() {
                 <CampusCard className="mb-5 p-4">
                   <Pressable accessibilityRole="button" accessibilityState={{ expanded: isEnrollOpen }} onPress={() => setIsEnrollOpen((open) => !open)} className="min-h-12 flex-row items-center gap-3">
                     <View className="h-10 w-10 items-center justify-center rounded-none bg-maroon/10 dark:bg-golden/15">
-                      <MaterialIcons name="person-add" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
+                      <MaterialIcons name="person-add" size={20} color={isDark ? pupColors.golden : pupColors.maroon} />
                     </View>
                     <View className="flex-1">
                       <Text className="font-sans-bold text-base text-ink dark:text-white">Enroll a student</Text>
                       <Text className="mt-0.5 font-sans text-xs text-muted dark:text-zinc-400">Search the campus directory</Text>
                     </View>
-                    <MaterialIcons name={isEnrollOpen ? 'expand-less' : 'expand-more'} size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
+                    <MaterialIcons name={isEnrollOpen ? 'expand-less' : 'expand-more'} size={22} color={isDark ? pupColors.golden : pupColors.maroon} />
                   </Pressable>
                   {isEnrollOpen ? (
                     <View className="mt-4 border-t border-line pt-4 dark:border-line-dark">
                       <View className="min-h-14 flex-row items-center rounded-none border border-zinc-300 bg-zinc-50 px-4 dark:border-zinc-700 dark:bg-white/5">
-                        <MaterialIcons name="search" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
+                        <MaterialIcons name="search" size={20} color={isDark ? pupColors.golden : pupColors.maroon} />
                         <TextInput accessibilityLabel="Search students to enroll" className="h-full flex-1 px-3 font-sans text-sm text-ink dark:text-white" placeholder="Name or student number" placeholderTextColor={isDark ? '#71717A' : '#8A8284'} value={enrollSearch} onChangeText={setEnrollSearch} />
                       </View>
                       <View className="mt-3 gap-2">
@@ -393,7 +395,7 @@ export default function SectionDetailScreen() {
                               <Text className="font-sans-bold text-sm text-ink dark:text-white">{student.fullName}</Text>
                               <Text className="mt-0.5 font-sans text-[11px] text-muted dark:text-zinc-500">{student.studentId} · {student.program}</Text>
                             </View>
-                            <MaterialIcons name="add-circle" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
+                            <MaterialIcons name="add-circle" size={22} color={isDark ? pupColors.golden : pupColors.maroon} />
                           </Pressable>
                         ))}
                         {enrollSearch && !enrollCandidates.length ? <Text className="py-4 text-center font-sans text-xs text-muted dark:text-zinc-500">No eligible students found.</Text> : null}
@@ -419,7 +421,7 @@ export default function SectionDetailScreen() {
                 <CampusCard key={session.id} onPress={() => router.push({ pathname: '/(faculty)/sessions/[id]', params: { id: session.id } })} accessibilityLabel={`Open session on ${session.date}`} className="p-4">
                   <View className="flex-row items-center gap-3">
                     <View className="h-11 w-11 items-center justify-center rounded-none bg-maroon/5 dark:bg-golden/10">
-                      <MaterialIcons name={session.isActive ? 'radio-button-checked' : 'event'} size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
+                      <MaterialIcons name={session.isActive ? 'radio-button-checked' : 'event'} size={20} color={isDark ? pupColors.golden : pupColors.maroon} />
                     </View>
                     <View className="flex-1">
                       <Text className="font-sans-bold text-sm text-ink dark:text-white">{new Date(`${session.date}T00:00:00`).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</Text>

@@ -43,7 +43,7 @@ describe('AuthService', () => {
   })
 
   let service: AuthService
-  let prisma: { user: { findUnique: jest.Mock; update: jest.Mock } }
+  let prisma: { user: { findUnique: jest.Mock; update: jest.Mock }; session: { findMany: jest.Mock } }
   let redis: {
     consumeRateLimit: jest.Mock
     getJson: jest.Mock
@@ -57,6 +57,7 @@ describe('AuthService', () => {
   beforeEach(async () => {
     prisma = {
       user: { findUnique: jest.fn(), update: jest.fn() },
+      session: { findMany: jest.fn().mockResolvedValue([]) },
     }
     redis = {
       consumeRateLimit: jest.fn().mockResolvedValue(true),
@@ -220,6 +221,43 @@ describe('AuthService', () => {
     it('throws NotFoundException when user missing', async () => {
       prisma.user.findUnique.mockResolvedValue(null)
       await expect(service.provisionKey('missing', 'pubkey')).rejects.toThrow(NotFoundException)
+    })
+  })
+
+  describe('revokeKey', () => {
+    it('nulls the current signing key and emits an audit event', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', teacherPublicKey: 'pubkey' })
+      prisma.user.update.mockResolvedValue({ id: 'user-1', teacherPublicKey: null })
+      prisma.session.findMany.mockResolvedValue([{ id: 'sess-1' }, { id: 'sess-2' }])
+      const result = await service.revokeKey('user-1')
+      expect(result.revoked).toBe(true)
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { teacherPublicKey: null },
+      })
+      expect(redis.delete).toHaveBeenCalledWith('active-session:sess-1')
+      expect(redis.delete).toHaveBeenCalledWith('active-session:sess-2')
+      expect(events.emit).toHaveBeenCalledWith('auth.key-revoked', {
+        userId: 'user-1',
+        fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
+      })
+    })
+
+    it('does not touch the DB when no key is provisioned', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', teacherPublicKey: null })
+      const result = await service.revokeKey('user-1')
+      expect(result.revoked).toBe(false)
+      expect(prisma.user.update).not.toHaveBeenCalled()
+    })
+
+    it('throws NotFoundException when user missing', async () => {
+      prisma.user.findUnique.mockResolvedValue(null)
+      await expect(service.revokeKey('missing')).rejects.toThrow(NotFoundException)
+    })
+
+    it('returns 429 when rate limit exceeded', async () => {
+      redis.consumeRateLimit.mockResolvedValueOnce(false)
+      await expect(service.revokeKey('user-1')).rejects.toThrow(HttpException)
     })
   })
 

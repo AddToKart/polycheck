@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { Session } from '../prisma/client'
 import { ProofStorageService } from './proof-storage.service'
+import { assertSectionInAdminScope } from '../common/admin-scope'
 
 interface UploadProofInput {
   sectionId: string
@@ -106,13 +107,8 @@ export class ProofsService {
 
   private async access(user: RequestUser, sectionId: string, teacherId: string) {
     if (user.role === 'super_admin') {
-      if (user.scope === 'institution') return
-      const section = await this.prisma.section.findFirst({
-        where: { id: sectionId, teacher: { department: user.department ?? '__no_department__' } },
-        select: { id: true },
-      })
-      if (section) return
-      throw new ForbiddenException('This proof is outside your administrative scope')
+      await assertSectionInAdminScope(user, sectionId, this.prisma, 'This proof')
+      return
     }
     if (user.role === 'teacher' && teacherId === user.id) return
     const enrollment = await this.prisma.enrollment.findUnique({

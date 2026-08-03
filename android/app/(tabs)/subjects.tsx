@@ -6,6 +6,7 @@ import { router } from 'expo-router'
 import type { AttendanceRecord, Section, Subject } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
+import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusCard, CampusEmptyState } from '../../components/CampusPrimitives'
 
@@ -55,7 +56,7 @@ export default function StudentSubjectsListScreen() {
           accessibilityLabel="Search enrolled classes"
           className="flex-1 px-3 py-4 font-sans text-sm text-ink dark:text-white"
           placeholder="Search classes"
-          placeholderTextColor={isDark ? '#777177' : '#A39B9D'}
+          placeholderTextColor={isDark ? pupColors.muted : pupColors.mutedLight}
           value={searchQuery}
           onChangeText={setSearchQuery}
           autoCapitalize="none"
@@ -86,7 +87,7 @@ export default function StudentSubjectsListScreen() {
             >
               <View className="flex-row items-start gap-4">
                 <View className="h-12 w-12 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10">
-                  <MaterialIcons name="auto-stories" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
+                  <MaterialIcons name="auto-stories" size={22} color={isDark ? pupColors.golden : pupColors.maroon} />
                 </View>
                 <View className="flex-1">
                   <Text className="font-sans-bold text-base text-ink dark:text-white">{subject?.name ?? 'Class'}</Text>

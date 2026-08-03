@@ -6,7 +6,9 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { formatCampusDate, type Section, type Student, type Subject } from '@polycheck/shared'
 import * as Location from 'expo-location'
 import { api } from '../../../../../services/api-client'
+import { useAuthGate } from '../../../../../hooks/use-auth-gate'
 import { useTheme } from '../../../../../theme/ThemeContext'
+import { pupColors } from '../../../../../theme/colors'
 import MapView from '../../../../../components/MapView'
 import { CampusHeader } from '../../../../../components/CampusHeader'
 import { CampusButton, CampusCard, SectionHeading } from '../../../../../components/CampusPrimitives'
@@ -15,6 +17,7 @@ import { CampusFormField } from '../../../../../components/CampusFormField'
 export default function StudentCreateSessionScreen() {
   const { isDark } = useTheme()
   const { id: sectionId } = useLocalSearchParams<{ id: string }>()
+  const currentUser = useAuthGate(['student'])
   const [user, setUser] = useState<Student | null>(null)
   const [section, setSection] = useState<Section | null>(null)
   const [subject, setSubject] = useState<Subject | null>(null)
@@ -31,13 +34,9 @@ export default function StudentCreateSessionScreen() {
   const [mapFocus, setMapFocus] = useState(false)
 
   useEffect(() => {
-    const currentUser = api.getCurrentUser()
-    if (!currentUser || currentUser.role !== 'student') {
-      router.replace('/')
-      return
-    }
+    if (!currentUser) return
     setUser(currentUser as Student)
-  }, [])
+  }, [currentUser])
 
   useEffect(() => {
     if (!sectionId) return
@@ -133,7 +132,7 @@ export default function StudentCreateSessionScreen() {
               onPress={() => void useMyLocation()}
               className="min-h-11 flex-row items-center gap-2 rounded-2xl bg-maroon/5 px-3 dark:bg-golden/10"
             >
-              {locating ? <ActivityIndicator size="small" color={isDark ? '#FFDF00' : '#7B1113'} /> : <MaterialIcons name="my-location" size={18} color={isDark ? '#FFDF00' : '#7B1113'} />}
+              {locating ? <ActivityIndicator size="small" color={isDark ? pupColors.golden : pupColors.maroon} /> : <MaterialIcons name="my-location" size={18} color={isDark ? pupColors.golden : pupColors.maroon} />}
               <Text className="font-sans-bold text-[10px] text-maroon dark:text-golden">{locating ? 'Locating…' : 'My location'}</Text>
             </Pressable>
           </View>

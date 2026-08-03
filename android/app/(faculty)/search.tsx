@@ -6,6 +6,7 @@ import { router } from 'expo-router'
 import type { Section, Session, Student, Subject } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
+import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusCard, CampusEmptyState, SectionHeading } from '../../components/CampusPrimitives'
 
@@ -17,7 +18,7 @@ const SearchResultCard = ({ icon, title, subtitle, onPress }: { icon: keyof type
   return (
     <CampusCard onPress={onPress} accessibilityLabel={`Open ${title}`} className="p-4">
       <View className="flex-row items-center gap-3">
-        <View className="h-11 w-11 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10"><MaterialIcons name={icon} size={20} color={isDark ? '#FFDF00' : '#7B1113'} /></View>
+        <View className="h-11 w-11 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10"><MaterialIcons name={icon} size={20} color={isDark ? pupColors.golden : pupColors.maroon} /></View>
         <View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white" numberOfLines={1}>{title}</Text><Text className="mt-1 font-sans text-xs text-muted dark:text-zinc-400" numberOfLines={2}>{subtitle}</Text></View>
         <MaterialIcons name="chevron-right" size={20} color={isDark ? '#A1A1AA' : '#746C6E'} />
       </View>
@@ -57,10 +58,10 @@ export default function FacultySearchScreen() {
   const totalResults = results.students.length + results.sections.length + results.sessions.length
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
       <CampusHeader eyebrow="Faculty tools" title="Global search" subtitle="Find students, class sections, and attendance sessions." onBack={() => router.back()} />
       <View className="mx-4 mb-2 min-h-14 flex-row items-center rounded-2xl border border-line bg-white px-4 dark:border-line-dark dark:bg-surface-dark">
-        {searching ? <ActivityIndicator size="small" color={isDark ? '#FFDF00' : '#7B1113'} /> : <MaterialIcons name="search" size={21} color={isDark ? '#A1A1AA' : '#746C6E'} />}
+        {searching ? <ActivityIndicator size="small" color={isDark ? pupColors.golden : pupColors.maroon} /> : <MaterialIcons name="search" size={21} color={isDark ? '#A1A1AA' : '#746C6E'} />}
         <TextInput
           autoFocus
           accessibilityLabel="Search students, sections, and sessions"
@@ -68,7 +69,7 @@ export default function FacultySearchScreen() {
           value={query}
           onChangeText={setQuery}
           placeholder="Name, student number, subject, or date"
-          placeholderTextColor={isDark ? '#777177' : '#A39B9D'}
+          placeholderTextColor={isDark ? pupColors.muted : pupColors.mutedLight}
           returnKeyType="search"
           autoCorrect={false}
           autoCapitalize="none"

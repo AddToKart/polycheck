@@ -6,10 +6,11 @@ import GeofenceCircle from '@/components/GeofenceCircle'
 import { pupSantaMaria, type CampusConfig } from '@polycheck/shared/map'
 import type { Session, AttendanceRecord, AttendanceStatus } from '@polycheck/shared'
 import { MapPin } from 'lucide-react'
+import { pupColors } from '@/lib/colors'
 
 const STATUS_MARKER_COLORS: Record<string, string> = {
   present: '#22C55E',
-  late: '#FFDF00',
+  late: pupColors.golden,
   absent: '#EF4444',
   pending: '#9CA3AF',
   disputed: '#F59E0B',
@@ -61,7 +62,7 @@ function CampusBuildingsLayer({ campus }: { campus: CampusConfig }) {
       type: 'fill',
       source: polygonSourceId,
       paint: {
-        'fill-color': '#7B1113',
+        'fill-color': pupColors.maroon,
         'fill-opacity': 0.08,
       },
     })
@@ -72,7 +73,7 @@ function CampusBuildingsLayer({ campus }: { campus: CampusConfig }) {
       source: polygonSourceId,
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: {
-        'line-color': '#7B1113',
+        'line-color': pupColors.maroon,
         'line-width': 1.5,
         'line-opacity': 0.4,
       },
@@ -91,7 +92,7 @@ function CampusBuildingsLayer({ campus }: { campus: CampusConfig }) {
         'text-allow-overlap': false,
       },
       paint: {
-        'text-color': '#7B1113',
+        'text-color': pupColors.maroon,
         'text-halo-color': '#FFFFFF',
         'text-halo-width': 2,
         'text-opacity': 0.85,
@@ -127,7 +128,7 @@ interface StudentPopoverCardProps {
 function StudentPopoverCard({ studentName, studentId, studentProgram, status, timestamp, deviceId }: StudentPopoverCardProps) {
   return (
     <div className="min-w-[180px]">
-      <p className="text-sm font-bold text-[#4A0A0B] dark:text-white">{studentName}</p>
+      <p className="text-sm font-bold text-maroon-dark dark:text-white">{studentName}</p>
       <p className="text-xs text-gray-500 dark:text-gray-400">{studentId}{studentProgram ? ` · ${studentProgram}` : ''}</p>
       <div className="flex items-center gap-2 mt-1.5">
         <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${STATUS_TEXT_CLASSES[status] || ''}`}>
@@ -164,7 +165,7 @@ export default function CampusMap({ session, records, isActive, refreshLabel }: 
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <MapPin className="w-5 h-5 text-[#7B1113] dark:text-[#FFDF00]" />
+          <MapPin className="w-5 h-5 text-maroon dark:text-golden" />
           <h2 className="text-base font-bold dark:text-white">Campus Map</h2>
         </div>
         {isActive && (
@@ -172,7 +173,7 @@ export default function CampusMap({ session, records, isActive, refreshLabel }: 
         )}
       </div>
 
-      <div className="h-[420px] rounded-lg overflow-hidden border border-gray-200 dark:border-[rgba(245,168,0,0.15)]">
+      <div className="h-[420px] rounded-lg overflow-hidden border border-gray-200 dark:border-golden/15">
         <Map
           center={[session.geofence.longitude, session.geofence.latitude]}
           zoom={17}

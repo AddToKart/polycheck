@@ -16,7 +16,19 @@ interface BetterAuthRuntime {
     getSession(options: {
       headers: Headers
       query: { disableCookieCache: boolean; disableRefresh: boolean }
-    }): Promise<{ session: { id: string } } | null>
+    }): Promise<{
+      session: { id: string; generation: number }
+      user: {
+        id: string
+        email: string
+        role: string
+        scope: string | null
+        department: string | null
+        studentId: string | null
+        isActive: boolean
+        authVersion: number
+      }
+    } | null>
   }
 }
 
@@ -82,6 +94,14 @@ export class BetterAuthService implements OnModuleInit {
           email: 'authEmail',
           emailVerified: 'authEmailVerified',
           image: 'photoUrl',
+        },
+        additionalFields: {
+          role: { type: 'string', input: false, returned: true },
+          scope: { type: 'string', input: false, returned: true },
+          department: { type: 'string', input: false, returned: true },
+          studentId: { type: 'string', input: false, returned: true },
+          isActive: { type: 'boolean', input: false, returned: true },
+          authVersion: { type: 'number', input: false, returned: true },
         },
       },
       account: { modelName: 'AuthAccount' },

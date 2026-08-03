@@ -1,0 +1,74 @@
+appId: edu.pup.polycheck
+name: Student authentication and attendance journey
+tags:
+  - smoke
+  - student
+env:
+  E2E_STUDENT_ID: ${E2E_STUDENT_ID || "2024-00001-MN-0"}
+  E2E_PASSWORD: ${E2E_PASSWORD || "PolycheckLocal1!"}
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+- assertVisible:
+    id: landing-screen
+- runFlow: ../subflows/login-student.yaml
+
+- tapOn:
+    id: student-tab-schedule
+- assertVisible: My Schedule
+- tapOn:
+    id: student-tab-audit
+- assertVisible: Audit History
+
+- tapOn:
+    id: student-tab-home
+- tapOn:
+    id: student-enroll-open
+- assertVisible:
+    id: student-enroll-screen
+- tapOn:
+    id: enrollment-code-input
+- inputText: "INVALID"
+- hideKeyboard
+- tapOn:
+    id: enrollment-submit
+- extendedWaitUntil:
+    visible: Unable to enroll
+    timeout: 10000
+- tapOn: OK
+- back
+
+- tapOn:
+    id: student-tab-scan
+- assertVisible:
+    id: student-scan-screen
+- setLocation:
+    latitude: 14.5995
+    longitude: 120.9842
+- tapOn:
+    id: scan-manual-open
+- tapOn:
+    id: scan-manual-input
+- inputText: "not-a-polycheck-token"
+- hideKeyboard
+- tapOn:
+    id: scan-manual-submit
+- assertVisible: CHECK-IN REJECTED
+- assertVisible: This QR code is not a valid Polycheck attendance token.
+
+- tapOn:
+    id: scan-close
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: student-dashboard-screen
+    timeout: 20000
+- tapOn:
+    id: student-sign-out
+- extendedWaitUntil:
+    visible:
+      id: landing-screen
+    timeout: 10000

@@ -6,6 +6,7 @@ import { router, useLocalSearchParams } from 'expo-router'
 import type { Section, Session, Subject } from '@polycheck/shared'
 import { api } from '../../../../services/api-client'
 import { useTheme } from '../../../../theme/ThemeContext'
+import { pupColors } from '../../../../theme/colors'
 import { CampusHeader } from '../../../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, SectionHeading } from '../../../../components/CampusPrimitives'
 
@@ -57,9 +58,9 @@ export default function SubjectSessionsScreen() {
 
       <View className="px-4">
         <Pressable accessibilityRole="button" accessibilityLabel={`Filter by ${selectedSection ? `Section ${selectedSection.section}` : 'all sections'}`} onPress={() => setSectionPickerVisible(true)} className={`mb-3 min-h-12 flex-row items-center gap-2 rounded-2xl border px-4 ${selectedSectionId ? 'border-maroon bg-maroon dark:border-golden dark:bg-golden' : 'border-line bg-white dark:border-line-dark dark:bg-surface-dark'}`}>
-          <MaterialIcons name="filter-list" size={18} color={selectedSectionId ? isDark ? '#4A0A0B' : '#FFFFFF' : isDark ? '#FFDF00' : '#7B1113'} />
+          <MaterialIcons name="filter-list" size={18} color={selectedSectionId ? isDark ? pupColors.maroonDark : '#FFFFFF' : isDark ? pupColors.golden : pupColors.maroon} />
           <Text className={`flex-1 font-sans-bold text-xs ${selectedSectionId ? 'text-white dark:text-maroon-dark' : 'text-ink dark:text-white'}`}>{selectedSection ? `Section ${selectedSection.section}` : 'All sections'}</Text>
-          <MaterialIcons name="expand-more" size={20} color={selectedSectionId ? isDark ? '#4A0A0B' : '#FFFFFF' : isDark ? '#A1A1AA' : '#746C6E'} />
+          <MaterialIcons name="expand-more" size={20} color={selectedSectionId ? isDark ? pupColors.maroonDark : '#FFFFFF' : isDark ? '#A1A1AA' : '#746C6E'} />
         </Pressable>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 pb-4">
           {days.map((day) => {
@@ -77,7 +78,7 @@ export default function SubjectSessionsScreen() {
               {sectionSessions.map((session) => (
                 <CampusCard key={session.id} onPress={() => router.push(`/(faculty)/sessions/${session.id}`)} accessibilityLabel={`Open session on ${session.date}`} className="p-4">
                   <View className="flex-row items-center gap-4">
-                    <View className={`h-14 w-14 items-center justify-center rounded-[20px] ${session.isActive ? 'bg-golden' : 'bg-maroon/5 dark:bg-white/5'}`}><MaterialIcons name={session.isActive ? 'radio-button-checked' : 'event'} size={22} color={session.isActive ? '#4A0A0B' : isDark ? '#FFDF00' : '#7B1113'} /></View>
+                    <View className={`h-14 w-14 items-center justify-center rounded-[20px] ${session.isActive ? 'bg-golden' : 'bg-maroon/5 dark:bg-white/5'}`}><MaterialIcons name={session.isActive ? 'radio-button-checked' : 'event'} size={22} color={session.isActive ? pupColors.maroonDark : isDark ? pupColors.golden : pupColors.maroon} /></View>
                     <View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">{new Date(`${session.date}T00:00:00`).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })}</Text><Text className="mt-1 font-sans text-xs text-muted dark:text-zinc-400">{session.startTime}–{session.endTime}{session.room ? ` · ${session.room}` : ''}</Text></View>
                     <View className={`rounded-full px-3 py-2 ${session.isActive ? 'bg-emerald-50 dark:bg-emerald-950/40' : 'bg-zinc-100 dark:bg-white/5'}`}><Text className={`font-sans-bold text-[10px] ${session.isActive ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted dark:text-zinc-300'}`}>{session.isActive ? 'Active' : 'Inactive'}</Text></View>
                   </View>
@@ -97,7 +98,7 @@ export default function SubjectSessionsScreen() {
             <ScrollView>
               {[{ id: '', section: 'All sections', room: '' }, ...sections].map((section) => {
                 const active = section.id === selectedSectionId
-                return <Pressable key={section.id || 'all'} accessibilityRole="radio" accessibilityState={{ checked: active }} onPress={() => { setSelectedSectionId(section.id); setSectionPickerVisible(false) }} className={`mb-2 min-h-14 flex-row items-center rounded-2xl border px-4 ${active ? 'border-maroon bg-maroon/5 dark:border-golden dark:bg-golden/10' : 'border-line dark:border-line-dark'}`}><Text className="flex-1 font-sans-bold text-sm text-ink dark:text-white">{section.id ? `Section ${section.section}${section.room ? ` · ${section.room}` : ''}` : section.section}</Text>{active ? <MaterialIcons name="check-circle" size={20} color={isDark ? '#FFDF00' : '#7B1113'} /> : null}</Pressable>
+                return <Pressable key={section.id || 'all'} accessibilityRole="radio" accessibilityState={{ checked: active }} onPress={() => { setSelectedSectionId(section.id); setSectionPickerVisible(false) }} className={`mb-2 min-h-14 flex-row items-center rounded-2xl border px-4 ${active ? 'border-maroon bg-maroon/5 dark:border-golden dark:bg-golden/10' : 'border-line dark:border-line-dark'}`}><Text className="flex-1 font-sans-bold text-sm text-ink dark:text-white">{section.id ? `Section ${section.section}${section.room ? ` · ${section.room}` : ''}` : section.section}</Text>{active ? <MaterialIcons name="check-circle" size={20} color={isDark ? pupColors.golden : pupColors.maroon} /> : null}</Pressable>
               })}
             </ScrollView>
           </View>

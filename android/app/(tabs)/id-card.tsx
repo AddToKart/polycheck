@@ -5,6 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
+import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusIconButton } from '../../components/CampusPrimitives'
 
@@ -25,7 +26,7 @@ const IdCardFront = ({ student, isDark }: { student: StudentCredential; isDark: 
         <Text className="font-sans-bold text-[7px] uppercase tracking-[1.5px] text-golden">Republic of the Philippines</Text>
         <Text className="mt-0.5 font-heading font-bold text-[9px] uppercase tracking-wider text-white">Polytechnic University of the Philippines</Text>
       </View>
-      <MaterialIcons name="verified" size={18} color="#FFDF00" />
+      <MaterialIcons name="verified" size={18} color={pupColors.golden} />
     </View>
 
     <View className="flex-1 flex-row bg-[#FDFBF7] p-4 dark:bg-surface-dark">
@@ -79,7 +80,7 @@ const IdCardBack = ({ isDark }: { isDark: boolean }) => (
       </View>
       <View className="w-[34%] items-center justify-center border-l-2 border-dashed border-zinc-300 pl-3 dark:border-zinc-700">
         <View className="aspect-square w-full items-center justify-center rounded-none border-2 border-zinc-300 bg-zinc-100 dark:border-zinc-700 dark:bg-white p-1">
-          <MaterialIcons name="qr-code-2" size={54} color="#171316" />
+          <MaterialIcons name="qr-code-2" size={54} color={pupColors.surfaceDark} />
         </View>
         <Text className="mt-2 text-center font-mono text-[7px] font-bold uppercase tracking-widest text-zinc-500">SCAN TO VERIFY</Text>
       </View>
@@ -106,7 +107,7 @@ export default function IdCardScreen() {
   if (!student) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark">
-        <ActivityIndicator size="large" color="#7B1113" />
+        <ActivityIndicator size="large" color={pupColors.maroon} />
       </SafeAreaView>
     )
   }
@@ -168,7 +169,7 @@ export default function IdCardScreen() {
         </Pressable>
 
         <View className="mt-6 flex-row items-center justify-center gap-2">
-          <MaterialIcons name="3d-rotation" size={16} color={isDark ? '#FFDF00' : '#7B1113'} />
+          <MaterialIcons name="3d-rotation" size={16} color={isDark ? pupColors.golden : pupColors.maroon} />
           <Text className="font-sans-bold text-xs uppercase tracking-widest text-muted dark:text-zinc-400">
             Tap card to view {isFlipped ? 'front' : 'back'}
           </Text>

@@ -64,6 +64,12 @@ export class AuthController {
     return this.auth.provisionKey(req.user.id, dto.publicKey)
   }
 
+  @Roles('teacher')
+  @Post('revoke-key')
+  revokeKey(@Request() req: AuthenticatedRequest) {
+    return this.auth.revokeKey(req.user.id)
+  }
+
   @Post('logout')
   async logout(@Request() req: AuthenticatedRequest, @Res({ passthrough: true }) res: Response) {
     const result = await this.auth.logout(toWebHeaders(req.headers))

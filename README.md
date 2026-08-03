@@ -285,6 +285,7 @@ pnpm dev
 | `pnpm dev` | Starts all monorepo workspaces in development watch mode. |
 | `pnpm build` | Compiles production builds for all workspace packages. |
 | `pnpm lint` | Executes ESLint across all workspace apps and packages. |
+| `pnpm test:e2e:mobile` | Runs the installed Android app's Maestro E2E journeys. See [the mobile E2E guide](documentation/MOBILE_E2E.md). |
 | `pnpm load:attendance:smoke` | Runs k6 smoke load test against attendance check-in endpoints. |
 | `pnpm load:attendance:full` | Runs k6 full load test against attendance check-in endpoints. |
 

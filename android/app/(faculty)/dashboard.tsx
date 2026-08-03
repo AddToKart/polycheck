@@ -7,6 +7,7 @@ import { formatTime } from '@polycheck/shared/utils'
 import type { CalendarEvent, DashboardOverview, Section, Subject, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
+import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import {
   CampusButton,
@@ -62,7 +63,7 @@ export default function FacultyDashboardScreen() {
   if (!user) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark">
-        <ActivityIndicator size="large" color="#7B1113" />
+        <ActivityIndicator size="large" color={pupColors.maroon} />
       </SafeAreaView>
     )
   }
@@ -88,7 +89,7 @@ export default function FacultyDashboardScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID={isSuper ? 'super-admin-dashboard-screen' : 'faculty-dashboard-screen'}>
       <CampusHeader
         eyebrow={isSuper ? 'University Oversight' : 'Faculty Workspace'}
         title={user.fullName}
@@ -97,7 +98,7 @@ export default function FacultyDashboardScreen() {
           <>
             <CampusIconButton icon="search" label="Search" onPress={() => router.push('/(faculty)/search')} inverse />
             <CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />
-            <CampusIconButton icon="logout" label="Sign out" onPress={signOut} inverse />
+            <CampusIconButton icon="logout" label="Sign out" onPress={signOut} inverse testID="faculty-sign-out" />
           </>
         )}
       />
@@ -105,7 +106,7 @@ export default function FacultyDashboardScreen() {
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={isDark ? '#FFDF00' : '#7B1113'} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={isDark ? pupColors.golden : pupColors.maroon} />}
       >
         {pendingDisputes > 0 ? (
           <CampusCard
@@ -158,7 +159,7 @@ export default function FacultyDashboardScreen() {
                     <MaterialIcons
                       name={active ? 'radio-button-checked' : completed ? 'check-circle' : moved ? 'event-busy' : 'event'}
                       size={20}
-                      color={active ? '#4A0A0B' : moved ? '#DC2626' : isDark ? '#FFDF00' : '#7B1113'}
+                      color={active ? pupColors.maroonDark : moved ? '#DC2626' : isDark ? pupColors.golden : pupColors.maroon}
                     />
                   </View>
                   <View className="flex-1">

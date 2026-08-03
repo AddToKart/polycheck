@@ -104,7 +104,7 @@ export default function CreateSectionScreen() {
       </CampusCard>
 
       <SectionHeading eyebrow="Enrollment" title="Join code" />
-      <CampusCard className="mb-7 items-center bg-maroon dark:bg-[#2A0E11]">
+      <CampusCard className="mb-7 items-center bg-maroon dark:bg-maroon-deep">
         <Text className="font-sans-bold text-[10px] uppercase tracking-[2px] text-golden">Generated after creation</Text>
         <Text className="mt-3 font-mono text-2xl tracking-[4px] text-white">{enrollmentCode}</Text>
         <Text className="mt-2 text-center font-sans text-xs text-white/60">The server will issue the authoritative enrollment code.</Text>

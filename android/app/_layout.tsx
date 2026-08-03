@@ -6,6 +6,7 @@ import * as SplashScreen from 'expo-splash-screen'
 import { useFonts } from 'expo-font'
 import { ActivityIndicator, Alert, AppState, View } from 'react-native'
 import { ThemeProvider, useTheme } from '../theme/ThemeContext'
+import { pupColors } from '../theme/colors'
 import { api, subscribeToAuthChanges } from '../services/api-client'
 import { monitorAuthSession } from '../services/realtime'
 import type { User } from '@polycheck/shared'
@@ -110,8 +111,8 @@ function RootLayoutInner() {
 
   if (!fontsLoaded || !sessionReady) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#4A0A0B', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#FFDF00" />
+      <View style={{ flex: 1, backgroundColor: pupColors.maroonDark, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={pupColors.golden} />
       </View>
     )
   }

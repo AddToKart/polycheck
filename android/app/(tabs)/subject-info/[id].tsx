@@ -6,6 +6,7 @@ import { router, useLocalSearchParams } from 'expo-router'
 import type { Section, SectionRole, Session, Subject } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
 import { useTheme } from '../../../theme/ThemeContext'
+import { pupColors } from '../../../theme/colors'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, SectionHeading } from '../../../components/CampusPrimitives'
 
@@ -14,7 +15,7 @@ const InfoRow = ({ icon, label, value }: { icon: keyof typeof MaterialIcons.glyp
   return (
     <View className="flex-row items-start gap-3 border-b border-line py-3 last:border-b-0 dark:border-line-dark">
       <View className="h-10 w-10 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10">
-        <MaterialIcons name={icon} size={19} color={isDark ? '#FFDF00' : '#7B1113'} />
+        <MaterialIcons name={icon} size={19} color={isDark ? pupColors.golden : pupColors.maroon} />
       </View>
       <View className="flex-1">
         <Text className="font-sans-bold text-[9px] uppercase tracking-[1.2px] text-muted dark:text-zinc-500">{label}</Text>
@@ -87,15 +88,15 @@ export default function StudentSubjectInfoScreen() {
       <ScrollView className="flex-1" contentContainerClassName="px-4 pb-28">
         {studentRoles.length ? (
           <View className="mb-4 flex-row flex-wrap gap-2">
-            {isPresident ? <View className="flex-row items-center gap-1.5 rounded-full bg-maroon px-3 py-2 dark:bg-golden"><MaterialIcons name="star" size={15} color={isDark ? '#4A0A0B' : '#FFFFFF'} /><Text className="font-sans-bold text-xs text-white dark:text-maroon-dark">Section president</Text></View> : null}
-            {isQac ? <View className="flex-row items-center gap-1.5 rounded-full border border-golden bg-maroon-dark px-3 py-2"><MaterialIcons name="camera-alt" size={15} color="#FFDF00" /><Text className="font-sans-bold text-xs text-golden">QAC officer</Text></View> : null}
+            {isPresident ? <View className="flex-row items-center gap-1.5 rounded-full bg-maroon px-3 py-2 dark:bg-golden"><MaterialIcons name="star" size={15} color={isDark ? pupColors.maroonDark : '#FFFFFF'} /><Text className="font-sans-bold text-xs text-white dark:text-maroon-dark">Section president</Text></View> : null}
+            {isQac ? <View className="flex-row items-center gap-1.5 rounded-full border border-golden bg-maroon-dark px-3 py-2"><MaterialIcons name="camera-alt" size={15} color={pupColors.golden} /><Text className="font-sans-bold text-xs text-golden">QAC officer</Text></View> : null}
           </View>
         ) : null}
 
         {isPresident ? (
           <CampusCard className={`mb-5 ${hasPermission ? 'border-golden bg-golden/10' : ''}`}>
             <View className="flex-row items-start gap-3">
-              <View className="h-11 w-11 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10"><MaterialIcons name="admin-panel-settings" size={21} color={isDark ? '#FFDF00' : '#7B1113'} /></View>
+              <View className="h-11 w-11 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10"><MaterialIcons name="admin-panel-settings" size={21} color={isDark ? pupColors.golden : pupColors.maroon} /></View>
               <View className="flex-1">
                 <Text className="font-sans-bold text-sm text-ink dark:text-white">Session permission</Text>
                 <Text className="mt-1 font-sans text-xs leading-5 text-muted dark:text-zinc-400">{hasPermission ? 'Your instructor has authorized you to create a session for this class.' : 'No active permission. Ask your instructor to grant access.'}</Text>
@@ -133,12 +134,12 @@ export default function StudentSubjectInfoScreen() {
               className="p-4"
             >
               <View className="flex-row items-center gap-3">
-                <View className={`h-12 w-12 items-center justify-center rounded-2xl ${session.isActive ? 'bg-golden' : 'bg-maroon/5 dark:bg-white/5'}`}><MaterialIcons name={session.isActive ? 'radio-button-checked' : 'event'} size={21} color={session.isActive ? '#4A0A0B' : isDark ? '#FFDF00' : '#7B1113'} /></View>
+                <View className={`h-12 w-12 items-center justify-center rounded-2xl ${session.isActive ? 'bg-golden' : 'bg-maroon/5 dark:bg-white/5'}`}><MaterialIcons name={session.isActive ? 'radio-button-checked' : 'event'} size={21} color={session.isActive ? pupColors.maroonDark : isDark ? pupColors.golden : pupColors.maroon} /></View>
                 <View className="flex-1">
                   <Text className="font-sans-bold text-sm text-ink dark:text-white">{new Date(`${session.date}T00:00:00`).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })}</Text>
                   <Text className="mt-1 font-sans text-xs text-muted dark:text-zinc-400">{session.startTime}–{session.endTime}{session.room ? ` · ${session.room}` : ''}</Text>
                 </View>
-                {isQac ? <MaterialIcons name="camera-alt" size={18} color={isDark ? '#FFDF00' : '#7B1113'} /> : null}
+                {isQac ? <MaterialIcons name="camera-alt" size={18} color={isDark ? pupColors.golden : pupColors.maroon} /> : null}
                 <MaterialIcons name="chevron-right" size={21} color={isDark ? '#A1A1AA' : '#746C6E'} />
               </View>
             </CampusCard>

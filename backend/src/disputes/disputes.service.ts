@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { AttendanceRecord, AttendanceStatus, Prisma } from '../prisma/client'
+import { adminRecordWhere } from '../common/admin-scope'
 
 interface SubmitDisputeInput {
   recordId: string
@@ -38,11 +39,7 @@ export class DisputesService {
         ? { studentId: user.id }
         : user.role === 'teacher'
           ? { session: { teacherId: user.id } }
-          : user.scope === 'institution'
-            ? {}
-            : user.department
-              ? { session: { section: { teacher: { department: user.department } } } }
-              : { id: { in: [] } }),
+          : adminRecordWhere(user)),
     }
     if (status === 'pending') {
       where.status = 'disputed'

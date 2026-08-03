@@ -7,6 +7,7 @@ import { formatCampusDate, type AttendanceRecord, type AttendanceStatus, type Se
 import { generateStudentCalendarEvents } from '@polycheck/shared/utils'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
+import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import {
   AttendanceStatusPill,
@@ -95,7 +96,7 @@ export default function DashboardScreen() {
   if (!student) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark">
-        <ActivityIndicator size="large" color="#7B1113" />
+        <ActivityIndicator size="large" color={pupColors.maroon} />
       </SafeAreaView>
     )
   }
@@ -106,7 +107,7 @@ export default function DashboardScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID="student-dashboard-screen">
       <CampusHeader
         eyebrow={greeting()}
         title={student.fullName.split(' ')[0]}
@@ -114,7 +115,7 @@ export default function DashboardScreen() {
         actions={(
           <>
             <CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />
-            <CampusIconButton icon="logout" label="Sign out" onPress={signOut} inverse />
+            <CampusIconButton icon="logout" label="Sign out" onPress={signOut} inverse testID="student-sign-out" />
           </>
         )}
       />
@@ -122,7 +123,7 @@ export default function DashboardScreen() {
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={isDark ? '#FFDF00' : '#7B1113'} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={isDark ? pupColors.golden : pupColors.maroon} />}
       >
         {/* Credential Card */}
         <CampusCard className="mb-4 bg-white dark:bg-surface-dark border-l-4 border-l-golden rounded-none">
@@ -133,7 +134,7 @@ export default function DashboardScreen() {
               <Text className="mt-0.5 font-sans text-xs text-muted dark:text-zinc-400">Verified PUP Account</Text>
             </View>
             <View className="h-11 w-11 items-center justify-center rounded-none bg-maroon/5 dark:bg-golden/10 border border-maroon/10 dark:border-golden/20">
-              <MaterialIcons name="verified-user" size={22} color={isDark ? '#FFDF00' : '#7B1113'} />
+              <MaterialIcons name="verified-user" size={22} color={isDark ? pupColors.golden : pupColors.maroon} />
             </View>
           </View>
           <CampusButton
@@ -212,7 +213,7 @@ export default function DashboardScreen() {
           })}
         </View>
 
-        <CampusButton label="Enroll in a class" icon="add" onPress={() => router.push('/(tabs)/enroll')} className="mb-8" />
+        <CampusButton label="Enroll in a class" icon="add" onPress={() => router.push('/(tabs)/enroll')} className="mb-8" testID="student-enroll-open" />
 
         <SectionHeading eyebrow="Enrolled" title="My Classes" />
         <View className="gap-3">
@@ -233,7 +234,7 @@ export default function DashboardScreen() {
               >
                 <View className="flex-row items-start gap-4">
                   <View className="h-10 w-10 items-center justify-center rounded-none bg-maroon/5 dark:bg-golden/10 border border-maroon/10 dark:border-golden/20">
-                    <MaterialIcons name="menu-book" size={20} color={isDark ? '#FFDF00' : '#7B1113'} />
+                    <MaterialIcons name="menu-book" size={20} color={isDark ? pupColors.golden : pupColors.maroon} />
                   </View>
                   <View className="flex-1">
                     <Text className="font-sans-bold text-base text-ink dark:text-white">{parent?.name ?? 'Class'}</Text>

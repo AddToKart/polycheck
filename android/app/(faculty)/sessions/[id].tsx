@@ -7,8 +7,10 @@ import * as Clipboard from 'expo-clipboard'
 import QRCode from 'react-native-qrcode-svg'
 import type { AttendanceRecord, AttendanceStatus, ProofOfClass, Session, Student, User } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
+import { useAuthGate } from '../../../hooks/use-auth-gate'
 import { sharePngFile } from '../../../services/file-sharing'
 import { useTheme } from '../../../theme/ThemeContext'
+import { pupColors } from '../../../theme/colors'
 import MapView, { type StudentMapPin } from '../../../components/MapView'
 import { subscribeToSession } from '../../../services/realtime'
 import { CampusHeader } from '../../../components/CampusHeader'
@@ -22,12 +24,13 @@ type QrSvgHandle = { toDataURL: (callback: (base64: string) => void) => void }
 
 const CardTitle = ({ icon, title, detail }: { icon: keyof typeof MaterialIcons.glyphMap; title: string; detail?: string }) => {
   const { isDark } = useTheme()
-  return <View className="mb-4 flex-row items-center gap-2"><View className="h-9 w-9 items-center justify-center rounded-xl bg-maroon/5 dark:bg-golden/10"><MaterialIcons name={icon} size={18} color={isDark ? '#FFDF00' : '#7B1113'} /></View><Text className="flex-1 font-sans-bold text-base text-ink dark:text-white">{title}</Text>{detail ? <Text className="font-sans-medium text-xs text-muted dark:text-zinc-400">{detail}</Text> : null}</View>
+  return <View className="mb-4 flex-row items-center gap-2"><View className="h-9 w-9 items-center justify-center rounded-xl bg-maroon/5 dark:bg-golden/10"><MaterialIcons name={icon} size={18} color={isDark ? pupColors.golden : pupColors.maroon} /></View><Text className="flex-1 font-sans-bold text-base text-ink dark:text-white">{title}</Text>{detail ? <Text className="font-sans-medium text-xs text-muted dark:text-zinc-400">{detail}</Text> : null}</View>
 }
 
 export default function SessionDetailScreen() {
   const { isDark, toggle } = useTheme()
   const { id } = useLocalSearchParams<{ id: string }>()
+  const currentUser = useAuthGate(['teacher', 'super_admin'])
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [records, setRecords] = useState<AttendanceRecord[]>([])
@@ -63,8 +66,7 @@ export default function SessionDetailScreen() {
   }, [id])
 
   useEffect(() => {
-    const currentUser = api.getCurrentUser()
-    if (!currentUser) { router.replace('/'); return }
+    if (!currentUser) return
     setUser(currentUser)
     if (!id) return
     void api.getSession(id).then(async (nextSession) => {
@@ -74,7 +76,7 @@ export default function SessionDetailScreen() {
       setEnrolledStudents(students.map(({ attendance: _attendance, ...student }) => student))
       await refreshData()
     }).catch(() => router.replace('/'))
-  }, [id, refreshData])
+  }, [id, currentUser, refreshData])
 
   useEffect(() => {
     if (!session?.isActive || !session.qrTokenExpiresAt) { if (intervalRef.current) clearInterval(intervalRef.current); return }
@@ -192,7 +194,7 @@ export default function SessionDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0B0B0E' : '#F7F6F6' }}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
       <CampusHeader
         eyebrow="Live attendance"
         title={session.subjectName}
@@ -206,8 +208,8 @@ export default function SessionDetailScreen() {
         )}
       />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 12 }} showsVerticalScrollIndicator={false}>
-      {isTeacher ? <CampusCard className="mb-5 items-center overflow-hidden bg-maroon dark:bg-[#2A0E11]">
-        <View className="mb-4 w-full flex-row items-center"><View className="h-9 w-9 items-center justify-center rounded-xl bg-white/10"><MaterialIcons name="qr-code-2" size={19} color="#FFDF00" /></View><View className="ml-3 flex-1"><Text className="font-sans-bold text-base text-white">Session QR</Text><Text className="mt-1 font-sans text-xs text-white/60">Students scan this code inside the geofence.</Text></View></View>
+      {isTeacher ? <CampusCard className="mb-5 items-center overflow-hidden bg-maroon dark:bg-maroon-deep">
+        <View className="mb-4 w-full flex-row items-center"><View className="h-9 w-9 items-center justify-center rounded-xl bg-white/10"><MaterialIcons name="qr-code-2" size={19} color={pupColors.golden} /></View><View className="ml-3 flex-1"><Text className="font-sans-bold text-base text-white">Session QR</Text><Text className="mt-1 font-sans text-xs text-white/60">Students scan this code inside the geofence.</Text></View></View>
         {session.qrToken ? <>
           <Pressable accessibilityRole="button" accessibilityLabel="Open QR code full screen" onPress={() => setShowQrModal(true)} className="rounded-[26px] bg-white p-3"><QRCode value={session.qrToken} size={160} quietZone={6} backgroundColor="#FFFFFF" color="#0A0A0A" getRef={(ref: QrSvgHandle | null) => { qrCodeRef.current = ref }} /></Pressable>
           <Text accessibilityLiveRegion="polite" className="mt-4 font-sans-bold text-sm text-golden">{countdown === 'Grace ended' ? 'Grace period ended' : countdown.includes('Grace') ? countdown : countdown ? `Expires in ${countdown}` : 'Active'}</Text>
@@ -276,11 +278,11 @@ export default function SessionDetailScreen() {
 
     <Modal visible={isTeacher && showValidityPrompt} transparent animationType="slide" onRequestClose={() => setShowValidityPrompt(false)}>
       <Pressable className="flex-1 justify-end bg-black/80" onPress={() => setShowValidityPrompt(false)}>
-        <Pressable onPress={() => undefined} className="rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-[#161214]">
+        <Pressable onPress={() => undefined} className="rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-surface-dark">
           <View className="mb-4 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
           <View className="mb-5 flex-row items-start gap-4">
             <View className="h-12 w-12 items-center justify-center rounded-2xl bg-golden">
-              <MaterialIcons name="timer" size={23} color="#4A0A0B" />
+              <MaterialIcons name="timer" size={23} color={pupColors.maroonDark} />
             </View>
             <View className="flex-1">
               <Text className="font-heading text-2xl text-ink dark:text-white">QR settings</Text>

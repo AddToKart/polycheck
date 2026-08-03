@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
+import { assertSectionInAdminScope } from '../common/admin-scope'
 
 interface PermissionInput {
   sectionId: string
@@ -92,12 +93,7 @@ export class SessionPermissionsService {
   }
 
   private async inAdminScope(user: RequestUser, sectionId: string) {
-    if (user.scope === 'institution') return
-    const section = await this.prisma.section.findFirst({
-      where: { id: sectionId, teacher: { department: user.department ?? '__no_department__' } },
-      select: { id: true },
-    })
-    if (!section) throw new ForbiddenException('This section is outside your administrative scope')
+    await assertSectionInAdminScope(user, sectionId, this.prisma, 'This section')
   }
 }
 

@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { SectionRoleType } from '../prisma/client'
+import { adminDepartmentSectionIds, assertSectionInAdminScope } from '../common/admin-scope'
 
 interface AssignRoleInput {
   sectionId: string
@@ -26,8 +27,8 @@ export class SectionRolesService {
       return roles.filter((role) => ids.includes(role.sectionId))
     }
     if (user.role === 'super_admin' && user.scope !== 'institution') {
-      const ids = await this.departmentSectionIds(user.department)
-      return roles.filter((role) => ids.includes(role.sectionId))
+      const ids = await adminDepartmentSectionIds(user, this.prisma)
+      return ids === null ? roles : roles.filter((role) => ids.includes(role.sectionId))
     }
     return roles
   }
@@ -74,13 +75,8 @@ export class SectionRolesService {
 
   private async canAccess(user: RequestUser, sectionId: string) {
     if (user.role === 'super_admin') {
-      if (user.scope === 'institution') return
-      const allowed = await this.prisma.section.findFirst({
-        where: { id: sectionId, teacher: { department: user.department ?? '__no_department__' } },
-        select: { id: true },
-      })
-      if (allowed) return
-      throw new ForbiddenException('This section is outside your administrative scope')
+      await assertSectionInAdminScope(user, sectionId, this.prisma, 'This section')
+      return
     }
     if (user.role === 'teacher') return this.owns(user.id, sectionId)
     const e = await this.prisma.enrollment.findUnique({
@@ -91,13 +87,6 @@ export class SectionRolesService {
 
   private async ownedSectionIds(id: string) {
     return (await this.prisma.section.findMany({ where: { teacherId: id }, select: { id: true } })).map((s) => s.id)
-  }
-
-  private async departmentSectionIds(department?: string | null) {
-    if (!department) return []
-    return (await this.prisma.section.findMany({ where: { teacher: { department } }, select: { id: true } })).map(
-      (section) => section.id,
-    )
   }
 }
 

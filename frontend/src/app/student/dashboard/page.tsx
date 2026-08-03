@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { api } from '@/lib/api-client'
+import { pupColors } from '@/lib/colors'
 import type { Student, Section, AttendanceRecord, AttendanceStatus, StudentDisputeReason, Subject, Session, CalendarEvent } from '@polycheck/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -278,7 +279,7 @@ const ATTENDANCE_PAGE_SIZE = 8
                 {/* Digital ID Card */}
                 <Card className="lg:col-span-1 lg:sticky lg:top-8 rounded-none border-zinc-300 dark:border-zinc-800 shadow-none overflow-hidden flex flex-col relative bg-zinc-50 dark:bg-zinc-900/50">
                   <div className="h-24 bg-maroon flex items-center justify-center relative overflow-hidden">
-                    <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at center, #FFDF00 2px, transparent 2px)', backgroundSize: '16px 16px' }}></div>
+                    <div className="absolute inset-0 opacity-10" style={{ backgroundImage: `radial-gradient(circle at center, ${pupColors.golden} 2px, transparent 2px)`, backgroundSize: '16px 16px' }}></div>
                     <Image src="/pup-logo.png" width={64} height={64} alt="PUP Logo" className="w-16 h-16 absolute right-4 bottom-4 opacity-20 filter grayscale contrast-200" />
                   </div>
                   <div className="absolute top-12 left-6 w-24 h-24 bg-zinc-200 dark:bg-zinc-800 border-4 border-background flex items-center justify-center overflow-hidden">
