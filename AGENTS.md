@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Polycheck is a unified web and mobile attendance management system for the Polytechnic University of the Philippines (PUP). It digitizes attendance through QR code scanning, geolocation verification, and biometric confirmation. It is built as an offline-first system, working fully without internet and syncing to the cloud when connectivity is available.
+Polycheck is a unified web and mobile attendance management system for the Polytechnic University of the Philippines (PUP). It digitizes attendance through QR code scanning and geolocation verification. It is built as an offline-first system, working fully without internet and syncing to the cloud when connectivity is available.
 
 **System name:** Polycheck
 **Roles:** Super Admin, Admin (Teacher/Instructor), Student
@@ -140,7 +140,7 @@ Primary interface is the mobile app, with a web dashboard for schedule and subje
 | Cheat Scenario | v1 Solution | v2 Solution |
 |---|---|---|
 | Sending QR to absent friend | Short expiry + geolocation check + server re-validation | — |
-| Logging into absent student's account | Single active session per account (Better Auth) | Device binding + biometric gate |
+| Logging into absent student's account | Single active session per account (Better Auth) | Optional device binding |
 | GPS spoofing | Coordinate plausibility monitoring | SafetyNet / DeviceCheck attestation |
 | Screenshot replay of QR | Signed `issuedAt` + server expiry check + reject-on-duplicate | — |
 
@@ -239,7 +239,6 @@ For real-time updates and low-latency validation during peak attendance check-in
 
 ## v1 Exclusions (Future)
 - Device binding via fingerprint
-- Biometric gate before QR scanning
 - OS-level attestation (SafetyNet / DeviceCheck)
 - SIS integration
 - Auto excuse / leave request workflows

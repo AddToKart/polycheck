@@ -8,7 +8,7 @@ Document type: System Planning Document — Non-Technical Reference
 
 ## Overview
 
-Polycheck is a unified web and mobile attendance management system designed to replace the current written class monitoring forms used at PUP. The system digitizes attendance through QR code scanning, geolocation verification, and biometric confirmation, making proxy attendance and identity fraud effectively impossible. It is built as an offline-first system, meaning it works fully without internet and syncs all data to the cloud automatically whenever a connection becomes available. It serves three distinct user roles — Super Admin, Admin (Teacher/Instructor), and Student — each with a scoped set of responsibilities and access.
+Polycheck is a unified web and mobile attendance management system designed to replace the current written class monitoring forms used at PUP. The system digitizes attendance through QR code scanning and geolocation verification, improving attendance integrity and auditability without requiring specialized phone hardware. It is built as an offline-first system, meaning it works fully without internet and syncs all data to the cloud automatically whenever a connection becomes available. It serves three distinct user roles — Super Admin, Admin (Teacher/Instructor), and Student — each with a scoped set of responsibilities and access.
 
 ---
 
@@ -42,7 +42,7 @@ Each class session requires the teacher to generate a fresh QR code directly in 
 When a teacher creates a session, they configure a geofence — a circular area defined by GPS coordinates and a radius (typically 30 to 50 meters centered on the classroom). This geofence is stored locally on the teacher's device and pre-synced to enrolled students' devices so it is available without internet. When a student submits a QR scan, the app performs the Haversine distance calculation locally on the device using the cached geofence data. If the student's current GPS coordinates fall outside the defined radius, the check-in is rejected immediately and the student is informed they are outside the allowed area. The GPS coordinates, outcome, and timestamp are all recorded locally and included in the sync payload when connectivity returns. Upon sync, the server re-validates all submitted coordinates against the stored geofence as a secondary check to catch any local tampering.
 
 ### Digital Student ID
-Every student account has a digital ID card embedded in the mobile app. It displays the student's full name, student number, program, year level, and a profile photo. The ID is tied to the verified account and cannot be transferred or screenshotted for use by another person since its QR scanner and biometric gate are bound to the device it is installed on. The digital ID also serves as a quick reference for teachers doing manual verification if needed.
+Every student account has a digital ID card embedded in the mobile app. It displays the student's full name, student number, program, year level, and a profile photo. The ID is tied to the verified account, and the student interface uses screen-capture protection where supported to discourage copying. The digital ID also serves as a quick reference for teachers doing manual verification if needed.
 
 ### Subject and Schedule Management
 Teachers create subjects within the system, defining the subject name, section, room, schedule (days and time), and semester. Students are enrolled into subjects either by the teacher manually or through a system-generated enrollment code.
@@ -56,7 +56,7 @@ Every check-in, whether successful or denied, is logged with a timestamp, GPS co
 
 ## Anti-Cheat System
 
-This is the most critical part of the system design. The v1 anti-cheat stack is deliberately scoped to the layers that provide the most protection for the least implementation complexity. Device binding and biometric gate are documented as v2 features — they add meaningful protection but would significantly increase v1 scope.
+This is the most critical part of the system design. The v1 anti-cheat stack is deliberately scoped to the layers that provide the most protection for the least implementation complexity. Hardware-backed device binding is deferred while the v1 stack is proven stable; students without compatible phones must remain supported through teacher-assisted manual attendance.
 
 The v1 anti-cheat stack consists of: server-signed token expiry, server-side geofence re-validation on sync, reject-on-duplicate conflict resolution, and single active session per account. Together these cover all common cheat vectors without overbuilding the first version.
 
@@ -70,7 +70,7 @@ A present student logs into their absent classmate's account on their own phone 
 
 **Solution — Single Active Session per Account (v1):** Better Auth enforces that a user account can only have one active verified session at a time. If student B's credentials are used to log in from a new device, student B is immediately logged out of their existing session and receives a security alert. This makes credential sharing immediately visible and disruptive to the legitimate account holder.
 
-**Solution — Device Binding and Biometric Gate (v2):** In v2, the app will permanently bind a student account to a specific device on first login using a device fingerprint. Every scan submission will include this fingerprint as part of the signed payload, and the server will reject any scan where the submitting device does not match the account's registered device. Additionally, a biometric authentication gate (Face ID or fingerprint) will be required before the QR scanner opens, confirming the physical person holding the phone is the registered account holder. These two layers make the account-sharing attack essentially impossible even if the single-session enforcement is somehow bypassed.
+**Possible future solution — Device Binding:** If account sharing becomes a demonstrated problem, a future release may bind a student account to a registered installation or device. Any such control must include an accessible teacher-assisted recovery and manual-attendance process for students who replace, share, borrow, or do not own a compatible phone.
 
 ### Cheat Scenario 3 — GPS Spoofing
 A technically advanced student uses a mock location app to fake their coordinates as being inside the classroom.
@@ -92,7 +92,7 @@ A student saves a QR code from a previous session and tries to use it in a futur
 The web dashboard is built with Next.js and serves the Teacher, Super Admin, and Student interfaces. Teachers use it to create subjects, configure sessions, generate QR codes, and review attendance. Super Admins use it for user management, reporting, and system configuration. Students can view their schedule, subjects, attendance history, and submit disputes. The web dashboard shares the same design system, type definitions, and API client logic as the mobile app through a monorepo structure.
 
 ### Mobile App
-The mobile app is built with React Native using the Expo framework. It is the primary interface for students and is also available to teachers who prefer to generate and display QR codes from their phone. Expo provides access to native device capabilities required by the system — GPS via expo-location, camera and QR scanning via expo-camera, and biometric authentication via expo-local-authentication. The app targets both iOS and Android.
+The mobile app is built with React Native using the Expo framework. It is the primary interface for students and is also available to teachers who prefer to generate and display QR codes from their phone. Expo provides access to the native device capabilities required by the system — GPS via expo-location and camera and QR scanning via expo-camera. The app targets both iOS and Android.
 
 ### Backend API
 The backend is built with NestJS running on Node.js. NestJS is chosen for its module-based architecture, which maps cleanly to the system's distinct functional areas: authentication and session management, QR token generation and validation, geolocation validation, attendance recording, subject and schedule management, and reporting. Each module is independently testable and maintainable. The API is RESTful with Better Auth sessions: web clients use an HttpOnly cookie and mobile clients use a signed bearer session token stored in the platform keystore.
@@ -221,7 +221,7 @@ GPS coordinates submitted during check-in are stored for audit and anomaly detec
 
 ## System Boundaries and Exclusions (v1)
 
-The following are explicitly out of scope for v1 and documented as v2 features: device binding via device fingerprint, biometric gate before QR scanning, OS-level device integrity attestation (Android SafetyNet and Apple DeviceCheck). These are the next anti-cheat layers after the v1 stack is proven stable.
+The following are explicitly out of scope for v1: hardware-backed device binding and OS-level device integrity attestation. Device binding is only a possible future option and must not prevent teacher-assisted attendance for students without compatible phones.
 
 Also out of scope for v1: integration with PUP's existing student information system, automated class excuse or leave request workflows, and push notification infrastructure for schedule reminders. These are noted for future planning but will not be built in v1.
 
