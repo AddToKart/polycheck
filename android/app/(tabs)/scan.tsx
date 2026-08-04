@@ -27,6 +27,7 @@ import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusIconButton } from '../../components/CampusPrimitives'
+import { getOrCreateInstallationId } from '../../services/device-id'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
 const scanSize = Math.min(SCREEN_WIDTH * 0.82, 340)
@@ -155,13 +156,14 @@ export default function ScanScreen() {
         const scannedAt = await api.getTrustedTimestamp()
         const locationAgeMs = Math.max(0, Date.now() - location.timestamp)
         const locationCapturedAt = new Date(new Date(scannedAt).getTime() - locationAgeMs).toISOString()
+        const deviceId = await getOrCreateInstallationId()
         const submitted = await api.submitScan(
           session.id,
           user.id,
           user.fullName,
           location.coords.latitude,
           location.coords.longitude,
-          'device-mobile',
+          deviceId,
           token,
           scannedAt,
           {
@@ -409,7 +411,7 @@ export default function ScanScreen() {
           </View>
         )}
 
-        <View style={{ flexDirection: 'row', gap: 12 }}>
+        {allowQrFallbacks ? <View style={{ flexDirection: 'row', gap: 12 }}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Choose a QR image"
@@ -459,11 +461,11 @@ export default function ScanScreen() {
             <MaterialIcons name="keyboard" size={18} color={pupColors.golden} />
             <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.2, color: '#FFFFFF' }}>Enter Code</Text>
           </Pressable>
-        </View>
+        </View> : null}
       </View>
 
       {/* Manual Entry Fallback Modal */}
-      <Modal visible={showManual} transparent animationType="fade" onRequestClose={() => setShowManual(false)}>
+      <Modal visible={allowQrFallbacks && showManual} transparent animationType="fade" onRequestClose={() => setShowManual(false)}>
         <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0, 0, 0, 0.80)', padding: 20 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View className="border border-t-4 border-t-golden border-zinc-200 bg-white p-5 dark:border-white/20 dark:bg-surface-dark">
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>

@@ -31,6 +31,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter'
 import { ObservabilityModule } from './observability/observability.module'
 import { HttpMetricsInterceptor } from './observability/http-metrics.interceptor'
 import { DistributedRateLimitGuard } from './common/guards/distributed-rate-limit.guard'
+import { PrivacyConsentGuard } from './common/guards/privacy-consent.guard'
 
 @Module({
   imports: [
@@ -88,6 +89,10 @@ import { DistributedRateLimitGuard } from './common/guards/distributed-rate-limi
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PrivacyConsentGuard,
     },
     {
       provide: APP_FILTER,

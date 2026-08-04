@@ -10,12 +10,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "edu.pup.polycheck",
+      "buildNumber": "1",
       "infoPlist": {
         "NSCameraUsageDescription": "Camera is used to scan QR codes for attendance check-in.",
         "NSLocationWhenInUseUsageDescription": "Location is used to verify you are inside the classroom."
       }
     },
     "android": {
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#7B1113",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -48,7 +50,8 @@
           "cameraPermission": "Camera is used to capture proof-of-class photos during active sessions.",
           "photosPermission": "Photo access is used to select proof-of-class images."
         }
-      ]
+      ],
+      "@sentry/react-native/expo"
     ]
   }
 }

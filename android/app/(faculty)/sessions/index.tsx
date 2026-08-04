@@ -72,6 +72,7 @@ export default function FacultySessionsScreen() {
                 return (
                   <CampusCard
                     key={session.id}
+                    testID={`session-card-${session.id}`}
                     onPress={() => router.push(`/(faculty)/sessions/${session.id}`)}
                     accessibilityLabel={`Open session on ${session.date}`}
                     className="p-4"

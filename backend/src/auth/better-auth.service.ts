@@ -27,6 +27,8 @@ interface BetterAuthRuntime {
         studentId: string | null
         isActive: boolean
         authVersion: number
+        privacyConsentVersion: string | null
+        privacyConsentedAt: Date | null
       }
     } | null>
   }
@@ -102,6 +104,8 @@ export class BetterAuthService implements OnModuleInit {
           studentId: { type: 'string', input: false, returned: true },
           isActive: { type: 'boolean', input: false, returned: true },
           authVersion: { type: 'number', input: false, returned: true },
+          privacyConsentVersion: { type: 'string', input: false, returned: true },
+          privacyConsentedAt: { type: 'date', input: false, returned: true },
         },
       },
       account: { modelName: 'AuthAccount' },

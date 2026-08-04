@@ -7,6 +7,7 @@ describe('MaintenanceService', () => {
         findMany: jest.fn().mockResolvedValue([{ id: 'attempt-1' }, { id: 'attempt-2' }]),
         deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
       },
+      auditLog: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
     }
     const permissions = { expireStale: jest.fn().mockResolvedValue(3) }
     const redis = {
@@ -17,9 +18,10 @@ describe('MaintenanceService', () => {
 
     await service.expireStalePermissions()
     await service.pruneScanAttempts()
+    await service.pruneAuditLogs()
 
     expect(permissions.expireStale).toHaveBeenCalledTimes(1)
-    expect(redis.releaseLock).toHaveBeenCalledTimes(2)
+    expect(redis.releaseLock).toHaveBeenCalledTimes(3)
     const findWhere = prisma.scanAttempt.findMany.mock.calls[0][0].where
     const cutoff = findWhere.createdAt.lt as Date
     expect(Date.now() - cutoff.getTime()).toBeGreaterThanOrEqual(89 * 24 * 60 * 60 * 1000)
@@ -49,6 +51,32 @@ describe('MaintenanceService', () => {
     expect(prisma.scanAttempt.findMany).toHaveBeenCalledTimes(2)
     expect(prisma.scanAttempt.findMany.mock.calls[0][0].take).toBe(1000)
     expect(prisma.scanAttempt.deleteMany).toHaveBeenCalledTimes(2)
+  })
+
+  it('prunes audit logs in bounded batches using the configured retention window', async () => {
+    const firstBatch = Array.from({ length: 1000 }, (_, index) => ({ id: `audit-${index}` }))
+    const prisma = {
+      auditLog: {
+        findMany: jest.fn().mockResolvedValueOnce(firstBatch).mockResolvedValueOnce([{ id: 'audit-last' }]),
+        deleteMany: jest.fn().mockResolvedValueOnce({ count: 1000 }).mockResolvedValueOnce({ count: 1 }),
+      },
+    }
+    const redis = { acquireLock: jest.fn().mockResolvedValue('owner-token'), releaseLock: jest.fn() }
+    const config = { get: jest.fn().mockReturnValue(365) }
+    const service = new MaintenanceService(
+      prisma as never,
+      { expireStale: jest.fn() } as never,
+      redis as never,
+      config as never,
+    )
+
+    await service.pruneAuditLogs()
+
+    expect(prisma.auditLog.findMany).toHaveBeenCalledTimes(2)
+    expect(prisma.auditLog.findMany.mock.calls[0][0].take).toBe(1000)
+    expect(prisma.auditLog.deleteMany).toHaveBeenCalledTimes(2)
+    const cutoff = prisma.auditLog.findMany.mock.calls[0][0].where.createdAt.lt as Date
+    expect(Date.now() - cutoff.getTime()).toBeGreaterThanOrEqual(364 * 24 * 60 * 60 * 1000)
   })
 
   it('contains maintenance failures so cron execution remains healthy', async () => {

@@ -15,6 +15,7 @@ import type { User } from '../prisma/client'
 import { BetterAuthService } from './better-auth.service'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { DUMMY_PASSWORD_HASH } from './password-policy'
+import { ConfigService } from '@nestjs/config'
 
 // Login rate limits are env-tunable so strict production values can be relaxed for
 // local development and E2E automation. Defaults: 10 attempts/identity/min, 30/IP/min.
@@ -52,6 +53,8 @@ export interface AuthResult {
     isActive: boolean
     createdAt: Date
     updatedAt: Date
+    privacyConsentVersion?: string | null
+    privacyConsentedAt?: Date | null
   }
 }
 
@@ -64,7 +67,29 @@ export class AuthService {
     private redis: RedisService,
     private betterAuth: BetterAuthService,
     private events: EventEmitter2,
+    private config: ConfigService,
   ) {}
+
+  privacyNotice() {
+    return {
+      version: this.config.getOrThrow<string>('PRIVACY_NOTICE_VERSION'),
+      url: this.config.getOrThrow<string>('PRIVACY_NOTICE_URL'),
+      summary:
+        'Polycheck stores attendance time, classroom location evidence, device installation identity, and scan risk signals to verify attendance and investigate disputes. Access is role-scoped, and retention is limited by institutional policy.',
+    }
+  }
+
+  async acceptPrivacyConsent(userId: string, version: string) {
+    const notice = this.privacyNotice()
+    if (version !== notice.version) {
+      throw new ForbiddenException('The current privacy notice must be accepted')
+    }
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { privacyConsentVersion: notice.version, privacyConsentedAt: new Date() },
+    })
+    return this.sanitizeUser(user)
+  }
 
   async loginStudent(
     studentId: string,
@@ -244,6 +269,8 @@ export class AuthService {
       photoUrl: user.photoUrl,
       scope: user.scope,
       isActive: user.isActive,
+      privacyConsentVersion: user.privacyConsentVersion,
+      privacyConsentedAt: user.privacyConsentedAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     }

@@ -72,6 +72,12 @@ export interface ScanEvidenceInput {
   inputChannel: ScanInputChannel
 }
 
+export interface PrivacyNotice {
+  version: string
+  url: string
+  summary: string
+}
+
 export interface DisputeInput {
   recordId: string
   reason: StudentDisputeReason
@@ -185,6 +191,8 @@ export interface DashboardOverview {
 }
 
 export interface ApiClient {
+  getPrivacyNotice(): Promise<PrivacyNotice>
+  acceptPrivacyConsent(version: string): Promise<User>
   loginStudent(studentId: string, password?: string): Promise<User | null>
   loginFaculty(email: string, password?: string): Promise<User | null>
   logout(): Promise<void>

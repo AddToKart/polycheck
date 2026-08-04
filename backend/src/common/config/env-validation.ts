@@ -30,6 +30,10 @@ export const envSchema = z
     S3_ACCESS_KEY_ID: z.string().min(1).optional().or(z.literal('')),
     S3_SECRET_ACCESS_KEY: z.string().min(1).optional().or(z.literal('')),
     S3_FORCE_PATH_STYLE: booleanValue.default(false),
+    PRIVACY_NOTICE_VERSION: z.string().min(1).max(64).default('2026-08-04'),
+    PRIVACY_NOTICE_URL: z.string().url().default('http://localhost:3000/privacy'),
+    AUDIT_LOG_RETENTION_DAYS: z.coerce.number().int().min(365).max(3650).default(2555),
+    DENIED_SCAN_RETENTION_DAYS: z.coerce.number().int().min(30).max(365).default(90),
   })
   .superRefine((env, ctx) => {
     const productionOrigins = env.CORS_ORIGINS.split(',')
@@ -136,6 +140,13 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['S3_ACCESS_KEY_ID'],
         message: 'S3 access key ID and secret access key must be configured together',
+      })
+    }
+    if (env.NODE_ENV === 'production' && !env.PRIVACY_NOTICE_URL.startsWith('https://')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PRIVACY_NOTICE_URL'],
+        message: 'PRIVACY_NOTICE_URL must use HTTPS in production',
       })
     }
   })

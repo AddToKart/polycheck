@@ -8,6 +8,7 @@ import { AuthService } from './auth.service'
 import { BetterAuthService } from './better-auth.service'
 import type { User } from '../prisma/client'
 import { DUMMY_PASSWORD_HASH, PASSWORD_HASH_COST } from './password-policy'
+import { ConfigService } from '@nestjs/config'
 
 const VALID_PASSWORD = 'correct-horse-battery-staple'
 const VALID_HASH = hashSync(VALID_PASSWORD, 10)
@@ -87,6 +88,14 @@ describe('AuthService', () => {
         { provide: RedisService, useValue: redis },
         { provide: BetterAuthService, useValue: betterAuth },
         { provide: EventEmitter2, useValue: events },
+        {
+          provide: ConfigService,
+          useValue: {
+            getOrThrow: jest.fn((key: string) =>
+              key === 'PRIVACY_NOTICE_VERSION' ? '2026-08-04' : 'https://polycheck.test/privacy',
+            ),
+          },
+        },
       ],
     }).compile()
 
@@ -203,6 +212,40 @@ describe('AuthService', () => {
     it('throws NotFoundException when user missing', async () => {
       prisma.user.findUnique.mockResolvedValue(null)
       await expect(service.getProfile('missing')).rejects.toThrow(NotFoundException)
+    })
+  })
+
+  describe('privacy consent', () => {
+    it('returns the configured public notice without authentication state', () => {
+      expect(service.privacyNotice()).toEqual({
+        version: '2026-08-04',
+        url: 'https://polycheck.test/privacy',
+        summary: expect.stringContaining('attendance time'),
+      })
+    })
+
+    it('records acceptance of exactly the current notice version', async () => {
+      const accepted = buildUser({
+        privacyConsentVersion: '2026-08-04',
+        privacyConsentedAt: new Date('2026-08-04T12:00:00Z'),
+      })
+      prisma.user.update.mockResolvedValue(accepted)
+
+      const result = await service.acceptPrivacyConsent('user-1', '2026-08-04')
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: {
+          privacyConsentVersion: '2026-08-04',
+          privacyConsentedAt: expect.any(Date),
+        },
+      })
+      expect(result.privacyConsentVersion).toBe('2026-08-04')
+    })
+
+    it('rejects stale or invented notice versions without writing', async () => {
+      await expect(service.acceptPrivacyConsent('user-1', '2026-01-01')).rejects.toThrow(ForbiddenException)
+      expect(prisma.user.update).not.toHaveBeenCalled()
     })
   })
 

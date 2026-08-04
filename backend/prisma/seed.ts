@@ -20,6 +20,8 @@ async function main() {
     throw new Error('SEED_PASSWORD must be set to at least 12 characters')
   }
   const password = await hash(seedPassword, 12)
+  const privacyConsentVersion = process.env.PRIVACY_NOTICE_VERSION ?? '2026-08-04'
+  const privacyConsentedAt = new Date()
 
   // ── Users ──
   const users = [
@@ -131,7 +133,8 @@ async function main() {
   ]
 
   for (const user of users) {
-    const { password: _password, ...profile } = user
+    const { password: _password, ...baseProfile } = user
+    const profile = { ...baseProfile, privacyConsentVersion, privacyConsentedAt }
     const authEmail = `u-${user.id}@auth.polycheck.invalid`
     // Refresh stored credentials only when they do not already match the current
     // seed password: re-seeding with the same SEED_PASSWORD stays a no-op, while a
@@ -146,7 +149,7 @@ async function main() {
     await prisma.user.upsert({
       where: { id: user.id },
       update: needsPasswordRefresh ? { ...profile, password, authEmail } : { ...profile, authEmail },
-      create: { ...user, authEmail },
+      create: { ...user, authEmail, privacyConsentVersion, privacyConsentedAt },
     })
     await prisma.authAccount.upsert({
       where: { providerId_accountId: { providerId: 'credential', accountId: user.id } },

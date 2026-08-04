@@ -11,15 +11,28 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 COPY shared shared
 COPY frontend frontend
 ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_ALLOW_QR_FALLBACKS=false
+ARG NEXT_PUBLIC_PRIVACY_NOTICE_VERSION
+ARG NEXT_PUBLIC_SENTRY_DSN
+ARG SENTRY_ORG
+ARG SENTRY_PROJECT
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-RUN pnpm --filter @polycheck/shared build && pnpm --dir frontend build
+ENV NEXT_PUBLIC_ALLOW_QR_FALLBACKS=$NEXT_PUBLIC_ALLOW_QR_FALLBACKS
+ENV NEXT_PUBLIC_PRIVACY_NOTICE_VERSION=$NEXT_PUBLIC_PRIVACY_NOTICE_VERSION
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
+ENV SENTRY_ORG=$SENTRY_ORG
+ENV SENTRY_PROJECT=$SENTRY_PROJECT
+RUN --mount=type=secret,id=SENTRY_AUTH_TOKEN,env=SENTRY_AUTH_TOKEN,required=false \
+    pnpm --filter @polycheck/shared build && pnpm --dir frontend build
 
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 WORKDIR /app
-RUN addgroup -S polycheck && adduser -S polycheck -G polycheck
+RUN rm -rf /usr/local/lib/node_modules/npm /opt/yarn-* /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/yarn /usr/local/bin/yarnpkg \
+ && addgroup -S polycheck \
+ && adduser -S polycheck -G polycheck
 COPY --from=build --chown=polycheck:polycheck /app/frontend/.next/standalone ./
 COPY --from=build --chown=polycheck:polycheck /app/frontend/.next/static ./frontend/.next/static
 COPY --from=build --chown=polycheck:polycheck /app/frontend/public ./frontend/public

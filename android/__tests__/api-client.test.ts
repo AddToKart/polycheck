@@ -45,6 +45,9 @@ jest.mock('../services/signing-key', () => ({
     secretKey: 'mocked-secret-key',
   }),
 }))
+jest.mock('../services/device-id', () => ({
+  getOrCreateInstallationId: jest.fn().mockResolvedValue('mobile-test-installation'),
+}))
 jest.mock('expo-secure-store')
 jest.mock('react-native')
 
@@ -514,7 +517,7 @@ describe('api-client offline sync engine', () => {
           sessionId: 'sess-1',
           lat: 14.5995,
           lon: 120.9842,
-          deviceId: 'device-mobile',
+          deviceId: 'mobile-test-installation',
           qrToken,
           scannedAt,
         })
@@ -528,7 +531,7 @@ describe('api-client offline sync engine', () => {
         expect(result).toEqual({ success: true, status: 'late', message: 'Late check-in saved offline and queued for sync.' })
         expect(storeMock.enqueueOfflineOperation).toHaveBeenCalledWith(
           'scan_attempt',
-          expect.objectContaining({ qrToken, scannedAt, deviceId: 'device-mobile' }),
+          expect.objectContaining({ qrToken, scannedAt, deviceId: 'mobile-test-installation' }),
         )
       })
     })

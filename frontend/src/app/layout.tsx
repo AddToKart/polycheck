@@ -3,6 +3,7 @@ import "./globals.css";
 import { NotificationProvider } from "@/lib/notifications";
 import { AuthSessionMonitor } from "@/components/AuthSessionMonitor";
 import { headers } from "next/headers";
+import { PrivacyConsentGate } from "@/components/PrivacyConsentGate";
 
 export const metadata: Metadata = {
   title: "Polycheck",
@@ -47,6 +48,7 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col font-sans">
         <NotificationProvider>
           <AuthSessionMonitor />
+          <PrivacyConsentGate />
           {children}
         </NotificationProvider>
       </body>

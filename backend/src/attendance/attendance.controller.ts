@@ -10,6 +10,7 @@ import {
 } from './dto/attendance.dto'
 import { AttendanceService } from './attendance.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
+import { RequiresPrivacyConsent } from '../common/decorators/privacy-consent.decorator'
 
 @Controller('attendance')
 export class AttendanceController {
@@ -57,18 +58,21 @@ export class AttendanceController {
 
   @Post('submit')
   @Roles('student')
+  @RequiresPrivacyConsent()
   submit(@Request() req: AuthenticatedRequest, @Body() dto: SubmitAttendanceDto) {
     return this.attendance.submit(req.user, dto)
   }
 
   @Post('scan')
   @Roles('student')
+  @RequiresPrivacyConsent()
   scan(@Request() req: AuthenticatedRequest, @Body() dto: ScanAttendanceDto) {
     return this.attendance.scan(req.user, dto)
   }
 
   @Post('check')
   @Roles('student')
+  @RequiresPrivacyConsent()
   check(@Request() req: AuthenticatedRequest, @Body() dto: ScanAttendanceDto) {
     return this.attendance.check(req.user, dto)
   }

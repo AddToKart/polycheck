@@ -53,7 +53,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm audit --prod --audit-level high
+      - run: pnpm security:audit
+      - run: pnpm peers check
+      - run: pnpm --dir android exec expo install --check
       - run: pnpm --filter @polycheck/backend prisma:generate
       - run: pnpm --filter @polycheck/backend prisma:migrate:deploy
       - run: pnpm --filter @polycheck/backend format:check
@@ -131,7 +133,7 @@ jobs:
       - name: Start backend
         run: |
           node backend/dist/main.js > backend.log 2>&1 &
-          for i in $(seq 1 90); do
+          for _ in $(seq 1 90); do
             if curl -fsS http://localhost:4000/api/health/ready > /dev/null 2>&1; then
               echo "Backend ready"
               exit 0
@@ -145,7 +147,7 @@ jobs:
         run: |
           pnpm --dir frontend build
           pnpm --dir frontend start > frontend.log 2>&1 &
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl -fsS http://localhost:3000/login > /dev/null 2>&1; then
               echo "Frontend ready"
               exit 0
@@ -212,11 +214,13 @@ jobs:
       PORT: "4000"
       EXPO_PUBLIC_API_URL: http://10.0.2.2:4000/api
       EXPO_PUBLIC_ALLOW_QR_FALLBACKS: "true"
+      EXPO_PUBLIC_E2E_MODE: "true"
       LOGIN_RATE_LIMIT: "100"
       LOGIN_IP_RATE_LIMIT: "500"
       API_RATE_LIMIT: "1000"
       API_RATE_WINDOW_SECONDS: "60"
       EXPO_NO_GIT_STATUS: "1"
+      SENTRY_DISABLE_AUTO_UPLOAD: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -238,7 +242,7 @@ jobs:
       - name: Start backend
         run: |
           node backend/dist/main.js > backend.log 2>&1 &
-          for i in $(seq 1 90); do
+          for _ in $(seq 1 90); do
             if curl -fsS http://localhost:4000/api/health/ready > /dev/null 2>&1; then
               echo "Backend ready"
               exit 0
@@ -253,6 +257,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build Android E2E APK
         run: android/android/gradlew -p android/android :app:assembleDebug --no-daemon
+      - name: Validate Android release APK and 16 KiB page alignment
+        run: |
+          android/android/gradlew -p android/android :app:assembleRelease --no-daemon
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -name zipalign -type f | sort -V | tail -n 1)"
+          test -x "$ZIPALIGN"
+          "$ZIPALIGN" -c -P 16 -v 4 android/android/app/build/outputs/apk/release/app-release.apk
       - name: Install Maestro CLI
         env:
           MAESTRO_VERSION: 2.4.0
@@ -262,7 +272,7 @@ jobs:
       - name: Start Expo Metro server
         run: |
           CI=1 pnpm --dir android exec expo start --port 8081 > metro.log 2>&1 &
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl -fsS http://localhost:8081/status > /dev/null 2>&1; then
               echo "Metro ready"
               exit 0
@@ -317,6 +327,8 @@ jobs:
           FRONTEND_URL: https://polycheck.example.test
           NEXT_PUBLIC_API_URL: /api
           S3_BUCKET: compose-validation-only
+          PRIVACY_NOTICE_VERSION: 2026-08-04
+          PRIVACY_NOTICE_URL: https://polycheck.example.test/privacy
         run: |
           docker compose -f docker-compose.yml config --quiet
           docker compose -f docker-compose.yml -f deployment/docker-compose.scale.yml config --quiet
@@ -338,6 +350,9 @@ jobs:
           docker run --rm --entrypoint promtool \
             -v "$GITHUB_WORKSPACE/deployment/monitoring:/etc/prometheus:ro" \
             prom/prometheus:v3.5.0 check rules /etc/prometheus/alerts.yml
+          docker run --rm --entrypoint amtool \
+            -v "$GITHUB_WORKSPACE/deployment/monitoring/alertmanager.yml.example:/etc/alertmanager/config.yml:ro" \
+            prom/alertmanager:v0.28.1 check-config /etc/alertmanager/config.yml
       - uses: grafana/setup-k6-action@v1
       - name: Validate k6 attendance test
         run: |
@@ -360,7 +375,10 @@ jobs:
           push: false
           load: true
           tags: polycheck-frontend:ci
-          build-args: NEXT_PUBLIC_API_URL=https://api.example.test/api
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://api.example.test/api
+            NEXT_PUBLIC_ALLOW_QR_FALLBACKS=false
+            NEXT_PUBLIC_PRIVACY_NOTICE_VERSION=2026-08-04
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - uses: aquasecurity/trivy-action@0.32.0

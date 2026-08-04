@@ -12,6 +12,7 @@ import type { ScanInputChannel, Student } from '@polycheck/shared'
 import type { IScannerControls } from '@zxing/browser'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { getOrCreateWebInstallationId } from '@/lib/device-id'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 // BarcodeDetector is a W3C API — not yet in all lib typings.
@@ -30,7 +31,7 @@ declare global {
 }
 
 type InputMode = 'camera' | 'upload' | 'manual'
-const ALLOW_QR_FALLBACKS = process.env.NEXT_PUBLIC_ALLOW_QR_FALLBACKS !== 'false'
+const ALLOW_QR_FALLBACKS = process.env.NEXT_PUBLIC_ALLOW_QR_FALLBACKS === 'true'
 
 type ScanPhase =
   | 'idle'
@@ -389,7 +390,7 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
       setPhase('submitting')
       try {
         const scannedAt = new Date().toISOString()
-        const deviceId = `web-${user.id}`
+        const deviceId = getOrCreateWebInstallationId()
 
         const result = await api.submitScan(
           payload.sessionId,

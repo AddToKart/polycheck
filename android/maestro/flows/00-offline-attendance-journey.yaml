@@ -1,0 +1,103 @@
+appId: edu.pup.polycheck
+name: Signed QR offline attendance and sync journey
+tags:
+  - critical
+  - offline
+  - attendance
+env:
+  E2E_FACULTY_EMAIL: ${E2E_FACULTY_EMAIL || "jmdelacruz@pup.edu.ph"}
+  E2E_STUDENT_ID: ${E2E_STUDENT_ID || "2024-00001-MN-0"}
+  E2E_PASSWORD: ${E2E_PASSWORD || "PolycheckLocal1!"}
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+- runFlow: ../subflows/login-faculty.yaml
+- extendedWaitUntil:
+    visible:
+      id: faculty-dashboard-screen
+    timeout: 20000
+
+# The teacher activates an inactive seeded session and Maestro captures the
+# exact signed token from a test-build-only bridge (never compiled into prod).
+- tapOn:
+    id: faculty-tab-sessions
+- tapOn:
+    id: session-card-sess-003
+- tapOn:
+    id: session-generate-open
+- tapOn:
+    id: session-generate-submit
+- extendedWaitUntil:
+    visible:
+      id: session-e2e-token
+    timeout: 15000
+- copyTextFrom:
+    id: session-e2e-token
+- back
+- tapOn:
+    id: faculty-tab-dashboard
+- tapOn:
+    id: faculty-sign-out
+- extendedWaitUntil:
+    visible:
+      id: landing-screen
+    timeout: 10000
+
+# The student pre-syncs while online, then completes check-in with network
+# access disabled. The result must be queued locally instead of lost.
+- runFlow: ../subflows/login-student.yaml
+- setLocation:
+    latitude: 14.5833
+    longitude: 120.9769
+- setAirplaneMode: enabled
+- tapOn:
+    id: student-tab-scan
+- tapOn:
+    id: scan-manual-open
+- tapOn:
+    id: scan-manual-input
+- pasteText
+- hideKeyboard
+- tapOn:
+    id: scan-manual-submit
+- extendedWaitUntil:
+    visible: Check-in saved offline and queued for sync.
+    timeout: 30000
+- assertVisible: ATTENDANCE VERIFIED
+- tapOn:
+    id: scan-close
+
+# Reopening online awaits the initial sync before the dashboard is displayed.
+- setAirplaneMode: disabled
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: student-dashboard-screen
+    timeout: 30000
+- tapOn:
+    id: student-sign-out
+- extendedWaitUntil:
+    visible:
+      id: landing-screen
+    timeout: 10000
+
+# The teacher's server-backed roster proves the queued record reached the API.
+- runFlow: ../subflows/login-faculty.yaml
+- extendedWaitUntil:
+    visible:
+      id: faculty-dashboard-screen
+    timeout: 20000
+- tapOn:
+    id: faculty-tab-sessions
+- tapOn:
+    id: session-card-sess-003
+- scrollUntilVisible:
+    element:
+      id: session-roster-s-001-present
+    direction: DOWN
+    timeout: 20000
+- assertVisible:
+    id: session-roster-s-001-present

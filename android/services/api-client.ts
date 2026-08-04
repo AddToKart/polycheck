@@ -1,7 +1,8 @@
 import { Platform } from 'react-native'
-import { getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient } from '@polycheck/shared'
+import { getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice } from '@polycheck/shared'
 import { API_BASE } from './api-config'
 import { getOrCreateTeacherSigningKey } from './signing-key'
+import { getOrCreateInstallationId } from './device-id'
 import {
   cacheAttendanceRecords,
   cacheSections,
@@ -222,6 +223,18 @@ async function del<T>(path: string): Promise<T> {
 }
 
 export const api = {
+  getPrivacyNotice(): Promise<PrivacyNotice> {
+    return get('/auth/privacy-notice')
+  },
+
+  async acceptPrivacyConsent(version: string): Promise<User> {
+    const user = await post<User>('/auth/privacy-consent', { version })
+    currentUser = user
+    await saveUserToStore(user)
+    notifyAuthListeners()
+    return user
+  },
+
   async loginStudent(studentId: string, password?: string): Promise<User | null> {
     const res = await fetchWithTimeout(`${API_BASE}/auth/mobile/login/student`, {
       method: 'POST',
@@ -610,7 +623,8 @@ export const api = {
       if (!Number.isFinite(capturedAt) || capturedAt < payload.issuedAt - 30_000 || capturedAt > graceEnd) {
         return { success: false, status: 'absent', reason: 'qr_expired', message: 'The QR attendance window has expired' }
       }
-      await enqueueOfflineOperation('scan_attempt', { sessionId, lat, lon, deviceId: 'device-mobile', qrToken, scannedAt })
+      const deviceId = await getOrCreateInstallationId()
+      await enqueueOfflineOperation('scan_attempt', { sessionId, lat, lon, deviceId, qrToken, scannedAt })
       const status = capturedAt <= validityEnd ? 'present' : 'late'
       return { success: true, status, message: status === 'present' ? 'Check-in saved offline and queued for sync.' : 'Late check-in saved offline and queued for sync.' }
     }

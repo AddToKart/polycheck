@@ -12,6 +12,25 @@ x-read-only-service: &read-only-service
     - ALL
 
 services:
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    profiles: [alerting]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/config.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ${ALERTMANAGER_CONFIG_PATH:-./deployment/monitoring/alertmanager.yml.example}:/etc/alertmanager/config.yml:ro
+      - alertmanager-data:/alertmanager
+    networks:
+      - monitoring
+    <<: *read-only-service
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid,nodev
+    mem_limit: ${ALERTMANAGER_MEMORY_LIMIT:-256m}
+    cpus: ${ALERTMANAGER_CPU_LIMIT:-0.25}
+    pids_limit: 128
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -152,6 +171,10 @@ services:
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+      PRIVACY_NOTICE_VERSION: ${PRIVACY_NOTICE_VERSION:?PRIVACY_NOTICE_VERSION is required}
+      PRIVACY_NOTICE_URL: ${PRIVACY_NOTICE_URL:?PRIVACY_NOTICE_URL is required}
+      AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-2555}
+      DENIED_SCAN_RETENTION_DAYS: ${DENIED_SCAN_RETENTION_DAYS:-90}
     networks:
       - edge
       - data
@@ -177,6 +200,11 @@ services:
       dockerfile: Dockerfile.frontend
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+        NEXT_PUBLIC_ALLOW_QR_FALLBACKS: ${NEXT_PUBLIC_ALLOW_QR_FALLBACKS:-false}
+        NEXT_PUBLIC_PRIVACY_NOTICE_VERSION: ${PRIVACY_NOTICE_VERSION:?PRIVACY_NOTICE_VERSION is required}
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+        SENTRY_ORG: ${SENTRY_ORG:-}
+        SENTRY_PROJECT: ${SENTRY_PROJECT:-}
     restart: unless-stopped
     depends_on:
       backend:
@@ -184,6 +212,7 @@ services:
     environment:
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: "1"
+      SENTRY_DSN: ${SENTRY_DSN:-}
     networks:
       - edge
     <<: *read-only-service
@@ -265,6 +294,7 @@ volumes:
   postgres-data:
   redis-data:
   prometheus-data:
+  alertmanager-data:
 
 secrets:
   metrics_token:
