@@ -7,6 +7,10 @@ import { loginFaculty, loginStudent, shot } from './helpers'
  * they exist purely to produce evidence of UI state.
  */
 test.describe('Visual Capture', () => {
+  test.beforeEach(({ browserName }) => {
+    test.skip(browserName !== 'chromium', 'Visual evidence is captured once in Chromium')
+  })
+
   test('capture landing + login pages', async ({ page }) => {
     await page.goto('/')
     await page.waitForTimeout(1200)

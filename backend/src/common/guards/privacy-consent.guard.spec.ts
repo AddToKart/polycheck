@@ -1,6 +1,6 @@
-import { ConfigService } from '@nestjs/config'
+import type { ConfigService } from '@nestjs/config'
 import { ForbiddenException } from '@nestjs/common'
-import { Reflector } from '@nestjs/core'
+import type { Reflector } from '@nestjs/core'
 import { PrivacyConsentGuard } from './privacy-consent.guard'
 
 const context = (user: Record<string, unknown>) =>

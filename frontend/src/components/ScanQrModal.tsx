@@ -1,84 +1,28 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
-import {
-  X, QrCode, MapPin, Keyboard, CheckCircle, XCircle,
-  Clock, AlertTriangle, Loader2, RefreshCw, Upload, Camera,
-  Clipboard, SwitchCamera,
-} from 'lucide-react'
-import { api } from '@/lib/api-client'
-import { decodeTokenPayload } from '@polycheck/shared/utils'
+import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react'
+import { Camera, Keyboard, QrCode, Upload, X } from 'lucide-react'
 import type { ScanInputChannel, Student } from '@polycheck/shared'
-import type { IScannerControls } from '@zxing/browser'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { decodeTokenPayload } from '@polycheck/shared/utils'
+import { ScanQrViews } from '@/components/scan-qr/ScanQrViews'
+import { isBarcodeDetectorSupported, type InputMode, type ScanOutcome, type ScanPhase } from '@/components/scan-qr/types'
+import { useQrCamera } from '@/components/scan-qr/useQrCamera'
+import { api } from '@/lib/api-client'
 import { getOrCreateWebInstallationId } from '@/lib/device-id'
 
-// ── Types ──────────────────────────────────────────────────────────────────
-// BarcodeDetector is a W3C API — not yet in all lib typings.
-// https://wicg.github.io/shape-detection/#barcodedetector-section
-declare global {
-  interface BarcodeDetectorOptions { formats?: string[] }
-  class BarcodeDetector {
-    constructor(options?: BarcodeDetectorOptions)
-    detect(source: ImageBitmapSource): Promise<BarcodeDetectorResult[]>
-  }
-  interface BarcodeDetectorResult {
-    rawValue: string
-    format: string
-    boundingBox?: DOMRectReadOnly
-  }
-}
-
-type InputMode = 'camera' | 'upload' | 'manual'
 const ALLOW_QR_FALLBACKS = process.env.NEXT_PUBLIC_ALLOW_QR_FALLBACKS === 'true'
 
-type ScanPhase =
-  | 'idle'
-  | 'requesting-camera'
-  | 'scanning'
-  | 'decoding-image'
-  | 'acquiring-location'
-  | 'submitting'
-  | 'success'
-  | 'error'
-
-type ScanOutcome = {
-  status: 'present' | 'late' | 'disputed'
-  message: string
-} | null
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-function isBarcodeDetectorSupported(): boolean {
-  return typeof window !== 'undefined' && 'BarcodeDetector' in window
-}
-
-// ── Component ──────────────────────────────────────────────────────────────
 interface ScanQrModalProps {
   user: Student
   onClose: () => void
-  /** Optional sessionId to pre-filter — supplied when launched from an active-session card */
   sessionId?: string
 }
 
 export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalProps) {
-  // ── Camera refs ──────────────────────────────────────────────────────────
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const scanLoopRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(null)
-  const zxingControlsRef = useRef<IScannerControls | null>(null)
-  const cameraRequestRef = useRef(0)
   const scannedRef = useRef(false)
   const handleTokenRef = useRef<(token: string, channel: ScanInputChannel) => Promise<void>>(async () => {})
-  // BarcodeDetector not yet in TS lib typings
-  const detectorRef = useRef<BarcodeDetector | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
-
-  // ── Upload refs ──────────────────────────────────────────────────────────
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // ── State ────────────────────────────────────────────────────────────────
   const [inputMode, setInputMode] = useState<InputMode>('camera')
   const [phase, setPhase] = useState<ScanPhase>('idle')
   const [outcome, setOutcome] = useState<ScanOutcome>(null)
@@ -86,385 +30,157 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
   const [manualToken, setManualToken] = useState('')
   const [cameraError, setCameraError] = useState('')
   const [locationStatus, setLocationStatus] = useState('')
-
-  // Upload-specific state
   const [uploadPreview, setUploadPreview] = useState<string | null>(null)
   const [uploadFileName, setUploadFileName] = useState('')
   const [uploadError, setUploadError] = useState('')
-
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment')
 
-  // ── Camera lifecycle ─────────────────────────────────────────────────────
-  const stopCamera = useCallback(() => {
-    cameraRequestRef.current += 1
-    if (scanLoopRef.current) {
-      cancelAnimationFrame(scanLoopRef.current)
-      scanLoopRef.current = null
+  const { videoRef, startCamera, stopCamera, toggleCameraFacing } = useQrCamera({
+    phase,
+    setPhase,
+    facingMode,
+    setFacingMode,
+    setInputMode,
+    setCameraError,
+    scannedRef,
+    handleTokenRef,
+    allowFallbacks: ALLOW_QR_FALLBACKS,
+  })
+
+  const handleImageFile = useCallback(async (file: File) => {
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp'].includes(file.type)) {
+      setUploadError('Unsupported file type. Use JPEG, PNG, WebP, or BMP.')
+      return
     }
-    zxingControlsRef.current?.stop()
-    zxingControlsRef.current = null
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop())
-      streamRef.current = null
+    if (file.size > 10_000_000) {
+      setUploadError('Image is too large. Maximum size is 10 MB.')
+      return
     }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null
-    }
+    setUploadError('')
+    setUploadFileName(file.name)
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+    setUploadPreview(dataUrl)
   }, [])
-
-  const startCamera = useCallback(async (overrideFacingMode?: 'environment' | 'user') => {
-    const targetFacing = overrideFacingMode || facingMode
-    const requestId = ++cameraRequestRef.current
-    setPhase('requesting-camera')
-    setCameraError('')
-    try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop())
-        streamRef.current = null
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: targetFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      })
-      if (requestId !== cameraRequestRef.current) {
-        stream.getTracks().forEach((track) => track.stop())
-        return
-      }
-      streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
-      } else {
-        stream.getTracks().forEach((track) => track.stop())
-        streamRef.current = null
-        return
-      }
-      if (requestId === cameraRequestRef.current) setPhase('scanning')
-    } catch (err: unknown) {
-      if (requestId !== cameraRequestRef.current) return
-      const msg =
-        err instanceof Error && err.name === 'NotAllowedError'
-          ? 'Camera access denied. Enable camera permission to scan attendance QR codes.'
-          : err instanceof Error && err.name === 'NotFoundError'
-            ? 'No camera found on this device.'
-            : 'Camera unavailable.'
-      setCameraError(msg)
-      if (ALLOW_QR_FALLBACKS) setInputMode('upload')
-      setPhase('idle')
-    }
-  }, [facingMode])
-
-  const toggleCameraFacing = useCallback(() => {
-    const nextFacing = facingMode === 'environment' ? 'user' : 'environment'
-    setFacingMode(nextFacing)
-    stopCamera()
-    void startCamera(nextFacing)
-  }, [facingMode, stopCamera, startCamera])
-
-  // ── BarcodeDetector scan loop ────────────────────────────────────────────
-  const processScanResult = useCallback(
-    async (rawToken: string) => {
-      if (scannedRef.current) return
-      const trimmed = rawToken.trim()
-      if (!trimmed) return
-      scannedRef.current = true
-      stopCamera()
-      await handleTokenRef.current(trimmed, 'camera')
-    },
-    [stopCamera]
-  )
-
-  useEffect(() => {
-    if (phase !== 'scanning') return
-
-    if (isBarcodeDetectorSupported() && !detectorRef.current) {
-      detectorRef.current = new BarcodeDetector({ formats: ['qr_code'] })
-    }
-
-    const detector = detectorRef.current
-
-    let cancelled = false
-    let lastAttemptAt = 0
-    const loop = async (timestamp: number) => {
-      if (cancelled) return
-      if (!videoRef.current || videoRef.current.readyState < 2) {
-        scanLoopRef.current = requestAnimationFrame(loop)
-        return
-      }
-      if (timestamp - lastAttemptAt < 100) {
-        scanLoopRef.current = requestAnimationFrame(loop)
-        return
-      }
-      lastAttemptAt = timestamp
-      if (detector) {
-        try {
-          const codes = await detector.detect(videoRef.current)
-          if (codes.length > 0) {
-            await processScanResult(codes[0].rawValue)
-            return
-          }
-        } catch {
-          // detector not ready — continue
-        }
-      }
-      scanLoopRef.current = requestAnimationFrame(loop)
-    }
-
-    if (detector) {
-      scanLoopRef.current = requestAnimationFrame(loop)
-    } else {
-      void import('@zxing/browser')
-        .then(async ({ BrowserQRCodeReader }) => {
-          if (cancelled || !videoRef.current) return
-          const reader = new BrowserQRCodeReader(undefined, {
-            delayBetweenScanAttempts: 200,
-            delayBetweenScanSuccess: 500,
-          })
-          const controls = await reader.decodeFromVideoElement(videoRef.current, (result) => {
-            if (result && !cancelled) void processScanResult(result.getText())
-          })
-          if (cancelled) controls.stop()
-          else zxingControlsRef.current = controls
-        })
-        .catch(() => {
-          if (!cancelled) setCameraError('This browser could not start the QR decoder.')
-        })
-    }
-    return () => {
-      cancelled = true
-      if (scanLoopRef.current) cancelAnimationFrame(scanLoopRef.current)
-      zxingControlsRef.current?.stop()
-      zxingControlsRef.current = null
-    }
-  }, [phase, processScanResult])
-
-  // ── Image upload & decode ────────────────────────────────────────────────
-  const handleImageFile = useCallback(
-    async (file: File) => {
-      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp'].includes(file.type)) {
-        setUploadError('Unsupported file type. Use JPEG, PNG, WebP, or BMP.')
-        return
-      }
-      if (file.size > 10_000_000) {
-        setUploadError('Image is too large. Maximum size is 10 MB.')
-        return
-      }
-
-      setUploadError('')
-      setUploadFileName(file.name)
-
-      // Generate a data URL for preview
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(reader.result as string)
-        reader.onerror = reject
-        reader.readAsDataURL(file)
-      })
-      setUploadPreview(dataUrl)
-    },
-    []
-  )
 
   const handleDecodeUpload = useCallback(async () => {
     if (!uploadPreview) return
     setUploadError('')
     setPhase('decoding-image')
-
     let rawToken: string | null = null
-
-    // 1. Try native BarcodeDetector on an Image element (fastest)
     if (isBarcodeDetectorSupported()) {
       try {
-        const img = new Image()
-        img.src = uploadPreview
-        await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej })
-        const detector = new BarcodeDetector({ formats: ['qr_code'] })
-        const codes = await detector.detect(img)
+        const image = new Image()
+        image.src = uploadPreview
+        await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = reject })
+        const codes = await new BarcodeDetector({ formats: ['qr_code'] }).detect(image)
         if (codes.length > 0) rawToken = codes[0].rawValue
       } catch {
-        // fall through to zxing
+        // ZXing below is the compatibility path for browsers without native decoding.
       }
     }
-
-    // 2. zxing fallback
     if (!rawToken) {
       try {
         const { BrowserQRCodeReader } = await import('@zxing/browser')
-        const reader = new BrowserQRCodeReader()
-        const result = await reader.decodeFromImageUrl(uploadPreview)
-        rawToken = result.getText()
+        rawToken = (await new BrowserQRCodeReader().decodeFromImageUrl(uploadPreview)).getText()
       } catch {
-        // no QR found
+        // The user-facing error below covers unreadable images.
       }
     }
-
     if (!rawToken) {
       setUploadError('No QR code found in this image. Make sure the entire QR is visible and try again.')
       setPhase('idle')
       return
     }
-
     scannedRef.current = true
     await handleTokenRef.current(rawToken, 'image')
-  },
-    [uploadPreview]
-  )
+  }, [uploadPreview])
 
-  // ── Drag-and-drop support ────────────────────────────────────────────────
-  const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault()
-      const file = e.dataTransfer.files[0]
-      if (file) handleImageFile(file)
-    },
-    [handleImageFile]
-  )
+  const getCurrentPosition = () => new Promise<GeolocationPosition>((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Geolocation is not available in this browser.'))
+      return
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 })
+  })
 
-  // ── Geolocation ──────────────────────────────────────────────────────────
-  const getCurrentPosition = (): Promise<GeolocationPosition> =>
-    new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error('Geolocation is not available in this browser.'))
-        return
-      }
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 15_000,
-        maximumAge: 0,
-      })
-    })
+  const handleToken = useCallback(async (token: string, inputChannel: ScanInputChannel) => {
+    const payload = decodeTokenPayload(token)
+    if (!payload) {
+      setErrorMessage('Invalid QR code — could not read the token.')
+      setPhase('error')
+      return
+    }
+    if (sessionId && payload.sessionId !== sessionId) {
+      setErrorMessage('This QR code belongs to a different session.')
+      setPhase('error')
+      return
+    }
 
-  // ── Core submission logic ────────────────────────────────────────────────
-  // This is called from ALL three input modes — camera, upload, and manual.
-  // Geofence enforcement is 100% server-side: the server re-validates GPS
-  // coordinates against the session geofence regardless of input mode.
-  const handleToken = useCallback(
-    async (token: string, inputChannel: ScanInputChannel) => {
-      // 1. Decode payload locally (no sig check — server enforces that)
-      const payload = decodeTokenPayload(token)
-      if (!payload) {
-        setErrorMessage('Invalid QR code — could not read the token.')
+    setPhase('acquiring-location')
+    setLocationStatus('Getting your location…')
+    let position: GeolocationPosition
+    try {
+      position = await getCurrentPosition()
+      setLocationStatus(`Location acquired (±${Math.round(position.coords.accuracy)}m)`)
+    } catch (error: unknown) {
+      const denied = error instanceof GeolocationPositionError && error.code === GeolocationPositionError.PERMISSION_DENIED
+      setErrorMessage(denied ? 'Location access was denied. Allow location in your browser settings and try again.' : 'Unable to determine your location. Check your settings and try again.')
+      setPhase('error')
+      return
+    }
+
+    setPhase('submitting')
+    try {
+      const result = await api.submitScan(
+        payload.sessionId,
+        user.id,
+        user.fullName,
+        position.coords.latitude,
+        position.coords.longitude,
+        getOrCreateWebInstallationId(),
+        token,
+        new Date().toISOString(),
+        {
+          clientAttemptId: crypto.randomUUID(),
+          accuracyMeters: position.coords.accuracy,
+          locationCapturedAt: new Date(position.timestamp).toISOString(),
+          inputChannel,
+        },
+      )
+      if ('error' in result) {
+        setErrorMessage(result.error)
         setPhase('error')
         return
       }
+      setOutcome({ status: result.status as 'present' | 'late' | 'disputed', message: `Attendance recorded as ${result.status}.` })
+      setPhase('success')
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : 'An unexpected error occurred. Try again.')
+      setPhase('error')
+    }
+  }, [sessionId, user])
 
-      // 2. Session filter (when launched from a specific session card)
-      if (sessionId && payload.sessionId !== sessionId) {
-        setErrorMessage('This QR code belongs to a different session.')
-        setPhase('error')
-        return
-      }
+  useEffect(() => { handleTokenRef.current = handleToken }, [handleToken])
 
-      // 3. Acquire live GPS — required for all input modes including upload.
-      //    A student uploading a screenshot from off-campus still needs to be
-      //    physically inside the geofence, so GPS is always captured fresh here.
-      setPhase('acquiring-location')
-      setLocationStatus('Getting your location…')
-      let lat: number
-      let lon: number
-      let accuracyMeters: number
-      let locationCapturedAt: string
-      try {
-        const pos = await getCurrentPosition()
-        lat = pos.coords.latitude
-        lon = pos.coords.longitude
-        accuracyMeters = pos.coords.accuracy
-        locationCapturedAt = new Date(pos.timestamp).toISOString()
-        setLocationStatus(`Location acquired (±${Math.round(pos.coords.accuracy)}m)`)
-      } catch (err: unknown) {
-        const denied =
-          err instanceof GeolocationPositionError &&
-          err.code === GeolocationPositionError.PERMISSION_DENIED
-        setErrorMessage(
-          denied
-            ? 'Location access was denied. Allow location in your browser settings and try again.'
-            : 'Unable to determine your location. Check your settings and try again.'
-        )
-        setPhase('error')
-        return
-      }
+  const switchMode = useCallback((mode: InputMode) => {
+    if (mode === inputMode) return
+    if (inputMode === 'camera') stopCamera()
+    if (inputMode === 'upload') {
+      setUploadPreview(null)
+      setUploadFileName('')
+      setUploadError('')
+    }
+    scannedRef.current = false
+    setInputMode(mode)
+    setPhase('idle')
+    if (mode === 'camera') void startCamera()
+  }, [inputMode, startCamera, stopCamera])
 
-      // 4. Server validation + commit
-      //    Server re-checks: Ed25519 signature, enrollment, geofence (Haversine),
-      //    timestamp window, rate limit, duplicate.
-      setPhase('submitting')
-      try {
-        const scannedAt = new Date().toISOString()
-        const deviceId = getOrCreateWebInstallationId()
-
-        const result = await api.submitScan(
-          payload.sessionId,
-          user.id,
-          user.fullName,
-          lat,
-          lon,
-          deviceId,
-          token,
-          scannedAt,
-          {
-            clientAttemptId: crypto.randomUUID(),
-            accuracyMeters,
-            locationCapturedAt,
-            inputChannel,
-          },
-        )
-
-        if ('error' in result) {
-          setErrorMessage(result.error)
-          setPhase('error')
-          return
-        }
-
-        setOutcome({
-          status: result.status as 'present' | 'late' | 'disputed',
-          message: `Attendance recorded as ${result.status}.`,
-        })
-        setPhase('success')
-      } catch (err: unknown) {
-        setErrorMessage(
-          err instanceof Error ? err.message : 'An unexpected error occurred. Try again.'
-        )
-        setPhase('error')
-      }
-    },
-    [user, sessionId]
-  )
-
-  useEffect(() => {
-    handleTokenRef.current = handleToken
-  }, [handleToken])
-
-  // ── Manual submit ────────────────────────────────────────────────────────
-  const handleManualSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const trimmed = manualToken.trim()
-    if (!trimmed) return
-    scannedRef.current = true
-    stopCamera()
-    await handleToken(trimmed, 'manual')
-  }
-
-  // ── Mode switching ───────────────────────────────────────────────────────
-  const switchMode = useCallback(
-    (mode: InputMode) => {
-      if (mode === inputMode) return
-      // Stop camera when leaving camera mode
-      if (inputMode === 'camera') stopCamera()
-      // Reset upload state when leaving upload mode
-      if (inputMode === 'upload') {
-        setUploadPreview(null)
-        setUploadFileName('')
-        setUploadError('')
-      }
-      scannedRef.current = false
-      setInputMode(mode)
-      setPhase('idle')
-      if (mode === 'camera') startCamera()
-    },
-    [inputMode, stopCamera, startCamera]
-  )
-
-  // ── Reset (try again) ────────────────────────────────────────────────────
   const reset = useCallback(() => {
     scannedRef.current = false
     setOutcome(null)
@@ -475,467 +191,66 @@ export default function ScanQrModal({ user, onClose, sessionId }: ScanQrModalPro
     setUploadFileName('')
     setUploadError('')
     setPhase('idle')
-    if (inputMode === 'camera') startCamera()
+    if (inputMode === 'camera') void startCamera()
   }, [inputMode, startCamera])
 
-  // ── Mount / unmount ──────────────────────────────────────────────────────
-  useEffect(() => {
-    if (inputMode === 'camera') startCamera()
-    return () => stopCamera()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const handleClose = useCallback(() => { stopCamera(); onClose() }, [onClose, stopCamera])
 
-  // ── Escape key ───────────────────────────────────────────────────────────
   useEffect(() => {
     const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
     closeButtonRef.current?.focus()
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { stopCamera(); onClose() }
-      if (e.key !== 'Tab' || !panelRef.current) return
-      const focusable = Array.from(
-        panelRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-        ),
-      )
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') handleClose()
+      if (event.key !== 'Tab' || !panelRef.current) return
+      const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'))
       if (!focusable.length) return
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault()
-        last.focus()
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault()
-        first.focus()
-      }
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
     }
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      previouslyFocused?.focus()
-    }
-  }, [onClose, stopCamera])
+    window.addEventListener('keydown', handleKey)
+    return () => { window.removeEventListener('keydown', handleKey); previouslyFocused?.focus() }
+  }, [handleClose])
 
-  // ── Close ────────────────────────────────────────────────────────────────
-  const handleClose = useCallback(() => {
+  const handleManualSubmit = async (event: FormEvent) => {
+    event.preventDefault()
+    const token = manualToken.trim()
+    if (!token) return
+    scannedRef.current = true
     stopCamera()
-    onClose()
-  }, [stopCamera, onClose])
+    await handleToken(token, 'manual')
+  }
 
-  // ── Derived UI state ─────────────────────────────────────────────────────
-  const isProcessing =
-    phase === 'acquiring-location' ||
-    phase === 'submitting' ||
-    phase === 'decoding-image'
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const file = event.dataTransfer.files[0]
+    if (file) void handleImageFile(file)
+  }
 
-  const showScanner = inputMode === 'camera' && (phase === 'scanning' || phase === 'requesting-camera')
-
-  // ── Outcome config ───────────────────────────────────────────────────────
-  const outcomeConfig = outcome
-    ? outcome.status === 'present'
-      ? {
-          icon: CheckCircle,
-          iconColor: 'text-golden',
-          bg: 'bg-maroon border-golden',
-          title: 'Verified — Present',
-        }
-      : outcome.status === 'late'
-        ? {
-            icon: Clock,
-            iconColor: 'text-white',
-            bg: 'bg-maroon border-white/30',
-            title: 'Recorded — Late',
-          }
-        : {
-            icon: AlertTriangle,
-            iconColor: 'text-golden',
-            bg: 'bg-maroon-dark border-golden/40',
-            title: 'Flagged for Review',
-          }
-    : null
-
-  // ── Tab config ───────────────────────────────────────────────────────────
-  const tabs: { mode: InputMode; label: string; icon: React.ReactNode }[] = [
-    { mode: 'camera', label: 'Camera', icon: <Camera className="w-3.5 h-3.5" /> },
-    ...(ALLOW_QR_FALLBACKS
-      ? [
-          { mode: 'upload' as const, label: 'Upload QR', icon: <Upload className="w-3.5 h-3.5" /> },
-          { mode: 'manual' as const, label: 'Enter Code', icon: <Keyboard className="w-3.5 h-3.5" /> },
-        ]
-      : []),
+  const isProcessing = phase === 'acquiring-location' || phase === 'submitting' || phase === 'decoding-image'
+  const showTabs = phase !== 'success' && phase !== 'error' && !isProcessing
+  const tabs = [
+    { mode: 'camera' as const, label: 'Camera', icon: <Camera className="w-3.5 h-3.5" /> },
+    ...(ALLOW_QR_FALLBACKS ? [
+      { mode: 'upload' as const, label: 'Upload QR', icon: <Upload className="w-3.5 h-3.5" /> },
+      { mode: 'manual' as const, label: 'Enter Code', icon: <Keyboard className="w-3.5 h-3.5" /> },
+    ] : []),
   ]
 
-  const showTabs = phase !== 'success' && phase !== 'error' && !isProcessing
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-pup-black/90 backdrop-blur-sm"
-      aria-modal="true"
-      role="dialog"
-      aria-labelledby="scan-qr-title"
-      onClick={(e) => { if (e.target === e.currentTarget) handleClose() }}
-    >
-      {/* Panel */}
-      <div
-        ref={panelRef}
-        className="relative w-full max-w-lg mx-4 bg-background border-2 border-zinc-300 dark:border-zinc-800 shadow-2xl flex flex-col h-[540px] max-h-[92dvh] overflow-hidden"
-      >
-
-        {/* ── Header ── */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-pup-black/90 backdrop-blur-sm" aria-modal="true" role="dialog" aria-labelledby="scan-qr-title" onClick={(event) => { if (event.target === event.currentTarget) handleClose() }}>
+      <div ref={panelRef} className="relative w-full max-w-lg mx-4 bg-background border-2 border-zinc-300 dark:border-zinc-800 shadow-2xl flex flex-col h-[540px] max-h-[92dvh] overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-maroon text-white shrink-0">
-          <div className="flex items-center gap-3">
-            <QrCode className="w-5 h-5 text-golden" />
-            <div>
-              <p id="scan-qr-title" className="text-[10px] font-bold uppercase tracking-widest text-white/70">
-                Scan attendance QR code
-              </p>
-              <p className="text-sm font-bold text-golden font-heading">{user.fullName}</p>
-            </div>
-          </div>
-          <button
-            ref={closeButtonRef}
-            onClick={handleClose}
-            className="p-1.5 hover:bg-white/10 transition-colors rounded-none"
-            aria-label="Close scanner"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-3"><QrCode className="w-5 h-5 text-golden" /><div><p id="scan-qr-title" className="text-[10px] font-bold uppercase tracking-widest text-white/70">Scan attendance QR code</p><p className="text-sm font-bold text-golden font-heading">{user.fullName}</p></div></div>
+          <button ref={closeButtonRef} onClick={handleClose} className="p-1.5 hover:bg-white/10 transition-colors rounded-none" aria-label="Close scanner"><X className="w-5 h-5" /></button>
         </div>
-
-        {/* ── Input-mode tabs ── */}
-        {showTabs && (
-          <div className="flex border-b border-zinc-200 dark:border-zinc-800 shrink-0 bg-zinc-50 dark:bg-zinc-900/50">
-            {tabs.map(({ mode, label, icon }) => (
-              <button
-                key={mode}
-                onClick={() => switchMode(mode)}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-colors
-                  ${inputMode === mode
-                    ? 'text-maroon dark:text-golden border-b-2 border-maroon dark:border-golden bg-background'
-                    : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 border-b-2 border-transparent'
-                  }`}
-              >
-                {icon}
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* ── Body ── */}
+        {showTabs ? <div className="flex border-b border-zinc-200 dark:border-zinc-800 shrink-0 bg-zinc-50 dark:bg-zinc-900/50">{tabs.map(({ mode, label, icon }) => <button key={mode} onClick={() => switchMode(mode)} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-colors ${inputMode === mode ? 'text-maroon dark:text-golden border-b-2 border-maroon dark:border-golden bg-background' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 border-b-2 border-transparent'}`}>{icon}{label}</button>)}</div> : null}
         <div className="flex-1 flex flex-col min-h-0 overflow-y-auto h-full">
-
-          {/* ── Success ── */}
-          {phase === 'success' && outcomeConfig && (
-            <div className="flex-1 flex flex-col items-center justify-center p-10 text-center gap-6 h-full min-h-0">
-              <div className={`w-20 h-20 flex items-center justify-center border-2 ${outcomeConfig.bg}`}>
-                <outcomeConfig.icon className={`w-10 h-10 ${outcomeConfig.iconColor}`} />
-              </div>
-              <div>
-                <p className={`text-2xl font-heading font-bold uppercase tracking-wider ${
-                  outcome?.status === 'present' ? 'text-maroon dark:text-golden' : 'text-foreground'
-                }`}>
-                  {outcomeConfig.title}
-                </p>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2 max-w-xs mx-auto">
-                  {outcome?.message}
-                </p>
-              </div>
-              <Button
-                onClick={handleClose}
-                className="w-full rounded-none bg-maroon hover:bg-maroon-dark text-white uppercase tracking-widest font-bold text-xs h-10"
-              >
-                Done
-              </Button>
-            </div>
-          )}
-
-          {/* ── Error ── */}
-          {phase === 'error' && (
-            <div className="flex-1 flex flex-col items-center justify-center p-10 text-center gap-6 h-full min-h-0">
-              <div className="w-20 h-20 flex items-center justify-center border-2 border-red-500/40 bg-red-950/30">
-                <XCircle className="w-10 h-10 text-red-500" />
-              </div>
-              <div>
-                <p className="text-xl font-heading font-bold text-foreground uppercase tracking-wider">
-                  Check-in Rejected
-                </p>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2 max-w-xs mx-auto">
-                  {errorMessage}
-                </p>
-              </div>
-              <div className="flex gap-3 w-full">
-                <Button
-                  onClick={reset}
-                  variant="outline"
-                  className="flex-1 rounded-none border-zinc-300 dark:border-zinc-700 uppercase tracking-widest font-bold text-xs h-10"
-                >
-                  <RefreshCw className="w-3.5 h-3.5 mr-2" />
-                  Try Again
-                </Button>
-                <Button
-                  onClick={handleClose}
-                  className="flex-1 rounded-none bg-maroon hover:bg-maroon-dark text-white uppercase tracking-widest font-bold text-xs h-10"
-                >
-                  Close
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* ── Processing ── */}
-          {isProcessing && (
-            <div className="flex-1 flex flex-col items-center justify-center p-10 text-center gap-4 h-full min-h-0">
-              <Loader2 className="w-10 h-10 text-maroon dark:text-golden animate-spin" />
-              <p className="text-sm font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
-                {phase === 'decoding-image'
-                  ? 'Reading QR code from image…'
-                  : phase === 'acquiring-location'
-                    ? locationStatus || 'Acquiring location…'
-                    : 'Verifying attendance…'}
-              </p>
-              {phase === 'acquiring-location' && (
-                <p className="text-xs text-zinc-400 max-w-xs">
-                  Your GPS location is required to confirm you are physically inside the classroom geofence.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* ── Camera viewfinder ── */}
-          {showScanner && !isProcessing && (
-            <div className="flex-1 flex flex-col h-full min-h-0 bg-pup-black justify-between">
-              <div className="relative flex-1 w-full bg-pup-black overflow-hidden flex items-center justify-center min-h-0">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover"
-                  aria-label="Camera viewfinder"
-                />
-                {/* Overlay */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="absolute inset-0 bg-pup-black/40" />
-                  <div className="relative" style={{ width: '65%', aspectRatio: '1' }}>
-                    <span className="absolute top-0 left-0 w-7 h-7 border-t-[3px] border-l-[3px] border-golden" />
-                    <span className="absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px] border-golden" />
-                    <span className="absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px] border-golden" />
-                    <span className="absolute bottom-0 right-0 w-7 h-7 border-b-[3px] border-r-[3px] border-golden" />
-                    <div
-                      className="absolute left-0 right-0 h-px bg-golden/70"
-                      style={{ animation: 'scanLine 2s ease-in-out infinite' }}
-                    />
-                  </div>
-                  <p className="absolute bottom-4 text-[10px] font-bold uppercase tracking-widest text-white/80">
-                    Point camera at the QR code
-                  </p>
-                </div>
-
-                {phase === 'requesting-camera' && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-pup-black/80 gap-3">
-                    <Loader2 className="w-8 h-8 text-golden animate-spin" />
-                    <p className="text-xs font-bold uppercase tracking-widest text-white/70">Starting camera…</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 gap-2 shrink-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  <MapPin className="w-3.5 h-3.5 text-maroon dark:text-golden shrink-0" />
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 truncate">
-                    GPS captured automatically on scan
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={toggleCameraFacing}
-                  className="text-[10px] h-7 px-2.5 font-bold uppercase tracking-widest text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-800 shrink-0"
-                >
-                  <SwitchCamera className="w-3.5 h-3.5 mr-1.5 text-maroon dark:text-golden" />
-                  Flip Camera ({facingMode === 'environment' ? 'Rear' : 'Front'})
-                </Button>
-              </div>
-
-              {cameraError && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 px-4 pt-3 border-l-2 border-amber-400 ml-4 shrink-0">
-                  {cameraError}
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* ── Upload QR image ── */}
-          {inputMode === 'upload' && !isProcessing && phase !== 'success' && phase !== 'error' && (
-            <div className="p-6 flex-1 flex flex-col justify-between gap-4 h-full min-h-0 overflow-y-auto">
-
-              {/* Security notice */}
-              <div className="flex items-start gap-3 p-3 border border-maroon/30 dark:border-golden/20 bg-maroon/5 dark:bg-golden/5 shrink-0">
-                <MapPin className="w-4 h-4 text-maroon dark:text-golden mt-0.5 shrink-0" />
-                <p className="text-[10px] font-bold uppercase tracking-wider text-maroon dark:text-golden leading-relaxed">
-                  Geofence is enforced regardless of input method — your live GPS location must be inside the classroom to check in.
-                </p>
-              </div>
-
-              {/* Drop zone / file picker */}
-              <div
-                className={`relative flex-1 flex flex-col items-center justify-center border-2 border-dashed transition-colors cursor-pointer min-h-[160px]
-                  ${uploadPreview
-                    ? 'border-maroon dark:border-golden bg-maroon/5 dark:bg-golden/5'
-                    : 'border-zinc-300 dark:border-zinc-700 hover:border-maroon dark:hover:border-golden bg-zinc-50 dark:bg-zinc-900/50'
-                  }`}
-                onClick={() => fileInputRef.current?.click()}
-                onDrop={handleDrop}
-                onDragOver={(e) => e.preventDefault()}
-                aria-label="Upload QR image"
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click() }}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif,image/bmp"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) handleImageFile(file)
-                    // Reset so the same file can be reselected
-                    e.target.value = ''
-                  }}
-                />
-
-                {uploadPreview ? (
-                  /* Preview */
-                  <div className="w-full flex flex-col items-center p-4 gap-3">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={uploadPreview}
-                      alt="Uploaded QR"
-                      className="max-h-40 max-w-full object-contain border border-zinc-200 dark:border-zinc-700"
-                    />
-                    <p className="text-[10px] font-mono text-zinc-400 truncate max-w-xs">{uploadFileName}</p>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">
-                      Tap to replace
-                    </p>
-                  </div>
-                ) : (
-                  /* Empty state */
-                  <div className="flex flex-col items-center gap-3 p-6 text-center">
-                    <div className="w-12 h-12 border-2 border-zinc-300 dark:border-zinc-700 flex items-center justify-center">
-                      <Upload className="w-5 h-5 text-zinc-400" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-foreground">Upload QR image</p>
-                      <p className="text-xs text-zinc-500 mt-1">
-                        Screenshot from group chat, photo, or any image with a QR code
-                      </p>
-                      <p className="text-[10px] text-zinc-400 mt-1.5">JPEG · PNG · WebP · BMP — max 10 MB</p>
-                    </div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">
-                      Tap to browse or drag and drop
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Decode error */}
-              {uploadError && (
-                <p className="text-xs text-red-600 dark:text-red-400 border-l-2 border-red-500 pl-3 shrink-0">
-                  {uploadError}
-                </p>
-              )}
-
-              {/* Submit button */}
-              <div className="shrink-0 flex flex-col gap-2">
-                <Button
-                  onClick={handleDecodeUpload}
-                  disabled={!uploadPreview}
-                  className="w-full rounded-none bg-maroon hover:bg-maroon-dark disabled:opacity-40 text-white uppercase tracking-widest font-bold text-xs h-11"
-                >
-                  <QrCode className="w-4 h-4 mr-2" />
-                  Read QR &amp; Check In
-                </Button>
-
-                <p className="text-[10px] text-zinc-400 text-center">
-                  The QR token from the image is decoded locally — but your live GPS and the token&apos;s cryptographic signature are still verified by the server.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* ── Manual entry ── */}
-          {inputMode === 'manual' && !isProcessing && phase !== 'success' && phase !== 'error' && (
-            <div className="p-6 flex-1 flex flex-col justify-between gap-4 h-full min-h-0 overflow-y-auto">
-              <div className="flex items-start gap-3 p-3 border border-maroon/30 dark:border-golden/20 bg-maroon/5 dark:bg-golden/5 shrink-0">
-                <MapPin className="w-4 h-4 text-maroon dark:text-golden mt-0.5 shrink-0" />
-                <p className="text-[10px] font-bold uppercase tracking-wider text-maroon dark:text-golden leading-relaxed">
-                  Geofence is enforced for manual entry — you must be physically inside the classroom.
-                </p>
-              </div>
-
-              <div className="flex-1 flex flex-col justify-between gap-3">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                      QR Token Code
-                    </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={async () => {
-                        try {
-                          const text = await navigator.clipboard.readText()
-                          if (text) setManualToken(text)
-                        } catch {
-                          // Clipboard permission declined or unavailable
-                        }
-                      }}
-                      className="text-[10px] h-7 px-2 font-bold uppercase tracking-widest text-maroon dark:text-golden border-maroon/30 dark:border-golden/30 hover:bg-maroon/10 dark:hover:bg-golden/10"
-                    >
-                      <Clipboard className="w-3 h-3 mr-1.5" />
-                      Paste Clipboard
-                    </Button>
-                  </div>
-                  <form onSubmit={handleManualSubmit} className="flex flex-col gap-3">
-                    <Input
-                      value={manualToken}
-                      onChange={e => setManualToken(e.target.value)}
-                      placeholder="Paste or type the QR token from your instructor…"
-                      className="rounded-none font-mono text-xs h-10 border-zinc-300 dark:border-zinc-700 focus:border-maroon dark:focus:border-golden"
-                      aria-label="QR token text field"
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                    <Button
-                      type="submit"
-                      disabled={!manualToken.trim()}
-                      className="w-full rounded-none bg-maroon hover:bg-maroon-dark disabled:opacity-40 text-white h-10 font-bold uppercase tracking-widest text-xs"
-                    >
-                      Check In
-                    </Button>
-                  </form>
-                </div>
-                <p className="text-[10px] text-zinc-400 mt-2 shrink-0">
-                  Ask your instructor to copy and share the session token. It is a long string of characters beginning with the payload and signature separated by a dot.
-                </p>
-              </div>
-            </div>
-          )}
-
+          <ScanQrViews ref={videoRef} phase={phase} outcome={outcome} errorMessage={errorMessage} locationStatus={locationStatus} inputMode={inputMode} cameraError={cameraError} facingMode={facingMode} uploadPreview={uploadPreview} uploadFileName={uploadFileName} uploadError={uploadError} manualToken={manualToken} setManualToken={setManualToken} onClose={handleClose} onReset={reset} onToggleCamera={toggleCameraFacing} onDrop={handleDrop} onImageFile={(file) => void handleImageFile(file)} onDecodeUpload={() => void handleDecodeUpload()} onManualSubmit={(event) => void handleManualSubmit(event)} />
         </div>
       </div>
-
-      {/* Scan-line animation */}
-      <style>{`
-        @keyframes scanLine {
-          0%   { top: 10%; opacity: 1; }
-          50%  { top: 90%; opacity: 0.6; }
-          100% { top: 10%; opacity: 1; }
-        }
-      `}</style>
+      <style>{`@keyframes scanLine { 0% { top: 10%; opacity: 1; } 50% { top: 90%; opacity: 0.6; } 100% { top: 10%; opacity: 1; } }`}</style>
     </div>
   )
 }

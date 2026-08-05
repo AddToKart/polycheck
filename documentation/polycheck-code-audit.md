@@ -1,7 +1,17 @@
 # Polycheck Code Audit
 Repo: `AddToKart/polycheck` — Turborepo monorepo (NestJS backend, Next.js frontend, Expo/React Native mobile, Prisma/PostgreSQL, Redis)
 
-*Updated with a deeper second pass: every controller/service's authorization logic, the realtime gateway, the Redis fallback path, idempotency handling, cascade-delete behavior, and both frontends' token/key storage. One earlier finding is corrected in §2 ("sync batch size").*
+*Updated through the August 4, 2026 production-readiness tranche. Historical findings remain below for traceability and are explicitly marked as superseded where remediation changed the result.*
+
+## Current verdict - August 4, 2026
+
+**Architecture/code quality: production-grade release candidate (9/10). Production readiness: 8.5/10, pending deployment evidence rather than known critical code remediation.**
+
+The original 7/10 verdict below was recorded before Better Auth, BullMQ, mandatory production Redis and S3 storage, hardened mobile encryption, privacy consent, observability, immutable release images, container scanning, and the expanded test gates were implemented. It is retained only as the baseline that motivated the remediation work; it is not the current assessment.
+
+The current CI gate measures backend coverage at no less than 72% lines and 60% branches, prevents frontend whole-source coverage regressions, and enforces the measured mobile service-layer baseline. Playwright covers the supported Chromium, Firefox, and WebKit engines, while Maestro covers the compiled Android UI and its offline attendance sync journey. The two previously oversized web surfaces were split into focused dashboard, attendance, schedule, scanner-view, and camera-lifecycle modules. A read-only staging smoke workflow validates readiness, liveness, privacy-notice publication, frontend rendering, same-origin redirects, and security headers after deployment.
+
+No unresolved critical or high-severity code finding is known from this audit. Remaining launch gates are operational: obtain a fully green hosted CI run, execute the real k6 attendance load profile, pass the staging smoke workflow, complete backup/restore and alert-delivery drills, validate store-signed builds on physical devices, and obtain institutional privacy/retention approval. Commodity-device GPS spoofing and limited trust in offline timestamps remain explicitly accepted v1 risks; biometric confirmation is not required.
 
 ## Remediation update - July 30, 2026
 
@@ -32,9 +42,9 @@ The implementation findings from this audit have now been remediated:
 
 The remaining medium findings are accepted v1 constraints already documented in the system plan: commodity-device GPS spoofing and limited trust in offline device timestamps. The sections below are retained as the original audit snapshot and should be read together with this remediation status.
 
-## Overall verdict
+## Original overall verdict - superseded by the August 4 reassessment
 
-**Architecture/code quality: strong (8/10). Production readiness: close, not there yet (7/10 with caveats below).**
+**Historical assessment at the time: architecture/code quality 8/10; production readiness 7/10.**
 
 This is noticeably more mature than a typical student capstone. It has real Ed25519 QR signing, server-side geofence re-validation, atomic duplicate-rejection, Redis-backed rate limiting, RBAC guards, audit logging, idempotency handling, env validation that fails closed in production, a documented CI release gate, and extensive `.spec.ts` coverage across nearly every service. The plan documents are detailed and the implementation follows them in the security-critical paths (anti-cheat stack, offline sync, key provisioning). That combination is unusual and is the strongest signal here.
 
