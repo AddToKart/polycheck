@@ -14,6 +14,18 @@ module.exports = {
   },
   transformIgnorePatterns: ['node_modules/(?!(@polycheck)/)'],
   testPathIgnorePatterns: ['/node_modules/', '/dist/'],
+  collectCoverageFrom: [
+    'services/**/*.{ts,tsx}',
+  ],
+  coverageReporters: ['text', 'json-summary', 'html'],
+  coverageThreshold: {
+    global: {
+      statements: 60,
+      branches: 50,
+      functions: 50,
+      lines: 65,
+    },
+  },
   transform: {
     '^.+\.tsx?$': ['ts-jest', { diagnostics: true }],
   },

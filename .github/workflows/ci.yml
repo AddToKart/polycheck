@@ -61,7 +61,7 @@ jobs:
       - run: pnpm --filter @polycheck/backend format:check
       - run: pnpm --filter @polycheck/backend lint:check
       - run: pnpm --dir frontend lint
-      - run: pnpm --dir frontend test
+      - run: pnpm --dir frontend test:coverage
       - run: pnpm --filter @polycheck/shared build
       - run: pnpm --dir shared test
       - run: pnpm --filter @polycheck/backend build
@@ -69,7 +69,7 @@ jobs:
       - run: pnpm --filter @polycheck/backend test:e2e
       - run: pnpm --dir frontend build
       - run: pnpm --dir android typecheck
-      - run: pnpm --dir android test -- --runInBand
+      - run: pnpm --dir android test:coverage
 
   web-e2e:
     runs-on: ubuntu-latest
@@ -158,7 +158,7 @@ jobs:
           cat frontend.log
           exit 1
       - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
       - name: Run Playwright e2e suite
         run: pnpm exec playwright test
       - name: Upload Playwright artifacts on failure

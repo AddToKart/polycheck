@@ -56,6 +56,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "jest",
+    "test:coverage": "jest --runInBand --coverage",
     "e2e": "maestro test maestro/flows",
     "e2e:student": "maestro test maestro/flows/01-student-journey.yaml",
     "e2e:faculty": "maestro test maestro/flows/02-faculty-journey.yaml",

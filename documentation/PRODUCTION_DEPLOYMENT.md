@@ -21,6 +21,8 @@ This topology improves process-level availability and throughput on one machine;
 
 CI validates application tests/builds, both container images, the rendered base and scaled Compose configurations, nginx and monitoring syntax, k6 script syntax, production dependency audit, and HIGH/CRITICAL image vulnerability scans. A successful `main` CI run triggers `.github/workflows/release-images.yml`, which publishes SHA-only GHCR images with SBOMs and GitHub provenance attestations. No mutable `latest` tag is produced.
 
+The supported web browser matrix is the latest stable Chromium/Chrome/Edge, Firefox, and Safari/WebKit. Playwright runs the functional suite against all three engines; visual evidence is captured once in Chromium. Browser support follows the latest stable release rather than long-term support for obsolete browser versions.
+
 Validate deployment assets locally:
 
 ```sh
@@ -127,6 +129,8 @@ Record both image digests in the change ticket. Deploy by digest for the stronge
 - Backend liveness: `GET /api/health`
 - Backend readiness: `GET /api/health/ready`
 - Backend metrics: `GET /api/metrics` with `Authorization: Bearer <METRICS_TOKEN>` in production
+
+Configure the GitHub `staging` environment variable `STAGING_BASE_URL` with the public HTTPS staging origin. `.github/workflows/staging-smoke.yml` runs automatically after a successful GitHub deployment to the `staging` environment and can also be started manually. Its checks are read-only: dependency readiness, backend liveness, the published privacy notice, frontend rendering, same-origin redirects, and required security headers. A staging deployment is not eligible for promotion until this workflow passes.
 
 Backend readiness fails when PostgreSQL, Redis, or any configured BullMQ producer/events/worker component is unavailable. nginx `/healthz` proxies this readiness check and passively retries failed upstreams. Docker Compose health status gates startup but does not actively withdraw or restart an unhealthy running replica; use an external supervisor or active-health-capable orchestrator when automatic runtime withdrawal is required. Prometheus discovers every backend replica through Docker DNS and scrapes process, HTTP, dependency, and queue metrics every 15 seconds. HTTP metrics use only method, registered route templates, and status code; queue metrics never contain user, student, session, job, token, coordinate, or raw URL identifiers.
 
