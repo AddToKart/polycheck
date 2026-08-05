@@ -1,5 +1,10 @@
 import { z } from 'zod'
 
+// Keep browser validation compatible with the production CSP. Zod's optional
+// JIT path probes `Function(...)`, which Firefox reports as a CSP violation even
+// though Zod catches the failure and falls back to its interpreter.
+z.config({ jitless: true })
+
 export const DayOfWeekEnum = z.enum(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
 
 const TimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Must be a real HH:mm time')
