@@ -45,7 +45,13 @@ test.describe('Auth & Session', () => {
     await page.goto('/login/faculty')
     await page.getByLabel('Email Address').fill('jmdelacruz@pup.edu.ph')
     await page.getByLabel('Password').fill('WrongPassword123!')
-    await page.getByRole('button', { name: /Authenticate/i }).click()
+    const authenticate = page.getByRole('button', { name: /Authenticate/i })
+    await expect(authenticate).toBeEnabled()
+    const loginResponse = page.waitForResponse(
+      (response) => response.url().includes('/api/auth/login/faculty') && response.request().method() === 'POST',
+    )
+    await authenticate.click()
+    expect((await loginResponse).status()).toBe(401)
     await expect(page.getByText(/Invalid email or password/i)).toBeVisible()
     await expect(page).toHaveURL((url) => url.pathname === '/login/faculty')
   })

@@ -4,7 +4,9 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
   workers: 1,
-  retries: 0,
+  // Cross-browser engines occasionally fail during runner/browser teardown;
+  // retry only in CI so local feedback remains immediate.
+  retries: process.env.CI ? 2 : 0,
   timeout: 60_000,
   expect: { timeout: 15_000 },
   reporter: [

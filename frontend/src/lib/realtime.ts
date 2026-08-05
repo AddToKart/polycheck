@@ -14,7 +14,6 @@ export function subscribeToSession(
   if (typeof window === 'undefined') return () => undefined
   const socket = io(realtimeUrl(), {
     withCredentials: true,
-    transports: ['websocket'],
     reconnection: true,
     reconnectionAttempts: 8,
     reconnectionDelay: 1_000,
@@ -47,7 +46,6 @@ export function monitorAuthSession(onReplaced: () => void) {
     if (!localStorage.getItem('polycheck-user')) return
     socket = io(realtimeUrl(), {
       withCredentials: true,
-      transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: 8,
       reconnectionDelay: 1_000,
