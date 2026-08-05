@@ -54,6 +54,8 @@ model User {
   teacherPublicKey  String?
   isActive          Boolean  @default(true)
   authVersion       Int      @default(0)
+  privacyConsentVersion String?
+  privacyConsentedAt     DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -71,6 +73,7 @@ model User {
   @@index([role])
   @@index([studentId])
   @@index([email])
+  @@index([privacyConsentVersion])
 }
 
 model AuthAccount {

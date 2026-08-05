@@ -8,10 +8,27 @@ import { ProvisionKeyDto } from './dto/provision-key.dto'
 import { Roles } from '../common/decorators/roles.decorator'
 import { Public } from '../common/decorators/public.decorator'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
+import { IsNotEmpty, IsString, MaxLength } from 'class-validator'
+
+class AcceptPrivacyConsentDto {
+  @IsString() @IsNotEmpty() @MaxLength(64) version!: string
+}
 
 @Controller('auth')
 export class AuthController {
   constructor(private auth: AuthService) {}
+
+  @Public()
+  @Get('privacy-notice')
+  privacyNotice() {
+    return this.auth.privacyNotice()
+  }
+
+  @Roles('student')
+  @Post('privacy-consent')
+  acceptPrivacyConsent(@Request() req: AuthenticatedRequest, @Body() dto: AcceptPrivacyConsentDto) {
+    return this.auth.acceptPrivacyConsent(req.user.id, dto.version)
+  }
 
   @Public()
   @Post('login/student')

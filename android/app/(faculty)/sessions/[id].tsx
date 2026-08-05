@@ -20,6 +20,7 @@ import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 const FILTERS: Array<AttendanceStatus | 'all'> = ['all', 'present', 'late', 'absent', 'pending', 'disputed']
 const ROSTER_PAGE_SIZE = 20
+const E2E_MODE = process.env.EXPO_PUBLIC_E2E_MODE === 'true'
 type QrSvgHandle = { toDataURL: (callback: (base64: string) => void) => void }
 
 const CardTitle = ({ icon, title, detail }: { icon: keyof typeof MaterialIcons.glyphMap; title: string; detail?: string }) => {
@@ -212,6 +213,7 @@ export default function SessionDetailScreen() {
         <View className="mb-4 w-full flex-row items-center"><View className="h-9 w-9 items-center justify-center rounded-xl bg-white/10"><MaterialIcons name="qr-code-2" size={19} color={pupColors.golden} /></View><View className="ml-3 flex-1"><Text className="font-sans-bold text-base text-white">Session QR</Text><Text className="mt-1 font-sans text-xs text-white/60">Students scan this code inside the geofence.</Text></View></View>
         {session.qrToken ? <>
           <Pressable accessibilityRole="button" accessibilityLabel="Open QR code full screen" onPress={() => setShowQrModal(true)} className="rounded-[26px] bg-white p-3"><QRCode value={session.qrToken} size={160} quietZone={6} backgroundColor="#FFFFFF" color="#0A0A0A" getRef={(ref: QrSvgHandle | null) => { qrCodeRef.current = ref }} /></Pressable>
+          {E2E_MODE ? <Text testID="session-e2e-token" selectable numberOfLines={1} className="mt-1 max-w-full text-[1px] text-maroon">{session.qrToken}</Text> : null}
           <Text accessibilityLiveRegion="polite" className="mt-4 font-sans-bold text-sm text-golden">{countdown === 'Grace ended' ? 'Grace period ended' : countdown.includes('Grace') ? countdown : countdown ? `Expires in ${countdown}` : 'Active'}</Text>
           <View className="mt-3 flex-row flex-wrap justify-center gap-2">
             {[
@@ -226,7 +228,7 @@ export default function SessionDetailScreen() {
               </Pressable>
             ))}
           </View>
-        </> : session.isActive ? <Text className="py-10 font-sans text-sm text-white/60">Generating QR code…</Text> : <View className="w-full items-center py-5"><MaterialIcons name="qr-code-scanner" size={44} color="rgba(255,255,255,.25)" /><Text className="mb-5 mt-3 text-center font-sans text-sm text-white/60">Activate the session and issue a short-lived code.</Text><CampusButton label="Generate QR code" icon="play-arrow" variant="gold" onPress={() => setShowValidityPrompt(true)} /></View>}
+        </> : session.isActive ? <Text className="py-10 font-sans text-sm text-white/60">Generating QR code…</Text> : <View className="w-full items-center py-5"><MaterialIcons name="qr-code-scanner" size={44} color="rgba(255,255,255,.25)" /><Text className="mb-5 mt-3 text-center font-sans text-sm text-white/60">Activate the session and issue a short-lived code.</Text><CampusButton testID="session-generate-open" label="Generate QR code" icon="play-arrow" variant="gold" onPress={() => setShowValidityPrompt(true)} /></View>}
       </CampusCard> : null}
 
       <SectionHeading eyebrow="Session state" title="Live overview" />
@@ -268,7 +270,7 @@ export default function SessionDetailScreen() {
         {!filteredStudents.length ? <View className="p-4"><CampusEmptyState icon="group-off" title={enrolledStudents.length ? 'No matching students' : 'No enrolled students'} description={enrolledStudents.length ? 'Choose a different attendance filter.' : 'Add students from the section details screen.'} /></View> : pagedStudents.map((student) => {
           const record = studentMap.get(student.id)
           const status = record?.status ?? 'pending'
-          return <Pressable key={student.id} disabled={!isTeacher} accessibilityRole={isTeacher ? 'button' : undefined} accessibilityLabel={isTeacher ? `Change ${student.fullName} attendance, currently ${status}` : undefined} onPress={() => void override(student.id, status)} className="min-h-16 flex-row items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 dark:border-line-dark"><View className="h-11 w-11 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10"><Text className="font-sans-bold text-xs text-maroon dark:text-golden">{student.fullName.split(' ').map((part) => part[0]).join('').slice(0, 2)}</Text></View><View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">{student.fullName}</Text><Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">{student.studentId}{record?.manuallySet ? ' · Manual override' : ''}</Text></View><AttendanceStatusPill status={status} />{isTeacher ? <MaterialIcons name="chevron-right" size={19} color="#746C6E" /> : null}</Pressable>
+          return <Pressable key={student.id} testID={`session-roster-${student.id}-${status}`} disabled={!isTeacher} accessibilityRole={isTeacher ? 'button' : undefined} accessibilityLabel={isTeacher ? `Change ${student.fullName} attendance, currently ${status}` : undefined} onPress={() => void override(student.id, status)} className="min-h-16 flex-row items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 dark:border-line-dark"><View className="h-11 w-11 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10"><Text className="font-sans-bold text-xs text-maroon dark:text-golden">{student.fullName.split(' ').map((part) => part[0]).join('').slice(0, 2)}</Text></View><View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">{student.fullName}</Text><Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">{student.studentId}{record?.manuallySet ? ' · Manual override' : ''}</Text></View><AttendanceStatusPill status={status} />{isTeacher ? <MaterialIcons name="chevron-right" size={19} color="#746C6E" /> : null}</Pressable>
         })}
         {rosterPageCount > 1 ? <View className="flex-row items-center justify-between border-t border-line px-4 py-3 dark:border-line-dark"><CampusButton className="min-h-11 px-3" label="Previous" variant="secondary" disabled={safeRosterPage === 1} onPress={() => setRosterPage((page) => Math.max(1, page - 1))} /><Text className="font-sans-medium text-xs text-muted dark:text-zinc-400">Page {safeRosterPage} of {rosterPageCount}</Text><CampusButton className="min-h-11 px-3" label="Next" variant="secondary" disabled={safeRosterPage === rosterPageCount} onPress={() => setRosterPage((page) => Math.min(rosterPageCount, page + 1))} /></View> : null}
       </CampusCard>
@@ -306,7 +308,7 @@ export default function SessionDetailScreen() {
           </View>
           <View className="flex-row gap-3">
             <CampusButton className="flex-1" label="Cancel" variant="secondary" onPress={() => setShowValidityPrompt(false)} />
-            <CampusButton className="flex-1" label="Generate" icon="qr-code-2" onPress={() => void generateQr()} />
+            <CampusButton testID="session-generate-submit" className="flex-1" label="Generate" icon="qr-code-2" onPress={() => void generateQr()} />
           </View>
         </Pressable>
       </Pressable>

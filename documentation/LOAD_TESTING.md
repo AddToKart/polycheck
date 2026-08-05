@@ -28,6 +28,8 @@ Provision and authenticate distinct test students before the measured run. Store
 
 The smoke profile requires two entries. The full profile requires 1,000 entries. A repeated token aborts setup because it would reuse one student session and invalidate the result.
 
+For short-lived automation, the same JSON array can be supplied through `K6_TOKENS_JSON` instead of a file. Do not echo the value or persist it in shell history. `host.docker.internal` is treated as a local-only target so the official k6 container can reach a host development server without weakening the remote-target safety acknowledgement.
+
 Authentication provisioning is intentionally outside the scenario. Measure login capacity separately; bcrypt and session creation have different scaling and security limits from the attendance bell rush.
 
 ## Smoke profile

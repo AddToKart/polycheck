@@ -6,7 +6,9 @@ import { Rate } from 'k6/metrics'
 
 const profile = __ENV.K6_PROFILE || 'smoke'
 const tokenPath = __ENV.K6_TOKENS_FILE || './tokens.example.json'
-const tokens = new SharedArray('student bearer tokens', () => JSON.parse(open(tokenPath)))
+const tokens = new SharedArray('student bearer tokens', () =>
+  JSON.parse(__ENV.K6_TOKENS_JSON || open(tokenPath)),
+)
 const acceptedAttendance = new Rate('accepted_attendance')
 
 if (!['smoke', 'full'].includes(profile)) {
@@ -54,21 +56,19 @@ const required = (name) => {
 }
 
 const validateTarget = (baseUrl) => {
-  let target
-  try {
-    target = new URL(baseUrl)
-  } catch {
-    fail('BASE_URL must be an absolute http(s) URL')
-  }
+  const parsed = /^(https?):\/\/(\[[^\]]+\]|[^/:]+)(?::\d+)?(?:\/|$)/i.exec(baseUrl)
+  if (!parsed) fail('BASE_URL must be an absolute http(s) URL')
+  const protocol = `${parsed[1].toLowerCase()}:`
+  const hostname = parsed[2].replace(/^\[|\]$/g, '').toLowerCase()
 
-  const localHosts = ['127.0.0.1', 'localhost', '::1']
-  if (!localHosts.includes(target.hostname) && __ENV.K6_ALLOW_REMOTE_TARGET !== 'I_ACKNOWLEDGE_THIS_WRITES_ATTENDANCE_DATA') {
+  const localHosts = ['127.0.0.1', 'localhost', '::1', 'host.docker.internal']
+  if (!localHosts.includes(hostname) && __ENV.K6_ALLOW_REMOTE_TARGET !== 'I_ACKNOWLEDGE_THIS_WRITES_ATTENDANCE_DATA') {
     fail('Remote targets require K6_ALLOW_REMOTE_TARGET=I_ACKNOWLEDGE_THIS_WRITES_ATTENDANCE_DATA')
   }
   if (profile === 'full' && __ENV.K6_CONFIRM_1000_USERS !== 'I_HAVE_AUTHORIZATION_FOR_1000_USERS') {
     fail('The full profile requires K6_CONFIRM_1000_USERS=I_HAVE_AUTHORIZATION_FOR_1000_USERS')
   }
-  if (target.protocol !== 'https:' && !localHosts.includes(target.hostname)) {
+  if (protocol !== 'https:' && !localHosts.includes(hostname)) {
     fail('Remote load tests must use HTTPS')
   }
 

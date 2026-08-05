@@ -8,34 +8,40 @@ allowBuilds:
   "@prisma/client": true
   "@prisma/engines": true
   "@scarf/scarf": true
+  "@sentry/cli": true
   esbuild: true
   msgpackr-extract: true
   prisma: true
   sharp: true
   unrs-resolver: true
 minimumReleaseAgeExclude:
-  - '@expo/cli@57.0.11'
+  - '@expo/cli@57.0.11 || 57.0.12'
   - '@expo/inline-modules@0.1.4'
   - '@expo/local-build-cache-provider@57.0.5'
   - '@expo/log-box@57.0.2'
   - '@expo/metro-runtime@57.0.8'
   - '@expo/prebuild-config@57.0.10'
-  - '@expo/ui@57.0.8'
+  - '@expo/ui@57.0.8 || 57.0.9'
   - babel-preset-expo@57.0.5
   - expo-asset@57.0.8
-  - expo-constants@57.0.8
+  - expo-constants@57.0.8 || 57.0.9
   - expo-image-picker@57.0.7
   - expo-location@57.0.7
-  - expo-modules-core@57.0.8
-  - expo-router@57.0.9
+  - expo-modules-core@57.0.8 || 57.0.9
+  - expo-router@57.0.9 || 57.0.10
   - expo-sharing@57.0.8
-  - expo@57.0.9
+  - expo@57.0.9 || 57.0.10
+  - '@expo/router-server@57.0.5'
+  - expo-linking@57.0.5
 overrides:
   "@nestjs/swagger>js-yaml": 5.2.2
-  "ajv>fast-uri": 3.1.4
-  expo-constants: 57.0.8
+  "ajv>fast-uri": 3.1.5
+  expo-constants: 57.0.9
   lightningcss: 1.30.1
-  "minimatch@>=10.0.0>brace-expansion": 5.0.8
+  "minimatch@>=10.0.0>brace-expansion": 5.0.9
   "next>postcss": 8.5.25
   "next>sharp": 0.35.0
+  "qs@>=6.11.1 <=6.15.1": 6.15.2
   "react-devtools-core>shell-quote": 1.9.0
+  "socket.io-parser@>=4.0.0 <4.2.7": 4.2.7
+  "xcode>uuid": 11.1.1

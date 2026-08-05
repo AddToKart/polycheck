@@ -19,6 +19,7 @@ const production = {
   STORAGE_DRIVER: 's3',
   S3_BUCKET: 'polycheck-proofs',
   METRICS_TOKEN: 'm'.repeat(32),
+  PRIVACY_NOTICE_URL: 'https://polycheck.example.edu/privacy',
 }
 
 describe('validateEnv', () => {

@@ -32,6 +32,8 @@ export class SessionAuthenticator {
       department: user.department,
       scope: user.scope,
       authSessionId: session.id,
+      privacyConsentVersion: user.privacyConsentVersion,
+      privacyConsentedAt: user.privacyConsentedAt,
     }
   }
 }

@@ -5,10 +5,11 @@ Polycheck uses Maestro to exercise the compiled Expo/React Native app on an Andr
 ## Covered journeys
 
 - Student sign-in, schedule and audit navigation, invalid enrollment feedback, manual QR rejection, session restoration, and sign-out
+- A critical two-role flow that issues a real signed teacher QR, checks in while Android airplane mode is enabled, reconnects, drains the encrypted offline queue, and verifies the synced result in the teacher roster
 - Teacher sign-in and navigation through subjects, sessions, disputes, and schedule
 - Super-admin sign-in and read-only navigation through subjects, users, reports, and session monitoring
 
-The QR journey intentionally validates the scanner fallback and rejection path with a malformed token. A successful attendance scan requires a signed, short-lived token created by an active teacher device, so it remains a two-device/manual smoke test instead of introducing a production test bypass for signing or geolocation.
+Manual token entry is enabled only in the E2E build. The successful journey copies the real signed token from a test-build-only UI bridge into Maestro's internal clipboard; it does not bypass signing, server validation, geolocation, or sync.
 
 ## Prerequisites
 
@@ -33,6 +34,7 @@ Start an Android emulator, then generate and compile the native project. From th
 ```powershell
 $env:EXPO_PUBLIC_API_URL = "http://10.0.2.2:4000/api"
 $env:EXPO_PUBLIC_ALLOW_QR_FALLBACKS = "true"
+$env:EXPO_PUBLIC_E2E_MODE = "true"
 $env:EXPO_NO_GIT_STATUS = "1"
 pnpm --dir android exec expo prebuild --platform android --no-install --clean
 android\android\gradlew.bat -p android\android assembleDebug
@@ -45,6 +47,7 @@ In a second PowerShell terminal, keep Metro running while the suite executes:
 ```powershell
 $env:EXPO_PUBLIC_API_URL = "http://10.0.2.2:4000/api"
 $env:EXPO_PUBLIC_ALLOW_QR_FALLBACKS = "true"
+$env:EXPO_PUBLIC_E2E_MODE = "true"
 pnpm --dir android start
 ```
 

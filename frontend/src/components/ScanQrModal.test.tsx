@@ -21,6 +21,10 @@ vi.mock('@/lib/api-client', () => ({
   api: { submitScan: vi.fn() },
 }))
 
+vi.mock('@/lib/device-id', () => ({
+  getOrCreateWebInstallationId: vi.fn(() => 'web-test-installation'),
+}))
+
 vi.mock('@polycheck/shared/utils', () => ({
   decodeTokenPayload: vi.fn(),
 }))
@@ -242,7 +246,7 @@ describe('ScanQrModal', () => {
     await waitFor(() => {
       expect(api.submitScan).toHaveBeenCalledWith(
         'sess-1', 'stu-1', 'Test Student', 14.5863, 120.9842,
-        'web-stu-1', 'test-token-123', expect.any(String),
+        'web-test-installation', 'test-token-123', expect.any(String),
         expect.objectContaining({
           clientAttemptId: expect.any(String),
           accuracyMeters: 10,
@@ -457,7 +461,7 @@ describe('ScanQrModal', () => {
     await waitFor(() => {
       expect(api.submitScan).toHaveBeenCalledWith(
         'sess-1', 'stu-1', 'Test Student', 14.5863, 120.9842,
-        'web-stu-1', token, expect.any(String),
+        'web-test-installation', token, expect.any(String),
         expect.objectContaining({
           clientAttemptId: expect.any(String),
           accuracyMeters: 10,
@@ -552,7 +556,7 @@ describe('ScanQrModal', () => {
     await waitFor(() => {
       expect(api.submitScan).toHaveBeenCalledWith(
         'sess-1', 'stu-1', 'Test Student', 14.5863, 120.9842,
-        'web-stu-1', 'upload-token-789', expect.any(String),
+        'web-test-installation', 'upload-token-789', expect.any(String),
         expect.objectContaining({
           clientAttemptId: expect.any(String),
           accuracyMeters: 10,

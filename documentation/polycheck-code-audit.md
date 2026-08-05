@@ -86,7 +86,7 @@ Proof-of-class images are written to a local disk volume (`UPLOAD_DIR`), not obj
 **Low — Swagger docs exposed pending env**
 `/api/docs` is gated by `NODE_ENV !== 'production' || ENABLE_API_DOCS`, so it's off by default in prod — good — but it's a single boolean flag away from being world-readable API documentation (including auth flows) in production. Not a flaw, just flag it in the deploy checklist.
 
-**Informational — no explicit device-binding/biometric gate**, but this is explicitly deferred to v2 in the plan, not a gap against the stated scope.
+**Informational — no explicit hardware-backed device binding**, but this is deferred in the plan and is not a gap against the stated v1 scope.
 
 ---
 

@@ -11,6 +11,8 @@ export interface User {
   department?: string
   photoUrl?: string
   isActive: boolean
+  privacyConsentVersion?: string
+  privacyConsentedAt?: string
   createdAt: string
   updatedAt: string
 }

@@ -10,6 +10,27 @@ import { pupColors } from '../theme/colors'
 import { api, subscribeToAuthChanges } from '../services/api-client'
 import { monitorAuthSession } from '../services/realtime'
 import type { User } from '@polycheck/shared'
+import { PrivacyConsentGate } from '../components/PrivacyConsentGate'
+import { StudentScreenCaptureGuard } from '../components/StudentScreenCaptureGuard'
+import * as Sentry from '@sentry/react-native'
+
+const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN
+Sentry.init({
+  dsn: sentryDsn,
+  enabled: Boolean(sentryDsn) && process.env.EXPO_PUBLIC_E2E_MODE !== 'true',
+  sendDefaultPii: false,
+  tracesSampleRate: 0.05,
+  beforeSend(event) {
+    if (event.request) {
+      delete event.request.cookies
+      delete event.request.headers
+      delete event.request.data
+      delete event.request.query_string
+    }
+    if (event.user) event.user = event.user.id ? { id: event.user.id } : undefined
+    return event
+  },
+})
 
 SplashScreen.preventAutoHideAsync()
 
@@ -43,6 +64,7 @@ function RootLayoutInner() {
     // router.replace() calls in individual screens.
     const stopAuthChanges = subscribeToAuthChanges((user) => {
       if (mounted) setCurrentUser(user)
+      Sentry.setUser(user ? { id: user.id } : null)
 
       // Session duplication monitor (for real-time session replaced events)
       stopAuthMonitor()
@@ -121,14 +143,18 @@ function RootLayoutInner() {
     <View className={`flex-1 will-change-variable will-change-container ${isDark ? 'dark' : ''}`} onLayout={onLayoutRootView}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false }} />
+      {currentUser?.role === 'student' ? <StudentScreenCaptureGuard /> : null}
+      <PrivacyConsentGate user={currentUser} />
     </View>
   )
 }
 
-export default function RootLayout() {
+function RootLayout() {
   return (
     <ThemeProvider>
       <RootLayoutInner />
     </ThemeProvider>
   )
 }
+
+export default Sentry.wrap(RootLayout)

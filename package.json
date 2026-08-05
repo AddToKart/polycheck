@@ -6,6 +6,7 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "clean": "turbo clean",
+    "security:audit": "pnpm audit --prod --audit-level high",
     "test:e2e:mobile": "pnpm --dir android e2e",
     "docker:local:setup": "pnpm docker:local:up && pnpm docker:local:seed",
     "docker:local:up": "docker compose -f docker-compose.local.yml --env-file .env.docker.local up -d --build",

@@ -1,4 +1,4 @@
-import { getRecentCampusDateRange, signQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient } from '@polycheck/shared'
+import { getRecentCampusDateRange, signQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice } from '@polycheck/shared'
 import { getOrCreateTeacherSigningKey, isSigningKeyProvisioned, markSigningKeyProvisioned } from './signing-key'
 import { API_BASE } from './api-config'
 
@@ -114,6 +114,17 @@ async function del<T>(path: string): Promise<T> {
 }
 
 export const api = {
+  getPrivacyNotice(): Promise<PrivacyNotice> {
+    return get('/auth/privacy-notice')
+  },
+
+  async acceptPrivacyConsent(version: string): Promise<User> {
+    const user = await post<User>('/auth/privacy-consent', { version })
+    currentUser = user
+    saveUser(user)
+    return user
+  },
+
   async loginStudent(studentId: string, password?: string): Promise<User | null> {
     const res = await fetchWithTimeout(`${API_BASE}/auth/login/student`, {
       method: 'POST',

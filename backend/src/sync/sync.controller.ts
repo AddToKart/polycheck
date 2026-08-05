@@ -3,8 +3,10 @@ import { Roles } from '../common/decorators/roles.decorator'
 import { SyncAttendanceBatchDto } from './dto/sync-attendance.dto'
 import { SyncService } from './sync.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
+import { RequiresPrivacyConsent } from '../common/decorators/privacy-consent.decorator'
 
 @Controller('sync')
+@RequiresPrivacyConsent()
 export class SyncController {
   constructor(private readonly sync: SyncService) {}
 
