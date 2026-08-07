@@ -55,7 +55,7 @@ jobs:
           tags: ${{ steps.images.outputs.backend }}:${{ steps.images.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v3
         with:
           subject-name: ${{ steps.images.outputs.backend }}
           subject-digest: ${{ steps.backend.outputs.digest }}
@@ -81,7 +81,7 @@ jobs:
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v3
         with:
           subject-name: ${{ steps.images.outputs.frontend }}
           subject-digest: ${{ steps.frontend.outputs.digest }}
