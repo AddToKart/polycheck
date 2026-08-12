@@ -12,6 +12,7 @@ import type { UpdateSectionDto } from './dto/update-section.dto'
 import { DayOfWeek, Prisma } from '../prisma/client'
 import { randomInt } from 'crypto'
 import { adminCanAccessSection, adminEnrollmentWhere, adminSectionWhere } from '../common/admin-scope'
+import { lockStudentSection } from '../common/student-section-lock'
 
 const sectionInclude = {
   subject: { select: { id: true, name: true, code: true } },
@@ -271,19 +272,23 @@ export class SectionsService {
   }
 
   async removeStudent(sectionId: string, teacherId: string, studentId: string) {
-    const section = await this.prisma.section.findUnique({ where: { id: sectionId } })
-    if (!section) throw new NotFoundException('Section not found')
-
-    if (section.teacherId !== teacherId) {
-      throw new ForbiddenException('You can only remove students from your own sections')
-    }
-
-    const enrollment = await this.prisma.enrollment.findUnique({
-      where: { studentId_sectionId: { studentId, sectionId } },
-    })
-    if (!enrollment) throw new NotFoundException('Student is not enrolled in this section')
-
     await this.prisma.$transaction(async (tx) => {
+      await lockStudentSection(tx, studentId, sectionId)
+      const section = await tx.section.findUnique({ where: { id: sectionId } })
+      if (!section) throw new NotFoundException('Section not found')
+      if (section.teacherId !== teacherId) {
+        throw new ForbiddenException('You can only remove students from your own sections')
+      }
+      const enrollment = await tx.enrollment.findUnique({
+        where: { studentId_sectionId: { studentId, sectionId } },
+      })
+      if (!enrollment) throw new NotFoundException('Student is not enrolled in this section')
+
+      await tx.sectionRole.deleteMany({ where: { sectionId, studentId } })
+      await tx.sessionPermission.updateMany({
+        where: { sectionId, studentId, isActive: true },
+        data: { isActive: false },
+      })
       await tx.enrollment.delete({ where: { studentId_sectionId: { studentId, sectionId } } })
       await tx.section.update({
         where: { id: sectionId },
@@ -372,6 +377,7 @@ export class SectionsService {
   private async createEnrollment(studentId: string, sectionId: string) {
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockStudentSection(tx, studentId, sectionId)
         const existing = await tx.enrollment.findUnique({
           where: { studentId_sectionId: { studentId, sectionId } },
         })

@@ -103,6 +103,7 @@ describe('SectionsService', () => {
 
   it('increments the cached student count atomically when enrolling', async () => {
     const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(0),
       enrollment: {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'enrollment-2' }),
@@ -118,6 +119,9 @@ describe('SectionsService', () => {
 
     await service.enrollStudent('section-1', 'teacher-1', 'student-2')
 
+    expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.enrollment.findUnique.mock.invocationCallOrder[0],
+    )
     expect(tx.section.update).toHaveBeenCalledWith({
       where: { id: 'section-1' },
       data: { studentCount: { increment: 1 } },
@@ -126,18 +130,36 @@ describe('SectionsService', () => {
 
   it('decrements the cached student count atomically when removing an enrollment', async () => {
     const tx = {
-      enrollment: { delete: jest.fn().mockResolvedValue({}) },
-      section: { update: jest.fn().mockResolvedValue({}) },
+      $executeRaw: jest.fn().mockResolvedValue(0),
+      enrollment: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'enrollment-1' }),
+        delete: jest.fn().mockResolvedValue({}),
+      },
+      sectionRole: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      sessionPermission: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      section: { findUnique: jest.fn().mockResolvedValue(section), update: jest.fn().mockResolvedValue({}) },
     }
     const prisma = {
-      section: { findUnique: jest.fn().mockResolvedValue(section) },
-      enrollment: { findUnique: jest.fn().mockResolvedValue({ id: 'enrollment-1' }) },
       $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
     }
     const service = new SectionsService(prisma as never)
 
     await service.removeStudent('section-1', 'teacher-1', 'student-1')
 
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
+    expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.enrollment.findUnique.mock.invocationCallOrder[0],
+    )
+    expect(tx.sectionRole.deleteMany).toHaveBeenCalledWith({
+      where: { sectionId: 'section-1', studentId: 'student-1' },
+    })
+    expect(tx.sessionPermission.updateMany).toHaveBeenCalledWith({
+      where: { sectionId: 'section-1', studentId: 'student-1', isActive: true },
+      data: { isActive: false },
+    })
+    expect(tx.enrollment.delete).toHaveBeenCalledWith({
+      where: { studentId_sectionId: { studentId: 'student-1', sectionId: 'section-1' } },
+    })
     expect(tx.section.update).toHaveBeenCalledWith({
       where: { id: 'section-1' },
       data: { studentCount: { decrement: 1 } },

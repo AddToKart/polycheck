@@ -42,10 +42,52 @@ describe('RedisService', () => {
 
     await expect(service.setIfAbsent('request', '1', 60)).resolves.toBe(true)
     await expect(service.setIfAbsent('request', '1', 60)).resolves.toBe(false)
-    await service.setJson('response', { ok: true }, 60)
+    await expect(service.setJson('response', { ok: true }, 60)).resolves.toBe(true)
     await expect(service.getJson('response')).resolves.toEqual({ ok: true })
     await service.delete('request')
     await expect(service.setIfAbsent('request', '1', 60)).resolves.toBe(true)
+  })
+
+  it('reports a successful delete when Redis is intentionally not configured', async () => {
+    const service = new RedisService(config)
+
+    await service.setJson('active-session:1', { isActive: true }, 60)
+
+    await expect(service.delete('active-session:1')).resolves.toBe(true)
+    await expect(service.getJson('active-session:1')).resolves.toBeNull()
+  })
+
+  it('reports a failed delete when configured Redis is disconnected', async () => {
+    const configured = {
+      get: jest.fn((key: string) => (key === 'REDIS_URL' ? 'redis://localhost:6379' : undefined)),
+    } as unknown as ConfigService
+    const service = new RedisService(configured)
+
+    await expect(service.delete('active-session:1')).resolves.toBe(false)
+  })
+
+  it('reports a failed delete when node-redis rejects the command', async () => {
+    const configured = {
+      get: jest.fn((key: string) => (key === 'REDIS_URL' ? 'redis://localhost:6379' : undefined)),
+    } as unknown as ConfigService
+    const service = new RedisService(configured)
+    const client = { isReady: true, del: jest.fn().mockRejectedValue(new Error('connection lost')) }
+    ;(service as unknown as { client: typeof client }).client = client
+
+    await expect(service.delete('active-session:1')).resolves.toBe(false)
+    expect(client.del).toHaveBeenCalledWith('polycheck:active-session:1')
+  })
+
+  it('reports a failed distributed write while retaining the local fallback', async () => {
+    const configured = {
+      get: jest.fn((key: string) => (key === 'REDIS_URL' ? 'redis://localhost:6379' : undefined)),
+    } as unknown as ConfigService
+    const service = new RedisService(configured)
+    const client = { isReady: true, set: jest.fn().mockRejectedValue(new Error('connection lost')) }
+    ;(service as unknown as { client: typeof client }).client = client
+
+    await expect(service.setJson('active-session:1', { isActive: false }, 60)).resolves.toBe(false)
+    await expect(service.getJson('active-session:1')).resolves.toEqual({ isActive: false })
   })
 
   it('releases a local lock only when the ownership token matches', async () => {

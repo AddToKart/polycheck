@@ -12,7 +12,13 @@ COPY shared shared
 COPY backend backend
 RUN pnpm --filter @polycheck/shared build \
  && DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm --filter @polycheck/backend prisma:generate \
- && pnpm --filter @polycheck/backend build
+ && pnpm --filter @polycheck/backend build \
+ && pnpm --filter @polycheck/backend exec tsc \
+      --ignoreConfig \
+      --outDir /app/backend/dist-seed \
+      --module nodenext --moduleResolution nodenext \
+      --target es2022 --esModuleInterop --skipLibCheck --resolveJsonModule \
+      prisma/seed.ts src/prisma/client.ts
 
 FROM node:22-alpine AS production-dependencies
 WORKDIR /app
@@ -36,6 +42,7 @@ COPY --from=production-dependencies --chown=polycheck:polycheck /app/node_module
 COPY --from=production-dependencies --chown=polycheck:polycheck /app/backend/node_modules ./backend/node_modules
 COPY --from=production-dependencies --chown=polycheck:polycheck /app/shared/node_modules ./shared/node_modules
 COPY --from=build --chown=polycheck:polycheck /app/backend/dist ./backend/dist
+COPY --from=build --chown=polycheck:polycheck /app/backend/dist-seed ./backend/dist-seed
 COPY --from=build --chown=polycheck:polycheck /app/backend/prisma ./backend/prisma
 COPY --from=build --chown=polycheck:polycheck /app/backend/prisma.config.ts ./backend/prisma.config.ts
 COPY --from=build --chown=polycheck:polycheck /app/backend/src/generated ./backend/src/generated

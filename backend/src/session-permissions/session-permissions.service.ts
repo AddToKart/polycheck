@@ -2,6 +2,8 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { assertSectionInAdminScope } from '../common/admin-scope'
+import { lockStudentSection } from '../common/student-section-lock'
+import type { Prisma } from '../prisma/client'
 
 interface PermissionInput {
   sectionId: string
@@ -13,36 +15,42 @@ export class SessionPermissionsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async grant(user: RequestUser, dto: PermissionInput) {
-    await this.owns(user.id, dto.sectionId)
-    const enrolled = await this.prisma.enrollment.findUnique({
-      where: { studentId_sectionId: { studentId: dto.studentId, sectionId: dto.sectionId } },
-    })
-    if (!enrolled) throw new NotFoundException('Student is not enrolled in this section')
-    const now = new Date()
-    return this.prisma.sessionPermission.upsert({
-      where: { sectionId_studentId: { sectionId: dto.sectionId, studentId: dto.studentId } },
-      update: {
-        grantedBy: user.id,
-        grantedAt: now,
-        expiresAt: new Date(now.getTime() + 86_400_000),
-        isActive: true,
-      },
-      create: {
-        sectionId: dto.sectionId,
-        studentId: dto.studentId,
-        grantedBy: user.id,
-        grantedAt: now,
-        expiresAt: new Date(now.getTime() + 86_400_000),
-        isActive: true,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      await lockStudentSection(tx, dto.studentId, dto.sectionId)
+      await this.owns(user.id, dto.sectionId, tx)
+      const enrolled = await tx.enrollment.findUnique({
+        where: { studentId_sectionId: { studentId: dto.studentId, sectionId: dto.sectionId } },
+      })
+      if (!enrolled) throw new NotFoundException('Student is not enrolled in this section')
+      const now = new Date()
+      return tx.sessionPermission.upsert({
+        where: { sectionId_studentId: { sectionId: dto.sectionId, studentId: dto.studentId } },
+        update: {
+          grantedBy: user.id,
+          grantedAt: now,
+          expiresAt: new Date(now.getTime() + 86_400_000),
+          isActive: true,
+        },
+        create: {
+          sectionId: dto.sectionId,
+          studentId: dto.studentId,
+          grantedBy: user.id,
+          grantedAt: now,
+          expiresAt: new Date(now.getTime() + 86_400_000),
+          isActive: true,
+        },
+      })
     })
   }
 
   async revoke(user: RequestUser, sectionId: string, studentId: string) {
-    await this.owns(user.id, sectionId)
-    await this.prisma.sessionPermission.updateMany({
-      where: { sectionId, studentId, isActive: true },
-      data: { isActive: false },
+    await this.prisma.$transaction(async (tx) => {
+      await lockStudentSection(tx, studentId, sectionId)
+      await this.owns(user.id, sectionId, tx)
+      await tx.sessionPermission.updateMany({
+        where: { sectionId, studentId, isActive: true },
+        data: { isActive: false },
+      })
     })
     return true
   }
@@ -86,8 +94,8 @@ export class SessionPermissionsService {
     return result.count
   }
 
-  private async owns(id: string, sectionId: string) {
-    const section = await this.prisma.section.findUnique({ where: { id: sectionId }, select: { teacherId: true } })
+  private async owns(id: string, sectionId: string, tx: Prisma.TransactionClient = this.prisma) {
+    const section = await tx.section.findUnique({ where: { id: sectionId }, select: { teacherId: true } })
     if (!section) throw new NotFoundException('Section not found')
     if (section.teacherId !== id) throw new ForbiddenException('You can only manage permissions in your own sections')
   }

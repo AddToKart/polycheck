@@ -106,7 +106,10 @@ export async function adminSectionInScope(
   const scope = adminScope(user)
   if (scope.kind === 'unrestricted') return true
   const section = await prisma.section.findFirst({
-    where: { id: sectionId, teacher: { department: scope.kind === 'department' ? scope.department : '__no_department__' } },
+    where: {
+      id: sectionId,
+      teacher: { department: scope.kind === 'department' ? scope.department : '__no_department__' },
+    },
     select: { id: true },
   })
   return Boolean(section)
@@ -156,7 +159,7 @@ export async function adminDepartmentSectionIds(
   const scope = adminScope(user)
   if (scope.kind === 'unrestricted') return null
   if (scope.kind === 'none') return []
-  return (await prisma.section.findMany({ where: { teacher: { department: scope.department } }, select: { id: true } })).map(
-    (section) => section.id,
-  )
+  return (
+    await prisma.section.findMany({ where: { teacher: { department: scope.department } }, select: { id: true } })
+  ).map((section) => section.id)
 }

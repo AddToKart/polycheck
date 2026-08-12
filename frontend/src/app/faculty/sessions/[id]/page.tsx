@@ -16,6 +16,8 @@ import { LoadingSpinner } from '@/lib/hooks'
 import { useNotifications } from '@/lib/notifications'
 import CampusMap from '@/components/CampusMap'
 import { subscribeToSession } from '@/lib/realtime'
+import { pupColors } from '@/lib/colors'
+import { SessionRequestCoordinator } from '@/lib/session-request-coordinator'
 import QRCode from 'qrcode'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
@@ -27,6 +29,8 @@ const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
   disputed: 'bg-maroon-dark text-golden border border-golden',
 }
+
+const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'The request could not be completed.'
 
 export default function SessionDetailPage() {
   const params = useParams()
@@ -40,64 +44,153 @@ export default function SessionDetailPage() {
   const [filter, setFilter] = useState<AttendanceStatus | 'all'>('all')
   const [proofsOfClass, setProofsOfClass] = useState<ProofOfClass[]>([])
   const [loading, setLoading] = useState(true)
+  const [initializationError, setInitializationError] = useState<string | null>(null)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  const [qrError, setQrError] = useState<string | null>(null)
   const [copiedToken, setCopiedToken] = useState(false)
   const [showQrModal, setShowQrModal] = useState(false)
   const [showValidityPrompt, setShowValidityPrompt] = useState(false)
   const [validityMinutes, setValidityMinutes] = useState('15')
   const [graceMinutes, setGraceMinutes] = useState('15')
   const [countdown, setCountdown] = useState('')
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(() => Date.now())
   const [refreshLabel, setRefreshLabel] = useState('Updated just now')
   const [realtimeConnected, setRealtimeConnected] = useState(false)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [redirecting, setRedirecting] = useState(false)
+  const [generatingQr, setGeneratingQr] = useState(false)
+  const [endingSession, setEndingSession] = useState(false)
+  const requestInFlightRef = useRef(false)
+  const queuedRefreshRef = useRef(false)
+  const requestCoordinatorRef = useRef(new SessionRequestCoordinator())
+  // Indirection so the refresh callback can re-run itself without recursion
+  // (React Compiler cannot preserve memoization for self-referential callbacks).
+  const refreshDataRef = useRef<() => Promise<boolean>>(async () => false)
 
-  const refreshData = useCallback(async () => {
-    if (!id) return
-    const s = await api.getSession(id)
-    if (s) {
+  const runQueuedRefresh = useCallback(() => {
+    if (!queuedRefreshRef.current) return
+    queuedRefreshRef.current = false
+    void refreshDataRef.current()
+  }, [])
+
+  const refreshData = useCallback(async ({ reconcile = false }: { reconcile?: boolean } = {}) => {
+    if (!id) return false
+    if (!reconcile && requestInFlightRef.current) {
+      // An update (e.g. a realtime event) arrived while another request was in
+      // flight; queue one trailing refresh so it is not permanently dropped.
+      queuedRefreshRef.current = true
+      return false
+    }
+    if (reconcile) requestCoordinatorRef.current.resetForReconciliation()
+    else requestInFlightRef.current = true
+    const readEpoch = requestCoordinatorRef.current.beginRead()
+    setRefreshing(true)
+    try {
+      const [s, nextRecords, nextProofs] = await Promise.all([
+        api.getSession(id),
+        api.getAttendanceRecords(id),
+        api.getProofsOfClass(id),
+      ])
+      if (!requestCoordinatorRef.current.canCommitRead(readEpoch)) return false
       setSession(s)
+      setRecords(nextRecords)
+      setProofsOfClass(nextProofs)
       setValidityMinutes(String(Math.min(s.qrValidityMinutes || 15, 15)))
       setGraceMinutes(String(Math.min(s.gracePeriodMinutes || 15, 60)))
-      if (s.qrToken) {
-        setQrDataUrl(await QRCode.toDataURL(s.qrToken, {
-          width: 1024,
-          margin: 3,
-          errorCorrectionLevel: 'M',
-          color: { dark: '#0A0A0A', light: '#FFFFFF' },
-        }))
-      } else {
-        setQrDataUrl(null)
-      }
+      setRefreshError(null)
+      setRefreshLabel('Updated just now')
+      setLastUpdatedAt(Date.now())
+      return true
+    } catch (error) {
+      if (requestCoordinatorRef.current.canCommitRead(readEpoch)) setRefreshError(getErrorMessage(error))
+      return false
+    } finally {
+      if (!reconcile) requestInFlightRef.current = false
+      setRefreshing(false)
+      if (!reconcile) runQueuedRefresh()
     }
-    setRecords(await api.getAttendanceRecords(id))
-    setProofsOfClass(await api.getProofsOfClass(id))
-    setLastUpdated(new Date())
-  }, [id])
+  }, [id, runQueuedRefresh])
 
   useEffect(() => {
-    const init = async () => {
-      const cu = api.getCurrentUser()
-      if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
-        router.push('/')
+    refreshDataRef.current = refreshData
+  }, [refreshData])
+
+  const initialize = useCallback(async () => {
+    const cu = api.getCurrentUser()
+    if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
+      setRedirecting(true)
+      router.replace('/')
+      return
+    }
+    if (!id || requestInFlightRef.current) return
+
+    setUser(cu)
+    setLoading(true)
+    setInitializationError(null)
+    setRedirecting(false)
+    requestInFlightRef.current = true
+    const readEpoch = requestCoordinatorRef.current.beginRead()
+    try {
+      const [nextSession, nextRecords, nextProofs] = await Promise.all([
+        api.getSession(id),
+        api.getAttendanceRecords(id),
+        api.getProofsOfClass(id),
+      ])
+      const section = await api.getSection(nextSession.sectionId)
+      if (cu.role === 'teacher' && section.teacherId !== cu.id) {
+        setRedirecting(true)
+        router.replace('/faculty')
         return
       }
-      setUser(cu)
-      await refreshData()
-      if (id) {
-        const section = await api.getSection((await api.getSession(id)).sectionId)
-        if (cu.role === 'teacher' && section.teacherId !== cu.id) {
-          router.push('/faculty')
-          return
-        }
-        const students = await api.getSectionStudents(section.id)
-        setEnrolledStudents(students as Student[])
-      }
+      const students = await api.getSectionStudents(section.id)
+
+      if (!requestCoordinatorRef.current.canCommitRead(readEpoch)) return
+      setSession(nextSession)
+      setRecords(nextRecords)
+      setProofsOfClass(nextProofs)
+      setValidityMinutes(String(Math.min(nextSession.qrValidityMinutes || 15, 15)))
+      setGraceMinutes(String(Math.min(nextSession.gracePeriodMinutes || 15, 60)))
+      setEnrolledStudents(students as Student[])
+      setRefreshLabel('Updated just now')
+      setLastUpdatedAt(Date.now())
+    } catch (error) {
+      if (requestCoordinatorRef.current.canCommitRead(readEpoch)) setInitializationError(getErrorMessage(error))
+    } finally {
+      requestInFlightRef.current = false
       setLoading(false)
+      runQueuedRefresh()
     }
-    init()
-  }, [id, router, refreshData])
+  }, [id, router, runQueuedRefresh])
+
+  useEffect(() => {
+    void initialize()
+  }, [initialize])
+
+  const qrToken = session?.qrToken ?? null
+  useEffect(() => {
+    let active = true
+    setQrError(null)
+    if (!qrToken) {
+      setQrDataUrl(null)
+      return () => { active = false }
+    }
+
+    void QRCode.toDataURL(qrToken, {
+      width: 1024,
+      margin: 3,
+      errorCorrectionLevel: 'M',
+      color: { dark: pupColors.black, light: pupColors.white },
+    }).then((dataUrl) => {
+      if (active) setQrDataUrl(dataUrl)
+    }).catch((error) => {
+      if (!active) return
+      setQrDataUrl(null)
+      setQrError(getErrorMessage(error))
+    })
+
+    return () => { active = false }
+  }, [qrToken])
 
   useEffect(() => {
     if (!id) return
@@ -105,51 +198,66 @@ export default function SessionDetailPage() {
   }, [id, refreshData])
 
   useEffect(() => {
-    if (!session?.isActive) {
-      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
-      return
-    }
-    if (realtimeConnected) return
-    pollRef.current = setInterval(async () => {
-      await refreshData()
-    }, 10000)
-    return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [session?.isActive, id, realtimeConnected, refreshData])
+    if (!session?.isActive || realtimeConnected) return
+    const poll = setInterval(() => { void refreshData() }, 10000)
+    return () => clearInterval(poll)
+  }, [session?.isActive, realtimeConnected, refreshData])
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      const seconds = Math.floor((Date.now() - lastUpdated.getTime()) / 1000)
+    const updateLabel = () => {
+      const seconds = Math.floor((Date.now() - lastUpdatedAt) / 1000)
       if (seconds < 5) setRefreshLabel('Updated just now')
       else if (seconds < 60) setRefreshLabel(`Updated ${seconds}s ago`)
       else setRefreshLabel(`Updated ${Math.floor(seconds / 60)}m ago`)
-    }, 5000)
+    }
+    updateLabel()
+    const timer = setInterval(updateLabel, 5000)
     return () => clearInterval(timer)
-  }, [lastUpdated])
+  }, [lastUpdatedAt])
 
+  const sessionIsActive = session?.isActive ?? false
+  const qrTokenExpiresAt = session?.qrTokenExpiresAt ?? null
+  const gracePeriodMinutes = session?.gracePeriodMinutes ?? 0
   useEffect(() => {
-    if (!session || !session.isActive || !session.qrTokenExpiresAt) {
-      if (intervalRef.current) clearInterval(intervalRef.current)
+    if (!sessionIsActive || !qrTokenExpiresAt) {
+      setCountdown('')
       return
     }
+    const expiresAt = new Date(qrTokenExpiresAt).getTime()
     const tick = () => {
-      const diff = new Date(session.qrTokenExpiresAt!).getTime() - Date.now()
+      const diff = expiresAt - Date.now()
       if (diff <= 0) {
-        const graceEnd = new Date(session.qrTokenExpiresAt!).getTime() + session.gracePeriodMinutes * 60 * 1000
-        const graceDiff = graceEnd - Date.now()
+        const graceDiff = expiresAt + gracePeriodMinutes * 60 * 1000 - Date.now()
         setCountdown(graceDiff <= 0 ? 'Grace ended' : `Grace: ${String(Math.floor(graceDiff / 60000)).padStart(2, '0')}:${String(Math.floor((graceDiff % 60000) / 1000)).padStart(2, '0')}`)
         return
       }
       setCountdown(`${String(Math.floor(diff / 60000)).padStart(2, '0')}:${String(Math.floor((diff % 60000) / 1000)).padStart(2, '0')}`)
     }
     tick()
-    intervalRef.current = setInterval(tick, 1000)
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
-  }, [session])
+    const timer = setInterval(tick, 1000)
+    return () => clearInterval(timer)
+  }, [sessionIsActive, qrTokenExpiresAt, gracePeriodMinutes])
 
   if (loading) return (
-    <div className="flex h-screen bg-zinc-100 dark:bg-pup-black items-center justify-center">
+    <div className="flex h-screen flex-col gap-4 bg-zinc-100 dark:bg-pup-black items-center justify-center" role="status" aria-live="polite">
+      <LoadingSpinner size="lg" />
+      <p className="text-sm font-semibold text-maroon-dark dark:text-golden">Loading session cockpit…</p>
+    </div>
+  )
+  if (redirecting) return (
+    <div className="flex h-screen bg-zinc-100 dark:bg-pup-black items-center justify-center" role="status" aria-live="polite">
       <LoadingSpinner size="lg" />
     </div>
+  )
+  if (initializationError) return (
+    <main className="flex min-h-screen items-center justify-center bg-zinc-100 px-6 dark:bg-pup-black">
+      <section className="w-full max-w-md border border-zinc-200 bg-white p-8 text-center dark:border-golden/15 dark:bg-surface-dark" role="alert">
+        <p className="text-xs font-bold uppercase tracking-widest text-maroon dark:text-golden">Session unavailable</p>
+        <h1 className="mt-2 font-heading text-2xl font-bold text-maroon-dark dark:text-white">The session cockpit couldn’t load</h1>
+        <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">{initializationError}</p>
+        <Button className="mt-6" onClick={() => void initialize()}>Retry</Button>
+      </section>
+    </main>
   )
   if (!user || !session) return null
   const isTeacher = user.role === 'teacher'
@@ -190,17 +298,43 @@ export default function SessionDetailPage() {
     const mins = parseInt(validityMinutes, 10)
     const grace = parseInt(graceMinutes, 10)
     if (isNaN(mins) || mins < 1 || mins > 15 || isNaN(grace) || grace < 0 || grace > 60) return
-    await api.generateQrCode(session.id, mins, grace)
-    setShowValidityPrompt(false)
-    await refreshData()
-    addNotification('success', 'QR Code Generated', `Session activated with ${mins}min validity and ${grace}min grace`)
+    setGeneratingQr(true)
+    const mutationEpoch = requestCoordinatorRef.current.beginMutation()
+    let mutationSettled = false
+    try {
+      const activated = await api.generateQrCode(session.id, mins, grace)
+      mutationSettled = true
+      if (requestCoordinatorRef.current.commitMutation(mutationEpoch)) setSession(activated)
+      setShowValidityPrompt(false)
+      void refreshData()
+      addNotification('success', 'QR Code Generated', `Session activated with ${mins}min validity and ${grace}min grace`)
+    } catch (error) {
+      if (!mutationSettled) requestCoordinatorRef.current.abortMutation(mutationEpoch)
+      addNotification('error', 'QR Generation Failed', getErrorMessage(error))
+      setShowValidityPrompt(false)
+      await refreshData({ reconcile: true })
+    } finally {
+      setGeneratingQr(false)
+    }
   }
 
   const handleEndSession = async () => {
-    if (confirm('Mark all pending students as absent and end the session?')) {
-      await api.endSession(session.id)
-      await refreshData()
+    if (!confirm('Mark all pending students as absent and end the session?')) return
+    setEndingSession(true)
+    const mutationEpoch = requestCoordinatorRef.current.beginMutation()
+    let mutationSettled = false
+    try {
+      const ended = await api.endSession(session.id)
+      mutationSettled = true
+      if (requestCoordinatorRef.current.commitMutation(mutationEpoch)) setSession(ended)
+      void refreshData()
       addNotification('info', 'Session Ended', 'All pending students marked as absent')
+    } catch (error) {
+      if (!mutationSettled) requestCoordinatorRef.current.abortMutation(mutationEpoch)
+      addNotification('error', 'Could Not End Session', getErrorMessage(error))
+      await refreshData({ reconcile: true })
+    } finally {
+      setEndingSession(false)
     }
   }
 
@@ -253,13 +387,29 @@ export default function SessionDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={refreshData} className="p-2 hover:opacity-70">
-              <RefreshCw className="w-4 h-4 text-maroon dark:text-golden" />
+            <button
+              type="button"
+              onClick={() => void refreshData()}
+              className="p-2 hover:opacity-70 disabled:cursor-wait disabled:opacity-50"
+              aria-label="Refresh session data"
+              disabled={refreshing}
+            >
+              <RefreshCw className={`w-4 h-4 text-maroon dark:text-golden ${refreshing ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>
 
         <div className="p-6 space-y-6 max-w-4xl mx-auto">
+          {refreshError ? (
+            <div className="flex flex-col gap-3 border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200 sm:flex-row sm:items-center sm:justify-between" role="alert">
+              <div>
+                <p className="font-bold">Session data could not be refreshed.</p>
+                <p className="mt-1 text-xs">{refreshError}</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => void refreshData()} disabled={refreshing}>Retry refresh</Button>
+            </div>
+          ) : null}
+
           {/* QR Code Card */}
           {isTeacher && <Card className="dark:border-golden/15 dark:bg-surface-dark">
             <CardContent className="p-6">
@@ -268,6 +418,7 @@ export default function SessionDetailPage() {
                 <h2 className="text-base font-bold dark:text-white">QR Code</h2>
               </div>
               <div className="flex flex-col items-center py-4">
+                {qrError ? <p className="mb-4 text-sm text-red-600 dark:text-red-300" role="alert">QR image could not be rendered: {qrError}</p> : null}
                 {qrDataUrl ? (
                   <>
                     <button
@@ -480,8 +631,8 @@ export default function SessionDetailPage() {
 
           {/* End Session */}
           {isTeacher && session.isActive && (
-            <Button className="w-full bg-red-500 hover:bg-red-600 text-white flex items-center gap-2 py-6" onClick={handleEndSession}>
-              <StopCircle className="w-5 h-5" /> End Session
+            <Button className="w-full bg-red-500 hover:bg-red-600 text-white flex items-center gap-2 py-6" onClick={handleEndSession} disabled={endingSession}>
+              <StopCircle className="w-5 h-5" /> {endingSession ? 'Ending Session…' : 'End Session'}
             </Button>
           )}
         </div>
@@ -530,7 +681,9 @@ export default function SessionDetailPage() {
             </div>
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setShowValidityPrompt(false)}>Cancel</Button>
-              <Button className="flex-1 bg-maroon hover:bg-maroon-dark dark:bg-golden dark:hover:bg-golden-dark dark:text-maroon-dark" onClick={handleGenerateQr}>Generate</Button>
+              <Button className="flex-1 bg-maroon hover:bg-maroon-dark dark:bg-golden dark:hover:bg-golden-dark dark:text-maroon-dark" onClick={handleGenerateQr} disabled={generatingQr}>
+                {generatingQr ? 'Generating…' : 'Generate'}
+              </Button>
             </div>
         </DialogContent>
       </Dialog>

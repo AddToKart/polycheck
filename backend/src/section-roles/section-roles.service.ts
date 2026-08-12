@@ -3,6 +3,8 @@ import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { SectionRoleType } from '../prisma/client'
 import { adminDepartmentSectionIds, assertSectionInAdminScope } from '../common/admin-scope'
+import { lockStudentSection } from '../common/student-section-lock'
+import type { Prisma } from '../prisma/client'
 
 interface AssignRoleInput {
   sectionId: string
@@ -34,41 +36,47 @@ export class SectionRolesService {
   }
 
   async assign(user: RequestUser, dto: AssignRoleInput) {
-    await this.owns(user.id, dto.sectionId)
-    const enrollment = await this.prisma.enrollment.findUnique({
-      where: { studentId_sectionId: { studentId: dto.studentId, sectionId: dto.sectionId } },
-      include: { student: { select: { fullName: true } } },
-    })
-    if (!enrollment) throw new NotFoundException('Student is not enrolled in this section')
-    return this.prisma.sectionRole.upsert({
-      where: {
-        sectionId_studentId_role: {
+    return this.prisma.$transaction(async (tx) => {
+      await lockStudentSection(tx, dto.studentId, dto.sectionId)
+      await this.owns(user.id, dto.sectionId, tx)
+      const enrollment = await tx.enrollment.findUnique({
+        where: { studentId_sectionId: { studentId: dto.studentId, sectionId: dto.sectionId } },
+        include: { student: { select: { fullName: true } } },
+      })
+      if (!enrollment) throw new NotFoundException('Student is not enrolled in this section')
+      return tx.sectionRole.upsert({
+        where: {
+          sectionId_studentId_role: {
+            sectionId: dto.sectionId,
+            studentId: dto.studentId,
+            role: dto.role as SectionRoleType,
+          },
+        },
+        update: { grantedBy: user.id, studentName: enrollment.student.fullName },
+        create: {
           sectionId: dto.sectionId,
           studentId: dto.studentId,
           role: dto.role as SectionRoleType,
+          grantedBy: user.id,
+          studentName: enrollment.student.fullName,
         },
-      },
-      update: { grantedBy: user.id, studentName: enrollment.student.fullName },
-      create: {
-        sectionId: dto.sectionId,
-        studentId: dto.studentId,
-        role: dto.role as SectionRoleType,
-        grantedBy: user.id,
-        studentName: enrollment.student.fullName,
-      },
+      })
     })
   }
 
   async remove(user: RequestUser, sectionId: string, studentId: string, role: 'president' | 'qac') {
-    await this.owns(user.id, sectionId)
-    await this.prisma.sectionRole.delete({
-      where: { sectionId_studentId_role: { sectionId, studentId, role: role as SectionRoleType } },
+    await this.prisma.$transaction(async (tx) => {
+      await lockStudentSection(tx, studentId, sectionId)
+      await this.owns(user.id, sectionId, tx)
+      await tx.sectionRole.delete({
+        where: { sectionId_studentId_role: { sectionId, studentId, role: role as SectionRoleType } },
+      })
     })
     return true
   }
 
-  private async owns(id: string, sectionId: string) {
-    const s = await this.prisma.section.findUnique({ where: { id: sectionId }, select: { teacherId: true } })
+  private async owns(id: string, sectionId: string, tx: Prisma.TransactionClient = this.prisma) {
+    const s = await tx.section.findUnique({ where: { id: sectionId }, select: { teacherId: true } })
     if (!s) throw new NotFoundException('Section not found')
     if (s.teacherId !== id) throw new ForbiddenException()
   }

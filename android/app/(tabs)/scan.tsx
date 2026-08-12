@@ -28,6 +28,7 @@ import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusIconButton } from '../../components/CampusPrimitives'
 import { getOrCreateInstallationId } from '../../services/device-id'
+import { resetScannerOnBlur, shouldMountScannerCamera, isScannerOperationCurrent } from '../../hooks/scanner-focus-lifecycle'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
 const scanSize = Math.min(SCREEN_WIDTH * 0.82, 340)
@@ -52,11 +53,14 @@ export default function ScanScreen() {
   const [showManual, setShowManual] = useState(false)
   const [manualToken, setManualToken] = useState('')
   const [torchOn, setTorchOn] = useState(false)
+  const [isFocused, setIsFocused] = useState(false)
   const [decodingImage, setDecodingImage] = useState(false)
   const [cameraPermission, requestPermission] = useCameraPermissions()
   const [activeSession, setActiveSession] = useState<Session | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scannedRef = useRef(false)
+  const focusedRef = useRef(false)
+  const scanOpRef = useRef(0)
 
   // Scanning laser line animation
   const scanAnim = useRef(new Animated.Value(0)).current
@@ -89,6 +93,8 @@ export default function ScanScreen() {
   useFocusEffect(
     useCallback(() => {
       let focused = true
+      focusedRef.current = true
+      setIsFocused(true)
       void api
         .getSessions()
         .then((sessions) => {
@@ -101,6 +107,18 @@ export default function ScanScreen() {
         })
       return () => {
         focused = false
+        resetScannerOnBlur({
+          timeoutRef,
+          scannedRef,
+          focusedRef,
+          scanOpRef,
+          setFocused: setIsFocused,
+          setTorchOn,
+          setResult,
+          setShowManual,
+          setManualToken,
+          setDecodingImage,
+        })
       }
     }, []),
   )
@@ -113,6 +131,7 @@ export default function ScanScreen() {
   )
 
   const showResult = useCallback((status: NonNullable<ScanResult>['status'], message: string) => {
+    if (!focusedRef.current) return
     setResult({ status, message })
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     timeoutRef.current = setTimeout(() => {
@@ -123,8 +142,10 @@ export default function ScanScreen() {
 
   const handleScanResult = useCallback(
     async (token: string, inputChannel: ScanInputChannel = 'camera') => {
-      if (scannedRef.current || !token) return
+      if (!focusedRef.current || scannedRef.current || !token) return
+      const operationId = scanOpRef.current
       scannedRef.current = true
+      const stillCurrent = () => isScannerOperationCurrent(focusedRef, scanOpRef, operationId)
 
       try {
         const payload = decodeTokenPayload(token)
@@ -140,6 +161,7 @@ export default function ScanScreen() {
         }
 
         const session = await api.getSession(payload.sessionId)
+        if (!stillCurrent()) return
         if (!session) {
           showResult('absent', 'The class session could not be found.')
           return
@@ -147,6 +169,7 @@ export default function ScanScreen() {
         setActiveSession(session)
 
         const permission = await Location.requestForegroundPermissionsAsync()
+        if (!stillCurrent()) return
         if (permission.status !== 'granted') {
           showResult('absent', 'Location access is required to verify that you are inside the class geofence.')
           return
@@ -154,9 +177,15 @@ export default function ScanScreen() {
 
         const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation })
         const scannedAt = await api.getTrustedTimestamp()
+        if (!stillCurrent()) return
         const locationAgeMs = Math.max(0, Date.now() - location.timestamp)
         const locationCapturedAt = new Date(new Date(scannedAt).getTime() - locationAgeMs).toISOString()
         const deviceId = await getOrCreateInstallationId()
+        if (!stillCurrent()) return
+        // This is the last cancellable client boundary. Once the HTTP request
+        // below has been sent, a blur cannot retract server-side work; the
+        // generation checks prevent starting it after blur and suppress stale
+        // UI after any already-sent request settles.
         const submitted = await api.submitScan(
           session.id,
           user.id,
@@ -174,6 +203,7 @@ export default function ScanScreen() {
             inputChannel,
           },
         )
+        if (!stillCurrent()) return
 
         if ('error' in submitted) {
           showResult('absent', submitted.error)
@@ -184,6 +214,7 @@ export default function ScanScreen() {
           submitted.isSynced ? `Attendance recorded as ${submitted.status}.` : 'Check-in saved offline and queued for sync.',
         )
       } catch (error) {
+        if (!stillCurrent()) return
         showResult('absent', error instanceof Error ? error.message : 'Your location could not be verified.')
       }
     },
@@ -191,28 +222,40 @@ export default function ScanScreen() {
   )
 
   const handleUploadQr = useCallback(async () => {
-    if (decodingImage || scannedRef.current) return
+    if (!focusedRef.current || decodingImage || scannedRef.current) return
+    // Capture the focus generation before the permission request (the first
+    // await). A picker opened before blur must never be reclassified as a new
+    // operation merely because the user returned before it resolved.
+    const operationId = scanOpRef.current
+    const stillCurrent = () => isScannerOperationCurrent(focusedRef, scanOpRef, operationId)
     setDecodingImage(true)
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
+      if (!stillCurrent()) return
       if (!permission.granted) {
         showResult('absent', 'Photo access is required to select a QR image.')
         return
       }
       const selection = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 1 })
+      if (!stillCurrent()) return
       if (selection.canceled) return
 
       const codes = await scanFromURLAsync(selection.assets[0].uri, ['qr'])
+      if (!stillCurrent()) return
       const qrCode = codes.find((code) => code.type === 'qr') ?? codes[0]
       if (!qrCode?.data) {
         showResult('absent', 'No QR code was found in that image.')
         return
       }
+      // handleScanResult performs network reads and ultimately submits the
+      // attendance record. This guard prevents starting that chain after blur.
       await handleScanResult(qrCode.data, 'image')
     } catch (error) {
-      showResult('absent', error instanceof Error ? error.message : 'The QR image could not be read.')
+      if (stillCurrent()) showResult('absent', error instanceof Error ? error.message : 'The QR image could not be read.')
     } finally {
-      setDecodingImage(false)
+      // Do not let a stale upload clear the busy state of a newer operation
+      // started after refocus.
+      if (stillCurrent()) setDecodingImage(false)
     }
   }, [decodingImage, handleScanResult, showResult])
 
@@ -222,11 +265,12 @@ export default function ScanScreen() {
   })
 
   const presentation = result ? resultPresentation[result.status] : null
+  const cameraMounted = shouldMountScannerCamera(isFocused, cameraPermission?.granted === true)
 
   return (
     <View style={{ flex: 1, backgroundColor: '#0A0A0E' }} testID="student-scan-screen">
       {/* Full-bleed Camera Viewport */}
-      {cameraPermission?.granted ? (
+      {cameraMounted ? (
         <CameraView
           style={StyleSheet.absoluteFill}
           facing="back"

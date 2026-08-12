@@ -315,6 +315,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate production Compose topology
         env:
+          BACKEND_IMAGE: ghcr.io/example/polycheck/backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          FRONTEND_IMAGE: ghcr.io/example/polycheck/frontend@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
           POSTGRES_PASSWORD: compose-validation-only
           REDIS_PASSWORD: compose-validation-only
           DATABASE_URL: postgresql://polycheck:compose-validation-only@pgbouncer:5432/polycheck?schema=public&pgbouncer=true&connection_limit=10&pool_timeout=10
@@ -329,9 +331,68 @@ jobs:
           S3_BUCKET: compose-validation-only
           PRIVACY_NOTICE_VERSION: 2026-08-04
           PRIVACY_NOTICE_URL: https://polycheck.example.test/privacy
+          POSTGRES_BACKUP_PATH: /tmp/polycheck-backups
+          POSTGRES_WAL_ARCHIVE_PATH: /tmp/polycheck-wal-archive
+          PITR_RPO_MINUTES: 5
+          PITR_RTO_MINUTES: 240
+          POSTGRES_ARCHIVE_TIMEOUT_SECONDS: 300
         run: |
+          sh deployment/scripts/validate-production-images.sh
+          sh deployment/scripts/validate-production-recovery.sh
           docker compose -f docker-compose.yml config --quiet
           docker compose -f docker-compose.yml -f deployment/docker-compose.scale.yml config --quiet
+          docker compose -f docker-compose.yml --profile recovery config --quiet
+          rendered="$(docker compose -f docker-compose.yml config --format json)"
+          test "$(printf '%s' "$rendered" | jq '[.services.backend, .services.frontend, .services.migrate] | map(has("build")) | any')" = false
+          sudo install -d -o 70 -g 70 -m 0700 "$POSTGRES_BACKUP_PATH" "$POSTGRES_WAL_ARCHIVE_PATH"
+          cleanup_recovery_test() {
+            docker compose -f docker-compose.yml --profile recovery down -v --remove-orphans || true
+            sudo rm -rf "$POSTGRES_BACKUP_PATH" "$POSTGRES_WAL_ARCHIVE_PATH"
+          }
+          trap cleanup_recovery_test EXIT
+          run_psql() {
+            docker compose -f docker-compose.yml exec -T postgres sh -ec \
+              'PGPASSWORD="$(cat /run/secrets/postgres_password)" psql -U polycheck -d polycheck -v ON_ERROR_STOP=1 -Atqc "$1"' \
+              sh "$1"
+          }
+          docker compose -f docker-compose.yml up -d postgres
+          for _ in $(seq 1 90); do
+            if docker compose -f docker-compose.yml exec -T postgres pg_isready -U polycheck -d polycheck >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          run_psql 'CREATE TABLE "User" (id text PRIMARY KEY);'
+          docker compose -f docker-compose.yml run --rm backup once
+          # Create a marker strictly after the physical base backup and force
+          # its WAL to the archive. The isolated drill must replay to this
+          # named point and prove the marker row exists.
+          run_psql "CREATE TABLE pitr_ci_marker (value text PRIMARY KEY); INSERT INTO pitr_ci_marker VALUES ('after-base');"
+          run_psql "SELECT pg_create_restore_point('polycheck_ci_after_base');" >/dev/null
+          marker_wal="$(run_psql 'SELECT pg_walfile_name(pg_current_wal_lsn())')"
+          run_psql 'SELECT pg_switch_wal();' >/dev/null
+          archived='0'
+          for _ in $(seq 1 30); do
+            archived="$(run_psql 'SELECT archived_count FROM pg_stat_archiver')"
+            if [ "${archived:-0}" -gt 0 ] && sudo test -f "$POSTGRES_WAL_ARCHIVE_PATH/$marker_wal"; then break; fi
+            sleep 2
+          done
+          test "${archived:-0}" -gt 0
+          sudo test -f "$POSTGRES_WAL_ARCHIVE_PATH/$marker_wal"
+          docker compose -f docker-compose.yml --profile recovery run --rm pitr-verify
+          docker compose -f docker-compose.yml --profile recovery run --rm -e RUN_RESTORE_DRILL=1 restore-drill
+          docker compose -f docker-compose.yml --profile recovery run --rm \
+            -e RUN_PITR_RESTORE_DRILL=1 \
+            -e PITR_RECOVERY_TARGET_NAME=polycheck_ci_after_base \
+            -e "PITR_VERIFY_SQL=SELECT CASE WHEN EXISTS (SELECT 1 FROM pitr_ci_marker WHERE value = 'after-base') THEN 1 ELSE 0 END" \
+            pitr-restore-drill
+      - name: Validate deployment shell controls
+        run: |
+          for script in deployment/scripts/*.sh; do sh -n "$script"; done
+          sh deployment/scripts/test-deployment-scripts.sh
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck deployment/scripts/*.sh
+          fi
       - name: Validate nginx configuration
         run: >-
           docker run --rm

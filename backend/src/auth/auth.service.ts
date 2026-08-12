@@ -30,6 +30,9 @@ const KEY_PROVISION_RATE_WINDOW = positiveInt(process.env.KEY_PROVISION_RATE_WIN
 // repeated revoke/flood abuse while still allowing a compromised key to be
 // invalidated immediately.
 const KEY_REVOKE_RATE_LIMIT = positiveInt(process.env.KEY_REVOKE_RATE_LIMIT, 3)
+// Cache-hygiene lease only. Scan validation always reads the PostgreSQL key,
+// so lease expiry cannot make a stale Redis key authoritative.
+const KEY_ROTATION_LOCK_TTL_SECONDS = 10
 
 function positiveInt(value: string | undefined, fallback: number) {
   const parsed = value === undefined ? NaN : Number(value)
@@ -160,14 +163,26 @@ export class AuthService {
       throw new HttpException('Too many key provisioning attempts. Try again later.', HttpStatus.TOO_MANY_REQUESTS)
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: userId } })
-    if (!user) throw new NotFoundException('User not found')
-
-    const previousKey = user.teacherPublicKey
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { teacherPublicKey: publicKey },
-    })
+    const lockKey = `key-rotation:${userId}`
+    const lockToken = await this.redis.acquireLock(lockKey, KEY_ROTATION_LOCK_TTL_SECONDS)
+    if (!lockToken) {
+      throw new HttpException('Signing key rotation is already in progress. Try again shortly.', HttpStatus.CONFLICT)
+    }
+    let previousKey: string | null
+    try {
+      // Read only after acquiring the lease. In particular, first provisioning
+      // must observe and clean up a key concurrently installed by another node.
+      const user = await this.prisma.user.findUnique({ where: { id: userId } })
+      if (!user) throw new NotFoundException('User not found')
+      previousKey = user.teacherPublicKey
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { teacherPublicKey: publicKey },
+      })
+      await this.invalidateActiveSessionCaches(userId)
+    } finally {
+      await this.releaseRotationLock(lockKey, lockToken)
+    }
 
     this.logger.log(
       `Signing key provisioned for user ${userId} (previous key: ${previousKey ? 'replaced' : 'first provision'})`,
@@ -193,32 +208,33 @@ export class AuthService {
       throw new HttpException('Too many key revocation attempts. Try again later.', HttpStatus.TOO_MANY_REQUESTS)
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, teacherPublicKey: true },
-    })
-    if (!user) throw new NotFoundException('User not found')
-    if (!user.teacherPublicKey) {
-      return { revoked: false, message: 'No signing key is currently provisioned' }
+    const lockKey = `key-rotation:${userId}`
+    const lockToken = await this.redis.acquireLock(lockKey, KEY_ROTATION_LOCK_TTL_SECONDS)
+    if (!lockToken) {
+      throw new HttpException('Signing key rotation is already in progress. Try again shortly.', HttpStatus.CONFLICT)
+    }
+    let fingerprint: string | null = null
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, teacherPublicKey: true },
+      })
+      if (!user) throw new NotFoundException('User not found')
+      if (!user.teacherPublicKey) {
+        return { revoked: false, message: 'No signing key is currently provisioned' }
+      }
+      fingerprint = createHash('sha256').update(user.teacherPublicKey).digest('hex')
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { teacherPublicKey: null },
+      })
+      await this.invalidateActiveSessionCaches(userId)
+    } finally {
+      await this.releaseRotationLock(lockKey, lockToken)
     }
 
-    const fingerprint = createHash('sha256').update(user.teacherPublicKey).digest('hex')
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { teacherPublicKey: null },
-    })
-
-    // Invalidate cached active-session records for this teacher: scan
-    // validation prefers the Redis-cached signing key, so without this the
-    // revoked key would keep verifying QR tokens until the cache TTL expires.
-    const activeSessions = await this.prisma.session.findMany({
-      where: { teacherId: userId, isActive: true },
-      select: { id: true },
-    })
-    await Promise.all(activeSessions.map((session) => this.redis.delete(`active-session:${session.id}`)))
-
     this.events.emit('auth.key-revoked', { userId, fingerprint })
-    this.logger.warn(`Signing key revoked for user ${userId} (fingerprint ${fingerprint.slice(0, 12)})`)
+    this.logger.warn(`Signing key revoked for user ${userId} (fingerprint ${fingerprint!.slice(0, 12)})`)
     return { revoked: true, message: 'Signing key revoked. Provision a new key before generating QR tokens.' }
   }
 
@@ -253,6 +269,43 @@ export class AuthService {
     ])
     if (!identityAllowed || !addressAllowed) {
       throw new HttpException('Too many login attempts. Try again shortly.', HttpStatus.TOO_MANY_REQUESTS)
+    }
+  }
+
+  private async invalidateActiveSessionCaches(userId: string) {
+    try {
+      const activeSessions = await this.prisma.session.findMany({
+        where: { teacherId: userId, isActive: true },
+        select: { id: true },
+      })
+      const results = await Promise.allSettled(
+        activeSessions.map((session) => this.redis.delete(`active-session:${session.id}`)),
+      )
+      const failed = results.filter((result) => result.status === 'rejected' || !result.value).length
+      if (failed > 0) {
+        // Key validity is DB-authoritative; failed deletes only reduce cache
+        // freshness and must not roll back or misreport a committed key change.
+        this.logger.warn(`Could not distribute ${failed} active-session cache invalidation(s) for user ${userId}`)
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not enumerate active-session caches for user ${userId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    }
+  }
+
+  private async releaseRotationLock(lockKey: string, lockToken: string) {
+    try {
+      const released = await this.redis.releaseLock(lockKey, lockToken)
+      if (!released) this.logger.warn(`Signing key rotation lock ${lockKey} was no longer owned at cleanup`)
+    } catch (error) {
+      // The lock has a short TTL. Cleanup failure must never turn a committed
+      // key mutation into an apparent API failure that encourages retries.
+      this.logger.error(
+        `Failed to release signing key rotation lock ${lockKey}: ${error instanceof Error ? error.message : String(error)}`,
+      )
     }
   }
 
