@@ -254,7 +254,7 @@ jobs:
           exit 1
       - name: Generate Android native project
         run: pnpm --dir android exec expo prebuild --platform android --no-install --clean
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Build Android E2E APK
         run: android/android/gradlew -p android/android :app:assembleDebug --no-daemon
       - name: Validate Android release APK and 16 KiB page alignment
