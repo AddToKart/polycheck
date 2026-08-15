@@ -176,7 +176,7 @@ jobs:
             echo 'Download the deployment-images artifact and verify its SHA-256 file before deployment.'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload deployment image manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deployment-images-${{ env.RELEASE_SHA }}
           path: |
