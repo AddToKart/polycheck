@@ -126,7 +126,9 @@ services:
       DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-polycheck_local_db_2026}@postgres:5432/polycheck?schema=public
       SEED_PASSWORD: ${SEED_PASSWORD:-PolycheckLocal1!}
       ALLOW_PRODUCTION_SEED: "false"
-    command: ["node", "-r", "ts-node/register/transpile-only", "-e", "require('./prisma/seed.ts')"]
+    # The production image prunes dev dependencies, so the seed is compiled to
+    # plain JS (dist-seed) during the Docker build instead of using ts-node.
+    command: ["node", "dist-seed/prisma/seed.js"]
     restart: "no"
 
 volumes:

@@ -18,14 +18,12 @@ export class AuditInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest<AuditedRequest>()
     if (!request.user || ['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return next.handle()
 
-    return from(this.beginAudit(request)).pipe(
+    return from(this.tryBeginAudit(request)).pipe(
       switchMap((auditId) =>
         next.handle().pipe(
           concatMap((value) => from(this.completeAudit(auditId, request, value))),
           catchError((error: unknown) =>
-            from(this.failAudit(auditId, error)).pipe(
-              switchMap(() => throwError(() => error)),
-            ),
+            from(this.failAudit(auditId, request, error)).pipe(switchMap(() => throwError(() => error))),
           ),
         ),
       ),
@@ -64,7 +62,22 @@ export class AuditInterceptor implements NestInterceptor {
     return audit.id
   }
 
-  private async completeAudit(auditId: string, request: AuditedRequest, responseValue: unknown) {
+  private async tryBeginAudit(request: AuditedRequest) {
+    try {
+      return await this.beginAudit(request)
+    } catch (error) {
+      const context = this.auditContext(request)
+      this.logger.error(
+        `Could not begin audit for ${request.method} ${context.path} (actor ${request.user?.id ?? 'unknown'}): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+      return null
+    }
+  }
+
+  private async completeAudit(auditId: string | null, request: AuditedRequest, responseValue: unknown) {
+    if (!auditId) return responseValue
     const context = this.auditContext(request)
     const responseId =
       responseValue && typeof responseValue === 'object' && 'id' in responseValue ? String(responseValue.id) : undefined
@@ -82,11 +95,21 @@ export class AuditInterceptor implements NestInterceptor {
     return responseValue
   }
 
-  private async failAudit(auditId: string, error: unknown) {
+  private async failAudit(auditId: string | null, request: AuditedRequest, error: unknown) {
+    if (!auditId) return
     try {
+      // Merge rather than replace: keep the request context (path, ip, user
+      // agent) that was captured when the audit began.
+      const context = this.auditContext(request)
       await this.prisma.auditLog.update({
         where: { id: auditId },
-        data: { metadata: { outcome: 'failed', errorType: error instanceof Error ? error.name : 'UnknownError' } },
+        data: {
+          metadata: {
+            ...context.metadata,
+            outcome: 'failed',
+            errorType: error instanceof Error ? error.name : 'UnknownError',
+          },
+        },
       })
     } catch (auditError) {
       this.logger.error(

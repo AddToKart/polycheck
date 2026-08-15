@@ -1,5 +1,5 @@
-import type { CallHandler, ExecutionContext } from '@nestjs/common'
-import { firstValueFrom, of } from 'rxjs'
+import { Logger, type CallHandler, type ExecutionContext } from '@nestjs/common'
+import { firstValueFrom, of, throwError } from 'rxjs'
 import { AuditInterceptor } from './audit.interceptor'
 
 describe('AuditInterceptor', () => {
@@ -52,18 +52,46 @@ describe('AuditInterceptor', () => {
     expect(prisma.auditLog.create).not.toHaveBeenCalled()
   })
 
-  it('fails closed before a mutation when the audit intent cannot be persisted', async () => {
-    const prisma = { auditLog: { create: jest.fn().mockRejectedValue(new Error('audit unavailable')) } }
+  it('logs begin-audit failure and allows the business mutation to continue', async () => {
+    const prisma = {
+      auditLog: { create: jest.fn().mockRejectedValue(new Error('audit unavailable')), update: jest.fn() },
+    }
     const context = {
       getType: () => 'http',
       switchToHttp: () => ({
         getRequest: () => ({ method: 'POST', path: '/sessions', params: {}, user: { id: 'u1', role: 'teacher' } }),
       }),
     } as unknown as ExecutionContext
-    const next = { handle: jest.fn(() => of({ id: 'must-not-run' })) } as CallHandler
+    const next = { handle: jest.fn(() => of({ id: 'session-1' })) } as CallHandler
+    const logError = jest.spyOn(Logger.prototype, 'error').mockImplementation()
     const interceptor = new AuditInterceptor(prisma as never)
 
-    await expect(firstValueFrom(interceptor.intercept(context, next))).rejects.toThrow('audit unavailable')
-    expect(next.handle).not.toHaveBeenCalled()
+    await expect(firstValueFrom(interceptor.intercept(context, next))).resolves.toEqual({ id: 'session-1' })
+    expect(next.handle).toHaveBeenCalledTimes(1)
+    expect(prisma.auditLog.update).not.toHaveBeenCalled()
+    expect(logError).toHaveBeenCalledWith(
+      expect.stringContaining('Could not begin audit for POST /sessions (actor u1)'),
+    )
+    logError.mockRestore()
+  })
+
+  it('preserves a business failure when no audit id could be created', async () => {
+    const prisma = {
+      auditLog: { create: jest.fn().mockRejectedValue(new Error('audit unavailable')), update: jest.fn() },
+    }
+    const context = {
+      getType: () => 'http',
+      switchToHttp: () => ({
+        getRequest: () => ({ method: 'POST', path: '/sessions', params: {}, user: { id: 'u1', role: 'teacher' } }),
+      }),
+    } as unknown as ExecutionContext
+    const businessError = new Error('mutation failed')
+    const next = { handle: jest.fn(() => throwError(() => businessError)) } as CallHandler
+    const logError = jest.spyOn(Logger.prototype, 'error').mockImplementation()
+    const interceptor = new AuditInterceptor(prisma as never)
+
+    await expect(firstValueFrom(interceptor.intercept(context, next))).rejects.toBe(businessError)
+    expect(prisma.auditLog.update).not.toHaveBeenCalled()
+    logError.mockRestore()
   })
 })

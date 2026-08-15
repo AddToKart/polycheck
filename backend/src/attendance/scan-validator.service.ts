@@ -101,14 +101,14 @@ export class ScanValidatorService {
       riskSignals: [...riskSignals, ...signals],
     })
 
-    const cached = await this.redis.getJson<CachedSession>(`active-session:${evidence.sessionId}`)
-    const session = cached
-      ? {
-          ...cached,
-          endedAt: cached.endedAt ? new Date(cached.endedAt) : null,
-          qrTokenExpiresAt: cached.qrTokenExpiresAt ? new Date(cached.qrTokenExpiresAt) : null,
-        }
-      : await this.prisma.session.findUnique({ where: { id: evidence.sessionId } })
+    const [cached, authoritativeSession] = await Promise.all([
+      this.redis.getJson<CachedSession>(`active-session:${evidence.sessionId}`),
+      this.prisma.session.findUnique({ where: { id: evidence.sessionId } }),
+    ])
+    // Redis is advisory metadata only. PostgreSQL always overwrites the cached
+    // session state, so a failed DEL/SET or publish-after-end race cannot make
+    // an ended session active during validation.
+    const session = authoritativeSession ? { ...cached, ...authoritativeSession } : null
     if (!session) return failed('absent', 'session_not_found', 'Session not found')
     if (Number.isNaN(scannedAt.getTime()))
       return failed('disputed', 'invalid_timestamp', 'Scan timestamp is invalid', ['invalid_client_timestamp'])
@@ -117,10 +117,11 @@ export class ScanValidatorService {
       where: { studentId_sectionId: { studentId: user.id, sectionId: session.sectionId } },
     })
     if (!enrollment) return failed('absent', 'not_enrolled', 'You are not enrolled in this section')
-    const teacherPublicKey =
-      cached?.teacherPublicKey ??
-      (await this.prisma.user.findUnique({ where: { id: session.teacherId }, select: { teacherPublicKey: true } }))
-        ?.teacherPublicKey
+    // The database key is authoritative on every scan. Cached keys may be
+    // stale after rotation/revocation and are intentionally never trusted.
+    const teacherPublicKey = (
+      await this.prisma.user.findUnique({ where: { id: session.teacherId }, select: { teacherPublicKey: true } })
+    )?.teacherPublicKey
     if (!teacherPublicKey) return failed('disputed', 'invalid_signature', 'Teacher signing key is unavailable')
     const payload = verifyQRToken(evidence.qrToken, teacherPublicKey)
     if (!payload) return failed('disputed', 'invalid_signature', 'QR token signature is invalid')

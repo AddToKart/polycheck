@@ -17,18 +17,16 @@ export function trackErrors(page: Page) {
   return errors
 }
 
-/** Assert no unexpected client-side errors were recorded (allow favicon/network noise). */
+/** Assert no unexpected client-side errors were recorded. */
 export function assertNoErrors(errors: string[]) {
   const meaningful = errors.filter(
     (e) =>
+      // Browsers may request a missing favicon independently of app runtime.
       !e.includes('favicon') &&
-      !e.includes('net::ERR_FAILED') &&
-      !e.includes('Failed to load resource') &&
-      !e.includes('404 (Not Found)') &&
-      // Dev-mode-only noise: next-themes ThemeScript nonce differs between SSR and
-      // client under Turbopack dev + CSP nonce middleware. Not present in the
-      // production build, so ignore it for E2E purposes.
-      !e.includes('hydration'),
+      // WebKit reports cancelled Next.js role-aware RSC prefetches as page
+      // errors. Match only the known localhost RSC cancellation shape; generic
+      // network, API, WebSocket, hydration, and 404 failures remain visible.
+      !(e.startsWith('[pageerror] /localhost:3000/') && e.includes('_rsc=') && e.endsWith('due to access control checks.')),
   )
   expect(meaningful).toEqual([])
 }
@@ -52,12 +50,14 @@ export async function loginFaculty(page: Page, email = FACULTY_EMAIL) {
     await page.goto('/login/faculty')
     await page.getByLabel('Email Address').fill(email)
     await page.getByLabel('Password').fill(SEED_PASSWORD)
+    const authenticate = page.getByRole('button', { name: /Authenticate/i })
+    await expect(authenticate).toBeEnabled()
     // Wait for the actual login API round-trip so a pre-hydration click cannot race the SPA
     const loginResponse = page.waitForResponse(
       (r) => r.url().includes('/api/auth/login/faculty') && r.request().method() === 'POST',
       { timeout: 20_000 },
     )
-    await page.getByRole('button', { name: /Authenticate/i }).click()
+    await authenticate.click()
     const response = await loginResponse.catch(() => null)
     if (response?.ok()) {
       await waitForPath(page, '/faculty')
@@ -80,11 +80,13 @@ export async function loginStudent(page: Page) {
     await page.goto('/login/student')
     await page.getByLabel('Student Number').fill(STUDENT_ID)
     await page.getByLabel('Password').fill(SEED_PASSWORD)
+    const authenticate = page.getByRole('button', { name: /Authenticate/i })
+    await expect(authenticate).toBeEnabled()
     const loginResponse = page.waitForResponse(
       (r) => r.url().includes('/api/auth/login/student') && r.request().method() === 'POST',
       { timeout: 20_000 },
     )
-    await page.getByRole('button', { name: /Authenticate/i }).click()
+    await authenticate.click()
     const response = await loginResponse.catch(() => null)
     if (response?.ok()) {
       await page.waitForURL((url) => url.pathname.startsWith('/student/'), { timeout: 20_000 })
@@ -125,7 +127,7 @@ export async function createDisposableSession(
   const { sectionId = 'sec-001', subjectName = 'Software Engineering' } = opts
   let daysFromNow = opts.daysFromNow ?? 10
   // Sessions persist after tests end, so bump the date until the backend accepts it
-  for (let attempt = 0; attempt < 30; attempt++) {
+  for (let attempt = 0; attempt < 365; attempt++) {
     const date = new Date()
     date.setDate(date.getDate() + daysFromNow)
     const res = await page.request.post('http://localhost:4000/api/sessions', {
@@ -148,5 +150,5 @@ export async function createDisposableSession(
     }
     throw new Error(`createDisposableSession failed: ${res.status()} ${await res.text()}`)
   }
-  throw new Error('createDisposableSession failed: could not find a free date after 30 attempts')
+  throw new Error('createDisposableSession failed: could not find a free date within one year')
 }

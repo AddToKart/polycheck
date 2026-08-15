@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type {
@@ -19,6 +19,14 @@ import { GeofenceService } from './geofence.service'
 import { verifyQRToken } from '@polycheck/shared'
 import { RAW_ATTENDANCE_LIMIT, type ScanEvidence, type ScanValidation } from './types'
 import { assertStudentInAdminScope } from '../common/admin-scope'
+import { lockStudentSection } from '../common/student-section-lock'
+
+const OFFLINE_ACTIVATION_LOCK_TTL_SECONDS = 10
+const OFFLINE_ACTIVATION_WAIT_ATTEMPTS = 5
+const OFFLINE_ACTIVATION_WAIT_MS = 50
+// Cache-hygiene lease only. Scan validation re-reads PostgreSQL session state
+// and signing keys, so this lease does not require security fencing.
+const KEY_ROTATION_LOCK_TTL_SECONDS = 10
 
 @Injectable()
 export class AttendanceService {
@@ -198,7 +206,6 @@ export class AttendanceService {
     const existing = await this.prisma.attendanceRecord.findUnique({
       where: { sessionId_studentId: { sessionId: evidence.sessionId, studentId: user.id } },
     })
-    if (!existing) throw new NotFoundException('Attendance roster entry not found')
     const suspiciousCoordinates =
       validation.status !== 'disputed' &&
       (await this.geofence.hasSuspiciousCoordinates(
@@ -216,15 +223,62 @@ export class AttendanceService {
     }
     const finalStatus: AttendanceStatus = disputed ? 'disputed' : validation.status
     const outcome = disputed ? 'flagged' : finalStatus
-    let transactionResult: AttendanceRecord | null
+    let transactionResult: { record: AttendanceRecord | null; priorStatus: AttendanceStatus }
     try {
       transactionResult = await this.prisma.$transaction(async (tx) => {
+        let rosterRecord = existing
+        if (!rosterRecord) {
+          const session = await tx.session.findUnique({
+            where: { id: evidence.sessionId },
+            select: {
+              id: true,
+              sectionId: true,
+              geofenceLatitude: true,
+              geofenceLongitude: true,
+            },
+          })
+          if (!session) throw new NotFoundException('Session not found')
+          await lockStudentSection(tx, user.id, session.sectionId)
+          const enrollment = await tx.enrollment.findUnique({
+            where: { studentId_sectionId: { studentId: user.id, sectionId: session.sectionId } },
+            include: { student: { select: { fullName: true, program: true } } },
+          })
+          if (!enrollment) throw new ForbiddenException('You are not enrolled in this section')
+
+          rosterRecord = await tx.attendanceRecord.upsert({
+            where: { sessionId_studentId: { sessionId: session.id, studentId: user.id } },
+            create: {
+              sessionId: session.id,
+              sectionId: session.sectionId,
+              studentId: user.id,
+              studentName: enrollment.student.fullName,
+              studentProgram: enrollment.student.program,
+              timestamp: validation.scannedAt,
+              status: 'pending',
+              latitude: session.geofenceLatitude,
+              longitude: session.geofenceLongitude,
+              isSynced: true,
+              syncedAt: receivedAt,
+            },
+            update: {},
+          })
+        } else {
+          // Re-check enrollment inside the transaction: a student removed after
+          // the validator's earlier check (but before this write commits) must
+          // not receive an attendance record.
+          await lockStudentSection(tx, user.id, rosterRecord.sectionId)
+          const enrollment = await tx.enrollment.findUnique({
+            where: { studentId_sectionId: { studentId: user.id, sectionId: rosterRecord.sectionId } },
+            select: { id: true },
+          })
+          if (!enrollment) throw new ForbiddenException('You are not enrolled in this section')
+        }
         const attempt = await tx.scanAttempt.create({
           data: this.scanValidator.buildScanAttemptData(user.id, evidence, validation, outcome, offline),
         })
         const updated = await tx.attendanceRecord.updateMany({
           where: {
-            id: existing.id,
+            id: rosterRecord.id,
             status: disputed ? { in: ['pending', 'absent'] } : 'pending',
             manuallySet: false,
             tokenSnapshot: null,
@@ -259,9 +313,12 @@ export class AttendanceService {
               message: 'Attendance was already submitted for this session',
             },
           })
-          return null
+          return { record: null, priorStatus: rosterRecord.status }
         }
-        return tx.attendanceRecord.findUniqueOrThrow({ where: { id: existing.id } })
+        return {
+          record: await tx.attendanceRecord.findUniqueOrThrow({ where: { id: rosterRecord.id } }),
+          priorStatus: rosterRecord.status,
+        }
       })
     } catch (error) {
       if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
@@ -270,16 +327,16 @@ export class AttendanceService {
       }
       throw error
     }
-    if (!transactionResult) {
+    if (!transactionResult.record) {
       return {
         success: false,
-        status: existing.status,
+        status: transactionResult.priorStatus,
         reason: 'duplicate',
         message: 'Attendance was already submitted for this session',
       }
     }
-    this.realtime.emitAttendanceUpdated(transactionResult)
-    return { ...validation, status: finalStatus, record: this.present(transactionResult) }
+    this.realtime.emitAttendanceUpdated(transactionResult.record)
+    return { ...validation, status: finalStatus, record: this.present(transactionResult.record) }
   }
 
   // ── Manual status updates ──
@@ -344,14 +401,37 @@ export class AttendanceService {
   private async ensureOfflineActivation(sessionId: string, qrToken: string, receivedAt: Date, offline: boolean) {
     // Serialize concurrent offline-activation attempts per session to prevent
     // two scans from both passing the qrToken-null check and creating duplicate state.
-    const lockTtlSeconds = 10
-    const lockToken = await this.redis.acquireLock(`offline-activation:${sessionId}`, lockTtlSeconds)
-    if (!lockToken) return 'unchanged' as const
+    const lockKey = `offline-activation:${sessionId}`
+    const lockToken = await this.redis.acquireLock(lockKey, OFFLINE_ACTIVATION_LOCK_TTL_SECONDS)
+    if (!lockToken) return this.waitForConcurrentOfflineActivation(sessionId, qrToken, receivedAt, offline)
     try {
       return await this.performOfflineActivation(sessionId, qrToken, receivedAt, offline)
     } finally {
-      await this.redis.releaseLock(`offline-activation:${sessionId}`, lockToken)
+      await this.redis.releaseLock(lockKey, lockToken)
     }
+  }
+
+  private async waitForConcurrentOfflineActivation(
+    sessionId: string,
+    qrToken: string,
+    receivedAt: Date,
+    offline: boolean,
+  ) {
+    for (let attempt = 0; attempt < OFFLINE_ACTIVATION_WAIT_ATTEMPTS; attempt += 1) {
+      const session = await this.prisma.session.findUnique({
+        where: { id: sessionId },
+        select: { qrToken: true, endedAt: true },
+      })
+      if (!session || session.qrToken || session.endedAt) return 'unchanged' as const
+      if (attempt < OFFLINE_ACTIVATION_WAIT_ATTEMPTS - 1) {
+        await new Promise((resolve) => setTimeout(resolve, OFFLINE_ACTIVATION_WAIT_MS))
+      }
+    }
+
+    // The database claim below is still authoritative. If the lock owner is
+    // committing, updateMany waits for that row and loses the claim safely;
+    // if the lock was abandoned, this request can recover the activation.
+    return this.performOfflineActivation(sessionId, qrToken, receivedAt, offline)
   }
 
   private async performOfflineActivation(sessionId: string, qrToken: string, receivedAt: Date, offline: boolean) {
@@ -424,12 +504,62 @@ export class AttendanceService {
     if (activated) {
       this.realtime.emitSessionState(activated, expired ? 'ended' : 'activated')
       if (!expired) {
-        const ttlSeconds = Math.max(300, (activated.qrValidityMinutes + activated.gracePeriodMinutes) * 60)
-        await this.redis.setJson(
-          `active-session:${activated.id}`,
-          { ...activated, teacherPublicKey: teacher.teacherPublicKey },
-          ttlSeconds,
-        )
+        try {
+          // Serialize against key rotation so a revoked key cannot be
+          // re-published, and re-read the key at publish time (fail closed).
+          const lockKey = `key-rotation:${activated.teacherId}`
+          const lockToken = await this.redis.acquireLock(lockKey, KEY_ROTATION_LOCK_TTL_SECONDS)
+          if (!lockToken) {
+            Logger.warn(
+              `Skipping offline activation cache publish for session ${activated.id}: signing key rotation in progress`,
+              'AttendanceService',
+            )
+          } else {
+            try {
+              const [currentSession, currentKey] = await Promise.all([
+                this.prisma.session.findUnique({ where: { id: activated.id } }),
+                this.prisma.user.findUnique({
+                  where: { id: activated.teacherId },
+                  select: { teacherPublicKey: true },
+                }),
+              ])
+              if (!currentSession?.isActive || currentSession.endedAt || !currentSession.qrToken) {
+                const deleted = await this.redis.delete(`active-session:${activated.id}`)
+                if (!deleted) {
+                  Logger.warn(
+                    `Could not distribute offline activation cache invalidation for ended session ${activated.id}`,
+                    'AttendanceService',
+                  )
+                }
+              } else {
+                const ttlSeconds = Math.max(
+                  300,
+                  (currentSession.qrValidityMinutes + currentSession.gracePeriodMinutes) * 60,
+                )
+                const published = await this.redis.setJson(
+                  `active-session:${currentSession.id}`,
+                  { ...currentSession, teacherPublicKey: currentKey?.teacherPublicKey ?? undefined },
+                  ttlSeconds,
+                )
+                if (!published) {
+                  Logger.warn(
+                    `Offline activation cache publication was not distributed for session ${currentSession.id}`,
+                    'AttendanceService',
+                  )
+                }
+              }
+            } finally {
+              await this.redis.releaseLock(lockKey, lockToken)
+            }
+          }
+        } catch (error) {
+          Logger.error(
+            `Failed to publish offline activation cache for session ${activated.id}: ${
+              error instanceof Error ? error.message : 'unknown'
+            }`,
+            'AttendanceService',
+          )
+        }
       }
     }
     return activated ? ('activated' as const) : ('unchanged' as const)

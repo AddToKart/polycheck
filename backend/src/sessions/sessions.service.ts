@@ -16,10 +16,14 @@ import { RedisService } from '../infrastructure/redis.service'
 import { Prisma, type Session } from '../prisma/client'
 import { parseIsoDate } from '../common/utils/iso-date'
 import { adminSessionWhere, assertSectionInAdminScope } from '../common/admin-scope'
+import { lockStudentSection } from '../common/student-section-lock'
 
 const AUTO_END_LOCK_TTL_SECONDS = 5 * 60
 const MAX_QR_VALIDITY_MINUTES = 15
 const MAX_QR_GRACE_MINUTES = 60
+// Cache-hygiene lease only. Scan authorization always re-reads PostgreSQL, so
+// lease expiry cannot make a stale cached key or session state authoritative.
+const KEY_ROTATION_LOCK_TTL_SECONDS = 10
 
 @Injectable()
 export class SessionsService {
@@ -68,19 +72,26 @@ export class SessionsService {
   async create(dto: CreateSessionDto, user: RequestUser) {
     this.assertDate(dto.date, 'date')
     if (dto.rescheduledFromDate) this.assertDate(dto.rescheduledFromDate, 'rescheduledFromDate')
-    const { teacherId, subjectName } = await this.authorizeCreator(dto.sectionId, user)
     this.assertTimeRange(dto.startTime, dto.endTime)
     const { geofence, subjectName: _ignoredSubjectName, qrValidityMinutes, gracePeriodMinutes, ...data } = dto
-    const session = await this.createSessionOrThrowConflict({
-      ...data,
-      subjectName,
-      teacherId,
-      // Timing defaults — the authoritative values are set at QR generation time
-      qrValidityMinutes: qrValidityMinutes ?? 15,
-      gracePeriodMinutes: gracePeriodMinutes ?? 15,
-      geofenceLatitude: geofence.latitude,
-      geofenceLongitude: geofence.longitude,
-      geofenceRadiusMeters: geofence.radiusMeters,
+    // Authorization and creation share one transaction so a concurrent removal
+    // or permission revocation cannot slip between the authorization reads and
+    // the session insert.
+    const { session, teacherId } = await this.prisma.$transaction(async (tx) => {
+      if (user.role === 'student') await lockStudentSection(tx, user.id, dto.sectionId)
+      const authorized = await this.authorizeCreator(dto.sectionId, user, tx)
+      const created = await this.createSessionOrThrowConflict(tx, {
+        ...data,
+        subjectName: authorized.subjectName,
+        teacherId: authorized.teacherId,
+        // Timing defaults — the authoritative values are set at QR generation time
+        qrValidityMinutes: qrValidityMinutes ?? 15,
+        gracePeriodMinutes: gracePeriodMinutes ?? 15,
+        geofenceLatitude: geofence.latitude,
+        geofenceLongitude: geofence.longitude,
+        geofenceRadiusMeters: geofence.radiusMeters,
+      })
+      return { session: created, teacherId: authorized.teacherId }
     })
     this.realtime.emitSessionState(session, 'created')
     return this.present(session, await this.teacherPublicKey(teacherId), user.role !== 'student')
@@ -157,6 +168,9 @@ export class SessionsService {
     const session = await this.prisma.session.findUnique({ where: { id } })
     if (!session) throw new NotFoundException('Session not found')
     await this.assertTeacherOwnsSection(session.sectionId, user.id)
+    if (session.isActive || session.endedAt || session.qrToken) {
+      throw new ConflictException('Session is already active or was already ended')
+    }
     const teacher = await this.prisma.user.findUnique({ where: { id: user.id }, select: { teacherPublicKey: true } })
     if (!teacher?.teacherPublicKey)
       throw new BadRequestException('Provision a teacher signing key before activating a session')
@@ -181,8 +195,8 @@ export class SessionsService {
     const expiresAt = new Date(issuedAt.getTime() + dto.validityMinutes * 60_000)
 
     const activated = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.session.update({
-        where: { id },
+      const claim = await tx.session.updateMany({
+        where: { id, isActive: false, endedAt: null, qrToken: null },
         data: {
           isActive: !expired,
           endedAt: expired ? receivedAt : null,
@@ -193,6 +207,9 @@ export class SessionsService {
           gracePeriodMinutes,
         },
       })
+      if (claim.count === 0) {
+        throw new ConflictException('Session is already active or was already ended')
+      }
       const enrollments = await tx.enrollment.findMany({
         where: { sectionId: session.sectionId },
         include: { student: { select: { fullName: true, program: true } } },
@@ -219,11 +236,23 @@ export class SessionsService {
           data: { status: 'absent', timestamp: receivedAt, manuallySet: false },
         })
       }
-      return updated
+      return tx.session.findUniqueOrThrow({ where: { id } })
     })
     this.realtime.emitSessionState(activated, expired ? 'ended' : 'activated')
-    if (expired) await this.redis.delete(`active-session:${activated.id}`)
-    else await this.cacheActiveSession(activated, teacher.teacherPublicKey)
+    try {
+      if (expired) await this.invalidateActiveSessionCache(activated)
+      else await this.cacheActiveSession(activated)
+    } catch (error) {
+      // The cache is a latency optimization only; scan validation falls back to
+      // the database. A failed cache write must not fail an already-committed
+      // activation or make a client retry hit the conflict guard.
+      Logger.error(
+        `Failed to update active-session cache for ${activated.id}: ${
+          error instanceof Error ? error.message : 'unknown'
+        }`,
+        'SessionsService',
+      )
+    }
     return this.present(activated, teacher.teacherPublicKey, true)
   }
 
@@ -244,7 +273,7 @@ export class SessionsService {
       return tx.session.findUniqueOrThrow({ where: { id } })
     })
     this.realtime.emitSessionState(ended, 'ended')
-    await this.redis.delete(`active-session:${ended.id}`)
+    await this.invalidateActiveSessionCache(ended)
     return this.present(ended, await this.teacherPublicKey(session.teacherId), true)
   }
 
@@ -299,7 +328,7 @@ export class SessionsService {
           if (!ended) continue
 
           this.realtime.emitSessionState(ended, 'ended')
-          await this.redis.delete(`active-session:${ended.id}`)
+          await this.invalidateActiveSessionCache(ended)
           Logger.log(`Automatically ended expired session ${session.id} (${session.subjectName})`, 'SessionsService')
         } catch (error) {
           Logger.error(
@@ -365,8 +394,8 @@ export class SessionsService {
     return section
   }
 
-  private async authorizeCreator(sectionId: string, user: RequestUser) {
-    const section = await this.prisma.section.findUnique({
+  private async authorizeCreator(sectionId: string, user: RequestUser, tx: Prisma.TransactionClient = this.prisma) {
+    const section = await tx.section.findUnique({
       where: { id: sectionId },
       select: { teacherId: true, subject: { select: { name: true } } },
     })
@@ -377,14 +406,19 @@ export class SessionsService {
       return { teacherId: user.id, subjectName: section.subject.name }
     }
     if (user.role !== 'student') throw new ForbiddenException('You cannot create sessions')
-    const [officerRole, permission] = await Promise.all([
-      this.prisma.sectionRole.findUnique({
+    const [enrollment, officerRole, permission] = await Promise.all([
+      tx.enrollment.findUnique({
+        where: { studentId_sectionId: { studentId: user.id, sectionId } },
+        select: { id: true },
+      }),
+      tx.sectionRole.findUnique({
         where: { sectionId_studentId_role: { sectionId, studentId: user.id, role: 'president' } },
       }),
-      this.prisma.sessionPermission.findFirst({
+      tx.sessionPermission.findFirst({
         where: { sectionId, studentId: user.id, isActive: true, expiresAt: { gt: new Date() } },
       }),
     ])
+    if (!enrollment) throw new ForbiddenException('You must be enrolled in this section to create sessions')
     if (!officerRole || !permission) throw new ForbiddenException('An active president session permission is required')
     return { teacherId: section.teacherId, subjectName: section.subject.name }
   }
@@ -399,9 +433,9 @@ export class SessionsService {
     return date
   }
 
-  private async createSessionOrThrowConflict(data: Prisma.SessionUncheckedCreateInput) {
+  private async createSessionOrThrowConflict(tx: Prisma.TransactionClient, data: Prisma.SessionUncheckedCreateInput) {
     try {
-      return await this.prisma.session.create({ data })
+      return await tx.session.create({ data })
     } catch (error) {
       if (this.isUniqueConflict(error)) {
         throw new ConflictException('A session already exists for this section, date, and time')
@@ -430,9 +464,80 @@ export class SessionsService {
     return sessions.map((session) => this.present(session, keys.get(session.teacherId), user.role === 'teacher'))
   }
 
-  private async cacheActiveSession(session: Session, teacherPublicKey: string) {
-    const ttlSeconds = Math.max(300, (session.qrValidityMinutes + session.gracePeriodMinutes) * 60)
-    await this.redis.setJson(`active-session:${session.id}`, { ...session, teacherPublicKey }, ttlSeconds)
+  private async cacheActiveSession(session: Session) {
+    // Serialize against key rotation: a rotation in progress between the DB
+    // write and this publish would otherwise let the old key back into the
+    // cache. Skipping the publish is safe — scan validation falls back to the
+    // database, which is authoritative.
+    const lockKey = `key-rotation:${session.teacherId}`
+    const lockToken = await this.redis.acquireLock(lockKey, KEY_ROTATION_LOCK_TTL_SECONDS)
+    if (!lockToken) {
+      Logger.warn(
+        `Skipping active-session cache publish for ${session.id}: signing key rotation in progress`,
+        'SessionsService',
+      )
+      return
+    }
+    try {
+      const [currentSession, currentKey] = await Promise.all([
+        this.prisma.session.findUnique({ where: { id: session.id } }),
+        this.teacherPublicKey(session.teacherId),
+      ])
+      // An end may commit between activation and cache publication. Re-read
+      // after acquiring the hygiene lock and never knowingly publish an active
+      // snapshot once PostgreSQL says the session ended.
+      if (!currentSession?.isActive || currentSession.endedAt || !currentSession.qrToken) {
+        await this.invalidateActiveSessionCache(currentSession ?? session)
+        return
+      }
+      const ttlSeconds = Math.max(
+        300,
+        (currentSession.qrValidityMinutes + currentSession.gracePeriodMinutes) * 60,
+      )
+      const published = await this.redis.setJson(
+        `active-session:${currentSession.id}`,
+        { ...currentSession, teacherPublicKey: currentKey ?? undefined },
+        ttlSeconds,
+      )
+      if (!published) {
+        Logger.warn(`Active-session cache publication was not distributed for ${currentSession.id}`, 'SessionsService')
+      }
+    } finally {
+      await this.redis.releaseLock(lockKey, lockToken)
+    }
+  }
+
+  /**
+   * Removes the active-session cache for an ended session. If the delete fails,
+   * republishes the authoritative ended state as cache hygiene. PostgreSQL is
+   * authoritative during scan validation, so failure of both operations cannot
+   * authorize a post-end scan.
+   */
+  private async invalidateActiveSessionCache(session: Session) {
+    const cacheKey = `active-session:${session.id}`
+    try {
+      const deleted = await this.redis.delete(cacheKey)
+      if (deleted) return
+      Logger.error(`Cache delete could not reach configured Redis for ${session.id}; republishing ended state`, 'SessionsService')
+    } catch (deleteError) {
+      Logger.error(
+        `Cache delete failed for ${session.id}; republishing ended state: ${
+          deleteError instanceof Error ? deleteError.message : 'unknown'
+        }`,
+        'SessionsService',
+      )
+    }
+    try {
+      const published = await this.redis.setJson(cacheKey, { ...session, teacherPublicKey: undefined }, 300)
+      if (!published) Logger.error(`Ended-state cache publication was not distributed for ${session.id}`, 'SessionsService')
+    } catch (publishError) {
+      Logger.error(
+        `Failed to republish ended state for ${session.id}: ${
+          publishError instanceof Error ? publishError.message : 'unknown'
+        }`,
+        'SessionsService',
+      )
+    }
   }
 
   private present<T extends Session>(session: T, teacherPublicKey?: string | null, includeQrToken = false) {

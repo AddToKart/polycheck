@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,10 @@ export default function FacultyLoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [hydrated, setHydrated] = useState(false)
   const { exitingRoute } = useLanding()
+
+  useEffect(() => setHydrated(true), [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -99,7 +102,7 @@ export default function FacultyLoginPage() {
           <div className="pt-2">
             <Button 
               type="submit" 
-              disabled={loading} 
+              disabled={!hydrated || loading}
               className="w-full h-12 text-base font-bold tracking-wide uppercase bg-maroon hover:bg-maroon-dark text-white rounded-none transition-all duration-300 relative overflow-hidden group"
             >
               <span className="relative z-10">{loading ? 'Verifying...' : 'Authenticate'}</span>

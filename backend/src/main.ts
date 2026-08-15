@@ -1,7 +1,6 @@
 import 'dotenv/config'
 import { NestFactory } from '@nestjs/core'
 import { ValidationPipe, Logger } from '@nestjs/common'
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import { Logger as PinoLogger } from 'nestjs-pino'
 import helmet from 'helmet'
 import type { Server } from 'http'
@@ -9,7 +8,7 @@ import { json, urlencoded } from 'express'
 import { AppModule } from './app.module'
 import { RedisIoAdapter } from './infrastructure/redis-io.adapter'
 import { validateEnv } from './common/config/env-validation'
-import { swaggerAccessMiddleware } from './common/middleware/swagger-access.middleware'
+import { registerApiDocs } from './common/swagger'
 
 async function bootstrap() {
   const env = validateEnv(process.env)
@@ -53,27 +52,7 @@ async function bootstrap() {
     }),
   )
 
-  // ── Swagger API Docs ──────────────────────────────────────────────────────
-  // Always generate the OpenAPI document so it can be exported in CI.
-  // In production the UI is gated behind METRICS_TOKEN; in dev it's open.
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Polycheck API')
-    .setDescription('Unified web and mobile attendance management system for PUP')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build()
-
-  // Middleware registration order matters in Express. Install the production
-  // gate before Swagger registers its handlers.
-  if (env.NODE_ENV === 'production' && env.METRICS_TOKEN) {
-    app.use('/api/docs', swaggerAccessMiddleware(env.METRICS_TOKEN))
-  }
-
-  const document = SwaggerModule.createDocument(app, swaggerConfig)
-  SwaggerModule.setup('api/docs', app, document, {
-    swaggerOptions: { persistAuthorization: env.NODE_ENV !== 'production' },
-    customSiteTitle: 'Polycheck API Docs',
-  })
+  registerApiDocs(app, env)
 
   const port = env.PORT
   await app.listen(port)

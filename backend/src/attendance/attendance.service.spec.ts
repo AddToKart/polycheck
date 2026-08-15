@@ -43,6 +43,8 @@ describe('AttendanceService', () => {
     setJson: jest.Mock
     delete: jest.Mock
     setIfAbsent: jest.Mock
+    acquireLock: jest.Mock
+    releaseLock: jest.Mock
   }
 
   beforeEach(async () => {
@@ -73,6 +75,7 @@ describe('AttendanceService', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
+      $executeRaw: jest.fn().mockResolvedValue(0),
       $transaction: jest.fn(),
     }
     realtime = { emitAttendanceUpdated: jest.fn(), emitSessionState: jest.fn() }
@@ -87,6 +90,8 @@ describe('AttendanceService', () => {
     } as any
     mockedVerifyQRToken.mockReset()
     mockedHaversineDistance.mockReset().mockReturnValue(0)
+    prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+    prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
     prisma.$transaction.mockImplementation(async (callback: any) => callback(prisma))
 
     const moduleRef = await Test.createTestingModule({
@@ -631,16 +636,92 @@ describe('AttendanceService', () => {
       expect(attemptArgs.reason).toBe('suspicious_coordinates')
     })
 
-    it('throws NotFoundException when roster entry missing', async () => {
+    it('creates a missing roster row transactionally for a currently enrolled late student', async () => {
       prisma.session.findUnique.mockResolvedValue(makeCachedSession())
       redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({
+        id: 'enr-1',
+        student: { fullName: 'Jane Doe', program: 'BSIT' },
+      })
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(0)
+      prisma.attendanceRecord.findUnique.mockResolvedValue(null)
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.upsert.mockResolvedValue(makeRosterRecord())
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(makeRosterRecord({ status: 'present' }))
+
+      const result = await service.submit(studentUser, submitArgs)
+
+      expect(result).toEqual(expect.objectContaining({ success: true, status: 'present' }))
+      expect(prisma.attendanceRecord.upsert).toHaveBeenCalledWith({
+        where: { sessionId_studentId: { sessionId: 'sess-1', studentId: 'stu-1' } },
+        create: expect.objectContaining({
+          sessionId: 'sess-1',
+          sectionId: 'sec-1',
+          studentId: 'stu-1',
+          studentName: 'Jane Doe',
+          status: 'pending',
+        }),
+        update: {},
+      })
+      expect(prisma.attendanceRecord.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: 'rec-1', status: 'pending' }) }),
+      )
+      expect(prisma.$executeRaw).toHaveBeenCalledTimes(1)
+      expect(prisma.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.attendanceRecord.upsert.mock.invocationCallOrder[0],
+      )
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not create a missing roster row if enrollment disappears before the transaction', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValueOnce({ id: 'enr-1' }).mockResolvedValueOnce(null)
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(0)
+      prisma.attendanceRecord.findUnique.mockResolvedValue(null)
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+
+      await expect(service.submit(studentUser, submitArgs)).rejects.toThrow(ForbiddenException)
+      expect(prisma.attendanceRecord.upsert).not.toHaveBeenCalled()
+    })
+
+    it('rejects a scan when enrollment disappears after validation but before the roster write', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      // Validator check passes; the in-transaction recheck sees the removal.
+      prisma.enrollment.findUnique.mockResolvedValueOnce({ id: 'enr-1' }).mockResolvedValueOnce(null)
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(0)
+      prisma.attendanceRecord.findUnique.mockResolvedValue(makeRosterRecord())
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+
+      await expect(service.submit(studentUser, submitArgs)).rejects.toThrow(ForbiddenException)
+      expect(prisma.attendanceRecord.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('waits for a competing offline activation instead of rejecting the legitimate scan', async () => {
+      const unactivated = makeSession({ isActive: false, endedAt: null, qrToken: null })
+      const activated = makeCachedSession()
+      redis.acquireLock.mockResolvedValue(null)
+      redis.getJson.mockResolvedValue(activated)
+      prisma.session.findUnique.mockResolvedValueOnce(unactivated).mockResolvedValue(activated)
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(validPayload())
       mockedHaversineDistance.mockReturnValue(0)
-      // validateScan may also lookup enrollment via prisma.enrollment.findUnique (already mocked)
-      prisma.attendanceRecord.findUnique.mockResolvedValue(null)
+      prisma.attendanceRecord.findUnique.mockResolvedValue(makeRosterRecord())
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(makeRosterRecord({ status: 'present' }))
 
-      await expect(service.submit(studentUser, submitArgs)).rejects.toThrow(NotFoundException)
+      const result = await service.submit(studentUser, submitArgs)
+
+      expect(result).toEqual(expect.objectContaining({ success: true, status: 'present' }))
+      // Concurrent-activation wait plus the DB-authoritative validation read.
+      expect(prisma.session.findUnique).toHaveBeenCalledTimes(3)
+      expect(redis.releaseLock).not.toHaveBeenCalled()
     })
 
     it('marks a valid but delayed offline sync as disputed', async () => {
@@ -717,6 +798,34 @@ describe('AttendanceService', () => {
       )
       expect(realtime.emitSessionState).toHaveBeenCalledWith(ended, 'ended')
       expect(redis.setJson).not.toHaveBeenCalled()
+    })
+
+    it('does not publish offline activation cache after a concurrent end commits', async () => {
+      const unactivated = makeSession({ isActive: false, endedAt: null, qrToken: null })
+      const activated = makeSession({ isActive: true, endedAt: null, qrToken: VALID_TOKEN })
+      const ended = makeSession({ isActive: false, endedAt: new Date(), qrToken: null })
+      prisma.session.findUnique.mockResolvedValueOnce(unactivated).mockResolvedValue(ended)
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      prisma.session.updateMany.mockResolvedValue({ count: 1 })
+      prisma.session.findUniqueOrThrow.mockResolvedValue(activated)
+      prisma.enrollment.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.createMany.mockResolvedValue({ count: 0 })
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+
+      const result = await (service as any).performOfflineActivation(
+        'sess-1',
+        VALID_TOKEN,
+        new Date(),
+        false,
+      )
+
+      expect(result).toBe('activated')
+      expect(redis.setJson).not.toHaveBeenCalledWith(
+        'active-session:sess-1',
+        expect.objectContaining({ isActive: true }),
+        expect.any(Number),
+      )
+      expect(redis.delete).toHaveBeenCalledWith('active-session:sess-1')
     })
 
     it('rejects delayed offline scans that exceed the current timing caps', async () => {

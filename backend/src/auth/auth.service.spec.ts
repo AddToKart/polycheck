@@ -51,6 +51,8 @@ describe('AuthService', () => {
     setJson: jest.Mock
     delete: jest.Mock
     setIfAbsent: jest.Mock
+    acquireLock: jest.Mock
+    releaseLock: jest.Mock
   }
   let betterAuth: { auth: { api: { signInEmail: jest.Mock; signOut: jest.Mock } } }
   let events: { emit: jest.Mock }
@@ -64,8 +66,10 @@ describe('AuthService', () => {
       consumeRateLimit: jest.fn().mockResolvedValue(true),
       getJson: jest.fn().mockResolvedValue(null),
       setJson: jest.fn(),
-      delete: jest.fn(),
+      delete: jest.fn().mockResolvedValue(true),
       setIfAbsent: jest.fn().mockResolvedValue(true),
+      acquireLock: jest.fn().mockResolvedValue('lock-token'),
+      releaseLock: jest.fn().mockResolvedValue(true),
     }
     betterAuth = {
       auth: {
@@ -265,6 +269,72 @@ describe('AuthService', () => {
       prisma.user.findUnique.mockResolvedValue(null)
       await expect(service.provisionKey('missing', 'pubkey')).rejects.toThrow(NotFoundException)
     })
+
+    it('invalidates active-session caches when replacing an existing signing key', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser({ teacherPublicKey: 'old-pubkey' }))
+      prisma.user.update.mockResolvedValue(buildUser({ teacherPublicKey: 'new-pubkey' }))
+      prisma.session.findMany.mockResolvedValue([{ id: 'sess-1' }, { id: 'sess-2' }])
+
+      await service.provisionKey('user-1', 'new-pubkey')
+
+      expect(redis.acquireLock).toHaveBeenCalledWith('key-rotation:user-1', expect.any(Number))
+      expect(prisma.session.findMany).toHaveBeenCalledWith({
+        where: { teacherId: 'user-1', isActive: true },
+        select: { id: true },
+      })
+      expect(redis.delete).toHaveBeenCalledWith('active-session:sess-1')
+      expect(redis.delete).toHaveBeenCalledWith('active-session:sess-2')
+      expect(redis.releaseLock).toHaveBeenCalledWith('key-rotation:user-1', 'lock-token')
+    })
+
+    it('rejects a key rotation while another rotation holds the lock', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser({ teacherPublicKey: 'old-pubkey' }))
+      redis.acquireLock.mockResolvedValue(null)
+
+      await expect(service.provisionKey('user-1', 'new-pubkey')).rejects.toThrow('already in progress')
+      expect(prisma.user.update).not.toHaveBeenCalled()
+    })
+
+    it('commits the DB-authoritative key when cache invalidation cannot be confirmed', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser({ teacherPublicKey: 'old-pubkey' }))
+      prisma.session.findMany.mockResolvedValue([{ id: 'sess-1' }])
+      redis.delete.mockResolvedValue(false)
+
+      await expect(service.provisionKey('user-1', 'new-pubkey')).resolves.toEqual({
+        message: 'Public key provisioned successfully',
+      })
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { teacherPublicKey: 'new-pubkey' },
+      })
+    })
+
+    it('re-reads the previous key after acquiring the rotation lock and invalidates first-provision races', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser({ teacherPublicKey: 'concurrently-installed-key' }))
+      prisma.session.findMany.mockResolvedValue([{ id: 'sess-1' }])
+
+      await service.provisionKey('user-1', 'new-pubkey')
+
+      expect(redis.acquireLock.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.user.findUnique.mock.invocationCallOrder[0],
+      )
+      expect(redis.delete).toHaveBeenCalledWith('active-session:sess-1')
+      expect(events.emit).toHaveBeenCalledWith('auth.key-provisioned', {
+        userId: 'user-1',
+        hadPreviousKey: true,
+      })
+    })
+
+    it('does not report a committed key provision as failed when lock cleanup rejects', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser())
+      prisma.user.update.mockResolvedValue(buildUser({ teacherPublicKey: 'new-pubkey' }))
+      redis.releaseLock.mockRejectedValue(new Error('redis disconnected'))
+
+      await expect(service.provisionKey('user-1', 'new-pubkey')).resolves.toEqual({
+        message: 'Public key provisioned successfully',
+      })
+      expect(prisma.user.update).toHaveBeenCalled()
+    })
   })
 
   describe('revokeKey', () => {
@@ -301,6 +371,29 @@ describe('AuthService', () => {
     it('returns 429 when rate limit exceeded', async () => {
       redis.consumeRateLimit.mockResolvedValueOnce(false)
       await expect(service.revokeKey('user-1')).rejects.toThrow(HttpException)
+    })
+
+    it('commits the DB-authoritative revocation when cache invalidation cannot be confirmed', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', teacherPublicKey: 'pubkey' })
+      prisma.session.findMany.mockResolvedValue([{ id: 'sess-1' }])
+      redis.delete.mockResolvedValue(false)
+
+      await expect(service.revokeKey('user-1')).resolves.toEqual(expect.objectContaining({ revoked: true }))
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { teacherPublicKey: null },
+      })
+      expect(events.emit).toHaveBeenCalledWith('auth.key-revoked', expect.anything())
+    })
+
+    it('does not report a committed revocation as failed when lock cleanup rejects', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', teacherPublicKey: 'pubkey' })
+      prisma.session.findMany.mockResolvedValue([])
+      prisma.user.update.mockResolvedValue({ id: 'user-1', teacherPublicKey: null })
+      redis.releaseLock.mockRejectedValue(new Error('redis disconnected'))
+
+      await expect(service.revokeKey('user-1')).resolves.toEqual(expect.objectContaining({ revoked: true }))
+      expect(events.emit).toHaveBeenCalledWith('auth.key-revoked', expect.anything())
     })
   })
 

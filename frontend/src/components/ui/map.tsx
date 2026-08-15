@@ -22,6 +22,12 @@ import { X, Minus, Plus, Locate, Maximize, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
+// Turbopack currently cannot preserve MapLibre's package-relative
+// `import.meta.url` worker path in every browser. Use the worker modules copied
+// into `public` by the frontend prebuild/predev hook so Firefox receives
+// JavaScript instead of resolving the current route as a worker URL.
+MapLibreGL.setWorkerUrl("/vendor/maplibre/maplibre-gl-worker.mjs");
+
 const defaultStyles = {
   dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
   light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",

@@ -1,9 +1,5 @@
 name: polycheck
 
-x-backend-build: &backend-build
-  context: .
-  dockerfile: Dockerfile.backend
-
 x-read-only-service: &read-only-service
   read_only: true
   security_opt:
@@ -34,12 +30,38 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    labels:
+      org.polycheck.recovery.mode: physical-base-backup-and-wal-archive
+      org.polycheck.recovery.rpo-minutes: ${PITR_RPO_MINUTES:?PITR_RPO_MINUTES is required}
+      org.polycheck.recovery.rto-minutes: ${PITR_RTO_MINUTES:?PITR_RTO_MINUTES is required}
     environment:
       POSTGRES_DB: polycheck
       POSTGRES_USER: polycheck
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      WAL_MIN_FREE_KB: ${WAL_MIN_FREE_KB:-524288}
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_timeout=${POSTGRES_ARCHIVE_TIMEOUT_SECONDS:-300}
+      - -c
+      - archive_command=sh /usr/local/bin/archive-wal.sh %p %f
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./deployment/scripts/archive-wal.sh:/usr/local/bin/archive-wal.sh:ro
+      - ./deployment/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - type: bind
+        source: ${POSTGRES_WAL_ARCHIVE_PATH:?POSTGRES_WAL_ARCHIVE_PATH must be a protected external absolute directory}
+        target: /wal-archive
+        bind:
+          create_host_path: false
+    secrets:
+      - postgres_password
     networks:
       - data
     shm_size: ${POSTGRES_SHM_SIZE:-256mb}
@@ -50,7 +72,7 @@ services:
     cpus: ${POSTGRES_CPU_LIMIT:-2.0}
     pids_limit: 256
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U polycheck -d polycheck"]
+      test: ["CMD-SHELL", "export PGPASSWORD=\"$$(cat /run/secrets/postgres_password)\" && test \"$$(stat -c %a /wal-archive)\" = 700 && test \"$$(psql -U polycheck -d polycheck -Atqc 'SHOW archive_mode')\" = on && psql -U polycheck -d polycheck -Atqc \"SELECT CASE WHEN (archived_count = 0 AND failed_count = 0) OR (last_archived_time IS NOT NULL AND (last_failed_time IS NULL OR last_archived_time >= last_failed_time)) THEN 1 ELSE 0 END FROM pg_stat_archiver\" | grep -qx 1 && pg_isready -U polycheck -d polycheck"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -119,8 +141,7 @@ services:
       start_period: 5s
 
   migrate:
-    image: ${BACKEND_IMAGE:-polycheck-backend:local}
-    build: *backend-build
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE must be an immutable sha tag or digest reference}
     restart: "no"
     depends_on:
       postgres:
@@ -140,8 +161,7 @@ services:
     pids_limit: 128
 
   backend:
-    image: ${BACKEND_IMAGE:-polycheck-backend:local}
-    build: *backend-build
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE must be an immutable sha tag or digest reference}
     restart: unless-stopped
     depends_on:
       migrate:
@@ -194,17 +214,7 @@ services:
       start_period: 20s
 
   frontend:
-    image: ${FRONTEND_IMAGE:-polycheck-frontend:local}
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
-        NEXT_PUBLIC_ALLOW_QR_FALLBACKS: ${NEXT_PUBLIC_ALLOW_QR_FALLBACKS:-false}
-        NEXT_PUBLIC_PRIVACY_NOTICE_VERSION: ${PRIVACY_NOTICE_VERSION:?PRIVACY_NOTICE_VERSION is required}
-        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
-        SENTRY_ORG: ${SENTRY_ORG:-}
-        SENTRY_PROJECT: ${SENTRY_PROJECT:-}
+    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE must be an immutable sha tag or digest reference}
     restart: unless-stopped
     depends_on:
       backend:
@@ -228,6 +238,170 @@ services:
       timeout: 5s
       retries: 12
       start_period: 15s
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: polycheck
+      PGUSER: polycheck
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      BACKUP_DIR: /backups
+      WAL_ARCHIVE_DIR: /wal-archive
+      WAL_MIN_FREE_KB: ${WAL_MIN_FREE_KB:-524288}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BASE_BACKUP_INTERVAL_DAYS: ${BASE_BACKUP_INTERVAL_DAYS:-7}
+      BASE_BACKUP_RETENTION_DAYS: ${BASE_BACKUP_RETENTION_DAYS:-35}
+      BACKUP_MAX_AGE_SECONDS: ${BACKUP_MAX_AGE_SECONDS:-93600}
+    entrypoint: ["sh", "/usr/local/bin/backup-postgres.sh"]
+    command: ["schedule"]
+    volumes:
+      - ./deployment/scripts/backup-postgres.sh:/usr/local/bin/backup-postgres.sh:ro
+      - type: bind
+        source: ${POSTGRES_BACKUP_PATH:?POSTGRES_BACKUP_PATH must be a protected external absolute directory}
+        target: /backups
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${POSTGRES_WAL_ARCHIVE_PATH:?POSTGRES_WAL_ARCHIVE_PATH must be a protected external absolute directory}
+        target: /wal-archive
+        bind:
+          create_host_path: false
+    secrets:
+      - postgres_password
+    networks:
+      - data
+    user: "70:70"
+    <<: *read-only-service
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid,nodev,uid=70,gid=70,mode=0700
+    mem_limit: ${BACKUP_MEMORY_LIMIT:-768m}
+    cpus: ${BACKUP_CPU_LIMIT:-1.0}
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "sh", "/usr/local/bin/backup-postgres.sh", "healthcheck"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 10m
+
+  restore-drill:
+    profiles: [recovery]
+    image: postgres:16-alpine
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: polycheck
+      PGUSER: polycheck
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      RUN_RESTORE_DRILL: ${RUN_RESTORE_DRILL:-0}
+    entrypoint: ["sh", "/usr/local/bin/restore-drill.sh"]
+    command: ["/backups/latest.dump"]
+    volumes:
+      - ./deployment/scripts/restore-drill.sh:/usr/local/bin/restore-drill.sh:ro
+      - type: bind
+        source: ${POSTGRES_BACKUP_PATH:?POSTGRES_BACKUP_PATH must be a protected external absolute directory}
+        target: /backups
+        read_only: true
+        bind:
+          create_host_path: false
+    secrets:
+      - postgres_password
+    networks:
+      - data
+    user: "70:70"
+    <<: *read-only-service
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev,uid=70,gid=70,mode=0700
+    mem_limit: ${RESTORE_DRILL_MEMORY_LIMIT:-768m}
+    cpus: ${RESTORE_DRILL_CPU_LIMIT:-1.0}
+    pids_limit: 128
+
+  pitr-verify:
+    profiles: [recovery]
+    image: node:22-alpine
+    restart: "no"
+    environment:
+      BACKUP_DIR: /backups
+      WAL_ARCHIVE_DIR: /wal-archive
+      PITR_MAX_WAL_AGE_SECONDS: ${PITR_MAX_WAL_AGE_SECONDS:-900}
+      PITR_MAX_CHAIN_SEGMENTS: ${PITR_MAX_CHAIN_SEGMENTS:-1000000}
+    entrypoint: ["sh", "/usr/local/bin/verify-pitr-assets.sh"]
+    network_mode: none
+    volumes:
+      - ./deployment/scripts/verify-pitr-assets.sh:/usr/local/bin/verify-pitr-assets.sh:ro
+      - ./deployment/scripts/verify-wal-chain.mjs:/usr/local/bin/verify-wal-chain.mjs:ro
+      - type: bind
+        source: ${POSTGRES_BACKUP_PATH:?POSTGRES_BACKUP_PATH must be a protected external absolute directory}
+        target: /backups
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${POSTGRES_WAL_ARCHIVE_PATH:?POSTGRES_WAL_ARCHIVE_PATH must be a protected external absolute directory}
+        target: /wal-archive
+        read_only: true
+        bind:
+          create_host_path: false
+    user: "70:70"
+    <<: *read-only-service
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid,nodev,uid=70,gid=70,mode=0700
+    mem_limit: 256m
+    cpus: 0.25
+    pids_limit: 64
+
+  pitr-restore-drill:
+    profiles: [recovery]
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      BACKUP_DIR: /backups
+      WAL_ARCHIVE_DIR: /wal-archive
+      RESTORE_DATA_DIR: /restore-data
+      RUN_PITR_RESTORE_DRILL: ${RUN_PITR_RESTORE_DRILL:-0}
+      PITR_RECOVERY_TARGET_NAME: ${PITR_RECOVERY_TARGET_NAME:-}
+      PITR_VERIFY_SQL: ${PITR_VERIFY_SQL:-}
+    entrypoint: ["sh", "/usr/local/bin/pitr-restore-drill.sh"]
+    network_mode: none
+    volumes:
+      - ./deployment/scripts/pitr-restore-drill.sh:/usr/local/bin/pitr-restore-drill.sh:ro
+      - type: bind
+        source: ${POSTGRES_BACKUP_PATH:?POSTGRES_BACKUP_PATH must be a protected external absolute directory}
+        target: /backups
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${POSTGRES_WAL_ARCHIVE_PATH:?POSTGRES_WAL_ARCHIVE_PATH must be a protected external absolute directory}
+        target: /wal-archive
+        read_only: true
+        bind:
+          create_host_path: false
+      - pitr-restore-data:/restore-data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    tmpfs:
+      - /tmp:size=64m,nosuid,nodev,uid=70,gid=70,mode=0700
+    mem_limit: ${PITR_RESTORE_MEMORY_LIMIT:-1g}
+    cpus: ${PITR_RESTORE_CPU_LIMIT:-1.0}
+    pids_limit: 128
 
   nginx:
     image: nginxinc/nginx-unprivileged:1.28-alpine
@@ -295,7 +469,10 @@ volumes:
   redis-data:
   prometheus-data:
   alertmanager-data:
+  pitr-restore-data:
 
 secrets:
   metrics_token:
     environment: METRICS_TOKEN
+  postgres_password:
+    environment: POSTGRES_PASSWORD

@@ -57,7 +57,10 @@ describe('MaintenanceService', () => {
     const firstBatch = Array.from({ length: 1000 }, (_, index) => ({ id: `audit-${index}` }))
     const prisma = {
       auditLog: {
-        findMany: jest.fn().mockResolvedValueOnce(firstBatch).mockResolvedValueOnce([{ id: 'audit-last' }]),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce(firstBatch)
+          .mockResolvedValueOnce([{ id: 'audit-last' }]),
         deleteMany: jest.fn().mockResolvedValueOnce({ count: 1000 }).mockResolvedValueOnce({ count: 1 }),
       },
     }

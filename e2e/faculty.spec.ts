@@ -67,10 +67,15 @@ test.describe('Faculty (Teacher) Flows', () => {
 
   test('create session form renders section picker + map', async ({ page }) => {
     const errors = trackErrors(page)
+    await page.context().grantPermissions(['geolocation'], { origin: 'http://localhost:3000' })
+    await page.context().setGeolocation({ latitude: 14.8701, longitude: 121.0002 })
     await page.goto('/faculty/sessions/create')
     await expect(page.getByRole('heading', { name: 'Create Session' })).toBeVisible()
-    // map should mount (maplibre)
+    // Assert both WebGL mounting and a functional map interaction rather than
+    // suppressing map runtime failures based on browser/network message text.
     await expect(page.locator('.maplibregl-canvas').first()).toBeVisible()
+    await page.getByRole('button', { name: /Use My Location/i }).click()
+    await expect(page.getByText('14.8701, 121.0002')).toBeVisible()
     assertNoErrors(errors)
   })
 

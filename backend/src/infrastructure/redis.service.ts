@@ -18,9 +18,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly localValues = new Map<string, { value: string; expiresAt: number }>()
   private readonly localRateLimits = new Map<string, { count: number; expiresAt: number }>()
   private readonly requireDistributedState: boolean
+  private readonly redisConfigured: boolean
 
   constructor(private readonly config: ConfigService) {
     this.requireDistributedState = config.get<string>('NODE_ENV') === 'production'
+    this.redisConfigured = Boolean(config.get<string>('REDIS_URL'))
   }
 
   async onModuleInit() {
@@ -86,30 +88,46 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return value ? (JSON.parse(value) as T) : null
   }
 
-  async setJson(key: string, value: unknown, ttlSeconds: number) {
+  /**
+   * Writes a value and reports whether every configured distributed tier was
+   * reached. A local fallback is still populated on failure, but callers must
+   * not mistake that process-local write for a successful Redis publication.
+   */
+  async setJson(key: string, value: unknown, ttlSeconds: number): Promise<boolean> {
     const storageKey = this.key(key)
     const serialized = JSON.stringify(value)
     const ttl = Math.max(1, ttlSeconds)
     if (this.client?.isReady) {
       try {
         await this.client.set(storageKey, serialized, { EX: ttl })
-        return
+        this.localValues.delete(storageKey)
+        return true
       } catch (error) {
         this.logFallback('write JSON value', error)
       }
     }
     this.setLocalValue(storageKey, serialized, ttl)
+    return !this.redisConfigured && this.client === null
   }
 
-  async delete(key: string) {
+  /**
+   * Deletes a value and reports whether every configured cache tier was
+   * reached. Local-only development is a successful deletion; a configured
+   * but disconnected/failing Redis client is not. Security-sensitive callers
+   * use the result to install an authoritative replacement value or abort a
+   * not-yet-committed mutation.
+   */
+  async delete(key: string): Promise<boolean> {
     const storageKey = this.key(key)
     this.localValues.delete(storageKey)
     this.localRateLimits.delete(storageKey)
-    if (!this.client?.isReady) return
+    if (!this.client?.isReady) return !this.redisConfigured && this.client === null
     try {
       await this.client.del(storageKey)
+      return true
     } catch (error) {
       this.logFallback('delete value', error)
+      return false
     }
   }
 

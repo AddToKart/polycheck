@@ -10,4 +10,5 @@ export const pupColors = {
   goldenDark: '#E09A00',
   surfaceDark: '#121215',
   black: '#0A0A0A',
+  white: '#FFFFFF',
 } as const

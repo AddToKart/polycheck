@@ -76,6 +76,7 @@ describe('SessionsService', () => {
       attendanceRecord: { createMany: jest.fn(), updateMany: jest.fn() },
       sectionRole: { findUnique: jest.fn() },
       sessionPermission: { findFirst: jest.fn() },
+      $executeRaw: jest.fn().mockResolvedValue(0),
       $transaction: jest.fn(),
     }
     realtime = { emitAttendanceUpdated: jest.fn(), emitSessionState: jest.fn() }
@@ -83,7 +84,7 @@ describe('SessionsService', () => {
       consumeRateLimit: jest.fn().mockResolvedValue(true),
       getJson: jest.fn().mockResolvedValue(null),
       setJson: jest.fn(),
-      delete: jest.fn(),
+      delete: jest.fn().mockResolvedValue(true),
       setIfAbsent: jest.fn().mockResolvedValue(true),
       acquireLock: jest.fn().mockResolvedValue('owner-token'),
       releaseLock: jest.fn().mockResolvedValue(true),
@@ -214,11 +215,15 @@ describe('SessionsService', () => {
     }
 
     it('creates a session for teacher who owns the section', async () => {
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
-      prisma.session.create.mockResolvedValue(makeSession())
+      const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
+        section: { findUnique: jest.fn().mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } }) },
+        session: { create: jest.fn().mockResolvedValue(makeSession()) },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
       prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
       const result = await service.create(dto, teacherUser)
-      const args = prisma.session.create.mock.calls[0][0]?.data
+      const args = tx.session.create.mock.calls[0][0]?.data
       expect(args.teacherId).toBe('teacher-1')
       expect(args.geofenceLatitude).toBe(14.6)
       expect(args.geofenceRadiusMeters).toBe(50)
@@ -228,44 +233,87 @@ describe('SessionsService', () => {
     })
 
     it('forbids teacher who does not own the section', async () => {
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-other', subject: { name: 'CS 101' } })
+      const tx = {
+        section: {
+          findUnique: jest.fn().mockResolvedValue({ teacherId: 'teacher-other', subject: { name: 'CS 101' } }),
+        },
+        session: { create: jest.fn() },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
       await expect(service.create(dto, teacherUser)).rejects.toThrow(ForbiddenException)
+      expect(tx.session.create).not.toHaveBeenCalled()
     })
 
     it('rejects impossible calendar dates before writing a session', async () => {
       await expect(service.create({ ...dto, date: '2026-02-30' }, teacherUser)).rejects.toThrow(BadRequestException)
       expect(prisma.section.findUnique).not.toHaveBeenCalled()
-      expect(prisma.session.create).not.toHaveBeenCalled()
+      expect(prisma.$transaction).not.toHaveBeenCalled()
     })
 
     it('throws NotFoundException when section does not exist', async () => {
-      prisma.section.findUnique.mockResolvedValue(null)
+      const tx = { section: { findUnique: jest.fn().mockResolvedValue(null) } }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
       await expect(service.create(dto, teacherUser)).rejects.toThrow(NotFoundException)
     })
 
     it('allows student with president role and active session permission', async () => {
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
-      prisma.sectionRole.findUnique.mockResolvedValue({ id: 'role-1' })
-      prisma.sessionPermission.findFirst.mockResolvedValue({ id: 'perm-1' })
-      prisma.session.create.mockResolvedValue(makeSession())
+      const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
+        section: { findUnique: jest.fn().mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } }) },
+        enrollment: { findUnique: jest.fn().mockResolvedValue({ id: 'enrollment-1' }) },
+        sectionRole: { findUnique: jest.fn().mockResolvedValue({ id: 'role-1' }) },
+        sessionPermission: { findFirst: jest.fn().mockResolvedValue({ id: 'perm-1' }) },
+        session: { create: jest.fn().mockResolvedValue(makeSession()) },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
       prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
       const result = await service.create(dto, studentUser)
-      expect(prisma.session.create.mock.calls[0][0]?.data.teacherId).toBe('teacher-1')
+      expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.enrollment.findUnique.mock.invocationCallOrder[0],
+      )
+      expect(tx.session.create.mock.calls[0][0]?.data.teacherId).toBe('teacher-1')
       expect(result).toBeDefined()
     })
 
     it('forbids student without president role or permission', async () => {
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
-      prisma.sectionRole.findUnique.mockResolvedValue(null)
-      prisma.sessionPermission.findFirst.mockResolvedValue(null)
+      const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
+        section: { findUnique: jest.fn().mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } }) },
+        enrollment: { findUnique: jest.fn().mockResolvedValue({ id: 'enrollment-1' }) },
+        sectionRole: { findUnique: jest.fn().mockResolvedValue(null) },
+        sessionPermission: { findFirst: jest.fn().mockResolvedValue(null) },
+        session: { create: jest.fn() },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
       await expect(service.create(dto, studentUser)).rejects.toThrow(ForbiddenException)
+      expect(tx.session.create).not.toHaveBeenCalled()
     })
 
     it('forbids student with role but inactive permission', async () => {
-      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
-      prisma.sectionRole.findUnique.mockResolvedValue({ id: 'role-1' })
-      prisma.sessionPermission.findFirst.mockResolvedValue(null)
+      const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
+        section: { findUnique: jest.fn().mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } }) },
+        enrollment: { findUnique: jest.fn().mockResolvedValue({ id: 'enrollment-1' }) },
+        sectionRole: { findUnique: jest.fn().mockResolvedValue({ id: 'role-1' }) },
+        sessionPermission: { findFirst: jest.fn().mockResolvedValue(null) },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
       await expect(service.create(dto, studentUser)).rejects.toThrow(ForbiddenException)
+    })
+
+    it('forbids a removed student even when stale president role and permission rows remain', async () => {
+      const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
+        section: { findUnique: jest.fn().mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } }) },
+        enrollment: { findUnique: jest.fn().mockResolvedValue(null) },
+        sectionRole: { findUnique: jest.fn().mockResolvedValue({ id: 'stale-role' }) },
+        sessionPermission: { findFirst: jest.fn().mockResolvedValue({ id: 'stale-permission' }) },
+        session: { create: jest.fn() },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+
+      await expect(service.create(dto, studentUser)).rejects.toThrow('must be enrolled')
+      expect(tx.session.create).not.toHaveBeenCalled()
     })
   })
 
@@ -360,7 +408,10 @@ describe('SessionsService', () => {
       } as any)
       const ended = { ...session, isActive: false, endedAt: new Date() }
       const tx = {
-        session: { update: jest.fn().mockResolvedValue(ended) },
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(ended),
+        },
         enrollment: {
           findMany: jest
             .fn()
@@ -375,7 +426,7 @@ describe('SessionsService', () => {
 
       const result = await service.activate('sess-1', dto, teacherUser)
 
-      expect(tx.session.update.mock.calls[0][0].data).toEqual(
+      expect(tx.session.updateMany.mock.calls[0][0].data).toEqual(
         expect.objectContaining({ isActive: false, qrToken: null, endedAt: expect.any(Date) }),
       )
       expect(tx.attendanceRecord.createMany.mock.calls[0][0].data[0].status).toBe('absent')
@@ -391,7 +442,8 @@ describe('SessionsService', () => {
 
     it('activates session, seeds pending attendance records, caches, and emits state', async () => {
       const session = makeSession()
-      prisma.session.findUnique.mockResolvedValue(session)
+      const activated = { ...session, isActive: true, qrToken: dto.token }
+      prisma.session.findUnique.mockResolvedValueOnce(session).mockResolvedValue(activated)
       prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
       mockedVerifyQRToken.mockReturnValue({
@@ -407,7 +459,8 @@ describe('SessionsService', () => {
 
       const tx = {
         session: {
-          update: jest.fn().mockResolvedValue({ ...session, isActive: true, qrToken: dto.token }),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(activated),
         },
         enrollment: {
           findMany: jest.fn().mockResolvedValue([
@@ -422,13 +475,188 @@ describe('SessionsService', () => {
       prisma.$transaction.mockImplementation(async (cb: any) => cb(tx))
 
       const result = await service.activate('sess-1', dto, teacherUser)
-      expect(tx.session.update).toHaveBeenCalled()
+      expect(tx.session.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'sess-1', isActive: false, endedAt: null, qrToken: null } }),
+      )
       expect(tx.attendanceRecord.createMany).toHaveBeenCalled()
       const createArgs = tx.attendanceRecord.createMany.mock.calls[0][0]?.data
       expect(createArgs[0].status).toBe('pending')
       expect(realtime.emitSessionState).toHaveBeenCalledWith(expect.anything(), 'activated')
       expect(redis.setJson).toHaveBeenCalled()
       expect(result.teacherPublicKey).toBe('pk')
+    })
+
+    it('rejects a concurrent activation that loses the atomic claim', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeSession())
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      mockedVerifyQRToken.mockReturnValue({
+        version: 1,
+        sessionId: 'sess-1',
+        sectionId: 'sec-1',
+        teacherId: 'teacher-1',
+        issuedAt,
+        validityMinutes: 10,
+        gracePeriodMinutes: 5,
+        teacherName: '',
+      } as any)
+      const tx = {
+        session: { updateMany: jest.fn().mockResolvedValue({ count: 0 }), findUniqueOrThrow: jest.fn() },
+        enrollment: { findMany: jest.fn() },
+        attendanceRecord: { createMany: jest.fn() },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+
+      await expect(service.activate('sess-1', dto, teacherUser)).rejects.toThrow(ConflictException)
+      expect(tx.enrollment.findMany).not.toHaveBeenCalled()
+      expect(realtime.emitSessionState).not.toHaveBeenCalled()
+    })
+
+    it('keeps an already-committed activation successful when the Redis cache write fails', async () => {
+      prisma.session.findUnique.mockResolvedValueOnce(makeSession())
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      mockedVerifyQRToken.mockReturnValue({
+        version: 1,
+        sessionId: 'sess-1',
+        sectionId: 'sec-1',
+        teacherId: 'teacher-1',
+        issuedAt,
+        validityMinutes: 10,
+        gracePeriodMinutes: 5,
+        teacherName: '',
+      } as any)
+      const activated = { ...makeSession(), isActive: true, qrToken: dto.token }
+      prisma.session.findUnique.mockResolvedValue(activated)
+      const tx = {
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(activated),
+        },
+        enrollment: { findMany: jest.fn().mockResolvedValue([]) },
+        attendanceRecord: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+      redis.setJson.mockRejectedValue(new Error('redis unavailable'))
+
+      const result = await service.activate('sess-1', dto, teacherUser)
+      expect(result.id).toBe('sess-1')
+      expect(result.qrToken).toBe(dto.token)
+    })
+
+    it('publishes the current signing key to the cache when a rotation happened during activation', async () => {
+      prisma.session.findUnique.mockResolvedValueOnce(makeSession())
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      prisma.user.findUnique
+        .mockResolvedValueOnce({ teacherPublicKey: 'old-key' })
+        .mockResolvedValueOnce({ teacherPublicKey: 'new-key' })
+      mockedVerifyQRToken.mockReturnValue({
+        version: 1,
+        sessionId: 'sess-1',
+        sectionId: 'sec-1',
+        teacherId: 'teacher-1',
+        issuedAt,
+        validityMinutes: 10,
+        gracePeriodMinutes: 5,
+        teacherName: '',
+      } as any)
+      const activated = { ...makeSession(), isActive: true, qrToken: dto.token }
+      prisma.session.findUnique.mockResolvedValue(activated)
+      const tx = {
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(activated),
+        },
+        enrollment: { findMany: jest.fn().mockResolvedValue([]) },
+        attendanceRecord: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+
+      await service.activate('sess-1', dto, teacherUser)
+      expect(redis.setJson).toHaveBeenCalledWith(
+        'active-session:sess-1',
+        expect.objectContaining({ teacherPublicKey: 'new-key' }),
+        expect.any(Number),
+      )
+    })
+
+    it('does not publish active cache after a concurrent end commits', async () => {
+      const initial = makeSession()
+      const activated = makeSession({ isActive: true, qrToken: dto.token })
+      const ended = makeSession({ isActive: false, endedAt: new Date(), qrToken: null })
+      prisma.session.findUnique.mockResolvedValueOnce(initial).mockResolvedValue(ended)
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      mockedVerifyQRToken.mockReturnValue({
+        version: 1,
+        sessionId: 'sess-1',
+        sectionId: 'sec-1',
+        teacherId: 'teacher-1',
+        issuedAt,
+        validityMinutes: 10,
+        gracePeriodMinutes: 5,
+        teacherName: '',
+      } as any)
+      const tx = {
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(activated),
+        },
+        enrollment: { findMany: jest.fn().mockResolvedValue([]) },
+        attendanceRecord: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+
+      await service.activate('sess-1', dto, teacherUser)
+
+      expect(redis.setJson).not.toHaveBeenCalledWith(
+        'active-session:sess-1',
+        expect.objectContaining({ isActive: true }),
+        expect.any(Number),
+      )
+      expect(redis.delete).toHaveBeenCalledWith('active-session:sess-1')
+    })
+
+    it('skips the cache publish when a key rotation holds the rotation lock', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeSession())
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      mockedVerifyQRToken.mockReturnValue({
+        version: 1,
+        sessionId: 'sess-1',
+        sectionId: 'sec-1',
+        teacherId: 'teacher-1',
+        issuedAt,
+        validityMinutes: 10,
+        gracePeriodMinutes: 5,
+        teacherName: '',
+      } as any)
+      const activated = { ...makeSession(), isActive: true, qrToken: dto.token }
+      const tx = {
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(activated),
+        },
+        enrollment: { findMany: jest.fn().mockResolvedValue([]) },
+        attendanceRecord: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+      redis.acquireLock.mockResolvedValue(null)
+
+      const result = await service.activate('sess-1', dto, teacherUser)
+      expect(result.id).toBe('sess-1')
+      expect(redis.setJson).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['an already active session', { isActive: true }],
+      ['an ended session', { endedAt: new Date() }],
+    ])('rejects reactivation of %s', async (_label, overrides) => {
+      prisma.session.findUnique.mockResolvedValue(makeSession(overrides))
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+
+      await expect(service.activate('sess-1', dto, teacherUser)).rejects.toThrow(ConflictException)
+      expect(prisma.$transaction).not.toHaveBeenCalled()
     })
   })
 
@@ -485,6 +713,56 @@ describe('SessionsService', () => {
       prisma.$transaction.mockImplementation(async (cb: any) => cb(tx))
       await expect(service.end('sess-1', teacherUser)).rejects.toThrow(ConflictException)
       expect(redis.delete).not.toHaveBeenCalled()
+    })
+
+    it('republishes the ended state to the cache when the cache delete fails', async () => {
+      const session = makeSession({ isActive: true })
+      prisma.session.findUnique.mockResolvedValue(session)
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      const ended = { ...session, isActive: false, endedAt: new Date() }
+      const tx = {
+        attendanceRecord: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(ended),
+        },
+      }
+      prisma.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      redis.delete.mockRejectedValueOnce(new Error('redis unavailable'))
+
+      const result = await service.end('sess-1', teacherUser)
+      expect(result.isActive).toBe(false)
+      expect(redis.setJson).toHaveBeenCalledWith(
+        'active-session:sess-1',
+        expect.objectContaining({ isActive: false, qrToken: null }),
+        300,
+      )
+    })
+
+    it('republishes the ended state when the Redis wrapper reports disconnection', async () => {
+      const session = makeSession({ isActive: true })
+      prisma.session.findUnique.mockResolvedValue(session)
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      const ended = { ...session, isActive: false, endedAt: new Date() }
+      const tx = {
+        attendanceRecord: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(ended),
+        },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      redis.delete.mockResolvedValue(false)
+
+      await service.end('sess-1', teacherUser)
+
+      expect(redis.setJson).toHaveBeenCalledWith(
+        'active-session:sess-1',
+        expect.objectContaining({ isActive: false, qrToken: null }),
+        300,
+      )
     })
   })
 

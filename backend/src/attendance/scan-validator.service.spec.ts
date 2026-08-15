@@ -52,6 +52,7 @@ describe('ScanValidatorService', () => {
 
     beforeEach(() => {
       redis.getJson.mockResolvedValue(cached)
+      prisma.session.findUnique.mockResolvedValue(cached)
       prisma.enrollment.findUnique.mockResolvedValue({ studentId: 'stu-1', sectionId: 'sec-1' })
       prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk-test' })
       mockedVerify.mockReturnValue(validPayload() as any)
@@ -106,11 +107,42 @@ describe('ScanValidatorService', () => {
     })
 
     it('returns absent when session is inactive (online)', async () => {
-      redis.getJson.mockResolvedValue({ ...cached, isActive: false })
+      prisma.session.findUnique.mockResolvedValue({ ...cached, isActive: false })
       const result = await service.validateScan(studentUser, makeEvidence(), false, new Date())
       expect(result.success).toBe(false)
       expect(result.status).toBe('absent')
       expect(result.reason).toBe('session_inactive')
+    })
+
+    it('rejects stale active cache when PostgreSQL says the session ended', async () => {
+      redis.getJson.mockResolvedValue({ ...cached, isActive: true, endedAt: null })
+      prisma.session.findUnique.mockResolvedValue({ ...cached, isActive: false, endedAt: new Date() })
+
+      const result = await service.validateScan(studentUser, makeEvidence(), false, new Date())
+
+      expect(result).toEqual(expect.objectContaining({ success: false, reason: 'session_inactive' }))
+      expect(mockedVerify).toHaveBeenCalledWith(expect.any(String), 'pk-test')
+    })
+
+    it('rejects a stale cached key after PostgreSQL rotates the teacher key', async () => {
+      redis.getJson.mockResolvedValue({ ...cached, teacherPublicKey: 'old-key' })
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'new-key' })
+      mockedVerify.mockImplementation((_token, key) => (key === 'new-key' ? null : (validPayload() as any)))
+
+      const result = await service.validateScan(studentUser, makeEvidence(), false, new Date())
+
+      expect(result).toEqual(expect.objectContaining({ success: false, reason: 'invalid_signature' }))
+      expect(mockedVerify).toHaveBeenCalledWith(expect.any(String), 'new-key')
+    })
+
+    it('rejects a stale cached key after PostgreSQL revokes the teacher key', async () => {
+      redis.getJson.mockResolvedValue({ ...cached, teacherPublicKey: 'revoked-key' })
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: null })
+
+      const result = await service.validateScan(studentUser, makeEvidence(), false, new Date())
+
+      expect(result).toEqual(expect.objectContaining({ success: false, reason: 'invalid_signature' }))
+      expect(mockedVerify).not.toHaveBeenCalled()
     })
 
     it('returns disputed for mocked location', async () => {

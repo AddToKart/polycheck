@@ -115,6 +115,58 @@ describe('real API client', () => {
     expect(api.getCurrentUser()).toBeNull()
   })
 
+  it('restoreSession clears a cached profile on an authoritative 403 rejection', async () => {
+    localStorage.setItem('polycheck-user', JSON.stringify(student))
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ message: 'Forbidden' }, 403))
+    const { api } = await import('./api-client')
+
+    await expect(api.restoreSession()).resolves.toBeNull()
+    expect(api.getCurrentUser()).toBeNull()
+    expect(localStorage.getItem('polycheck-user')).toBeNull()
+  })
+
+  it('restoreSession preserves the cached profile when the network is unavailable', async () => {
+    localStorage.setItem('polycheck-user', JSON.stringify(student))
+    vi.mocked(fetch).mockRejectedValue(new TypeError('Failed to fetch'))
+    const { api } = await import('./api-client')
+
+    await expect(api.restoreSession()).rejects.toThrow('Failed to fetch')
+    expect(api.getCurrentUser()).toEqual(student)
+    expect(localStorage.getItem('polycheck-user')).toBe(JSON.stringify(student))
+  })
+
+  it('restoreSession preserves the cached profile when session verification times out', async () => {
+    vi.useFakeTimers()
+    localStorage.setItem('polycheck-user', JSON.stringify(student))
+    vi.mocked(fetch).mockImplementation(
+      (_input, init) => new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+      }),
+    )
+    const { api } = await import('./api-client')
+
+    try {
+      const request = expect(api.restoreSession()).rejects.toMatchObject({ name: 'AbortError' })
+      await vi.advanceTimersByTimeAsync(15_000)
+      await request
+      expect(api.getCurrentUser()).toEqual(student)
+      expect(localStorage.getItem('polycheck-user')).toBe(JSON.stringify(student))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('restoreSession preserves the cached profile on a typed server error', async () => {
+    localStorage.setItem('polycheck-user', JSON.stringify(student))
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ message: 'Service unavailable' }, 503))
+    const { api, ApiHttpError } = await import('./api-client')
+
+    const error = await api.restoreSession().catch((caught) => caught)
+    expect(error).toBeInstanceOf(ApiHttpError)
+    expect(error).toEqual(expect.objectContaining({ name: 'ApiHttpError', message: 'Service unavailable', status: 503 }))
+    expect(api.getCurrentUser()).toEqual(student)
+  })
+
   it('getSubjects fetches the correct path', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse([]))
     const { api } = await import('./api-client')

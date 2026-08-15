@@ -6,6 +6,20 @@ const STORAGE_KEY = 'polycheck-user'
 const REQUEST_TIMEOUT_MS = 15_000
 const EXPORT_TIMEOUT_MS = 30_000
 
+export class ApiHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message)
+    this.name = 'ApiHttpError'
+  }
+}
+
+export function isAuthRejection(error: unknown): error is ApiHttpError {
+  return error instanceof ApiHttpError && (error.status === 401 || error.status === 403)
+}
+
 function loadUser(): User | null {
   if (typeof window === 'undefined') return null
   try {
@@ -20,8 +34,13 @@ function saveUser(user: User | null) {
   try {
     if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
     else localStorage.removeItem(STORAGE_KEY)
+  } catch { /* Storage may be blocked; in-memory auth state is still authoritative. */ }
+  try {
+    // Auth consumers must be notified even when privacy settings or a storage
+    // quota error prevented persistence. In particular, a 401 must immediately
+    // unmount protected content based on the in-memory currentUser value.
     window.dispatchEvent(new Event('polycheck-auth-changed'))
-  } catch { /* noop */ }
+  } catch { /* A non-browser test shim may not implement dispatchEvent. */ }
 }
 
 let currentUser: User | null = loadUser()
@@ -64,7 +83,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
       saveUser(null)
     }
     const message = Array.isArray(err.message) ? err.message.join('. ') : err.message
-    throw new Error(message || 'Request failed')
+    throw new ApiHttpError(message || 'Request failed', res.status)
   }
   return res.json()
 }
@@ -174,15 +193,22 @@ export const api = {
     return currentUser
   },
 
+  hasCurrentUser(): boolean {
+    return currentUser !== null
+  },
+
   async restoreSession(): Promise<User | null> {
     try {
       currentUser = await get<User>('/auth/me')
       saveUser(currentUser)
       return currentUser
-    } catch {
-      currentUser = null
-      saveUser(null)
-      return null
+    } catch (error) {
+      if (isAuthRejection(error)) {
+        currentUser = null
+        saveUser(null)
+        return null
+      }
+      throw error
     }
   },
 
