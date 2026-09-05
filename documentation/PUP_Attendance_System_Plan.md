@@ -1,230 +1,412 @@
-# PUP Attendance System — Full System Plan
+# Polycheck — System Plan and Implementation Reference
 
-**Polytechnic University of the Philippines**
-System name: **Polycheck**
-Document type: System Planning Document — Non-Technical Reference
+**Institution:** Polytechnic University of the Philippines (PUP)
 
----
+**System name:** Polycheck
 
-## Overview
+**Document type:** Living system plan and implementation reference
 
-Polycheck is a unified web and mobile attendance management system designed to replace the current written class monitoring forms used at PUP. The system digitizes attendance through QR code scanning and geolocation verification, improving attendance integrity and auditability without requiring specialized phone hardware. It is built as an offline-first system, meaning it works fully without internet and syncs all data to the cloud automatically whenever a connection becomes available. It serves three distinct user roles — Super Admin, Admin (Teacher/Instructor), and Student — each with a scoped set of responsibilities and access.
+**Repository verification date:** August 14, 2026
 
 ---
 
-## The Problem Being Solved
+## 1. Purpose and Current Status
 
-The current process relies on paper-based class monitoring forms. Students sign or are marked present manually, which creates several vulnerabilities: a student can be marked present by a classmate, forms can be lost or altered, and there is no real-time visibility for department heads. Collating attendance data for reporting requires manual counting and is error-prone. Polycheck eliminates all of these issues by moving the entire process into a verified, logged, and auditable digital system.
+Polycheck is a unified web and mobile attendance-management system for PUP. It replaces paper attendance and class-monitoring forms with authenticated accounts, short-lived signed QR codes, geolocation evidence, section rosters, attendance review, disputes, proof-of-class uploads, reporting, and an audit trail.
 
----
+This document describes the system that currently exists in the repository. A capability labeled **implemented** has application code and supporting contracts in the monorepo. A capability labeled **deployment-dependent** is implemented but still requires institution-owned infrastructure, credentials, policies, or store approval. Items under **Future Scope** are not part of the current v1 implementation.
 
-## User Roles
+The current repository contains:
 
-### Super Admin
-Super Admins are department heads and authorized PUP officials such as program chairs and administrators. They have the highest level of access in the system and can see data across all teachers and subjects within their department or the entire institution depending on their scope. They do not manage day-to-day attendance but oversee the system, generate reports, manage teacher accounts, and configure institution-level settings.
-
-Super Admin access is administrative and observational, not a substitute for a teacher account. Within their authorized department or institution scope, Super Admins may view subject, section, session, attendance, dispute, proof-of-class, and anomaly data; generate/export reports; search the institutional directory; create and manage teacher/student accounts; reset account passwords; and configure institution settings. They cannot create, edit, or delete subjects, sections, or class sessions; activate/end sessions or access live QR tokens; manage enrollment codes or rosters; assign section officers; change attendance statuses; resolve disputes; or delete proof-of-class submissions. Those classroom operations remain with the assigned teacher, with the separately documented limited student-officer permissions.
-
-### Teacher / Instructor
-Teachers are the primary session managers. Each teacher manages only their own subjects and classes. They create subjects, configure class schedules, generate QR codes for each session, set the geofence for their classroom, and define the time window during which students may check in. They can view attendance records for their classes and flag anomalies. Teachers can also assign student officers (President, QAC) per section.
-
-### Student
-Students use the mobile app as their primary interface, with a web dashboard available for schedule and detail views. They have a digital student ID within the app, can view their class schedules, and check in to classes by scanning the teacher's QR code. Their attendance history is visible to them, and they can submit disputes. Student officers (President, QAC) can create sessions and upload proof of class.
+- a Next.js web application for students, teachers, and Super Admins;
+- an Expo React Native application for students and faculty, stored in `android/`;
+- a NestJS REST and Socket.IO backend with Better Auth, Prisma, PostgreSQL, Redis, and BullMQ;
+- shared TypeScript domain types, Zod validation, QR signing, geofence, and calendar utilities;
+- local and production Docker topologies, monitoring, backup and recovery tooling;
+- unit, integration, web end-to-end, Android end-to-end, security, container, and load-test checks.
 
 ---
 
-## Core Features
+## 2. Problem Being Solved
 
-### QR Code Attendance
-Each class session requires the teacher to generate a fresh QR code directly in the system. The QR code is not a static image — it is a cryptographically signed token that is unique to that session and expires after a teacher-configured time window (typically two to five minutes). Tokens are signed locally on the teacher's device using a private key that was provisioned to the device during the initial connected setup phase. The server retains the corresponding public key and uses it to verify token signatures when records sync. This asymmetric key model means token signing is fully trustworthy without requiring a server connection at the moment of generation. The session data is queued for sync to the server whenever connectivity is available. Once the time window closes, the token is considered expired and any scan attempt is rejected. When records sync, the server re-validates all token signatures and timestamps.
+Paper attendance allows proxy signing, can be lost or altered, provides limited audit evidence, and makes department-level reporting slow and error-prone. Polycheck creates a traceable attendance workflow in which the system records the student, class session, time, location evidence, installation identifier, QR input channel, validation outcome, and later administrative changes.
 
-### Geolocation Attendance Gating
-When a teacher creates a session, they configure a geofence — a circular area defined by GPS coordinates and a radius (typically 30 to 50 meters centered on the classroom). This geofence is stored locally on the teacher's device and pre-synced to enrolled students' devices so it is available without internet. When a student submits a QR scan, the app performs the Haversine distance calculation locally on the device using the cached geofence data. If the student's current GPS coordinates fall outside the defined radius, the check-in is rejected immediately and the student is informed they are outside the allowed area. The GPS coordinates, outcome, and timestamp are all recorded locally and included in the sync payload when connectivity returns. Upon sync, the server re-validates all submitted coordinates against the stored geofence as a secondary check to catch any local tampering.
-
-### Digital Student ID
-Every student account has a digital ID card embedded in the mobile app. It displays the student's full name, student number, program, year level, and a profile photo. The ID is tied to the verified account, and the student interface uses screen-capture protection where supported to discourage copying. The digital ID also serves as a quick reference for teachers doing manual verification if needed.
-
-### Subject and Schedule Management
-Teachers create subjects within the system, defining the subject name, section, room, schedule (days and time), and semester. Students are enrolled into subjects either by the teacher manually or through a system-generated enrollment code.
-
-Enrollment codes are generated per-subject, not per-session. A teacher generates one code when they create the subject at the start of the semester. The code is short and alphanumeric — six to eight characters — so students can type it manually if needed. The teacher sets an expiry on the code, typically the first two weeks of the semester, after which it stops accepting new enrollments. Existing enrollments made before expiry remain valid for the rest of the semester. The teacher can invalidate and regenerate the code at any time — useful if the code leaks to students outside the intended section. Once enrolled, the subject and all of its sessions appear in the student's schedule view automatically and their device begins syncing geofence and session data for that subject.
-
-### Attendance Records and Reporting
-Every check-in, whether successful or denied, is logged with a timestamp, GPS coordinates, device ID, and outcome. Teachers can view per-session and per-student attendance summaries for all their subjects. Super Admins can generate department-wide or institution-wide attendance reports, filter by subject, teacher, date range, or student, and export records. Attendance status is categorized as Present, Late (within session window but past a teacher-configured grace period), or Absent.
+The system is designed for classrooms with unreliable connectivity. The Expo mobile app can use pre-synced data to activate sessions and record check-ins offline, then reconcile them with the server when connectivity returns. PostgreSQL remains the authoritative cloud record after synchronization.
 
 ---
 
-## Anti-Cheat System
+## 3. Roles and Authorization Boundaries
 
-This is the most critical part of the system design. The v1 anti-cheat stack is deliberately scoped to the layers that provide the most protection for the least implementation complexity. Hardware-backed device binding is deferred while the v1 stack is proven stable; students without compatible phones must remain supported through teacher-assisted manual attendance.
+### 3.1 Super Admin
 
-The v1 anti-cheat stack consists of: server-signed token expiry, server-side geofence re-validation on sync, reject-on-duplicate conflict resolution, and single active session per account. Together these cover all common cheat vectors without overbuilding the first version.
+Super Admins are department heads, program chairs, or authorized institutional officials. Their scope is either a department or the institution.
 
-### Cheat Scenario 1 — Sending the QR Code to an Absent Friend
-A present student screenshots or forwards the QR code to a classmate who is not physically in the room.
+Implemented capabilities:
 
-**Solution:** The QR token expires within a short teacher-configured window (two to five minutes). Geolocation validation is performed locally on the student's device at the moment of scan using cached geofence data, and the result is re-validated by the server when records sync. Even if the absent student receives the QR code instantly, their device checks their GPS coordinates locally and rejects the scan if they are not within the classroom geofence. Both the token validity and the GPS check must pass together — failing either rejects the check-in.
+- view scoped subjects, sections, sessions, attendance, disputes, proofs, dashboards, and reports;
+- use global search and export attendance data;
+- create teacher and student accounts;
+- activate or deactivate accounts and reset passwords;
+- manage institution settings.
 
-### Cheat Scenario 2 — Logging into an Absent Student's Account
-A present student logs into their absent classmate's account on their own phone and scans the QR code on their behalf, satisfying the geolocation check since they are physically present.
+Super Admin access to classroom data is read-only. Super Admins cannot create, update, or delete subjects, sections, sessions, attendance, enrollment codes, rosters, section roles, session permissions, QR tokens, disputes, or proof-of-class records.
 
-**Solution — Single Active Session per Account (v1):** Better Auth enforces that a user account can only have one active verified session at a time. If student B's credentials are used to log in from a new device, student B is immediately logged out of their existing session and receives a security alert. This makes credential sharing immediately visible and disruptive to the legitimate account holder.
+### 3.2 Teacher / Instructor
 
-**Possible future solution — Device Binding:** If account sharing becomes a demonstrated problem, a future release may bind a student account to a registered installation or device. Any such control must include an accessible teacher-assisted recovery and manual-attendance process for students who replace, share, borrow, or do not own a compatible phone.
+Teachers manage the classroom resources assigned to them. A teacher can:
 
-### Cheat Scenario 3 — GPS Spoofing
-A technically advanced student uses a mock location app to fake their coordinates as being inside the classroom.
+- create parent subjects and manage subjects they created;
+- create and manage their own sections, schedules, rooms, semesters, enrollment codes, and rosters;
+- create individual or recurring sessions with a session-specific geofence;
+- generate a locally signed QR token and activate or end a session;
+- view live rosters, attendance summaries, reports, calendar views, and exports;
+- manually set attendance and resolve student or system-generated disputes;
+- assign President and QAC section roles;
+- grant or revoke a 24-hour session permission for an enrolled student;
+- upload proof of class and delete proof belonging to their sessions.
 
-**Solution — Coordinate Plausibility Monitoring:** The system logs all submitted GPS coordinates. Coordinates that are suspiciously precise — matching the exact geofence center to many decimal places — or that are implausibly consistent across multiple sessions from the same device are flagged and surfaced to the teacher and Super Admin as anomalies. This is a passive audit layer rather than a hard block, since reliable spoofing detection at the app level is difficult, but the audit trail creates accountability and gives teachers grounds to escalate.
+Teachers cannot manage sections owned by another teacher. Subject updates and deletion are limited to the teacher who created the parent subject; a subject with existing sections cannot be deleted.
 
-**Solution — Device Integrity Attestation (v2):** Android SafetyNet and Apple DeviceCheck attestation will be added in v2, verifying at the OS level that the device has not been rooted or tampered with before any local validation result is trusted.
+### 3.3 Student
 
-### Cheat Scenario 4 — Screenshot Replay of QR Code
-A student saves a QR code from a previous session and tries to use it in a future session.
+Students can use both the web portal and the Expo mobile app. A student can:
 
-**Solution:** Each QR token carries a server-signed `issuedAt` timestamp embedded in the token payload at generation time. The local expiry check uses this signed timestamp — not the device clock — so winding the device clock back does not extend the token's validity. The app reads the `issuedAt` from the token itself and compares it against the teacher-configured window duration. When records sync, the server performs the same calculation using its own clock and the signed `issuedAt`, making the device clock entirely irrelevant to the authoritative expiry decision. Tokens are also single-use per student account — the first sync to arrive for a given token and student pair is accepted, and any subsequent submission of the same pair is rejected and logged as a duplicate, which is itself flagged for teacher review.
+- view their dashboard, enrolled classes, monthly or weekly schedule, session details, attendance history, and digital ID;
+- enroll in a section with an active enrollment code;
+- scan an attendance QR code using the camera, with controlled image/manual fallbacks where enabled;
+- view only their own attendance and submit a dispute against their own record;
+- view proofs for sessions in sections where they are enrolled.
 
----
+The mobile app is the primary offline-capable student client. The web portal supports online QR scanning through the browser camera and browser geolocation.
 
-## Tech Stack
+### 3.4 Student Officers and Temporary Permissions
 
-### Web Dashboard
-The web dashboard is built with Next.js and serves the Teacher, Super Admin, and Student interfaces. Teachers use it to create subjects, configure sessions, generate QR codes, and review attendance. Super Admins use it for user management, reporting, and system configuration. Students can view their schedule, subjects, attendance history, and submit disputes. The web dashboard shares the same design system, type definitions, and API client logic as the mobile app through a monorepo structure.
+Teachers may assign the following per-section roles:
 
-### Mobile App
-The mobile app is built with React Native using the Expo framework. It is the primary interface for students and is also available to teachers who prefer to generate and display QR codes from their phone. Expo provides access to the native device capabilities required by the system — GPS via expo-location and camera and QR scanning via expo-camera. The app targets both iOS and Android.
+- **President:** may create an individual session only when the student is enrolled, is assigned the President role, and has an active teacher-granted session permission. Bulk session creation, QR activation, and session ending remain teacher-only operations.
+- **QAC:** may upload proof of class while a session is active.
+- **Authorized student:** a student with an active session permission may also upload proof while the session is active.
 
-### Backend API
-The backend is built with NestJS running on Node.js. NestJS is chosen for its module-based architecture, which maps cleanly to the system's distinct functional areas: authentication and session management, QR token generation and validation, geolocation validation, attendance recording, subject and schedule management, and reporting. Each module is independently testable and maintainable. The API is RESTful with Better Auth sessions: web clients use an HttpOnly cookie and mobile clients use a signed bearer session token stored in the platform keystore.
-
-### Database
-The system uses a two-layer database architecture to support offline-first operation. On each device, a local SQLite database (via expo-sqlite on mobile) stores all data the app needs to function without internet — enrolled subjects, session tokens, geofence configurations, student profile data, and a queue of attendance records pending sync. This local database is the source of truth during class. The cloud database is PostgreSQL, accessed via Prisma ORM through the NestJS backend, and serves as the permanent system of record. Data access policies are enforced at the API layer through NestJS guards using a role-based access control (RBAC) system — a student can only read their own records, a teacher can only read records for their subjects, and a Super Admin can read all records within their scope. For real-time updates to the teacher's dashboard and low-latency request processing, the NestJS backend integrates WebSocket endpoints and a Redis cache (see Real-Time & Caching Infrastructure).
-
-### Real-Time & Caching Infrastructure (WebSockets & Redis)
-For real-time updates and low-latency validation during peak attendance check-in windows, the system utilizes WebSockets (via Socket.IO) and Redis:
-* **WebSockets**: Established between the NestJS backend and the teacher's dashboard (web/mobile). As students sync their locally generated attendance records to the backend, the backend pushes these successful check-ins instantly to the active session view.
-* **Redis**: Acts as an in-memory data store and event broker:
-  * *WebSocket Adapter*: Enables horizontal scaling of WebSocket connections. If multiple server instances are running behind a load balancer, Redis Pub/Sub coordinates and broadcasts WebSocket events across Server instances.
-  * *Active Session Caching*: Active geofence coordinates and QR token metadata are cached in Redis with a TTL matching the session's duration. The backend validates coordinates against the cache in microseconds without hitting the PostgreSQL database.
-  * *Rate Limiting*: Limits scan submission attempts per student/device ID using a Redis-backed rate limiter to prevent geofence-spoofing brute-force attacks.
-  * *Job Queues (BullMQ)*: Manages batch processing of offline sync payloads asynchronously, ensuring the main HTTP server thread remains unblocked.
-
-### Authentication
-Better Auth handles session management, signed bearer issuance, and user account lifecycle. User roles (super_admin, teacher, student) remain in the Polycheck user profile. NestJS resolves every Better Auth session to the current database user before enforcing role and scope guards, so role or account-status changes take effect immediately. The single active session per account constraint described in the Anti-Cheat section is enforced through Better Auth session-generation hooks and database-backed revocation.
-
-### Monorepo Structure
-The project is organized as a Turborepo monorepo. Shared code — TypeScript types, API client functions, validation schemas, and utility functions — lives in shared packages consumed by both the Next.js web app and the Expo mobile app. This ensures the two frontends stay in sync on data contracts and reduces duplicated logic.
+Session permissions expire after 24 hours and can be revoked early. Scheduled maintenance marks expired permissions inactive.
 
 ---
 
-## Offline-First Architecture
+## 4. Domain Model and Academic Hierarchy
 
-PUP's campus has unreliable WiFi and inconsistent mobile data coverage in classrooms. Polycheck is designed so that every critical action during class — QR generation, attendance scanning, and geolocation validation — works completely without internet. An internet connection is only needed to sync data, not to operate the system.
+The current academic hierarchy is:
 
-### How It Works
+```text
+Subject (course catalog entry)
+└── Section (teacher-owned class offering for a semester)
+    ├── Schedule days and rooms
+    ├── Enrollments and section officers
+    └── Sessions (individual class meetings)
+        ├── Signed QR activation and geofence
+        ├── Scan attempts and attendance records
+        └── Proof-of-class submissions
+```
 
-Both the teacher app and the student app maintain a local SQLite database on the device. All data the app needs during class — subject schedules, geofence configurations, enrolled student lists, and student profile data — is pre-loaded onto the device the last time it had any connection. During class, all operations read from and write to this local database exclusively. No network call is made during the check-in flow.
+This distinction is important:
 
-During the initial connected setup phase, the server provisions a signing key pair to each teacher's device. The private key is stored in the device's secure enclave or keystore and never leaves the device. The server retains the corresponding public key. All QR tokens generated offline are signed with this private key, and the server verifies them using the stored public key when records sync. This is the same asymmetric signing model used by systems like SSH and hardware security keys — the server does not need to be present at signing time for the signature to be trustworthy.
+- A **Subject** contains the course name, code, and optional description.
+- A **Section** connects a subject to a teacher, section name, semester, default room, weekly schedule, enrollment code, and roster.
+- A **Session** represents one dated meeting. Its room, start/end time, QR rules, geofence, active state, and rescheduling metadata are session-specific.
 
-When internet becomes available on any device — whether the teacher's mobile data turns on, a student walks into an area with WiFi, or anyone gets home — the app's background sync queue drains automatically. Pending attendance records, newly created sessions, and any profile updates are pushed to the server via the NestJS API. The sync is opportunistic and silent; users do not need to do anything to trigger it.
-
-### Session Configuration vs Session Activation
-
-There is an important distinction between two separate actions in the teacher flow, and they have different connectivity requirements.
-
-Session configuration is the act of creating a subject, defining its geofence, setting the classroom location, and establishing the schedule. This must be done while the teacher has internet connectivity — ideally before the semester begins or at minimum before the class day. This is the data that students need to pre-sync onto their devices. Without it cached locally, students cannot scan. Configuration is a one-time setup per subject per semester, not a per-class task.
-
-Session activation is the act of opening an already-configured subject and generating the QR code for that specific class meeting. This works completely offline. The teacher taps to start the session, the app generates and signs the token locally using the pre-configured subject data, and the QR is displayed. Students already have the geofence cached from their pre-session sync. The only thing they receive in the classroom is the QR token itself, which they get by physically scanning the screen — no internet needed for any part of that exchange.
-
-This separation means the system's offline capability is real and complete for the actual classroom experience, while still requiring a one-time connected setup that any teacher can do at home or on mobile data before the semester starts.
-
-### Retroactive Session Management & Expiry Buffers
-
-While check-in tokens (QR codes) expire in a short window of 2 to 5 minutes to prevent visual code sharing, the administrative state of a session remains open and activate-able by instructors even days or weeks after the scheduled date. This design decision is critical for several real-world administrative and technical reasons:
-
-1. **Roster Sync Buffer (Offline Sync Delays)**: In an offline-first environment, students might not have mobile data or campus Wi-Fi to sync their local check-in records to the cloud database immediately. A student who checked in successfully on a Monday might only connect to Wi-Fi to sync on Friday. Until then, the cloud database marks them as absent. Instructors auditing class records 7+ days later need the ability to open the session to review the synced check-ins once all student queues have cleared.
-2. **Batch Review of Attendance Disputes**: Students are typically granted a grace window (often 3 to 7 days) to submit attendance disputes for technical issues like GPS drift or camera errors. Instructors review and resolve these disputes in weekly batches, requiring the administrative state of past sessions to remain active for manual adjustment and roster overrides.
-3. **Make-up Classes and Rescheduling**: Real-world academic schedules are dynamic. If a lecture is suspended due to holidays, bad weather, or school suspensions, instructors can activate the planned session retroactively on the make-up day without needing to manually reconstruct schedules.
-4. **Instructor Administrative Authority**: Instructors serve as the final authority over their grade books. Imposing hard software blocks or cutoffs on past sessions would make the system too rigid, locking teachers out of editing their rosters when students present valid retroactive doctor notes or university excuse slips.
-
-
-### Pre-Session Sync Expectation
-
-Students are expected to open Polycheck while connected at least once before each class day — at home, on the commute, or anywhere with data. This sync pulls down geofence configurations and subject data for all enrolled subjects. If a student has not synced and has no cached data for the current class, they will not be able to scan. This is a known and acceptable constraint, equivalent to a student forgetting their physical ID.
-
-### Sync Conflict Resolution
-
-When records arrive at the server during sync, conflicts are resolved using a reject-on-duplicate strategy. The first sync to arrive for a given token and student account pair is accepted and recorded as the canonical attendance entry. Any subsequent submission of the same pair — from any device — is rejected and logged as a duplicate. Duplicate submissions are flagged for teacher review since a legitimate student should only ever produce one record per session. For non-conflicting records from different students in the same session, there is no conflict — each token-student pair is unique and all records are inserted normally regardless of the order they arrive.
-
-### Clock Drift and Token Expiry
-
-The device clock is deliberately excluded from the authoritative expiry decision to prevent students from winding their clock back to extend a token's validity. Each token carries an `issuedAt` timestamp baked into the token payload at the moment of generation and signed with the teacher's provisioned private key. The local expiry check reads this signed timestamp and compares it against the teacher-configured window duration — not against the device's current time. When records sync, the server performs the same calculation using its own clock and the `issuedAt` from the verified token. Because the `issuedAt` is part of the signed payload and cannot be altered without invalidating the signature — and the signature can be verified using the server's copy of the teacher's public key — the device clock has no influence over whether a token is considered valid or expired.
-
-### Server-Side Re-Validation on Sync
-
-Every synced attendance record undergoes a full re-validation pass when it arrives at the server. The server checks that the signed token timestamp falls within the session window, that the submitted GPS coordinates fall within the session's geofence, and that no duplicate submission exists for the same token and student pair. Any record that fails re-validation is marked as disputed and surfaced to the teacher for manual review rather than silently discarded.
-
-### Offline Anti-Cheat Considerations
-
-Local validation introduces a manipulation surface that server-side-only validation does not. A student with a rooted or modified phone could theoretically alter the local validation logic to produce a fraudulent record that passes local checks. This is mitigated in v1 by the server re-validation pass on sync, the coordinate plausibility monitoring, and the reject-on-duplicate conflict strategy. The post-v1 addition of Android SafetyNet and Apple DeviceCheck attestation will close this gap further by verifying at the OS level that the app has not been tampered with before any local result is trusted.
+Enrollment codes are generated per section, not per subject or session. New sections receive a seven-character alphanumeric code that expires after 14 days. A teacher may reset the code, which starts a new 14-day window, or disable it. Existing enrollments remain valid.
 
 ---
 
-## Design System
+## 5. Core Functional Capabilities
 
-### Brand Foundation
-The design system is built exclusively on PUP's official brand identity. The palette is intentionally restricted to four colors — maroon, deep maroon, golden yellow, and white or black depending on the mode. No additional brand colors are introduced. This restraint gives the system a unified, instantly recognizable identity that feels unmistakably PUP across every screen and surface.
+### 5.1 Subject, Section, and Enrollment Management
 
-### Color Palette
+Teachers create the subject first, then add one or more sections. A section supports Monday through Sunday schedules, per-schedule room overrides, a semester, manual enrollment, enrollment by code, roster removal, search, pagination, attendance summaries, and section-role assignment.
 
-**Primary — Maroon** `#7B1113`
-The dominant brand color and the backbone of the entire UI. Used for primary buttons, navigation bars, headers, active states, and all primary UI surfaces. Every screen's identity is anchored in this color.
+Student-facing section responses do not expose enrollment codes. Teachers can manage codes only for their own sections. Super Admin interfaces treat classroom resources as read-only and do not provide enrollment-code controls.
 
-**Primary Dark — Deep Maroon** `#4A0A0B`
-Used for hover and pressed states on maroon elements, sidebar backgrounds, deep surface layers, and as the primary background color in dark mode. This is the dark counterpart that keeps the maroon family cohesive without introducing a foreign color.
+### 5.2 Calendar and Session Planning
 
-**Accent — Golden Yellow** `#FFDF00`
-The sole accent color, derived directly from the star in the PUP logo. Used for highlights, active navigation indicators, important badges, call-to-action emphasis, and any element that needs to stand out against a maroon or dark surface. It is never used as a background for large surfaces — only as an accent.
+Teachers can create one session or generate recurring sessions across a date range and selected days. A session records:
 
-**Light Mode Base — White** `#FFFFFF`
-The background color for all screens, cards, and surfaces in light mode. Pure white is used rather than off-white to create maximum contrast against maroon and to keep the UI clean and legible.
+- section and teacher ownership;
+- date, start time, end time, and room;
+- geofence latitude, longitude, and radius;
+- QR validity and grace-period defaults;
+- active/end state and QR timestamps;
+- optional rescheduling metadata.
 
-**Dark Mode Base — Black** `#0A0A0A`
-The background color for all screens and surfaces in dark mode. Near-black rather than pure black to reduce eye strain while maintaining the deep, authoritative feel that complements the maroon and gold palette.
+The web and mobile applications provide month and week calendar views. Calendar entries are computed from section schedules and stored sessions; they are not a separate persisted calendar-event table.
 
-All semantic states — success, error, warning, informational — are expressed using maroon, deep maroon, golden yellow, and white or black tints rather than introducing external colors like green, red, or blue. For example, a denied check-in is communicated through a deep maroon badge with white text and a golden yellow icon rather than a red alert. A successful check-in uses a golden yellow badge with deep maroon text.
+### 5.3 Signed QR Attendance
 
-### Typography
-The system uses a two-font pairing. A serif display font is used for headings and the app name to convey the academic and institutional character of PUP. A clean, readable sans-serif is used for all body text, labels, form fields, and data tables. Both fonts are loaded via Google Fonts and consistent across web and mobile.
+QR tokens use an Ed25519 signature implemented with TweetNaCl. The payload contains the token version, session ID, section ID, teacher ID and name, signed `issuedAt`, validity minutes, and grace-period minutes.
 
-### Component Design Language
-All UI components — buttons, cards, form inputs, modals, badges, and navigation — follow a consistent visual language across both the web dashboard and the mobile app. The web uses shadcn/ui as the component base, configured with the PUP color tokens. The mobile uses react-native-reusables, which is a React Native port of shadcn/ui, configured with the same tokens through NativeWind. This means a badge on the web and a badge on mobile look and behave identically, just adapted to their rendering environment.
+Current policy limits are:
 
-Buttons use maroon as the primary action color with white text, with golden yellow used as the accent border or icon emphasis. Status badges stay strictly within the palette — golden yellow with deep maroon text for Present, maroon with white text for Late, deep maroon with a golden yellow border for Absent, and a white badge with maroon text for Pending. Navigation uses a maroon background with white text and a golden yellow active indicator underline. Cards use a white background in light mode and a deep maroon surface in dark mode, with a maroon or golden yellow left-border accent for emphasis.
+- QR validity: **1 to 15 minutes**;
+- grace period: **0 to 60 minutes**;
+- a scan within the validity period becomes **Present**;
+- a scan after validity but within grace becomes **Late**;
+- a scan after grace is rejected as **Absent** unless other evidence rules require dispute review.
 
-### Mobile-Specific Design Considerations
-The mobile app uses NativeWind to apply Tailwind-compatible utility classes to React Native components, ensuring the same design tokens drive styling across both platforms. The QR scanner screen uses a full-screen camera view with a maroon overlay frame and a gold alignment guide to make the scan experience feel intentional and on-brand rather than generic. The digital student ID card is styled as a physical ID card with the PUP maroon header, the student's photo, and the PUP logo, giving it a sense of official authority.
+Teacher private keys are created on the client. Mobile stores account-specific key material in Expo SecureStore. The web client encrypts the secret with a non-exportable AES-GCM wrapping key in IndexedDB. Only the public key is provisioned to the backend. Key provisioning and revocation are rate-limited, and replacing or revoking a key invalidates related active-session cache entries.
 
-### Dark Mode
-Both the web dashboard and the mobile app support dark mode. In dark mode, black is the base background, deep maroon is used for surface layers and cards, golden yellow retains its role as the sole accent, and all text switches to white. Maroon is still used for interactive elements and navigation. The dark mode palette is a natural extension of the PUP brand — the official logo itself is a golden star on a dark maroon background, so the dark mode of this system is essentially the logo made into a UI.
+A session can be activated only once. Activation verifies the teacher signature and token/session ownership, creates a `pending` attendance row for every enrolled student, and makes the signed token active. Manual end or automatic expiry converts remaining `pending` rows to `absent`.
+
+### 5.4 Geolocation and Scan Evidence
+
+Each session has a circular geofence. The clients request a fresh high-accuracy location and submit:
+
+- latitude and longitude;
+- accuracy in meters;
+- location capture time;
+- mock-location signal when available;
+- client-reported device-integrity signals (root/jailbreak, dynamic hooking, and emulator heuristics) when available;
+- opaque installation ID;
+- QR input channel (`camera`, `image`, or `manual`);
+- stable client attempt ID and scan time.
+
+The backend always re-validates the authoritative session, enrollment, teacher public key, token identity, token timing, location freshness, accuracy, geofence distance, and duplicate/replay state. PostgreSQL, not Redis, is authoritative for session state and teacher keys.
+
+Current validation rules reject explicitly mocked locations, location fixes older than two minutes, accuracy worse than 50 meters, and coordinates outside the session radius. Root/jailbreak, dynamic-hooking, and emulator signals are treated as advisory security evidence: a flagged submission is retained as `disputed` for teacher review rather than silently accepted or discarded. Borderline or incomplete evidence can also be routed to dispute review.
+
+### 5.5 Attendance Lifecycle
+
+Attendance uses five statuses:
+
+- `pending` — enrolled student has not yet produced an accepted scan while the session is active;
+- `present` — valid scan inside the QR validity window;
+- `late` — valid scan inside the grace period;
+- `absent` — no accepted scan at session end, or a definitive eligibility/window/geofence failure;
+- `disputed` — evidence requires teacher review.
+
+Every scan attempt is stored separately from the canonical attendance record. Accepted records maintain a link to the accepted scan attempt. A unique session/student constraint prevents more than one canonical attendance record. Stable client attempt IDs make exact request retries idempotent and expose conflicting replays.
+
+Teachers can manually create or update an attendance record. Manual changes are marked with `manuallySet`. Attendance views include session rosters, per-student histories, section summaries, filters, charts, pagination, CSV export, and live refresh.
+
+### 5.6 Disputes
+
+Students may dispute one of their own attendance records by selecting a supported reason and adding a description. System validation may also mark a record as disputed for conditions such as an invalid signature, stale or uncertain location, suspicious coordinates, incomplete evidence, or delayed offline synchronization.
+
+Teachers can accept, reject, or override a disputed record. Resolution state and the reason/description are stored on the attendance record; the current Prisma schema does not use a separate `Dispute` table. Super Admins may monitor scoped disputes but cannot resolve them.
+
+### 5.7 Digital Student ID
+
+The student experience includes a flippable digital PUP ID showing the student's name, student number, program, year level, profile image, institutional styling, conditions, and a QR-style back face. The Expo app applies screen-capture prevention to the signed-in student experience where the operating system supports it.
+
+The ID is an authenticated display feature. v1 does not cryptographically bind the ID or account to one physical device.
+
+### 5.8 Proof of Class
+
+While a session is active, the owning teacher, a section QAC, or an enrolled student with active permission can upload JPEG, PNG, or WebP proof. The backend validates the declared type, file signature, and size. Development can store files locally; production requires S3-compatible object storage. Only the session teacher can delete a proof. Super Admin access is read-only and scope-limited.
+
+### 5.9 Search, Dashboards, Reports, and Settings
+
+Implemented cross-system capabilities include:
+
+- role-specific dashboards and recent activity;
+- global search across students, sections, and sessions;
+- teacher and Super Admin attendance reports with date, teacher, subject, section, and session filters;
+- CSV export;
+- user creation, account status control, and password reset for Super Admins;
+- institution key/value settings for Super Admins;
+- real-time session and attendance updates through Socket.IO, with periodic UI refresh as a fallback.
 
 ---
 
-## Data and Privacy
+## 6. Offline-First Architecture
 
-All attendance records are stored with full audit information — who checked in, from which device, at what GPS coordinates, at what time, and whether it was approved or denied. This data is accessible only to authorized roles as enforced by NestJS guards via a role-based access control (RBAC) system. Students see only their own records. Teachers see only records for their subjects. Super Admins see all records within their authorized scope.
+### 6.1 Scope of Offline Support
 
-GPS coordinates submitted during check-in are stored for audit and anomaly detection purposes. Students are informed of this at onboarding and must consent. Device fingerprints are stored securely and used only for session binding and anti-cheat validation.
+Offline-first behavior is implemented in the Expo mobile client. The Next.js web application is an online client and should not be described as a full offline classroom client.
+
+The mobile SQLite store is account-partitioned and contains cached subjects, sections, sessions, attendance, sync metadata, and an operation queue. Payloads are authenticated and encrypted with TweetNaCl `secretbox`; the encryption key and installation ID are held in platform secure storage.
+
+### 6.2 Pre-Sync
+
+Before class, a signed-in mobile user should open the app while connected. Pre-sync:
+
+1. reads server time and stores a calculated server-clock offset;
+2. drains previously queued operations;
+3. refreshes subjects, sections, sessions, and student attendance where applicable.
+
+The stored clock offset is considered usable for up to seven days. A student must at least have the cached session, teacher public key, and geofence to validate an offline scan. Some offline validation paths require the stored clock offset; the scan-submission path uses it when available and otherwise falls back to device time, which the server later treats as untrusted evidence.
+
+### 6.3 Offline Classroom Flow
+
+A teacher with a cached session and stored signing key can sign and display a QR token offline. The client uses the stored server-clock offset when available, caches the activation locally, and queues it for the server. A student with the matching cached session can verify the signature, window, evidence quality, and geofence locally, store the provisional attendance record, and enqueue the scan.
+
+Offline operations currently include attendance scans, legacy scan checks, session activation, and session end. Queue entries are processed in creation order in batches of up to 100. Exact client-attempt IDs prevent duplicate attendance queue entries.
+
+### 6.4 Synchronization and Conflict Handling
+
+Synchronization is opportunistic and app-driven when connectivity is available; the repository does not claim an operating-system-guaranteed background sync service.
+
+The mobile client keeps an item queued until it receives an authoritative result. The backend submits attendance-sync work through a durable BullMQ queue when Redis is configured, waits for the per-record result, and then acknowledges the client. Development may run the same logic inline if Redis is not configured; Redis and BullMQ are required by the production readiness checks.
+
+The server replays the full validation pipeline. Exact retries return the existing result. Reuse of a client attempt ID with different evidence is disputed. The unique session/student attendance constraint prevents duplicate canonical records. A valid offline check-in received after the QR/grace window or after session end is retained as `disputed` for teacher review rather than trusted automatically.
+
+### 6.5 Time Handling
+
+The signed `issuedAt` protects the token timestamp from alteration, but time validation still requires a trustworthy comparison clock. Mobile clients use the last measured server-clock offset when available; the current submission flow can fall back to device time when no offset exists. The server therefore treats client time as evidence rather than authority and uses its receive time, the signed token, and bounded clock-skew rules for the final decision. This replaces the older claim that a signed timestamp alone makes the device clock irrelevant.
 
 ---
 
-## System Boundaries and Exclusions (v1)
+## 7. Anti-Cheat and Security Controls
 
-The following are explicitly out of scope for v1: hardware-backed device binding and OS-level device integrity attestation. Device binding is only a possible future option and must not prevent teacher-assisted attendance for students without compatible phones.
+The implemented v1 controls are layered rather than dependent on one signal:
 
-Also out of scope for v1: integration with PUP's existing student information system, automated class excuse or leave request workflows, and push notification infrastructure for schedule reminders. These are noted for future planning but will not be built in v1.
+| Risk | Current control |
+|---|---|
+| Shared or replayed QR | Short signed validity, separate grace period, session/token identity checks, geofence, enrollment check, one canonical record per session/student |
+| Credential sharing | Better Auth single-active-session generation; a new login replaces older sessions |
+| QR tampering | Ed25519 signature verified against the teacher's current server-side public key |
+| Device-clock manipulation | Pre-synced server-clock offset locally; authoritative server timing and bounded skew on sync |
+| GPS spoofing and tampered clients | Mock-location signal rejection when explicitly reported, root/hook/emulator heuristics, freshness/accuracy checks, geofence distance, uncertainty and suspicious-coordinate review |
+| Request replay | Stable client attempt IDs, exact replay acknowledgement, conflicting replay detection, idempotency support |
+| Scan flooding | Redis-backed per-user API limits and stricter per-student/per-session scan limits |
+| Unauthorized access | Better Auth session resolution, role guards, ownership checks, department/institution scope checks, privacy-consent guard |
+| Stale active-session cache | PostgreSQL overwrites Redis metadata during every scan validation |
+
+Additional backend hardening includes Helmet headers, restricted CORS, strict request validation, password policy enforcement, key-provision/revocation limits, structured exception handling, request auditing, and graceful shutdown.
+
+Installation IDs and all device-integrity booleans are evidence, not hardware-backed proof; a modified client can omit or falsify client-reported signals. Hardware-backed device binding and OS attestation (Android Play Integrity or Apple App Attest/DeviceCheck) remain future controls for authoritative device-integrity decisions.
 
 ---
 
-*Prepared based on project discussions, June 2026*
+## 8. Technical Architecture
+
+### 8.1 Monorepo
+
+Polycheck uses pnpm workspaces and Turborepo:
+
+| Package | Responsibility |
+|---|---|
+| `shared/` | Domain contracts, Zod schemas, Ed25519 token utilities, Haversine/geofence logic, map and calendar utilities |
+| `frontend/` | Next.js 16, React 19, Tailwind CSS 4, shadcn/Radix-based web experience |
+| `android/` | Expo SDK 57, React Native 0.86, Expo Router, NativeWind mobile experience |
+| `backend/` | NestJS 11 REST/Socket.IO API, Better Auth, Prisma 7, PostgreSQL, Redis, BullMQ |
+
+### 8.2 Backend Modules
+
+The backend is organized into authentication, users, subjects, sections/enrollments, sessions, attendance, disputes, section roles, session permissions, proofs, dashboard/search/reporting, sync, realtime, settings, health, observability, infrastructure, Prisma, and scheduled maintenance modules.
+
+REST endpoints use the `/api` prefix. Swagger/OpenAPI can be enabled explicitly and is disabled by default in production. Web authentication uses the Better Auth HttpOnly session cookie. Mobile login returns a bearer session token stored with Expo SecureStore.
+
+### 8.3 Data Stores
+
+- **PostgreSQL:** authoritative users, authentication, subjects, sections, schedules, enrollments, sessions, scan attempts, attendance, roles, permissions, proofs, settings, and audit records.
+- **Prisma:** schema, generated client, migrations, transactions, constraints, and seed data.
+- **SQLite on Expo:** encrypted, per-account cache and offline operation queue.
+- **Redis:** Socket.IO coordination, active-session cache, rate limits, distributed locks, idempotency state, and BullMQ transport.
+- **S3-compatible storage in production:** proof-of-class objects. Local filesystem storage is development-only.
+
+The primary persistent models are `User`, Better Auth account/session/verification models, `InstitutionSetting`, `Subject`, `Section`, `ScheduleDay`, `Enrollment`, `Session`, `ScanAttempt`, `AttendanceRecord`, `SectionRole`, `SessionPermission`, `ProofOfClass`, and `AuditLog`.
+
+### 8.4 Realtime and Resilience
+
+Socket.IO publishes attendance and session changes to connected teacher dashboards. The Redis adapter supports multiple backend instances. Clients also refresh active-session data periodically so the UI can recover from a missed socket event.
+
+Redis is a performance and coordination layer, not the academic source of truth. Security-sensitive validation falls back to or rechecks PostgreSQL. In production, unavailable distributed state fails readiness or rejects operations that cannot safely use a process-local fallback.
+
+---
+
+## 9. Web and Mobile Experiences
+
+### 9.1 Web
+
+The web application provides:
+
+- separate student and faculty sign-in flows;
+- student dashboard, enrollment, camera QR scanning, schedule, subjects, sessions, ID, attendance audit, and disputes;
+- teacher dashboard, subjects, sections, rosters, student details, sessions, QR activation, proof review, attendance, disputes, calendar, search, and reports;
+- Super Admin dashboard, read-only classroom directories/monitoring, users, reports, search, and settings.
+
+### 9.2 Mobile
+
+The Expo app provides role-specific tab layouts. Students receive Home, Schedule, Scan, and Audit flows plus enrollment, class details, officer session creation, proof upload, and digital ID. Faculty receive dashboard, subjects/sections, sessions, attendance, schedule, disputes, reports, search, user/settings access where authorized, and a session cockpit.
+
+Android end-to-end journeys are automated with Maestro. iOS identifiers and permissions are configured and EAS can build both platforms, but App Store/TestFlight ownership, review, signing governance, and release validation remain deployment-dependent.
+
+---
+
+## 10. Design System
+
+The visual foundation uses PUP maroon `#7B1113`, deep maroon `#4A0A0B`, golden yellow `#FFDF00`, white `#FFFFFF`, and near-black `#0A0A0A`. Lora is used for academic/display headings and DM Sans for body copy and controls.
+
+The web uses Tailwind and shadcn/Radix primitives. Mobile uses NativeWind with reusable Polycheck `Campus*` components. Both support light and dark themes, responsive navigation, accessible labels, and consistent PUP branding. The student scanner uses a full-screen camera treatment with a maroon frame and golden guide; the digital ID uses a physical-card-inspired layout.
+
+The core brand remains maroon and gold, while operational visualizations may use limited semantic colors such as green, blue, gray, or red where the current interfaces need fast status recognition. Attendance labels always include text and are not communicated by color alone.
+
+---
+
+## 11. Privacy, Audit, and Retention
+
+Students must accept the configured privacy-notice version before location-bearing attendance or offline-sync endpoints are available. A notice-version change requires renewed consent. The system records the accepted version and time.
+
+Attendance evidence can include account, session, timestamp, coordinates, accuracy, mock-location and device-integrity signals, installation ID, input channel, validation result, and risk signals. Mobile cached payloads are encrypted and separated by account. Students see their own records; teachers see their classes; Super Admins see read-only data within their scope.
+
+Authenticated mutating API requests create audit records with actor, role, action, entity context, outcome, and timestamps. Current defaults retain unlinked denied scan attempts for 90 days and audit logs for seven years, subject to an institution-approved records schedule. Attendance-record retention and object-storage lifecycle require institutional policy; the application defaults are not a substitute for legal or PUP Data Protection Office approval.
+
+Sentry integration exists for web and mobile error reporting, with event sanitization on web. Production transport must use HTTPS. Production proof storage must use S3-compatible storage.
+
+---
+
+## 12. Deployment, Operations, and Recovery
+
+The repository includes:
+
+- local Docker Compose for PostgreSQL, Redis, migrations, backend, frontend, and seed data;
+- a production Compose topology with nginx, PgBouncer, PostgreSQL, Redis, backend, frontend, migrations, Prometheus, optional Alertmanager, backup, and recovery tools;
+- health, readiness, and authenticated Prometheus metrics endpoints;
+- immutable digest-pinned backend/frontend release images, SBOM/provenance generation, and container vulnerability scanning;
+- logical backups, periodic physical base backups, WAL archiving, point-in-time-recovery verification, and isolated restore drills;
+- reference RPO/RTO targets of five minutes and four hours;
+- a k6 attendance-bell load profile for up to 1,000 pre-authenticated students.
+
+These are implemented operational assets, but a live production service is deployment-dependent. PUP must supply domains, TLS, secrets, S3 storage, protected backup/WAL storage, alert delivery, off-host disaster-recovery storage if required, institutional app-store accounts, approved privacy text, and an operator-run release process.
+
+---
+
+## 13. Quality and Release Controls
+
+Continuous integration currently checks dependency vulnerabilities, formatting, linting, Prisma migrations, shared tests, backend unit/integration/e2e tests and coverage, frontend tests/build/coverage, mobile tests/coverage, Playwright web journeys, Maestro Android journeys, Android release alignment, production Compose/recovery scripts, nginx/Prometheus/Alertmanager configuration, k6 script validity, Docker builds, and Trivy image scans.
+
+A successful CI run on `main` can publish immutable GHCR images with provenance attestations and a digest-pinned deployment manifest. A separate staging smoke workflow validates public readiness, the privacy notice, frontend rendering, redirects, and required security headers.
+
+Passing repository checks does not by itself certify production capacity, legal compliance, device compatibility, accessibility conformance, or institutional acceptance. Those require environment-specific validation and approval.
+
+---
+
+## 14. v1 Boundaries and Future Scope
+
+The following are not implemented as v1 guarantees:
+
+- hardware-backed account-to-device binding;
+- Android Play Integrity or Apple App Attest/DeviceCheck enforcement;
+- integration with the PUP Student Information System;
+- automated excuse, leave, or medical-document workflows;
+- push-notification infrastructure for schedule reminders;
+- guaranteed OS background synchronization when the mobile app is closed;
+- automatic off-host backup replication or multi-region disaster recovery;
+- automatic fraud decisions based solely on anomaly scoring.
+
+Future anti-cheat improvements should preserve an accessible teacher-assisted attendance path for students who replace, borrow, share, or do not own a compatible phone.
+
+---
+
+## 15. Source-of-Truth References
+
+When this document and code differ, use these repository sources to reconcile the plan:
+
+- `shared/src/types/` and `shared/src/validation/` for public domain contracts;
+- `backend/prisma/schema.prisma` for persistent data models and constraints;
+- `backend/src/app.module.ts` and module controllers/services for server behavior and authorization;
+- `android/services/offline-store.ts` and `android/services/api-client.ts` for mobile offline behavior;
+- `frontend/src/app/` and `android/app/` for current user-facing routes;
+- `documentation/PRODUCTION_DEPLOYMENT.md` for deployment and recovery procedures;
+- `.github/workflows/` for automated quality and release gates.
+
+---
+
+*Originally prepared from project discussions in June 2026; fully reconciled with the repository on August 14, 2026.*
