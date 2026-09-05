@@ -11,7 +11,14 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator'
+
+class DeviceSecurityEvidenceDto {
+  @IsOptional() @IsBoolean() rootDetected?: boolean
+  @IsOptional() @IsBoolean() hookDetected?: boolean
+  @IsOptional() @IsBoolean() emulatorDetected?: boolean
+}
 
 class ScanEvidenceDto {
   @IsOptional() @IsString() @MaxLength(128) clientAttemptId?: string
@@ -19,6 +26,7 @@ class ScanEvidenceDto {
   @IsOptional() @IsDateString() locationCapturedAt?: string
   @IsOptional() @IsBoolean() mocked?: boolean
   @IsOptional() @IsIn(['camera', 'image', 'manual']) inputChannel?: 'camera' | 'image' | 'manual'
+  @IsOptional() @ValidateNested() @Type(() => DeviceSecurityEvidenceDto) deviceSecurity?: DeviceSecurityEvidenceDto
 }
 
 export class SubmitAttendanceDto extends ScanEvidenceDto {

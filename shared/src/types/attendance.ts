@@ -16,6 +16,10 @@ export type SystemDisputeReason =
   | 'not_enrolled'
   | 'qr_expired'
   | 'rate_limited'
+  | 'mocked_location'
+  | 'rooted_device'
+  | 'hook_detected'
+  | 'emulator_detected'
 
 export type DisputeReason = StudentDisputeReason | SystemDisputeReason
 

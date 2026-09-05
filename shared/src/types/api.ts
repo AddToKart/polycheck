@@ -64,12 +64,19 @@ export interface SubmitAttendanceResult {
 
 export type ScanInputChannel = 'camera' | 'image' | 'manual'
 
+export interface DeviceSecurityEvidence {
+  rootDetected?: boolean
+  hookDetected?: boolean
+  emulatorDetected?: boolean
+}
+
 export interface ScanEvidenceInput {
   clientAttemptId: string
   accuracyMeters?: number
   locationCapturedAt: string
   mocked?: boolean
   inputChannel: ScanInputChannel
+  deviceSecurity?: DeviceSecurityEvidence
 }
 
 export interface PrivacyNotice {

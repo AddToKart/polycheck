@@ -350,6 +350,28 @@ describe('api-client offline sync engine', () => {
         expect(storeMock.cacheAttendanceRecords).not.toHaveBeenCalled()
       })
 
+      it('queues device-integrity evidence as disputed after local validation passes', async () => {
+        storeMock.getCachedSession.mockResolvedValue(cachedSession)
+
+        const result = await api.submitScan(
+          'sess-1', 'student-1', 'Student One', 14.5995, 120.9842, 'dev-1',
+          qrToken, '2026-08-02T10:00:00.000Z',
+          {
+            clientAttemptId: 'a-rooted',
+            locationCapturedAt: '2026-08-02T10:00:00.000Z',
+            mocked: false,
+            inputChannel: 'camera',
+            deviceSecurity: { rootDetected: true },
+          },
+        )
+
+        expect(result).toMatchObject({ status: 'disputed', isSynced: false })
+        expect(storeMock.enqueueOfflineOperation).toHaveBeenCalledWith(
+          'attendance_scan',
+          expect.objectContaining({ deviceSecurity: { rootDetected: true } }),
+        )
+      })
+
       it('rejects low-accuracy evidence', async () => {
         const result = await api.submitScan(
           'sess-1', 'student-1', 'Student One', 14.5995, 120.9842, 'dev-1',

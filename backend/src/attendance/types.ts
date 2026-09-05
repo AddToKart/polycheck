@@ -1,4 +1,5 @@
 import type { AttendanceRecord, AttendanceStatus, Session } from '../prisma/client'
+import type { DeviceSecurityEvidence } from '@polycheck/shared'
 
 // ── Constants ──
 
@@ -29,6 +30,7 @@ export type ScanEvidence = {
   locationCapturedAt?: string
   mocked?: boolean
   inputChannel?: 'camera' | 'image' | 'manual'
+  deviceSecurity?: DeviceSecurityEvidence
 }
 
 export type ScanValidation = {

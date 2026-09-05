@@ -28,6 +28,11 @@ const OFFLINE_ACTIVATION_WAIT_MS = 50
 // and signing keys, so this lease does not require security fencing.
 const KEY_ROTATION_LOCK_TTL_SECONDS = 10
 
+// These checks are client-reported heuristics, not cryptographic proof. They
+// are persisted as disputed attendance so teachers can review the event and
+// the server retains an auditable trail instead of silently dropping it.
+const PERSISTABLE_SECURITY_DISPUTE_REASONS = new Set(['rooted_device', 'hook_detected', 'emulator_detected'])
+
 @Injectable()
 export class AttendanceService {
   constructor(
@@ -149,7 +154,7 @@ export class AttendanceService {
 
   async scan(user: RequestUser, dto: ScanAttendanceDto) {
     const result = await this.processScanSubmission(user, this.scanValidator.scanEvidenceFromScanDto(dto), false)
-    if (!result.success || !('record' in result)) return { error: result.message ?? 'Check-in rejected' }
+    if (!('record' in result)) return { error: result.message ?? 'Check-in rejected' }
     return result.record
   }
 
@@ -158,7 +163,7 @@ export class AttendanceService {
       return { error: 'Offline attendance records require the original scan timestamp' }
     }
     const result = await this.processScanSubmission(user, this.scanValidator.scanEvidenceFromScanDto(dto), true)
-    if (!result.success || !('record' in result)) return { error: result.message ?? 'Offline check-in rejected' }
+    if (!('record' in result)) return { error: result.message ?? 'Offline check-in rejected' }
     return result.record
   }
 
@@ -199,7 +204,12 @@ export class AttendanceService {
     }
 
     const validation = await this.scanValidator.validateScan(user, evidence, offline, receivedAt)
-    if (!validation.success) {
+    const persistableSecurityDispute =
+      !validation.success &&
+      validation.status === 'disputed' &&
+      validation.reason !== undefined &&
+      PERSISTABLE_SECURITY_DISPUTE_REASONS.has(validation.reason)
+    if (!validation.success && !persistableSecurityDispute) {
       await this.recordScanAttempt(user, evidence, validation, 'denied', offline)
       return validation
     }

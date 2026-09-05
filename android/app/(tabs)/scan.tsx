@@ -28,6 +28,7 @@ import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusIconButton } from '../../components/CampusPrimitives'
 import { getOrCreateInstallationId } from '../../services/device-id'
+import { getDeviceSecuritySnapshot } from '../../services/device-security'
 import { resetScannerOnBlur, shouldMountScannerCamera, isScannerOperationCurrent } from '../../hooks/scanner-focus-lifecycle'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
@@ -182,6 +183,8 @@ export default function ScanScreen() {
         const locationCapturedAt = new Date(new Date(scannedAt).getTime() - locationAgeMs).toISOString()
         const deviceId = await getOrCreateInstallationId()
         if (!stillCurrent()) return
+        const securitySnapshot = await getDeviceSecuritySnapshot()
+        if (!stillCurrent()) return
         // This is the last cancellable client boundary. Once the HTTP request
         // below has been sent, a blur cannot retract server-side work; the
         // generation checks prevent starting it after blur and suppress stale
@@ -201,6 +204,7 @@ export default function ScanScreen() {
             locationCapturedAt,
             mocked: location.mocked,
             inputChannel,
+            deviceSecurity: securitySnapshot,
           },
         )
         if (!stillCurrent()) return

@@ -20,7 +20,7 @@ async function main() {
     throw new Error('SEED_PASSWORD must be set to at least 12 characters')
   }
   const password = await hash(seedPassword, 12)
-  const privacyConsentVersion = process.env.PRIVACY_NOTICE_VERSION ?? '2026-08-04'
+  const privacyConsentVersion = process.env.PRIVACY_NOTICE_VERSION ?? '2026-09-05'
   const privacyConsentedAt = new Date()
 
   // ── Users ──

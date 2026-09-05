@@ -329,7 +329,7 @@ jobs:
           FRONTEND_URL: https://polycheck.example.test
           NEXT_PUBLIC_API_URL: /api
           S3_BUCKET: compose-validation-only
-          PRIVACY_NOTICE_VERSION: 2026-08-04
+          PRIVACY_NOTICE_VERSION: 2026-09-05
           PRIVACY_NOTICE_URL: https://polycheck.example.test/privacy
           POSTGRES_BACKUP_PATH: /tmp/polycheck-backups
           POSTGRES_WAL_ARCHIVE_PATH: /tmp/polycheck-wal-archive
@@ -439,7 +439,7 @@ jobs:
           build-args: |
             NEXT_PUBLIC_API_URL=https://api.example.test/api
             NEXT_PUBLIC_ALLOW_QR_FALLBACKS=false
-            NEXT_PUBLIC_PRIVACY_NOTICE_VERSION=2026-08-04
+            NEXT_PUBLIC_PRIVACY_NOTICE_VERSION=2026-09-05
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - uses: aquasecurity/trivy-action@0.32.0

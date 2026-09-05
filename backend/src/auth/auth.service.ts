@@ -78,7 +78,7 @@ export class AuthService {
       version: this.config.getOrThrow<string>('PRIVACY_NOTICE_VERSION'),
       url: this.config.getOrThrow<string>('PRIVACY_NOTICE_URL'),
       summary:
-        'Polycheck stores attendance time, classroom location evidence, device installation identity, and scan risk signals to verify attendance and investigate disputes. Access is role-scoped, and retention is limited by institutional policy.',
+        'Polycheck stores attendance time, classroom location evidence, device installation identity, client-reported device-integrity evidence, and scan risk signals to verify attendance and investigate disputes. Access is role-scoped, and retention is limited by institutional policy.',
     }
   }
 

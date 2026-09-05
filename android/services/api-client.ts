@@ -582,6 +582,7 @@ export const api = {
         return { error: 'The QR attendance window has expired' }
       }
       await enqueueOfflineOperation('attendance_scan', payload)
+      const deviceSecurityFlagged = Object.values(evidence?.deviceSecurity ?? {}).some((detected) => detected === true)
       const record: AttendanceRecord = {
         id: `offline:${sessionId}:${studentId}`,
         sessionId,
@@ -589,7 +590,7 @@ export const api = {
         studentId,
         studentName,
         timestamp,
-        status: capturedAt <= validityEnd ? 'present' : 'late',
+        status: deviceSecurityFlagged ? 'disputed' : capturedAt <= validityEnd ? 'present' : 'late',
         coordinates: { latitude: lat, longitude: lon },
         deviceId,
         tokenSnapshot: qrToken,

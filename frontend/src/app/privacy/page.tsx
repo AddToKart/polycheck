@@ -1,4 +1,4 @@
-const noticeVersion = process.env.NEXT_PUBLIC_PRIVACY_NOTICE_VERSION ?? '2026-08-04'
+const noticeVersion = process.env.NEXT_PUBLIC_PRIVACY_NOTICE_VERSION ?? '2026-09-05'
 
 export default function PrivacyNoticePage() {
   return (
@@ -12,8 +12,9 @@ export default function PrivacyNoticePage() {
           <h2 className="text-lg font-bold text-foreground">Information collected</h2>
           <p className="mt-2">
             When you check in, Polycheck records your account, class session, timestamp, location coordinates,
-            location accuracy and mock-location signal, an opaque installation identifier, QR input channel, and
-            validation outcome. Proof-of-class photographs are stored only when an authorized person uploads them.
+            location accuracy and mock-location signal, an opaque installation identifier, QR input channel,
+            client-reported root/jailbreak, dynamic-hooking, and emulator signals, and the validation outcome.
+            Proof-of-class photographs are stored only when an authorized person uploads them.
           </p>
         </section>
         <section>
