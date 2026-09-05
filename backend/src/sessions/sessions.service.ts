@@ -490,10 +490,7 @@ export class SessionsService {
         await this.invalidateActiveSessionCache(currentSession ?? session)
         return
       }
-      const ttlSeconds = Math.max(
-        300,
-        (currentSession.qrValidityMinutes + currentSession.gracePeriodMinutes) * 60,
-      )
+      const ttlSeconds = Math.max(300, (currentSession.qrValidityMinutes + currentSession.gracePeriodMinutes) * 60)
       const published = await this.redis.setJson(
         `active-session:${currentSession.id}`,
         { ...currentSession, teacherPublicKey: currentKey ?? undefined },
@@ -518,7 +515,10 @@ export class SessionsService {
     try {
       const deleted = await this.redis.delete(cacheKey)
       if (deleted) return
-      Logger.error(`Cache delete could not reach configured Redis for ${session.id}; republishing ended state`, 'SessionsService')
+      Logger.error(
+        `Cache delete could not reach configured Redis for ${session.id}; republishing ended state`,
+        'SessionsService',
+      )
     } catch (deleteError) {
       Logger.error(
         `Cache delete failed for ${session.id}; republishing ended state: ${
@@ -529,7 +529,8 @@ export class SessionsService {
     }
     try {
       const published = await this.redis.setJson(cacheKey, { ...session, teacherPublicKey: undefined }, 300)
-      if (!published) Logger.error(`Ended-state cache publication was not distributed for ${session.id}`, 'SessionsService')
+      if (!published)
+        Logger.error(`Ended-state cache publication was not distributed for ${session.id}`, 'SessionsService')
     } catch (publishError) {
       Logger.error(
         `Failed to republish ended state for ${session.id}: ${

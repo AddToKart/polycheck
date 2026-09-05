@@ -10,11 +10,7 @@ describe('lockStudentSection', () => {
     await lockStudentSection(tx as never, 'student-1', 'section-2')
 
     const firstKeys = executeRaw.mock.calls[0].slice(1)
-    expect(executeRaw.mock.calls[0][0]).toEqual([
-      'SELECT pg_advisory_xact_lock(',
-      ', ',
-      ')',
-    ])
+    expect(executeRaw.mock.calls[0][0]).toEqual(['SELECT pg_advisory_xact_lock(', ', ', ')'])
     expect(executeRaw.mock.calls[1].slice(1)).toEqual(firstKeys)
     expect(executeRaw.mock.calls[2].slice(1)).not.toEqual(firstKeys)
     expect(firstKeys).toEqual([expect.any(Number), expect.any(Number)])
