@@ -78,18 +78,39 @@ services:
       retries: 20
       start_period: 10s
 
-  pgbouncer:
-    image: edoburu/pgbouncer:v1.25.2-p0
-    restart: unless-stopped
+  provision-roles:
+    image: postgres:16-alpine
+    restart: "no"
     depends_on:
       postgres:
         condition: service_healthy
     environment:
+      PGHOST: postgres
+      PGDATABASE: polycheck
+      PGUSER: polycheck
+      RUNTIME_DATABASE_PASSWORD: ${RUNTIME_DATABASE_PASSWORD:?Set a separate runtime password}
+      MIGRATOR_DATABASE_PASSWORD: ${MIGRATOR_DATABASE_PASSWORD:?Set a separate migrator password}
+      BACKUP_DATABASE_PASSWORD: ${BACKUP_DATABASE_PASSWORD:?Set a separate backup password}
+    entrypoint: ["sh", "/provision-database-roles.sh"]
+    volumes:
+      - ./deployment/scripts/provision-database-roles.sh:/provision-database-roles.sh:ro
+      - ./deployment/postgres/provision-roles.sql:/provision-roles.sql:ro
+    secrets: [postgres_password]
+    networks: [data]
+    <<: *read-only-service
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    restart: unless-stopped
+    depends_on:
+      provision-roles:
+        condition: service_completed_successfully
+    environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: polycheck
-      DB_USER: polycheck
-      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      DB_USER: polycheck_runtime
+      DB_PASSWORD: ${RUNTIME_DATABASE_PASSWORD:?RUNTIME_DATABASE_PASSWORD is required}
       AUTH_TYPE: scram-sha-256
       POOL_MODE: transaction
       MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-2000}
@@ -106,7 +127,7 @@ services:
     cpus: ${PGBOUNCER_CPU_LIMIT:-1.0}
     pids_limit: 128
     healthcheck:
-      test: ["CMD-SHELL", "PGPASSWORD=\"$${DB_PASSWORD}\" psql -h 127.0.0.1 -p 5432 -U polycheck -d polycheck -Atqc 'SELECT 1' | grep -qx 1"]
+      test: ["CMD-SHELL", "PGPASSWORD=\"$${DB_PASSWORD}\" psql -h 127.0.0.1 -p 5432 -U polycheck_runtime -d polycheck -Atqc 'SELECT 1' | grep -qx 1"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -144,8 +165,8 @@ services:
     image: ${BACKEND_IMAGE:?BACKEND_IMAGE must be an immutable sha tag or digest reference}
     restart: "no"
     depends_on:
-      postgres:
-        condition: service_healthy
+      provision-roles:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DIRECT_DATABASE_URL:?DIRECT_DATABASE_URL is required for migrations}
@@ -243,14 +264,14 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
+      provision-roles:
+        condition: service_completed_successfully
     environment:
       PGHOST: postgres
       PGPORT: 5432
       PGDATABASE: polycheck
-      PGUSER: polycheck
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      PGUSER: polycheck_backup
+      POSTGRES_PASSWORD_FILE: /run/secrets/backup_database_password
       BACKUP_DIR: /backups
       WAL_ARCHIVE_DIR: /wal-archive
       WAL_MIN_FREE_KB: ${WAL_MIN_FREE_KB:-524288}
@@ -274,7 +295,7 @@ services:
         bind:
           create_host_path: false
     secrets:
-      - postgres_password
+      - backup_database_password
     networks:
       - data
     user: "70:70"
@@ -472,6 +493,8 @@ volumes:
   pitr-restore-data:
 
 secrets:
+  backup_database_password:
+    environment: BACKUP_DATABASE_PASSWORD
   metrics_token:
     environment: METRICS_TOKEN
   postgres_password:
