@@ -90,3 +90,7 @@ maestro test -e E2E_STUDENT_ID=2024-00001-MN-0 -e E2E_PASSWORD=PolycheckLocal1! 
 - Begin top-level flows with `clearState: true`; helper flows must not clear app state.
 - Keep mutation tests deterministic and safe to repeat against freshly seeded data.
 - Do not add production authentication, QR-signing, location, or API bypasses for E2E tests.
+
+## Production acceptance
+
+The offline journey now force-stops and reopens the application while offline and checks that queued evidence remains visible. Offline success says `SAVED ON DEVICE`, not verified attendance. Release APK compilation disables the E2E bridge and QR fallbacks explicitly. See [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) for the required physical camera/GPS and delayed-reconnection journeys.

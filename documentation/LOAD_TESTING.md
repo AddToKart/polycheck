@@ -93,3 +93,7 @@ Monitor nginx latency, backend CPU/event-loop health, PgBouncer active/waiting c
 The script enforces less than 1% failed requests/checks, completion of every configured VU iteration, present/late results without dispute review, scan p95 below one second, and scan p99 below two seconds. Treat these as reference SLOs, not proof of capacity. A passing run must also show no sustained PgBouncer wait queue, PostgreSQL saturation, Redis write failures, or delayed attendance persistence.
 
 CI runs `k6 inspect` only. It validates both profiles and their thresholds without executing setup, loading real token fixtures, or sending attendance traffic.
+
+## Executed staging gate
+
+The `Staging attendance load` workflow now provisions fresh sessions for dedicated fixture accounts and executes both online and receipt-based offline traffic with concurrent teacher reads. See [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) for credentials, workload expectations, retained artifacts and failure/recovery drills. `k6 inspect` in regular CI remains a syntax/configuration check and is not a capacity result.
