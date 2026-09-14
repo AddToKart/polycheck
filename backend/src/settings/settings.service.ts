@@ -8,10 +8,7 @@ const INTEGER_SETTING_RANGES = {
   enrollment_code_expiry_days: { min: 1, max: 90 },
 } as const
 
-export const INSTITUTION_SETTING_KEYS = [
-  'institution_name',
-  ...Object.keys(INTEGER_SETTING_RANGES),
-] as const
+export const INSTITUTION_SETTING_KEYS = ['institution_name', ...Object.keys(INTEGER_SETTING_RANGES)] as const
 
 export type InstitutionSettingKey = (typeof INSTITUTION_SETTING_KEYS)[number]
 

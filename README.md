@@ -203,20 +203,16 @@ Make sure you have the following installed:
 
 ### 🚀 Running Local Docker Stack
 
-#### Option A: 1-Shot Onboarding Command (Recommended)
+#### Option A: 1-Shot Onboarding Command (with pnpm)
 Set up, build, migrate, and seed the entire local stack in **1 single command**:
 
 ```bash
 pnpm docker:local:setup
 ```
 
-#### Option B: Step-by-Step Commands
+#### Option B: 1-Shot Pure Docker (No pnpm/Node.js required on host)
 ```bash
-# 1. Start containers & apply database migrations
-pnpm docker:local:up
-
-# 2. Seed mock test database records
-pnpm docker:local:seed
+docker compose -f docker-compose.local.yml up -d --build
 ```
 
 Open `http://localhost:3000/login` to log into the web dashboard!

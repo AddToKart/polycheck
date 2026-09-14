@@ -15,21 +15,17 @@ Node.js, pnpm, PostgreSQL, and Redis are not required on the host for this workf
 
 To set up, build, migrate, and seed the entire local environment in **1 single command**:
 
-```powershell
+### Using pnpm (Recommended if Node.js/pnpm is installed):
+```sh
 pnpm docker:local:setup
 ```
+*Note: This automatically prepares `.env.docker.local` from the example file if not already present, builds both frontend and backend, applies migrations, and seeds default test accounts.*
 
-Or step-by-step:
-
-```powershell
-# 1. Start containers & apply database migrations
-pnpm docker:local:up
-
-# 2. Seed mock test database records
-pnpm docker:local:seed
+### Using Pure Docker (No Node.js or pnpm required on the host):
+```sh
+docker compose -f docker-compose.local.yml up -d --build
 ```
-
-Environment variables are defaulted automatically in `docker-compose.local.yml`. You may optionally copy `.env.docker.local.example` to `.env.docker.local` to customize local secret values.
+*Environment variables and default passwords are pre-configured automatically in `docker-compose.local.yml`. Database migrations and seed data run automatically before the backend starts.*
 
 ## Addresses
 
@@ -38,7 +34,7 @@ Environment variables are defaulted automatically in `docker-compose.local.yml`.
 - Backend readiness: http://localhost:4000/api/health/ready
 - Swagger API documentation: http://localhost:4000/api/docs
 
-PostgreSQL and Redis are available only inside the Compose network. They are intentionally not published to host ports.
+PostgreSQL is published to `127.0.0.1:55432` (avoiding default 5432 port collisions) and Redis to `127.0.0.1:6379`.
 
 ## Seed accounts
 
