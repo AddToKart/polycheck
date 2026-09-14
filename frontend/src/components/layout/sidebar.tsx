@@ -21,6 +21,7 @@ import {
   Clock,
   Search,
   Settings,
+  FileClock,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -57,6 +58,7 @@ const superAdminNav: NavItem[] = [
   { label: 'Global Search', href: '/faculty/search', icon: Search },
   { label: 'User Management', href: '/faculty/users', icon: Users },
   { label: 'System Reports', href: '/faculty/reports', icon: BarChart3 },
+  { label: 'Audit Log', href: '/faculty/audit-logs', icon: FileClock },
   { label: 'Institution Settings', href: '/faculty/settings', icon: Settings },
 ]
 

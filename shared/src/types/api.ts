@@ -197,6 +197,39 @@ export interface DashboardOverview {
   }>
 }
 
+export type AuditOutcome = 'initiated' | 'succeeded' | 'failed'
+
+export interface AuditLogEntry {
+  id: string
+  actorId: string
+  actorName: string
+  actorRole: User['role'] | string
+  action: string
+  entityType: string
+  entityId?: string
+  outcome: AuditOutcome
+  ipAddress?: string
+  createdAt: string
+}
+
+export interface AuditLogFilters {
+  page?: number
+  pageSize?: number
+  search?: string
+  action?: string
+  outcome?: AuditOutcome
+  startDate?: string
+  endDate?: string
+}
+
+export interface AuditLogPage {
+  items: AuditLogEntry[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
 export interface ApiClient {
   getPrivacyNotice(): Promise<PrivacyNotice>
   acceptPrivacyConsent(version: string): Promise<User>
@@ -261,6 +294,7 @@ export interface ApiClient {
   setUserStatus(id: string, isActive: boolean): Promise<User>
   getSettings(): Promise<{ key: string; value: string; updatedAt: string }[]>
   setSetting(key: string, value: string): Promise<{ key: string; value: string; updatedAt: string }>
+  getAuditLogs(filters?: AuditLogFilters): Promise<AuditLogPage>
   getMyAttendance(studentId: string): Promise<AttendanceRecord[]>
   getMySubjects(studentId: string): Promise<Subject[]>
 

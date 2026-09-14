@@ -36,6 +36,7 @@ function MoreSheet({ visible, onClose, isDark, isSuper }: { visible: boolean; on
         { icon: 'gavel' as const, label: 'Dispute Monitoring', sub: 'Track teacher resolution', route: '/(faculty)/disputes' },
         { icon: 'search' as const, label: 'Global Search', sub: 'Find users and sections', route: '/(faculty)/search' },
         { icon: 'settings' as const, label: 'Institution Settings', sub: 'Configure institution defaults', route: '/(faculty)/settings' },
+        { icon: 'history' as const, label: 'Audit Log', sub: 'Review administrative changes', route: '/(faculty)/audit-logs' },
       ]
     : [
         { icon: 'calendar-today' as const, label: 'Schedule', sub: 'Weekly class schedule', route: '/(faculty)/schedule' },
@@ -176,6 +177,7 @@ export default function FacultyLayout() {
         <Tabs.Screen name="student/[id]" options={{ href: null }} />
         <Tabs.Screen name="search" options={{ href: null }} />
         <Tabs.Screen name="settings" options={{ href: null }} />
+        <Tabs.Screen name="audit-logs" options={{ href: null }} />
         {/* Attendance + Schedule hidden from tab bar — accessible via More sheet */}
         <Tabs.Screen name="attendance" options={{ href: null }} />
         <Tabs.Screen name="schedule" options={{ href: null }} />
