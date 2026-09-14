@@ -195,6 +195,17 @@ describe('ScanValidatorService', () => {
       expect(result.distanceMeters).toBe(5)
     })
 
+    it('requires teacher review when an on-time offline scan arrives after expiry', async () => {
+      const result = await service.validateScan(studentUser, makeEvidence(), true, new Date(ISSUED_AT + 90 * 60_000))
+      expect(result).toMatchObject({ success: true, status: 'disputed', reason: 'delayed_offline_sync' })
+    })
+
+    it('rejects offline evidence when enrollment was removed before sync', async () => {
+      prisma.enrollment.findUnique.mockResolvedValue(null)
+      const result = await service.validateScan(studentUser, makeEvidence(), true, new Date(ISSUED_AT + 60_000))
+      expect(result).toMatchObject({ success: false, reason: 'not_enrolled' })
+    })
+
     it('returns late status when scanned after validity window but within grace', async () => {
       const lateTime = ISSUED_AT + 12 * 60_000 // 12 min after issued (validity=10)
       mockedVerify.mockReturnValue(validPayload({ validityMinutes: 10, gracePeriodMinutes: 5 }) as any)

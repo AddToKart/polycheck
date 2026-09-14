@@ -72,7 +72,7 @@ export default function HistoryScreen() {
     [activeFilter, allRecords],
   )
   const totals = useMemo(() => allRecords.reduce(
-    (counts, record) => ({ ...counts, [record.status]: counts[record.status] + 1 }),
+    (counts, record) => record.isSynced ? ({ ...counts, [record.status]: counts[record.status] + 1 }) : counts,
     { present: 0, late: 0, absent: 0, pending: 0, disputed: 0 } as Record<AttendanceStatus, number>,
   ), [allRecords])
 
@@ -191,7 +191,7 @@ export default function HistoryScreen() {
                   {new Date(record.timestamp).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} · {new Date(record.timestamp).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
                 </Text>
               </View>
-              <AttendanceStatusPill status={record.status} />
+              {record.isSynced ? <AttendanceStatusPill status={record.status} /> : <Text className="font-sans-bold text-xs text-maroon dark:text-golden">Awaiting confirmation</Text>}
             </View>
           </CampusCard>
         )}

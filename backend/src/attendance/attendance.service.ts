@@ -160,10 +160,11 @@ export class AttendanceService {
 
   async syncScan(user: RequestUser, dto: ScanAttendanceDto) {
     if (!dto.scannedAt) {
-      return { error: 'Offline attendance records require the original scan timestamp' }
+      return { error: 'Offline attendance records require the original scan timestamp', retryable: false as const }
     }
     const result = await this.processScanSubmission(user, this.scanValidator.scanEvidenceFromScanDto(dto), true)
-    if (!('record' in result)) return { error: result.message ?? 'Offline check-in rejected' }
+    if (!('record' in result))
+      return { error: result.message ?? 'Offline check-in rejected', retryable: false as const }
     return result.record
   }
 

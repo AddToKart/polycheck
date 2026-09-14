@@ -36,11 +36,12 @@ const scanSize = Math.min(SCREEN_WIDTH * 0.82, 340)
 const allowQrFallbacks = process.env.EXPO_PUBLIC_ALLOW_QR_FALLBACKS === 'true'
 
 type ScanResult = {
-  status: 'present' | 'late' | 'absent' | 'disputed'
+  status: 'present' | 'late' | 'absent' | 'disputed' | 'pending'
   message: string
 } | null
 
 const resultPresentation = {
+  pending: { icon: 'cloud-upload' as const, title: 'SAVED ON DEVICE', classes: 'border-golden bg-black/95 text-golden' },
   present: { icon: 'check-circle' as const, title: 'ATTENDANCE VERIFIED', classes: 'border-emerald-500 bg-emerald-950/95 text-emerald-300' },
   late: { icon: 'schedule' as const, title: 'MARKED LATE', classes: 'border-amber-500 bg-amber-950/95 text-amber-300' },
   absent: { icon: 'location-off' as const, title: 'CHECK-IN REJECTED', classes: 'border-red-500 bg-red-950/95 text-red-300' },
@@ -214,8 +215,8 @@ export default function ScanScreen() {
           return
         }
         showResult(
-          submitted.status === 'late' ? 'late' : submitted.status === 'disputed' ? 'disputed' : 'present',
-          submitted.isSynced ? `Attendance recorded as ${submitted.status}.` : 'Check-in saved offline and queued for sync.',
+          !submitted.isSynced ? 'pending' : submitted.status === 'late' ? 'late' : submitted.status === 'disputed' ? 'disputed' : submitted.status === 'present' ? 'present' : 'absent',
+          submitted.isSynced ? `Attendance recorded as ${submitted.status}.` : 'Check-in saved offline and queued for sync. Confirmation may require instructor review. Open the dashboard to check sync status.',
         )
       } catch (error) {
         if (!stillCurrent()) return

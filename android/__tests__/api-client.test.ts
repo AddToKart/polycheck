@@ -575,6 +575,42 @@ describe('api-client offline sync engine', () => {
       expect(storeMock.drainOfflineQueue).toHaveBeenCalledTimes(1)
     })
 
+    it('retains local evidence while a receipt is pending, then accepts only the completed result', async () => {
+      handlers.set('/sync/attendance/batches', () => jsonResponse({ queued: true, receiptId: 'receipt-1' }, 202))
+      handlers.set('/sync/attendance/batches/receipt-1', () => jsonResponse({ state: 'pending' }))
+      const payload = { sessionId: 'sess-1', clientAttemptId: 'attempt-1' }
+      expect(await drainSend!('attendance_scan', payload)).toMatchObject({ outcome: 'pending' })
+      expect(storeMock.removeCachedAttendanceAttempt).not.toHaveBeenCalled()
+      handlers.set('/sync/attendance/batches/receipt-1', () => jsonResponse({ state: 'completed', results: [{ ...serverRecord, status: 'disputed' }] }))
+      expect(await drainSend!('attendance_scan', payload)).toEqual({ outcome: 'synced' })
+      expect(storeMock.cacheAttendanceRecords).toHaveBeenCalledWith([expect.objectContaining({ status: 'disputed', isSynced: true })])
+    })
+
+    it('does not accept a different activation token as a successful replay', async () => {
+      handlers.set('/sessions/sess-2/activate', () => jsonResponse({ message: 'Conflict' }, 409))
+      handlers.set('/sessions/sess-2', () => jsonResponse({ id: 'sess-2', qrToken: 'another-token' }))
+      expect(await drainSend!('session_activation', { sessionId: 'sess-2', token: 'signed-token' })).toMatchObject({ outcome: 'terminal' })
+    })
+
+    it('reconciles an end whose successful response was lost', async () => {
+      handlers.set('/sessions/sess-2/end', () => jsonResponse({ message: 'Conflict' }, 409))
+      handlers.set('/sessions/sess-2', () => jsonResponse({ id: 'sess-2', endedAt: '2026-08-02T10:00:00Z' }))
+      expect(await drainSend!('session_end', { sessionId: 'sess-2' })).toEqual({ outcome: 'synced' })
+    })
+
+    it('reconciles an activation whose successful response was lost', async () => {
+      handlers.set('/sessions/sess-2/activate', () => jsonResponse({ message: 'Session is already active' }, 409))
+      handlers.set('/sessions/sess-2', () => jsonResponse({ id: 'sess-2', isActive: true, qrToken: 'signed-token' }))
+      await expect(drainSend!('session_activation', { sessionId: 'sess-2', token: 'signed-token', validityMinutes: 10 }))
+        .resolves.toEqual({ outcome: 'synced' })
+    })
+
+    it('quarantines a forbidden operation instead of blocking subsequent operations', async () => {
+      handlers.set('/sessions/sess-2/activate', () => jsonResponse({ message: 'Permission revoked' }, 403))
+      await expect(drainSend!('session_activation', { sessionId: 'sess-2', token: 'signed-token' }))
+        .resolves.toEqual({ outcome: 'terminal', error: 'Permission revoked' })
+    })
+
     it('does nothing when no user is signed in', async () => {
       await api.logout()
       storeMock.drainOfflineQueue.mockClear()
@@ -585,14 +621,14 @@ describe('api-client offline sync engine', () => {
     })
 
     it('syncs an attendance_scan and marks the cached record synced', async () => {
-      handlers.set('/sync/attendance', () => jsonResponse({ queued: false, results: [serverRecord] }))
+      handlers.set('/sync/attendance/batches', () => jsonResponse({ queued: false, results: [serverRecord] }))
       const payload = { sessionId: 'sess-1', studentId: 'student-1', clientAttemptId: 'attempt-1' }
 
       const result = await drainSend!('attendance_scan', payload)
 
       expect(result).toEqual({ outcome: 'synced' })
       expect(fetchMock).toHaveBeenCalledWith(
-        `${API_BASE}/sync/attendance`,
+        `${API_BASE}/sync/attendance/batches`,
         expect.objectContaining({ method: 'POST', body: JSON.stringify({ records: [payload] }) }),
       )
       expect(storeMock.removeCachedAttendanceAttempt).toHaveBeenCalledWith('sess-1', 'student-1')
@@ -602,7 +638,7 @@ describe('api-client offline sync engine', () => {
     })
 
     it('routes terminal attendance sync errors through classifyAttendanceSyncError', async () => {
-      handlers.set('/sync/attendance', () => jsonResponse({ queued: false, results: [{ error: 'Signature is invalid' }] }))
+      handlers.set('/sync/attendance/batches', () => jsonResponse({ queued: false, results: [{ error: 'Signature is invalid' }] }))
 
       const result = await drainSend!('attendance_scan', { sessionId: 'sess-1', studentId: 'student-1' })
 
@@ -612,7 +648,7 @@ describe('api-client offline sync engine', () => {
     })
 
     it('routes retryable attendance sync errors through classifyAttendanceSyncError', async () => {
-      handlers.set('/sync/attendance', () => jsonResponse({ queued: false, results: [{ error: 'Network request failed' }] }))
+      handlers.set('/sync/attendance/batches', () => jsonResponse({ queued: false, results: [{ error: 'Network request failed' }] }))
 
       const result = await drainSend!('attendance_scan', { sessionId: 'sess-1', studentId: 'student-1' })
 
@@ -622,7 +658,7 @@ describe('api-client offline sync engine', () => {
     })
 
     it('keeps the attempt queued when the sync response has no result', async () => {
-      handlers.set('/sync/attendance', () => jsonResponse({ queued: false, results: [] }))
+      handlers.set('/sync/attendance/batches', () => jsonResponse({ queued: false, results: [] }))
 
       const result = await drainSend!('attendance_scan', { sessionId: 'sess-1', studentId: 'student-1' })
 
