@@ -259,7 +259,7 @@ jobs:
         run: android/android/gradlew -p android/android :app:assembleDebug --no-daemon
       - name: Validate Android release APK and 16 KiB page alignment
         run: |
-          android/android/gradlew -p android/android :app:assembleRelease --no-daemon
+          EXPO_PUBLIC_E2E_MODE=false EXPO_PUBLIC_ALLOW_QR_FALLBACKS=false android/android/gradlew -p android/android :app:assembleRelease --no-daemon
           ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -name zipalign -type f | sort -V | tail -n 1)"
           test -x "$ZIPALIGN"
           "$ZIPALIGN" -c -P 16 -v 4 android/android/app/build/outputs/apk/release/app-release.apk
@@ -317,10 +317,17 @@ jobs:
         env:
           BACKEND_IMAGE: ghcr.io/example/polycheck/backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           FRONTEND_IMAGE: ghcr.io/example/polycheck/frontend@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-          POSTGRES_PASSWORD: compose-validation-only
+          POSTGRES_PASSWORD: compose-validation-only-admin-secret
+          RUNTIME_DATABASE_PASSWORD: compose-validation-runtime-secret
+          MIGRATOR_DATABASE_PASSWORD: compose-validation-migrator-secret
+          BACKUP_DATABASE_PASSWORD: compose-validation-backup-secret
+          RESTIC_REPOSITORY: s3:https://offsite.example.test/polycheck
+          RESTIC_PASSWORD: compose-validation-offsite-secret
+          OFFSITE_ACCESS_KEY_ID: compose-validation-key
+          OFFSITE_SECRET_ACCESS_KEY: compose-validation-secret
           REDIS_PASSWORD: compose-validation-only
-          DATABASE_URL: postgresql://polycheck:compose-validation-only@pgbouncer:5432/polycheck?schema=public&pgbouncer=true&connection_limit=10&pool_timeout=10
-          DIRECT_DATABASE_URL: postgresql://polycheck:compose-validation-only@postgres:5432/polycheck?schema=public&connection_limit=2&pool_timeout=30
+          DATABASE_URL: postgresql://polycheck_runtime:compose-validation-runtime-secret@pgbouncer:5432/polycheck?schema=public&pgbouncer=true&connection_limit=10&pool_timeout=10
+          DIRECT_DATABASE_URL: postgresql://polycheck_migrator:compose-validation-migrator-secret@postgres:5432/polycheck?schema=public&connection_limit=2&pool_timeout=30
           REDIS_URL: redis://:compose-validation-only@redis:6379/0
           BETTER_AUTH_SECRET: compose-validation-only-secret-at-least-32-characters
           METRICS_TOKEN: compose-validation-only-metrics-token-at-least-32-characters
@@ -339,7 +346,9 @@ jobs:
         run: |
           sh deployment/scripts/validate-production-images.sh
           sh deployment/scripts/validate-production-recovery.sh
+          node deployment/scripts/validate-production-access.mjs
           docker compose -f docker-compose.yml config --quiet
+          docker compose -f docker-compose.yml -f deployment/docker-compose.offsite.yml config --quiet
           docker compose -f docker-compose.yml -f deployment/docker-compose.scale.yml config --quiet
           docker compose -f docker-compose.yml --profile recovery config --quiet
           rendered="$(docker compose -f docker-compose.yml config --format json)"
@@ -363,6 +372,18 @@ jobs:
             sleep 2
           done
           run_psql 'CREATE TABLE "User" (id text PRIMARY KEY);'
+          docker compose -f docker-compose.yml run --rm provision-roles
+          run_psql 'SET ROLE polycheck_migrator; CREATE TABLE runtime_grant_probe (id text PRIMARY KEY);'
+          run_psql "SET ROLE polycheck_runtime; INSERT INTO runtime_grant_probe VALUES ('runtime-write');"
+          test "$(run_psql 'SET ROLE polycheck_backup; SELECT count(*) FROM runtime_grant_probe;')" = 1
+          if run_psql 'SET ROLE polycheck_runtime; DROP TABLE runtime_grant_probe;'; then
+            echo 'Runtime must not own or drop application tables' >&2
+            exit 1
+          fi
+          if run_psql "SET ROLE polycheck_backup; DELETE FROM runtime_grant_probe;"; then
+            echo 'Backup role must not mutate application data' >&2
+            exit 1
+          fi
           docker compose -f docker-compose.yml run --rm backup once
           # Create a marker strictly after the physical base backup and force
           # its WAL to the archive. The isolated drill must replay to this
@@ -390,6 +411,10 @@ jobs:
         run: |
           for script in deployment/scripts/*.sh; do sh -n "$script"; done
           sh deployment/scripts/test-deployment-scripts.sh
+          node --test deployment/scripts/validate-production-access.test.mjs
+          docker run --rm --network none -e OFFSITE_TEST_CONTAINER=1 \
+            -v "$GITHUB_WORKSPACE/deployment/scripts:/scripts:ro" \
+            postgres:16-alpine sh /scripts/test-offsite-backup.sh
           if command -v shellcheck >/dev/null 2>&1; then
             shellcheck deployment/scripts/*.sh
           fi
@@ -419,6 +444,8 @@ jobs:
         run: |
           k6 inspect performance/attendance-load.js
           k6 inspect --env K6_PROFILE=full performance/attendance-load.js
+          k6 inspect --env K6_MODE=offline performance/attendance-load.js
+          k6 inspect performance/login-load.js
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:

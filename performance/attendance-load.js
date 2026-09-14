@@ -1,15 +1,19 @@
 import http from 'k6/http'
-import { check as k6Check, fail } from 'k6'
+import { check as k6Check, fail, sleep } from 'k6'
 import exec from 'k6/execution'
 import { SharedArray } from 'k6/data'
-import { Rate } from 'k6/metrics'
+import { Rate, Trend } from 'k6/metrics'
 
 const profile = __ENV.K6_PROFILE || 'smoke'
+const fixture = __ENV.K6_FIXTURE_FILE ? JSON.parse(open(__ENV.K6_FIXTURE_FILE)) : {}
+const mode = __ENV.K6_MODE || 'online'
+if (!['online', 'offline'].includes(mode)) throw new Error('K6_MODE must be online or offline')
 const tokenPath = __ENV.K6_TOKENS_FILE || './tokens.example.json'
 const tokens = new SharedArray('student bearer tokens', () =>
-  JSON.parse(__ENV.K6_TOKENS_JSON || open(tokenPath)),
+  fixture.tokens || JSON.parse(__ENV.K6_TOKENS_JSON || open(tokenPath)),
 )
 const acceptedAttendance = new Rate('accepted_attendance')
+const syncConfirmation = new Trend('sync_confirmation_ms', true)
 
 if (!['smoke', 'full'].includes(profile)) {
   throw new Error('K6_PROFILE must be smoke or full')
@@ -28,6 +32,7 @@ const loadProfile =
 
 export const options = {
   scenarios: {
+    ...(fixture.TEACHER_TOKEN ? { dashboard_reads: { executor: 'constant-vus', vus: 1, duration: '20s', exec: 'readDashboard' } } : {}),
     attendance_bell_rush: {
       executor: 'per-vu-iterations',
       vus: loadProfile.userCount,
@@ -40,9 +45,11 @@ export const options = {
   thresholds: {
     checks: ['rate>0.99'],
     http_req_failed: ['rate<0.01'],
-    iterations: [`count==${loadProfile.userCount}`],
+    'iterations{scenario:attendance_bell_rush}': [`count==${loadProfile.userCount}`],
     accepted_attendance: ['rate==1'],
-    'http_req_duration{operation:scan}': ['p(95)<1000', 'p(99)<2000'],
+    ...(mode === 'online'
+      ? { 'http_req_duration{operation:scan}': ['p(95)<1000', 'p(99)<2000'] }
+      : { 'http_req_duration{operation:enqueue}': ['p(95)<1000', 'p(99)<2000'], sync_confirmation_ms: ['p(95)<30000', 'p(99)<60000'] }),
   },
   discardResponseBodies: false,
   noConnectionReuse: false,
@@ -50,7 +57,7 @@ export const options = {
 }
 
 const required = (name) => {
-  const value = __ENV[name]
+  const value = __ENV[name] ?? fixture[name]
   if (!value) fail(`${name} is required`)
   return value
 }
@@ -76,7 +83,7 @@ const validateTarget = (baseUrl) => {
 }
 
 export const setup = () => {
-  const baseUrl = validateTarget(__ENV.BASE_URL || 'http://127.0.0.1:8080')
+  const baseUrl = validateTarget(__ENV.BASE_URL || fixture.BASE_URL || 'http://127.0.0.1:8080')
   const sessionId = required('SESSION_ID')
   const qrToken = required('QR_TOKEN')
   const runId = required('K6_RUN_ID')
@@ -107,11 +114,40 @@ export const setup = () => {
     uniqueTokens.add(token)
   }
 
-  return { baseUrl, sessionId, qrToken, runId, latitude, longitude, accuracyMeters }
+  return { baseUrl, sessionId, qrToken, runId, latitude, longitude, accuracyMeters, teacherToken: fixture.TEACHER_TOKEN }
+}
+
+export function readDashboard(config) {
+  const response = http.get(`${config.baseUrl}/api/sessions/${config.sessionId}`, { headers: { Authorization: `Bearer ${config.teacherToken}` }, tags: { operation: 'dashboard' }, timeout: '10s' })
+  k6Check(response, { 'teacher session remains readable': (result) => result.status === 200 })
+  sleep(1)
+}
+
+const syncOffline = (config, payload, headers) => {
+  const startedAt = Date.now()
+  const response = http.post(`${config.baseUrl}/api/sync/attendance/batches`, JSON.stringify({ records: [payload] }), { headers, tags: { operation: 'enqueue' }, timeout: '10s' })
+  if (!k6Check(response, { 'sync receipt returned': (result) => result.status === 202 })) { acceptedAttendance.add(false); return }
+  const receipt = response.json()
+  if (!receipt.queued) { acceptedAttendance.add(['present', 'late'].includes(receipt.results?.[0]?.status)); return }
+  // Replay the exact submission, simulating loss of the first response.
+  const replay = http.post(`${config.baseUrl}/api/sync/attendance/batches`, JSON.stringify({ records: [payload] }), { headers, tags: { operation: 'enqueue-replay' }, timeout: '10s' })
+  k6Check(replay, { 'lost-response replay returns the same receipt': (result) => result.status === 202 && result.json('receiptId') === receipt.receiptId })
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const status = http.get(`${config.baseUrl}/api/sync/attendance/batches/${receipt.receiptId}`, { headers, tags: { operation: 'sync-status' }, timeout: '10s' })
+    if (status.status === 200 && status.json('state') === 'completed') {
+      const record = status.json('results')[0]
+      acceptedAttendance.add(Boolean(record.id) && ['present', 'late'].includes(record.status))
+      syncConfirmation.add(Date.now() - startedAt)
+      return
+    }
+    sleep(2)
+  }
+  acceptedAttendance.add(false)
+  syncConfirmation.add(Date.now() - startedAt)
 }
 
 export function submitAttendanceScan(config) {
-  const studentIndex = exec.vu.idInTest - 1
+  const studentIndex = exec.scenario.iterationInTest
   if (studentIndex >= loadProfile.userCount) fail('The scenario scheduled more iterations than token fixtures')
 
   const capturedAt = new Date().toISOString()
@@ -128,6 +164,10 @@ export function submitAttendanceScan(config) {
     locationCapturedAt: capturedAt,
     mocked: false,
     inputChannel: 'camera',
+  }
+  if (mode === 'offline') {
+    syncOffline(config, payload, { Authorization: `Bearer ${tokens[studentIndex].token}`, 'Content-Type': 'application/json' })
+    return
   }
   const response = http.post(`${config.baseUrl}/api/attendance/scan`, JSON.stringify(payload), {
     headers: {
