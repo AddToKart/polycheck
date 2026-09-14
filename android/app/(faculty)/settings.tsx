@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
+import type { SuperAdmin } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
@@ -13,6 +14,7 @@ const fields = [
   { key: 'institution_name', label: 'Institution name', defaultValue: 'Polytechnic University of the Philippines', keyboard: 'default' as const, icon: 'account-balance' as const },
   { key: 'default_geofence_radius_meters', label: 'Default geofence radius', defaultValue: '40', keyboard: 'number-pad' as const, icon: 'my-location' as const, hint: 'Measured in meters.' },
   { key: 'default_qr_validity_minutes', label: 'Default QR validity', defaultValue: '5', keyboard: 'number-pad' as const, icon: 'timer' as const, hint: 'Measured in minutes.' },
+  { key: 'default_grace_period_minutes', label: 'Default grace period', defaultValue: '15', keyboard: 'number-pad' as const, icon: 'hourglass-bottom' as const, hint: '0–60 minutes.' },
   { key: 'enrollment_code_expiry_days', label: 'Enrollment code expiry', defaultValue: '14', keyboard: 'number-pad' as const, icon: 'vpn-key' as const, hint: 'Measured in days.' },
 ] as const
 
@@ -21,6 +23,7 @@ export default function InstitutionSettingsScreen() {
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((field) => [field.key, field.defaultValue])))
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [canEdit, setCanEdit] = useState(false)
 
   useEffect(() => {
     const current = api.getCurrentUser()
@@ -28,6 +31,7 @@ export default function InstitutionSettingsScreen() {
       router.replace('/(faculty)/dashboard')
       return
     }
+    setCanEdit((current as SuperAdmin).scope === 'institution')
     void api.getSettings()
       .then((settings) => setValues((currentValues) => ({ ...currentValues, ...Object.fromEntries(settings.map((setting) => [setting.key, setting.value])) })))
       .catch((error) => Alert.alert('Unable to load settings', error instanceof Error ? error.message : 'Try again.'))
@@ -64,10 +68,11 @@ export default function InstitutionSettingsScreen() {
           <CampusCard>
             <Text className="font-heading text-xl text-ink dark:text-white">University defaults</Text>
             <Text className="mb-6 mt-2 font-sans text-sm leading-5 text-muted dark:text-zinc-400">These values guide new sessions but do not alter existing records.</Text>
+            {!canEdit ? <Text className="mb-5 font-sans text-sm leading-5 text-amber-700 dark:text-amber-300">Department administrators have read-only access. An institution administrator must change campus-wide defaults.</Text> : null}
             <View className="gap-4">
-              {fields.map((field) => <CampusFormField key={field.key} label={field.label} hint={'hint' in field ? field.hint : undefined} icon={field.icon} keyboardType={field.keyboard} value={values[field.key]} onChangeText={(value) => setValues((current) => ({ ...current, [field.key]: value }))} />)}
+              {fields.map((field) => <CampusFormField key={field.key} label={field.label} hint={'hint' in field ? field.hint : undefined} icon={field.icon} keyboardType={field.keyboard} value={values[field.key]} editable={canEdit} onChangeText={(value) => setValues((current) => ({ ...current, [field.key]: value }))} />)}
             </View>
-            <CampusButton label={saving ? 'Saving settings…' : 'Save settings'} icon="save" disabled={saving} onPress={() => void saveSettings()} className="mt-7" />
+            <CampusButton label={saving ? 'Saving settings…' : 'Save settings'} icon="save" disabled={!canEdit || saving} onPress={() => void saveSettings()} className="mt-7" />
           </CampusCard>
         </ScrollView>
       )}

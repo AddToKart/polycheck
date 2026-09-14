@@ -28,6 +28,8 @@ export default function CreateSessionPage() {
   const [latitude, setLatitude] = useState(14.8697)
   const [longitude, setLongitude] = useState(120.9991)
   const [radius, setRadius] = useState(40)
+  const [defaultQrValidity, setDefaultQrValidity] = useState(5)
+  const [defaultGracePeriod, setDefaultGracePeriod] = useState(15)
   const [bulkMode, setBulkMode] = useState(false)
   const [bulkStartDate, setBulkStartDate] = useState(() => formatCampusDate())
   const [bulkEndDate, setBulkEndDate] = useState(() => {
@@ -59,9 +61,20 @@ export default function CreateSessionPage() {
         return
       }
       setUser(cu)
-      setSubjects(await api.getSubjects())
-      const allSections = await api.getSections()
+      const [subjectList, allSections, settings] = await Promise.all([
+        api.getSubjects(),
+        api.getSections(),
+        api.getSettings(),
+      ])
+      setSubjects(subjectList)
       setSections(allSections.filter((s) => s.teacherId === cu.id))
+      const settingValues = new Map(settings.map((setting) => [setting.key, Number(setting.value)]))
+      const configuredRadius = settingValues.get('default_geofence_radius_meters')
+      const configuredValidity = settingValues.get('default_qr_validity_minutes')
+      const configuredGrace = settingValues.get('default_grace_period_minutes')
+      if (configuredRadius && configuredRadius >= 10 && configuredRadius <= 500) setRadius(configuredRadius)
+      if (configuredValidity && configuredValidity >= 1 && configuredValidity <= 15) setDefaultQrValidity(configuredValidity)
+      if (configuredGrace !== undefined && configuredGrace >= 0 && configuredGrace <= 60) setDefaultGracePeriod(configuredGrace)
     }
     init()
   }, [router])
@@ -145,6 +158,8 @@ export default function CreateSessionPage() {
         startTime,
         endTime,
         room: room || undefined,
+        qrValidityMinutes: defaultQrValidity,
+        gracePeriodMinutes: defaultGracePeriod,
         geofence: { latitude, longitude, radiusMeters: radius },
         teacherId: user.id,
       })
@@ -161,6 +176,8 @@ export default function CreateSessionPage() {
         startTime,
         endTime,
         room: room || undefined,
+        qrValidityMinutes: defaultQrValidity,
+        gracePeriodMinutes: defaultGracePeriod,
         geofence: {
           latitude,
           longitude,
