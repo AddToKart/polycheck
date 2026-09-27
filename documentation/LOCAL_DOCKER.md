@@ -11,11 +11,19 @@ Local Docker intentionally uses the `local` proof-storage driver and a persisten
 
 Node.js, pnpm, PostgreSQL, and Redis are not required on the host for this workflow.
 
-## First start (1-Shot Onboarding)
+## First start (1-Click / 1-Shot Onboarding)
 
-To set up, build, migrate, and seed the entire local environment in **1 single command**:
+To set up, build, migrate, and seed the entire local environment:
 
-### Using pnpm (Recommended if Node.js/pnpm is installed):
+### 1-Click Launchers (Double-Click):
+- **Windows**: Double-click **`start-local.bat`** (or execute `.\start-local.bat`).
+- **macOS / Linux**: Run **`./start-local.sh`** (make executable with `chmod +x start-local.sh` if needed).
+
+_This verifies Docker is running, prepares `.env.docker.local`, builds all images, applies database migrations, seeds test accounts, waits for readiness, and opens `http://localhost:3000/login` in your default browser automatically._
+
+To stop the containers, double-click **`stop-local.bat`** (Windows) or execute **`./stop-local.sh`** (macOS/Linux).
+
+### Using pnpm (Terminal):
 
 ```sh
 pnpm docker:local:setup
