@@ -16,16 +16,20 @@ Node.js, pnpm, PostgreSQL, and Redis are not required on the host for this workf
 To set up, build, migrate, and seed the entire local environment in **1 single command**:
 
 ### Using pnpm (Recommended if Node.js/pnpm is installed):
+
 ```sh
 pnpm docker:local:setup
 ```
-*Note: This automatically prepares `.env.docker.local` from the example file if not already present, builds both frontend and backend, applies migrations, and seeds default test accounts.*
+
+_Note: This automatically prepares `.env.docker.local` from the example file if not already present, builds both frontend and backend, applies migrations, and seeds default test accounts._
 
 ### Using Pure Docker (No Node.js or pnpm required on the host):
+
 ```sh
 docker compose -f docker-compose.local.yml up -d --build
 ```
-*Environment variables and default passwords are pre-configured automatically in `docker-compose.local.yml`. Database migrations and seed data run automatically before the backend starts.*
+
+_Environment variables and default passwords are pre-configured automatically in `docker-compose.local.yml`. Database migrations and seed data run automatically before the backend starts._
 
 ## Addresses
 

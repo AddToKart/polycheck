@@ -15,7 +15,7 @@
 
 ## 📌 Project Goal & Vision
 
-**Polycheck** is a secure, offline-first attendance management ecosystem designed specifically for the **Polytechnic University of the Philippines (PUP)**. 
+**Polycheck** is a secure, offline-first attendance management ecosystem designed specifically for the **Polytechnic University of the Philippines (PUP)**.
 
 The primary goal of this capstone project is to replace traditional, manual, and paper-based class monitoring forms (F-1/F-2 equivalent) used by faculty and department chairs. Manual tracking in large university settings is vulnerable to proxy signing ("attendance cheating"), lost paper sheets, manual calculation errors, lack of real-time visibility, and cellular dead zones in concrete campus buildings.
 
@@ -23,29 +23,29 @@ Polycheck solves this by introducing a robust digital platform that operates **1
 
 ### Problem vs. Solution
 
-| Challenge in Paper-Based Monitoring | Polycheck Digital Solution |
-| :--- | :--- |
-| **Proxy Attendance** (Classmates signing for absent friends) | Cryptographic QR tokens with dynamic expiry (1–15 min + up to 60 min grace) + Geolocation gating. |
+| Challenge in Paper-Based Monitoring                              | Polycheck Digital Solution                                                                                |
+| :--------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
+| **Proxy Attendance** (Classmates signing for absent friends)     | Cryptographic QR tokens with dynamic expiry (1–15 min + up to 60 min grace) + Geolocation gating.         |
 | **Connectivity Dead Zones** (Unreliable campus WiFi/mobile data) | **Offline-First Architecture**: QR scanning and coordinate gating execute locally without network access. |
-| **Credential & Account Sharing** | Single active session enforcement via Better Auth + binding to digital student IDs. |
-| **GPS Coordinate Spoofing** | Plausibility checks and server-side geofence re-validation on sync. |
-| **Manual Data Consolidation** | Real-time automated dashboards for Teachers and Super Admins (Department Heads). |
-| **Classroom Meeting Verification** | **Proof of Class**: QAC student officers upload timestamped classroom photos for audit. |
+| **Credential & Account Sharing**                                 | Single active session enforcement via Better Auth + binding to digital student IDs.                       |
+| **GPS Coordinate Spoofing**                                      | Plausibility checks and server-side geofence re-validation on sync.                                       |
+| **Manual Data Consolidation**                                    | Real-time automated dashboards for Teachers and Super Admins (Department Heads).                          |
+| **Classroom Meeting Verification**                               | **Proof of Class**: QAC student officers upload timestamped classroom photos for audit.                   |
 
 ---
 
 ## 🛠️ Complete Technology Stack
 
-| Layer | Technology | Key Capabilities & Libraries |
-| :--- | :--- | :--- |
-| **Monorepo Architecture** | `pnpm` workspaces + `Turborepo` | Workspace isolation, fast cached builds, shared package compilation. |
-| **Shared Library** | `@polycheck/shared` | TypeScript domain types, Zod schemas, Haversine formula, token decoders. |
-| **Web Application** | Next.js 15 (App Router), React 19 | shadcn/ui, Tailwind CSS v4, Lucide Icons, MapLibre GL, standalone output. |
-| **Mobile Application** | Expo SDK 52+, Expo Router v4 | NativeWind v4, react-native-reusables, expo-sqlite, expo-location, expo-camera. |
-| **Backend API** | NestJS 11 (Node.js 22) | Prisma ORM 5.22, Socket.IO WebSockets, Better Auth, Pino logging, Prometheus metrics. |
-| **Database & Caching** | PostgreSQL 16 & Redis 7.4 | PgBouncer transaction connection pooling, Redis Pub/Sub adapter, BullMQ async queues. |
-| **Edge & Proxy** | Nginx 1.28 (Unprivileged) | Reverse proxy, TLS termination, path routing, health checks. |
-| **Monitoring** | Prometheus v3.5 | Real-time metric scraping (`/api/metrics`), health & dependency readiness probes. |
+| Layer                     | Technology                        | Key Capabilities & Libraries                                                          |
+| :------------------------ | :-------------------------------- | :------------------------------------------------------------------------------------ |
+| **Monorepo Architecture** | `pnpm` workspaces + `Turborepo`   | Workspace isolation, fast cached builds, shared package compilation.                  |
+| **Shared Library**        | `@polycheck/shared`               | TypeScript domain types, Zod schemas, Haversine formula, token decoders.              |
+| **Web Application**       | Next.js 15 (App Router), React 19 | shadcn/ui, Tailwind CSS v4, Lucide Icons, MapLibre GL, standalone output.             |
+| **Mobile Application**    | Expo SDK 52+, Expo Router v4      | NativeWind v4, react-native-reusables, expo-sqlite, expo-location, expo-camera.       |
+| **Backend API**           | NestJS 11 (Node.js 22)            | Prisma ORM 5.22, Socket.IO WebSockets, Better Auth, Pino logging, Prometheus metrics. |
+| **Database & Caching**    | PostgreSQL 16 & Redis 7.4         | PgBouncer transaction connection pooling, Redis Pub/Sub adapter, BullMQ async queues. |
+| **Edge & Proxy**          | Nginx 1.28 (Unprivileged)         | Reverse proxy, TLS termination, path routing, health checks.                          |
+| **Monitoring**            | Prometheus v3.5                   | Real-time metric scraping (`/api/metrics`), health & dependency readiness probes.     |
 
 ---
 
@@ -68,17 +68,20 @@ graph TD
 ```
 
 ### 1. Super Admin (Department Chairs & PUP Officials)
+
 - **Institutional Oversight**: Global read-only search across all subjects, sections, sessions, and attendance summaries.
 - **User Administration**: Creation, updates, password resets, and status management for Teacher and Student accounts.
 - **Department Analytics**: Department-wide attendance statistics, anomaly trends, and exportable reports.
 
 ### 2. Teacher / Instructor (Classroom Managers)
+
 - **Course Management**: Manages Parent Subjects (e.g. `CCIS 3104`) and Child Sections (e.g. `Section A`, Room `CCIS Lab 3`).
 - **Enrollment Control**: Set per-section enrollment codes with expiration dates or manual student additions.
 - **Session Activation**: Generate dynamic QR codes (1–15 min validity + up to 60 min grace) and configure map geofences (30m–50m radius).
 - **Dispute & Audit Panel**: Review disputed attendance records (Accept as Present, Reject as Absent, Manual Override) and review proof-of-class photo submissions.
 
 ### 3. Student (Mobile App & ID Holder)
+
 - **Digital Student ID**: Physical card layout featuring PUP maroon header, student photo, details, and a flippable back face showing magnetic stripe, emergency contacts, and QR code.
 - **Offline Attendance Check-In**: Scan QR code in classroom; app checks GPS against cached geofence locally.
 - **Section Roles**: Student officers (President, QAC) can create sessions or upload proof-of-class photos.
@@ -124,13 +127,13 @@ sequenceDiagram
 
 ## 🛡️ Anti-Cheat System (v1)
 
-| Threat Vector | Security Control | Technical Mechanics |
-| :--- | :--- | :--- |
-| **Sharing QR Screenshots** | **Dynamic Signed Tokens** | QR code carries signed `issuedAt` timestamp + validity duration. Expiry checks payload timestamp, not local device clocks. |
-| **Scanning from Home** | **Haversine Geofence Gate** | Requires GPS location within a 30m–50m circular radius of classroom. Evaluated client-side, re-validated server-side. |
-| **Account / Phone Sharing** | **Single Session Constraint** | Enforced by Better Auth. Logging into an account on another phone immediately terminates previous active sessions. |
-| **GPS Spoofing Apps** | **Plausibility Auditing** | Flags exact static GPS matches across different sessions or coordinates with zero jitter for teacher review. |
-| **Proxy Class Meetings** | **Proof of Class Photos** | Authorized QAC student officers capture and upload timestamped classroom photos during active sessions. |
+| Threat Vector               | Security Control              | Technical Mechanics                                                                                                        |
+| :-------------------------- | :---------------------------- | :------------------------------------------------------------------------------------------------------------------------- |
+| **Sharing QR Screenshots**  | **Dynamic Signed Tokens**     | QR code carries signed `issuedAt` timestamp + validity duration. Expiry checks payload timestamp, not local device clocks. |
+| **Scanning from Home**      | **Haversine Geofence Gate**   | Requires GPS location within a 30m–50m circular radius of classroom. Evaluated client-side, re-validated server-side.      |
+| **Account / Phone Sharing** | **Single Session Constraint** | Enforced by Better Auth. Logging into an account on another phone immediately terminates previous active sessions.         |
+| **GPS Spoofing Apps**       | **Plausibility Auditing**     | Flags exact static GPS matches across different sessions or coordinates with zero jitter for teacher review.               |
+| **Proxy Class Meetings**    | **Proof of Class Photos**     | Authorized QAC student officers capture and upload timestamped classroom photos during active sessions.                    |
 
 ---
 
@@ -138,13 +141,13 @@ sequenceDiagram
 
 Polycheck adheres strictly to the official brand guidelines of the **Polytechnic University of the Philippines**:
 
-*   **Primary Maroon** (`#7B1113`): Buttons, active navigation headers, primary branding states.
-*   **Deep Maroon** (`#4A0A0B`): Dark mode cards, sidebar backgrounds, hover/pressed states.
-*   **Golden Yellow** (`#FFDF00`): Derived from the star in the PUP logo, used for highlights, badges, and CTAs.
-*   **Light Base** (`#FFFFFF`): Clean backgrounds and light mode card layouts.
-*   **Dark Base** (`#0A0A0A`): Low-strain near-black dark mode base.
-*   **Typography Display**: `Lora` (academic serif font via Google Fonts).
-*   **Typography Body**: `DM Sans` (clean, highly-readable sans-serif).
+- **Primary Maroon** (`#7B1113`): Buttons, active navigation headers, primary branding states.
+- **Deep Maroon** (`#4A0A0B`): Dark mode cards, sidebar backgrounds, hover/pressed states.
+- **Golden Yellow** (`#FFDF00`): Derived from the star in the PUP logo, used for highlights, badges, and CTAs.
+- **Light Base** (`#FFFFFF`): Clean backgrounds and light mode card layouts.
+- **Dark Base** (`#0A0A0A`): Low-strain near-black dark mode base.
+- **Typography Display**: `Lora` (academic serif font via Google Fonts).
+- **Typography Body**: `DM Sans` (clean, highly-readable sans-serif).
 
 ---
 
@@ -193,17 +196,20 @@ polycheck/
 ## ⚙️ Quick Start & Developer Setup
 
 ### Prerequisites
+
 Make sure you have the following installed:
-*   [Node.js](https://nodejs.org/) (v18.x or higher)
-*   [pnpm](https://pnpm.io/) (v9.x or higher)
-*   [Docker Desktop](https://www.docker.com/products/docker-desktop/) (with Compose v2)
-*   [Expo Go](https://expo.dev/client) app installed on your phone, or Android Studio / iOS Simulator.
+
+- [Node.js](https://nodejs.org/) (v18.x or higher)
+- [pnpm](https://pnpm.io/) (v9.x or higher)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (with Compose v2)
+- [Expo Go](https://expo.dev/client) app installed on your phone, or Android Studio / iOS Simulator.
 
 ---
 
 ### 🚀 Running Local Docker Stack
 
 #### Option A: 1-Shot Onboarding Command (with pnpm)
+
 Set up, build, migrate, and seed the entire local stack in **1 single command**:
 
 ```bash
@@ -211,6 +217,7 @@ pnpm docker:local:setup
 ```
 
 #### Option B: 1-Shot Pure Docker (No pnpm/Node.js required on host)
+
 ```bash
 docker compose -f docker-compose.local.yml up -d --build
 ```
@@ -223,11 +230,11 @@ Open `http://localhost:3000/login` to log into the web dashboard!
 
 All seeded accounts use the default password: **`PolycheckLocal1!`**
 
-| Role | Email / Student ID | Description |
-| :--- | :--- | :--- |
-| **Super Admin** | `mcreyes@pup.edu.ph` | Dr. Maria Concepcion Reyes (CCIS Department Chair) |
-| **Teacher** | `jmdelacruz@pup.edu.ph` | Prof. Juan Miguel Dela Cruz (CCIS Faculty) |
-| **Student** | `2024-00001-MN-0` | Alexandra Marie Reyes (BS Computer Science) |
+| Role            | Email / Student ID      | Description                                        |
+| :-------------- | :---------------------- | :------------------------------------------------- |
+| **Super Admin** | `mcreyes@pup.edu.ph`    | Dr. Maria Concepcion Reyes (CCIS Department Chair) |
+| **Teacher**     | `jmdelacruz@pup.edu.ph` | Prof. Juan Miguel Dela Cruz (CCIS Faculty)         |
+| **Student**     | `2024-00001-MN-0`       | Alexandra Marie Reyes (BS Computer Science)        |
 
 ---
 
@@ -236,19 +243,25 @@ All seeded accounts use the default password: **`PolycheckLocal1!`**
 Keep your Docker stack running while launching the mobile app outside Docker:
 
 #### 1. Android Studio Emulator
+
 The emulator automatically connects to the backend at `http://10.0.2.2:4000/api`.
+
 ```bash
 pnpm --filter android start
 ```
+
 Press `a` to open the Android emulator.
 
 #### 2. Physical Phone (over Campus / Home WiFi)
+
 Set your computer's local LAN IP address and start Expo:
+
 ```powershell
 $env:EXPO_PUBLIC_API_URL="http://192.168.1.10:4000/api"
 pnpm --filter android start
 ```
-*(Replace `192.168.1.10` with your machine's actual local IPv4 address).*
+
+_(Replace `192.168.1.10` with your machine's actual local IPv4 address)._
 
 ---
 
@@ -271,29 +284,30 @@ pnpm dev
 
 ## 📜 Monorepo NPM Command Reference
 
-| Command | Description |
-| :--- | :--- |
-| `pnpm docker:local:setup` | **1-Shot**: Builds, migrates, and seeds the entire local Docker stack. |
-| `pnpm docker:local:up` | Starts or rebuilds local Docker containers (retains database data). |
-| `pnpm docker:local:seed` | Runs the database seed tool to populate sample records. |
-| `pnpm docker:local:logs` | Streams live logs from all running local Docker containers. |
-| `pnpm docker:local:down` | Stops local Docker containers. |
-| `pnpm dev` | Starts all monorepo workspaces in development watch mode. |
-| `pnpm build` | Compiles production builds for all workspace packages. |
-| `pnpm lint` | Executes ESLint across all workspace apps and packages. |
-| `pnpm test:e2e:mobile` | Runs the installed Android app's Maestro E2E journeys. See [the mobile E2E guide](documentation/MOBILE_E2E.md). |
-| `pnpm load:attendance:smoke` | Runs k6 smoke load test against attendance check-in endpoints. |
-| `pnpm load:attendance:full` | Runs k6 full load test against attendance check-in endpoints. |
+| Command                      | Description                                                                                                     |
+| :--------------------------- | :-------------------------------------------------------------------------------------------------------------- |
+| `pnpm docker:local:setup`    | **1-Shot**: Builds, migrates, and seeds the entire local Docker stack.                                          |
+| `pnpm docker:local:up`       | Starts or rebuilds local Docker containers (retains database data).                                             |
+| `pnpm docker:local:seed`     | Runs the database seed tool to populate sample records.                                                         |
+| `pnpm docker:local:logs`     | Streams live logs from all running local Docker containers.                                                     |
+| `pnpm docker:local:down`     | Stops local Docker containers.                                                                                  |
+| `pnpm dev`                   | Starts all monorepo workspaces in development watch mode.                                                       |
+| `pnpm build`                 | Compiles production builds for all workspace packages.                                                          |
+| `pnpm lint`                  | Executes ESLint across all workspace apps and packages.                                                         |
+| `pnpm test:e2e:mobile`       | Runs the installed Android app's Maestro E2E journeys. See [the mobile E2E guide](documentation/MOBILE_E2E.md). |
+| `pnpm load:attendance:smoke` | Runs k6 smoke load test against attendance check-in endpoints.                                                  |
+| `pnpm load:attendance:full`  | Runs k6 full load test against attendance check-in endpoints.                                                   |
 
 ---
 
 ## 🎓 Capstone Project Context
-*   **Institution:** Polytechnic University of the Philippines (PUP)
-*   **Project Name:** Polycheck Attendance System
-*   **Target Users:** PUP Department Chairs (Super Admin), PUP Faculty Members (Admin), PUP Students (User)
-*   **Target Platforms:** Responsive Web Dashboard (Teachers & Chairs) and Native Mobile Apps (Students & Classroom Scanners).
-*   **Academic Year:** 2026
+
+- **Institution:** Polytechnic University of the Philippines (PUP)
+- **Project Name:** Polycheck Attendance System
+- **Target Users:** PUP Department Chairs (Super Admin), PUP Faculty Members (Admin), PUP Students (User)
+- **Target Platforms:** Responsive Web Dashboard (Teachers & Chairs) and Native Mobile Apps (Students & Classroom Scanners).
+- **Academic Year:** 2026
 
 ---
 
-*Made with ❤️ by the Polycheck Capstone Development Team.*
+_Made with ❤️ by the Polycheck Capstone Development Team._
