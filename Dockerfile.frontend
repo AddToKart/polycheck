@@ -11,7 +11,7 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 COPY shared shared
 COPY frontend frontend
 ARG NEXT_PUBLIC_API_URL
-ARG NEXT_PUBLIC_ALLOW_QR_FALLBACKS=false
+ARG NEXT_PUBLIC_ALLOW_QR_FALLBACKS=true
 ARG NEXT_PUBLIC_PRIVACY_NOTICE_VERSION
 ARG NEXT_PUBLIC_SENTRY_DSN
 ARG SENTRY_ORG

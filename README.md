@@ -209,19 +209,22 @@ Make sure you have the following installed:
 ### 🚀 Running Local Docker Stack
 
 #### Option A: Literal 1-Click Setup (Double-Click)
+
 - **Windows**: Double-click **`start-local.bat`** (or run `.\start-local.bat`).
 - **macOS / Linux**: Run **`./start-local.sh`**.
 
-*This checks Docker, prepares the configuration, compiles/boots all 5 containers (Postgres, Redis, Migrations, Seed, Backend, Frontend), waits for health checks, and opens the dashboard in your default browser automatically!*
+_This checks Docker, prepares the configuration, compiles/boots all 5 containers (Postgres, Redis, Migrations, Seed, Backend, Frontend), waits for health checks, and opens the dashboard in your default browser automatically!_
 
 To stop the stack, double-click **`stop-local.bat`** (or run `./stop-local.sh`).
 
 #### Option B: 1-Shot Command (with pnpm)
+
 ```bash
 pnpm docker:local:setup
 ```
 
 #### Option C: 1-Shot Pure Docker (No pnpm/Node.js required on host)
+
 ```bash
 docker compose -f docker-compose.local.yml up -d --build
 ```

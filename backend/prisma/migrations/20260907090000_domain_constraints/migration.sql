@@ -2,6 +2,9 @@
 -- These prevent maintenance scripts and future services from persisting states
 -- that the attendance domain cannot interpret safely.
 
+UPDATE "User" SET "department" = 'CCIS' WHERE "role" = 'student' AND "department" IS NULL;
+UPDATE "Session" SET "qrValidityMinutes" = 15 WHERE "qrValidityMinutes" > 15;
+
 ALTER TABLE "User"
   ADD CONSTRAINT "User_yearLevel_range"
   CHECK ("yearLevel" IS NULL OR "yearLevel" BETWEEN 1 AND 8),

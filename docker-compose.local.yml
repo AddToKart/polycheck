@@ -98,6 +98,7 @@ services:
       dockerfile: Dockerfile.frontend
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api}
+        NEXT_PUBLIC_ALLOW_QR_FALLBACKS: ${NEXT_PUBLIC_ALLOW_QR_FALLBACKS:-true}
     restart: unless-stopped
     depends_on:
       backend:

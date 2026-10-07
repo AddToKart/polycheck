@@ -16,6 +16,7 @@ Node.js, pnpm, PostgreSQL, and Redis are not required on the host for this workf
 To set up, build, migrate, and seed the entire local environment:
 
 ### 1-Click Launchers (Double-Click):
+
 - **Windows**: Double-click **`start-local.bat`** (or execute `.\start-local.bat`).
 - **macOS / Linux**: Run **`./start-local.sh`** (make executable with `chmod +x start-local.sh` if needed).
 

@@ -35,7 +35,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Camera is used to scan QR codes for attendance check-in."
+          "cameraPermission": "Camera is used to scan QR codes for attendance check-in.",
+          "microphonePermission": false
         }
       ],
       [

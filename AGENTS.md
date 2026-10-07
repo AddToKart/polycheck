@@ -451,6 +451,17 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - Audit logging fails open: if the initial audit-row insert fails, the mutation still runs and the failure is logged with full request context (method, path, actor) rather than returning 500. This preserves in-class availability when the audit table is briefly unavailable; the trade-off (a possible missing audit row for that one mutation) is accepted and observable in logs. Audit completion/failure updates remain best-effort and merge request context.
 - Signing-key rotation serializes against activation cache publication via the per-teacher `key-rotation:<id>` Redis lock; cache publication is best-effort and skips (DB fallback) when rotation holds the lock. Production image references must be `@sha256:` digests — tags are retargetable and rejected by `validate-production-images.sh`.
 
+- **Auth Landing Animation & Layout Fix**: Moved auth pages from `app/login/` into `app/(auth-landing)/login/` (with role sub-routes `faculty` and `student`) within a shared route group. This preserves layout state and prevents full unmounts, restoring smooth CSS/motion animations and logo transitions when switching between login views.
+- **Student Scan QR Fallback Options (Web & Mobile)**:
+  - Enabled fallbacks by default on both web (`NEXT_PUBLIC_ALLOW_QR_FALLBACKS !== 'false'`) and mobile (`EXPO_PUBLIC_ALLOW_QR_FALLBACKS !== 'false'`).
+  - Web modal (`ScanQrModal.tsx` & `ScanQrViews.tsx`) now exposes all 3 accessible check-in channels: **Camera**, **Upload Image** (local QR decoding via `BarcodeDetector` / ZXing with drag & drop and 10 MB file validation), and **Enter Token** (manual input / paste of teacher-signed QR token with whitespace and surrounding quote sanitization).
+  - Both fallback channels strictly require and enforce client-side GPS location capture against classroom geofence before submission.
+  - Added warning banner in upload view when camera permissions are denied or unavailable on the device.
+  - Mobile scanner (`android/app/(tabs)/scan.tsx`) exposes `Upload QR Image` and `Enter Code` fallbacks alongside live camera.
+- **Database Migration Self-Healing**: Added idempotent pre-checks and backfills in `20260907090000_domain_constraints/migration.sql` to gracefully handle dirty development databases or re-runs without crashing the migration service container.
+- **Docker Compose Local Developer Experience**: Added automated 1-click startup scripts (`start-local.bat`, `start-local.sh`, `stop-local.bat`, `stop-local.sh`) and passed `NEXT_PUBLIC_ALLOW_QR_FALLBACKS: "true"` to local container builds.
+- **Comprehensive Automated Test Coverage**: Expanded frontend and mobile suites to 680 total passing automated tests across 69 suites monorepo-wide (60 shared, 95 web, 395 backend, 130 mobile).
+
 ## Next Steps
 - Connect sessions page to section context when navigated from section detail.
 - Add dispute notification badge on faculty sidebar/tab bar.

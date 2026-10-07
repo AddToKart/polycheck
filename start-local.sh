@@ -54,3 +54,4 @@ if command -v xdg-open >/dev/null 2>&1; then
 elif command -v open >/dev/null 2>&1; then
     open "http://localhost:3000/login" >/dev/null 2>&1 &
 fi
+

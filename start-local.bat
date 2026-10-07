@@ -74,3 +74,4 @@ echo Opening web dashboard in default browser...
 start http://localhost:3000/login
 echo.
 pause
+
