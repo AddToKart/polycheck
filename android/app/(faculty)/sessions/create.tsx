@@ -39,6 +39,8 @@ export default function CreateSessionScreen() {
   const [latitude, setLatitude] = useState(14.8697)
   const [longitude, setLongitude] = useState(120.9991)
   const [radius, setRadius] = useState(40)
+  const [defaultQrValidity, setDefaultQrValidity] = useState(5)
+  const [defaultGracePeriod, setDefaultGracePeriod] = useState(15)
   const [recenterKey, setRecenterKey] = useState(0)
   const [locating, setLocating] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -61,7 +63,18 @@ export default function CreateSessionScreen() {
       return
     }
     setUser(currentUser)
-    void api.getSubjects().then(setSubjects).catch(() => Alert.alert('Unable to load subjects', 'Please try again.'))
+    void Promise.all([api.getSubjects(), api.getSettings()])
+      .then(([nextSubjects, settings]) => {
+        setSubjects(nextSubjects)
+        const configured = new Map(settings.map((setting) => [setting.key, Number(setting.value)]))
+        const nextRadius = configured.get('default_geofence_radius_meters')
+        const nextValidity = configured.get('default_qr_validity_minutes')
+        const nextGrace = configured.get('default_grace_period_minutes')
+        if (nextRadius && nextRadius >= 10 && nextRadius <= 500) setRadius(nextRadius)
+        if (nextValidity && nextValidity >= 1 && nextValidity <= 15) setDefaultQrValidity(nextValidity)
+        if (nextGrace !== undefined && nextGrace >= 0 && nextGrace <= 60) setDefaultGracePeriod(nextGrace)
+      })
+      .catch(() => Alert.alert('Unable to load session defaults', 'The standard defaults will be used.'))
   }, [])
 
   useEffect(() => {
@@ -141,11 +154,11 @@ export default function CreateSessionScreen() {
     setSubmitting(true)
     try {
       if (bulkMode) {
-        await api.createBulkSessions({ sectionId, subjectName: selectedParentSubject?.name ?? '', startDate: bulkStartDate, endDate: bulkEndDate, daysOfWeek: bulkDays, startTime, endTime, room: room || undefined, geofence: { latitude, longitude, radiusMeters: radius }, teacherId: user.id })
+        await api.createBulkSessions({ sectionId, subjectName: selectedParentSubject?.name ?? '', startDate: bulkStartDate, endDate: bulkEndDate, daysOfWeek: bulkDays, startTime, endTime, room: room || undefined, qrValidityMinutes: defaultQrValidity, gracePeriodMinutes: defaultGracePeriod, geofence: { latitude, longitude, radiusMeters: radius }, teacherId: user.id })
         Alert.alert('Sessions created', `${bulkCount} recurring sessions were created.`)
       } else {
         const replaced = replaceDates.find((item) => item.dateStr === rescheduledFromDate)
-        await api.createSession({ sectionId, subjectName: selectedParentSubject?.name ?? '', date, startTime, endTime, room: room || undefined, geofence: { latitude, longitude, radiusMeters: radius }, teacherId: user.id, isRescheduled: isRescheduled || undefined, rescheduledFromDate: isRescheduled ? rescheduledFromDate : undefined, originalScheduleTime: isRescheduled ? replaced?.scheduleTime : undefined, originalRoom: isRescheduled ? replaced?.room : undefined })
+        await api.createSession({ sectionId, subjectName: selectedParentSubject?.name ?? '', date, startTime, endTime, room: room || undefined, qrValidityMinutes: defaultQrValidity, gracePeriodMinutes: defaultGracePeriod, geofence: { latitude, longitude, radiusMeters: radius }, teacherId: user.id, isRescheduled: isRescheduled || undefined, rescheduledFromDate: isRescheduled ? rescheduledFromDate : undefined, originalScheduleTime: isRescheduled ? replaced?.scheduleTime : undefined, originalRoom: isRescheduled ? replaced?.room : undefined })
       }
       router.back()
     } catch (error) { Alert.alert('Unable to create session', error instanceof Error ? error.message : 'Please try again.') } finally { setSubmitting(false) }

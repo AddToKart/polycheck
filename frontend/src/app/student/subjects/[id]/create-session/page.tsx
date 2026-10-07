@@ -28,6 +28,8 @@ export default function StudentCreateSessionPage() {
   const [latitude, setLatitude] = useState(14.8697)
   const [longitude, setLongitude] = useState(120.9991)
   const [radius, setRadius] = useState(40)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -47,33 +49,76 @@ export default function StudentCreateSessionPage() {
         const subj = await api.getSubject(sec.subjectId)
         setSubject(subj ?? null)
         setRoom(sec.room || '')
+        if (sec.schedule.length > 0) {
+          const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+          const currentDay = dayNames[new Date(`${date}T00:00:00`).getDay()]
+          const matchedSched = sec.schedule.find((s) => s.day === currentDay) ?? sec.schedule[0]
+          if (matchedSched) {
+            setStartTime(matchedSched.startTime)
+            setEndTime(matchedSched.endTime)
+          }
+        }
       }
     }
     fn()
   }, [id])
 
+    const handleStartTimeChange = (newStartTime: string) => {
+    setStartTime(newStartTime)
+    if (formError) setFormError(null)
+    if (newStartTime && endTime <= newStartTime) {
+      const [h, m] = newStartTime.split(':').map(Number)
+      if (!isNaN(h) && !isNaN(m)) {
+        const totalMinutes = h * 60 + m + 90
+        const newH = Math.min(23, Math.floor(totalMinutes / 60))
+        const newM = totalMinutes % 60
+        const autoEnd = `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`
+        if (autoEnd > newStartTime) {
+          setEndTime(autoEnd)
+        }
+      }
+    }
+  }
+
+  const handleEndTimeChange = (newEndTime: string) => {
+    setEndTime(newEndTime)
+    if (formError) setFormError(null)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!section || !subject || !user) return
-
-    const hasPerm = await api.checkSessionPermission(id, user.id)
-    if (!hasPerm) {
-      alert('Your session creation permission has expired. Ask your teacher to grant a new one.')
+    if (!section || !subject || !user || submitting) return
+    if (endTime <= startTime) {
+      setFormError('End time must be after start time.')
       return
     }
 
-    await api.createSession({
-      sectionId: section.id,
-      subjectName: subject.name,
-      date,
-      startTime,
-      endTime,
-      room: room || undefined,
-      geofence: { latitude, longitude, radiusMeters: radius },
-      teacherId: section.teacherId,
-    })
-    alert('Session created successfully!')
-    router.push(`/student/subjects/${id}`)
+    setSubmitting(true)
+    setFormError(null)
+    try {
+      const hasPerm = await api.checkSessionPermission(id, user.id)
+      if (!hasPerm) {
+        setFormError('Your session creation permission has expired. Ask your teacher to grant a new one.')
+        return
+      }
+
+      await api.createSession({
+        sectionId: section.id,
+        subjectName: subject.name,
+        date,
+        startTime,
+        endTime,
+        room: room || undefined,
+        geofence: { latitude, longitude, radiusMeters: radius },
+        teacherId: section.teacherId,
+      })
+      alert('Session created successfully!')
+      router.push(`/student/subjects/${id}`)
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Unable to create session. Please check your inputs.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleLogout = () => { api.logout(); router.push('/') }
@@ -112,15 +157,20 @@ export default function StudentCreateSessionPage() {
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="startTime">Start Time</Label>
-                    <Input id="startTime" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
+                    <Input id="startTime" type="time" value={startTime} onChange={(e) => handleStartTimeChange(e.target.value)} required />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="endTime">End Time</Label>
-                    <Input id="endTime" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} required />
+                    <Input id="endTime" type="time" value={endTime} onChange={(e) => handleEndTimeChange(e.target.value)} required />
                   </div>
                 </div>
+                {endTime <= startTime && (
+                  <p className="text-xs text-red-600 dark:text-red-400 font-medium">
+                    End time must be after start time.
+                  </p>
+                )}
 
-                 <div className="space-y-2">
+                <div className="space-y-2">
                   <Label htmlFor="room">Room</Label>
                   <Input id="room" value={room} onChange={(e) => setRoom(e.target.value)} placeholder="e.g. CCIS Lab 3" />
                 </div>

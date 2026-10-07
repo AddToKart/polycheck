@@ -9,10 +9,16 @@ import { GeofenceService } from './geofence.service'
 import {
   MAX_LOCATION_ACCURACY_METERS,
   MAX_LOCATION_AGE_MS,
+  MAX_WEB_LOCATION_ACCURACY_METERS,
   type CachedSession,
   type ScanEvidence,
   type ScanValidation,
 } from './types'
+import {
+  getDeviceSecuritySignals,
+  getPrimaryDeviceSecurityDispute,
+  matchesStoredDeviceSecurityEvidence,
+} from './device-security-policy'
 
 const MAX_QR_VALIDITY_MINUTES = 15
 const MAX_QR_GRACE_MINUTES = 60
@@ -43,6 +49,7 @@ export class ScanValidatorService {
       (attempt.inputChannel ?? undefined) === evidence.inputChannel &&
       (attempt.accuracyMeters ?? undefined) === evidence.accuracyMeters &&
       (attempt.mocked ?? undefined) === evidence.mocked &&
+      matchesStoredDeviceSecurityEvidence(evidence.deviceSecurity, attempt.riskSignals) &&
       (attempt.clientScannedAt?.getTime() ?? null) === clientScannedAt &&
       (attempt.locationCapturedAt?.getTime() ?? null) === locationCapturedAt
     if (!exactReplay) {
@@ -83,6 +90,8 @@ export class ScanValidatorService {
     if (!evidence.inputChannel) missingCoreEvidence.push('missing_input_channel')
     riskSignals.push(...missingCoreEvidence)
     if (evidence.mocked === undefined) riskSignals.push('mock_status_unavailable')
+    if (evidence.mocked) riskSignals.push('mocked_location')
+    riskSignals.push(...getDeviceSecuritySignals(evidence.deviceSecurity))
     if (evidence.inputChannel && evidence.inputChannel !== 'camera')
       riskSignals.push(`fallback_${evidence.inputChannel}`)
     const scannedAt = this.clientScannedAt(evidence, offline, receivedAt)
@@ -161,10 +170,6 @@ export class ScanValidatorService {
       distanceMeters,
       geofenceRadiusMeters: session.geofenceRadiusMeters,
     })
-    if (evidence.mocked === true)
-      return withLocation(
-        failed('disputed', 'mocked_location', 'Mocked locations are not accepted', ['mocked_location']),
-      )
     if (evidence.locationCapturedAt) {
       const locationCapturedAt = new Date(evidence.locationCapturedAt)
       const clientTimestamp = evidence.scannedAt ? new Date(evidence.scannedAt) : null
@@ -176,18 +181,22 @@ export class ScanValidatorService {
           failed('disputed', 'stale_location', 'Location fix is stale or has an invalid timestamp', ['stale_location']),
         )
     }
-    if (evidence.accuracyMeters !== undefined && evidence.accuracyMeters > MAX_LOCATION_ACCURACY_METERS)
+    if (distanceMeters > session.geofenceRadiusMeters)
+      return withLocation(
+        failed('absent', 'outside_geofence', 'You are outside the session geofence', ['outside_geofence']),
+      )
+    const isWeb = Boolean(evidence.deviceId?.startsWith('web-') || evidence.inputChannel === 'image')
+    const maxAccuracy = isWeb ? MAX_WEB_LOCATION_ACCURACY_METERS : MAX_LOCATION_ACCURACY_METERS
+    if (evidence.accuracyMeters !== undefined && evidence.accuracyMeters > maxAccuracy)
       return withLocation(
         failed('disputed', 'poor_location_accuracy', 'Location accuracy is too poor to verify attendance', [
           'poor_accuracy',
         ]),
       )
-    if (distanceMeters > session.geofenceRadiusMeters)
-      return withLocation(
-        failed('absent', 'outside_geofence', 'You are outside the session geofence', ['outside_geofence']),
-      )
     if (
+      !isWeb &&
       evidence.accuracyMeters !== undefined &&
+      evidence.accuracyMeters <= session.geofenceRadiusMeters &&
       distanceMeters + evidence.accuracyMeters > session.geofenceRadiusMeters
     )
       return withLocation(
@@ -199,6 +208,12 @@ export class ScanValidatorService {
       return withLocation(
         failed('absent', 'qr_expired', 'The QR attendance window has expired', ['client_scan_outside_window']),
       )
+    if (evidence.mocked === true)
+      return withLocation(failed('disputed', 'mocked_location', 'Mocked locations are not accepted'))
+    const deviceSecurityDispute = getPrimaryDeviceSecurityDispute(evidence.deviceSecurity)
+    if (deviceSecurityDispute) {
+      return withLocation(failed('disputed', deviceSecurityDispute.reason, deviceSecurityDispute.message))
+    }
     if (offline && (receivedAt.getTime() > graceEnd || session.endedAt)) {
       return {
         success: true,
@@ -255,6 +270,7 @@ export class ScanValidatorService {
       locationCapturedAt: dto.locationCapturedAt,
       mocked: dto.mocked,
       inputChannel: dto.inputChannel,
+      deviceSecurity: dto.deviceSecurity,
     }
   }
 
@@ -271,6 +287,7 @@ export class ScanValidatorService {
       locationCapturedAt: dto.locationCapturedAt,
       mocked: dto.mocked,
       inputChannel: dto.inputChannel,
+      deviceSecurity: dto.deviceSecurity,
     }
   }
 

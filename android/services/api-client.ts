@@ -1,5 +1,5 @@
 import { Platform } from 'react-native'
-import { getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice } from '@polycheck/shared'
+import { getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage } from '@polycheck/shared'
 import { API_BASE } from './api-config'
 import { getOrCreateTeacherSigningKey } from './signing-key'
 import { getOrCreateInstallationId } from './device-id'
@@ -187,10 +187,10 @@ async function get<T>(path: string): Promise<T> {
   return handleResponse<T>(res)
 }
 
-async function post<T>(path: string, body?: unknown): Promise<T> {
+async function post<T>(path: string, body?: unknown, operationId?: string): Promise<T> {
   const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: await authHeaders(),
+    headers: { ...await authHeaders(), ...(operationId ? { 'Idempotency-Key': operationId } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   return handleResponse<T>(res)
@@ -570,18 +570,19 @@ export const api = {
       const validityEnd = tokenPayload.issuedAt + tokenPayload.validityMinutes * 60_000
       const graceEnd = validityEnd + tokenPayload.gracePeriodMinutes * 60_000
       if (evidence?.mocked === true) return { error: 'Mocked locations are not accepted' }
-      if ((evidence?.accuracyMeters ?? 0) > 50) return { error: 'Location accuracy is too poor to verify attendance' }
-      if (evidence?.locationCapturedAt && Math.abs(capturedAt - new Date(evidence.locationCapturedAt).getTime()) > 2 * 60_000) {
-        return { error: 'Location fix is stale. Acquire a fresh location and try again.' }
-      }
       const cachedSession = await getCachedSession(sessionId)
       if (!cachedSession || !isWithinGeofence(lat, lon, cachedSession.geofence.latitude, cachedSession.geofence.longitude, cachedSession.geofence.radiusMeters)) {
         return { error: 'You are outside the session geofence' }
+      }
+      if ((evidence?.accuracyMeters ?? 0) > 50) return { error: 'Location accuracy is too poor to verify attendance' }
+      if (evidence?.locationCapturedAt && Math.abs(capturedAt - new Date(evidence.locationCapturedAt).getTime()) > 2 * 60_000) {
+        return { error: 'Location fix is stale. Acquire a fresh location and try again.' }
       }
       if (!Number.isFinite(capturedAt) || capturedAt < tokenPayload.issuedAt - 30_000 || capturedAt > graceEnd) {
         return { error: 'The QR attendance window has expired' }
       }
       await enqueueOfflineOperation('attendance_scan', payload)
+      const deviceSecurityFlagged = Object.values(evidence?.deviceSecurity ?? {}).some((detected) => detected === true)
       const record: AttendanceRecord = {
         id: `offline:${sessionId}:${studentId}`,
         sessionId,
@@ -589,7 +590,7 @@ export const api = {
         studentId,
         studentName,
         timestamp,
-        status: capturedAt <= validityEnd ? 'present' : 'late',
+        status: deviceSecurityFlagged ? 'disputed' : capturedAt <= validityEnd ? 'present' : 'late',
         coordinates: { latitude: lat, longitude: lon },
         deviceId,
         tokenSnapshot: qrToken,
@@ -667,6 +668,9 @@ export const api = {
   getSettings(): Promise<{ key: string; value: string; updatedAt: string }[]> {
     return get('/settings')
   },
+  getAuditLogs(filters: AuditLogFilters = {}): Promise<AuditLogPage> {
+    return get(queryPath('/audit-logs', { ...filters }))
+  },
   setSetting(key: string, value: string): Promise<{ key: string; value: string; updatedAt: string }> {
     return put(`/settings/${encodeURIComponent(key)}`, { value })
   },
@@ -731,31 +735,62 @@ export const api = {
     const user = this.getCurrentUser()
     if (!user) return
     await initializeOfflineStore(user.id)
-    await drainOfflineQueue(async (kind: OfflineOperationKind, payload) => {
-      if (kind === 'attendance_scan') {
-        const response = await post<{
-          queued: false
-          results: Array<AttendanceRecord | { error: string }>
-        }>('/sync/attendance', {
-          records: [payload],
-        })
-        const result = response.results[0]
-        if (!result) return { outcome: 'retryable', error: 'Attendance sync returned no result' }
-        if ('error' in result) return classifyAttendanceSyncError(result.error)
-        await removeCachedAttendanceAttempt(String(payload.sessionId), user.id)
-        await cacheAttendanceRecords([{ ...result, isSynced: true }])
-        return { outcome: 'synced' }
+    await drainOfflineQueue(async (kind: OfflineOperationKind, payload, operationId) => {
+      try {
+        if (kind === 'attendance_scan') {
+          const response = await post<{
+            queued: false
+            results: Array<AttendanceRecord | { error: string; retryable?: boolean }>
+          } | { queued: true; receiptId: string }>('/sync/attendance/batches', {
+            records: [payload],
+          })
+          const completion = response.queued
+            ? await get<{ state: 'completed'; results: Array<AttendanceRecord | { error: string; retryable?: boolean }> } | { state: 'pending' | 'failed' }>(`/sync/attendance/batches/${response.receiptId}`)
+            : { state: 'completed' as const, results: response.results }
+          if (completion.state !== 'completed') return { outcome: 'pending', error: 'Awaiting server confirmation' }
+          const result = completion.results[0]
+          if (!result) return { outcome: 'retryable', error: 'Attendance sync returned no result' }
+          if ('error' in result) return result.retryable === false ? { outcome: 'terminal', error: result.error } : classifyAttendanceSyncError(result.error)
+          await removeCachedAttendanceAttempt(String(payload.sessionId), user.id)
+          await cacheAttendanceRecords([{ ...result, isSynced: true }])
+          return { outcome: 'synced' }
+        }
+        if (kind === 'scan_attempt') {
+          const result = await post<SubmitAttendanceResult>('/attendance/check', payload, operationId)
+          if (!result.success) return { outcome: 'terminal', error: result.message || result.reason || 'Check-in rejected' }
+          return
+        }
+        const sessionId = String(payload.sessionId)
+        if (kind === 'session_activation') {
+          await post(`/sessions/${sessionId}/activate`, { validityMinutes: payload.validityMinutes, gracePeriodMinutes: payload.gracePeriodMinutes, token: payload.token }, operationId)
+          return
+        }
+        if (kind !== 'session_end') return { outcome: 'terminal', error: 'Unknown offline operation. Contact support.' }
+        await post(`/sessions/${sessionId}/end`, undefined, operationId)
+      } catch (error) {
+        if (error instanceof ApiRequestError && error.status === 409 && (kind === 'session_activation' || kind === 'session_end')) {
+          // Read directly from the server: cached local state cannot prove a commit.
+          try {
+            const session = await get<Session>(`/sessions/${String(payload.sessionId)}`)
+            const committed = kind === 'session_activation'
+              ? Boolean(payload.token && session.qrToken === payload.token)
+              : Boolean(session.endedAt)
+            if (committed) {
+              await cacheSessions([session])
+              return { outcome: 'synced' }
+            }
+            if (session.qrToken || session.endedAt) return { outcome: 'terminal', error: 'Session changed on the server. Review it with your instructor.' }
+            return { outcome: 'retryable', error: 'Session operation is still in progress' }
+          } catch (reconciliationError) {
+            error = reconciliationError
+          }
+        }
+        const message = error instanceof Error ? error.message : 'Sync failed'
+        if (error instanceof ApiRequestError && [400, 403, 404, 410, 422].includes(error.status)) {
+          return { outcome: 'terminal', error: message }
+        }
+        return { outcome: 'retryable', error: message }
       }
-      if (kind === 'scan_attempt') {
-        await post('/attendance/check', payload)
-        return
-      }
-      const sessionId = String(payload.sessionId)
-      if (kind === 'session_activation') {
-        await post(`/sessions/${sessionId}/activate`, { validityMinutes: payload.validityMinutes, gracePeriodMinutes: payload.gracePeriodMinutes, token: payload.token })
-        return
-      }
-      await post(`/sessions/${sessionId}/end`)
     })
   },
   async preSyncOfflineData(): Promise<void> {

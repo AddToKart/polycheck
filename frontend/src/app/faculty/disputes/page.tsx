@@ -18,7 +18,9 @@ import {
   Calendar,
   ChevronDown,
   ChevronUp,
-  Search
+  Search,
+  ShieldAlert,
+  Cpu,
 } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, AttendanceRecord, DisputeReason, Subject, Section, Session } from '@polycheck/shared'
@@ -28,6 +30,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useNotifications } from '@/lib/notifications'
+import { SecurityDisputeBadge } from './security-dispute-badge'
 
 const DISPUTE_LABELS: Record<DisputeReason, string> = {
   outside_geofence: 'Outside Geofence',
@@ -43,6 +46,10 @@ const DISPUTE_LABELS: Record<DisputeReason, string> = {
   not_enrolled: 'Not Enrolled',
   qr_expired: 'QR Expired',
   rate_limited: 'Rate Limited',
+  mocked_location: 'Mock GPS / Fake Location',
+  rooted_device: 'Rooted / Jailbroken Device',
+  hook_detected: 'Hooking Tool Detected',
+  emulator_detected: 'Android Emulator Detected',
 }
 
 const DISPUTE_ICONS: Record<DisputeReason, React.ElementType> = {
@@ -59,6 +66,10 @@ const DISPUTE_ICONS: Record<DisputeReason, React.ElementType> = {
   not_enrolled: AlertTriangle,
   qr_expired: Timer,
   rate_limited: AlertTriangle,
+  mocked_location: AlertTriangle,
+  rooted_device: ShieldAlert,
+  hook_detected: Cpu,
+  emulator_detected: Smartphone,
 }
 
 export default function DisputesPage() {
@@ -460,8 +471,9 @@ export default function DisputesPage() {
                                                     {record.disputeReason ? DISPUTE_LABELS[record.disputeReason] : 'Unknown'}
                                                   </span>
                                                 </div>
+                                                <SecurityDisputeBadge reason={record.disputeReason} />
                                                 {record.notes && (
-                                                  <div className="text-[11px] text-zinc-500 dark:text-zinc-400 line-clamp-2">
+                                                  <div className="text-[11px] text-zinc-500 dark:text-zinc-400 line-clamp-2 mt-1">
                                                     {record.notes}
                                                   </div>
                                                 )}
@@ -522,9 +534,12 @@ export default function DisputesPage() {
                       </span>
                     </div>
                   )}
-                  <div className="flex gap-2">
-                    <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-16">Reason:</span>
-                    <span className="text-maroon dark:text-golden font-bold">{selectedRecord.disputeReason ? DISPUTE_LABELS[selectedRecord.disputeReason] : 'Unknown'}</span>
+                  <div className="flex gap-2 items-start">
+                    <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-16 pt-0.5">Reason:</span>
+                    <div className="space-y-1">
+                      <span className="text-maroon dark:text-golden font-bold block">{selectedRecord.disputeReason ? DISPUTE_LABELS[selectedRecord.disputeReason] : 'Unknown'}</span>
+                      <SecurityDisputeBadge reason={selectedRecord.disputeReason} />
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-16">Subject:</span>

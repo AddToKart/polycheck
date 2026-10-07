@@ -9,6 +9,7 @@ import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
+import { OfflineSyncPanel } from '../../components/OfflineSyncPanel'
 import {
   CampusButton,
   CampusCard,
@@ -108,6 +109,7 @@ export default function FacultyDashboardScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={isDark ? pupColors.golden : pupColors.maroon} />}
       >
+        <OfflineSyncPanel />
         {pendingDisputes > 0 ? (
           <CampusCard
             className="mb-4 rounded-none border-l-4 border-l-red-600 border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/20"

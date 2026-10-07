@@ -1,0 +1,66 @@
+name: Staging attendance load
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        type: choice
+        options: [smoke, full]
+        default: smoke
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: staging-attendance-load
+  cancel-in-progress: false
+jobs:
+  load:
+    environment: load-testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        mode: [online, offline, login]
+    env:
+      STAGING_BASE_URL: ${{ vars.STAGING_BASE_URL }}
+      LOAD_TEST_AUTHORIZATION: ${{ vars.LOAD_TEST_AUTHORIZATION }}
+      LOAD_FIXTURE_JSON: ${{ secrets.LOAD_FIXTURE_JSON }}
+      K6_PROFILE: ${{ inputs.profile }}
+      K6_MODE: ${{ matrix.mode }}
+      K6_ALLOW_REMOTE_TARGET: I_ACKNOWLEDGE_THIS_WRITES_ATTENDANCE_DATA
+      K6_CONFIRM_1000_USERS: I_HAVE_AUTHORIZATION_FOR_1000_USERS
+      K6_SUMMARY_EXPORT: performance/attendance-${{ matrix.mode }}.summary.json
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set ephemeral fixture path
+        run: echo "K6_FIXTURE_FILE=$RUNNER_TEMP/polycheck-load-fixture.json" >> "$GITHUB_ENV"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir shared build
+      - uses: grafana/setup-k6-action@v1
+      - name: Prepare dedicated staging accounts and activate a fresh session
+        run: node performance/prepare-staging.mjs
+      - name: Execute attendance traffic and dashboard reads
+        if: matrix.mode != 'login'
+        run: k6 run performance/attendance-load.js
+      - name: Measure login burst with production rate limits
+        if: matrix.mode == 'login'
+        run: k6 run performance/login-load.js
+      - name: Retain measured results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: attendance-load-${{ github.sha }}-${{ matrix.mode }}
+          path: performance/*.summary.json
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Remove ephemeral credentials
+        if: always()
+        run: rm -f -- "$K6_FIXTURE_FILE"

@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Request } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, Post, Request } from '@nestjs/common'
 import { Roles } from '../common/decorators/roles.decorator'
 import { SyncAttendanceBatchDto } from './dto/sync-attendance.dto'
 import { SyncService } from './sync.service'
@@ -14,5 +14,18 @@ export class SyncController {
   @Roles('student')
   submitAttendance(@Request() req: AuthenticatedRequest, @Body() dto: SyncAttendanceBatchDto) {
     return this.sync.submit(req.user, dto.records)
+  }
+
+  @Post('attendance/batches')
+  @HttpCode(202)
+  @Roles('student')
+  enqueueAttendance(@Request() req: AuthenticatedRequest, @Body() dto: SyncAttendanceBatchDto) {
+    return this.sync.enqueue(req.user, dto.records)
+  }
+
+  @Get('attendance/batches/:receiptId')
+  @Roles('student')
+  attendanceStatus(@Request() req: AuthenticatedRequest, @Param('receiptId') receiptId: string) {
+    return this.sync.status(req.user, receiptId)
   }
 }

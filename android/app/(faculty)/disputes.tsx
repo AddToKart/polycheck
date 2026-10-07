@@ -16,6 +16,8 @@ const DISPUTE_LABELS: Record<DisputeReason, string> = {
   invalid_signature: 'Invalid signature', device_mismatch: 'Device mismatch', suspicious_coordinates: 'Suspicious GPS',
   delayed_offline_sync: 'Delayed offline sync', invalid_timestamp: 'Invalid timestamp', token_mismatch: 'QR token mismatch',
   session_inactive: 'Inactive session', not_enrolled: 'Not enrolled', qr_expired: 'QR expired', rate_limited: 'Rate limited',
+  mocked_location: 'Mock GPS / Fake location', rooted_device: 'Rooted / Jailbroken device', hook_detected: 'Hooking tool detected',
+  emulator_detected: 'Android emulator detected',
 }
 
 const DISPUTE_ICONS: Record<DisputeReason, keyof typeof MaterialIcons.glyphMap> = {
@@ -23,6 +25,8 @@ const DISPUTE_ICONS: Record<DisputeReason, keyof typeof MaterialIcons.glyphMap> 
   invalid_signature: 'fingerprint', device_mismatch: 'devices', suspicious_coordinates: 'gps-fixed',
   delayed_offline_sync: 'cloud-off', invalid_timestamp: 'access-time', token_mismatch: 'qr-code-2',
   session_inactive: 'timer-off', not_enrolled: 'person-off', qr_expired: 'timer-off', rate_limited: 'speed',
+  mocked_location: 'wrong-location', rooted_device: 'security', hook_detected: 'code',
+  emulator_detected: 'phone-android',
 }
 
 type DisputeGroup = {

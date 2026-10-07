@@ -1,4 +1,4 @@
-import { getRecentCampusDateRange, signQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice } from '@polycheck/shared'
+import { getRecentCampusDateRange, signQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage } from '@polycheck/shared'
 import { getOrCreateTeacherSigningKey, isSigningKeyProvisioned, markSigningKeyProvisioned } from './signing-key'
 import { API_BASE } from './api-config'
 
@@ -370,6 +370,9 @@ export const api = {
   },
   setSetting(key: string, value: string): Promise<{ key: string; value: string; updatedAt: string }> {
     return put(`/settings/${encodeURIComponent(key)}`, { value })
+  },
+  getAuditLogs(filters: AuditLogFilters = {}): Promise<AuditLogPage> {
+    return get(queryPath('/audit-logs', { ...filters }))
   },
   getMyAttendance(studentId: string): Promise<AttendanceRecord[]> {
     return get(`/attendance/student/${studentId}`)

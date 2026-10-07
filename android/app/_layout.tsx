@@ -78,11 +78,13 @@ function RootLayoutInner() {
 
     void api.restoreSession()
       .then(() => api.preSyncOfflineData())
+      .catch((error) => { Sentry.captureException(error) })
       .finally(() => { if (mounted) setSessionReady(true) })
 
-    const interval = setInterval(() => { void api.preSyncOfflineData() }, 30_000)
+    const sync = () => { void api.preSyncOfflineData().catch((error) => { Sentry.captureException(error) }) }
+    const interval = setInterval(sync, 30_000)
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void api.preSyncOfflineData()
+      if (state === 'active') sync()
     })
 
     return () => {

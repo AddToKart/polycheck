@@ -7,6 +7,7 @@ jest.mock('expo-secure-store', () => ({
   deleteItemAsync: jest.fn().mockResolvedValue(undefined),
 }))
 jest.mock('expo-crypto', () => ({
+  randomUUID: () => require('crypto').randomUUID(),
   getRandomBytesAsync: jest.fn().mockResolvedValue(new Uint8Array(32)),
 }))
 jest.mock('expo-constants', () => ({
@@ -113,7 +114,7 @@ function runSql(sql: string, ...params: unknown[]) {
     if (row) {
       const setClause = sql.match(/SET\s+([\s\S]+?)\s+WHERE/i)?.[1] || ''
       const setParts = setClause.split(',').map((s) => s.trim().split('=').map((c) => c.trim()))
-      setParts.forEach(([col], i) => { row[col] = params[i] })
+      setParts.forEach(([col, value], i) => { row[col] = value === 'NULL' ? null : params[i] })
       return { changes: 1 }
     }
     return { changes: 0 }
@@ -151,7 +152,7 @@ function querySql(sql: string, ...params: unknown[]) {
   if (literalWhere) rows = rows.filter((r) => r[literalWhere[1]] === literalWhere[2])
 
   // Handle last_error IS NULL OR last_error NOT LIKE 'terminal:%'
-  if (/last_error/i.test(sql)) {
+  if (/last_error NOT LIKE/i.test(sql)) {
     rows = rows.filter((r) => r.last_error == null || (typeof r.last_error === 'string' && !r.last_error.startsWith('terminal:')))
   }
 
@@ -199,6 +200,8 @@ import {
   enqueueOfflineOperation,
   drainOfflineQueue,
   getPendingSyncCount,
+  getOfflineQueueIssues,
+  retryOfflineOperation,
   setOfflineOwner,
   setServerClockOffset,
   getServerClockOffset,
@@ -439,6 +442,40 @@ describe('offline-store', () => {
   })
 
   describe('sync queue', () => {
+    it('shows permanent failures and retries the original evidence only for its owner', async () => {
+      const payload = { clientAttemptId: 'failed-1', sessionId: 's1', scannedAt: '2026-08-02T10:00:00Z' }
+      await enqueueOfflineOperation('attendance_scan', payload)
+      await drainOfflineQueue(async () => ({ outcome: 'terminal', error: 'Enrollment removed' }))
+      const [issue] = await getOfflineQueueIssues()
+      expect(issue).toMatchObject({ failed: true, sessionId: 's1', error: 'Enrollment removed' })
+      await initializeOfflineStore('user-2')
+      expect(await getOfflineQueueIssues()).toEqual([])
+      await retryOfflineOperation(issue.id)
+      setOfflineOwner('user-1')
+      expect((await getOfflineQueueIssues())[0].failed).toBe(true)
+      await retryOfflineOperation(issue.id)
+      const send = jest.fn().mockResolvedValue({ outcome: 'synced' })
+      await drainOfflineQueue(send)
+      expect(send).toHaveBeenCalledWith('attendance_scan', payload, issue.id)
+      expect(await getOfflineQueueIssues()).toEqual([])
+    })
+    it('retains pending receipts without starving later independent scans', async () => {
+      await enqueueOfflineOperation('attendance_scan', { clientAttemptId: 'pending-1', sessionId: 's1' })
+      await enqueueOfflineOperation('attendance_scan', { clientAttemptId: 'ready-2', sessionId: 's2' })
+      const send = jest.fn().mockResolvedValueOnce({ outcome: 'pending' }).mockResolvedValueOnce({ outcome: 'synced' })
+      await drainOfflineQueue(send)
+      expect(send).toHaveBeenCalledTimes(2)
+      expect(await getPendingSyncCount()).toBe(1)
+    })
+
+    it('keeps permanent failures but continues sending the next operation', async () => {
+      await enqueueOfflineOperation('session_activation', { sessionId: 's1' })
+      await enqueueOfflineOperation('session_end', { sessionId: 's2' })
+      const send = jest.fn().mockResolvedValueOnce({ outcome: 'terminal', error: 'Permission revoked' }).mockResolvedValueOnce({ outcome: 'synced' })
+      await drainOfflineQueue(send)
+      expect(send).toHaveBeenCalledTimes(2)
+      expect(await getPendingSyncCount()).toBe(0)
+    })
     it('enqueues and counts pending operations', async () => {
       await enqueueOfflineOperation('attendance_scan', { sessionId: 's1', studentId: 'st1' })
       const count = await getPendingSyncCount()

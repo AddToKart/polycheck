@@ -1,11 +1,13 @@
 import { Platform } from 'react-native'
 import * as SQLite from 'expo-sqlite'
+import * as Crypto from 'expo-crypto'
 import type { AttendanceRecord, Section, Session, Subject } from '@polycheck/shared'
 import { decryptOfflineValue, encryptOfflineValue } from './offline-crypto'
 
 export type OfflineOperationKind = 'attendance_scan' | 'scan_attempt' | 'session_activation' | 'session_end'
 export type OfflineSendResult =
   | { outcome: 'synced' }
+  | { outcome: 'pending'; error: string }
   | { outcome: 'retryable' | 'terminal'; error: string }
 
 type QueueRow = {
@@ -340,7 +342,7 @@ export const enqueueOfflineOperation = async (kind: OfflineOperationKind, payloa
     payload && typeof payload === 'object' && 'clientAttemptId' in payload
       ? String(payload.clientAttemptId)
       : undefined
-  const id = clientAttemptId ? `${kind}:${clientAttemptId}` : `${kind}:${createdAt}:${Math.random().toString(36).slice(2)}`
+  const id = clientAttemptId ? `${kind}:${clientAttemptId}` : `${kind}:${Crypto.randomUUID()}`
   await db.runAsync(
     `INSERT OR IGNORE INTO sync_queue_v2
       (owner_id, id, kind, payload, created_at) VALUES (?, ?, ?, ?, ?)`,
@@ -353,7 +355,7 @@ export const enqueueOfflineOperation = async (kind: OfflineOperationKind, payloa
 }
 
 export const drainOfflineQueue = async (
-  send: (kind: OfflineOperationKind, payload: Record<string, unknown>) => Promise<OfflineSendResult | void>,
+  send: (kind: OfflineOperationKind, payload: Record<string, unknown>, operationId: string) => Promise<OfflineSendResult | void>,
 ) => {
   if (drainPromise) return drainPromise
   const ownerId = requireOwner()
@@ -369,9 +371,20 @@ export const drainOfflineQueue = async (
     )
     for (const row of rows) {
       if (owner() !== ownerId) break
+      let payload: Record<string, unknown>
       try {
-        const payload = await decryptOfflineValue<Record<string, unknown>>(row.payload)
-        const result = await send(row.kind, payload)
+        payload = await decryptOfflineValue<Record<string, unknown>>(row.payload)
+      } catch {
+        await db.runAsync(
+          'UPDATE sync_queue_v2 SET attempts = ?, last_error = ? WHERE owner_id = ? AND id = ?',
+          row.attempts + 1, 'terminal: Saved evidence could not be read. Contact support.', ownerId, row.id,
+        )
+        continue
+      }
+      if (owner() !== ownerId) break
+      try {
+        const result = await send(row.kind, payload, row.id)
+        if (result?.outcome === 'pending') continue
         if (result?.outcome === 'terminal') {
           await db.runAsync(
             'UPDATE sync_queue_v2 SET attempts = ?, last_error = ? WHERE owner_id = ? AND id = ?',
@@ -422,6 +435,33 @@ export const getPendingSyncCount = async () => {
     ownerId,
   )
   return row?.count ?? 0
+}
+
+export type OfflineQueueIssue = { id: string; kind: OfflineOperationKind; sessionId: string; error: string; failed: boolean }
+
+export const getOfflineQueueIssues = async (): Promise<OfflineQueueIssue[]> => {
+  const db = await database()
+  const ownerId = owner()
+  if (!db || !ownerId) return []
+  const rows = await db.getAllAsync<QueueRow & { last_error: string | null }>(
+    'SELECT id, kind, payload, attempts, last_error FROM sync_queue_v2 WHERE owner_id = ? ORDER BY created_at ASC', ownerId,
+  )
+  return Promise.all(rows.map(async (row) => {
+    let sessionId = 'Unavailable'
+    try {
+      const payload = await decryptOfflineValue<Record<string, unknown>>(row.payload)
+      sessionId = String(payload.sessionId ?? 'Unavailable')
+    } catch { /* Preserve corrupted evidence for support instead of silently deleting it. */ }
+    return { id: row.id, kind: row.kind, sessionId, error: row.last_error?.replace(/^(terminal|retryable): /, '') ?? 'Awaiting server confirmation', failed: row.last_error?.startsWith('terminal:') ?? false }
+  }))
+}
+
+// Explicit retry preserves the original attempt ID and evidence; it cannot turn
+// a rejected scan into a fresh attendance attempt or change its timestamp.
+export const retryOfflineOperation = async (id: string) => {
+  const db = await database()
+  if (!db) return
+  await db.runAsync('UPDATE sync_queue_v2 SET last_error = NULL WHERE owner_id = ? AND id = ?', requireOwner(), id)
 }
 
 export const setServerClockOffset = async (offsetMs: number) => {

@@ -447,8 +447,8 @@ function SuperAdminDashboard({ user }: { user: User }) {
               ))}
             </div>
             <div className="border-t border-zinc-200 dark:border-zinc-800 p-4">
-              <Button variant="outline" className="w-full text-[10px] font-bold uppercase tracking-widest rounded-none">
-                View Audit Log <ArrowRight className="w-3 h-3 ml-2" />
+              <Button variant="outline" className="w-full text-[10px] font-bold uppercase tracking-widest rounded-none" asChild>
+                <Link href="/faculty/audit-logs">View Audit Log <ArrowRight className="w-3 h-3 ml-2" /></Link>
               </Button>
             </div>
           </CardContent>

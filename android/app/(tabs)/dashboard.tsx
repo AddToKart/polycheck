@@ -9,6 +9,7 @@ import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
+import { OfflineSyncPanel } from '../../components/OfflineSyncPanel'
 import {
   AttendanceStatusPill,
   CampusButton,
@@ -126,6 +127,7 @@ export default function DashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={isDark ? pupColors.golden : pupColors.maroon} />}
       >
         {/* Credential Card */}
+        <OfflineSyncPanel />
         <CampusCard className="mb-4 bg-white dark:bg-surface-dark border-l-4 border-l-golden rounded-none">
           <View className="flex-row items-center justify-between gap-4">
             <View className="flex-1">

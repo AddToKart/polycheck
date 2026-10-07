@@ -6,6 +6,7 @@ import { SectionsController } from '../sections/sections.controller'
 import { SessionsController } from '../sessions/sessions.controller'
 import { SubjectsController } from '../subjects/subjects.controller'
 import { UsersController } from '../users/users.controller'
+import { AuditLogsController } from '../audit-logs/audit-logs.controller'
 
 type ControllerMethod = (...args: never[]) => unknown
 
@@ -43,6 +44,7 @@ describe('role capability policy', () => {
     UsersController.prototype.createStudent,
     UsersController.prototype.resetPassword,
     UsersController.prototype.setStatus,
+    AuditLogsController.prototype.list,
   ])('keeps account administration restricted to super_admin', (method) => {
     expect(rolesFor(method as ControllerMethod)).toEqual(['super_admin'])
   })

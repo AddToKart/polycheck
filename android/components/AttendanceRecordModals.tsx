@@ -48,7 +48,7 @@ export const AttendanceRecordDetailModal = ({ visible, record, subjectName, onCl
             <DetailField label="Time" value={new Date(record.timestamp).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })} />
             <View className="py-3">
               <Text className="mb-2 font-sans-bold text-[10px] uppercase tracking-[1.5px] text-muted dark:text-zinc-500">Status</Text>
-              <AttendanceStatusPill status={record.status} />
+              {record.isSynced ? <AttendanceStatusPill status={record.status} /> : <Text className="font-sans-bold text-maroon dark:text-golden">Saved on device · Awaiting confirmation</Text>}
             </View>
             {record.status === 'disputed' && record.notes ? <DetailField label="Dispute Note" value={record.notes} /> : null}
             <View className="mt-5 flex-row gap-3">
@@ -56,7 +56,7 @@ export const AttendanceRecordDetailModal = ({ visible, record, subjectName, onCl
               <CampusButton
                 label={record.status === 'disputed' ? 'Dispute Sent' : 'Report Issue'}
                 icon="flag"
-                disabled={record.status === 'disputed'}
+                disabled={!record.isSynced || record.status === 'disputed'}
                 onPress={onDispute}
                 className="flex-1"
               />
