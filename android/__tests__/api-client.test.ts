@@ -373,6 +373,7 @@ describe('api-client offline sync engine', () => {
       })
 
       it('rejects low-accuracy evidence', async () => {
+        storeMock.getCachedSession.mockResolvedValue(cachedSession)
         const result = await api.submitScan(
           'sess-1', 'student-1', 'Student One', 14.5995, 120.9842, 'dev-1',
           qrToken, '2026-08-02T10:00:00.000Z',
@@ -383,6 +384,7 @@ describe('api-client offline sync engine', () => {
       })
 
       it('rejects stale location evidence', async () => {
+        storeMock.getCachedSession.mockResolvedValue(cachedSession)
         const result = await api.submitScan(
           'sess-1', 'student-1', 'Student One', 14.5995, 120.9842, 'dev-1',
           qrToken, '2026-08-02T10:00:00.000Z',
@@ -398,6 +400,19 @@ describe('api-client offline sync engine', () => {
         const result = await api.submitScan(
           'sess-1', 'student-1', 'Student One', 14.9, 121.3, 'dev-1',
           qrToken, '2026-08-02T10:00:00.000Z',
+        )
+
+        expect(result).toEqual({ error: 'You are outside the session geofence' })
+        expect(storeMock.enqueueOfflineOperation).not.toHaveBeenCalled()
+      })
+
+      it('rejects scans outside the session geofence even if accuracy is broad', async () => {
+        storeMock.getCachedSession.mockResolvedValue(cachedSession)
+
+        const result = await api.submitScan(
+          'sess-1', 'student-1', 'Student One', 14.9, 121.3, 'dev-1',
+          qrToken, '2026-08-02T10:00:00.000Z',
+          { clientAttemptId: 'a-outside-poor', accuracyMeters: 80, locationCapturedAt: '2026-08-02T10:00:00.000Z', mocked: false, inputChannel: 'camera' },
         )
 
         expect(result).toEqual({ error: 'You are outside the session geofence' })

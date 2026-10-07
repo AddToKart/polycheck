@@ -160,6 +160,14 @@ describe('ScanValidatorService', () => {
       expect(result.reason).toBe('outside_geofence')
     })
 
+    it('returns absent when outside geofence even with broad accuracy circle', async () => {
+      geofence.calculateDistance.mockReturnValue(100)
+      const result = await service.validateScan(studentUser, makeEvidence({ accuracyMeters: 80 }), false, new Date())
+      expect(result.success).toBe(false)
+      expect(result.status).toBe('absent')
+      expect(result.reason).toBe('outside_geofence')
+    })
+
     it('returns disputed when location uncertainty extends outside geofence', async () => {
       geofence.calculateDistance.mockReturnValue(45) // 45 + 10 accuracy = 55 > 50 radius
       const result = await service.validateScan(studentUser, makeEvidence({ accuracyMeters: 10 }), false, new Date())

@@ -5,6 +5,7 @@ import type { DeviceSecurityEvidence } from '@polycheck/shared'
 
 export const MAX_LOCATION_AGE_MS = 2 * 60_000
 export const MAX_LOCATION_ACCURACY_METERS = 50
+export const MAX_WEB_LOCATION_ACCURACY_METERS = 500
 export const RAW_ATTENDANCE_LIMIT = 1_000
 export const RAW_DATE_RANGE_DAYS = 31
 export const REPORT_DATE_RANGE_DAYS = 366

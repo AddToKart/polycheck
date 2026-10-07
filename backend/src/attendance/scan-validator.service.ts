@@ -9,6 +9,7 @@ import { GeofenceService } from './geofence.service'
 import {
   MAX_LOCATION_ACCURACY_METERS,
   MAX_LOCATION_AGE_MS,
+  MAX_WEB_LOCATION_ACCURACY_METERS,
   type CachedSession,
   type ScanEvidence,
   type ScanValidation,
@@ -180,18 +181,22 @@ export class ScanValidatorService {
           failed('disputed', 'stale_location', 'Location fix is stale or has an invalid timestamp', ['stale_location']),
         )
     }
-    if (evidence.accuracyMeters !== undefined && evidence.accuracyMeters > MAX_LOCATION_ACCURACY_METERS)
+    if (distanceMeters > session.geofenceRadiusMeters)
+      return withLocation(
+        failed('absent', 'outside_geofence', 'You are outside the session geofence', ['outside_geofence']),
+      )
+    const isWeb = Boolean(evidence.deviceId?.startsWith('web-') || evidence.inputChannel === 'image')
+    const maxAccuracy = isWeb ? MAX_WEB_LOCATION_ACCURACY_METERS : MAX_LOCATION_ACCURACY_METERS
+    if (evidence.accuracyMeters !== undefined && evidence.accuracyMeters > maxAccuracy)
       return withLocation(
         failed('disputed', 'poor_location_accuracy', 'Location accuracy is too poor to verify attendance', [
           'poor_accuracy',
         ]),
       )
-    if (distanceMeters > session.geofenceRadiusMeters)
-      return withLocation(
-        failed('absent', 'outside_geofence', 'You are outside the session geofence', ['outside_geofence']),
-      )
     if (
+      !isWeb &&
       evidence.accuracyMeters !== undefined &&
+      evidence.accuracyMeters <= session.geofenceRadiusMeters &&
       distanceMeters + evidence.accuracyMeters > session.geofenceRadiusMeters
     )
       return withLocation(

@@ -570,13 +570,13 @@ export const api = {
       const validityEnd = tokenPayload.issuedAt + tokenPayload.validityMinutes * 60_000
       const graceEnd = validityEnd + tokenPayload.gracePeriodMinutes * 60_000
       if (evidence?.mocked === true) return { error: 'Mocked locations are not accepted' }
-      if ((evidence?.accuracyMeters ?? 0) > 50) return { error: 'Location accuracy is too poor to verify attendance' }
-      if (evidence?.locationCapturedAt && Math.abs(capturedAt - new Date(evidence.locationCapturedAt).getTime()) > 2 * 60_000) {
-        return { error: 'Location fix is stale. Acquire a fresh location and try again.' }
-      }
       const cachedSession = await getCachedSession(sessionId)
       if (!cachedSession || !isWithinGeofence(lat, lon, cachedSession.geofence.latitude, cachedSession.geofence.longitude, cachedSession.geofence.radiusMeters)) {
         return { error: 'You are outside the session geofence' }
+      }
+      if ((evidence?.accuracyMeters ?? 0) > 50) return { error: 'Location accuracy is too poor to verify attendance' }
+      if (evidence?.locationCapturedAt && Math.abs(capturedAt - new Date(evidence.locationCapturedAt).getTime()) > 2 * 60_000) {
+        return { error: 'Location fix is stale. Acquire a fresh location and try again.' }
       }
       if (!Number.isFinite(capturedAt) || capturedAt < tokenPayload.issuedAt - 30_000 || capturedAt > graceEnd) {
         return { error: 'The QR attendance window has expired' }

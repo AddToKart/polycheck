@@ -41,6 +41,8 @@ export default function CreateSessionPage() {
   const [isRescheduled, setIsRescheduled] = useState(false)
   const [rescheduledFromDate, setRescheduledFromDate] = useState('')
   const [existingSessionOnDate, setExistingSessionOnDate] = useState<Session | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
   const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
   useEffect(() => {
@@ -95,6 +97,15 @@ export default function CreateSessionPage() {
       setRoom(selectedSection.room || '')
       setIsRescheduled(false)
       setRescheduledFromDate('')
+      if (selectedSection.schedule.length > 0) {
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+        const currentDay = dayNames[new Date(`${date}T00:00:00`).getDay()]
+        const matchedSched = selectedSection.schedule.find((s) => s.day === currentDay) ?? selectedSection.schedule[0]
+        if (matchedSched) {
+          setStartTime(matchedSched.startTime)
+          setEndTime(matchedSched.endTime)
+        }
+      }
     }
   }, [selectedSection])
 
@@ -128,6 +139,42 @@ export default function CreateSessionPage() {
     return dates
   }
 
+    const handleDateChange = (newDate: string) => {
+    setDate(newDate)
+    if (formError) setFormError(null)
+    if (selectedSection && selectedSection.schedule.length > 0) {
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+      const currentDay = dayNames[new Date(`${newDate}T00:00:00`).getDay()]
+      const matchedSched = selectedSection.schedule.find((s) => s.day === currentDay)
+      if (matchedSched) {
+        setStartTime(matchedSched.startTime)
+        setEndTime(matchedSched.endTime)
+      }
+    }
+  }
+
+  const handleStartTimeChange = (newStartTime: string) => {
+    setStartTime(newStartTime)
+    if (formError) setFormError(null)
+    if (newStartTime && endTime <= newStartTime) {
+      const [h, m] = newStartTime.split(':').map(Number)
+      if (!isNaN(h) && !isNaN(m)) {
+        const totalMinutes = h * 60 + m + 90
+        const newH = Math.min(23, Math.floor(totalMinutes / 60))
+        const newM = totalMinutes % 60
+        const autoEnd = `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`
+        if (autoEnd > newStartTime) {
+          setEndTime(autoEnd)
+        }
+      }
+    }
+  }
+
+  const handleEndTimeChange = (newEndTime: string) => {
+    setEndTime(newEndTime)
+    if (formError) setFormError(null)
+  }
+
   const calculateBulkCount = () => {
     if (!bulkStartDate || !bulkEndDate || bulkDays.length === 0) return 0
     const dayMap: Record<string, number> = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 }
@@ -143,53 +190,68 @@ export default function CreateSessionPage() {
     return count
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedSection || !selectedSubject || !user) return
-    if (bulkMode) {
-      const count = calculateBulkCount()
-      if (count === 0) return
-      await api.createBulkSessions({
-        sectionId: selectedSection.id,
-        subjectName: selectedSubject.name,
-        startDate: bulkStartDate,
-        endDate: bulkEndDate,
-        daysOfWeek: bulkDays,
-        startTime,
-        endTime,
-        room: room || undefined,
-        qrValidityMinutes: defaultQrValidity,
-        gracePeriodMinutes: defaultGracePeriod,
-        geofence: { latitude, longitude, radiusMeters: radius },
-        teacherId: user.id,
-      })
-      alert(`Created ${count} sessions successfully!`)
-      router.push('/faculty/sessions')
-    } else {
-      const replaceDates = getStandardReplaceDates()
-      const selectedReplaceOption = replaceDates.find((d) => d.dateStr === rescheduledFromDate)
+    if (!selectedSection || !selectedSubject || !user || submitting) return
+    if (endTime <= startTime) {
+      setFormError('End time must be after start time.')
+      return
+    }
+    setSubmitting(true)
+    setFormError(null)
+    try {
+      if (bulkMode) {
+        const count = calculateBulkCount()
+        if (count === 0) {
+          setFormError('No matching sessions found for the selected date range and days.')
+          return
+        }
+        await api.createBulkSessions({
+          sectionId: selectedSection.id,
+          subjectName: selectedSubject.name,
+          startDate: bulkStartDate,
+          endDate: bulkEndDate,
+          daysOfWeek: bulkDays,
+          startTime,
+          endTime,
+          room: room || undefined,
+          qrValidityMinutes: defaultQrValidity,
+          gracePeriodMinutes: defaultGracePeriod,
+          geofence: { latitude, longitude, radiusMeters: radius },
+          teacherId: user.id,
+        })
+        alert(`Created ${count} sessions successfully!`)
+        router.push('/faculty/sessions')
+      } else {
+        const replaceDates = getStandardReplaceDates()
+        const selectedReplaceOption = replaceDates.find((d) => d.dateStr === rescheduledFromDate)
 
-      await api.createSession({
-        sectionId: selectedSection.id,
-        subjectName: selectedSubject.name,
-        date,
-        startTime,
-        endTime,
-        room: room || undefined,
-        qrValidityMinutes: defaultQrValidity,
-        gracePeriodMinutes: defaultGracePeriod,
-        geofence: {
-          latitude,
-          longitude,
-          radiusMeters: radius,
-        },
-        teacherId: user.id,
-        isRescheduled: isRescheduled || undefined,
-        rescheduledFromDate: isRescheduled ? rescheduledFromDate : undefined,
-        originalScheduleTime: isRescheduled ? selectedReplaceOption?.scheduleTime : undefined,
-        originalRoom: isRescheduled ? selectedReplaceOption?.room : undefined,
-      })
-      router.push('/faculty/sessions')
+        await api.createSession({
+          sectionId: selectedSection.id,
+          subjectName: selectedSubject.name,
+          date,
+          startTime,
+          endTime,
+          room: room || undefined,
+          qrValidityMinutes: defaultQrValidity,
+          gracePeriodMinutes: defaultGracePeriod,
+          geofence: {
+            latitude,
+            longitude,
+            radiusMeters: radius,
+          },
+          teacherId: user.id,
+          isRescheduled: isRescheduled || undefined,
+          rescheduledFromDate: isRescheduled ? rescheduledFromDate : undefined,
+          originalScheduleTime: isRescheduled ? selectedReplaceOption?.scheduleTime : undefined,
+          originalRoom: isRescheduled ? selectedReplaceOption?.room : undefined,
+        })
+        router.push('/faculty/sessions')
+      }
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Unable to create session. Please check your inputs.')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -323,7 +385,7 @@ export default function CreateSessionPage() {
                   <>
                     <div className="space-y-2">
                       <Label htmlFor="date">Date</Label>
-                      <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+                      <Input id="date" type="date" value={date} onChange={(e) => handleDateChange(e.target.value)} required />
                     </div>
 
                     {selectedSection && selectedSection.schedule.length > 0 && (
@@ -381,13 +443,18 @@ export default function CreateSessionPage() {
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="startTime">Start Time</Label>
-                    <Input id="startTime" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
+                    <Input id="startTime" type="time" value={startTime} onChange={(e) => handleStartTimeChange(e.target.value)} required />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="endTime">End Time</Label>
-                    <Input id="endTime" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} required />
+                    <Input id="endTime" type="time" value={endTime} onChange={(e) => handleEndTimeChange(e.target.value)} required />
                   </div>
                 </div>
+                {endTime <= startTime && (
+                  <p className="text-xs text-red-600 dark:text-red-400 font-medium">
+                    End time must be after start time.
+                  </p>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="room">Room</Label>
@@ -420,9 +487,16 @@ export default function CreateSessionPage() {
               </CardContent>
             </Card>
 
+            {formError && (
+              <div className="p-4 border-l-4 border-red-500 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 text-sm">
+                <p className="font-semibold">Error creating session</p>
+                <p className="text-xs mt-0.5">{formError}</p>
+              </div>
+            )}
+
             <div className="flex items-center gap-3">
-              <Button type="submit" disabled={!selectedSection || !selectedSubject || (bulkMode && calculateBulkCount() === 0) || hasDuplicateConflict}>
-                {bulkMode ? `Create ${calculateBulkCount()} Sessions` : 'Create Session'}
+              <Button type="submit" disabled={!selectedSection || !selectedSubject || (bulkMode && calculateBulkCount() === 0) || hasDuplicateConflict || endTime <= startTime || submitting}>
+                {submitting ? 'Creating...' : bulkMode ? `Create ${calculateBulkCount()} Sessions` : 'Create Session'}
               </Button>
               <Button variant="ghost" asChild>
                 <Link href="/faculty/sessions">Cancel</Link>
