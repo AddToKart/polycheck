@@ -52,7 +52,10 @@ test.describe('Student Flows', () => {
     await page.getByRole('button', { name: /^Enroll$/i }).click()
     // Server rejects the bogus code with an inline error
     await expect(page.getByText(/not (found|valid)|invalid|unable|no.*section|couldn't/i).first()).toBeVisible()
-    assertNoErrors(errors)
+    // The expected 400 also surfaces as a browser-level resource console error.
+    assertNoErrors(errors, [
+      /\[console\.error\] Failed to load resource: the server responded with a status of 400/,
+    ])
   })
 
   test('report issue flow opens dispute modal from history', async ({ page }) => {

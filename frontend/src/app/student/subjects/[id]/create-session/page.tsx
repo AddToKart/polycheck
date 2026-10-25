@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, CalendarCheck, MapPin } from 'lucide-react'
@@ -31,6 +31,14 @@ export default function StudentCreateSessionPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  // The load effect below initializes times from the schedule matching the date
+  // that is current when the section loads. Read the latest date through a ref
+  // so later date edits do not re-run the one-time load.
+  const dateRef = useRef(date)
+  useEffect(() => {
+    dateRef.current = date
+  }, [date])
+
   useEffect(() => {
     const cu = api.getCurrentUser()
     if (!cu || cu.role !== 'student') {
@@ -51,7 +59,7 @@ export default function StudentCreateSessionPage() {
         setRoom(sec.room || '')
         if (sec.schedule.length > 0) {
           const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-          const currentDay = dayNames[new Date(`${date}T00:00:00`).getDay()]
+          const currentDay = dayNames[new Date(`${dateRef.current}T00:00:00`).getDay()]
           const matchedSched = sec.schedule.find((s) => s.day === currentDay) ?? sec.schedule[0]
           if (matchedSched) {
             setStartTime(matchedSched.startTime)

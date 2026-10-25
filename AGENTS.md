@@ -435,6 +435,14 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - **Backup/PITR automation**: scheduled `backup` service (logical dumps + `pg_basebackup` physical bases with `pg_verifybackup`, checksums, retention that can never orphan `latest-base.tar.gz`, and WAL pruning bounded by the oldest retained base); `archive_mode=on` WAL archiving with atomic verified copies and a free-space guard; postgres health accepts a fresh archive while requiring the latest archive attempt to be successful thereafter; `pitr-verify`, logical `restore-drill`, and physical `pitr-restore-drill` services are explicitly guarded; CI runs the full base backup → WAL marker → chain verification → logical restore → physical PITR replay pipeline; `pg_hba.conf` no longer trusts local sockets (SCRAM everywhere).
   - **Tests**: 375 backend, 93 frontend, and 118 Android tests pass; new regression coverage exercises the fixes above. The containerized physical PITR drill runs in Linux CI because it requires a Docker daemon.
 
+### Done (cont.)
+- **Beta-deployment readiness remediation (frontend + backend)**:
+  - **CI gates**: backend `format:check` fixed (`audit-logs.service.spec.ts`); backend e2e fixture now sets `department: 'CCIS'` so it satisfies `User_role_fields_valid`; dependency audit passes — Next 16.4.0, maplibre-gl 6.13.0, vitest 4.1.11, plus `pnpm-workspace.yaml` overrides for proxy-addr, multer, engine.io, qs, sharp, source-map-js, deepmerge-ts, fast-uri, mysql2, undici, js-yaml, @xmldom/xmldom, browserslist, compression, image-size, and nanoid. Two android build-tool advisories (braces `GHSA-vfj7-8cjw-p6xm`, node-forge `GHSA-86w9-cpqp-85rv`) have no published fixed release and are ignored via `auditConfig.ignoreGhsas` in `pnpm-workspace.yaml`.
+  - **Cross-browser runtime noise**: new `RuntimeErrorGuard` + `lib/abort-errors.ts` suppress cancellation-shaped unhandled rejections only while a navigation or page teardown is in progress; faculty dashboard effects log every failure that occurs before unmount instead of message-matching; Playwright `assertNoErrors` treats engine cancellation messages as noise only inside a navigation/aborted-request window.
+  - **Enrollment contract**: web and mobile `enrollStudent` strip `sectionId` from the request body (it stays in the path), matching `EnrollStudentDto` under `forbidNonWhitelisted`; regression tests assert the exact body on both clients.
+  - **Web E2E**: fixed the Next 16.4 route-announcer locator collision in the auth spec and hardened pre-hydration login submissions (invalid credentials, privacy consent) with response-wait retries.
+  - **Misc**: `Dockerfile.frontend` `NEXT_PUBLIC_ALLOW_QR_FALLBACKS` defaults to `false` (local compose still passes `true`); fixed two `react-hooks/exhaustive-deps` warnings via a date ref; `AuthSessionMonitor` uses `location.replace` after revocation; proxy-hop docs updated.
+
 ### In Progress
 - (none)
 
@@ -460,7 +468,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - Mobile scanner (`android/app/(tabs)/scan.tsx`) exposes `Upload QR Image` and `Enter Code` fallbacks alongside live camera.
 - **Database Migration Self-Healing**: Added idempotent pre-checks and backfills in `20260907090000_domain_constraints/migration.sql` to gracefully handle dirty development databases or re-runs without crashing the migration service container.
 - **Docker Compose Local Developer Experience**: Added automated 1-click startup scripts (`start-local.bat`, `start-local.sh`, `stop-local.bat`, `stop-local.sh`) and passed `NEXT_PUBLIC_ALLOW_QR_FALLBACKS: "true"` to local container builds.
-- **Comprehensive Automated Test Coverage**: Expanded frontend and mobile suites to 680 total passing automated tests across 69 suites monorepo-wide (60 shared, 95 web, 395 backend, 130 mobile).
+- **Comprehensive Automated Test Coverage**: 686 total passing automated tests across 70 suites monorepo-wide (60 shared, 98 web, 396 backend, 132 mobile); the web E2E suite includes 155 checks across Chromium, Firefox, and WebKit (10 engine-specific skips).
 
 ## Next Steps
 - Connect sessions page to section context when navigated from section detail.

@@ -70,7 +70,7 @@ Do not set `HTTP_BIND_ADDRESS=0.0.0.0` unless a firewall restricts access and TL
 
 `deployment/caddy/Caddyfile.example` is a deployable host-edge starting point. Install Caddy on the host, set `POLYCHECK_DOMAIN` and `ACME_EMAIL`, validate with `caddy validate`, and proxy only to the loopback-bound Compose nginx port. Verify certificate renewal and the HSTS header before opening enrollment. Do not enable HSTS preload until every subdomain is HTTPS-capable.
 
-The backend currently trusts one proxy hop, while this reference path contains the host TLS edge and the Compose nginx proxy. The outer edge must overwrite untrusted forwarding headers, and production must verify that the backend observes the real client address before relying on per-IP audit or throttling. A complete fix requires either trusted real-IP normalization at nginx for the deployment-specific edge address or configurable trusted proxy hops in the backend; do not trust arbitrary private-network forwarding headers as a shortcut.
+The backend trusts `TRUST_PROXY_HOPS` proxies (default `1`; the production example uses `2` for the host TLS edge plus the Compose nginx). The outer edge must overwrite untrusted forwarding headers, and production must verify that the backend observes the real client address before relying on per-IP audit or throttling. Keep the hop count matched to the deployment topology (or add real-IP normalization at nginx for the edge address); do not trust arbitrary private-network forwarding headers as a shortcut.
 
 ## Database pooling
 

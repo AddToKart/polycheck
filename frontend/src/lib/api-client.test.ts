@@ -353,7 +353,10 @@ describe('real API client', () => {
     expect(result).toBe(true)
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining('/sections/sec-1/enroll-student'),
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ studentId: 'stu-1', studentName: 'Test' }),
+      }),
     )
   })
 

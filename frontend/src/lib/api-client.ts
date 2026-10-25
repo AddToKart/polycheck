@@ -420,7 +420,8 @@ export const api = {
 
   // ── Miscellaneous ──
   enrollStudent(data: EnrollStudentInput): Promise<boolean> {
-    return post(`/sections/${data.sectionId}/enroll-student`, data)
+    const { sectionId, ...body } = data
+    return post(`/sections/${sectionId}/enroll-student`, body)
   },
   getCalendarEvents(userId: string, startDate: string, endDate: string): Promise<CalendarEvent[]> {
     return get(`/calendar/events?startDate=${startDate}&endDate=${endDate}`)

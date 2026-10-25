@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { NotificationProvider } from "@/lib/notifications";
 import { AuthSessionMonitor } from "@/components/AuthSessionMonitor";
+import { RuntimeErrorGuard } from "@/components/RuntimeErrorGuard";
 import { headers } from "next/headers";
 import { PrivacyConsentGate } from "@/components/PrivacyConsentGate";
 
@@ -47,6 +48,7 @@ export default async function RootLayout({
       </head>
       <body className="min-h-full flex flex-col font-sans">
         <NotificationProvider>
+          <RuntimeErrorGuard />
           <AuthSessionMonitor />
           <PrivacyConsentGate />
           {children}

@@ -49,22 +49,33 @@ function TeacherDashboard({ user }: { user: User }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let cancelled = false
     const fetchData = async () => {
       const todayStr = campusDate()
-      const [allSects, subjects, nextOverview, evs] = await Promise.all([
-        api.getSections(),
-        api.getSubjects(),
-        api.getDashboardOverview(),
-        api.getCalendarEvents(user.id, todayStr, todayStr),
-      ])
-      setSections(allSects.filter((section) => section.teacherId === user.id))
-      setAllSubjects(subjects)
-      setOverview(nextOverview)
-      setTodayEvents(evs.sort((a, b) => a.startTime.localeCompare(b.startTime)))
-
-      setLoading(false)
+      try {
+        const [allSects, subjects, nextOverview, evs] = await Promise.all([
+          api.getSections(),
+          api.getSubjects(),
+          api.getDashboardOverview(),
+          api.getCalendarEvents(user.id, todayStr, todayStr),
+        ])
+        if (cancelled) return
+        setSections(allSects.filter((section) => section.teacherId === user.id))
+        setAllSubjects(subjects)
+        setOverview(nextOverview)
+        setTodayEvents(evs.sort((a, b) => a.startTime.localeCompare(b.startTime)))
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load teacher dashboard data', error)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
     fetchData()
+    return () => {
+      cancelled = true
+    }
   }, [user.id])
 
   const subjectMap = useMemo(() => {
@@ -307,11 +318,23 @@ function SuperAdminDashboard({ user }: { user: User }) {
   const [overview, setOverview] = useState<DashboardOverview | null>(null)
 
   useEffect(() => {
+    let cancelled = false
     const fetchData = async () => {
-      setOverview(await api.getDashboardOverview())
-      setLoading(false)
+      try {
+        const nextOverview = await api.getDashboardOverview()
+        if (!cancelled) setOverview(nextOverview)
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load dashboard overview', error)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
     fetchData()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const weeklyTrends = (overview?.trends ?? []).map((trend) => {

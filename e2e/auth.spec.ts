@@ -5,7 +5,7 @@ test.describe('Auth & Session', () => {
   test('landing page renders PUP branding and role selection', async ({ page }) => {
     const errors = trackErrors(page)
     await page.goto('/')
-    await expect(page.getByText('Polycheck.', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Polycheck.' })).toBeVisible()
     await expect(page.getByText('Polytechnic University of the Philippines • Attendance System')).toBeVisible()
     await expect(page.getByAltText('PUP Logo').first()).toBeVisible()
     // Role selection cards are <button>s
@@ -42,16 +42,26 @@ test.describe('Auth & Session', () => {
   })
 
   test('invalid credentials show error and stay on login', async ({ page }) => {
-    await page.goto('/login/faculty')
-    await page.getByLabel('Email Address').fill('jmdelacruz@pup.edu.ph')
-    await page.getByLabel('Password').fill('WrongPassword123!')
-    const authenticate = page.getByRole('button', { name: /Authenticate/i })
-    await expect(authenticate).toBeEnabled()
-    const loginResponse = page.waitForResponse(
-      (response) => response.url().includes('/api/auth/login/faculty') && response.request().method() === 'POST',
-    )
-    await authenticate.click()
-    expect((await loginResponse).status()).toBe(401)
+    let status: number | undefined
+    // A pre-hydration click can be swallowed on slower engines, so retry the
+    // submission until the login request is actually observed.
+    for (let attempt = 0; attempt < 3 && status === undefined; attempt++) {
+      await page.goto('/login/faculty')
+      await page.getByLabel('Email Address').fill('jmdelacruz@pup.edu.ph')
+      await page.getByLabel('Password').fill('WrongPassword123!')
+      const authenticate = page.getByRole('button', { name: /Authenticate/i })
+      await expect(authenticate).toBeEnabled()
+      const loginResponse = page
+        .waitForResponse(
+          (response) => response.url().includes('/api/auth/login/faculty') && response.request().method() === 'POST',
+          { timeout: 20_000 },
+        )
+        .catch(() => null)
+      await authenticate.click()
+      const response = await loginResponse
+      if (response) status = response.status()
+    }
+    expect(status).toBe(401)
     await expect(page.getByText(/Invalid email or password/i)).toBeVisible()
     await expect(page).toHaveURL((url) => url.pathname === '/login/faculty')
   })
@@ -67,7 +77,8 @@ test.describe('Auth & Session', () => {
     await loginFaculty(page)
     await page.getByRole('button', { name: /Disconnect/i }).click()
     await expect(page).toHaveURL((url) => url.pathname === '/', { timeout: 20_000 })
-    await expect(page.getByText('Polycheck.', { exact: true })).toBeVisible()
+    // Next's route announcer also carries the page title; target the heading.
+    await expect(page.getByRole('heading', { name: 'Polycheck.' })).toBeVisible()
   })
 
   test('session persists across reload (cookie auth)', async ({ page }) => {

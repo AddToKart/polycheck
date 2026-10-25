@@ -831,4 +831,20 @@ describe('api-client offline sync engine', () => {
       await expect(api.preSyncOfflineData()).rejects.toThrow('boom')
     })
   })
+
+  describe('enrollStudent', () => {
+    it('posts only the fields accepted by the backend DTO', async () => {
+      handlers.set('/sections/sec-1/enroll-student', () => jsonResponse(true))
+
+      await api.enrollStudent({ sectionId: 'sec-1', studentId: 'stu-1', studentName: 'Test' })
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${API_BASE}/sections/sec-1/enroll-student`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ studentId: 'stu-1', studentName: 'Test' }),
+        }),
+      )
+    })
+  })
 })

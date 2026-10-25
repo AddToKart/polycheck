@@ -31,6 +31,7 @@ describe('Application integration (e2e)', () => {
         role: 'student',
         program: 'BS Computer Science',
         yearLevel: 1,
+        department: 'CCIS',
         authAccounts: {
           create: {
             id: 'e2e-auth-account',

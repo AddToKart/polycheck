@@ -7,27 +7,89 @@ export const ADMIN_EMAIL = 'mcreyes@pup.edu.ph'
 export const STUDENT_ID = '2024-00001-MN-0'
 export const STUDENT_EMAIL = 'amreyes@iskolar.pup.edu.ph'
 
+interface TrackedError {
+  message: string
+  at: number
+}
+
+interface ErrorTracker {
+  entries: TrackedError[]
+  cancellationWindows: Array<{ start: number; end: number }>
+}
+
+const trackers = new WeakMap<string[], ErrorTracker>()
+const CANCELLATION_WINDOW_MS = 3_000
+const CANCELLATION_WINDOW_LEAD_MS = 1_000
+const CANCELLABLE_RESOURCE_TYPES = new Set(['document', 'script', 'fetch', 'xhr'])
+
+/**
+ * Requests cancelled by navigation, unmount, or prefetch are reported as page
+ * errors by Firefox and WebKit even though the application intentionally
+ * abandoned them. These messages are also used for genuine network/CORS
+ * failures, so they are only ignored inside a navigation/aborted-request
+ * window; the same error outside that window still fails the test.
+ */
+const CANCELLATION_SHAPED_ERRORS = [
+  /^\[pageerror\] NetworkError when attempting to fetch resource\.$/, // Firefox
+  /^\[pageerror\] TypeError: Load failed$/, // WebKit
+  /^\[pageerror\] Failed to fetch$/, // Chromium
+  /due to access control checks\.$/, // WebKit cancelled fetch (RSC/API)
+]
+
+function markCancellationWindow(tracker: ErrorTracker) {
+  const now = Date.now()
+  tracker.cancellationWindows.push({
+    start: now - CANCELLATION_WINDOW_LEAD_MS,
+    end: now + CANCELLATION_WINDOW_MS,
+  })
+}
+
 /** Collect console errors + page errors for runtime regression detection. */
 export function trackErrors(page: Page) {
   const errors: string[] = []
-  page.on('console', (msg) => {
-    if (msg.type() === 'error') errors.push(`[console.error] ${msg.text()}`)
+  const tracker: ErrorTracker = { entries: [], cancellationWindows: [] }
+  trackers.set(errors, tracker)
+
+  const record = (message: string) => {
+    tracker.entries.push({ message, at: Date.now() })
+    errors.push(message)
+  }
+
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) markCancellationWindow(tracker)
   })
-  page.on('pageerror', (err) => errors.push(`[pageerror] ${err.message}`))
+  page.on('requestfailed', (request) => {
+    if (!CANCELLABLE_RESOURCE_TYPES.has(request.resourceType())) return
+    const failure = request.failure()?.errorText ?? ''
+    if (/ERR_ABORTED|NS_BINDING_ABORTED|cancelled|canceled/i.test(failure)) {
+      markCancellationWindow(tracker)
+    }
+  })
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') record(`[console.error] ${msg.text()}`)
+  })
+  page.on('pageerror', (err) => record(`[pageerror] ${err.message}`))
   return errors
 }
 
 /** Assert no unexpected client-side errors were recorded. */
-export function assertNoErrors(errors: string[]) {
-  const meaningful = errors.filter(
-    (e) =>
-      // Browsers may request a missing favicon independently of app runtime.
-      !e.includes('favicon') &&
-      // WebKit reports cancelled Next.js role-aware RSC prefetches as page
-      // errors. Match only the known localhost RSC cancellation shape; generic
-      // network, API, WebSocket, hydration, and 404 failures remain visible.
-      !(e.startsWith('[pageerror] /localhost:3000/') && e.includes('_rsc=') && e.endsWith('due to access control checks.')),
-  )
+export function assertNoErrors(errors: string[], allowedPatterns: RegExp[] = []) {
+  const tracker = trackers.get(errors)
+  const meaningful = errors.filter((error, index) => {
+    // Tests may intentionally trigger a server rejection; callers opt in to
+    // the exact console shape they expect to see.
+    if (allowedPatterns.some((pattern) => pattern.test(error))) return false
+    // Browsers may request a missing favicon independently of app runtime.
+    if (error.includes('favicon')) return false
+    if (!CANCELLATION_SHAPED_ERRORS.some((pattern) => pattern.test(error))) return true
+
+    const entry = tracker?.entries[index]
+    if (!entry) return true
+    const cancelledDuringNavigation = tracker.cancellationWindows.some(
+      ({ start, end }) => entry.at >= start && entry.at <= end,
+    )
+    return !cancelledDuringNavigation
+  })
   expect(meaningful).toEqual([])
 }
 

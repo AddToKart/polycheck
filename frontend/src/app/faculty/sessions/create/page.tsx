@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { CalendarCheck, MapPin } from 'lucide-react'
@@ -44,6 +44,15 @@ export default function CreateSessionPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+  // The section-selection effect below initializes times based on the date that
+  // is current when a section is chosen. Read the latest date through a ref so
+  // that later date edits (handled by handleDateChange) do not re-run that
+  // one-time initialization.
+  const dateRef = useRef(date)
+  useEffect(() => {
+    dateRef.current = date
+  }, [date])
 
   useEffect(() => {
     if (!bulkMode && sectionId && date) {
@@ -99,7 +108,7 @@ export default function CreateSessionPage() {
       setRescheduledFromDate('')
       if (selectedSection.schedule.length > 0) {
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-        const currentDay = dayNames[new Date(`${date}T00:00:00`).getDay()]
+        const currentDay = dayNames[new Date(`${dateRef.current}T00:00:00`).getDay()]
         const matchedSched = selectedSection.schedule.find((s) => s.day === currentDay) ?? selectedSection.schedule[0]
         if (matchedSched) {
           setStartTime(matchedSched.startTime)
