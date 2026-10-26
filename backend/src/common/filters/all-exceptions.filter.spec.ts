@@ -39,6 +39,26 @@ describe('AllExceptionsFilter', () => {
     })
   })
 
+  it('preserves machine-readable error codes from exception responses', () => {
+    const exception = new BadRequestException({
+      statusCode: 400,
+      error: 'Bad Request',
+      code: 'import_checksum_mismatch',
+      message: 'Run validation again',
+    })
+
+    filter.catch(exception, makeHost('/users/students/import'))
+
+    expect(response.json).toHaveBeenCalledWith({
+      statusCode: 400,
+      error: 'BadRequestException',
+      message: 'Run validation again',
+      code: 'import_checksum_mismatch',
+      path: '/users/students/import',
+      timestamp: expect.any(String),
+    })
+  })
+
   it('returns a 413 Payload Too Large response for status-marked payloads', () => {
     filter.catch({ status: 413 }, makeHost())
 

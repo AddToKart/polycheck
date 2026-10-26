@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -8,6 +8,7 @@ import { useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
 import { CampusIconButton } from './CampusPrimitives'
 import { CampusHeader } from './CampusHeader'
+import { useCampusToast } from './CampusToast'
 
 type CampusLoginPortalProps = {
   portal: 'student' | 'faculty'
@@ -15,6 +16,7 @@ type CampusLoginPortalProps = {
 
 export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
   const { isDark, toggle } = useTheme()
+  const { showToast } = useCampusToast()
   const [identity, setIdentity] = useState('')
   const [password, setPassword] = useState('')
   const [passwordVisible, setPasswordVisible] = useState(false)
@@ -26,7 +28,7 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
 
   const handleLogin = async () => {
     if (!identity.trim() || !password) {
-      Alert.alert('Missing details', `Enter your ${identityLabel.toLowerCase()} and password.`)
+      showToast('warning', 'Missing details', `Enter your ${identityLabel.toLowerCase()} and password.`)
       return
     }
 
@@ -37,10 +39,15 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
         : await api.loginFaculty(identity.trim(), password)
       if (!user) throw new Error('The credentials you entered were not recognized.')
 
+      if (user.mustChangePassword) {
+        router.replace('/change-password')
+        return
+      }
       router.replace(isStudent ? '/(tabs)/dashboard' : '/(faculty)/dashboard')
     } catch (error) {
       setLoading(false)
-      Alert.alert(
+      showToast(
+        'error',
         'Unable to sign in',
         error instanceof Error ? error.message : 'Check your details and try again.',
       )

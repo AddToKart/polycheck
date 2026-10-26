@@ -29,11 +29,9 @@ function MoreSheet({ visible, onClose, isDark, isSuper }: { visible: boolean; on
     }
   }, [reduceMotion, slideAnim, visible])
 
+  // SA1 supersedes MP2 Locked Decision 4: no proactive classroom entries for super admins (Option A keeps deep links).
   const items = isSuper
     ? [
-        { icon: 'event' as const, label: 'Session Monitoring', sub: 'Observe institution sessions', route: '/(faculty)/sessions' },
-        { icon: 'assignment' as const, label: 'Attendance Monitoring', sub: 'Read-only logs and export', route: '/(faculty)/attendance' },
-        { icon: 'gavel' as const, label: 'Dispute Monitoring', sub: 'Track teacher resolution', route: '/(faculty)/disputes' },
         { icon: 'search' as const, label: 'Global Search', sub: 'Find users and sections', route: '/(faculty)/search' },
         { icon: 'settings' as const, label: 'Institution Settings', sub: 'Configure institution defaults', route: '/(faculty)/settings' },
         { icon: 'history' as const, label: 'Audit Log', sub: 'Review administrative changes', route: '/(faculty)/audit-logs' },
@@ -58,7 +56,7 @@ function MoreSheet({ visible, onClose, isDark, isSuper }: { visible: boolean; on
             <View className="h-1 w-10 bg-zinc-400 dark:bg-zinc-600" />
           </View>
 
-          <Text className="px-1 pb-3 font-sans-bold text-[10px] uppercase tracking-[2.5px] text-maroon dark:text-golden">More faculty tools</Text>
+          <Text className="px-1 pb-3 font-sans-bold text-[10px] uppercase tracking-[2.5px] text-maroon dark:text-golden">{isSuper ? 'Administration tools' : 'More faculty tools'}</Text>
 
           {items.map((item) => (
             <Pressable
@@ -146,10 +144,20 @@ export default function FacultyLayout() {
           },
         })}
       >
+        {/* Super-admin tab bar: Dashboard · Users · Reports · More.
+            Teacher tab bar: Dashboard · Subjects · Sessions · Disputes · More. */}
         <Tabs.Screen name="dashboard" options={{ title: 'Dashboard', tabBarLabel: 'Dashboard', tabBarButtonTestID: 'faculty-tab-dashboard' }} />
-        <Tabs.Screen name="subjects" options={{ title: 'Subjects', tabBarLabel: 'Subjects', tabBarButtonTestID: 'faculty-tab-subjects' }} />
+        <Tabs.Screen name="subjects" options={{ title: 'Subjects', tabBarLabel: 'Subjects', href: isSuper ? null : undefined, tabBarButtonTestID: 'faculty-tab-subjects' }} />
         <Tabs.Screen name="sessions" options={{ title: 'Sessions', tabBarLabel: 'Sessions', href: isSuper ? null : undefined, tabBarButtonTestID: 'faculty-tab-sessions' }} />
         <Tabs.Screen name="disputes" options={{ title: 'Disputes', tabBarLabel: 'Disputes', href: isSuper ? null : undefined, tabBarButtonTestID: 'faculty-tab-disputes' }} />
+        <Tabs.Screen
+          name="users"
+          options={{ title: 'Users', tabBarLabel: 'Users', href: isSuper ? undefined : null, tabBarButtonTestID: 'admin-tab-users' }}
+        />
+        <Tabs.Screen
+          name="reports"
+          options={{ title: 'Reports', tabBarLabel: 'Reports', href: isSuper ? undefined : null, tabBarButtonTestID: 'admin-tab-reports' }}
+        />
         {/* More tab — opens bottom sheet instead of navigating */}
         <Tabs.Screen
           name="more-tab"
@@ -178,17 +186,9 @@ export default function FacultyLayout() {
         <Tabs.Screen name="search" options={{ href: null }} />
         <Tabs.Screen name="settings" options={{ href: null }} />
         <Tabs.Screen name="audit-logs" options={{ href: null }} />
-        {/* Attendance + Schedule hidden from tab bar — accessible via More sheet */}
+        {/* Attendance + Schedule hidden from tab bar — accessible via More sheet or deep link */}
         <Tabs.Screen name="attendance" options={{ href: null }} />
         <Tabs.Screen name="schedule" options={{ href: null }} />
-        <Tabs.Screen
-          name="users"
-          options={{ title: 'Users', tabBarLabel: 'Users', href: isSuper ? undefined : null, tabBarButtonTestID: 'admin-tab-users' }}
-        />
-        <Tabs.Screen
-          name="reports"
-          options={{ title: 'Reports', tabBarLabel: 'Reports', href: isSuper ? undefined : null, tabBarButtonTestID: 'admin-tab-reports' }}
-        />
       </Tabs>
 
       <MoreSheet visible={moreVisible} onClose={() => setMoreVisible(false)} isDark={isDark} isSuper={isSuper} />

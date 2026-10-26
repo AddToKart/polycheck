@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert, Image, Pressable, ScrollView, Text, View } from 'react-native'
+import { Image, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
@@ -12,9 +12,11 @@ import { pupColors } from '../../../../../theme/colors'
 import { CampusHeader } from '../../../../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, SectionHeading } from '../../../../../components/CampusPrimitives'
 import { CampusFormField } from '../../../../../components/CampusFormField'
+import { useCampusToast } from '../../../../../components/CampusToast'
 
 export default function StudentSessionDetailScreen() {
   const { isDark } = useTheme()
+  const { showToast } = useCampusToast()
   const { id: sectionId, sessionId } = useLocalSearchParams<{ id: string; sessionId: string }>()
   const currentUser = useAuthGate(['student'])
   const [user, setUser] = useState<Student | null>(null)
@@ -32,7 +34,7 @@ export default function StudentSessionDetailScreen() {
     if (!currentUser) return
     const student = currentUser as Student
     setUser(student)
-    void api.getStudentRoles(student.id).then((roles) => setIsQac(roles.some((role) => role.sectionId === sectionId && role.role === 'qac')))
+    void api.getStudentRoles(student.id).then((roles) => setIsQac(roles.some((role) => role.sectionId === sectionId && role.role === 'qac'))).catch(() => setIsQac(false))
   }, [sectionId, currentUser])
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export default function StudentSessionDetailScreen() {
   const captureProofPhoto = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync()
     if (!permission.granted) {
-      Alert.alert('Camera required', 'Allow camera access to capture proof of class.')
+      showToast('warning', 'Camera required', 'Allow camera access to capture proof of class.')
       return
     }
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.7, base64: true })
@@ -58,7 +60,7 @@ export default function StudentSessionDetailScreen() {
     if (!asset?.base64) return
     const mimeType = asset.mimeType && ['image/jpeg', 'image/png', 'image/webp'].includes(asset.mimeType) ? asset.mimeType : 'image/jpeg'
     if (asset.base64.length * 0.75 > 5_000_000) {
-      Alert.alert('Photo too large', 'Proof photos must be 5 MB or smaller.')
+      showToast('warning', 'Photo too large', 'Proof photos must be 5 MB or smaller.')
       return
     }
     setUploadedPhoto(`data:${mimeType};base64,${asset.base64}`)
@@ -80,9 +82,9 @@ export default function StudentSessionDetailScreen() {
       setShowUpload(false)
       setPhotoDescription('')
       setUploadedPhoto(null)
-      Alert.alert('Proof uploaded', 'The class photo is now attached to this session.')
+      showToast('success', 'Proof uploaded', 'The class photo is now attached to this session.')
     } catch (error) {
-      Alert.alert('Unable to upload proof', error instanceof Error ? error.message : 'Try again in a moment.')
+      showToast('error', 'Unable to upload proof', error instanceof Error ? error.message : 'Try again in a moment.')
     } finally {
       setUploading(false)
     }

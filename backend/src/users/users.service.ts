@@ -1,58 +1,78 @@
-import { Injectable, NotFoundException, ForbiddenException, Optional } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
-import { ConflictException } from '@nestjs/common'
 import { hash } from 'bcryptjs'
 import type { CreateStudentDto, CreateTeacherDto } from './dto/manage-user.dto'
+import type { CreateAdminDto, UpdateUserDto } from './dto/admin-user.dto'
 import { Prisma } from '../prisma/client'
 import { randomUUID } from 'crypto'
 import { EventEmitter2 } from '@nestjs/event-emitter'
-import { adminCanAccessUser, adminUserWhere } from '../common/admin-scope'
-import { PASSWORD_HASH_COST } from '../auth/password-policy'
+import { adminCanAccessUser, adminScope, adminUserWhere } from '../common/admin-scope'
+import { isStrongPassword, PASSWORD_HASH_COST } from '../auth/password-policy'
+import { paginate, type PaginationParams } from '../common/utils/pagination'
+import type { AdminUserFilters } from '@polycheck/shared'
+
+const SAFE_USER_SELECT = {
+  id: true,
+  studentId: true,
+  fullName: true,
+  email: true,
+  role: true,
+  program: true,
+  yearLevel: true,
+  department: true,
+  photoUrl: true,
+  isActive: true,
+  mustChangePassword: true,
+  createdAt: true,
+  updatedAt: true,
+} as const satisfies Prisma.UserSelect
+
+type SafeUser = Prisma.UserGetPayload<{ select: typeof SAFE_USER_SELECT }>
+
+const DEFAULT_LIST_LIMIT = 100
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name)
+
   constructor(
     private prisma: PrismaService,
     @Optional() private events?: EventEmitter2,
   ) {}
 
-  async findAll(user: RequestUser, pagination?: { limit: number; offset: number }) {
+  async findAll(user: RequestUser, filters: AdminUserFilters = {}, pagination?: PaginationParams) {
     if (user.role !== 'super_admin') {
       throw new ForbiddenException('Only super admins can list all users')
     }
+    const params =
+      pagination ??
+      (filters.limit !== undefined || filters.offset !== undefined
+        ? {
+            limit: Math.min(Math.max(1, filters.limit ?? DEFAULT_LIST_LIMIT), DEFAULT_LIST_LIMIT),
+            offset: Math.max(0, filters.offset ?? 0),
+          }
+        : { limit: DEFAULT_LIST_LIMIT, offset: 0 })
+    const where = this.userListWhere(user, filters)
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
-        where: adminUserWhere(user),
-        select: {
-          id: true,
-          studentId: true,
-          fullName: true,
-          email: true,
-          role: true,
-          program: true,
-          yearLevel: true,
-          department: true,
-          photoUrl: true,
-          isActive: true,
-          createdAt: true,
-          updatedAt: true,
-        },
+        where,
+        select: SAFE_USER_SELECT,
         orderBy: { fullName: 'asc' },
-        take: pagination?.limit ?? 100,
-        skip: pagination?.offset ?? 0,
+        take: params.limit,
+        skip: params.offset,
       }),
-      this.prisma.user.count({
-        where: adminUserWhere(user),
-      }),
+      this.prisma.user.count({ where }),
     ])
-    return {
-      data: users,
-      total,
-      limit: pagination?.limit ?? 100,
-      offset: pagination?.offset ?? 0,
-      hasMore: (pagination?.offset ?? 0) + users.length < total,
-    }
+    return paginate(users, total, params)
   }
 
   async findOne(id: string, user: RequestUser) {
@@ -110,6 +130,7 @@ export class UsersService {
         department: true,
         photoUrl: true,
         isActive: true,
+        mustChangePassword: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -139,6 +160,7 @@ export class UsersService {
         department: true,
         photoUrl: true,
         isActive: true,
+        mustChangePassword: true,
         createdAt: true,
         updatedAt: true,
         enrollments: { select: { sectionId: true } },
@@ -190,6 +212,7 @@ export class UsersService {
           department: true,
           photoUrl: true,
           isActive: true,
+          mustChangePassword: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -249,6 +272,7 @@ export class UsersService {
           department: true,
           photoUrl: true,
           isActive: true,
+          mustChangePassword: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -275,7 +299,9 @@ export class UsersService {
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id },
-        data: { password: passwordHash, authVersion: { increment: 1 } },
+        // An admin reset issues a temporary credential: force rotation on the
+        // next login (the session revocation below also forces a fresh login).
+        data: { password: passwordHash, mustChangePassword: true, authVersion: { increment: 1 } },
       }),
       this.prisma.authAccount.upsert({
         where: { providerId_accountId: { providerId: 'credential', accountId: id } },
@@ -322,6 +348,7 @@ export class UsersService {
           studentId: true,
           photoUrl: true,
           isActive: true,
+          mustChangePassword: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -333,6 +360,278 @@ export class UsersService {
       reason: isActive ? 'account_updated' : 'account_disabled',
     })
     return updated
+  }
+
+  async updateUser(id: string, dto: UpdateUserDto, user: RequestUser) {
+    this.assertSuperAdmin(user)
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, role: true, department: true },
+    })
+    if (!target) throw new NotFoundException('User not found')
+    if (target.role === 'super_admin') {
+      throw new ForbiddenException('Super Admin accounts cannot be edited here')
+    }
+    if (!adminCanAccessUser(user, target.department)) {
+      throw new ForbiddenException('This account is outside your administrative scope')
+    }
+    if (dto.email !== undefined && target.role !== 'teacher') {
+      throw new BadRequestException('Email can only be edited for teacher accounts')
+    }
+    if ((dto.program !== undefined || dto.yearLevel !== undefined) && target.role !== 'student') {
+      throw new BadRequestException('Program and year level can only be edited for student accounts')
+    }
+
+    const data: Prisma.UserUpdateInput = {}
+    if (dto.fullName !== undefined) {
+      const fullName = dto.fullName.trim()
+      if (fullName.length < 2) throw new BadRequestException('fullName must be at least 2 characters')
+      data.fullName = fullName
+    }
+    if (dto.department !== undefined) {
+      data.department = dto.department.trim() || null
+    }
+    if (dto.email !== undefined) {
+      const email = dto.email.trim().toLowerCase()
+      if (!email) throw new BadRequestException('email cannot be empty')
+      const duplicate = await this.prisma.user.findFirst({
+        where: { email, NOT: { id } },
+        select: { id: true },
+      })
+      if (duplicate) throw new ConflictException('A user with this email already exists')
+      data.email = email
+    }
+    if (dto.program !== undefined) {
+      const program = dto.program.trim()
+      if (program.length < 2) throw new BadRequestException('program must be at least 2 characters')
+      data.program = program
+    }
+    if (dto.yearLevel !== undefined) data.yearLevel = dto.yearLevel
+    if (target.role === 'student' && dto.department !== undefined && !dto.department.trim()) {
+      // Domain constraint: every student account keeps a department.
+      throw new BadRequestException('Student accounts require a department')
+    }
+
+    const changedFields = Object.keys(data)
+    if (changedFields.length === 0) throw new BadRequestException('No editable fields were provided')
+
+    let updated: SafeUser
+    try {
+      updated = await this.prisma.user.update({ where: { id }, data, select: SAFE_USER_SELECT })
+    } catch (error) {
+      this.rethrowUniqueConflict(error)
+      throw error
+    }
+    await this.recordAdminAudit(user, 'admin.user.updated', id, { changedFields })
+    return updated
+  }
+
+  async changeUserRole(id: string, role: 'teacher' | 'student', user: RequestUser) {
+    this.assertSuperAdmin(user)
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        role: true,
+        department: true,
+        email: true,
+        studentId: true,
+        program: true,
+        yearLevel: true,
+      },
+    })
+    if (!target) throw new NotFoundException('User not found')
+    if (target.id === user.id) throw new ForbiddenException('You cannot change your own role')
+    if (target.role === 'super_admin') {
+      throw new ForbiddenException('Super Admin accounts cannot be role-changed here')
+    }
+    if (!adminCanAccessUser(user, target.department)) {
+      throw new ForbiddenException('This account is outside your administrative scope')
+    }
+    if (target.role === role) throw new BadRequestException('This account already has that role')
+
+    if (target.role === 'teacher' && role === 'student') {
+      const sections = await this.prisma.section.count({ where: { teacherId: id } })
+      if (sections > 0) {
+        throw new ConflictException("Reassign or delete this teacher's sections before changing their role to student")
+      }
+      // The User_role_fields_valid DB constraint requires student identity
+      // fields; teacher rows created through user management have none.
+      if (
+        !target.studentId?.trim() ||
+        !target.program?.trim() ||
+        target.yearLevel === null ||
+        !target.department?.trim()
+      ) {
+        throw new BadRequestException(
+          'This teacher account has no student identity fields (student number, program, year level). Create a student account instead.',
+        )
+      }
+    }
+    if (target.role === 'student' && role === 'teacher') {
+      if (!target.department?.trim()) {
+        throw new BadRequestException('A department is required before changing a student to a teacher')
+      }
+      // The User_role_fields_valid DB constraint requires an email for teachers.
+      if (!target.email?.trim()) {
+        throw new BadRequestException('An email is required before changing a student to a teacher')
+      }
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { role },
+      select: SAFE_USER_SELECT,
+    })
+    await this.recordAdminAudit(user, 'admin.user.role_changed', id, { before: target.role, after: role })
+    this.events?.emit('auth.session-replaced', { userId: id, reason: 'role_changed' })
+    return updated
+  }
+
+  async createAdmin(dto: CreateAdminDto, user: RequestUser) {
+    this.assertSuperAdmin(user)
+    if (adminScope(user).kind !== 'unrestricted') {
+      throw new ForbiddenException('Only institution-scope super admins can create administrators')
+    }
+
+    const promotionId = dto.userId?.trim()
+    const hasFreshFields = dto.fullName !== undefined || dto.email !== undefined || dto.password !== undefined
+    if (promotionId && hasFreshFields) {
+      throw new BadRequestException('Provide either userId or fullName, email, and password, not both')
+    }
+    if (!promotionId && !hasFreshFields) {
+      throw new BadRequestException('Provide a userId or fullName, email, and password')
+    }
+
+    if (promotionId) return this.promoteAdmin(promotionId, user)
+    return this.createFreshAdmin(dto, user)
+  }
+
+  private async promoteAdmin(id: string, user: RequestUser) {
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, role: true, department: true },
+    })
+    if (!target) throw new NotFoundException('User not found')
+    if (target.id === user.id) throw new ForbiddenException('You cannot promote your own account')
+    if (target.role !== 'teacher') {
+      throw new BadRequestException('Only teacher accounts can be promoted to super admin')
+    }
+    if (!adminCanAccessUser(user, target.department)) {
+      throw new ForbiddenException('This account is outside your administrative scope')
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: target.id },
+      data: { role: 'super_admin', scope: 'institution' },
+      select: SAFE_USER_SELECT,
+    })
+    await this.recordAdminAudit(user, 'admin.user.promoted', target.id, {
+      previousRole: target.role,
+      role: 'super_admin',
+    })
+    this.events?.emit('auth.session-replaced', { userId: target.id, reason: 'role_changed' })
+    return updated
+  }
+
+  private async createFreshAdmin(dto: CreateAdminDto, user: RequestUser) {
+    const fullName = dto.fullName?.trim() ?? ''
+    const email = dto.email?.trim().toLowerCase() ?? ''
+    const password = dto.password ?? ''
+    if (!fullName || !email || !password) {
+      throw new BadRequestException('fullName, email, and password are required to create a super admin')
+    }
+    if (!isStrongPassword(password)) {
+      throw new BadRequestException('password does not meet the security policy')
+    }
+
+    const exists = await this.prisma.user.findUnique({ where: { email }, select: { id: true } })
+    if (exists) throw new ConflictException('A user with this email already exists')
+
+    const passwordHash = await hash(password, PASSWORD_HASH_COST)
+    const id = randomUUID()
+    const now = new Date()
+    try {
+      const created = await this.prisma.user.create({
+        data: {
+          id,
+          fullName,
+          email,
+          authEmail: `u-${randomUUID()}@auth.polycheck.invalid`,
+          password: passwordHash,
+          department: dto.department?.trim() || null,
+          role: 'super_admin',
+          scope: 'institution',
+          authAccounts: {
+            create: {
+              id: randomUUID(),
+              accountId: id,
+              providerId: 'credential',
+              password: passwordHash,
+              createdAt: now,
+              updatedAt: now,
+            },
+          },
+        },
+        select: SAFE_USER_SELECT,
+      })
+      await this.recordAdminAudit(user, 'admin.user.created', created.id, {
+        role: 'super_admin',
+        scope: 'institution',
+      })
+      return created
+    } catch (error) {
+      this.rethrowUniqueConflict(error)
+    }
+  }
+
+  private userListWhere(user: RequestUser, filters: AdminUserFilters): Prisma.UserWhereInput {
+    const and: Prisma.UserWhereInput[] = []
+    const scope = adminUserWhere(user)
+    if (scope) and.push(scope)
+    if (filters.role) and.push({ role: filters.role })
+
+    const query = filters.q?.trim()
+    if (query) {
+      and.push({
+        OR: [
+          { fullName: { contains: query, mode: 'insensitive' } },
+          { email: { contains: query, mode: 'insensitive' } },
+          { studentId: { contains: query, mode: 'insensitive' } },
+        ],
+      })
+    }
+
+    const department = filters.department?.trim()
+    if (department) {
+      and.push({ department: { equals: department, mode: 'insensitive' } })
+    }
+    if (filters.status) and.push({ isActive: filters.status === 'active' })
+
+    return and.length > 0 ? { AND: and } : {}
+  }
+
+  private async recordAdminAudit(user: RequestUser, action: string, entityId: string, metadata: Prisma.InputJsonValue) {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          actorId: user.id,
+          actorRole: user.role,
+          action,
+          entityType: 'user',
+          entityId,
+          metadata,
+        },
+      })
+    } catch (error) {
+      // Account mutations must not fail open because the audit table is
+      // briefly unavailable; log with enough context to reconcile later.
+      this.logger.error(
+        `Could not write ${action} audit row for actor ${user.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    }
   }
 
   private assertDepartmentScope(user: RequestUser, department?: string) {

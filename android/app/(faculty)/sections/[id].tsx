@@ -13,6 +13,8 @@ import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
 import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
 import { ChoiceSheet } from '../../../components/CampusPickerSheets'
+import { BulkImportSheet } from '../../../components/BulkImportSheet'
+import { useCampusToast } from '../../../components/CampusToast'
 
 const PAGE_SIZE = 10
 const initials = (name: string) => name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()
@@ -21,6 +23,7 @@ type ViewTab = 'roster' | 'details' | 'sessions'
 
 export default function SectionDetailScreen() {
   const { isDark, toggle } = useTheme()
+  const { showToast } = useCampusToast()
   const { id } = useLocalSearchParams<{ id: string }>()
   const currentUser = useAuthGate(['teacher', 'super_admin'])
   const [section, setSection] = useState<Section | null>(null)
@@ -32,6 +35,7 @@ export default function SectionDetailScreen() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
   const [isEnrollOpen, setIsEnrollOpen] = useState(false)
+  const [showRosterImport, setShowRosterImport] = useState(false)
   const [enrollSearch, setEnrollSearch] = useState('')
   const [sectionRoles, setSectionRoles] = useState<SectionRole[]>([])
   const [sessionPermissions, setSessionPermissions] = useState<SessionPermission[]>([])
@@ -45,28 +49,34 @@ export default function SectionDetailScreen() {
   useEffect(() => {
     if (!id || !currentUser) return
     void (async () => {
-      const [nextSection, nextStudents, nextSessions] = await Promise.all([
-        api.getSection(id),
-        api.getSectionStudents(id),
-        api.getSectionSessions(id),
-      ])
-      if (currentUser?.role === 'teacher' && nextSection.teacherId !== currentUser.id) { router.replace('/'); return }
-      setSection(nextSection)
-      setStudents(nextStudents)
-      setSessions(nextSessions)
-      if (currentUser?.role === 'teacher') {
-        const [roles, permissions, studentList] = await Promise.all([
-          api.getSectionRoles(id),
-          api.getActiveSessionPermissions(id),
-          api.getStudents(),
+      try {
+        const [nextSection, nextStudents, nextSessions] = await Promise.all([
+          api.getSection(id),
+          api.getSectionStudents(id),
+          api.getSectionSessions(id),
         ])
-        setSectionRoles(roles)
-        setSessionPermissions(permissions)
-        setAllStudents(studentList)
+        if (currentUser?.role === 'teacher' && nextSection.teacherId !== currentUser.id) { router.replace('/'); return }
+        setSection(nextSection)
+        setStudents(nextStudents)
+        setSessions(nextSessions)
+        setParentSubject(await api.getSubject(nextSection.subjectId).catch(() => null))
+        if (currentUser?.role === 'teacher') {
+          // Optional admin data must not eject a cached section when offline.
+          const [roles, permissions, studentList] = await Promise.all([
+            api.getSectionRoles(id).catch(() => []),
+            api.getActiveSessionPermissions(id).catch(() => []),
+            api.getStudents().catch(() => []),
+          ])
+          setSectionRoles(roles)
+          setSessionPermissions(permissions)
+          setAllStudents(studentList)
+        }
+      } catch (error) {
+        showToast('error', 'Unable to open section', error instanceof Error ? error.message : 'Please try again.')
+        router.back()
       }
-      setParentSubject(await api.getSubject(nextSection.subjectId))
-    })().catch(() => router.back())
-  }, [id, currentUser])
+    })()
+  }, [id, currentUser, showToast])
 
   const enrolledIds = useMemo(() => new Set(students.map((student) => student.id)), [students])
   const enrollCandidates = useMemo(() => {
@@ -102,16 +112,16 @@ export default function SectionDetailScreen() {
       await refreshRoster()
       setSection(await api.getSection(id!))
       setEnrollSearch('')
-      Alert.alert('Student enrolled', `${studentName} is now enrolled in this section.`)
+      showToast('success', 'Student enrolled', `${studentName} is now enrolled in this section.`)
     } catch (error) {
-      Alert.alert('Unable to enroll', error instanceof Error ? error.message : 'Please try again.')
+      showToast('error', 'Unable to enroll', error instanceof Error ? error.message : 'Please try again.')
     }
   }
 
   const copyCode = async () => {
     if (section.enrollmentCode) {
       await Clipboard.setStringAsync(section.enrollmentCode)
-      Alert.alert('Copied to clipboard', `Enrollment code ${section.enrollmentCode} copied!`)
+      showToast('success', 'Copied to clipboard', `Enrollment code ${section.enrollmentCode} copied!`)
     }
   }
 
@@ -120,15 +130,15 @@ export default function SectionDetailScreen() {
       const result = await api.resetEnrollmentCode(id!)
       const updated = await api.getSection(id!)
       setSection(updated)
-      Alert.alert('Enrollment code reset', `New code: ${result.enrollmentCode || updated.enrollmentCode}`)
+      showToast('success', 'Enrollment code reset', `New code: ${result.enrollmentCode || updated.enrollmentCode}`)
     } catch (error) {
-      Alert.alert('Unable to reset code', error instanceof Error ? error.message : 'Please try again.')
+      showToast('error', 'Unable to reset code', error instanceof Error ? error.message : 'Please try again.')
     }
   }
 
   const disableCode = () => Alert.alert('Disable enrollment code?', 'Students will no longer be able to join using this code.', [
     { text: 'Cancel', style: 'cancel' },
-    { text: 'Disable', style: 'destructive', onPress: () => { void api.disableEnrollmentCode(id!).then(async () => setSection(await api.getSection(id!))) } },
+    { text: 'Disable', style: 'destructive', onPress: () => { void api.disableEnrollmentCode(id!).then(async () => setSection(await api.getSection(id!))).catch((error) => showToast('error', 'Unable to disable enrollment', error instanceof Error ? error.message : 'Please try again.')) } },
   ])
 
   const assignStudentRole = async (studentId: string) => {
@@ -140,7 +150,7 @@ export default function SectionDetailScreen() {
       await api.assignSectionRole(id!, studentId, assignRole)
       await refreshRoles()
     } catch (error) {
-      Alert.alert('Unable to assign role', error instanceof Error ? error.message : 'Please try again.')
+      showToast('error', 'Unable to assign role', error instanceof Error ? error.message : 'Please try again.')
     } finally {
       setAssignRole(null)
     }
@@ -334,7 +344,7 @@ export default function SectionDetailScreen() {
                           <Pressable accessibilityRole="button" onPress={() => { void (activePresidentPermission ? api.revokeSessionPermission(id!, president.studentId) : api.grantSessionPermission(id!, president.studentId)).then(refreshPermissions) }} className="min-h-10 flex-1 items-center justify-center rounded-none border border-maroon/30 bg-maroon/5 dark:border-golden/30 dark:bg-golden/10">
                             <Text className="font-sans-bold text-xs uppercase tracking-wider text-maroon dark:text-golden">{activePresidentPermission ? 'Revoke grant' : 'Grant 24 hours'}</Text>
                           </Pressable>
-                          <Pressable accessibilityRole="button" accessibilityLabel="Remove president" onPress={() => { void api.removeSectionRole(id!, president.studentId, 'president').then(refreshRoles) }} className="h-10 w-10 items-center justify-center rounded-none border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30">
+                          <Pressable accessibilityRole="button" accessibilityLabel="Remove president" onPress={() => { void api.removeSectionRole(id!, president.studentId, 'president').then(refreshRoles).catch((error) => showToast('error', 'Unable to remove role', error instanceof Error ? error.message : 'Please try again.')) }} className="h-10 w-10 items-center justify-center rounded-none border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30">
                             <MaterialIcons name="delete-outline" size={18} color="#DC2626" />
                           </Pressable>
                         </View>
@@ -358,7 +368,7 @@ export default function SectionDetailScreen() {
                       {qacMembers.map((role) => (
                         <View key={role.id} className="min-h-10 flex-row items-center gap-2 rounded-none border border-zinc-300 bg-zinc-50 pl-3 pr-1 dark:border-zinc-700 dark:bg-white/5">
                           <Text className="font-sans-bold text-xs text-ink dark:text-white">{role.studentName}</Text>
-                          <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${role.studentName} as QAC`} onPress={() => { void api.removeSectionRole(id!, role.studentId, 'qac').then(refreshRoles) }} className="h-8 w-8 items-center justify-center">
+                          <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${role.studentName} as QAC`} onPress={() => { void api.removeSectionRole(id!, role.studentId, 'qac').then(refreshRoles).catch((error) => showToast('error', 'Unable to remove role', error instanceof Error ? error.message : 'Please try again.')) }} className="h-8 w-8 items-center justify-center">
                             <MaterialIcons name="close" size={16} color="#DC2626" />
                           </Pressable>
                         </View>
@@ -381,6 +391,13 @@ export default function SectionDetailScreen() {
                   </Pressable>
                   {isEnrollOpen ? (
                     <View className="mt-4 border-t border-line pt-4 dark:border-line-dark">
+                      <CampusButton
+                        className="mb-3"
+                        variant="secondary"
+                        label="Import from master list"
+                        icon="upload-file"
+                        onPress={() => setShowRosterImport(true)}
+                      />
                       <View className="min-h-14 flex-row items-center rounded-none border border-zinc-300 bg-zinc-50 px-4 dark:border-zinc-700 dark:bg-white/5">
                         <MaterialIcons name="search" size={20} color={isDark ? pupColors.golden : pupColors.maroon} />
                         <TextInput accessibilityLabel="Search students to enroll" className="h-full flex-1 px-3 font-sans text-sm text-ink dark:text-white" placeholder="Name or student number" placeholderTextColor={isDark ? '#71717A' : '#8A8284'} value={enrollSearch} onChangeText={setEnrollSearch} />
@@ -441,6 +458,16 @@ export default function SectionDetailScreen() {
       </ScrollView>
 
       <ChoiceSheet visible={assignRole !== null} title={assignRole === 'president' ? 'Assign president' : 'Assign QAC coordinator'} options={assignCandidates.map((student) => ({ value: student.id, label: `${student.fullName} · ${student.studentId}` }))} value="" onSelect={(studentId) => { void assignStudentRole(studentId) }} onClose={() => setAssignRole(null)} />
+
+      <BulkImportSheet
+        visible={showRosterImport}
+        onClose={() => setShowRosterImport(false)}
+        mode="enrollments"
+        sectionId={id}
+        onCompleted={() => {
+          void api.getSectionStudents(id!).then(setStudents).catch(() => undefined)
+        }}
+      />
     </SafeAreaView>
   )
 }

@@ -443,6 +443,9 @@ export default function FacultySchedulePage() {
 
   useEffect(() => {
     const cu = api.getCurrentUser()
+    // Super admins are steered away from the teacher-only Schedule surface.
+    // This is the one proactive schedule surface removed for admins; other
+    // classroom routes remain deep-linkable under the Option A lookup policy.
     if (!cu || cu.role !== 'teacher') {
       router.push(cu?.role === 'super_admin' ? '/faculty' : '/')
       return

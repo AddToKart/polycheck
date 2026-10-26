@@ -217,7 +217,11 @@ export default function ScanQrModal({
         }
         setOutcome({
           status: result.status as "present" | "late" | "disputed",
-          message: `Attendance recorded as ${result.status}.`,
+          message:
+            result.isSynced === false
+              ? `Attendance recorded as ${result.status} on this device. It will sync when you reconnect.`
+              : `Attendance recorded as ${result.status}.`,
+          queued: result.isSynced === false,
         });
         setPhase("success");
       } catch (error: unknown) {

@@ -19,16 +19,20 @@ if (!['smoke', 'full'].includes(profile)) {
   throw new Error('K6_PROFILE must be smoke or full')
 }
 
-const loadProfile =
-  profile === 'full'
-    ? {
-        userCount: 1000,
-        maxDuration: '2m',
-      }
-    : {
-        userCount: 2,
-        maxDuration: '30s',
-      }
+const userCount = Number(__ENV.K6_USER_COUNT ?? (profile === 'full' ? 1000 : 2))
+const userStart = Number(__ENV.K6_USER_START ?? 0)
+if (!Number.isInteger(userCount) || userCount < 1 || userCount > 5000) {
+  throw new Error('K6_USER_COUNT must be an integer between 1 and 5000')
+}
+if (!Number.isInteger(userStart) || userStart < 0) {
+  throw new Error('K6_USER_START must be a non-negative integer')
+}
+
+const loadProfile = {
+  userCount,
+  userStart,
+  maxDuration: userCount > 1000 ? '5m' : '2m',
+}
 
 export const options = {
   scenarios: {
@@ -53,7 +57,7 @@ export const options = {
   },
   discardResponseBodies: false,
   noConnectionReuse: false,
-  userAgent: `polycheck-k6/${profile}`,
+  userAgent: `polycheck-k6/${profile}-${loadProfile.userCount}`,
 }
 
 const required = (name) => {
@@ -75,6 +79,9 @@ const validateTarget = (baseUrl) => {
   if (profile === 'full' && __ENV.K6_CONFIRM_1000_USERS !== 'I_HAVE_AUTHORIZATION_FOR_1000_USERS') {
     fail('The full profile requires K6_CONFIRM_1000_USERS=I_HAVE_AUTHORIZATION_FOR_1000_USERS')
   }
+  if (loadProfile.userCount > 1000 && __ENV.K6_CONFIRM_5000_USERS !== 'I_HAVE_AUTHORIZATION_FOR_5000_USERS') {
+    fail('Runs above 1,000 users require K6_CONFIRM_5000_USERS=I_HAVE_AUTHORIZATION_FOR_5000_USERS')
+  }
   if (protocol !== 'https:' && !localHosts.includes(hostname)) {
     fail('Remote load tests must use HTTPS')
   }
@@ -94,8 +101,10 @@ export const setup = () => {
   if (!/^[A-Za-z0-9._-]{1,64}$/.test(runId)) {
     fail('K6_RUN_ID must be 1-64 letters, numbers, dots, underscores, or hyphens')
   }
-  if (!Array.isArray(tokens) || tokens.length < loadProfile.userCount) {
-    fail(`K6_TOKENS_FILE must contain at least ${loadProfile.userCount} unique bearer tokens`)
+  if (!Array.isArray(tokens) || tokens.length < loadProfile.userStart + loadProfile.userCount) {
+    fail(
+      `K6_TOKENS_FILE must contain at least ${loadProfile.userStart + loadProfile.userCount} unique bearer tokens (start ${loadProfile.userStart}, count ${loadProfile.userCount})`,
+    )
   }
   if (qrToken.length < 80) fail('QR_TOKEN does not meet the API minimum length')
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) fail('LATITUDE is invalid')
@@ -106,11 +115,11 @@ export const setup = () => {
 
   const uniqueTokens = new Set()
   for (let index = 0; index < loadProfile.userCount; index += 1) {
-    const token = tokens[index]?.token
+    const token = tokens[loadProfile.userStart + index]?.token
     if (typeof token !== 'string' || token.length < 16) {
-      fail(`Token fixture ${index + 1} must contain a bearer token of at least 16 characters`)
+      fail(`Token fixture ${loadProfile.userStart + index + 1} must contain a bearer token of at least 16 characters`)
     }
-    if (uniqueTokens.has(token)) fail(`Token fixture ${index + 1} reuses a bearer token`)
+    if (uniqueTokens.has(token)) fail(`Token fixture ${loadProfile.userStart + index + 1} reuses a bearer token`)
     uniqueTokens.add(token)
   }
 
@@ -147,8 +156,9 @@ const syncOffline = (config, payload, headers) => {
 }
 
 export function submitAttendanceScan(config) {
-  const studentIndex = exec.scenario.iterationInTest
-  if (studentIndex >= loadProfile.userCount) fail('The scenario scheduled more iterations than token fixtures')
+  const iterationIndex = exec.scenario.iterationInTest
+  if (iterationIndex >= loadProfile.userCount) fail('The scenario scheduled more iterations than token fixtures')
+  const studentIndex = loadProfile.userStart + iterationIndex
 
   const capturedAt = new Date().toISOString()
   const clientAttemptId = `k6:${config.runId}:${studentIndex}`

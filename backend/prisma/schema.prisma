@@ -53,6 +53,7 @@ model User {
   scope             String?
   teacherPublicKey  String?
   isActive          Boolean  @default(true)
+  mustChangePassword Boolean @default(false)
   authVersion       Int      @default(0)
   privacyConsentVersion String?
   privacyConsentedAt     DateTime?
@@ -69,6 +70,7 @@ model User {
   scanAttempts       ScanAttempt[]
   authAccounts       AuthAccount[]
   authSessions       AuthSession[]
+  importBatches      ImportBatch[]
 
   @@index([role])
   @@index([studentId])
@@ -380,4 +382,23 @@ model AuditLog {
   @@index([actorId, createdAt])
   @@index([entityType, entityId, createdAt])
   @@index([action, createdAt])
+}
+
+model ImportBatch {
+  id          String   @id @default(cuid())
+  kind        String
+  actorId     String
+  actor       User     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  department  String?
+  total       Int
+  created     Int
+  updated     Int
+  skipped     Int
+  failed      Int
+  summary     Json?
+  rowChecksum String
+  createdAt   DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([createdAt])
 }

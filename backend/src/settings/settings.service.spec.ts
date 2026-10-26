@@ -16,6 +16,30 @@ describe('SettingsService', () => {
     expect(result).toBe(rows)
   })
 
+  it('validates and defaults the teacher student-provisioning flag', async () => {
+    const prisma = {
+      institutionSetting: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn().mockResolvedValue({ key: 'allow_teacher_student_provisioning', value: 'true' }),
+      },
+    }
+    const service = new SettingsService(prisma as never)
+
+    await expect(service.getBoolean('allow_teacher_student_provisioning')).resolves.toBe(false)
+    await service.set('allow_teacher_student_provisioning', 'true', 'admin-1')
+    expect(prisma.institutionSetting.upsert).toHaveBeenCalledWith({
+      where: { key: 'allow_teacher_student_provisioning' },
+      create: { key: 'allow_teacher_student_provisioning', value: 'true', updatedBy: 'admin-1' },
+      update: { value: 'true', updatedBy: 'admin-1' },
+    })
+
+    prisma.institutionSetting.findUnique.mockResolvedValue({ value: 'true' })
+    await expect(service.getBoolean('allow_teacher_student_provisioning')).resolves.toBe(true)
+    await expect(service.set('allow_teacher_student_provisioning', 'yes', 'admin-1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    )
+  })
+
   it('upserts institution settings with the acting administrator', async () => {
     const upserted = { key: 'default_qr_validity_minutes', value: '5', updatedBy: 'admin-1' }
     const prisma = { institutionSetting: { upsert: jest.fn().mockResolvedValue(upserted) } }

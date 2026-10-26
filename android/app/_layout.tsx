@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as SplashScreen from 'expo-splash-screen'
 import { useFonts } from 'expo-font'
-import { ActivityIndicator, Alert, AppState, View } from 'react-native'
+import { ActivityIndicator, AppState, View } from 'react-native'
 import { ThemeProvider, useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
 import { api, subscribeToAuthChanges } from '../services/api-client'
@@ -12,6 +12,7 @@ import { monitorAuthSession } from '../services/realtime'
 import type { User } from '@polycheck/shared'
 import { PrivacyConsentGate } from '../components/PrivacyConsentGate'
 import { StudentScreenCaptureGuard } from '../components/StudentScreenCaptureGuard'
+import { CampusToastProvider, useCampusToast } from '../components/CampusToast'
 import * as Sentry from '@sentry/react-native'
 
 const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN
@@ -36,11 +37,15 @@ SplashScreen.preventAutoHideAsync()
 
 function RootLayoutInner() {
   const { isDark } = useTheme()
+  const { showToast } = useCampusToast()
   const router = useRouter()
   const segments = useSegments()
   // Stable ref so navigation callbacks always use the latest router
   const routerRef = useRef(router)
   routerRef.current = router
+  // Stable ref so the one-shot bootstrap effect can notify without rerunning
+  const toastRef = useRef(showToast)
+  toastRef.current = showToast
 
   const [sessionReady, setSessionReady] = useState(false)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
@@ -70,16 +75,21 @@ function RootLayoutInner() {
       stopAuthMonitor()
       stopAuthMonitor = user
         ? monitorAuthSession(() => {
-            Alert.alert('Session ended', 'Your session was replaced or revoked. Please sign in again.')
+            toastRef.current('error', 'Session ended', 'Your session was replaced or revoked. Please sign in again.')
             void api.logout()
           })
         : () => undefined
     })
 
     void api.restoreSession()
-      .then(() => api.preSyncOfflineData())
       .catch((error) => { Sentry.captureException(error) })
-      .finally(() => { if (mounted) setSessionReady(true) })
+      .finally(() => {
+        if (!mounted) return
+        setSessionReady(true)
+        // Pre-sync must never hold the splash screen; it continues in the
+        // background and retries on the normal interval.
+        void api.preSyncOfflineData().catch((error) => { Sentry.captureException(error) })
+      })
 
     const sync = () => { void api.preSyncOfflineData().catch((error) => { Sentry.captureException(error) }) }
     const interval = setInterval(sync, 30_000)
@@ -103,23 +113,29 @@ function RootLayoutInner() {
   useEffect(() => {
     if (!sessionReady || !fontsLoaded) return
 
-    const inAuthGroup = segments[0] === '(auth)'
     const inTabsGroup = segments[0] === '(tabs)'
     const inFacultyGroup = segments[0] === '(faculty)'
+    const inChangePasswordScreen = segments[0] === 'change-password'
 
     if (!currentUser) {
-      // Not logged in — go to landing if trying to access protected tab/faculty routes
-      if (inTabsGroup || inFacultyGroup) {
+      // Not logged in — go to landing if trying to access protected routes
+      if (inTabsGroup || inFacultyGroup || inChangePasswordScreen) {
         routerRef.current.replace('/')
+      }
+    } else if (currentUser.mustChangePassword) {
+      // Temporary/admin-reset credential — block every protected route until
+      // the user sets a new password.
+      if (!inChangePasswordScreen) {
+        routerRef.current.replace('/change-password')
       }
     } else if (currentUser.role === 'student') {
       // Student — go to student dashboard unless already in tabs
-      if (!inTabsGroup) {
+      if (inChangePasswordScreen || !inTabsGroup) {
         routerRef.current.replace('/(tabs)/dashboard')
       }
     } else if (currentUser.role === 'teacher' || currentUser.role === 'super_admin') {
       // Faculty / super admin — go to faculty dashboard unless already there
-      if (!inFacultyGroup) {
+      if (inChangePasswordScreen || !inFacultyGroup) {
         routerRef.current.replace('/(faculty)/dashboard')
       }
     }
@@ -144,7 +160,9 @@ function RootLayoutInner() {
   return (
     <View className={`flex-1 will-change-variable will-change-container ${isDark ? 'dark' : ''}`} onLayout={onLayoutRootView}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="change-password" options={{ headerShown: false, gestureEnabled: false }} />
+      </Stack>
       {currentUser?.role === 'student' ? <StudentScreenCaptureGuard /> : null}
       <PrivacyConsentGate user={currentUser} />
     </View>
@@ -154,7 +172,9 @@ function RootLayoutInner() {
 function RootLayout() {
   return (
     <ThemeProvider>
-      <RootLayoutInner />
+      <CampusToastProvider>
+        <RootLayoutInner />
+      </CampusToastProvider>
     </ThemeProvider>
   )
 }

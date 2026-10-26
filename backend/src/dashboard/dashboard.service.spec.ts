@@ -1,9 +1,11 @@
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException } from '@nestjs/common'
 import { DashboardService } from './dashboard.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 
 describe('DashboardService', () => {
   const teacher: RequestUser = { id: 'teacher-1', role: 'teacher' }
+  const institutionAdmin: RequestUser = { id: 'admin-1', role: 'super_admin', scope: 'institution' }
+  const departmentAdmin: RequestUser = { id: 'admin-2', role: 'super_admin', scope: 'department', department: 'CCIS' }
 
   it('runs narrow, bounded search queries concurrently', async () => {
     let resolveSections!: (value: []) => void
@@ -299,5 +301,112 @@ describe('DashboardService', () => {
   it('rejects impossible calendar dates instead of normalizing them', async () => {
     const service = new DashboardService({} as never)
     await expect(service.events(teacher, '2026-02-30', '2026-03-02')).rejects.toThrow(BadRequestException)
+  })
+
+  describe('admin overview', () => {
+    const activity = [
+      {
+        id: 'log-1',
+        actorId: 'admin-1',
+        actorName: 'Ada Admin',
+        actorRole: 'super_admin',
+        action: 'admin.user.updated',
+        entityType: 'user',
+        entityId: 'teacher-1',
+        outcome: 'succeeded',
+        createdAt: '2026-10-26T00:00:00.000Z',
+      },
+    ]
+
+    const adminPrisma = () => ({
+      user: {
+        count: jest
+          .fn()
+          .mockResolvedValueOnce(5)
+          .mockResolvedValueOnce(2)
+          .mockResolvedValueOnce(100)
+          .mockResolvedValueOnce(4),
+      },
+      session: { count: jest.fn().mockResolvedValue(3) },
+      attendanceRecord: { count: jest.fn().mockResolvedValue(1) },
+      $queryRaw: jest.fn().mockResolvedValue([{ '?column?': 1 }]),
+    })
+
+    it('reports institution-wide counts and a real dependency health probe', async () => {
+      const prisma = adminPrisma()
+      const auditLogs = { list: jest.fn().mockResolvedValue({ items: activity }) }
+      const redis = { ping: jest.fn().mockResolvedValue(true) }
+      const service = new DashboardService(prisma as never, auditLogs as never, redis as never)
+
+      const result = await service.adminOverview(institutionAdmin)
+
+      expect(result).toEqual({
+        scope: 'institution',
+        counts: {
+          activeFaculty: 5,
+          disabledFaculty: 2,
+          activeStudents: 100,
+          disabledStudents: 4,
+          activeSessions: 3,
+          pendingDisputes: 1,
+        },
+        health: expect.objectContaining({ status: 'ok', database: true, redis: true }),
+        recentActivity: activity,
+      })
+      expect(result.health.timestamp).toEqual(expect.any(String))
+      expect(auditLogs.list).toHaveBeenCalledWith(institutionAdmin, { page: 1, pageSize: 10 })
+      expect(prisma.user.count.mock.calls[0][0].where).toEqual({ role: 'teacher', isActive: true })
+      expect(prisma.session.count.mock.calls[0][0].where).toEqual({
+        AND: [{}, { isActive: true, endedAt: null }],
+      })
+      expect(prisma.attendanceRecord.count.mock.calls[0][0].where).toEqual({
+        AND: [{}, { status: 'disputed', disputeResolved: false }],
+      })
+    })
+
+    it('scopes every count to a department administrator department', async () => {
+      const prisma = adminPrisma()
+      const auditLogs = { list: jest.fn().mockResolvedValue({ items: [] }) }
+      const redis = { ping: jest.fn().mockResolvedValue(true) }
+      const service = new DashboardService(prisma as never, auditLogs as never, redis as never)
+
+      const result = await service.adminOverview(departmentAdmin)
+
+      expect(result.scope).toBe('department')
+      expect(result.department).toBe('CCIS')
+      expect(prisma.user.count.mock.calls[0][0].where).toEqual({
+        AND: [{ department: 'CCIS' }, { role: 'teacher', isActive: true }],
+      })
+      expect(prisma.session.count.mock.calls[0][0].where).toEqual({
+        AND: [{ section: { teacher: { department: 'CCIS' } } }, { isActive: true, endedAt: null }],
+      })
+      expect(prisma.attendanceRecord.count.mock.calls[0][0].where).toEqual({
+        AND: [
+          { session: { section: { teacher: { department: 'CCIS' } } } },
+          { status: 'disputed', disputeResolved: false },
+        ],
+      })
+    })
+
+    it('degrades health without failing the overview when dependencies are down', async () => {
+      const prisma = adminPrisma()
+      prisma.$queryRaw.mockRejectedValue(new Error('database down'))
+      const auditLogs = { list: jest.fn().mockResolvedValue({ items: [] }) }
+      const redis = { ping: jest.fn().mockRejectedValue(new Error('redis down')) }
+      const service = new DashboardService(prisma as never, auditLogs as never, redis as never)
+
+      const result = await service.adminOverview(institutionAdmin)
+
+      expect(result.counts.activeFaculty).toBe(5)
+      expect(result.health).toEqual(expect.objectContaining({ status: 'unavailable', database: false, redis: false }))
+    })
+
+    it('rejects non super admins before querying anything', async () => {
+      const prisma = { user: { count: jest.fn() } }
+      const service = new DashboardService(prisma as never)
+
+      await expect(service.adminOverview(teacher)).rejects.toThrow(ForbiddenException)
+      expect(prisma.user.count).not.toHaveBeenCalled()
+    })
   })
 })

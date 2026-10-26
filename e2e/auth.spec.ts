@@ -1,5 +1,13 @@
 import { test, expect } from '@playwright/test'
-import { loginFaculty, loginStudent, logout, trackErrors, assertNoErrors, SEED_PASSWORD } from './helpers'
+import {
+  ADMIN_EMAIL,
+  loginFaculty,
+  loginStudent,
+  logout,
+  trackErrors,
+  assertNoErrors,
+  SEED_PASSWORD,
+} from './helpers'
 
 test.describe('Auth & Session', () => {
   test('landing page renders PUP branding and role selection', async ({ page }) => {
@@ -94,6 +102,56 @@ test.describe('Auth & Session', () => {
     await expect(page.getByText('System Administration')).toBeVisible()
     await expect(page.getByText('Super Administrator')).toBeVisible()
     assertNoErrors(errors)
+  })
+
+  test('super admin sidebar exposes the administration console only', async ({ page }) => {
+    const errors = trackErrors(page)
+    await loginFaculty(page, ADMIN_EMAIL)
+
+    const navLinks = page.locator('aside nav').getByRole('link')
+    await expect(navLinks).toHaveText([
+      'Dashboard',
+      'User Management',
+      'System Reports',
+      'Audit Log',
+      'Server Status',
+      'Institution Settings',
+      'Global Search',
+    ])
+    for (const classroomLabel of [
+      'Subject Directory',
+      'Session Monitoring',
+      'Attendance Monitoring',
+      'Dispute Monitoring',
+      'Schedule',
+    ]) {
+      await expect(navLinks.filter({ hasText: classroomLabel })).toHaveCount(0)
+    }
+    assertNoErrors(errors)
+  })
+
+  test('super admin sees the live server status page', async ({ page }) => {
+    const errors = trackErrors(page)
+    await loginFaculty(page, ADMIN_EMAIL)
+    await page.goto('/faculty/server-status')
+
+    await expect(page.getByRole('heading', { name: 'Server Status' })).toBeVisible()
+    await expect(page.getByText(/this backend instance/i).first()).toBeVisible()
+    await expect(page.getByRole('status')).toContainText(/Live|Connecting|Reconnecting/, { timeout: 20_000 })
+    await expect(page.getByText('HTTP request rate')).toBeVisible()
+    assertNoErrors(errors, [/WebSocket connection/i, /websocket/i, /socket/i])
+  })
+
+  test('teachers cannot reach the server status console', async ({ page }) => {
+    await loginFaculty(page)
+    await page.goto('/faculty/server-status')
+    await expect(page).toHaveURL((url) => url.pathname === '/faculty', { timeout: 20_000 })
+  })
+
+  test('students cannot reach the server status console', async ({ page }) => {
+    await loginStudent(page)
+    await page.goto('/faculty/server-status')
+    await expect(page).toHaveURL((url) => url.pathname === '/', { timeout: 20_000 })
   })
 
   test('password field has a working visibility toggle', async ({ page }) => {

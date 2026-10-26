@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import type { SuperAdmin } from '@polycheck/shared'
 import { api } from '../../services/api-client'
+import { useAuthGate } from '../../hooks/use-auth-gate'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusIconButton } from '../../components/CampusPrimitives'
 import { CampusFormField } from '../../components/CampusFormField'
+import { useCampusToast } from '../../components/CampusToast'
 
 const fields = [
   { key: 'institution_name', label: 'Institution name', defaultValue: 'Polytechnic University of the Philippines', keyboard: 'default' as const, icon: 'account-balance' as const },
@@ -19,40 +21,40 @@ const fields = [
 ] as const
 
 export default function InstitutionSettingsScreen() {
+  const currentUser = useAuthGate(['super_admin'])
   const { isDark, toggle } = useTheme()
+  const { showToast } = useCampusToast()
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((field) => [field.key, field.defaultValue])))
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [canEdit, setCanEdit] = useState(false)
 
   useEffect(() => {
-    const current = api.getCurrentUser()
-    if (!current || current.role !== 'super_admin') {
-      router.replace('/(faculty)/dashboard')
-      return
-    }
-    setCanEdit((current as SuperAdmin).scope === 'institution')
+    if (!currentUser) return
+    setCanEdit((currentUser as SuperAdmin).scope === 'institution')
     void api.getSettings()
       .then((settings) => setValues((currentValues) => ({ ...currentValues, ...Object.fromEntries(settings.map((setting) => [setting.key, setting.value])) })))
-      .catch((error) => Alert.alert('Unable to load settings', error instanceof Error ? error.message : 'Try again.'))
+      .catch((error) => showToast('error', 'Unable to load settings', error instanceof Error ? error.message : 'Try again.'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [currentUser, showToast])
 
   const saveSettings = async () => {
     if (fields.some((field) => !values[field.key]?.trim())) {
-      Alert.alert('Missing value', 'Complete every institution setting before saving.')
+      showToast('warning', 'Missing value', 'Complete every institution setting before saving.')
       return
     }
     setSaving(true)
     try {
       await Promise.all(fields.map((field) => api.setSetting(field.key, values[field.key])))
-      Alert.alert('Settings saved', 'Institution defaults have been updated.')
+      showToast('success', 'Settings saved', 'Institution defaults have been updated.')
     } catch (error) {
-      Alert.alert('Unable to save settings', error instanceof Error ? error.message : 'Try again.')
+      showToast('error', 'Unable to save settings', error instanceof Error ? error.message : 'Try again.')
     } finally {
       setSaving(false)
     }
   }
+
+  if (!currentUser) return null
 
   return (
     <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">

@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
+import { PendingPasswordChange } from "@/components/auth/PendingPasswordChange";
 import { useLanding } from "../../layout";
+import type { User } from "@polycheck/shared";
 
 export default function StudentLoginPage() {
   const router = useRouter();
@@ -17,6 +19,7 @@ export default function StudentLoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [pendingUser, setPendingUser] = useState<User | null>(null);
   const { exitingRoute } = useLanding();
 
   useEffect(() => setHydrated(true), []);
@@ -27,7 +30,9 @@ export default function StudentLoginPage() {
     setLoading(true);
     try {
       const user = await api.loginStudent(studentId, password);
-      if (user) {
+      if (user?.mustChangePassword) {
+        setPendingUser(user);
+      } else if (user) {
         router.push("/student/dashboard");
       } else {
         setError("Invalid student ID or password.");
@@ -38,6 +43,23 @@ export default function StudentLoginPage() {
       setLoading(false);
     }
   };
+
+  if (pendingUser) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8 md:p-12 lg:p-16">
+        <div className="w-full max-w-md">
+          <PendingPasswordChange
+            user={pendingUser}
+            onDone={() => router.push("/student/dashboard")}
+            onCancel={() => {
+              void api.logout();
+              setPendingUser(null);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex items-center justify-center p-8 md:p-12 lg:p-16">

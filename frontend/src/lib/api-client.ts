@@ -1,6 +1,35 @@
-import { getRecentCampusDateRange, signQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage } from '@polycheck/shared'
+import { classifyAttendanceSyncError, getRecentCampusDateRange, haversineDistance, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRequest, type EnrollImportResult, type EnrollImportRow, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput } from '@polycheck/shared'
 import { getOrCreateTeacherSigningKey, isSigningKeyProvisioned, markSigningKeyProvisioned } from './signing-key'
 import { API_BASE } from './api-config'
+import {
+  cacheAttendanceRecords,
+  cacheRoster,
+  cacheSections,
+  cacheSessions,
+  cacheSubjects,
+  drainOfflineQueue,
+  enqueueOfflineOperation,
+  getCachedAttendanceForSession,
+  getCachedAttendanceRecords,
+  getCachedRoster,
+  getCachedSection,
+  getCachedSections,
+  getCachedSession,
+  getCachedSessions,
+  getCachedSubjects,
+  getEnrolledSectionIds,
+  getServerClockOffset,
+  initializeOfflineStore,
+  persistOfflineStorage,
+  removeCachedAttendanceAttempt,
+  removeCachedRecord,
+  replaceCachedAttendanceForStudent,
+  setEnrolledSectionIds,
+  setOfflineOwner,
+  setServerClockOffset,
+  wipeOfflineStore,
+} from './offline/store'
+import type { OfflineOperationKind } from './offline/db'
 
 const STORAGE_KEY = 'polycheck-user'
 const REQUEST_TIMEOUT_MS = 15_000
@@ -67,10 +96,17 @@ async function fetchWithTimeout(
 ): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const externalSignal = init?.signal
+  const forwardAbort = () => controller.abort()
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort()
+    else externalSignal.addEventListener('abort', forwardAbort, { once: true })
+  }
   try {
     return await fetch(input, { ...init, signal: controller.signal })
   } finally {
     clearTimeout(timer)
+    externalSignal?.removeEventListener('abort', forwardAbort)
   }
 }
 
@@ -88,26 +124,36 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json()
 }
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetchWithTimeout(`${API_BASE}${path}`, { headers: await authHeaders(), credentials: 'include' })
+async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
+    headers: await authHeaders(),
+    credentials: 'include',
+    signal,
+  })
   return handleResponse<T>(res)
 }
 
-async function post<T>(path: string, body?: unknown): Promise<T> {
+async function post<T>(path: string, body?: unknown, idempotencyKey?: string): Promise<T> {
   const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'POST',
     credentials: 'include',
-    headers: await authHeaders(),
+    headers: {
+      ...(await authHeaders()),
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+    },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   return handleResponse<T>(res)
 }
 
-async function patch<T>(path: string, body?: unknown): Promise<T> {
+async function patch<T>(path: string, body?: unknown, idempotencyKey?: string): Promise<T> {
   const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'PATCH',
     credentials: 'include',
-    headers: await authHeaders(),
+    headers: {
+      ...(await authHeaders()),
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+    },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   return handleResponse<T>(res)
@@ -130,6 +176,25 @@ async function del<T>(path: string): Promise<T> {
     headers: await authHeaders(),
   })
   return handleResponse<T>(res)
+}
+
+export function isNetworkFailure(error: unknown): boolean {
+  // Typed API errors are authoritative server answers; anything else (abort,
+  // DNS, CORS, offline) is a connectivity failure that may fall back to cache.
+  if (error instanceof ApiHttpError) return error.status >= 500
+  return true
+}
+
+async function trustedNow(): Promise<number> {
+  const offset = await getServerClockOffset()
+  return Date.now() + (offset ?? 0)
+}
+
+const RECEIPT_POLL_ATTEMPTS = 4
+const RECEIPT_POLL_DELAY_MS = 600
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 export const api = {
@@ -159,6 +224,7 @@ export const api = {
     const data = await res.json()
     currentUser = data.user as User
     saveUser(currentUser)
+    void initializeOfflineStore(currentUser.id).catch(() => undefined)
     return currentUser
   },
 
@@ -177,12 +243,14 @@ export const api = {
     const data = await res.json()
     currentUser = data.user as User
     saveUser(currentUser)
+    void initializeOfflineStore(currentUser.id).catch(() => undefined)
     return currentUser
   },
 
   async logout() {
     currentUser = null
     saveUser(null)
+    void wipeOfflineStore().catch(() => undefined)
     try {
       await fetchWithTimeout(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
     } catch { /* Local logout still succeeds when the server is unavailable. */ }
@@ -197,40 +265,132 @@ export const api = {
     return currentUser !== null
   },
 
+  async getTrustedTimestamp(): Promise<string> {
+    return new Date(await trustedNow()).toISOString()
+  },
+
+  async refreshServerClockOffset(): Promise<void> {
+    try {
+      const startedAt = Date.now()
+      const health = await get<{ timestamp: string }>('/health')
+      const completedAt = Date.now()
+      const serverTime = new Date(health.timestamp).getTime()
+      if (Number.isFinite(serverTime)) {
+        await setServerClockOffset(serverTime - (startedAt + completedAt) / 2)
+      }
+    } catch {
+      // Offline: the last cached offset remains valid for seven days.
+    }
+  },
+
   async restoreSession(): Promise<User | null> {
+    const cached = loadUser()
+    if (typeof navigator !== 'undefined' && navigator.onLine === false && cached) {
+      currentUser = cached
+      void initializeOfflineStore(cached.id).catch(() => undefined)
+      return cached
+    }
     try {
       currentUser = await get<User>('/auth/me')
       saveUser(currentUser)
+      void initializeOfflineStore(currentUser.id).catch(() => undefined)
       return currentUser
     } catch (error) {
       if (isAuthRejection(error)) {
         currentUser = null
         saveUser(null)
+        setOfflineOwner(null)
         return null
       }
       throw error
     }
   },
 
+  async changePassword(currentPassword: string | undefined, newPassword: string): Promise<User> {
+    const updated = await post<User>('/auth/change-password', {
+      ...(currentPassword ? { currentPassword } : {}),
+      newPassword,
+    })
+    currentUser = updated
+    saveUser(updated)
+    return updated
+  },
+
   // ── Subjects ──
-  getSubjects(): Promise<Subject[]> { return get('/subjects') },
+  async getSubjects(): Promise<Subject[]> {
+    try {
+      const subjects = await get<Subject[]>('/subjects')
+      await cacheSubjects(subjects).catch(() => undefined)
+      return subjects
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      return getCachedSubjects()
+    }
+  },
   getSubject(id: string): Promise<Subject> { return get(`/subjects/${id}`) },
   createSubject(data: CreateSubjectInput): Promise<Subject> { return post('/subjects', data) },
 
   // ── Sections ──
-  getSections(subjectId?: string): Promise<Section[]> {
-    return get(`/sections${subjectId ? `?subjectId=${subjectId}` : ''}`)
+  async getSections(subjectId?: string): Promise<Section[]> {
+    try {
+      const sections = await get<Section[]>(`/sections${subjectId ? `?subjectId=${subjectId}` : ''}`)
+      await cacheSections(sections).catch(() => undefined)
+      return sections
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      const cached = await getCachedSections()
+      return subjectId ? cached.filter((section) => section.subjectId === subjectId) : cached
+    }
   },
-  getSection(id: string): Promise<Section> { return get(`/sections/${id}`) },
+  async getSection(id: string): Promise<Section> {
+    try {
+      const section = await get<Section>(`/sections/${id}`)
+      await cacheSections([section]).catch(() => undefined)
+      return section
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      const cached = await getCachedSection(id)
+      if (!cached) throw new Error('Section is not available offline. Sync before class.')
+      return cached
+    }
+  },
   createSection(data: CreateSectionInput): Promise<Section> { return post('/sections', data) },
-  getSectionStudents(sectionId: string): Promise<(Student & { attendance: { present: number; late: number; absent: number; disputed: number } })[]> {
-    return get(`/sections/${sectionId}/students`)
+  async getSectionStudents(sectionId: string): Promise<(Student & { attendance: { present: number; late: number; absent: number; disputed: number } })[]> {
+    try {
+      const students = await get<(Student & { attendance: { present: number; late: number; absent: number; disputed: number } })[]>(`/sections/${sectionId}/students`)
+      await cacheRoster(sectionId, students).catch(() => undefined)
+      return students
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      const cached = await getCachedRoster(sectionId)
+      return cached.map((student) => ({
+        ...student,
+        attendance: { present: 0, late: 0, absent: 0, disputed: 0 },
+      }))
+    }
   },
-  getStudentsForSection(sectionId: string): Promise<Student[]> {
-    return get(`/sections/${sectionId}/students`)
+  async getStudentsForSection(sectionId: string): Promise<Student[]> {
+    try {
+      const students = await get<Student[]>(`/sections/${sectionId}/students`)
+      await cacheRoster(sectionId, students).catch(() => undefined)
+      return students
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      return getCachedRoster(sectionId)
+    }
   },
-  getStudentSections(studentId: string): Promise<Section[]> {
-    return get(`/sections?studentId=${studentId}`)
+  async getStudentSections(studentId: string): Promise<Section[]> {
+    try {
+      const sections = await get<Section[]>(`/sections?studentId=${studentId}`)
+      await cacheSections(sections).catch(() => undefined)
+      await setEnrolledSectionIds(sections.map((section) => section.id)).catch(() => undefined)
+      return sections
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      const sectionIds = await getEnrolledSectionIds()
+      const cached = await getCachedSections()
+      return cached.filter((section) => sectionIds.includes(section.id))
+    }
   },
   resetEnrollmentCode(sectionId: string): Promise<{ enrollmentCode: string }> {
     return post(`/sections/${sectionId}/enrollment-code/reset`)
@@ -249,10 +409,28 @@ export const api = {
   },
 
   // ── Sessions ──
-  getSessions(sectionId?: string): Promise<Session[]> {
-    return get(`/sessions${sectionId ? `?sectionId=${sectionId}` : ''}`)
+  async getSessions(sectionId?: string): Promise<Session[]> {
+    try {
+      const sessions = await get<Session[]>(`/sessions${sectionId ? `?sectionId=${sectionId}` : ''}`)
+      await cacheSessions(sessions).catch(() => undefined)
+      return sessions
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      return getCachedSessions(sectionId)
+    }
   },
-  getSession(id: string): Promise<Session> { return get(`/sessions/${id}`) },
+  async getSession(id: string): Promise<Session> {
+    try {
+      const session = await get<Session>(`/sessions/${id}`)
+      await cacheSessions([session]).catch(() => undefined)
+      return session
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      const cached = await getCachedSession(id)
+      if (!cached) throw new Error('Session is not available offline. Sync before class.')
+      return cached
+    }
+  },
   createSession(data: CreateSessionInput): Promise<Session> {
     const { teacherId, ...body } = data
     void teacherId
@@ -265,42 +443,110 @@ export const api = {
     const user = this.getCurrentUser()
     if (!user || user.role !== 'teacher') throw new Error('A teacher account is required to sign QR tokens')
     const [session, key] = await Promise.all([
-      get<Session>(`/sessions/${sessionId}`),
+      this.getSession(sessionId),
       getOrCreateTeacherSigningKey(user.id),
     ])
     const effectiveGrace = gracePeriodMinutes ?? Math.min(session.gracePeriodMinutes, 60)
     if (effectiveGrace < 0 || effectiveGrace > 60) throw new Error('QR grace must be 0-60 minutes')
-    // The public key persists server-side and provisioning is rate limited, so
-    // upload it only once per browser/account (see isSigningKeyProvisioned).
-    if (!(await isSigningKeyProvisioned(user.id))) {
-      await post('/auth/provision-key', { publicKey: key.publicKey })
-      await markSigningKeyProvisioned(user.id)
-    }
+    const issuedAt = await trustedNow()
     const token = signQRToken({
       version: 1,
       sessionId: session.id,
       sectionId: session.sectionId,
       teacherId: user.id,
       teacherName: user.fullName,
-      issuedAt: Date.now(),
+      issuedAt,
       validityMinutes,
       gracePeriodMinutes: effectiveGrace,
     }, key.secretKey)
-    return post(`/sessions/${sessionId}/activate`, { validityMinutes, gracePeriodMinutes: effectiveGrace, token })
+    try {
+      // The public key persists server-side and provisioning is rate limited, so
+      // upload it only once per browser/account. A key that already matches the
+      // cached session is known to the server, enabling fully offline QR use.
+      if (!(await isSigningKeyProvisioned(user.id))) {
+        if (session.teacherPublicKey === key.publicKey) {
+          await markSigningKeyProvisioned(user.id)
+        } else {
+          try {
+            await post('/auth/provision-key', { publicKey: key.publicKey })
+            await markSigningKeyProvisioned(user.id)
+          } catch (error) {
+            if (!isNetworkFailure(error)) throw error
+            throw new Error(
+              'Connect to the internet once to register this device before generating offline QR codes.',
+            )
+          }
+        }
+      }
+      const activated = await post<Session>(`/sessions/${sessionId}/activate`, {
+        validityMinutes,
+        gracePeriodMinutes: effectiveGrace,
+        token,
+      })
+      await cacheSessions([activated]).catch(() => undefined)
+      return activated
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      const activated: Session = {
+        ...session,
+        isActive: true,
+        qrToken: token,
+        qrGeneratedAt: new Date(issuedAt).toISOString(),
+        qrTokenExpiresAt: new Date(issuedAt + validityMinutes * 60_000).toISOString(),
+        qrValidityMinutes: validityMinutes,
+        gracePeriodMinutes: effectiveGrace,
+        teacherPublicKey: key.publicKey,
+      }
+      await enqueueOfflineOperation('session_activation', {
+        sessionId,
+        validityMinutes,
+        gracePeriodMinutes: effectiveGrace,
+        token,
+      })
+      await cacheSessions([activated]).catch(() => undefined)
+      return activated
+    }
   },
-  endSession(sessionId: string): Promise<Session> { return post(`/sessions/${sessionId}/end`) },
+  async endSession(sessionId: string): Promise<Session> {
+    try {
+      const ended = await post<Session>(`/sessions/${sessionId}/end`)
+      await cacheSessions([ended]).catch(() => undefined)
+      return ended
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      const session = await getCachedSession(sessionId)
+      if (!session) throw new Error('Session is not available offline')
+      const ended = {
+        ...session,
+        isActive: false,
+        endedAt: new Date(await trustedNow()).toISOString(),
+      }
+      await enqueueOfflineOperation('session_end', { sessionId })
+      await cacheSessions([ended]).catch(() => undefined)
+      return ended
+    }
+  },
   getSectionSessions(sectionId: string): Promise<Session[]> {
-    return get(`/sessions?sectionId=${sectionId}`)
+    return this.getSessions(sectionId)
   },
 
   // ── Attendance ──
-  getAttendanceRecords(sessionId?: string, startDate?: string, endDate?: string): Promise<AttendanceRecord[]> {
+  async getAttendanceRecords(sessionId?: string, startDate?: string, endDate?: string): Promise<AttendanceRecord[]> {
     const scope = sessionId
       ? { sessionId, limit: 1000 }
       : startDate && endDate
         ? { startDate, endDate, limit: 1000 }
         : { ...recentDateRange(31), limit: 1000 }
-    return get(queryPath('/attendance', scope))
+    try {
+      const records = await get<AttendanceRecord[]>(queryPath('/attendance', scope))
+      await cacheAttendanceRecords(records).catch(() => undefined)
+      return records
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      if (sessionId) return getCachedAttendanceForSession(sessionId)
+      const cached = await getCachedAttendanceRecords()
+      return cached.sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime())
+    }
   },
   getAttendanceSummaries(teacherId?: string): Promise<AttendanceSummary[]> {
     return get(queryPath('/attendance/summaries', { ...recentDateRange(), teacherId }))
@@ -311,24 +557,179 @@ export const api = {
   getDashboardOverview(filters: Pick<AttendanceReportFilters, 'startDate' | 'endDate'> = {}): Promise<DashboardOverview> {
     return get(queryPath('/dashboard/overview', filters))
   },
-  getAttendanceForStudent(studentId: string): Promise<AttendanceRecord[]> {
-    return get(`/attendance/student/${studentId}`)
+  getAdminOverview(): Promise<AdminOverview> {
+    return get('/dashboard/admin-overview')
   },
-  getStudentAttendanceForSection(studentId: string, sectionId: string): Promise<AttendanceRecord[]> {
-    return get(`/attendance/student/${studentId}?sectionId=${sectionId}`)
+  getServerStatus(): Promise<ServerStatusSnapshot> {
+    return get('/dashboard/server-status')
   },
-  addAttendanceRecord(record: AttendanceRecord): Promise<AttendanceRecord> {
-    return post('/attendance', { sessionId: record.sessionId, sectionId: record.sectionId, studentId: record.studentId, status: record.status })
+  async getAttendanceForStudent(studentId: string): Promise<AttendanceRecord[]> {
+    try {
+      const records = await get<AttendanceRecord[]>(`/attendance/student/${studentId}`)
+      await replaceCachedAttendanceForStudent(studentId, records).catch(() => undefined)
+      return records
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      return getCachedAttendanceRecords(studentId)
+    }
   },
-  updateAttendanceStatus(recordId: string, status: AttendanceStatus): Promise<AttendanceRecord> {
-    return patch(`/attendance/${recordId}/status`, { status })
+  async getStudentAttendanceForSection(studentId: string, sectionId: string): Promise<AttendanceRecord[]> {
+    try {
+      const records = await get<AttendanceRecord[]>(`/attendance/student/${studentId}?sectionId=${sectionId}`)
+      await replaceCachedAttendanceForStudent(studentId, records).catch(() => undefined)
+      return records
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      const cached = await getCachedAttendanceRecords(studentId)
+      return cached.filter((record) => record.sectionId === sectionId)
+    }
   },
-  submitScan(sessionId: string, _studentId: string, _studentName: string, lat: number, lon: number, deviceId: string, qrToken: string, scannedAt?: string, evidence?: ScanEvidenceInput): Promise<AttendanceRecord | { error: string }> {
-    return post('/attendance/scan', { sessionId, lat, lon, deviceId, qrToken, scannedAt, ...evidence })
+  async addAttendanceRecord(record: AttendanceRecord): Promise<AttendanceRecord> {
+    const payload = {
+      sessionId: record.sessionId,
+      sectionId: record.sectionId,
+      studentId: record.studentId,
+      status: record.status,
+    }
+    try {
+      const created = await post<AttendanceRecord>('/attendance', payload)
+      await cacheAttendanceRecords([created]).catch(() => undefined)
+      return created
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      const optimistic: AttendanceRecord = {
+        ...record,
+        id: crypto.randomUUID(),
+        isSynced: false,
+        manuallySet: true,
+      }
+      await enqueueOfflineOperation('attendance_manual', { record: optimistic })
+      await cacheAttendanceRecords([optimistic]).catch(() => undefined)
+      return optimistic
+    }
   },
-  checkAttendance(sessionId: string, studentId: string, lat: number, lon: number, qrToken?: string, scannedAt?: string): Promise<SubmitAttendanceResult> {
+  async updateAttendanceStatus(recordId: string, status: AttendanceStatus): Promise<AttendanceRecord> {
+    try {
+      const updated = await patch<AttendanceRecord>(`/attendance/${recordId}/status`, { status })
+      await cacheAttendanceRecords([updated]).catch(() => undefined)
+      return updated
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      const cached = await getCachedAttendanceRecords()
+      const existing = cached.find((record) => record.id === recordId)
+      const optimistic: AttendanceRecord = {
+        ...(existing ?? {
+          id: recordId,
+          sessionId: '',
+          sectionId: '',
+          studentId: '',
+          studentName: '',
+          timestamp: new Date().toISOString(),
+          status,
+          coordinates: { latitude: 0, longitude: 0 },
+          deviceId: 'offline-web',
+        }),
+        status,
+        isSynced: false,
+        manuallySet: true,
+      }
+      await enqueueOfflineOperation('attendance_status', {
+        recordId,
+        status,
+        sessionId: optimistic.sessionId,
+      })
+      await cacheAttendanceRecords([optimistic]).catch(() => undefined)
+      return optimistic
+    }
+  },
+  async submitScan(sessionId: string, studentId: string, studentName: string, lat: number, lon: number, deviceId: string, qrToken: string, scannedAt?: string, evidence?: ScanEvidenceInput): Promise<AttendanceRecord | { error: string }> {
+    const payload = { sessionId, lat, lon, deviceId, qrToken, scannedAt: scannedAt ?? new Date().toISOString(), ...evidence }
+    try {
+      const result = await post<AttendanceRecord | { error: string }>('/attendance/scan', payload)
+      if (!('error' in result)) await cacheAttendanceRecords([result]).catch(() => undefined)
+      return result
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      if (!qrToken) return { error: 'QR token is required' }
+      const cachedSession = await getCachedSession(sessionId)
+      const tokenPayload = verifyQRToken(qrToken, cachedSession?.teacherPublicKey ?? '')
+      if (!tokenPayload) return { error: 'QR token signature is invalid' }
+      const capturedAt = new Date(payload.scannedAt).getTime()
+      const validityEnd = tokenPayload.issuedAt + tokenPayload.validityMinutes * 60_000
+      const graceEnd = validityEnd + tokenPayload.gracePeriodMinutes * 60_000
+      if (evidence?.mocked === true) return { error: 'Mocked locations are not accepted' }
+      if (!cachedSession) {
+        return { error: 'Session data is not available offline. Sync before class.' }
+      }
+      const distance = haversineDistance(
+        lat,
+        lon,
+        cachedSession.geofence.latitude,
+        cachedSession.geofence.longitude,
+      )
+      if (distance > cachedSession.geofence.radiusMeters) {
+        return {
+          error: `You are outside the session geofence (${Math.round(distance)} m away, allowed ${cachedSession.geofence.radiusMeters} m).`,
+        }
+      }
+      if ((evidence?.accuracyMeters ?? 0) > 50) return { error: 'Location accuracy is too poor to verify attendance' }
+      if (evidence?.locationCapturedAt && Math.abs(capturedAt - new Date(evidence.locationCapturedAt).getTime()) > 2 * 60_000) {
+        return { error: 'Location fix is stale. Acquire a fresh location and try again.' }
+      }
+      if (!Number.isFinite(capturedAt) || capturedAt < tokenPayload.issuedAt - 30_000 || capturedAt > graceEnd) {
+        return { error: 'The QR attendance window has expired' }
+      }
+      const existing = await getCachedAttendanceForSession(sessionId)
+      if (existing.some((record) => record.studentId === studentId)) {
+        return { error: 'Attendance for this session was already saved on this device.' }
+      }
+      await enqueueOfflineOperation('attendance_scan', payload)
+      const record: AttendanceRecord = {
+        id: `offline:${sessionId}:${studentId}`,
+        sessionId,
+        sectionId: tokenPayload.sectionId,
+        studentId,
+        studentName,
+        timestamp: payload.scannedAt,
+        status: capturedAt <= validityEnd ? 'present' : 'late',
+        coordinates: { latitude: lat, longitude: lon },
+        deviceId,
+        tokenSnapshot: qrToken,
+        isSynced: false,
+      }
+      await cacheAttendanceRecords([record]).catch(() => undefined)
+      return record
+    }
+  },
+  async checkAttendance(sessionId: string, studentId: string, lat: number, lon: number, qrToken?: string, scannedAt?: string): Promise<SubmitAttendanceResult> {
     void studentId
-    return post('/attendance/check', { sessionId, lat, lon, qrToken, scannedAt })
+    try {
+      return await post('/attendance/check', { sessionId, lat, lon, qrToken, scannedAt })
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      const session = await getCachedSession(sessionId)
+      const clockOffset = await getServerClockOffset()
+      if (!session || !qrToken || !session.teacherPublicKey || clockOffset === null) {
+        return { success: false, status: 'absent', reason: 'not_synced', message: 'Session security time and class data are not available offline. Sync before class.' }
+      }
+      const tokenPayload = verifyQRToken(qrToken, session.teacherPublicKey)
+      if (!tokenPayload || tokenPayload.sessionId !== session.id || tokenPayload.sectionId !== session.sectionId || tokenPayload.teacherId !== session.teacherId) {
+        return { success: false, status: 'disputed', reason: 'invalid_signature', message: 'QR token signature is invalid' }
+      }
+      if (!isWithinGeofence(lat, lon, session.geofence.latitude, session.geofence.longitude, session.geofence.radiusMeters)) {
+        return { success: false, status: 'absent', reason: 'outside_geofence', message: 'You are outside the session geofence' }
+      }
+      const capturedAt = new Date(scannedAt ?? Date.now()).getTime()
+      if (session.endedAt && capturedAt > new Date(session.endedAt).getTime()) return { success: false, status: 'absent', reason: 'session_inactive', message: 'Session was not active at scan time' }
+      const validityEnd = tokenPayload.issuedAt + tokenPayload.validityMinutes * 60_000
+      const graceEnd = validityEnd + tokenPayload.gracePeriodMinutes * 60_000
+      if (!Number.isFinite(capturedAt) || capturedAt < tokenPayload.issuedAt - 30_000 || capturedAt > graceEnd) {
+        return { success: false, status: 'absent', reason: 'qr_expired', message: 'The QR attendance window has expired' }
+      }
+      await enqueueOfflineOperation('scan_attempt', { sessionId, lat, lon, qrToken, scannedAt })
+      const status = capturedAt <= validityEnd ? 'present' : 'late'
+      return { success: true, status, message: status === 'present' ? 'Check-in saved offline and queued for sync.' : 'Late check-in saved offline and queued for sync.' }
+    }
   },
 
   // ── Disputes ──
@@ -353,6 +754,28 @@ export const api = {
   getStudents(): Promise<Student[]> { return get('/users/students') },
   getStudent(id: string): Promise<Student> { return get(`/users/${id}`) },
   getTeachers(): Promise<Teacher[]> { return get('/users/teachers') },
+  getUsers(filters: AdminUserFilters = {}, options: { signal?: AbortSignal } = {}): Promise<AdminUserPage> {
+    return get(
+      queryPath('/users', {
+        role: filters.role,
+        q: filters.q,
+        department: filters.department,
+        status: filters.status,
+        limit: filters.limit === undefined ? undefined : Math.min(Math.max(1, Math.trunc(filters.limit)), 100),
+        offset: filters.offset,
+      }),
+      options.signal,
+    )
+  },
+  updateUser(id: string, input: UpdateUserInput): Promise<User> {
+    return patch(`/users/${id}`, input)
+  },
+  changeUserRole(id: string, role: AssignableRole): Promise<User> {
+    return patch(`/users/${id}/role`, { role })
+  },
+  createAdmin(input: CreateAdminInput): Promise<User> {
+    return post('/users/admins', input)
+  },
   createTeacher(data: CreateTeacherInput): Promise<Teacher> {
     return post('/users/teachers', data)
   },
@@ -365,6 +788,18 @@ export const api = {
   setUserStatus(id: string, isActive: boolean): Promise<User> {
     return patch(`/users/${id}/status`, { isActive })
   },
+  importStudents(data: StudentImportRequest): Promise<StudentImportResult> {
+    return post('/users/students/import', data, data.idempotencyKey)
+  },
+  getStudentImportJob(jobId: string): Promise<ImportJobStatus> {
+    return get(`/users/students/import/jobs/${jobId}`)
+  },
+  previewEnrollImport(sectionId: string, rows: EnrollImportRow[]): Promise<EnrollImportResult> {
+    return post(`/sections/${sectionId}/enrollments/import`, { mode: 'validate', rows })
+  },
+  importSectionEnrollments(sectionId: string, data: EnrollImportRequest): Promise<EnrollImportResult> {
+    return post(`/sections/${sectionId}/enrollments/import`, data, data.idempotencyKey)
+  },
   getSettings(): Promise<{ key: string; value: string; updatedAt: string }[]> {
     return get('/settings')
   },
@@ -375,11 +810,11 @@ export const api = {
     return get(queryPath('/audit-logs', { ...filters }))
   },
   getMyAttendance(studentId: string): Promise<AttendanceRecord[]> {
-    return get(`/attendance/student/${studentId}`)
+    return this.getAttendanceForStudent(studentId)
   },
   async getMySubjects(studentId: string): Promise<Subject[]> {
     void studentId
-    return get('/subjects')
+    return this.getSubjects()
   },
 
   // ── Section Roles ──
@@ -430,6 +865,160 @@ export const api = {
     const { teacherId, ...body } = data
     void teacherId
     return post('/sessions/bulk', body)
+  },
+  async syncOfflineQueue(): Promise<void> {
+    const user = this.getCurrentUser()
+    if (!user) return
+    await initializeOfflineStore(user.id)
+    type ScanSyncResult = AttendanceRecord | { error: string; retryable?: boolean }
+    type ScanSyncResponse =
+      | { queued: false; results: ScanSyncResult[] }
+      | { queued: true; receiptId: string }
+    type ScanSyncStatus =
+      | { state: 'completed'; results: ScanSyncResult[] }
+      | { state: 'pending' | 'failed' }
+
+    const awaitCompletion = async (response: ScanSyncResponse): Promise<ScanSyncResult | null> => {
+      if (!response.queued) return response.results[0] ?? null
+      for (let attempt = 0; attempt < RECEIPT_POLL_ATTEMPTS; attempt += 1) {
+        const completion = await get<ScanSyncStatus>(`/sync/attendance/batches/${response.receiptId}`)
+        if (completion.state === 'completed') return completion.results[0] ?? null
+        if (completion.state === 'failed') {
+          throw new ApiHttpError('Attendance sync job failed', 500)
+        }
+        await delay(RECEIPT_POLL_DELAY_MS * (attempt + 1))
+      }
+      return null
+    }
+
+    await drainOfflineQueue(async (kind: OfflineOperationKind, payload, operationId) => {
+      try {
+        if (kind === 'attendance_scan') {
+          const response = await post<ScanSyncResponse>('/sync/attendance/batches', {
+            records: [payload],
+          })
+          const result = await awaitCompletion(response)
+          if (!result) return { outcome: 'pending', error: 'Awaiting server confirmation' }
+          if ('error' in result) {
+            return result.retryable === false
+              ? { outcome: 'terminal', error: result.error }
+              : classifyAttendanceSyncError(result.error)
+          }
+          await removeCachedAttendanceAttempt(String(payload.sessionId), user.id)
+          await cacheAttendanceRecords([{ ...result, isSynced: true }])
+          return { outcome: 'synced' }
+        }
+        if (kind === 'scan_attempt') {
+          const result = await post<SubmitAttendanceResult>('/attendance/check', payload, operationId)
+          if (!result.success) {
+            return { outcome: 'terminal', error: result.message || result.reason || 'Check-in rejected' }
+          }
+          return
+        }
+        if (kind === 'session_activation') {
+          const sessionId = String(payload.sessionId)
+          const activated = await post<Session>(
+            `/sessions/${sessionId}/activate`,
+            {
+              validityMinutes: payload.validityMinutes,
+              gracePeriodMinutes: payload.gracePeriodMinutes,
+              token: payload.token,
+            },
+            operationId,
+          )
+          await cacheSessions([activated]).catch(() => undefined)
+          return
+        }
+        if (kind === 'session_end') {
+          const ended = await post<Session>(`/sessions/${String(payload.sessionId)}/end`, undefined, operationId)
+          await cacheSessions([ended]).catch(() => undefined)
+          return
+        }
+        if (kind === 'attendance_manual') {
+          const record = payload.record as AttendanceRecord
+          const created = await post<AttendanceRecord>(
+            '/attendance',
+            {
+              sessionId: record.sessionId,
+              sectionId: record.sectionId,
+              studentId: record.studentId,
+              status: record.status,
+            },
+            operationId,
+          )
+          await removeCachedRecord(record.id)
+          await cacheAttendanceRecords([{ ...created, isSynced: true }])
+          return
+        }
+        if (kind === 'attendance_status') {
+          const updated = await patch<AttendanceRecord>(
+            `/attendance/${String(payload.recordId)}/status`,
+            { status: payload.status },
+            operationId,
+          )
+          await cacheAttendanceRecords([{ ...updated, isSynced: true }])
+          return
+        }
+        return { outcome: 'terminal', error: 'Unknown offline operation. Contact support.' }
+      } catch (error) {
+        if (
+          error instanceof ApiHttpError &&
+          error.status === 409 &&
+          (kind === 'session_activation' || kind === 'session_end')
+        ) {
+          // Read from the server: cached local state cannot prove a commit.
+          try {
+            const session = await get<Session>(`/sessions/${String(payload.sessionId)}`)
+            const committed =
+              kind === 'session_activation'
+                ? Boolean(payload.token && session.qrToken === payload.token)
+                : Boolean(session.endedAt)
+            if (committed) {
+              await cacheSessions([session]).catch(() => undefined)
+              return { outcome: 'synced' }
+            }
+            if (session.qrToken || session.endedAt) {
+              return {
+                outcome: 'terminal',
+                error: 'Session changed on the server. Review it with your instructor.',
+              }
+            }
+            return { outcome: 'retryable', error: 'Session operation is still in progress' }
+          } catch (reconciliationError) {
+            error = reconciliationError
+          }
+        }
+        const message = error instanceof Error ? error.message : 'Sync failed'
+        if (error instanceof ApiHttpError && [400, 403, 404, 410, 422].includes(error.status)) {
+          return { outcome: 'terminal', error: message }
+        }
+        return { outcome: 'retryable', error: message }
+      }
+    })
+  },
+  async preSyncOfflineData(): Promise<void> {
+    const user = this.getCurrentUser()
+    if (!user) return
+    await initializeOfflineStore(user.id)
+    try {
+      const startedAt = Date.now()
+      const health = await get<{ timestamp: string }>('/health')
+      const completedAt = Date.now()
+      const serverTime = new Date(health.timestamp).getTime()
+      if (Number.isFinite(serverTime)) {
+        await setServerClockOffset(serverTime - (startedAt + completedAt) / 2)
+      }
+      await this.syncOfflineQueue()
+      await Promise.all([
+        this.getSubjects(),
+        user.role === 'student' ? this.getStudentSections(user.id) : this.getSections(),
+        this.getSessions(),
+        ...(user.role === 'student' ? [this.getMyAttendance(user.id)] : []),
+      ])
+      await persistOfflineStorage()
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+    }
   },
   async exportAttendanceCsv(filters: AttendanceReportFilters = {}): Promise<string> {
     const path = queryPath('/reports/export', { ...recentDateRange(), ...filters })

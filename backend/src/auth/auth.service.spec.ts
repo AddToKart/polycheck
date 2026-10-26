@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing'
 import { ForbiddenException, HttpException, HttpStatus, NotFoundException, UnauthorizedException } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
-import { getRounds, hashSync } from 'bcryptjs'
+import { compare, getRounds, hashSync } from 'bcryptjs'
 import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import { AuthService } from './auth.service'
@@ -30,6 +30,7 @@ function buildUser(overrides: Partial<User> = {}): User {
     scope: null,
     teacherPublicKey: null,
     isActive: true,
+    mustChangePassword: false,
     authVersion: 0,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-07-01'),
@@ -44,7 +45,13 @@ describe('AuthService', () => {
   })
 
   let service: AuthService
-  let prisma: { user: { findUnique: jest.Mock; update: jest.Mock }; session: { findMany: jest.Mock } }
+  let prisma: {
+    user: { findUnique: jest.Mock; update: jest.Mock }
+    session: { findMany: jest.Mock }
+    authAccount: { upsert: jest.Mock }
+    authSession: { deleteMany: jest.Mock }
+    $transaction: jest.Mock
+  }
   let redis: {
     consumeRateLimit: jest.Mock
     getJson: jest.Mock
@@ -61,6 +68,9 @@ describe('AuthService', () => {
     prisma = {
       user: { findUnique: jest.fn(), update: jest.fn() },
       session: { findMany: jest.fn().mockResolvedValue([]) },
+      authAccount: { upsert: jest.fn().mockResolvedValue({}) },
+      authSession: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => callback(prisma)),
     }
     redis = {
       consumeRateLimit: jest.fn().mockResolvedValue(true),
@@ -113,6 +123,7 @@ describe('AuthService', () => {
       expect(result.token).toBe('signed-bearer-token')
       expect(result.user.id).toBe('user-1')
       expect(result.user.role).toBe('student')
+      expect(result.user.mustChangePassword).toBe(false)
       expect(result.user).not.toHaveProperty('password')
       expect(betterAuth.auth.api.signInEmail).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -216,6 +227,69 @@ describe('AuthService', () => {
     it('throws NotFoundException when user missing', async () => {
       prisma.user.findUnique.mockResolvedValue(null)
       await expect(service.getProfile('missing')).rejects.toThrow(NotFoundException)
+    })
+  })
+
+  describe('changePassword', () => {
+    it('rotates a forced temporary password and keeps the current session', async () => {
+      prisma.user.findUnique
+        .mockResolvedValueOnce(buildUser({ mustChangePassword: true }))
+        .mockResolvedValueOnce(buildUser({ mustChangePassword: false }))
+
+      const result = await service.changePassword('user-1', { newPassword: 'Replacement1!Secure' }, 'auth-sess-1')
+
+      expect(result).toMatchObject({ id: 'user-1', mustChangePassword: false })
+      const updateData = prisma.user.update.mock.calls[0][0].data
+      expect(updateData.mustChangePassword).toBe(false)
+      expect(updateData).not.toHaveProperty('authVersion')
+      await expect(compare('Replacement1!Secure', updateData.password)).resolves.toBe(true)
+      expect(prisma.authAccount.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { providerId_accountId: { providerId: 'credential', accountId: 'user-1' } },
+          update: expect.objectContaining({ password: updateData.password }),
+        }),
+      )
+      expect(prisma.authSession.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', id: { not: 'auth-sess-1' } },
+      })
+    })
+
+    it('verifies the current password for voluntary changes and rejects a mismatch', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser({ mustChangePassword: false }))
+
+      await expect(
+        service.changePassword(
+          'user-1',
+          { currentPassword: 'wrong-password', newPassword: 'Replacement1!Secure' },
+          'auth-sess-1',
+        ),
+      ).rejects.toThrow(UnauthorizedException)
+      expect(prisma.user.update).not.toHaveBeenCalled()
+
+      await service.changePassword(
+        'user-1',
+        { currentPassword: VALID_PASSWORD, newPassword: 'Replacement1!Secure' },
+        'auth-sess-1',
+      )
+      expect(prisma.user.update).toHaveBeenCalled()
+    })
+
+    it('requires the current password once the account is no longer forced', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser({ mustChangePassword: false }))
+
+      await expect(service.changePassword('user-1', { newPassword: 'Replacement1!Secure' })).rejects.toThrow(
+        'Current password is required',
+      )
+      expect(prisma.user.update).not.toHaveBeenCalled()
+    })
+
+    it('rate limits password change attempts', async () => {
+      redis.consumeRateLimit.mockResolvedValueOnce(false)
+
+      await expect(service.changePassword('user-1', { newPassword: 'Replacement1!Secure' })).rejects.toThrow(
+        HttpException,
+      )
+      expect(prisma.user.findUnique).not.toHaveBeenCalled()
     })
   })
 

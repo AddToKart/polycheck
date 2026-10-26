@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useFocusEffect } from 'expo-router'
@@ -10,6 +10,7 @@ import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { AttendanceStatusPill, CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
 import { AttendanceDisputeModal, AttendanceRecordDetailModal } from '../../components/AttendanceRecordModals'
+import { useCampusToast } from '../../components/CampusToast'
 
 type FilterTab = 'all' | AttendanceStatus
 
@@ -31,6 +32,7 @@ const statusIcons: Record<AttendanceStatus, keyof typeof MaterialIcons.glyphMap>
 
 export default function HistoryScreen() {
   const { isDark, toggle } = useTheme()
+  const { showToast } = useCampusToast()
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all')
   const [allRecords, setAllRecords] = useState<AttendanceRecord[]>([])
   const [sectionsMap, setSectionsMap] = useState<Map<string, { id: string; subjectId: string }>>(new Map())
@@ -63,9 +65,9 @@ export default function HistoryScreen() {
         setSectionsMap(new Map(sections.map((section) => [section.id, section])))
         setSubjects(Object.fromEntries(subjectList.map((subject) => [subject.id, subject])))
       })
-      .catch(() => { if (active) Alert.alert('Unable to load history', 'Check your connection and try again.') })
+      .catch(() => { if (active) showToast('error', 'Unable to load history', 'Check your connection and try again.') })
     return () => { active = false }
-  }, [student?.id]))
+  }, [showToast, student?.id]))
 
   const filteredRecords = useMemo(
     () => activeFilter === 'all' ? allRecords : allRecords.filter((record) => record.status === activeFilter),
@@ -90,9 +92,9 @@ export default function HistoryScreen() {
       setAllRecords(await api.getMyAttendance(student.id))
       setDisputeVisible(false)
       setSelectedRecord(null)
-      Alert.alert('Issue reported', 'Your instructor can now review this attendance record.')
+      showToast('success', 'Issue reported', 'Your instructor can now review this attendance record.')
     } catch (error) {
-      Alert.alert('Unable to send report', error instanceof Error ? error.message : 'Try again in a moment.')
+      showToast('error', 'Unable to send report', error instanceof Error ? error.message : 'Try again in a moment.')
     } finally {
       setSubmittingDispute(false)
     }

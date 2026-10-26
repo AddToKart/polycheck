@@ -13,6 +13,7 @@ import {
   CheckCircle,
   Clipboard,
   Clock,
+  CloudUpload,
   Loader2,
   MapPin,
   QrCode,
@@ -57,26 +58,33 @@ export const ScanQrViews = forwardRef<HTMLVideoElement, ScanQrViewsProps>(
       props.inputMode === "camera" &&
       (props.phase === "scanning" || props.phase === "requesting-camera");
     const outcomeConfig = props.outcome
-      ? props.outcome.status === "present"
+      ? props.outcome.queued
         ? {
-            icon: CheckCircle,
+            icon: CloudUpload,
             iconColor: "text-golden",
             background: "bg-maroon border-golden",
-            title: "Verified — Present",
+            title: "Saved on Device",
           }
-        : props.outcome.status === "late"
+        : props.outcome.status === "present"
           ? {
-              icon: Clock,
-              iconColor: "text-white",
-              background: "bg-maroon border-white/30",
-              title: "Recorded — Late",
-            }
-          : {
-              icon: AlertTriangle,
+              icon: CheckCircle,
               iconColor: "text-golden",
-              background: "bg-maroon-dark border-golden/40",
-              title: "Flagged for Review",
+              background: "bg-maroon border-golden",
+              title: "Verified — Present",
             }
+          : props.outcome.status === "late"
+            ? {
+                icon: Clock,
+                iconColor: "text-white",
+                background: "bg-maroon border-white/30",
+                title: "Recorded — Late",
+              }
+            : {
+                icon: AlertTriangle,
+                iconColor: "text-golden",
+                background: "bg-maroon-dark border-golden/40",
+                title: "Flagged for Review",
+              }
       : null;
 
     if (props.phase === "success" && outcomeConfig) {

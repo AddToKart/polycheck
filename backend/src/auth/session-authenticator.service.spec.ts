@@ -66,6 +66,7 @@ describe('SessionAuthenticator', () => {
       department: 'CCIS',
       scope: null,
       authSessionId: 'auth-sess-1',
+      mustChangePassword: false,
     })
   })
 

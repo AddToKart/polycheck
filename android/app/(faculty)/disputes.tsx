@@ -10,6 +10,7 @@ import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
+import { useCampusToast } from '../../components/CampusToast'
 
 const DISPUTE_LABELS: Record<DisputeReason, string> = {
   outside_geofence: 'Outside geofence', expired_token: 'Expired token', duplicate_submission: 'Duplicate submission',
@@ -49,6 +50,7 @@ const DetailRow = ({ label, value }: { label: string; value: string }) => (
 
 export default function DisputesScreen() {
   const { isDark, toggle } = useTheme()
+  const { showToast } = useCampusToast()
   const currentUser = useAuthGate(['teacher', 'super_admin'])
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
@@ -72,8 +74,8 @@ export default function DisputesScreen() {
         setSections(Object.fromEntries(sectionList.map((section) => [section.id, section])))
         setSessions(Object.fromEntries(sessionList.map((session) => [session.id, session])))
       })
-      .catch(() => Alert.alert('Unable to load disputes', 'Please check your connection and try again.'))
-  }, [currentUser])
+      .catch(() => showToast('error', 'Unable to load disputes', 'Please check your connection and try again.'))
+  }, [currentUser, showToast])
 
   const pendingCount = disputes.filter((record) => record.status === 'disputed').length
   const resolvedCount = disputes.filter((record) => record.disputeResolved).length
@@ -125,8 +127,14 @@ export default function DisputesScreen() {
       const updated = await api.resolveDispute(selectedRecord.id, resolution, newStatus)
       setDisputes((previous) => previous.map((record) => record.id === updated.id ? updated : record))
       setSelectedRecord(null)
+      const detail = resolution === 'accept'
+        ? 'The student is marked present.'
+        : resolution === 'reject'
+          ? 'The record is marked absent.'
+          : `Attendance set to ${newStatus ?? 'the chosen status'}.`
+      showToast('success', 'Dispute resolved', detail)
     } catch (error) {
-      Alert.alert('Unable to resolve dispute', error instanceof Error ? error.message : 'Please try again.')
+      showToast('error', 'Unable to resolve dispute', error instanceof Error ? error.message : 'Please try again.')
     }
   }
 

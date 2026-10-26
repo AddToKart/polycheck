@@ -1,4 +1,28 @@
 // Mock @polycheck/shared for Jest
+
+// Mirrors shared/src/utils/classify-sync-error.ts (manual mock must stay in sync).
+const TERMINAL_EVIDENCE_FAILURES = [
+  'signature is invalid',
+  'does not match this session',
+  'outside the session geofence',
+  'mocked locations are not accepted',
+  'location accuracy is too poor',
+  'location fix is stale',
+  'location uncertainty extends outside',
+  'scan timestamp is invalid',
+  'attendance window has expired',
+  'already submitted for this session',
+  'not enrolled in this section',
+  'clientattemptid was already used',
+]
+
+export function classifyAttendanceSyncError(error: string): { outcome: 'retryable' | 'terminal'; error: string } {
+  const message = error.toLowerCase()
+  return TERMINAL_EVIDENCE_FAILURES.some((failure) => message.includes(failure))
+    ? { outcome: 'terminal', error }
+    : { outcome: 'retryable', error }
+}
+
 export function isWithinGeofence(
   lat: number, lng: number,
   centerLat: number, centerLng: number,

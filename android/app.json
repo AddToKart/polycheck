@@ -21,7 +21,8 @@
       "adaptiveIcon": {
         "backgroundColor": "#7B1113",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png"
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "edu.pup.polycheck",
       "permissions": ["android.permission.CAMERA", "android.permission.ACCESS_FINE_LOCATION"]
@@ -32,6 +33,18 @@
     "plugins": [
       "expo-router",
       "expo-status-bar",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#7B1113",
+          "dark": {
+            "backgroundColor": "#0A0A0A"
+          }
+        }
+      ],
       [
         "expo-camera",
         {

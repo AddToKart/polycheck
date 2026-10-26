@@ -658,7 +658,9 @@ describe('api-client offline sync engine', () => {
       const result = await drainSend!('attendance_scan', { sessionId: 'sess-1', studentId: 'student-1' })
 
       expect(result).toEqual({ outcome: 'terminal', error: 'Signature is invalid' })
-      expect(storeMock.removeCachedAttendanceAttempt).not.toHaveBeenCalled()
+      // Terminal evidence will never sync — drop the optimistic "awaiting
+      // confirmation" row so history does not show a phantom record.
+      expect(storeMock.removeCachedAttendanceAttempt).toHaveBeenCalledWith('sess-1', 'student-1')
       expect(storeMock.cacheAttendanceRecords).not.toHaveBeenCalled()
     })
 
@@ -845,6 +847,107 @@ describe('api-client offline sync engine', () => {
           body: JSON.stringify({ studentId: 'stu-1', studentName: 'Test' }),
         }),
       )
+    })
+  })
+
+  describe('admin console endpoints', () => {
+    const adminPage = { data: [teacherUser], total: 1, limit: 100, offset: 200, hasMore: false }
+
+    it('serializes user-directory filters and omits undefined values', async () => {
+      handlers.set('/users?role=teacher&q=prof&department=CS&status=active&limit=100&offset=200', () => jsonResponse(adminPage))
+
+      const page = await api.getUsers({ role: 'teacher', q: 'prof', department: 'CS', status: 'active', limit: 100, offset: 200 })
+
+      expect(page).toEqual(adminPage)
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${API_BASE}/users?role=teacher&q=prof&department=CS&status=active&limit=100&offset=200`,
+        expect.anything(),
+      )
+    })
+
+    it('keeps the bare directory path when no filters are provided', async () => {
+      handlers.set('/users', () => jsonResponse({ data: [], total: 0, limit: 100, offset: 0, hasMore: false }))
+
+      await api.getUsers({})
+
+      expect(fetchMock).toHaveBeenCalledWith(`${API_BASE}/users`, expect.anything())
+    })
+
+    it('patches profile edits and role changes', async () => {
+      handlers.set('/users/teacher-1', () => jsonResponse({ ...teacherUser, fullName: 'Prof Updated' }))
+      handlers.set('/users/teacher-1/role', () => jsonResponse({ ...teacherUser, role: 'student' }))
+
+      await api.updateUser('teacher-1', { fullName: 'Prof Updated', department: 'CS' })
+      await api.changeUserRole('teacher-1', 'student')
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${API_BASE}/users/teacher-1`,
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ fullName: 'Prof Updated', department: 'CS' }),
+        }),
+      )
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${API_BASE}/users/teacher-1/role`,
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ role: 'student' }),
+        }),
+      )
+    })
+
+    it('posts super-admin provisioning payloads', async () => {
+      handlers.set('/users/admins', () => jsonResponse({ ...teacherUser, role: 'super_admin' }))
+
+      await api.createAdmin({ userId: 'teacher-1', department: 'CS' })
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${API_BASE}/users/admins`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ userId: 'teacher-1', department: 'CS' }),
+        }),
+      )
+    })
+
+    it('loads the admin overview and server-status snapshot', async () => {
+      const overview = {
+        scope: 'institution',
+        counts: {
+          activeFaculty: 1,
+          disabledFaculty: 0,
+          activeStudents: 1,
+          disabledStudents: 0,
+          activeSessions: 0,
+          pendingDisputes: 0,
+        },
+        health: { status: 'ok', timestamp: '2026-10-26T00:00:00.000Z', database: true, redis: true },
+        recentActivity: [],
+      }
+      const snapshot = {
+        timestamp: '2026-10-26T00:00:00.000Z',
+        uptimeSeconds: 10,
+        httpRequestsTotal: 1,
+        httpErrorsTotal: 0,
+        latencyP50Ms: 1,
+        latencyP95Ms: 2,
+        eventLoopLagMs: 0,
+        memoryRssBytes: 1024,
+        cpuSecondsTotal: 1,
+        applicationReady: true,
+        databaseReady: true,
+        redisReady: true,
+        queue: { wait: 0, active: 0, failed: 0 },
+        activeSockets: 1,
+      }
+      handlers.set('/dashboard/admin-overview', () => jsonResponse(overview))
+      handlers.set('/dashboard/server-status', () => jsonResponse(snapshot))
+
+      await expect(api.getAdminOverview()).resolves.toEqual(overview)
+      await expect(api.getServerStatus()).resolves.toEqual(snapshot)
+
+      expect(fetchMock).toHaveBeenCalledWith(`${API_BASE}/dashboard/admin-overview`, expect.anything())
+      expect(fetchMock).toHaveBeenCalledWith(`${API_BASE}/dashboard/server-status`, expect.anything())
     })
   })
 })

@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Search, Key, RefreshCw, Ban, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle, CalendarDays } from 'lucide-react'
+import { ArrowLeft, FileUp, Search, Key, RefreshCw, Ban, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle, CalendarDays } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Section, Session, Student, SectionRole, SessionPermission } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
+import { BulkImportDialog } from '@/components/import/BulkImportDialog'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,6 +27,7 @@ export default function SectionDetailPage() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
   const [isEnrollOpen, setIsEnrollOpen] = useState(false)
+  const [isImportOpen, setIsImportOpen] = useState(false)
   const [enrollSearch, setEnrollSearch] = useState('')
   const [enrollSuccess, setEnrollSuccess] = useState('')
 
@@ -259,6 +261,13 @@ export default function SectionDetailPage() {
             </CardHeader>
             {isEnrollOpen && (
               <CardContent>
+                {user?.role === 'teacher' ? (
+                  <div className="mb-3 flex justify-end">
+                    <Button variant="outline" size="sm" onClick={() => setIsImportOpen(true)}>
+                      <FileUp className="w-3.5 h-3.5 mr-1.5" /> Import from master list
+                    </Button>
+                  </div>
+                ) : null}
                 {enrollSuccess && (
                   <div className="border border-green-300 bg-green-50 dark:bg-green-950/30 dark:border-green-800 p-3 mb-4 text-xs text-green-700 dark:text-green-300 font-medium">
                     Enrolled {enrollSuccess} successfully!
@@ -318,6 +327,16 @@ export default function SectionDetailPage() {
               </CardContent>
             )}
           </Card>
+
+          <BulkImportDialog
+            open={isImportOpen}
+            onOpenChange={setIsImportOpen}
+            mode="enrollments"
+            sectionId={id}
+            onCompleted={() => {
+              void api.getSectionStudents(id!).then(setStudents)
+            }}
+          />
 
           {/* Section Roles */}
           <Card className="mb-6 border-t-4 border-t-maroon dark:border-t-golden">

@@ -29,7 +29,7 @@ export const ScheduleDaySchema = z.object({
 export const GeofenceConfigSchema = z.object({
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
-  radiusMeters: z.number().min(10).max(500),
+  radiusMeters: z.number().int().min(10).max(500),
 })
 
 export const SubjectCreateSchema = z.object({
@@ -44,8 +44,10 @@ export const SectionCreateSchema = z.object({
   room: z.string().min(1, 'Room is required'),
   schedule: z.array(ScheduleDaySchema).min(1, 'At least one schedule day required'),
   semester: z.string().min(1, 'Semester is required'),
-  teacherId: z.string().min(1, 'Teacher is required'),
-  teacherName: z.string().min(1, 'Teacher name is required'),
+  // Derived from the authenticated teacher by the API; accepted only for
+  // backward-compatible callers that still include them.
+  teacherId: z.string().min(1).optional(),
+  teacherName: z.string().min(1).optional(),
 })
 
 export const SessionCreateSchema = z.object({
@@ -68,15 +70,18 @@ export const SessionCreateSchema = z.object({
   path: ['endTime'],
 })
 
+export const AttendanceStatusSchema = z.enum(['present', 'late', 'absent', 'pending', 'disputed'])
+
 export const AttendanceRecordSchema = z.object({
   sessionId: z.string().min(1),
   sectionId: z.string().min(1),
   studentId: z.string().min(1),
-  timestamp: z.string().datetime(),
+  status: AttendanceStatusSchema,
+  timestamp: z.string().datetime().optional(),
   coordinates: z.object({
     latitude: z.number().min(-90).max(90),
     longitude: z.number().min(-180).max(180),
-  }),
+  }).optional(),
   deviceId: z.string().optional(),
 })
 
@@ -96,3 +101,5 @@ export const ProofOfClassUploadSchema = z.object({
   uploadedBy: z.string().min(1),
   uploadedByStudentName: z.string().min(1),
 })
+
+export * from './bulk-import'

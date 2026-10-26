@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -10,6 +10,7 @@ import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
+import { useCampusToast } from '../../components/CampusToast'
 
 const range = getRecentCampusDateRange(30)
 const emptyPage: AuditLogPage = { items: [], total: 0, page: 1, pageSize: 25, totalPages: 0 }
@@ -17,6 +18,7 @@ const emptyPage: AuditLogPage = { items: [], total: 0, page: 1, pageSize: 25, to
 export default function AuditLogsScreen() {
   const user = useAuthGate(['super_admin'])
   const { isDark, toggle } = useTheme()
+  const { showToast } = useCampusToast()
   const [logs, setLogs] = useState<AuditLogPage>(emptyPage)
   const [outcome, setOutcome] = useState<AuditOutcome | undefined>()
   const [page, setPage] = useState(1)
@@ -28,11 +30,11 @@ export default function AuditLogsScreen() {
     try {
       setLogs(await api.getAuditLogs({ page, pageSize: 25, outcome, startDate: range.startDate, endDate: range.endDate }))
     } catch (error) {
-      Alert.alert('Unable to load audit log', error instanceof Error ? error.message : 'Try again.')
+      showToast('error', 'Unable to load audit log', error instanceof Error ? error.message : 'Try again.')
     } finally {
       setLoading(false)
     }
-  }, [outcome, page, user])
+  }, [outcome, page, showToast, user])
 
   useEffect(() => { void load() }, [load])
   if (!user) return null

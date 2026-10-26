@@ -52,7 +52,7 @@ test.describe('Super Admin Flows', () => {
     await expect(page.getByText('Create teacher account')).toBeVisible()
     await page.getByLabel('Full name').fill('E2E Test Teacher')
     await page.getByLabel('PUP email').fill(email)
-    await page.getByLabel('Department').fill('CCIS')
+    await page.getByLabel('Department', { exact: true }).fill('CCIS')
     await page.getByLabel('Temporary password').fill(password)
     await page.getByRole('button', { name: 'Create Teacher' }).click()
     await expect(page.getByText('Teacher account created')).toBeVisible()

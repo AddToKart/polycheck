@@ -1,34 +1,36 @@
 import { useEffect, useState } from 'react'
-import { Alert, ScrollView, View } from 'react-native'
+import { ScrollView, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { getRecentCampusDateRange, type AttendanceReport, type User } from '@polycheck/shared'
+import { getRecentCampusDateRange, type AttendanceReport } from '@polycheck/shared'
 import { api } from '../../services/api-client'
+import { useAuthGate } from '../../hooks/use-auth-gate'
 import { shareCsvFile } from '../../services/file-sharing'
 import { useTheme } from '../../theme/ThemeContext'
 import DatePickerModal from '../../components/DatePickerModal'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusEmptyState, CampusIconButton, SectionHeading } from '../../components/CampusPrimitives'
 import { AttendanceDateRangeCard, AttendanceMetricGrid, AttendanceSummaryCard } from '../../components/AttendanceReportCards'
+import { useCampusToast } from '../../components/CampusToast'
 
 const { startDate: defaultFromDate, endDate: defaultToDate } = getRecentCampusDateRange(30)
 
 export default function FacultyAttendanceScreen() {
   const { isDark, toggle } = useTheme()
-  const [user, setUser] = useState<User | null>(null)
+  const { showToast } = useCampusToast()
+  const user = useAuthGate(['teacher', 'super_admin'])
   const [report, setReport] = useState<AttendanceReport | null>(null)
   const [fromDate, setFromDate] = useState(defaultFromDate)
   const [toDate, setToDate] = useState(defaultToDate)
   const [fromPickerVisible, setFromPickerVisible] = useState(false)
   const [toPickerVisible, setToPickerVisible] = useState(false)
 
-  useEffect(() => { setUser(api.getCurrentUser()) }, [])
   useEffect(() => {
     if (!user || !fromDate || !toDate) return
     let active = true
     void api.getAttendanceReport({ startDate: fromDate, endDate: toDate })
       .then((nextReport) => { if (active) setReport(nextReport) })
-      .catch(() => Alert.alert('Unable to load attendance', 'Check your connection and try again.'))
+      .catch(() => showToast('error', 'Unable to load attendance', 'Check your connection and try again.'))
     return () => { active = false }
   }, [fromDate, toDate, user])
 
@@ -41,7 +43,7 @@ export default function FacultyAttendanceScreen() {
       const csv = await api.exportAttendanceCsv({ startDate: fromDate, endDate: toDate })
       await shareCsvFile(csv, `polycheck-attendance-${fromDate}-to-${toDate}.csv`)
     } catch (error) {
-      Alert.alert('Unable to export attendance', error instanceof Error ? error.message : 'Try again in a moment.')
+      showToast('error', 'Unable to export attendance', error instanceof Error ? error.message : 'Try again in a moment.')
     }
   }
   const signOut = () => { void api.logout(); router.replace('/') }

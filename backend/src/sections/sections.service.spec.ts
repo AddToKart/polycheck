@@ -146,8 +146,10 @@ describe('SectionsService', () => {
 
     await service.removeStudent('section-1', 'teacher-1', 'student-1')
 
-    expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
-    expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+    // Section lock first, then the student/section pair lock, both before the
+    // membership read so imports and enroll-code joins cannot race.
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(2)
+    expect(tx.$executeRaw.mock.invocationCallOrder[1]).toBeLessThan(
       tx.enrollment.findUnique.mock.invocationCallOrder[0],
     )
     expect(tx.sectionRole.deleteMany).toHaveBeenCalledWith({

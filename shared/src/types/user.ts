@@ -13,6 +13,8 @@ export interface User {
   isActive: boolean
   privacyConsentVersion?: string
   privacyConsentedAt?: string
+  /** True for bulk-generated or admin-reset credentials until the user changes it. */
+  mustChangePassword?: boolean
   createdAt: string
   updatedAt: string
 }

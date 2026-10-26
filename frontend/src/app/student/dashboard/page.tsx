@@ -11,7 +11,10 @@ import { StudentDashboardOverview } from '@/components/student/StudentDashboardO
 import { StudentDisputeDialog, StudentEnrollmentDialog } from '@/components/student/StudentDashboardDialogs'
 import { StudentSubjectsGrid } from '@/components/student/StudentSubjectsGrid'
 import { StudentWeeklySchedule } from '@/components/student/StudentWeeklySchedule'
+import { IosInstallCallout } from '@/components/pwa/IosInstallCallout'
 import { Button } from '@/components/ui/button'
+import { OfflineSyncPanel } from '@/components/OfflineSyncPanel'
+import { OfflineReadinessChip } from '@/components/offline/OfflineReadinessChip'
 import { api } from '@/lib/api-client'
 
 const ScanQrModal = lazy(() => import('@/components/ScanQrModal'))
@@ -74,6 +77,7 @@ function StudentDashboardContent() {
       } catch {
         // The authenticated shell stays usable while the next navigation retries data loading.
       }
+      void api.refreshServerClockOffset().catch(() => undefined)
     }
     void load()
   }, [router])
@@ -172,6 +176,15 @@ function StudentDashboardContent() {
             </div>
           </div>
 
+          {activeTab === 'dashboard' ? (
+            <div className="mb-6 space-y-4">
+              <IosInstallCallout />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <OfflineReadinessChip />
+              </div>
+              <OfflineSyncPanel />
+            </div>
+          ) : null}
           {activeTab === 'dashboard' ? <StudentDashboardOverview user={user} stats={stats} todayEvents={todayEvents} records={records} isIdOpen={isIdModalOpen} isIdFlipped={isIdFlipped} onOpenId={() => setIsIdModalOpen(true)} onCloseId={() => setIsIdModalOpen(false)} onFlipId={() => setIsIdFlipped((value) => !value)} onOpenSchedule={() => router.push('?tab=schedule')} onOpenScanner={openScanner} onReportIssue={openDispute} sectionSubjectName={sectionSubjectName} /> : null}
           {activeTab === 'subjects' ? <StudentSubjectsGrid sections={sections} subjectMap={subjectMap} /> : null}
           {activeTab === 'schedule' ? <StudentWeeklySchedule date={scheduleDate} onDateChange={setScheduleDate} sections={sections} sessions={sessions} records={records} subjectMap={subjectMap} /> : null}

@@ -1,4 +1,21 @@
 import type { User, Student, Teacher, Subject, Section, Session, AttendanceRecord, AttendanceSummary, AttendanceStatus, StudentDisputeReason, Enrollment, SectionRole, SectionRoleType, SessionPermission, ProofOfClass } from './index'
+import type {
+  AdminOverview,
+  AdminUserFilters,
+  AdminUserPage,
+  AssignableRole,
+  CreateAdminInput,
+  ServerStatusSnapshot,
+  UpdateUserInput,
+} from './dashboard'
+import type {
+  EnrollImportRequest,
+  EnrollImportResult,
+  EnrollImportRow,
+  ImportJobStatus,
+  StudentImportRequest,
+  StudentImportResult,
+} from './bulk-import'
 
 export interface CreateSubjectInput {
   name: string
@@ -237,6 +254,7 @@ export interface ApiClient {
   loginFaculty(email: string, password?: string): Promise<User | null>
   logout(): Promise<void>
   restoreSession(): Promise<User | null>
+  changePassword(currentPassword: string | undefined, newPassword: string): Promise<User>
   getCurrentUser(): User | null
 
   getSubjects(): Promise<Subject[]>
@@ -267,6 +285,8 @@ export interface ApiClient {
   getAttendanceSummaries(teacherId?: string): Promise<AttendanceSummary[]>
   getAttendanceReport(filters?: AttendanceReportFilters): Promise<AttendanceReport>
   getDashboardOverview(filters?: Pick<AttendanceReportFilters, 'startDate' | 'endDate'>): Promise<DashboardOverview>
+  getAdminOverview(): Promise<AdminOverview>
+  getServerStatus(): Promise<ServerStatusSnapshot>
   getAttendanceForStudent(studentId: string): Promise<AttendanceRecord[]>
   getStudentAttendanceForSection(studentId: string, sectionId: string): Promise<AttendanceRecord[]>
   addAttendanceRecord(record: AttendanceRecord): Promise<AttendanceRecord>
@@ -288,10 +308,20 @@ export interface ApiClient {
   getStudents(): Promise<Student[]>
   getStudent(id: string): Promise<Student>
   getTeachers(): Promise<Teacher[]>
+  getUsers(filters?: AdminUserFilters): Promise<AdminUserPage>
+  updateUser(id: string, input: UpdateUserInput): Promise<User>
+  changeUserRole(id: string, role: AssignableRole): Promise<User>
+  createAdmin(input: CreateAdminInput): Promise<User>
   createTeacher(data: CreateTeacherInput): Promise<Teacher>
   createStudent(data: CreateStudentInput): Promise<Student>
   resetUserPassword(id: string, password: string): Promise<ResetUserPasswordResult>
   setUserStatus(id: string, isActive: boolean): Promise<User>
+
+  // ── Bulk import ──
+  importStudents(data: StudentImportRequest): Promise<StudentImportResult>
+  getStudentImportJob(jobId: string): Promise<ImportJobStatus>
+  previewEnrollImport(sectionId: string, rows: EnrollImportRow[]): Promise<EnrollImportResult>
+  importSectionEnrollments(sectionId: string, data: EnrollImportRequest): Promise<EnrollImportResult>
   getSettings(): Promise<{ key: string; value: string; updatedAt: string }[]>
   setSetting(key: string, value: string): Promise<{ key: string; value: string; updatedAt: string }>
   getAuditLogs(filters?: AuditLogFilters): Promise<AuditLogPage>

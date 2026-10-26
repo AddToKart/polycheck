@@ -38,10 +38,12 @@ import {
   shouldMountScannerCamera,
   isScannerOperationCurrent,
 } from "../../hooks/scanner-focus-lifecycle";
+import { isQrFallbackEnabled } from "../../hooks/qr-fallback-policy";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const scanSize = Math.min(SCREEN_WIDTH * 0.82, 340);
-const allowQrFallbacks = process.env.EXPO_PUBLIC_ALLOW_QR_FALLBACKS !== "false";
+// Opt-in only: production builds must not expose QR fallbacks unless explicitly enabled.
+const allowQrFallbacks = isQrFallbackEnabled(process.env.EXPO_PUBLIC_ALLOW_QR_FALLBACKS);
 
 type ScanResult = {
   status: "present" | "late" | "absent" | "disputed" | "pending";

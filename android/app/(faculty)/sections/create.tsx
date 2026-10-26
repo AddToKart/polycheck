@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native'
+import { Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
-import type { DayOfWeek, Subject, User } from '@polycheck/shared'
+import type { DayOfWeek, Subject } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
+import { useAuthGate } from '../../../hooks/use-auth-gate'
 import { useTheme } from '../../../theme/ThemeContext'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard, SectionHeading } from '../../../components/CampusPrimitives'
 import { CampusFormField } from '../../../components/CampusFormField'
 import { CampusPickerField, ChoiceSheet, formatCampusTime, TimePickerSheet } from '../../../components/CampusPickerSheets'
+import { useCampusToast } from '../../../components/CampusToast'
 
 const DAYS: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const SEMESTERS = ['1st Semester', '2nd Semester', 'Summer']
@@ -21,8 +23,9 @@ const generateEnrollmentCode = (subjectName: string) => {
 
 export default function CreateSectionScreen() {
   const { isDark } = useTheme()
+  const { showToast } = useCampusToast()
   const { subjectId } = useLocalSearchParams<{ subjectId: string }>()
-  const [user, setUser] = useState<User | null>(null)
+  const user = useAuthGate(['teacher'])
   const [subject, setSubject] = useState<Subject | null>(null)
   const [section, setSection] = useState('')
   const [room, setRoom] = useState('')
@@ -39,21 +42,16 @@ export default function CreateSectionScreen() {
   const [newScheduleRoom, setNewScheduleRoom] = useState('')
 
   useEffect(() => {
-    const currentUser = api.getCurrentUser()
-    if (!currentUser || currentUser.role !== 'teacher') {
-      router.replace('/(faculty)/dashboard')
-      return
-    }
-    setUser(currentUser)
+    if (!user) return
     if (subjectId) void api.getSubject(subjectId).then(setSubject).catch(() => router.back())
-  }, [subjectId])
+  }, [subjectId, user])
 
   const enrollmentCode = useMemo(() => subject ? generateEnrollmentCode(subject.name) : '', [subject])
   if (!user || !subject) return null
 
   const addSchedule = () => {
     if (newEndTime <= newStartTime) {
-      Alert.alert('Check the time', 'End time must be later than start time.')
+      showToast('warning', 'Check the time', 'End time must be later than start time.')
       return
     }
     setScheduleEntries((entries) => [...entries, { day: newDay, startTime: newStartTime, endTime: newEndTime, room: newScheduleRoom.trim() || undefined }])
@@ -68,7 +66,7 @@ export default function CreateSectionScreen() {
       const created = await api.createSection({ subjectId, section: section.trim(), room: room.trim(), schedule: scheduleEntries, semester })
       router.back()
     } catch (error) {
-      Alert.alert('Unable to create section', error instanceof Error ? error.message : 'Please try again.')
+      showToast('error', 'Unable to create section', error instanceof Error ? error.message : 'Please try again.')
     } finally { setSubmitting(false) }
   }
 

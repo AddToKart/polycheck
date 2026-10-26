@@ -13,15 +13,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       const status = exception.getStatus()
       const responseData = exception.getResponse()
+      const responseObject =
+        typeof responseData === 'object' && responseData !== null
+          ? (responseData as { message?: unknown; code?: unknown; error?: unknown })
+          : null
 
-      const message =
-        typeof responseData === 'object' && responseData !== null && 'message' in responseData
-          ? (responseData as { message: unknown }).message
-          : responseData
+      const message = responseObject && 'message' in responseObject ? responseObject.message : responseData
       response.status(status).json({
         statusCode: status,
         error: exception.name,
         message,
+        // Preserve machine-readable markers (password_change_required,
+        // import_checksum_mismatch, idempotency codes, ...) that clients
+        // branch on instead of matching human-readable messages.
+        ...(responseObject && typeof responseObject.code === 'string' ? { code: responseObject.code } : {}),
         path: request.originalUrl,
         timestamp: new Date().toISOString(),
       })

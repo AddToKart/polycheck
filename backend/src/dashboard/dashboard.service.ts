@@ -1,9 +1,18 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Injectable, Optional } from '@nestjs/common'
+import type { AdminOverview, AdminOverviewHealth, AuditLogEntry } from '@polycheck/shared'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { parseIsoDate } from '../common/utils/iso-date'
-import { adminRecordWhere, adminSectionWhere, adminSessionWhere, adminUserWhere } from '../common/admin-scope'
+import {
+  adminRecordWhere,
+  adminScope,
+  adminSectionWhere,
+  adminSessionWhere,
+  adminUserWhere,
+} from '../common/admin-scope'
 import type { Prisma } from '../prisma/client'
+import type { AuditLogsService } from '../audit-logs/audit-logs.service'
+import type { RedisService } from '../infrastructure/redis.service'
 
 const CALENDAR_RESULT_LIMIT = 2_000
 const EXPORT_RESULT_LIMIT = 25_000
@@ -56,7 +65,47 @@ const calendarSessionSelect = {
 
 @Injectable()
 export class DashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly auditLogs?: AuditLogsService,
+    @Optional() private readonly redis?: RedisService,
+  ) {}
+
+  async adminOverview(user: RequestUser): Promise<AdminOverview> {
+    if (user.role !== 'super_admin') {
+      throw new ForbiddenException('Only super admins can view the administrative overview')
+    }
+    const scope = adminScope(user)
+    const [activeFaculty, disabledFaculty, activeStudents, disabledStudents, activeSessions, pendingDisputes] =
+      await Promise.all([
+        this.prisma.user.count({ where: this.userCountWhere(user, { role: 'teacher', isActive: true }) }),
+        this.prisma.user.count({ where: this.userCountWhere(user, { role: 'teacher', isActive: false }) }),
+        this.prisma.user.count({ where: this.userCountWhere(user, { role: 'student', isActive: true }) }),
+        this.prisma.user.count({ where: this.userCountWhere(user, { role: 'student', isActive: false }) }),
+        this.prisma.session.count({
+          where: this.sessionCountWhere(user, { isActive: true, endedAt: null }),
+        }),
+        this.prisma.attendanceRecord.count({
+          where: this.recordCountWhere(user, { status: 'disputed', disputeResolved: false }),
+        }),
+      ])
+    const [health, recentActivity] = await Promise.all([this.adminHealth(), this.adminRecentActivity(user)])
+
+    return {
+      scope: scope.kind === 'unrestricted' ? 'institution' : 'department',
+      ...(scope.kind === 'department' ? { department: scope.department } : {}),
+      counts: {
+        activeFaculty,
+        disabledFaculty,
+        activeStudents,
+        disabledStudents,
+        activeSessions,
+        pendingDisputes,
+      },
+      health,
+      recentActivity,
+    }
+  }
 
   async events(user: RequestUser, startDate: string, endDate: string) {
     this.assertDateRange(startDate, endDate)
@@ -458,6 +507,50 @@ export class DashboardService {
     }
     if (user.role === 'teacher') return { session: { teacherId: user.id } }
     return { studentId: user.id }
+  }
+
+  private userCountWhere(user: RequestUser, filter: Prisma.UserWhereInput): Prisma.UserWhereInput {
+    const scope = adminUserWhere(user)
+    return scope ? { AND: [scope, filter] } : filter
+  }
+
+  private sessionCountWhere(user: RequestUser, filter: Prisma.SessionWhereInput): Prisma.SessionWhereInput {
+    return { AND: [adminSessionWhere(user), filter] }
+  }
+
+  private recordCountWhere(
+    user: RequestUser,
+    filter: Prisma.AttendanceRecordWhereInput,
+  ): Prisma.AttendanceRecordWhereInput {
+    return { AND: [adminRecordWhere(user), filter] }
+  }
+
+  private async adminHealth(): Promise<AdminOverviewHealth> {
+    let database = false
+    try {
+      await this.prisma.$queryRaw`SELECT 1`
+      database = true
+    } catch {
+      database = false
+    }
+    let redis = false
+    try {
+      redis = Boolean(await this.redis?.ping())
+    } catch {
+      redis = false
+    }
+    return {
+      status: database && redis ? 'ok' : 'unavailable',
+      timestamp: new Date().toISOString(),
+      database,
+      redis,
+    }
+  }
+
+  private async adminRecentActivity(user: RequestUser): Promise<AuditLogEntry[]> {
+    if (!this.auditLogs) return []
+    const page = await this.auditLogs.list(user, { page: 1, pageSize: 10 })
+    return page.items
   }
 
   private assertDateRange(startDate: string, endDate: string) {

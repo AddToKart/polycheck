@@ -22,6 +22,7 @@ import {
   Search,
   Settings,
   FileClock,
+  Server,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -48,18 +49,18 @@ const teacherNav: NavItem[] = [
   { label: 'Search', href: '/faculty/search', icon: Search },
 ]
 
-// Navigation for super admins
+// Navigation for super admins — administration console only (SA1).
+// Classroom feeds (subjects, sessions, attendance, disputes, schedule) are
+// intentionally absent. Option A keeps those routes reachable via Global
+// Search results or deep links; they are never proactive surfaces.
 const superAdminNav: NavItem[] = [
   { label: 'Dashboard', href: '/faculty', icon: LayoutDashboard },
-  { label: 'Subject Directory', href: '/faculty/subjects', icon: BookOpen },
-  { label: 'Session Monitoring', href: '/faculty/sessions', icon: CalendarCheck },
-  { label: 'Attendance Monitoring', href: '/faculty/attendance', icon: ClipboardList },
-  { label: 'Dispute Monitoring', href: '/faculty/disputes', icon: Gavel },
-  { label: 'Global Search', href: '/faculty/search', icon: Search },
   { label: 'User Management', href: '/faculty/users', icon: Users },
   { label: 'System Reports', href: '/faculty/reports', icon: BarChart3 },
   { label: 'Audit Log', href: '/faculty/audit-logs', icon: FileClock },
+  { label: 'Server Status', href: '/faculty/server-status', icon: Server },
   { label: 'Institution Settings', href: '/faculty/settings', icon: Settings },
+  { label: 'Global Search', href: '/faculty/search', icon: Search },
 ]
 
 interface SidebarProps {

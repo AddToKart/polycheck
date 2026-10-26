@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, RefreshControl, ScrollView, Text, View } from 'react-native'
+import { RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { formatTime } from '@polycheck/shared/utils'
 import type { CalendarEvent, DashboardOverview, Section, Subject, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
+import { useAuthGate } from '../../hooks/use-auth-gate'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { OfflineSyncPanel } from '../../components/OfflineSyncPanel'
+import { SuperAdminDashboard } from '../../components/SuperAdminDashboard'
+import { useCampusToast } from '../../components/CampusToast'
 import {
   CampusButton,
   CampusCard,
@@ -31,54 +34,55 @@ const campusDate = (date = new Date()) => {
   return `${parts.get('year')}-${parts.get('month')}-${parts.get('day')}`
 }
 
+/**
+ * Super admins get the administration console only (SA2). Classroom feeds
+ * (sections, today's sessions, attendance trend) stay on the teacher screen.
+ */
 export default function FacultyDashboardScreen() {
+  const currentUser = useAuthGate(['teacher', 'super_admin'])
+
+  if (!currentUser) return null
+  if (currentUser.role === 'super_admin') return <SuperAdminDashboard user={currentUser} />
+
+  return <TeacherDashboard user={currentUser} />
+}
+
+function TeacherDashboard({ user }: { user: User }) {
   const { isDark, toggle } = useTheme()
-  const [user, setUser] = useState<User | null>(api.getCurrentUser())
+  const { showToast } = useCampusToast()
   const [sections, setSections] = useState<Section[]>([])
   const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
   const [subjects, setSubjects] = useState<Record<string, Subject>>({})
   const [overview, setOverview] = useState<DashboardOverview | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
-  const loadDashboard = useCallback(async (currentUser: User) => {
+  const loadDashboard = useCallback(async () => {
     const today = campusDate()
     const [nextSections, events, subjectList, nextOverview] = await Promise.all([
       api.getSections(),
-      api.getCalendarEvents(currentUser.id, today, today),
+      api.getCalendarEvents(user.id, today, today),
       api.getSubjects(),
       api.getDashboardOverview(),
     ])
-    setSections(nextSections.filter((section) => section.teacherId === currentUser.id || currentUser.role === 'super_admin'))
+    setSections(nextSections.filter((section) => section.teacherId === user.id))
     setTodayEvents(events.sort((a, b) => a.startTime.localeCompare(b.startTime)))
     setSubjects(Object.fromEntries(subjectList.map((subject) => [subject.id, subject])))
     setOverview(nextOverview)
-  }, [])
+  }, [user.id])
 
   useEffect(() => {
-    const currentUser = api.getCurrentUser()
-    if (!currentUser) return
-    setUser(currentUser)
-    void loadDashboard(currentUser).catch(() => Alert.alert('Unable to load dashboard', 'Pull down to try again.'))
-  }, [loadDashboard])
+    void loadDashboard().catch(() => showToast('error', 'Unable to load dashboard', 'Pull down to try again.'))
+  }, [loadDashboard, showToast])
 
-  if (!user) {
-    return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark">
-        <ActivityIndicator size="large" color={pupColors.maroon} />
-      </SafeAreaView>
-    )
-  }
-
-  const isSuper = user.role === 'super_admin'
   const sessionsToday = overview?.counts.sessionsToday ?? 0
   const pendingDisputes = overview?.counts.pendingDisputes ?? 0
 
   const refresh = async () => {
     setRefreshing(true)
     try {
-      await loadDashboard(user)
+      await loadDashboard()
     } catch {
-      Alert.alert('Unable to refresh', 'Check your connection and try again.')
+      showToast('error', 'Unable to refresh', 'Check your connection and try again.')
     } finally {
       setRefreshing(false)
     }
@@ -90,11 +94,11 @@ export default function FacultyDashboardScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID={isSuper ? 'super-admin-dashboard-screen' : 'faculty-dashboard-screen'}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID="faculty-dashboard-screen">
       <CampusHeader
-        eyebrow={isSuper ? 'University Oversight' : 'Faculty Workspace'}
+        eyebrow="Faculty Workspace"
         title={user.fullName}
-        subtitle={isSuper ? 'Institution activity and reporting at a glance.' : 'Your classes, sessions, and attendance today.'}
+        subtitle="Your classes, sessions, and attendance today."
         actions={(
           <>
             <CampusIconButton icon="search" label="Search" onPress={() => router.push('/(faculty)/search')} inverse />
@@ -122,7 +126,7 @@ export default function FacultyDashboardScreen() {
               </View>
               <View className="flex-1">
                 <Text className="font-sans-bold text-sm uppercase tracking-wider text-red-900 dark:text-red-200">
-                  {isSuper ? 'Disputes Need Teacher Action' : 'Attendance Disputes To Review'}
+                  Attendance Disputes To Review
                 </Text>
                 <Text className="mt-0.5 font-sans text-xs text-red-700 dark:text-red-300">
                   {pendingDisputes} record{pendingDisputes === 1 ? ' is' : 's are'} waiting for a decision.
@@ -142,7 +146,7 @@ export default function FacultyDashboardScreen() {
 
         <SectionHeading
           eyebrow="Today"
-          title={isSuper ? 'Session Monitoring' : 'Class Schedule'}
+          title="Class Schedule"
           actionLabel="Calendar"
           onAction={() => router.push('/(faculty)/schedule')}
         />
@@ -178,10 +182,10 @@ export default function FacultyDashboardScreen() {
                 <View className="mt-4 border-t border-line pt-3 dark:border-line-dark">
                   {active ? (
                     <CampusButton label="Open active session" icon="arrow-forward" onPress={() => router.push(`/(faculty)/sessions/${event.id}`)} />
-                  ) : completed || moved || isSuper ? (
+                  ) : completed || moved ? (
                     <View className="self-start rounded-none border border-line bg-zinc-100 px-3 py-1.5 dark:border-line-dark dark:bg-white/5">
                       <Text className={`font-sans-bold text-[10px] uppercase tracking-widest ${moved ? 'text-red-700 dark:text-red-300' : 'text-muted dark:text-zinc-300'}`}>
-                        {moved ? 'Moved' : completed ? 'Completed' : 'Scheduled'}
+                        {moved ? 'Moved' : 'Completed'}
                       </Text>
                     </View>
                   ) : (
@@ -199,8 +203,8 @@ export default function FacultyDashboardScreen() {
         </View>
 
         <SectionHeading
-          eyebrow={isSuper ? 'Institution' : 'Teaching'}
-          title={isSuper ? 'Subject Directory' : 'My Classes'}
+          eyebrow="Teaching"
+          title="My Classes"
           actionLabel="View All"
           onAction={() => router.push('/(faculty)/subjects')}
         />

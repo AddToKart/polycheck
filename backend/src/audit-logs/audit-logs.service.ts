@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
+import type { AuditOutcome } from '@polycheck/shared'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { adminUserWhere } from '../common/admin-scope'
 import { parseIsoDate } from '../common/utils/iso-date'
@@ -40,9 +41,8 @@ export class AuditLogsService {
     return {
       items: items.map((item) => {
         const metadata = this.metadata(item.metadata)
-        const outcome = ['initiated', 'succeeded', 'failed'].includes(metadata.outcome ?? '')
-          ? metadata.outcome
-          : 'initiated'
+        const outcome: AuditOutcome =
+          metadata.outcome === 'succeeded' || metadata.outcome === 'failed' ? metadata.outcome : 'initiated'
         return {
           id: item.id,
           actorId: item.actorId,

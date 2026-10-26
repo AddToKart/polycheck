@@ -1,3 +1,4 @@
+import { Logger, type OnModuleDestroy } from '@nestjs/common'
 import {
   ConnectedSocket,
   MessageBody,
@@ -7,12 +8,19 @@ import {
   WebSocketServer,
   WsException,
 } from '@nestjs/websockets'
+import {
+  SERVER_METRICS_ROOM,
+  SERVER_SUBSCRIBE_EVENT,
+  SERVER_SUBSCRIBED_EVENT,
+  SERVER_UNSUBSCRIBE_EVENT,
+} from '@polycheck/shared'
 import type { Server, Socket } from 'socket.io'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { SessionAuthenticator } from '../auth/session-authenticator.service'
 import { OnEvent } from '@nestjs/event-emitter'
 import { adminSectionInScope } from '../common/admin-scope'
+import { SERVER_STATUS_INTERVAL_MS, ServerStatusService } from './server-status.service'
 
 type SocketUser = RequestUser
 
@@ -35,15 +43,22 @@ function allowConfiguredOrigin(origin: string | undefined, callback: (error: Err
   namespace: '/attendance',
   cors: { origin: allowConfiguredOrigin, credentials: true },
 })
-export class AttendanceGateway implements OnGatewayInit {
+export class AttendanceGateway implements OnGatewayInit, OnModuleDestroy {
   @WebSocketServer() server!: Server
+
+  private readonly logger = new Logger(AttendanceGateway.name)
+  private metricsTimer?: NodeJS.Timeout
+  private publishingMetrics = false
+  private connectionListener?: (socket: Socket) => void
 
   constructor(
     private readonly sessions: SessionAuthenticator,
     private readonly prisma: PrismaService,
+    private readonly serverStatus: ServerStatusService,
   ) {}
 
   afterInit(server: Server) {
+    this.server = server
     server.use(async (socket, next) => {
       try {
         socket.data.user = await this.sessions.authenticate(this.handshakeHeaders(socket))
@@ -53,6 +68,27 @@ export class AttendanceGateway implements OnGatewayInit {
         next(new Error('Invalid or expired token'))
       }
     })
+
+    this.connectionListener = (socket) => {
+      this.updateSocketCount()
+      socket.on('disconnect', () => this.updateSocketCount())
+    }
+    server.on('connection', this.connectionListener)
+
+    this.metricsTimer = setInterval(() => void this.publishServerMetrics(), SERVER_STATUS_INTERVAL_MS)
+    this.metricsTimer.unref?.()
+  }
+
+  onModuleDestroy() {
+    if (this.metricsTimer) {
+      clearInterval(this.metricsTimer)
+      this.metricsTimer = undefined
+    }
+    if (this.server && this.connectionListener) {
+      this.server.off('connection', this.connectionListener)
+      this.connectionListener = undefined
+    }
+    this.serverStatus.setActiveSockets(0)
   }
 
   @SubscribeMessage('session:join')
@@ -78,6 +114,51 @@ export class AttendanceGateway implements OnGatewayInit {
     this.server.in(room).disconnectSockets(true)
   }
 
+  private async assertServerMetricsAccess(socket: Socket) {
+    const principal = await this.sessions.authenticate(this.handshakeHeaders(socket))
+    socket.data.user = principal
+    if (principal.role !== 'super_admin') {
+      throw new WsException('Only super admins can subscribe to server metrics')
+    }
+  }
+
+  private updateSocketCount() {
+    this.serverStatus.setActiveSockets(this.connectedSocketCount())
+  }
+
+  private connectedSocketCount(): number {
+    const sockets = (this.server as unknown as { sockets?: { size?: number; sockets?: Map<string, unknown> } })?.sockets
+    return sockets?.sockets?.size ?? sockets?.size ?? 0
+  }
+
+  private async publishServerMetrics() {
+    if (!this.server || this.publishingMetrics) return
+    this.updateSocketCount()
+    if (this.serverMetricsRoomSize() === 0) return
+
+    this.publishingMetrics = true
+    try {
+      const snapshot = await this.serverStatus.snapshot()
+      this.serverStatus.publish(this.server, snapshot)
+    } catch (error) {
+      this.logger.error(`Could not publish server metrics: ${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      this.publishingMetrics = false
+    }
+  }
+
+  private serverMetricsRoomSize(): number {
+    const server = this.server as unknown as {
+      adapter?: { rooms?: Map<string, Set<string>> }
+      sockets?: { adapter?: { rooms?: Map<string, Set<string>> } }
+    }
+    return (
+      server.adapter?.rooms?.get(SERVER_METRICS_ROOM)?.size ??
+      server.sockets?.adapter?.rooms?.get(SERVER_METRICS_ROOM)?.size ??
+      0
+    )
+  }
+
   private handshakeHeaders(socket: Socket) {
     const headers = new Headers()
     const cookie = socket.handshake.headers.cookie
@@ -99,6 +180,20 @@ export class AttendanceGateway implements OnGatewayInit {
     if (!sessionId || sessionId.length > 128) throw new WsException('A valid sessionId is required')
     await socket.leave(this.sessionRoom(sessionId))
     return { event: 'session:left', data: { sessionId } }
+  }
+
+  @SubscribeMessage(SERVER_SUBSCRIBE_EVENT)
+  async subscribeServerMetrics(@ConnectedSocket() socket: Socket) {
+    await this.assertServerMetricsAccess(socket)
+    await socket.join(SERVER_METRICS_ROOM)
+    return { event: SERVER_SUBSCRIBED_EVENT, data: { intervalMs: SERVER_STATUS_INTERVAL_MS } }
+  }
+
+  @SubscribeMessage(SERVER_UNSUBSCRIBE_EVENT)
+  async unsubscribeServerMetrics(@ConnectedSocket() socket: Socket) {
+    await this.assertServerMetricsAccess(socket)
+    await socket.leave(SERVER_METRICS_ROOM)
+    return { event: SERVER_UNSUBSCRIBE_EVENT }
   }
 
   emitSessionState(session: { id: string; sectionId: string }, state: 'created' | 'activated' | 'ended') {

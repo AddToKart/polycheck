@@ -17,7 +17,7 @@ vi.mock('socket.io-client', () => ({ io: ioMock }))
 vi.mock('./api-config', () => ({ API_BASE: 'https://api.polycheck.test/api' }))
 vi.mock('./api-client', () => ({ api: apiMock }))
 
-import { monitorAuthSession, subscribeToSession } from './realtime'
+import { monitorAuthSession, subscribeToServerStatus, subscribeToSession } from './realtime'
 
 describe('session realtime subscription', () => {
   beforeEach(() => {
@@ -62,6 +62,36 @@ describe('session realtime subscription', () => {
     } finally {
       Object.defineProperty(window, 'WebSocket', { configurable: true, value: original })
     }
+  })
+
+  it('joins the server-metrics room and only reports live after the ack', () => {
+    const onSnapshot = vi.fn()
+    const onConnectionChange = vi.fn()
+    const stop = subscribeToServerStatus(onSnapshot, onConnectionChange)
+
+    expect(ioMock).toHaveBeenCalledWith(
+      'https://api.polycheck.test/attendance',
+      expect.objectContaining({ transports: ['websocket'] }),
+    )
+
+    socketMock.handlers.get('connect')?.()
+    expect(socketMock.emit).toHaveBeenCalledWith('server:subscribe')
+    expect(onConnectionChange).toHaveBeenLastCalledWith(false)
+
+    const snapshot = { timestamp: '2026-10-26T02:30:00.000Z', httpRequestsTotal: 10 }
+    socketMock.handlers.get('server:metrics')?.(snapshot)
+    expect(onSnapshot).toHaveBeenCalledWith(snapshot)
+
+    socketMock.handlers.get('server:subscribed')?.()
+    expect(onConnectionChange).toHaveBeenLastCalledWith(true)
+
+    socketMock.handlers.get('disconnect')?.()
+    expect(onConnectionChange).toHaveBeenLastCalledWith(false)
+
+    stop()
+    expect(socketMock.emit).toHaveBeenCalledWith('server:unsubscribe')
+    expect(socketMock.removeAllListeners).toHaveBeenCalled()
+    expect(socketMock.disconnect).toHaveBeenCalled()
   })
 
   it('monitors auth replacement from in-memory auth when localStorage is blocked', () => {

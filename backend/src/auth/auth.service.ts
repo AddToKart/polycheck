@@ -3,19 +3,22 @@ import {
   UnauthorizedException,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
   HttpException,
   HttpStatus,
   Logger,
 } from '@nestjs/common'
-import { compare } from 'bcryptjs'
+import { compare, hash } from 'bcryptjs'
 import { createHash } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import type { User } from '../prisma/client'
 import { BetterAuthService } from './better-auth.service'
 import { EventEmitter2 } from '@nestjs/event-emitter'
-import { DUMMY_PASSWORD_HASH } from './password-policy'
+import { DUMMY_PASSWORD_HASH, PASSWORD_HASH_COST } from './password-policy'
 import { ConfigService } from '@nestjs/config'
+import type { ChangePasswordDto } from './dto/change-password.dto'
 
 // Login rate limits are env-tunable so strict production values can be relaxed for
 // local development and E2E automation. Defaults: 10 attempts/identity/min, 30/IP/min.
@@ -30,6 +33,10 @@ const KEY_PROVISION_RATE_WINDOW = positiveInt(process.env.KEY_PROVISION_RATE_WIN
 // repeated revoke/flood abuse while still allowing a compromised key to be
 // invalidated immediately.
 const KEY_REVOKE_RATE_LIMIT = positiveInt(process.env.KEY_REVOKE_RATE_LIMIT, 3)
+// Password changes are rate limited per account (default 5/15 minutes) to
+// prevent online guessing even from an already-authenticated session.
+const PASSWORD_CHANGE_RATE_LIMIT = positiveInt(process.env.PASSWORD_CHANGE_RATE_LIMIT, 5)
+const PASSWORD_CHANGE_RATE_WINDOW_SECONDS = positiveInt(process.env.PASSWORD_CHANGE_RATE_WINDOW_SECONDS, 900)
 // Cache-hygiene lease only. Scan validation always reads the PostgreSQL key,
 // so lease expiry cannot make a stale Redis key authoritative.
 const KEY_ROTATION_LOCK_TTL_SECONDS = 10
@@ -54,6 +61,7 @@ export interface AuthResult {
     photoUrl?: string | null
     scope?: string | null
     isActive: boolean
+    mustChangePassword: boolean
     createdAt: Date
     updatedAt: Date
     privacyConsentVersion?: string | null
@@ -243,6 +251,64 @@ export class AuthService {
     return { message: 'Logged out successfully', headers: result.headers }
   }
 
+  /**
+   * Rotates the credential password and clears the forced-change flag. The
+   * current Better Auth session is deliberately kept valid (no authVersion
+   * bump) so web cookies and mobile bearer tokens survive the rotation; all
+   * other sessions for the account are revoked.
+   */
+  async changePassword(userId: string, dto: ChangePasswordDto, authSessionId?: string) {
+    const withinLimit = await this.redis.consumeRateLimit(
+      `auth:change-password:${userId}`,
+      PASSWORD_CHANGE_RATE_LIMIT,
+      PASSWORD_CHANGE_RATE_WINDOW_SECONDS,
+    )
+    if (!withinLimit) {
+      throw new HttpException('Too many password change attempts. Try again later.', HttpStatus.TOO_MANY_REQUESTS)
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, password: true, mustChangePassword: true },
+    })
+    if (!user) throw new NotFoundException('User not found')
+
+    if (dto.currentPassword) {
+      const valid = await compare(dto.currentPassword, user.password)
+      if (!valid) throw new UnauthorizedException('Current password is incorrect')
+    } else if (!user.mustChangePassword) {
+      throw new BadRequestException('Current password is required to change your password')
+    }
+
+    const passwordHash = await hash(dto.newPassword, PASSWORD_HASH_COST)
+    const now = new Date()
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { password: passwordHash, mustChangePassword: false },
+      })
+      await tx.authAccount.upsert({
+        where: { providerId_accountId: { providerId: 'credential', accountId: userId } },
+        update: { password: passwordHash, updatedAt: now },
+        create: {
+          id: randomUUID(),
+          accountId: userId,
+          providerId: 'credential',
+          userId,
+          password: passwordHash,
+          createdAt: now,
+          updatedAt: now,
+        },
+      })
+      // Keep the session that performed the rotation, revoke every other one.
+      await tx.authSession.deleteMany({
+        where: { userId, ...(authSessionId ? { id: { not: authSessionId } } : {}) },
+      })
+    })
+
+    return this.getProfile(userId)
+  }
+
   private async createSession(user: User, password: string, headers: Headers): Promise<AuthResult> {
     try {
       const result = await this.betterAuth.auth.api.signInEmail({
@@ -322,6 +388,7 @@ export class AuthService {
       photoUrl: user.photoUrl,
       scope: user.scope,
       isActive: user.isActive,
+      mustChangePassword: user.mustChangePassword,
       privacyConsentVersion: user.privacyConsentVersion,
       privacyConsentedAt: user.privacyConsentedAt,
       createdAt: user.createdAt,

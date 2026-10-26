@@ -16,6 +16,7 @@ import { SessionPermissionsModule } from './session-permissions/session-permissi
 import { ProofsModule } from './proofs/proofs.module'
 import { DashboardModule } from './dashboard/dashboard.module'
 import { SessionAuthGuard } from './common/guards/session-auth.guard'
+import { PasswordChangeGuard } from './common/guards/password-change.guard'
 import { RolesGuard } from './common/guards/roles.guard'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
 import { HealthController } from './health.controller'
@@ -83,6 +84,10 @@ import { AuditLogsModule } from './audit-logs/audit-logs.module'
     {
       provide: APP_GUARD,
       useClass: SessionAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PasswordChangeGuard,
     },
     {
       provide: APP_GUARD,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -18,6 +18,7 @@ import {
   AttendanceMetricGrid,
   AttendanceSummaryCard,
 } from '../../components/AttendanceReportCards'
+import { useCampusToast } from '../../components/CampusToast'
 
 const { startDate: defaultStartDate, endDate: defaultEndDate } = getRecentCampusDateRange(30)
 
@@ -73,6 +74,7 @@ const ReportSelect = ({ label, value, placeholder, options, open, onToggle, onSe
 
 export default function FacultyReportsScreen() {
   const { isDark, toggle } = useTheme()
+  const { showToast } = useCampusToast()
   const currentUser = useAuthGate(['super_admin'])
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
@@ -94,8 +96,8 @@ export default function FacultyReportsScreen() {
         setSubjects(nextSubjects)
         setTeachers(nextTeachers)
       })
-      .catch(() => Alert.alert('Unable to load filters', 'Subject and teacher choices are temporarily unavailable.'))
-  }, [currentUser])
+      .catch(() => showToast('error', 'Unable to load filters', 'Subject and teacher choices are temporarily unavailable.'))
+  }, [currentUser, showToast])
 
   useEffect(() => {
     if (!currentUser || !startDate || !endDate) return
@@ -109,12 +111,12 @@ export default function FacultyReportsScreen() {
     }).then((nextReport) => {
       if (active) setReport(nextReport)
     }).catch(() => {
-      if (active) Alert.alert('Unable to load report', 'Please check the selected filters and try again.')
+      if (active) showToast('error', 'Unable to load report', 'Please check the selected filters and try again.')
     }).finally(() => {
       if (active) setLoading(false)
     })
     return () => { active = false }
-  }, [currentUser, selectedSubject, selectedTeacher, startDate, endDate])
+  }, [currentUser, selectedSubject, selectedTeacher, showToast, startDate, endDate])
 
   if (!currentUser) return null
 
@@ -141,7 +143,7 @@ export default function FacultyReportsScreen() {
       })
       await shareCsvFile(csv, `polycheck-report-${startDate}-to-${endDate}.csv`, 'Export filtered attendance report')
     } catch (error) {
-      Alert.alert('Export failed', error instanceof Error ? error.message : 'Please narrow the report filters.')
+      showToast('error', 'Export failed', error instanceof Error ? error.message : 'Please narrow the report filters.')
     }
   }
 

@@ -88,6 +88,27 @@ Start below 1,000 users when capacity has not been established. The full profile
 
 Monitor nginx latency, backend CPU/event-loop health, PgBouncer active/waiting clients, PostgreSQL locks and query latency, Redis latency/memory, HTTP error rate, and attendance processing throughout the run. The reference Prometheus configuration covers backend metrics only; collect the remaining infrastructure signals separately.
 
+## Arbitrary counts, waves, and a 5,000-user run
+
+Both attendance and login profiles accept:
+
+| Env | Meaning |
+|---|---|
+| `K6_USER_COUNT` | VUs/iterations for this run (1–5,000; defaults 2/1,000 by profile) |
+| `K6_USER_START` | Offset into the token/credential fixture — run sequential waves for large populations |
+| `K6_CONFIRM_5000_USERS` | Required (`I_HAVE_AUTHORIZATION_FOR_5000_USERS`) above 1,000 users |
+
+Example wave of 1,000 (repeat with `K6_USER_START=1000, 2000, ...`):
+
+```sh
+K6_PROFILE=full K6_USER_COUNT=1000 K6_USER_START=0 \
+K6_CONFIRM_1000_USERS=I_HAVE_AUTHORIZATION_FOR_1000_USERS \
+... k6 run performance/attendance-load.js
+```
+
+Generate a 5,000-row PUP master list with `node performance/generate-fixture.mjs --count 5000 --out <file>.csv`. For an isolated local run, `node performance/prepare-local.mjs` provisions students through the bulk-import and enrollment pipelines, rotates forced temporary passwords, and writes the k6 fixture (local backend only; requires `LOAD_TEST_AUTHORIZATION=DISPOSABLE_LOCAL_ONLY`). `docker-compose.local.yml` raises the backend Prisma `connection_limit` to 50 for load headroom; production is unaffected.
+
+**Burst vs realistic arrival:** 5,000 students inside a 15-minute QR window average ~5.6 scans/s. A per-VU burst (200–5,000 simultaneous scans) measures peak stress, not the expected arrival rate. For a realistic 5,000 verdict, pace arrivals (waves with `K6_USER_START` and gaps) or use an arrival-rate profile; document which shape a result represents.
 ## Acceptance thresholds
 
 The script enforces less than 1% failed requests/checks, completion of every configured VU iteration, present/late results without dispute review, scan p95 below one second, and scan p99 below two seconds. Treat these as reference SLOs, not proof of capacity. A passing run must also show no sustained PgBouncer wait queue, PostgreSQL saturation, Redis write failures, or delayed attendance persistence.
@@ -97,3 +118,4 @@ CI runs `k6 inspect` only. It validates both profiles and their thresholds witho
 ## Executed staging gate
 
 The `Staging attendance load` workflow now provisions fresh sessions for dedicated fixture accounts and executes both online and receipt-based offline traffic with concurrent teacher reads. See [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) for credentials, workload expectations, retained artifacts and failure/recovery drills. `k6 inspect` in regular CI remains a syntax/configuration check and is not a capacity result.
+

@@ -16,6 +16,7 @@ import { subscribeToSession } from '../../../services/realtime'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
 import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
+import { useCampusToast } from '../../../components/CampusToast'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 const FILTERS: Array<AttendanceStatus | 'all'> = ['all', 'present', 'late', 'absent', 'pending', 'disputed']
@@ -30,6 +31,7 @@ const CardTitle = ({ icon, title, detail }: { icon: keyof typeof MaterialIcons.g
 
 export default function SessionDetailScreen() {
   const { isDark, toggle } = useTheme()
+  const { showToast } = useCampusToast()
   const { id } = useLocalSearchParams<{ id: string }>()
   const currentUser = useAuthGate(['teacher', 'super_admin'])
   const [user, setUser] = useState<User | null>(null)
@@ -63,8 +65,8 @@ export default function SessionDetailScreen() {
       setRecords(nextRecords)
       setProofsOfClass(nextProofs)
       setLastUpdated(new Date())
-    } catch { Alert.alert('Unable to refresh session', 'Please check your connection and try again.') }
-  }, [id])
+    } catch { showToast('error', 'Unable to refresh session', 'Please check your connection and try again.') }
+  }, [id, showToast])
 
   useEffect(() => {
     if (!currentUser) return
@@ -140,16 +142,22 @@ export default function SessionDetailScreen() {
     const validity = Number(validityMinutes)
     const grace = Number(graceMinutes)
     if (!Number.isInteger(validity) || validity < 1 || validity > 15 || !Number.isInteger(grace) || grace < 0 || grace > 60) {
-      Alert.alert('Check QR settings', 'Validity must be 1–15 minutes and grace period must be 0–60 minutes.')
+      showToast('warning', 'Check QR settings', 'Validity must be 1–15 minutes and grace period must be 0–60 minutes.')
       return
     }
-    try { await api.generateQrCode(session.id, validity, grace); setShowValidityPrompt(false); await refreshData() }
-    catch (error) { Alert.alert('Unable to generate QR code', error instanceof Error ? error.message : 'Please try again.') }
+    try {
+      await api.generateQrCode(session.id, validity, grace)
+      setShowValidityPrompt(false)
+      await refreshData()
+      showToast('success', 'QR code generated', `Students can scan within the ${validity}-minute window.`)
+    } catch (error) {
+      showToast('error', 'Unable to generate QR code', error instanceof Error ? error.message : 'Please try again.')
+    }
   }
 
   const endSession = () => Alert.alert('End session?', 'Pending students will be marked absent and the session will close.', [
     { text: 'Cancel', style: 'cancel' },
-    { text: 'End session', style: 'destructive', onPress: () => { void api.endSession(session.id).then(refreshData) } },
+    { text: 'End session', style: 'destructive', onPress: () => { void api.endSession(session.id).then(refreshData).catch((error) => showToast('error', 'Unable to end session', error instanceof Error ? error.message : 'Please try again.')) } },
   ])
 
   const override = async (studentId: string, currentStatus: AttendanceStatus) => {
@@ -163,13 +171,13 @@ export default function SessionDetailScreen() {
         await api.addAttendanceRecord({ id: `a-${Date.now()}`, sessionId: session.id, sectionId: session.sectionId, studentId, studentName: student?.fullName ?? 'Unknown', timestamp: new Date().toISOString(), status: nextStatus, coordinates: { latitude: 0, longitude: 0 }, deviceId: 'manual', isSynced: true, syncedAt: new Date().toISOString(), manuallySet: true })
       }
       await refreshData()
-    } catch (error) { Alert.alert('Unable to update attendance', error instanceof Error ? error.message : 'Please try again.') }
+    } catch (error) { showToast('error', 'Unable to update attendance', error instanceof Error ? error.message : 'Please try again.') }
   }
 
   const copyQrToken = async () => {
     if (!session.qrToken) return
     await Clipboard.setStringAsync(session.qrToken)
-    Alert.alert('QR token copied', 'The signed session token is ready to paste.')
+    showToast('success', 'QR token copied', 'The signed session token is ready to paste.')
   }
 
   const shareQrToken = async () => {
@@ -183,14 +191,14 @@ export default function SessionDetailScreen() {
   const shareQrImage = async () => {
     const qrCode = qrCodeRef.current
     if (!qrCode) {
-      Alert.alert('QR image unavailable', 'Wait for the QR code to finish rendering and try again.')
+      showToast('warning', 'QR image unavailable', 'Wait for the QR code to finish rendering and try again.')
       return
     }
     try {
       const base64 = await new Promise<string>((resolve) => qrCode.toDataURL(resolve))
       await sharePngFile(base64, `polycheck-qr-${session.id}.png`)
     } catch (error) {
-      Alert.alert('Unable to share QR image', error instanceof Error ? error.message : 'Please try again.')
+      showToast('error', 'Unable to share QR image', error instanceof Error ? error.message : 'Please try again.')
     }
   }
 
@@ -256,7 +264,7 @@ export default function SessionDetailScreen() {
 
       <CampusCard className="mb-5 p-4">
         <CardTitle icon="camera-alt" title="Proof of class" detail={`${proofsOfClass.length} uploads`} />
-        {!proofsOfClass.length ? <CampusEmptyState icon="add-a-photo" title="No proof uploaded" description="QAC officers can attach classroom evidence during this session." /> : <View className="flex-row flex-wrap gap-3">{proofsOfClass.map((proof) => <View key={proof.id} className="min-w-[46%] flex-1 rounded-2xl border border-line bg-zinc-50 p-3 dark:border-line-dark dark:bg-white/5"><View className="mb-3 aspect-video items-center justify-center rounded-xl bg-zinc-200 dark:bg-zinc-800"><MaterialIcons name="camera-alt" size={25} color="#746C6E" /></View><Text className="font-sans-bold text-xs text-ink dark:text-white" numberOfLines={1}>{proof.uploadedByStudentName}</Text><Text className="mt-1 font-sans text-[9px] text-muted dark:text-zinc-500">{new Date(proof.uploadedAt).toLocaleString()}</Text>{proof.description ? <Text className="mt-2 font-sans text-[10px] italic text-muted dark:text-zinc-400" numberOfLines={2}>{proof.description}</Text> : null}{isTeacher ? <Pressable accessibilityRole="button" accessibilityLabel={`Delete proof by ${proof.uploadedByStudentName}`} onPress={() => { void api.deleteProofOfClass(proof.id).then(refreshData) }} className="mt-2 min-h-10 flex-row items-center gap-1"><MaterialIcons name="delete-outline" size={15} color="#DC2626" /><Text className="font-sans-bold text-[10px] text-red-600">Delete</Text></Pressable> : null}</View>)}</View>}
+        {!proofsOfClass.length ? <CampusEmptyState icon="add-a-photo" title="No proof uploaded" description="QAC officers can attach classroom evidence during this session." /> : <View className="flex-row flex-wrap gap-3">{proofsOfClass.map((proof) => <View key={proof.id} className="min-w-[46%] flex-1 rounded-2xl border border-line bg-zinc-50 p-3 dark:border-line-dark dark:bg-white/5"><View className="mb-3 aspect-video items-center justify-center rounded-xl bg-zinc-200 dark:bg-zinc-800"><MaterialIcons name="camera-alt" size={25} color="#746C6E" /></View><Text className="font-sans-bold text-xs text-ink dark:text-white" numberOfLines={1}>{proof.uploadedByStudentName}</Text><Text className="mt-1 font-sans text-[9px] text-muted dark:text-zinc-500">{new Date(proof.uploadedAt).toLocaleString()}</Text>{proof.description ? <Text className="mt-2 font-sans text-[10px] italic text-muted dark:text-zinc-400" numberOfLines={2}>{proof.description}</Text> : null}{isTeacher ? <Pressable accessibilityRole="button" accessibilityLabel={`Delete proof by ${proof.uploadedByStudentName}`} onPress={() => { void api.deleteProofOfClass(proof.id).then(refreshData).catch((error) => showToast('error', 'Unable to delete proof', error instanceof Error ? error.message : 'Please try again.')) }} className="mt-2 min-h-10 flex-row items-center gap-1"><MaterialIcons name="delete-outline" size={15} color="#DC2626" /><Text className="font-sans-bold text-[10px] text-red-600">Delete</Text></Pressable> : null}</View>)}</View>}
       </CampusCard>
 
       <SectionHeading eyebrow="Roster" title="Student attendance" />

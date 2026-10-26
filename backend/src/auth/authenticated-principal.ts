@@ -8,6 +8,7 @@ export interface RequestUser {
   department?: string | null
   scope?: string | null
   authSessionId?: string
+  mustChangePassword?: boolean
   privacyConsentVersion?: string | null
   privacyConsentedAt?: Date | null
 }

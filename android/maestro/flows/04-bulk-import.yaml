@@ -1,0 +1,42 @@
+appId: edu.pup.polycheck
+name: Super-admin bulk student import (paste path)
+tags:
+  - bulk-import
+  - super-admin
+env:
+  E2E_FACULTY_EMAIL: ${E2E_FACULTY_EMAIL || "mcreyes@pup.edu.ph"}
+  E2E_PASSWORD: ${E2E_PASSWORD || "PolycheckLocal1!"}
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+- assertVisible:
+    id: landing-screen
+- runFlow: ../subflows/login-faculty.yaml
+- extendedWaitUntil:
+    visible:
+      id: super-admin-dashboard-screen
+    timeout: 20000
+- tapOn:
+    id: admin-tab-users
+- assertVisible: Campus users
+- tapOn:
+    id: users-import-students
+- assertVisible: Import students
+- assertVisible:
+    id: bulk-import-paste-input
+- tapOn:
+    id: bulk-import-paste-input
+- inputText: "Student No.,Name\n2024-00999-MN-0,Test Import Student"
+- tapOn:
+    id: bulk-import-continue
+- assertVisible: Confirm how 2 columns map
+- tapOn:
+    id: bulk-import-validate
+- extendedWaitUntil:
+    visible:
+      id: bulk-import-review
+    timeout: 20000
+- tapOn:
+    id: bulk-import-close

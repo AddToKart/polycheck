@@ -7,6 +7,7 @@ import { SessionsController } from '../sessions/sessions.controller'
 import { SubjectsController } from '../subjects/subjects.controller'
 import { UsersController } from '../users/users.controller'
 import { AuditLogsController } from '../audit-logs/audit-logs.controller'
+import { DashboardController } from '../dashboard/dashboard.controller'
 
 type ControllerMethod = (...args: never[]) => unknown
 
@@ -42,10 +43,21 @@ describe('role capability policy', () => {
     UsersController.prototype.findTeachers,
     UsersController.prototype.createTeacher,
     UsersController.prototype.createStudent,
+    UsersController.prototype.importStudents,
+    UsersController.prototype.importJobStatus,
     UsersController.prototype.resetPassword,
     UsersController.prototype.setStatus,
+    UsersController.prototype.update,
+    UsersController.prototype.changeRole,
+    UsersController.prototype.createAdmin,
     AuditLogsController.prototype.list,
+    DashboardController.prototype.adminOverview,
+    DashboardController.prototype.serverStatusSnapshot,
   ])('keeps account administration restricted to super_admin', (method) => {
     expect(rolesFor(method as ControllerMethod)).toEqual(['super_admin'])
+  })
+
+  it('keeps bulk section enrollment with the owning teacher only', () => {
+    expect(rolesFor(SectionsController.prototype.importEnrollments as ControllerMethod)).toEqual(['teacher'])
   })
 })

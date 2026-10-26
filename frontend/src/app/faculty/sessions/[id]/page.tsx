@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { ArrowLeft, QrCode, Timer, Play, StopCircle, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2, Copy, Download, Check } from 'lucide-react'
 import { api } from '@/lib/api-client'
+import { isNetworkFailure } from '@/lib/api-client'
 import type { User, Session, AttendanceRecord, AttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
@@ -90,7 +91,10 @@ export default function SessionDetailPage() {
       const [s, nextRecords, nextProofs] = await Promise.all([
         api.getSession(id),
         api.getAttendanceRecords(id),
-        api.getProofsOfClass(id),
+        api.getProofsOfClass(id).catch((error) => {
+          if (isNetworkFailure(error)) return [] as ProofOfClass[]
+          throw error
+        }),
       ])
       if (!requestCoordinatorRef.current.canCommitRead(readEpoch)) return false
       setSession(s)
@@ -135,7 +139,10 @@ export default function SessionDetailPage() {
       const [nextSession, nextRecords, nextProofs] = await Promise.all([
         api.getSession(id),
         api.getAttendanceRecords(id),
-        api.getProofsOfClass(id),
+        api.getProofsOfClass(id).catch((error) => {
+          if (isNetworkFailure(error)) return [] as ProofOfClass[]
+          throw error
+        }),
       ])
       const section = await api.getSection(nextSession.sectionId)
       if (cu.role === 'teacher' && section.teacherId !== cu.id) {
@@ -199,7 +206,10 @@ export default function SessionDetailPage() {
 
   useEffect(() => {
     if (!session?.isActive || realtimeConnected) return
-    const poll = setInterval(() => { void refreshData() }, 10000)
+    const poll = setInterval(() => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return
+      void refreshData()
+    }, 10000)
     return () => clearInterval(poll)
   }, [session?.isActive, realtimeConnected, refreshData])
 

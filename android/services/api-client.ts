@@ -1,5 +1,5 @@
 import { Platform } from 'react-native'
-import { getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage } from '@polycheck/shared'
+import { classifyAttendanceSyncError, getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRow, type EnrollImportRequest, type EnrollImportResult, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput } from '@polycheck/shared'
 import { API_BASE } from './api-config'
 import { getOrCreateTeacherSigningKey } from './signing-key'
 import { getOrCreateInstallationId } from './device-id'
@@ -26,7 +26,6 @@ import {
   setOfflineOwner,
   setServerClockOffset,
   type OfflineOperationKind,
-  type OfflineSendResult,
 } from './offline-store'
 
 const STORAGE_KEY = 'polycheck-user'
@@ -92,28 +91,8 @@ function queryPath(path: string, values: Record<string, string | number | undefi
   return query ? `${path}?${query}` : path
 }
 
-export function classifyAttendanceSyncError(
-  error: string,
-): Extract<OfflineSendResult, { outcome: 'retryable' | 'terminal' }> {
-  const message = error.toLowerCase()
-  const terminalEvidenceFailures = [
-    'signature is invalid',
-    'does not match this session',
-    'outside the session geofence',
-    'mocked locations are not accepted',
-    'location accuracy is too poor',
-    'location fix is stale',
-    'location uncertainty extends outside',
-    'scan timestamp is invalid',
-    'attendance window has expired',
-    'already submitted for this session',
-    'not enrolled in this section',
-    'clientattemptid was already used',
-  ]
-  return terminalEvidenceFailures.some((failure) => message.includes(failure))
-    ? { outcome: 'terminal', error }
-    : { outcome: 'retryable', error }
-}
+// Re-exported for existing consumers/tests; the implementation is shared with web.
+export { classifyAttendanceSyncError }
 
 function notifyAuthListeners() {
   for (const listener of authListeners) listener(currentUser)
@@ -131,7 +110,7 @@ const FETCH_TIMEOUT = 10_000
 // instead of displaying fake subjects that don't correspond to real data.
 
 class ApiRequestError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly code?: string) {
     super(message)
   }
 }
@@ -177,7 +156,15 @@ async function handleResponse<T>(res: Response): Promise<T> {
       notifyAuthListeners()
     }
     const message = data && typeof data === 'object' ? data.message : res.statusText
-    throw new ApiRequestError(Array.isArray(message) ? message.join('. ') : message || 'Request failed', res.status)
+    const code = data && typeof data === 'object' && typeof data.code === 'string' ? data.code : undefined
+    if (res.status === 403 && code === 'PASSWORD_CHANGE_REQUIRED' && currentUser && !currentUser.mustChangePassword) {
+      // Admin reset the password while this device kept an older cached
+      // profile. Flag it locally so the blocking password gate takes over.
+      currentUser = { ...currentUser, mustChangePassword: true }
+      await saveUserToStore(currentUser)
+      notifyAuthListeners()
+    }
+    throw new ApiRequestError(Array.isArray(message) ? message.join('. ') : message || 'Request failed', res.status, code)
   }
   return (data ?? {}) as T
 }
@@ -291,7 +278,10 @@ export const api = {
     currentUser = cachedUser
     await initializeOfflineStore(cachedUser.id)
     try {
-      const profile = await get<User>('/auth/me')
+      // Cold start gets a shorter verification budget so a black-holed network
+      // cannot hold the splash for the full request timeout.
+      const response = await fetchWithTimeout(`${API_BASE}/auth/me`, { headers: await authHeaders() }, 4_000)
+      const profile = await handleResponse<User>(response)
       currentUser = profile
       await saveUserToStore(profile)
       notifyAuthListeners()
@@ -301,10 +291,54 @@ export const api = {
         notifyAuthListeners()
         return cachedUser
       }
+      if (error instanceof ApiRequestError && error.status === 403 && error.code === 'PASSWORD_CHANGE_REQUIRED') {
+        // The backend blocks protected endpoints until the temporary password
+        // is replaced. Keep the cached profile (flagged) so the password gate
+        // takes over instead of silently signing the user out.
+        const flagged = { ...cachedUser, mustChangePassword: true }
+        currentUser = flagged
+        await saveUserToStore(flagged)
+        notifyAuthListeners()
+        return flagged
+      }
       setOfflineOwner(null)
       currentUser = null
       await Promise.all([saveUserToStore(null), setTokenInStore(null)])
       return null
+    }
+  },
+
+  async changePassword(currentPassword: string | undefined, newPassword: string): Promise<User> {
+    try {
+      // The shared contract types this as a full User. Some server builds
+      // return only the rotation status, so accept both shapes and merge.
+      const result = await post<User | { message?: string; mustChangePassword?: boolean }>(
+        '/auth/change-password',
+        { currentPassword, newPassword },
+      )
+      const existing = currentUser ?? await loadUserFromStore()
+      let nextUser: User
+      if (result && typeof result === 'object' && 'role' in result && 'fullName' in result) {
+        nextUser = result
+      } else if (existing) {
+        nextUser = {
+          ...existing,
+          mustChangePassword: (result as { mustChangePassword?: boolean }).mustChangePassword ?? false,
+        }
+      } else {
+        nextUser = await get<User>('/auth/me')
+      }
+      currentUser = nextUser
+      await saveUserToStore(nextUser)
+      notifyAuthListeners()
+      return nextUser
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 403 && error.code === 'PASSWORD_CHANGE_REQUIRED') {
+        // A 403 here is an ordinary validation message (e.g. a current-password
+        // requirement), not a reason to drop the authenticated session.
+        throw new Error(error.message && error.message !== 'Forbidden' ? error.message : 'You must change your temporary password before continuing.')
+      }
+      throw error
     }
   },
 
@@ -479,10 +513,20 @@ export const api = {
     }, key.secretKey)
     try {
       // Public key persists server-side and provisioning is rate limited, so only
-      // upload when it was not already provisioned in this session.
+      // upload when it was not already provisioned in this session. A key that
+      // matches the cached session is already known to the server.
       if (!provisionedTeacherKeys.has(user.id)) {
-        await post('/auth/provision-key', { publicKey: key.publicKey })
-        provisionedTeacherKeys.add(user.id)
+        if (session.teacherPublicKey === key.publicKey) {
+          provisionedTeacherKeys.add(user.id)
+        } else {
+          try {
+            await post('/auth/provision-key', { publicKey: key.publicKey })
+            provisionedTeacherKeys.add(user.id)
+          } catch (error) {
+            if (!isNetworkError(error)) throw error
+            throw new Error('Connect to the internet once to register this device before generating offline QR codes.')
+          }
+        }
       }
       const activated = await post<Session>(`/sessions/${sessionId}/activate`, { validityMinutes, gracePeriodMinutes: effectiveGrace, token })
       await cacheSessions([activated])
@@ -520,8 +564,15 @@ export const api = {
       return ended
     }
   },
-  getSectionSessions(sectionId: string): Promise<Session[]> {
-    return get(`/sessions?sectionId=${sectionId}`)
+  async getSectionSessions(sectionId: string): Promise<Session[]> {
+    try {
+      const sessions = await get<Session[]>(`/sessions?sectionId=${sectionId}`)
+      await cacheSessions(sessions)
+      return sessions
+    } catch (error) {
+      if (!isNetworkError(error)) throw error
+      return getCachedSessions(sectionId)
+    }
   },
 
   // ── Attendance ──
@@ -541,6 +592,12 @@ export const api = {
   },
   getDashboardOverview(filters: Pick<AttendanceReportFilters, 'startDate' | 'endDate'> = {}): Promise<DashboardOverview> {
     return get(queryPath('/dashboard/overview', filters))
+  },
+  getAdminOverview(): Promise<AdminOverview> {
+    return get('/dashboard/admin-overview')
+  },
+  getServerStatus(): Promise<ServerStatusSnapshot> {
+    return get('/dashboard/server-status')
   },
   getAttendanceForStudent(studentId: string): Promise<AttendanceRecord[]> {
     return get(`/attendance/student/${studentId}`)
@@ -653,6 +710,25 @@ export const api = {
   getStudents(): Promise<Student[]> { return get('/users/students') },
   getStudent(id: string): Promise<Student> { return get(`/users/${id}`) },
   getTeachers(): Promise<Teacher[]> { return get('/users/teachers') },
+  getUsers(filters: AdminUserFilters = {}): Promise<AdminUserPage> {
+    return get(queryPath('/users', {
+      role: filters.role,
+      q: filters.q,
+      department: filters.department,
+      status: filters.status,
+      limit: filters.limit,
+      offset: filters.offset,
+    }))
+  },
+  updateUser(id: string, input: UpdateUserInput): Promise<User> {
+    return patch(`/users/${id}`, input)
+  },
+  changeUserRole(id: string, role: AssignableRole): Promise<User> {
+    return patch(`/users/${id}/role`, { role })
+  },
+  createAdmin(input: CreateAdminInput): Promise<User> {
+    return post('/users/admins', input)
+  },
   createTeacher(data: CreateTeacherInput): Promise<Teacher> {
     return post('/users/teachers', data)
   },
@@ -665,6 +741,21 @@ export const api = {
   setUserStatus(id: string, isActive: boolean): Promise<User> {
     return patch(`/users/${id}/status`, { isActive })
   },
+
+  // ── Bulk import ──
+  importStudents(data: StudentImportRequest): Promise<StudentImportResult> {
+    return post('/users/students/import', data, data.idempotencyKey)
+  },
+  getStudentImportJob(jobId: string): Promise<ImportJobStatus> {
+    return get(`/users/students/import/jobs/${encodeURIComponent(jobId)}`)
+  },
+  previewEnrollImport(sectionId: string, rows: EnrollImportRow[]): Promise<EnrollImportResult> {
+    return post(`/sections/${sectionId}/enrollments/import`, { mode: 'validate', rows })
+  },
+  importSectionEnrollments(sectionId: string, data: EnrollImportRequest): Promise<EnrollImportResult> {
+    return post(`/sections/${sectionId}/enrollments/import`, data, data.idempotencyKey)
+  },
+
   getSettings(): Promise<{ key: string; value: string; updatedAt: string }[]> {
     return get('/settings')
   },
@@ -696,7 +787,16 @@ export const api = {
     return del(`/section-roles/${sectionId}/${studentId}/${role}`)
   },
   getSectionRoles(sectionId: string): Promise<SectionRole[]> { return get(`/section-roles/${sectionId}`) },
-  getStudentRoles(studentId: string): Promise<SectionRole[]> { return get(`/section-roles/student/${studentId}`) },
+  async getStudentRoles(studentId: string): Promise<SectionRole[]> {
+    try {
+      return await get<SectionRole[]>(`/section-roles/student/${studentId}`)
+    } catch (error) {
+      // Roles are auxiliary on class detail screens; offline shows no badges
+      // instead of failing the whole cached page.
+      if (!isNetworkError(error)) throw error
+      return []
+    }
+  },
 
   // ── Session Permissions ──
   grantSessionPermission(sectionId: string, studentId: string): Promise<SessionPermission> {
@@ -751,7 +851,17 @@ export const api = {
           if (completion.state !== 'completed') return { outcome: 'pending', error: 'Awaiting server confirmation' }
           const result = completion.results[0]
           if (!result) return { outcome: 'retryable', error: 'Attendance sync returned no result' }
-          if ('error' in result) return result.retryable === false ? { outcome: 'terminal', error: result.error } : classifyAttendanceSyncError(result.error)
+          if ('error' in result) {
+            const classified = result.retryable === false
+              ? { outcome: 'terminal' as const, error: result.error }
+              : classifyAttendanceSyncError(result.error)
+            // Terminal evidence will never sync; remove the phantom optimistic
+            // row so history does not claim it is still awaiting confirmation.
+            if (classified.outcome === 'terminal') {
+              await removeCachedAttendanceAttempt(String(payload.sessionId), user.id)
+            }
+            return classified
+          }
           await removeCachedAttendanceAttempt(String(payload.sessionId), user.id)
           await cacheAttendanceRecords([{ ...result, isSynced: true }])
           return { outcome: 'synced' }
@@ -763,7 +873,11 @@ export const api = {
         }
         const sessionId = String(payload.sessionId)
         if (kind === 'session_activation') {
-          await post(`/sessions/${sessionId}/activate`, { validityMinutes: payload.validityMinutes, gracePeriodMinutes: payload.gracePeriodMinutes, token: payload.token }, operationId)
+          const sessionId = String(payload.sessionId)
+          const activated = await post<Session>(`/sessions/${sessionId}/activate`, { validityMinutes: payload.validityMinutes, gracePeriodMinutes: payload.gracePeriodMinutes, token: payload.token }, operationId)
+          // Apply the authoritative response: the server may have ended the
+          // session already if the QR window fully expired before sync.
+          await cacheSessions([activated])
           return
         }
         if (kind !== 'session_end') return { outcome: 'terminal', error: 'Unknown offline operation. Contact support.' }

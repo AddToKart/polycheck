@@ -81,7 +81,7 @@ polycheck/
 ### Super Admin
 Department heads, program chairs, PUP officials. Highest access — sees data across all teachers and subjects. Manages teacher accounts, configures institution settings, generates reports. Does not manage day-to-day attendance.
 
-Super Admin capabilities are limited to scoped oversight, reports/exports, global search, user account administration (including teacher/student creation, status changes, and password resets), and institution settings. Super Admins have read-only access to classroom resources and must not create/update/delete subjects, sections, sessions, attendance, disputes, enrollment codes/rosters, section roles, QR tokens, or proof-of-class records.
+Super Admin capabilities are limited to scoped oversight, reports/exports, global lookup, audit, user account administration (including teacher/student creation, role changes, super-admin provisioning, status changes, and password resets), and institution settings. Super Admins have read-only access to classroom resources, reachable only through explicit lookup (Global Search or a direct deep link) — never through dashboard feeds or proactive navigation. They must not create/update/delete subjects, sections, sessions, attendance, disputes, enrollment codes/rosters, section roles, QR tokens, or proof-of-class records.
 
 ### Teacher / Instructor
 Creates subjects, configures class schedules, generates QR codes per session, sets geofences, defines check-in time windows. Views attendance records for their classes. Flags anomalies.
@@ -281,6 +281,20 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - Imperative mood, no period
 - Max 72 chars subject line
 
+### Feature Parity Gate (both platforms)
+- **Shared contract first:** any new capability starts as types/schemas/validation in `@polycheck/shared` (and `ApiClient` methods) before either UI exists.
+- **Every UI feature ships on web *and* mobile** — or the PR states a one-line justification ("super-admin-only", "native-only", "PWA follow-up") in the PR body. A web-only wizard is not complete until `BM6`-style mobile adoption lands.
+- **Paired E2E:** role journeys get both a Playwright spec (web) and a Maestro flow (mobile). Shared journeys: login, schedule, section roster, session cockpit, scan, disputes, import.
+- **Quarterly parity audit:** re-run the full capability matrix (web vs mobile vs PWA) and append results to `plan/mobile-improvement-plan.md`'s addendum.
+- **Shared behavior changes require both clients:** when `ApiClient` or shared validation changes, update frontend + android consumers and their tests in the same change.
+
+### Offline-first contract (web + mobile)
+- Reads: network-first, fall back to the local cache (IndexedDB on web, SQLite on mobile).
+- Writes: authoritative-first; on connectivity failure enqueue and show "saved on device" (never fake success).
+- Sync: the existing backend contract (`/sync/attendance/batches` + receipt polling) is the only replay path; terminal evidence is retained for review and removed from optimistic views.
+- Time: validity decisions read the signed `issuedAt` plus the cached `/health` clock offset, never the raw device clock.
+- Web queue lives in `frontend/src/lib/offline/*`; SW caching is an app-shell optimization only and never touches credentials.
+
 ## Progress
 
 ### Done
@@ -441,7 +455,45 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - **Cross-browser runtime noise**: new `RuntimeErrorGuard` + `lib/abort-errors.ts` suppress cancellation-shaped unhandled rejections only while a navigation or page teardown is in progress; faculty dashboard effects log every failure that occurs before unmount instead of message-matching; Playwright `assertNoErrors` treats engine cancellation messages as noise only inside a navigation/aborted-request window.
   - **Enrollment contract**: web and mobile `enrollStudent` strip `sectionId` from the request body (it stays in the path), matching `EnrollStudentDto` under `forbidNonWhitelisted`; regression tests assert the exact body on both clients.
   - **Web E2E**: fixed the Next 16.4 route-announcer locator collision in the auth spec and hardened pre-hydration login submissions (invalid credentials, privacy consent) with response-wait retries.
-  - **Misc**: `Dockerfile.frontend` `NEXT_PUBLIC_ALLOW_QR_FALLBACKS` defaults to `false` (local compose still passes `true`); fixed two `react-hooks/exhaustive-deps` warnings via a date ref; `AuthSessionMonitor` uses `location.replace` after revocation; proxy-hop docs updated.
+   - **Misc**: `Dockerfile.frontend` `NEXT_PUBLIC_ALLOW_QR_FALLBACKS` defaults to `false` (local compose still passes `true`); fixed two `react-hooks/exhaustive-deps` warnings via a date ref; `AuthSessionMonitor` uses `location.replace` after revocation; proxy-hop docs updated.
+
+### Done (cont.)
+- **Mobile release hygiene (MP1 of `plan/mobile-improvement-plan.md`)**:
+  - Deleted deep-linkable dev screen `android/app/debug.tsx` (Expo Router exposes every route file to deep links).
+  - QR fallbacks are now opt-in on mobile: new `android/hooks/qr-fallback-policy.ts` (`true` only for the exact env value) used by `scan.tsx`; EAS `production` profile pins `EXPO_PUBLIC_ALLOW_QR_FALLBACKS=false` and `EXPO_PUBLIC_E2E_MODE=false`; CI release APK already forced both false.
+  - Release config: added `monochromeImage` (Android 13 themed icons) and maroon/dark `expo-splash-screen` config (`#7B1113` / `#0A0A0A`); verified Sentry init is env-gated (`EXPO_PUBLIC_SENTRY_DSN`, PII stripped, disabled when unset or E2E mode).
+  - New `android/RELEASE.md` documents the monotonic `versionCode`/`versionName` strategy (EAS `appVersionSource: "remote"` + `autoIncrement`), required production env vars, Sentry source-map vars, and the pre-upload checklist.
+  - Regression coverage: `__tests__/qr-fallback-policy.test.ts`; android typecheck clean and 135 tests pass (10 suites).
+
+### Done (cont.)
+- **Offline-first web PWA (`plan/offline-web-pwa-plan.md`, M1–M4)**:
+  - M1 shell: native `app/manifest.ts`, generated 192/512/apple-touch icons, hand-rolled `public/sw.js` (no Serwist build coupling), `/offline` fallback, maroon/black splash/theme, SW headers (`no-cache`, `Service-Worker-Allowed`), `PwaBoot` registration + update toast, `OfflineBanner` in both role shells, one-time iOS install callout, `NEXT_PUBLIC_PWA_OFFLINE` kill switch, manifest/theme metadata.
+  - M2 store + sync: `frontend/src/lib/offline/{db,crypto,store}.ts` — IndexedDB (`idb`) with per-account AES-GCM keys (non-extractable CryptoKey, raw-key fallback), owner-scoped encrypted caches for subjects/sections/sessions/roster/records, `queue_v2`, metadata (clock offset, last sync, enrolled section ids), `OfflineSyncPanel` drain triggers, `navigator.storage.persist()`, `classifyAttendanceSyncError` promoted to `@polycheck/shared`.
+  - M3 student offline scan: cache-aware reads (`getSessions`, `getSections`, `getSubjects`, `getStudentsForSection`, attendance lists), offline `submitScan` with local signature/geofence/accuracy/staleness/window/duplicate checks, optimistic `offline:` record, trusted-clock `/health` offset refresh, readiness chip, "Saved on Device" scan outcome, geofence distance diagnostics.
+  - M4 teacher cockpit: offline `generateQrCode` (trusted `issuedAt`, local activation state + `session_activation` queue), offline `endSession`, queued manual attendance/status, cached proofs fallback, cockpit polling suspended offline; server remains authoritative (409 reconciliation + receipts).
+  - Tests: new encrypted store round-trip/owner-wipe/queue tests + receipt polling/409 reconciliation suite; frontend now **112 tests**.
+- **Bulk import (`plan/bulk-import-plan.md`, BM1–BM7)**:
+  - Shared contract (`types/bulk-import.ts`, zod request schemas, `ApiClient` methods), client-side CSV parser/mapper/normalizer with golden PUP fixtures + checksum (FNV-1a pair), `papaparse` in `@polycheck/shared`.
+  - Backend: `POST /users/students/import` (validate → checksum-bound execute, chunked transaction, generated temporary passwords, dept scope, skip/update modes, credentials once), `users-import` BullMQ queue + job status, `POST /sections/:id/enrollments/import` (ownership, section-level advisory lock, `studentCount` reconciliation, `STUDENT_NOT_FOUND/INACTIVE`, v2 opt-in inactive provisioning), `ImportBatch` model + 90-day retention, audit summaries + metrics.
+  - Forced first-login rotation: `User.mustChangePassword` + migration, global `PasswordChangeGuard` (403 `password_change_required`), `POST /auth/change-password` (rate-limited, keeps current session), admin reset now forces rotation; web + mobile password gates.
+  - Web: 6-step-style `BulkImportDialog` (upload → map → validate → confirm → commit with stop/retry → report; credentials/issues/failed-rows CSV downloads), wired to Users and section detail; inactive/provisioned filter + bulk activate.
+  - Mobile (BM6): `BulkImportSheet` paste-first condensed flow (clipboard paste → mapping → validate → import → report) on users + section screens, credentials via native share CSV; `getStudentInfo`-style helpers not required. Document picker deferred to avoid a native rebuild before release.
+  - Tests: shared 87, backend 457 (new import/auth/queue specs), frontend 112, android 142.
+- **Mobile parity (`plan/mobile-improvement-plan.md`, MP2–MP6)**:
+  - MP2: in-house `CampusToast` provider (2 visible, 3.5s/5s, accessible, tokens) replacing feedback `Alert`s across 25+ screens; destructive confirms stay native. Super admin Schedule was later **removed by the super-admin console plan (SA1)**, superseding MP2 LD4; the route remains for Option A deep links.
+  - MP3: reports donut via `react-native-svg` (golden/maroon/deep-maroon/muted palette, totals in center) replacing the stacked bar.
+  - MP4: verified the mobile Leaflet WebView already renders the shared `pupSantaMaria` building polygons (no change required).
+  - MP5: fixed audit items — calendar `getMonthDays` trailing all-null week, validation schema drift (`SectionCreateSchema` optional teacher fields, full `AttendanceRecordSchema`, integer geofence radius), session create honors `sectionId`, offline cockpit/detail caching (`getSectionSessions`, roles), terminal scan phantom record removal, activation response cache, cold-start splash bound (4s auth check, pre-sync no longer blocks), and unhandled mutation feedback.
+  - MP6: Feature Parity Gate + offline-first contract codified in this file; plan addendum records the audit + deviations.
+- **Auth contract alignment**: `changePassword` returns the updated profile on both clients; `User.mustChangePassword` propagates through login/me/users payloads.
+- **Container verification (local Compose)**: rebuilt backend/frontend images; migration `20261026120000_bulk_import` applied and seed completed; 34-check API/PWA smoke passed (import validate/execute/idempotency/checksum, forced rotation, Flow B enrollment + studentCount reconciliation, sync receipt pipeline, manifest/sw/offline); Playwright Chromium 57/57 passed and the import spec passes on WebKit; Firefox flags the known Zod CSP eval probe plus dashboard navigation-abort console logs in production builds (same on pre-existing specs; zero backend 5xx).
+- **Super Admin Console (`plan/super-admin-console-plan.md`, SA1–SA5 + SA7)**:
+  - Web super nav is the 7-item admin console (Dashboard, User Management, System Reports, Audit Log, Server Status, Institution Settings, Global Search); Android super tab bar is Dashboard/Users/Reports/More with the More sheet limited to Global Search, Institution Settings, Audit Log. Classroom monitoring feeds are gone; Option A keeps deep links/Global Search lookup. The MP2 super-admin Schedule item is superseded (route remains for deep links).
+  - Both super dashboards consume `GET /dashboard/admin-overview` (active/disabled faculty+students, active sessions, pending disputes, real DB/Redis health, recent audit activity) with no teacher dashboard inheritance or sections fetches.
+  - Backend account administration: filtered/paginated `GET /users`, `PATCH /users/:id` (role-specific whitelisted fields), `PATCH /users/:id/role` (student↔teacher with section/identity guards), `POST /users/admins` (institution-scope promote/fresh), explicit audit rows. Web + Android Users v2 add server search/filters/pagination, edit, role change, Add Super Admin; bulk import/inactive/bulk-activate preserved.
+  - SA7 real-time Server Status: super-admin-only `server:subscribe` room, 5s publisher that idles at zero subscribers, `GET /dashboard/server-status` snapshot, web `/faculty/server-status` with in-house SVG sparklines/gauges and 15-minute session-local history. `GET /metrics` untouched.
+  - Every `(faculty)` Android screen now has an explicit `useAuthGate` role list (attendance/search were previously ungated).
+  - Verification: backend 508 tests / 49 suites, frontend 138 / 22, Android 177 / 13, shared 87 / 5; Playwright Chromium **66/66** (includes new console/users/server-status/import specs); live Socket.IO stream verified for super admin and denied for teachers; new API smoke covers overview/server-status/filters/edit/role/create-admin/scope denials; zero backend 5xx. Firefox/WebKit production-container caveats documented in the plan addendum.
 
 ### In Progress
 - (none)
@@ -461,14 +513,14 @@ import { haversineDistance } from '@polycheck/shared/utils'
 
 - **Auth Landing Animation & Layout Fix**: Moved auth pages from `app/login/` into `app/(auth-landing)/login/` (with role sub-routes `faculty` and `student`) within a shared route group. This preserves layout state and prevents full unmounts, restoring smooth CSS/motion animations and logo transitions when switching between login views.
 - **Student Scan QR Fallback Options (Web & Mobile)**:
-  - Enabled fallbacks by default on both web (`NEXT_PUBLIC_ALLOW_QR_FALLBACKS !== 'false'`) and mobile (`EXPO_PUBLIC_ALLOW_QR_FALLBACKS !== 'false'`).
+  - Web fallbacks are enabled by default (`NEXT_PUBLIC_ALLOW_QR_FALLBACKS !== 'false'`); mobile fallbacks are **opt-in** (`EXPO_PUBLIC_ALLOW_QR_FALLBACKS === 'true'` via `hooks/qr-fallback-policy.ts`) and pinned `false` in the EAS production profile.
   - Web modal (`ScanQrModal.tsx` & `ScanQrViews.tsx`) now exposes all 3 accessible check-in channels: **Camera**, **Upload Image** (local QR decoding via `BarcodeDetector` / ZXing with drag & drop and 10 MB file validation), and **Enter Token** (manual input / paste of teacher-signed QR token with whitespace and surrounding quote sanitization).
   - Both fallback channels strictly require and enforce client-side GPS location capture against classroom geofence before submission.
   - Added warning banner in upload view when camera permissions are denied or unavailable on the device.
   - Mobile scanner (`android/app/(tabs)/scan.tsx`) exposes `Upload QR Image` and `Enter Code` fallbacks alongside live camera.
 - **Database Migration Self-Healing**: Added idempotent pre-checks and backfills in `20260907090000_domain_constraints/migration.sql` to gracefully handle dirty development databases or re-runs without crashing the migration service container.
 - **Docker Compose Local Developer Experience**: Added automated 1-click startup scripts (`start-local.bat`, `start-local.sh`, `stop-local.bat`, `stop-local.sh`) and passed `NEXT_PUBLIC_ALLOW_QR_FALLBACKS: "true"` to local container builds.
-- **Comprehensive Automated Test Coverage**: 686 total passing automated tests across 70 suites monorepo-wide (60 shared, 98 web, 396 backend, 132 mobile); the web E2E suite includes 155 checks across Chromium, Firefox, and WebKit (10 engine-specific skips).
+- **Comprehensive Automated Test Coverage**: 910 total passing automated tests across 89 suites monorepo-wide (87 shared, 138 web, 508 backend, 177 mobile); the web E2E suite includes 198 tests across Chromium, Firefox, and WebKit (10 engine-specific skips).
 
 ## Next Steps
 - Connect sessions page to section context when navigated from section detail.
@@ -478,6 +530,10 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - Add leave/excuse request workflow.
 - Add academic calendar integration (semester dates, holidays).
 - Add dark mode support parity across all pages.
+- Mobile import file picker (`expo-document-picker`) as the fast-follow to the shipped paste-first flow (requires a native rebuild).
+- Run the super-admin Maestro flow and device smoke (users edit/role/add-admin + live Server Status) — not executed locally because adb/Maestro are unavailable.
+- Run the Lighthouse PWA checklist and physical iOS/installed-PWA offline verification before enabling `NEXT_PUBLIC_PWA_OFFLINE` in production.
+- Run the 5,000-user load simulation on staging (plan/load-simulation-plan.md LT4–LT6); the local harness is validated (200 students paced as 4×50 waves pass, 200-simultaneous burst documents the single-instance limit).
 
 ## Critical Context
 - Android package: `edu.pup.polycheck`; iOS bundle: `edu.pup.polycheck`.
@@ -492,6 +548,11 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - Mobile scan uses real `CameraView` with `onBarcodeScanned` from `expo-camera`.
 - Faculty layout has a `disputes` tab with `gavel` icon.
 - Grace period: after QR validity expires, valid scans are Late. The backend auto-ends the session when grace expires, or the teacher can end it earlier.
+- Web offline: `frontend/public/sw.js` + IndexedDB (`frontend/src/lib/offline/*`); flag `NEXT_PUBLIC_PWA_OFFLINE`; sync uses the existing `/sync/attendance/batches` receipt contract.
+- Bulk import endpoints: `POST /api/users/students/import` (`?background=true` optional), `GET /api/users/students/import/jobs/:id`, `POST /api/sections/:id/enrollments/import`; execute requires the validate `rowChecksum`.
+- Forced password rotation: `User.mustChangePassword` blocks protected routes with 403 `password_change_required` until `POST /auth/change-password` succeeds (web + mobile gates).
+- The mobile import sheet is paste-first by design (`expo-document-picker` deferred to avoid a native rebuild); credentials share through `android/services/file-sharing.ts`.
+- Admin console endpoints: `GET /dashboard/admin-overview`, `GET /dashboard/server-status`, `GET /users?role&q&department&status&limit&offset`, `PATCH /users/:id`, `PATCH /users/:id/role`, `POST /users/admins`. Realtime server metrics use `server:subscribe` / `server:subscribed` / `server:metrics` in the `/attendance` namespace (super_admin only, 5s, idle when unsubscribed).
 
 ## Relevant Files
 - `shared/src/types/session.ts` — Session now has `qrValidityMinutes`, `qrGeneratedAt?`; removed `tokenWindowSeconds`
@@ -522,3 +583,5 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - `backend/src/sessions/dto/create-session.dto.ts` — DTO field optionality, ActivateSessionDto grace param
 - `backend/src/sessions/sessions.service.ts` — defaults on create, grace storage at activate, auto-expiry cron
 - `backend/src/attendance/attendance.service.ts` — ensureOfflineActivation relaxed grace check
+
+

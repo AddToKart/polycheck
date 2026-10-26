@@ -1,27 +1,16 @@
 import { defineConfig } from 'tsup'
 
-export default defineConfig([
-  {
-    entry: ['src/index.ts'],
-    format: ['cjs', 'esm'],
-    dts: true,
-    sourcemap: true,
-    clean: true,
+// One config instead of parallel entry configs: multiple configs run
+// concurrently and the first config's `clean` can delete sibling declaration
+// files that were just emitted (e.g. dist/map/index.d.ts).
+export default defineConfig({
+  entry: {
+    index: 'src/index.ts',
+    'utils/index': 'src/utils/index.ts',
+    'map/index': 'src/map/index.ts',
   },
-  {
-    entry: ['src/utils/index.ts'],
-    outDir: 'dist/utils',
-    format: ['cjs', 'esm'],
-    dts: true,
-    sourcemap: true,
-    clean: false,
-  },
-  {
-    entry: ['src/map/index.ts'],
-    outDir: 'dist/map',
-    format: ['cjs', 'esm'],
-    dts: true,
-    sourcemap: true,
-    clean: false,
-  },
-])
+  format: ['cjs', 'esm'],
+  dts: true,
+  sourcemap: true,
+  clean: true,
+})

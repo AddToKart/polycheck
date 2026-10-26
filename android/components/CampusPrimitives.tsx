@@ -153,9 +153,10 @@ type MetricTileProps = {
   value: string | number
   icon: keyof typeof MaterialIcons.glyphMap
   emphasis?: 'brand' | 'alert' | 'neutral'
+  testID?: string
 }
 
-export const MetricTile = ({ label, value, icon, emphasis = 'brand' }: MetricTileProps) => {
+export const MetricTile = ({ label, value, icon, emphasis = 'brand', testID }: MetricTileProps) => {
   const { isDark } = useTheme()
   const colors = emphasis === 'alert'
     ? { bg: 'bg-red-50 dark:bg-red-950/20', icon: '#DC2626', value: 'text-red-700 dark:text-red-300' }
@@ -164,7 +165,7 @@ export const MetricTile = ({ label, value, icon, emphasis = 'brand' }: MetricTil
       : { bg: 'bg-maroon/5 dark:bg-golden/10', icon: pupColors.maroon, value: 'text-maroon dark:text-golden' }
 
   return (
-    <View className="min-w-[46%] flex-1 rounded-none border border-line bg-white p-4 dark:border-line-dark dark:bg-surface-dark border-t-4 border-t-maroon dark:border-t-golden">
+    <View testID={testID} className="min-w-[46%] flex-1 rounded-none border border-line bg-white p-4 dark:border-line-dark dark:bg-surface-dark border-t-4 border-t-maroon dark:border-t-golden">
       <View className={joinClasses('mb-3 h-9 w-9 items-center justify-center rounded-none', colors.bg)}>
         <MaterialIcons name={icon} size={18} color={emphasis === 'brand' && isDark ? pupColors.golden : colors.icon} />
       </View>

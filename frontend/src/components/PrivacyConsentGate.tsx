@@ -34,6 +34,7 @@ export function PrivacyConsentGate() {
 
   const requiresConsent =
     user?.role === 'student' &&
+    !user.mustChangePassword &&
     ((!notice && !user.privacyConsentedAt) || Boolean(notice && user.privacyConsentVersion !== notice.version))
   if (!requiresConsent) return null
 

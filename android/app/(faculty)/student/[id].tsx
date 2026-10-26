@@ -5,6 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import type { AttendanceRecord, AttendanceStatus, Session, Student } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
+import { useAuthGate } from '../../../hooks/use-auth-gate'
 import { useTheme } from '../../../theme/ThemeContext'
 import { pupColors } from '../../../theme/colors'
 import { CampusHeader } from '../../../components/CampusHeader'
@@ -21,6 +22,7 @@ const IdLabel = ({ label, value, prominent = false }: { label: string; value: st
 export default function StudentDetailScreen() {
   const { isDark, toggle } = useTheme()
   const { id: studentId, sectionId } = useLocalSearchParams<{ id: string; sectionId: string }>()
+  const currentUser = useAuthGate(['teacher', 'super_admin'])
   const [student, setStudent] = useState<Student | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
@@ -31,23 +33,29 @@ export default function StudentDetailScreen() {
   const flipAnimation = useRef(new Animated.Value(0)).current
 
   const loadData = useCallback(async () => {
-    if (!studentId) return
-    let activeSectionId: string | undefined = sectionId
-    if (!activeSectionId) {
-      const enrollments = await api.getEnrollments()
-      activeSectionId = enrollments.find((enrollment) => enrollment.studentId === studentId)?.sectionId
-    }
-    if (!activeSectionId) { router.back(); return }
+    if (!studentId || !currentUser) return
     try {
+      let activeSectionId: string | undefined = sectionId
+      if (!activeSectionId) {
+        const enrollments = await api.getEnrollments()
+        activeSectionId = enrollments.find((enrollment) => enrollment.studentId === studentId)?.sectionId
+      }
+      if (!activeSectionId) { router.back(); return }
       const [nextStudent, nextSessions, nextRecords] = await Promise.all([api.getStudent(studentId), api.getSectionSessions(activeSectionId), api.getStudentAttendanceForSection(studentId, activeSectionId)])
       setStudent(nextStudent)
       setSessions(nextSessions)
       setRecords(nextRecords)
-    } catch { router.back(); return }
-    setLoading(false)
-  }, [sectionId, studentId])
+    } catch {
+      router.back()
+    } finally {
+      setLoading(false)
+    }
+  }, [currentUser, sectionId, studentId])
 
-  useEffect(() => { void loadData() }, [loadData])
+  useEffect(() => {
+    if (!currentUser) return
+    void loadData()
+  }, [currentUser, loadData])
   useEffect(() => { void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion) }, [])
 
   const flip = () => {
@@ -55,9 +63,10 @@ export default function StudentDetailScreen() {
     setIsFlipped((value) => !value)
   }
 
+  if (!currentUser) return null
   if (loading || !student) return <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark"><ActivityIndicator size="large" color={isDark ? pupColors.golden : pupColors.maroon} /><Text className="mt-4 font-sans text-sm text-muted dark:text-zinc-400">Loading student profile…</Text></SafeAreaView>
 
-  const isTeacher = api.getCurrentUser()?.role === 'teacher'
+  const isTeacher = currentUser.role === 'teacher'
   const frontRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['0deg', '180deg'] })
   const backRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['180deg', '360deg'] })
   const totalPresent = records.filter((record) => record.status === 'present').length
@@ -67,25 +76,36 @@ export default function StudentDetailScreen() {
   const pagedSessions = sessions.slice(sessionPage * SESSION_PAGE_SIZE, (sessionPage + 1) * SESSION_PAGE_SIZE)
 
   const remove = () => {
-    if (!sectionId || !studentId) return
+    if (!sectionId || !studentId) {
+      Alert.alert('Section context unavailable', 'Open this student from the section roster to remove them.')
+      return
+    }
     Alert.alert('Remove student?', `${student.fullName} will be removed from this section.`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => { void api.removeStudentFromSection(sectionId, studentId).then(() => router.back()) } },
+      { text: 'Remove', style: 'destructive', onPress: () => { void api.removeStudentFromSection(sectionId, studentId).then(() => router.back()).catch((error) => Alert.alert('Unable to remove student', error instanceof Error ? error.message : 'Please try again.')) } },
     ])
   }
 
   const cycleStatus = async (record: AttendanceRecord) => {
     const currentIndex = STATUS_CYCLE.indexOf(record.status)
     const nextStatus = STATUS_CYCLE[(currentIndex + 1) % STATUS_CYCLE.length]
-    await api.updateAttendanceStatus(record.id, nextStatus)
-    setRecords((previous) => previous.map((item) => item.id === record.id ? { ...item, status: nextStatus } : item))
+    try {
+      await api.updateAttendanceStatus(record.id, nextStatus)
+      setRecords((previous) => previous.map((item) => item.id === record.id ? { ...item, status: nextStatus } : item))
+    } catch (error) {
+      Alert.alert('Unable to update attendance', error instanceof Error ? error.message : 'Please try again.')
+    }
   }
 
   const addAbsent = async (session: Session) => {
     if (records.some((record) => record.sessionId === session.id)) return
     const newRecord: AttendanceRecord = { id: Crypto.randomUUID(), sessionId: session.id, sectionId: sectionId!, studentId: studentId!, studentName: student.fullName, studentProgram: student.program, timestamp: new Date().toISOString(), status: 'absent', coordinates: { latitude: 0, longitude: 0 }, isSynced: false, notes: 'Manually marked by teacher', manuallySet: true }
-    await api.addAttendanceRecord(newRecord)
-    setRecords((previous) => [...previous, newRecord])
+    try {
+      await api.addAttendanceRecord(newRecord)
+      setRecords((previous) => [...previous, newRecord])
+    } catch (error) {
+      Alert.alert('Unable to mark attendance', error instanceof Error ? error.message : 'Please try again.')
+    }
   }
 
   return (
