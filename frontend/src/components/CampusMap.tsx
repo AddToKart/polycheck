@@ -12,6 +12,7 @@ const STATUS_MARKER_COLORS: Record<string, string> = {
   present: '#22C55E',
   late: pupColors.golden,
   absent: '#EF4444',
+  excused: pupColors.goldenDark,
   pending: '#9CA3AF',
   disputed: '#F59E0B',
 }
@@ -20,6 +21,7 @@ const STATUS_TEXT_CLASSES: Record<string, string> = {
   present: 'text-green-600 dark:text-green-400',
   late: 'text-yellow-600 dark:text-yellow-300',
   absent: 'text-red-600 dark:text-red-400',
+  excused: 'text-maroon dark:text-golden',
   pending: 'text-gray-400 dark:text-gray-500',
   disputed: 'text-amber-500 dark:text-amber-300',
 }
@@ -228,6 +230,10 @@ export default function CampusMap({ session, records, isActive, refreshLabel }: 
         <span className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: STATUS_MARKER_COLORS.absent }} />
           Absent
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: STATUS_MARKER_COLORS.excused }} />
+          Excused
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: STATUS_MARKER_COLORS.pending }} />
