@@ -34,6 +34,14 @@ export const envSchema = z
     PRIVACY_NOTICE_URL: z.string().url().default('http://localhost:3000/privacy'),
     AUDIT_LOG_RETENTION_DAYS: z.coerce.number().int().min(365).max(3650).default(2555),
     DENIED_SCAN_RETENTION_DAYS: z.coerce.number().int().min(30).max(365).default(90),
+    AI_BASE_URL: z.string().url().optional().or(z.literal('')),
+    AI_API_KEY: z.string().optional().or(z.literal('')),
+    AI_MODEL: z.string().max(200).optional().or(z.literal('')),
+    AI_KEY_ENCRYPTION_SECRET: z.string().min(32).optional().or(z.literal('')),
+    AI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(30_000),
+    AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(64).max(8_192).default(1_024),
+    AI_MAX_MESSAGES_PER_DAY: z.coerce.number().int().min(1).max(10_000).default(100),
+    EXPO_ACCESS_TOKEN: z.string().optional().or(z.literal('')),
   })
   .superRefine((env, ctx) => {
     const productionOrigins = env.CORS_ORIGINS.split(',')

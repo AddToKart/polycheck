@@ -71,4 +71,39 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ ...production, METRICS_TOKEN: 'short' })).toThrow('at least 32 characters')
     expect(validateEnv(production).METRICS_TOKEN).toHaveLength(32)
   })
+
+  it('keeps the assistant optional with safe defaults', () => {
+    const result = validateEnv(base)
+    expect(result.AI_BASE_URL).toBeUndefined()
+    expect(result.AI_API_KEY).toBeUndefined()
+    expect(result.AI_MODEL).toBeUndefined()
+    expect(result.AI_TIMEOUT_MS).toBe(30_000)
+    expect(result.AI_MAX_OUTPUT_TOKENS).toBe(1_024)
+    expect(result.AI_MAX_MESSAGES_PER_DAY).toBe(100)
+    expect(validateEnv(production).AI_TIMEOUT_MS).toBe(30_000)
+  })
+
+  it('accepts assistant endpoint settings and bounded limits', () => {
+    const result = validateEnv({
+      ...base,
+      AI_BASE_URL: 'https://ai.example.edu/v1',
+      AI_API_KEY: 'secret-value',
+      AI_MODEL: 'gpt-test',
+      AI_TIMEOUT_MS: '45000',
+      AI_MAX_OUTPUT_TOKENS: '2048',
+      AI_MAX_MESSAGES_PER_DAY: '250',
+    })
+    expect(result.AI_BASE_URL).toBe('https://ai.example.edu/v1')
+    expect(result.AI_MODEL).toBe('gpt-test')
+    expect(result.AI_TIMEOUT_MS).toBe(45_000)
+    expect(result.AI_MAX_OUTPUT_TOKENS).toBe(2_048)
+    expect(result.AI_MAX_MESSAGES_PER_DAY).toBe(250)
+  })
+
+  it('rejects malformed assistant endpoints and limit values', () => {
+    expect(() => validateEnv({ ...base, AI_BASE_URL: 'not-a-url' })).toThrow('AI_BASE_URL')
+    expect(() => validateEnv({ ...base, AI_TIMEOUT_MS: '999' })).toThrow('AI_TIMEOUT_MS')
+    expect(() => validateEnv({ ...base, AI_MAX_OUTPUT_TOKENS: '32' })).toThrow('AI_MAX_OUTPUT_TOKENS')
+    expect(() => validateEnv({ ...base, AI_MAX_MESSAGES_PER_DAY: '0' })).toThrow('AI_MAX_MESSAGES_PER_DAY')
+  })
 })
