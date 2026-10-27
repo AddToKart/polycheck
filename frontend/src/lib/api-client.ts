@@ -1,4 +1,4 @@
-import { classifyAttendanceSyncError, getRecentCampusDateRange, haversineDistance, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRequest, type EnrollImportResult, type EnrollImportRow, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput } from '@polycheck/shared'
+import { classifyAttendanceSyncError, getRecentCampusDateRange, haversineDistance, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRequest, type EnrollImportResult, type EnrollImportRow, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput, type AiCapabilities, type AiChatSendInput, type AiChatSendResult, type AiChatThread, type AiThreadSummary, type AttendanceStanding, type AppNotification, type NotificationReadInput, type PushTokenInput, type StudentAtRisk, type ExcuseDecision, type ExcuseReason } from '@polycheck/shared'
 import { getOrCreateTeacherSigningKey, isSigningKeyProvisioned, markSigningKeyProvisioned } from './signing-key'
 import { API_BASE } from './api-config'
 import {
@@ -197,7 +197,24 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-export const api = {
+/**
+ * Authenticated assistant file download (AI1). Uses the same cookie session and
+ * timeout as the CSV export path and surfaces the server's message on failure.
+ */
+export async function downloadAssistantFile(downloadPath: string): Promise<Blob> {
+  const res = await fetchWithTimeout(
+    `${API_BASE}${downloadPath}`,
+    { headers: await authHeaders(), credentials: 'include' },
+    EXPORT_TIMEOUT_MS,
+  )
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ message: res.statusText }))
+    throw new Error(Array.isArray(error.message) ? error.message.join('. ') : error.message || 'Download failed')
+  }
+  return res.blob()
+}
+
+const apiBase = {
   getPrivacyNotice(): Promise<PrivacyNotice> {
     return get('/auth/privacy-notice')
   },
@@ -750,6 +767,37 @@ export const api = {
     return post('/disputes', data)
   },
 
+  // ── Excuses (Wave 4) ──
+  requestExcuse(
+    recordId: string,
+    input: { reason: ExcuseReason; description: string; evidenceData?: string },
+  ): Promise<AttendanceRecord> {
+    return post(`/attendance/records/${encodeURIComponent(recordId)}/excuse`, input)
+  },
+  listExcuses(filters: { status?: 'requested' | 'approved' | 'rejected'; sectionId?: string; startDate?: string; endDate?: string } = {}): Promise<AttendanceRecord[]> {
+    return get(queryPath('/attendance/excuses', { ...filters }))
+  },
+  decideExcuse(recordId: string, decision: ExcuseDecision, note?: string): Promise<AttendanceRecord> {
+    return post(`/attendance/records/${encodeURIComponent(recordId)}/excuse/decision`, { decision, note })
+  },
+  getAtRiskStudents(filters: { sectionId?: string; limit?: number } = {}): Promise<StudentAtRisk[]> {
+    return get(queryPath('/attendance/at-risk', { ...filters }))
+  },
+
+  // ── Notifications (Wave 4) ──
+  getNotifications(filters: { unreadOnly?: boolean; limit?: number } = {}): Promise<AppNotification[]> {
+    return get(queryPath('/notifications', { unreadOnly: filters.unreadOnly ? 'true' : undefined, limit: filters.limit }))
+  },
+  getUnreadNotificationCount(): Promise<number> {
+    return get('/notifications/unread-count')
+  },
+  markNotificationsRead(input: NotificationReadInput = { all: true }): Promise<number> {
+    return post('/notifications/read', input)
+  },
+  registerPushToken(input: PushTokenInput): Promise<boolean> {
+    return post('/notifications/push-token', input)
+  },
+
   // ── Users ──
   getStudents(): Promise<Student[]> { return get('/users/students') },
   getStudent(id: string): Promise<Student> { return get(`/users/${id}`) },
@@ -1036,6 +1084,31 @@ export const api = {
   search(query: string): Promise<{ students: Student[]; sections: Section[]; sessions: Session[] }> {
     return get(`/search?q=${encodeURIComponent(query)}`)
   },
+
+  // ── AI assistant (AI0/AI2/AI3) ──
+  getAiCapabilities(): Promise<AiCapabilities> {
+    return get('/ai/capabilities')
+  },
+  sendAiChatMessage(data: AiChatSendInput): Promise<AiChatSendResult> {
+    return post('/ai/chat', data)
+  },
+  getAiThread(threadId: string): Promise<AiChatThread> {
+    return get(`/ai/threads/${encodeURIComponent(threadId)}`)
+  },
+  listAiThreads(): Promise<AiThreadSummary[]> {
+    return get('/ai/threads')
+  },
+  deleteAiThread(threadId: string): Promise<boolean> {
+    return del(`/ai/threads/${encodeURIComponent(threadId)}`)
+  },
+
+  // ── Standing evaluation (AI4) ──
+  getMyStanding(): Promise<AttendanceStanding[]> {
+    return get('/me/standing')
+  },
 }
 
+export const api = { ...apiBase, downloadAssistantFile }
+
 api satisfies ApiClient
+

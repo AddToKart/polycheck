@@ -16,6 +16,11 @@ import type {
   StudentImportRequest,
   StudentImportResult,
 } from './bulk-import'
+import type { AiCapabilities, AiChatSendInput, AiChatSendResult, AiChatThread, AiThreadSummary } from './ai'
+import type { AttendanceStanding } from './standing'
+import type { AppNotification, NotificationReadInput, PushTokenInput } from './notification'
+import type { StudentAtRisk } from './at-risk'
+import type { ExcuseDecision, ExcuseReason } from './attendance'
 
 export interface CreateSubjectInput {
   name: string
@@ -159,6 +164,8 @@ export interface AttendanceReportFilters {
   subjectId?: string
   sectionId?: string
   sessionId?: string
+  /** Admin-only department filter for institution-wide reports. */
+  department?: string
 }
 
 export interface AttendanceReportSummary extends AttendanceSummary {
@@ -175,6 +182,7 @@ export interface AttendanceReport {
     absent: number
     pending: number
     disputed: number
+    excused: number
   }
   summaries: AttendanceReportSummary[]
 }
@@ -305,6 +313,28 @@ export interface ApiClient {
   resolveDispute(recordId: string, resolution: 'accept' | 'reject' | 'override', newStatus?: AttendanceStatus): Promise<AttendanceRecord>
   submitDispute(data: DisputeInput): Promise<AttendanceRecord>
 
+  // ── Excuses (Wave 4) ──
+  requestExcuse(
+    recordId: string,
+    input: { reason: ExcuseReason; description: string; evidenceData?: string },
+  ): Promise<AttendanceRecord>
+  listExcuses(filters?: {
+    status?: 'requested' | 'approved' | 'rejected'
+    sectionId?: string
+    startDate?: string
+    endDate?: string
+  }): Promise<AttendanceRecord[]>
+  decideExcuse(recordId: string, decision: ExcuseDecision, note?: string): Promise<AttendanceRecord>
+
+  // ── At-risk oversight (Wave 4) ──
+  getAtRiskStudents(filters?: { sectionId?: string; limit?: number }): Promise<StudentAtRisk[]>
+
+  // ── Notifications (Wave 4) ──
+  getNotifications(filters?: { unreadOnly?: boolean; limit?: number }): Promise<AppNotification[]>
+  getUnreadNotificationCount(): Promise<number>
+  markNotificationsRead(input?: NotificationReadInput): Promise<number>
+  registerPushToken(input: PushTokenInput): Promise<boolean>
+
   getStudents(): Promise<Student[]>
   getStudent(id: string): Promise<Student>
   getTeachers(): Promise<Teacher[]>
@@ -349,4 +379,14 @@ export interface ApiClient {
   createBulkSessions(data: BulkSessionInput): Promise<Session[]>
   exportAttendanceCsv(filters?: AttendanceReportFilters): Promise<string>
   search(query: string): Promise<{ students: Student[]; sections: Section[]; sessions: Session[] }>
+
+  // ── AI assistant (AI0) ──
+  getAiCapabilities(): Promise<AiCapabilities>
+  sendAiChatMessage(data: AiChatSendInput): Promise<AiChatSendResult>
+  getAiThread(threadId: string): Promise<AiChatThread>
+  listAiThreads(): Promise<AiThreadSummary[]>
+  deleteAiThread(threadId: string): Promise<boolean>
+
+  // ── Standing evaluation (AI4) ──
+  getMyStanding(): Promise<AttendanceStanding[]>
 }

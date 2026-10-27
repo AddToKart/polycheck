@@ -1,4 +1,16 @@
-export type AttendanceStatus = 'present' | 'late' | 'absent' | 'pending' | 'disputed'
+export type AttendanceStatus = 'present' | 'late' | 'absent' | 'pending' | 'disputed' | 'excused'
+
+export type ExcuseStatus = 'requested' | 'approved' | 'rejected'
+
+export type ExcuseReason =
+  | 'medical'
+  | 'family_emergency'
+  | 'school_activity'
+  | 'transportation'
+  | 'bereavement'
+  | 'other'
+
+export type ExcuseDecision = 'approve' | 'reject'
 
 export type StudentDisputeReason =
   | 'outside_geofence'
@@ -45,6 +57,13 @@ export interface AttendanceRecord {
   disputeDescription?: string
   manuallySet?: boolean
   notes?: string
+  excuseStatus?: ExcuseStatus
+  excuseReason?: ExcuseReason
+  excuseDescription?: string
+  excuseEvidencePath?: string
+  excuseReviewedBy?: string
+  excuseReviewedAt?: string
+  excuseReviewNote?: string
 }
 
 export interface AttendanceSummary {
@@ -55,4 +74,5 @@ export interface AttendanceSummary {
   late: number
   absent: number
   disputed: number
+  excused: number
 }

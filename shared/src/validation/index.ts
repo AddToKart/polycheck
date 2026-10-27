@@ -70,7 +70,7 @@ export const SessionCreateSchema = z.object({
   path: ['endTime'],
 })
 
-export const AttendanceStatusSchema = z.enum(['present', 'late', 'absent', 'pending', 'disputed'])
+export const AttendanceStatusSchema = z.enum(['present', 'late', 'absent', 'pending', 'disputed', 'excused'])
 
 export const AttendanceRecordSchema = z.object({
   sessionId: z.string().min(1),
@@ -83,6 +83,13 @@ export const AttendanceRecordSchema = z.object({
     longitude: z.number().min(-180).max(180),
   }).optional(),
   deviceId: z.string().optional(),
+  excuseStatus: z.enum(['requested', 'approved', 'rejected']).optional(),
+  excuseReason: z.enum(['medical', 'family_emergency', 'school_activity', 'transportation', 'bereavement', 'other']).optional(),
+  excuseDescription: z.string().max(1_000).optional(),
+  excuseEvidencePath: z.string().optional(),
+  excuseReviewedBy: z.string().optional(),
+  excuseReviewedAt: z.string().optional(),
+  excuseReviewNote: z.string().max(500).optional(),
 })
 
 export const SectionRoleTypeEnum = z.enum(['president', 'qac'])
@@ -103,3 +110,5 @@ export const ProofOfClassUploadSchema = z.object({
 })
 
 export * from './bulk-import'
+export * from './ai'
+export * from './excuse'
