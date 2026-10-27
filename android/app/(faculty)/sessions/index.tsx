@@ -10,7 +10,23 @@ import { useTheme } from '../../../theme/ThemeContext'
 import { pupColors } from '../../../theme/colors'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
+import { FilterChipsRow, FilterPanel, FilterSelect } from '../../../components/FilterPrimitives'
 import { useCampusToast } from '../../../components/CampusToast'
+import { campusDate, datePresetRange, filterSessions, type DatePreset, type SessionStatusFilter } from '../../../lib/filters'
+
+const statusOptions: Array<{ value: SessionStatusFilter; label: string }> = [
+  { value: 'all', label: 'All status' },
+  { value: 'active', label: 'Active' },
+  { value: 'upcoming', label: 'Upcoming' },
+  { value: 'completed', label: 'Completed' },
+]
+
+const dateOptions: Array<{ value: DatePreset; label: string }> = [
+  { value: 'all', label: 'All time' },
+  { value: '7d', label: 'Last 7 days' },
+  { value: '30d', label: 'Last 30 days' },
+  { value: 'upcoming7', label: 'Next 7 days' },
+]
 
 export default function FacultySessionsScreen() {
   const { isDark, toggle } = useTheme()
@@ -19,6 +35,10 @@ export default function FacultySessionsScreen() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [sections, setSections] = useState<Section[]>([])
+  const [selectedSubjectId, setSelectedSubjectId] = useState('')
+  const [selectedSectionId, setSelectedSectionId] = useState('')
+  const [statusFilter, setStatusFilter] = useState<SessionStatusFilter>('all')
+  const [datePreset, setDatePreset] = useState<DatePreset>('all')
 
   useEffect(() => {
     if (!user) return
@@ -31,16 +51,55 @@ export default function FacultySessionsScreen() {
       .catch(() => showToast('error', 'Unable to load sessions', 'Check your connection and try again.'))
   }, [showToast, user])
 
+  const sectionOptions = useMemo(() => sections
+    .filter((section) => !selectedSubjectId || section.subjectId === selectedSubjectId)
+    .map((section) => ({ id: section.id, label: `Section ${section.section}`, hint: subjects.find((subject) => subject.id === section.subjectId)?.code })), [sections, selectedSubjectId, subjects])
+
+  const filteredSessions = useMemo(() => filterSessions(sessions, {
+    subjectId: selectedSubjectId || undefined,
+    sectionId: selectedSectionId || undefined,
+    status: statusFilter,
+    ...datePresetRange(datePreset),
+  }, {
+    today: campusDate(),
+    subjectForSection: (sectionId) => sections.find((section) => section.id === sectionId)?.subjectId,
+  }), [datePreset, sections, selectedSectionId, selectedSubjectId, sessions, statusFilter])
+
   const groupedSessions = useMemo(() => subjects.map((subject) => ({
     subject,
-    sessions: sessions.filter((session) => {
+    sessions: filteredSessions.filter((session) => {
       const section = sections.find((item) => item.id === session.sectionId)
       return section?.subjectId === subject.id
     }),
-  })).filter((group) => group.sessions.length > 0), [sections, sessions, subjects])
+  })).filter((group) => group.sessions.length > 0), [filteredSessions, sections, subjects])
+
+  const isFiltered = selectedSubjectId !== '' || selectedSectionId !== '' || statusFilter !== 'all' || datePreset !== 'all'
 
   if (!user) return null
   const isSuper = user.role === 'super_admin'
+
+  const selectSubject = (subjectId: string) => {
+    setSelectedSubjectId(subjectId)
+    if (selectedSectionId && subjectId) {
+      const section = sections.find((candidate) => candidate.id === selectedSectionId)
+      if (section?.subjectId !== subjectId) setSelectedSectionId('')
+    }
+  }
+
+  const selectSection = (sectionId: string) => {
+    setSelectedSectionId(sectionId)
+    if (sectionId) {
+      const section = sections.find((candidate) => candidate.id === sectionId)
+      if (section && !selectedSubjectId) setSelectedSubjectId(section.subjectId)
+    }
+  }
+
+  const clearFilters = () => {
+    setSelectedSubjectId('')
+    setSelectedSectionId('')
+    setStatusFilter('all')
+    setDatePreset('all')
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
@@ -57,8 +116,47 @@ export default function FacultySessionsScreen() {
       />
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}>
+        <FilterPanel filtered={isFiltered} onClear={clearFilters} title="Filter sessions">
+          <View className="flex-row flex-wrap gap-2">
+            <FilterSelect
+              label="Subject"
+              value={selectedSubjectId}
+              placeholder="All subjects"
+              options={subjects.map((subject) => ({ id: subject.id, label: `${subject.name} (${subject.code})` }))}
+              onSelect={selectSubject}
+              testID="sessions-subject-filter"
+            />
+            <FilterSelect
+              label="Section"
+              value={selectedSectionId}
+              placeholder="All sections"
+              options={sectionOptions}
+              onSelect={selectSection}
+              testID="sessions-section-filter"
+            />
+          </View>
+          <FilterChipsRow
+            label="Session status"
+            options={statusOptions}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            testID="sessions-status-filter"
+          />
+          <FilterChipsRow
+            label="Session date"
+            options={dateOptions}
+            value={datePreset}
+            onChange={setDatePreset}
+            testID="sessions-date-filter"
+          />
+        </FilterPanel>
+
         {groupedSessions.length === 0 ? (
-          <CampusEmptyState icon="event-busy" title="No sessions found" description="Create a session from a class section when attendance is ready to begin." />
+          <CampusEmptyState
+            icon="event-busy"
+            title={isFiltered ? 'No matching sessions' : 'No sessions found'}
+            description={isFiltered ? 'Clear a filter or widen the date range to see more sessions.' : 'Create a session from a class section when attendance is ready to begin.'}
+          />
         ) : groupedSessions.map((group) => (
           <View key={group.subject.id} className="mb-7">
             <SectionHeading

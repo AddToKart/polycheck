@@ -34,6 +34,10 @@ import { HttpMetricsInterceptor } from './observability/http-metrics.interceptor
 import { DistributedRateLimitGuard } from './common/guards/distributed-rate-limit.guard'
 import { PrivacyConsentGuard } from './common/guards/privacy-consent.guard'
 import { AuditLogsModule } from './audit-logs/audit-logs.module'
+import { AiModule } from './ai/ai.module'
+import { DocsModule } from './docs/docs.module'
+import { StandingModule } from './standing/standing.module'
+import { NotificationsModule } from './notifications/notifications.module'
 
 @Module({
   imports: [
@@ -74,6 +78,10 @@ import { AuditLogsModule } from './audit-logs/audit-logs.module'
     SyncModule,
     SettingsModule,
     AuditLogsModule,
+    AiModule,
+    DocsModule,
+    StandingModule,
+    NotificationsModule,
     MaintenanceModule,
   ],
   providers: [

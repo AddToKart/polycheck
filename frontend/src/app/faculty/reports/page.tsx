@@ -1,11 +1,20 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Download, Filter } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { pupColors } from '@/lib/colors'
-import { formatCampusDate, getRecentCampusDateRange, type User, type Subject, type Teacher, type AttendanceReport } from '@polycheck/shared'
+import { isInstitutionAdmin } from '@/lib/admin-users'
+import {
+  formatCampusDate,
+  getRecentCampusDateRange,
+  type User,
+  type Subject,
+  type Section,
+  type Teacher,
+  type AttendanceReport,
+} from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -17,8 +26,11 @@ export default function ReportsPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
+  const [sections, setSections] = useState<Section[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [selectedSubject, setSelectedSubject] = useState('')
+  const [selectedSection, setSelectedSection] = useState('')
+  const [selectedDepartment, setSelectedDepartment] = useState('')
   const [selectedTeacher, setSelectedTeacher] = useState('')
   const [dateFrom, setDateFrom] = useState(defaultStartDate)
   const [dateTo, setDateTo] = useState(defaultEndDate)
@@ -32,12 +44,14 @@ export default function ReportsPage() {
     }
     setUser(cu)
     const fetchData = async () => {
-      const [subjectsData, teachersData] = await Promise.all([
+      const [subjectsData, teachersData, sectionsData] = await Promise.all([
         api.getSubjects(),
         api.getTeachers(),
+        api.getSections(),
       ])
       setSubjects(subjectsData)
       setTeachers(teachersData)
+      setSections(sectionsData)
     }
     fetchData()
   }, [router])
@@ -50,9 +64,51 @@ export default function ReportsPage() {
       endDate: dateTo,
       teacherId: selectedTeacher || undefined,
       subjectId: selectedSubject || undefined,
+      sectionId: selectedSection || undefined,
+      department: selectedDepartment || undefined,
     }).then((nextReport) => { if (active) setReport(nextReport) })
     return () => { active = false }
-  }, [user, selectedSubject, selectedTeacher, dateFrom, dateTo])
+  }, [user, selectedSubject, selectedSection, selectedDepartment, selectedTeacher, dateFrom, dateTo])
+
+  const sectionOptions = useMemo(
+    () =>
+      sections
+        .filter((section) => !selectedSubject || section.subjectId === selectedSubject)
+        .map((section) => {
+          const subject = subjects.find((item) => item.id === section.subjectId)
+          return {
+            value: section.id,
+            label: `Section ${section.section}${subject ? ` · ${subject.code}` : ''}`,
+          }
+        })
+        .sort((left, right) => left.label.localeCompare(right.label)),
+    [sections, selectedSubject, subjects],
+  )
+
+  const departmentOptions = useMemo(() => {
+    const values = new Set<string>()
+    for (const teacher of teachers) if (teacher.department) values.add(teacher.department)
+    if (user?.department) values.add(user.department)
+    return [...values].sort((left, right) => left.localeCompare(right))
+  }, [teachers, user])
+
+  const canFilterDepartment = user
+    ? isInstitutionAdmin({ role: user.role, scope: (user as User & { scope?: string | null }).scope })
+    : false
+
+  const hasFilters =
+    Boolean(selectedSubject || selectedSection || selectedDepartment || selectedTeacher) ||
+    dateFrom !== defaultStartDate ||
+    dateTo !== defaultEndDate
+
+  const clearFilters = () => {
+    setSelectedSubject('')
+    setSelectedSection('')
+    setSelectedDepartment('')
+    setSelectedTeacher('')
+    setDateFrom(defaultStartDate)
+    setDateTo(defaultEndDate)
+  }
 
   const filteredSummaries = report?.summaries ?? []
   const total = {
@@ -62,6 +118,7 @@ export default function ReportsPage() {
     absent: report?.totals.absent ?? 0,
     pending: report?.totals.pending ?? 0,
     disputed: report?.totals.disputed ?? 0,
+    excused: report?.totals.excused ?? 0,
   }
 
   const presentPct = total.total > 0 ? Math.round((total.present / total.total) * 100) : 0
@@ -69,6 +126,7 @@ export default function ReportsPage() {
   const absentPct = total.total > 0 ? Math.round((total.absent / total.total) * 100) : 0
   const pendingPct = total.total > 0 ? Math.round((total.pending / total.total) * 100) : 0
   const disputedPct = total.total > 0 ? Math.round((total.disputed / total.total) * 100) : 0
+  const excusedPct = total.total > 0 ? Math.round((total.excused / total.total) * 100) : 0
 
   const handleExport = async () => {
     const csv = await api.exportAttendanceCsv({
@@ -76,6 +134,8 @@ export default function ReportsPage() {
       endDate: dateTo,
       teacherId: selectedTeacher || undefined,
       subjectId: selectedSubject || undefined,
+      sectionId: selectedSection || undefined,
+      department: selectedDepartment || undefined,
     })
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
@@ -115,12 +175,13 @@ export default function ReportsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Subject</label>
+                  <label htmlFor="report-subject" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Subject</label>
                   <select
+                    id="report-subject"
                     value={selectedSubject}
-                    onChange={(e) => setSelectedSubject(e.target.value)}
+                    onChange={(e) => { setSelectedSubject(e.target.value); setSelectedSection('') }}
                     className="w-full h-10 rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors"
                   >
                     <option value="">All Subjects</option>
@@ -130,8 +191,39 @@ export default function ReportsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Teacher</label>
+                  <label htmlFor="report-section" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Section</label>
                   <select
+                    id="report-section"
+                    value={selectedSection}
+                    onChange={(e) => setSelectedSection(e.target.value)}
+                    className="w-full h-10 rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors"
+                  >
+                    <option value="">All Sections</option>
+                    {sectionOptions.map((section) => (
+                      <option key={section.value} value={section.value}>{section.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {canFilterDepartment && departmentOptions.length > 0 ? (
+                  <div>
+                    <label htmlFor="report-department" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Department</label>
+                    <select
+                      id="report-department"
+                      value={selectedDepartment}
+                      onChange={(e) => setSelectedDepartment(e.target.value)}
+                      className="w-full h-10 rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors"
+                    >
+                      <option value="">All Departments</option>
+                      {departmentOptions.map((department) => (
+                        <option key={department} value={department}>{department}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+                <div>
+                  <label htmlFor="report-teacher" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Teacher</label>
+                  <select
+                    id="report-teacher"
                     value={selectedTeacher}
                     onChange={(e) => setSelectedTeacher(e.target.value)}
                     className="w-full h-10 rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors"
@@ -143,18 +235,23 @@ export default function ReportsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">From</label>
-                  <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                  <label htmlFor="report-from" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">From</label>
+                  <Input id="report-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">To</label>
-                  <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                  <label htmlFor="report-to" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">To</label>
+                  <Input id="report-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
                 </div>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <Button variant="ghost" size="sm" onClick={clearFilters} disabled={!hasFilters}>
+                  Clear filters
+                </Button>
               </div>
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4 mb-8">
             <Card>
               <CardContent className="p-5">
                 <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Total Records</p>
@@ -189,6 +286,12 @@ export default function ReportsPage() {
               <CardContent className="p-5">
                 <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Disputed %</p>
                 <p className="text-3xl font-bold text-amber-600">{disputedPct}%</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Excused %</p>
+                <p className="text-3xl font-bold text-golden-dark">{excusedPct}%</p>
               </CardContent>
             </Card>
           </div>
@@ -234,6 +337,12 @@ export default function ReportsPage() {
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.goldenDark} strokeWidth="20"
+                          strokeDasharray={`${(total.excused / total.total) * 377} 377`}
+                          strokeDashoffset={-(((total.present + total.late + total.absent + total.pending + total.disputed) / total.total) * 377)}
+                          transform="rotate(-90 70 70)"
+                          style={{ transition: 'stroke-dasharray 0.5s ease' }}
+                        />
                       </>
                     )}
                     <text x="70" y="70" textAnchor="middle" dominantBaseline="middle" className="text-lg font-bold fill-zinc-900 dark:fill-zinc-100">{total.total}</text>
@@ -246,6 +355,7 @@ export default function ReportsPage() {
                       { label: 'Absent', count: total.absent, pct: absentPct, color: pupColors.maroonDark, textColor: 'text-maroon-dark' },
                       { label: 'Pending', count: total.pending, pct: pendingPct, color: '#A1A1AA', textColor: 'text-zinc-500' },
                       { label: 'Disputed', count: total.disputed, pct: disputedPct, color: '#D97706', textColor: 'text-amber-600' },
+                      { label: 'Excused', count: total.excused, pct: excusedPct, color: pupColors.goldenDark, textColor: 'text-golden-dark' },
                     ].map((item) => (
                       <div key={item.label} className="flex items-center gap-3">
                         <div className="w-3 h-3 shrink-0" style={{ backgroundColor: item.color }} />
@@ -294,6 +404,7 @@ export default function ReportsPage() {
                       <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Absent</th>
                       <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Pending</th>
                       <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Disputed</th>
+                      <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Excused</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -316,11 +427,14 @@ export default function ReportsPage() {
                         <td className="px-4 py-3 text-center">
                           <span className="inline-flex items-center px-2 py-0.5 rounded-none text-xs font-semibold bg-amber-600 text-white">{s.disputed}</span>
                         </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-none text-xs font-semibold bg-maroon text-golden border border-golden">{s.excused ?? 0}</span>
+                        </td>
                       </tr>
                     ))}
                     {filteredSummaries.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="px-6 py-8 text-center text-zinc-400 dark:text-zinc-500">
+                        <td colSpan={8} className="px-6 py-8 text-center text-zinc-400 dark:text-zinc-500">
                           No data matching filters.
                         </td>
                       </tr>

@@ -9,6 +9,11 @@ import { ThemeProvider, useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
 import { api, subscribeToAuthChanges } from '../services/api-client'
 import { monitorAuthSession } from '../services/realtime'
+import {
+  configureForegroundNotifications,
+  registerForPushNotifications,
+  subscribeToNotificationOpens,
+} from '../services/push-notifications'
 import type { User } from '@polycheck/shared'
 import { PrivacyConsentGate } from '../components/PrivacyConsentGate'
 import { StudentScreenCaptureGuard } from '../components/StudentScreenCaptureGuard'
@@ -34,6 +39,7 @@ Sentry.init({
 })
 
 SplashScreen.preventAutoHideAsync()
+configureForegroundNotifications()
 
 function RootLayoutInner() {
   const { isDark } = useTheme()
@@ -105,6 +111,18 @@ function RootLayoutInner() {
       subscription.remove()
     }
   }, []) // intentionally empty — runs once
+
+  // ── Push notifications ─────────────────────────────────────────────────────
+  // Permission + Expo token registration run only after authentication, and
+  // tapped notifications route through the same deep-link mapper as the
+  // in-app notification center.
+  useEffect(() => {
+    if (!sessionReady || !currentUser) return
+    void registerForPushNotifications(currentUser)
+    return subscribeToNotificationOpens(currentUser, (route) => {
+      routerRef.current.push(route as never)
+    })
+  }, [currentUser, sessionReady])
 
   // ── Centralized auth-driven routing ────────────────────────────────────────
   // This is the SINGLE place that decides where to navigate based on auth

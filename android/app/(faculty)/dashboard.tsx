@@ -12,6 +12,8 @@ import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { OfflineSyncPanel } from '../../components/OfflineSyncPanel'
 import { SuperAdminDashboard } from '../../components/SuperAdminDashboard'
+import { AtRiskWidget } from '../../components/AtRiskWidget'
+import { NotificationBell } from '../../components/NotificationBell'
 import { useCampusToast } from '../../components/CampusToast'
 import {
   CampusButton,
@@ -55,6 +57,7 @@ function TeacherDashboard({ user }: { user: User }) {
   const [subjects, setSubjects] = useState<Record<string, Subject>>({})
   const [overview, setOverview] = useState<DashboardOverview | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [refreshSignal, setRefreshSignal] = useState(0)
 
   const loadDashboard = useCallback(async () => {
     const today = campusDate()
@@ -81,6 +84,7 @@ function TeacherDashboard({ user }: { user: User }) {
     setRefreshing(true)
     try {
       await loadDashboard()
+      setRefreshSignal((value) => value + 1)
     } catch {
       showToast('error', 'Unable to refresh', 'Check your connection and try again.')
     } finally {
@@ -101,6 +105,7 @@ function TeacherDashboard({ user }: { user: User }) {
         subtitle="Your classes, sessions, and attendance today."
         actions={(
           <>
+            <NotificationBell inverse />
             <CampusIconButton icon="search" label="Search" onPress={() => router.push('/(faculty)/search')} inverse />
             <CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />
             <CampusIconButton icon="logout" label="Sign out" onPress={signOut} inverse testID="faculty-sign-out" />
@@ -143,6 +148,8 @@ function TeacherDashboard({ user }: { user: User }) {
           <MetricTile label="Sessions Today" value={sessionsToday} icon="today" />
           <MetricTile label="Pending Disputes" value={pendingDisputes} icon="gavel" emphasis={pendingDisputes ? 'alert' : 'neutral'} />
         </View>
+
+        <AtRiskWidget sections={sections} refreshSignal={refreshSignal} />
 
         <SectionHeading
           eyebrow="Today"

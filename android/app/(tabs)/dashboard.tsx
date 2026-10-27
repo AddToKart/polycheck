@@ -10,6 +10,8 @@ import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { OfflineSyncPanel } from '../../components/OfflineSyncPanel'
+import { StudentStandingBanner } from '../../components/StudentStandingBanner'
+import { NotificationBell } from '../../components/NotificationBell'
 import {
   AttendanceStatusPill,
   CampusButton,
@@ -69,7 +71,7 @@ export default function DashboardScreen() {
 
   const attendanceTotals = useMemo(() => myAttendance.reduce(
     (totals, record) => ({ ...totals, [record.status]: totals[record.status] + 1 }),
-    { present: 0, late: 0, absent: 0, pending: 0, disputed: 0 } as Record<AttendanceStatus, number>,
+    { present: 0, late: 0, absent: 0, pending: 0, disputed: 0, excused: 0 } as Record<AttendanceStatus, number>,
   ), [myAttendance])
 
   const attendanceRate = myAttendance.length > 0
@@ -115,6 +117,7 @@ export default function DashboardScreen() {
         subtitle={`${student.program} · Year ${student.yearLevel}`}
         actions={(
           <>
+            <NotificationBell inverse />
             <CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />
             <CampusIconButton icon="logout" label="Sign out" onPress={signOut} inverse testID="student-sign-out" />
           </>
@@ -126,8 +129,10 @@ export default function DashboardScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={isDark ? pupColors.golden : pupColors.maroon} />}
       >
-        {/* Credential Card */}
+        {/* Attendance standing notice (supplementary, dismissible per app session) */}
+        <StudentStandingBanner userId={student.id} />
         <OfflineSyncPanel />
+        {/* Credential Card */}
         <CampusCard className="mb-4 bg-white dark:bg-surface-dark border-l-4 border-l-golden rounded-none">
           <View className="flex-row items-center justify-between gap-4">
             <View className="flex-1">
@@ -155,16 +160,17 @@ export default function DashboardScreen() {
 
         <CampusCard className="mb-7 rounded-none border-t-4 border-t-maroon dark:border-t-golden">
           <Text className="mb-4 font-sans-bold text-[10px] uppercase tracking-[2.5px] text-muted dark:text-zinc-400">Attendance Snapshot</Text>
-          <View className="flex-row justify-between">
+          <View className="flex-row">
             {([
               ['Present', attendanceTotals.present, 'text-emerald-700 dark:text-emerald-300'],
               ['Late', attendanceTotals.late, 'text-amber-700 dark:text-amber-300'],
               ['Absent', attendanceTotals.absent, 'text-red-700 dark:text-red-300'],
+              ['Excused', attendanceTotals.excused, 'text-cyan-700 dark:text-cyan-300'],
               ['Disputed', attendanceTotals.disputed, 'text-maroon dark:text-golden'],
             ] as const).map(([label, value, color]) => (
-              <View key={label} className="items-center">
-                <Text className={`font-heading text-3xl font-bold ${color}`}>{value}</Text>
-                <Text className="mt-1 font-sans-bold text-[10px] uppercase tracking-wider text-muted dark:text-zinc-400">{label}</Text>
+              <View key={label} className="flex-1 items-center">
+                <Text className={`font-heading text-2xl font-bold ${color}`}>{value}</Text>
+                <Text className="mt-1 font-sans-bold text-[9px] uppercase tracking-wider text-muted dark:text-zinc-400">{label}</Text>
               </View>
             ))}
           </View>

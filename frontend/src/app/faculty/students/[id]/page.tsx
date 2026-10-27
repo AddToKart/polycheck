@@ -16,6 +16,7 @@ const statusConfig: Record<AttendanceStatus, { label: string; bg: string; text: 
   present: { label: 'Present', bg: 'bg-amber-50 dark:bg-amber-950', text: 'text-amber-600' },
   late: { label: 'Late', bg: 'bg-red-50 dark:bg-red-950', text: 'text-red-700' },
   absent: { label: 'Absent', bg: 'bg-zinc-100 dark:bg-zinc-800', text: 'text-zinc-600' },
+  excused: { label: 'Excused', bg: 'bg-maroon text-golden border border-golden', text: '' },
   pending: { label: 'Pending', bg: 'bg-white dark:bg-zinc-900', text: 'text-maroon' },
   disputed: { label: 'Disputed', bg: 'bg-zinc-900 dark:bg-black', text: 'text-amber-400' },
 }

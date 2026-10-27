@@ -5,6 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
 import { fonts } from '../theme/typography'
+import type { AttendanceStatus } from '@polycheck/shared'
 import { pupSantaMaria } from '@polycheck/shared/map'
 
 export interface StudentMapPin {
@@ -13,7 +14,7 @@ export interface StudentMapPin {
   longitude: number
   label: string
   program?: string
-  status: 'present' | 'late' | 'absent' | 'pending' | 'disputed'
+  status: AttendanceStatus
   timestamp: string
   deviceId?: string
 }
@@ -47,6 +48,7 @@ function html(
     absent: '#EF4444',
     pending: '#9CA3AF',
     disputed: '#F59E0B',
+    excused: pupColors.excused,
   }
 
   const buildingsJSON = JSON.stringify(
@@ -162,7 +164,7 @@ function html(
   });
 
   var statusColors = ${JSON.stringify(statusColors)};
-  var statusLabels = { present: 'Present', late: 'Late', absent: 'Absent', pending: 'Pending', disputed: 'Disputed' };
+  var statusLabels = { present: 'Present', late: 'Late', absent: 'Absent', pending: 'Pending', disputed: 'Disputed', excused: 'Excused' };
   var lateStatusTextColor = '${pupColors.maroonDark}';
 
   var pinMarkers = [];

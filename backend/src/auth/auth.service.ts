@@ -7,6 +7,7 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  Optional,
 } from '@nestjs/common'
 import { compare, hash } from 'bcryptjs'
 import { createHash } from 'crypto'
@@ -19,6 +20,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter'
 import { DUMMY_PASSWORD_HASH, PASSWORD_HASH_COST } from './password-policy'
 import { ConfigService } from '@nestjs/config'
 import type { ChangePasswordDto } from './dto/change-password.dto'
+import { NotificationsService } from '../notifications/notifications.service'
 
 // Login rate limits are env-tunable so strict production values can be relaxed for
 // local development and E2E automation. Defaults: 10 attempts/identity/min, 30/IP/min.
@@ -79,6 +81,7 @@ export class AuthService {
     private betterAuth: BetterAuthService,
     private events: EventEmitter2,
     private config: ConfigService,
+    @Optional() private notifications?: NotificationsService,
   ) {}
 
   privacyNotice() {
@@ -196,6 +199,12 @@ export class AuthService {
       `Signing key provisioned for user ${userId} (previous key: ${previousKey ? 'replaced' : 'first provision'})`,
     )
     this.events.emit('auth.key-provisioned', { userId, hadPreviousKey: !!previousKey })
+    await this.notifications?.notify(userId, {
+      type: 'key_provisioned',
+      title: 'Signing key provisioned',
+      body: 'A new QR signing key is now active on your teacher account.',
+      link: '/faculty',
+    })
 
     return { message: 'Public key provisioned successfully' }
   }

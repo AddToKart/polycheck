@@ -23,10 +23,14 @@ import {
   Settings,
   FileClock,
   Server,
+  Sparkles,
+  ClipboardCheck,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import ThemeToggle from '@/components/ThemeToggle'
+import { NotificationBell } from './NotificationBell'
+import { useNotificationCenter } from '@/lib/hooks/use-notification-center'
 
 type NavItem = { label: string; href: string; icon: any }
 
@@ -36,6 +40,7 @@ const studentNav: NavItem[] = [
   { label: 'My Subjects', href: '/student/dashboard?tab=subjects', icon: BookOpen },
   { label: 'Schedule', href: '/student/schedule', icon: Calendar },
   { label: 'Attendance History', href: '/student/dashboard?tab=attendance', icon: Clock },
+  { label: 'Assistant', href: '/student/assistant', icon: Sparkles },
 ]
 
 // Navigation for standard teachers
@@ -46,6 +51,8 @@ const teacherNav: NavItem[] = [
   { label: 'Attendance Log', href: '/faculty/attendance', icon: ClipboardList },
   { label: 'Schedule', href: '/faculty/schedule', icon: Calendar },
   { label: 'Disputes', href: '/faculty/disputes', icon: Gavel },
+  { label: 'Excuses', href: '/faculty/excuses', icon: ClipboardCheck },
+  { label: 'Assistant', href: '/faculty/assistant', icon: Sparkles },
   { label: 'Search', href: '/faculty/search', icon: Search },
 ]
 
@@ -59,6 +66,7 @@ const superAdminNav: NavItem[] = [
   { label: 'System Reports', href: '/faculty/reports', icon: BarChart3 },
   { label: 'Audit Log', href: '/faculty/audit-logs', icon: FileClock },
   { label: 'Server Status', href: '/faculty/server-status', icon: Server },
+  { label: 'Assistant', href: '/faculty/assistant', icon: Sparkles },
   { label: 'Institution Settings', href: '/faculty/settings', icon: Settings },
   { label: 'Global Search', href: '/faculty/search', icon: Search },
 ]
@@ -77,6 +85,7 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const notificationCenter = useNotificationCenter(user.id)
   const isSuper = user.role === 'super_admin'
   const showSearch = !backHref && (user.role === 'teacher' || user.role === 'super_admin')
   
@@ -103,6 +112,16 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <NotificationBell
+            notifications={notificationCenter.notifications}
+            unreadCount={notificationCenter.unreadCount}
+            loading={notificationCenter.status === 'loading'}
+            error={notificationCenter.error}
+            onOpen={() => void notificationCenter.refresh()}
+            onMarkAll={() => void notificationCenter.markAllRead()}
+            onMarkRead={(notification) => notificationCenter.markRead(notification)}
+            triggerClassName="text-golden hover:bg-white/10 dark:text-maroon-dark dark:hover:bg-maroon-dark/10"
+          />
           <Image src="/pup-logo.png" width={32} height={32} alt="PUP Logo" className="w-8 h-8 shrink-0 object-contain" />
           <button
             onClick={() => setIsOpen(false)}
@@ -225,13 +244,25 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
           <Image src="/pup-logo.png" width={24} height={24} alt="PUP Logo" className="w-6 h-6 shrink-0 object-contain" />
           <span className="font-heading font-bold text-lg tracking-tight">Polycheck</span>
         </div>
-        <button 
-          onClick={() => setIsOpen(true)}
-          className="p-2 hover:bg-white/10 dark:hover:bg-zinc-800 transition-colors"
-          aria-label="Open navigation menu"
-        >
-          <Menu className="w-6 h-6 text-white dark:text-golden" />
-        </button>
+        <div className="flex items-center gap-1">
+          <NotificationBell
+            notifications={notificationCenter.notifications}
+            unreadCount={notificationCenter.unreadCount}
+            loading={notificationCenter.status === 'loading'}
+            error={notificationCenter.error}
+            onOpen={() => void notificationCenter.refresh()}
+            onMarkAll={() => void notificationCenter.markAllRead()}
+            onMarkRead={(notification) => notificationCenter.markRead(notification)}
+            triggerClassName="text-white hover:bg-white/10 dark:text-golden dark:hover:bg-zinc-800"
+          />
+          <button 
+            onClick={() => setIsOpen(true)}
+            className="p-2 hover:bg-white/10 dark:hover:bg-zinc-800 transition-colors"
+            aria-label="Open navigation menu"
+          >
+            <Menu className="w-6 h-6 text-white dark:text-golden" />
+          </button>
+        </div>
       </div>
 
       {/* Mobile Slide-Out Drawer Overlay */}
@@ -256,3 +287,4 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
     </>
   )
 }
+

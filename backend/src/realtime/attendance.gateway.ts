@@ -9,16 +9,23 @@ import {
   WsException,
 } from '@nestjs/websockets'
 import {
+  AI_THREAD_JOIN_EVENT,
+  AI_THREAD_JOINED_EVENT,
+  AI_THREAD_LEAVE_EVENT,
   SERVER_METRICS_ROOM,
   SERVER_SUBSCRIBE_EVENT,
   SERVER_SUBSCRIBED_EVENT,
   SERVER_UNSUBSCRIBE_EVENT,
+  type AppNotification,
 } from '@polycheck/shared'
 import type { Server, Socket } from 'socket.io'
+import { NOTIFICATION_CREATED_EVENT, USER_NOTIFICATION_EVENT } from '../notifications/notification-events'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { SessionAuthenticator } from '../auth/session-authenticator.service'
 import { OnEvent } from '@nestjs/event-emitter'
+import { aiThreadRoom, AiStreamService } from '../ai/ai-stream.service'
+import { AiChatService } from '../ai/ai-chat.service'
 import { adminSectionInScope } from '../common/admin-scope'
 import { SERVER_STATUS_INTERVAL_MS, ServerStatusService } from './server-status.service'
 
@@ -55,10 +62,13 @@ export class AttendanceGateway implements OnGatewayInit, OnModuleDestroy {
     private readonly sessions: SessionAuthenticator,
     private readonly prisma: PrismaService,
     private readonly serverStatus: ServerStatusService,
+    private readonly aiStream: AiStreamService,
+    private readonly aiChat: AiChatService,
   ) {}
 
   afterInit(server: Server) {
     this.server = server
+    this.aiStream.attach(server)
     server.use(async (socket, next) => {
       try {
         socket.data.user = await this.sessions.authenticate(this.handshakeHeaders(socket))
@@ -107,11 +117,45 @@ export class AttendanceGateway implements OnGatewayInit, OnModuleDestroy {
     return { event: 'session:joined', data: { sessionId: session.id } }
   }
 
+  @SubscribeMessage(AI_THREAD_JOIN_EVENT)
+  async joinAiThread(@ConnectedSocket() socket: Socket, @MessageBody() body: { threadId?: string }) {
+    const threadId = body?.threadId?.trim()
+    if (!threadId || threadId.length > 128) throw new WsException('A valid threadId is required')
+    const principal = await this.sessions.authenticate(this.handshakeHeaders(socket))
+    socket.data.user = principal
+    try {
+      await this.aiChat.assertThreadAccess(threadId, principal)
+    } catch (error) {
+      throw new WsException(error instanceof Error ? error.message : 'You cannot access this thread')
+    }
+    await socket.join(aiThreadRoom(threadId))
+    return { event: AI_THREAD_JOINED_EVENT, data: { threadId } }
+  }
+
+  @SubscribeMessage(AI_THREAD_LEAVE_EVENT)
+  async leaveAiThread(@ConnectedSocket() socket: Socket, @MessageBody() body: { threadId?: string }) {
+    const threadId = body?.threadId?.trim()
+    if (!threadId || threadId.length > 128) throw new WsException('A valid threadId is required')
+    await socket.leave(aiThreadRoom(threadId))
+    return { event: AI_THREAD_LEAVE_EVENT, data: { threadId } }
+  }
+
   @OnEvent('auth.session-replaced')
   handleSessionReplacement(event: { userId: string; reason?: string }) {
     const room = this.userRoom(event.userId)
     this.server.to(room).emit('auth:session-replaced', { reason: event.reason ?? 'session_revoked' })
     this.server.in(room).disconnectSockets(true)
+  }
+
+  @OnEvent(NOTIFICATION_CREATED_EVENT)
+  handleNotificationCreated(event: { userId: string; notification: AppNotification }) {
+    this.emitUserNotification(event.userId, event.notification)
+  }
+
+  /** Pushes a notification to every live socket of one account. */
+  emitUserNotification(userId: string, notification: AppNotification) {
+    if (!this.server) return
+    this.server.to(this.userRoom(userId)).emit(USER_NOTIFICATION_EVENT, notification)
   }
 
   private async assertServerMetricsAccess(socket: Socket) {

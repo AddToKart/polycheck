@@ -4,6 +4,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import type { AttendanceRecord, StudentDisputeReason } from '@polycheck/shared'
 import { useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
+import { excuseReasonLabel, excuseStatusLabel } from '../lib/excuses'
 import { AttendanceStatusPill, CampusButton } from './CampusPrimitives'
 
 type DetailModalProps = {
@@ -51,6 +52,14 @@ export const AttendanceRecordDetailModal = ({ visible, record, subjectName, onCl
               {record.isSynced ? <AttendanceStatusPill status={record.status} /> : <Text className="font-sans-bold text-maroon dark:text-golden">Saved on device · Awaiting confirmation</Text>}
             </View>
             {record.status === 'disputed' && record.notes ? <DetailField label="Dispute Note" value={record.notes} /> : null}
+            {record.excuseStatus ? (
+              <DetailField
+                label="Excuse"
+                value={`${excuseStatusLabel(record.excuseStatus)}${record.excuseReason ? ` · ${excuseReasonLabel(record.excuseReason)}` : ''}`}
+              />
+            ) : null}
+            {record.excuseDescription ? <DetailField label="Excuse Details" value={record.excuseDescription} /> : null}
+            {record.excuseReviewNote ? <DetailField label="Review Note" value={record.excuseReviewNote} /> : null}
             <View className="mt-5 flex-row gap-3">
               <CampusButton label="Close" variant="secondary" onPress={onClose} className="flex-1" />
               <CampusButton

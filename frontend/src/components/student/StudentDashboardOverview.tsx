@@ -4,6 +4,7 @@ import { AlertTriangle, Calendar, Clock } from 'lucide-react'
 import type { AttendanceRecord, CalendarEvent, Student } from '@polycheck/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import StatusBadge from '@/components/StatusBadge'
+import ExcuseStatusBadge from '@/components/ExcuseStatusBadge'
 import { formatTime } from '@/lib/calendar-utils'
 import { StudentDigitalId } from './StudentDigitalId'
 
@@ -11,6 +12,7 @@ const statCards = [
   { key: 'present', label: 'Present', color: 'text-golden' },
   { key: 'late', label: 'Late', color: 'text-maroon' },
   { key: 'absent', label: 'Absent', color: 'text-maroon-dark' },
+  { key: 'excused', label: 'Excused', color: 'text-maroon dark:text-golden' },
   { key: 'disputed', label: 'Disputed', color: 'text-maroon-dark dark:text-golden' },
 ] as const
 
@@ -27,6 +29,7 @@ interface StudentDashboardOverviewProps {
   onOpenSchedule: () => void
   onOpenScanner: (sessionId?: string) => void
   onReportIssue: (record: AttendanceRecord) => void
+  onRequestExcuse: (record: AttendanceRecord) => void
   sectionSubjectName: (sectionId: string) => string
 }
 
@@ -46,7 +49,7 @@ export function StudentDashboardOverview(props: StudentDashboardOverviewProps) {
       <StudentDigitalId user={user} isOpen={props.isIdOpen} isFlipped={props.isIdFlipped} onOpen={props.onOpenId} onClose={props.onCloseId} onFlip={props.onFlipId} />
 
       <div className="lg:col-span-2 flex flex-col gap-8">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-0 border border-zinc-300 dark:border-zinc-800 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-0 border border-zinc-300 dark:border-zinc-800 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
           {statCards.map(({ key, label, color }, index) => (
             <div key={key} className={`p-6 border-zinc-300 dark:border-zinc-800 ${index !== 0 ? 'border-l' : ''} ${index > 1 ? 'border-t lg:border-t-0' : ''}`}>
               <div className="flex items-center gap-3 mb-4 text-zinc-400"><p className="text-[10px] font-bold uppercase tracking-widest">{label}</p></div>
@@ -94,7 +97,7 @@ export function StudentDashboardOverview(props: StudentDashboardOverviewProps) {
             <div className="overflow-x-auto"><table className="w-full text-sm">
               <thead><tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30"><th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Subject</th><th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Date/Time</th><th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Result</th><th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Action</th></tr></thead>
               <tbody>
-                {records.map((record) => <AttendanceRow key={record.id} record={record} subjectName={sectionSubjectName(record.sectionId)} onReportIssue={props.onReportIssue} />)}
+                {records.map((record) => <AttendanceRow key={record.id} record={record} subjectName={sectionSubjectName(record.sectionId)} onReportIssue={props.onReportIssue} onRequestExcuse={props.onRequestExcuse} />)}
                 {records.length === 0 ? <tr><td colSpan={4} className="px-6 py-16 text-center text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest">Audit log is empty</td></tr> : null}
               </tbody>
             </table></div>
@@ -105,14 +108,67 @@ export function StudentDashboardOverview(props: StudentDashboardOverviewProps) {
   )
 }
 
-export function AttendanceRow({ record, subjectName, onReportIssue }: { record: AttendanceRecord; subjectName: string; onReportIssue: (record: AttendanceRecord) => void }) {
+export function AttendanceRow({
+  record,
+  subjectName,
+  onReportIssue,
+  onRequestExcuse,
+}: {
+  record: AttendanceRecord
+  subjectName: string
+  onReportIssue: (record: AttendanceRecord) => void
+  onRequestExcuse?: (record: AttendanceRecord) => void
+}) {
+  const excuseEligible =
+    record.status === 'absent' ||
+    record.status === 'late'
+  const canRequestExcuse =
+    Boolean(onRequestExcuse) &&
+    excuseEligible &&
+    !record.id.startsWith('offline:') &&
+    (!record.excuseStatus || record.excuseStatus === 'rejected')
+
   return (
     <tr className="border-b border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors">
       <td className="px-6 py-4 font-bold text-foreground">{subjectName}</td>
-      <td className="px-6 py-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">{new Date(record.timestamp).toLocaleDateString()} &mdash; {new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-      <td className="px-6 py-4 text-right"><StatusBadge status={record.status} /></td>
+      <td className="px-6 py-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+        {new Date(record.timestamp).toLocaleDateString()} &mdash; {new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+      </td>
       <td className="px-6 py-4 text-right">
-        {record.status === 'disputed' ? <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden"><AlertTriangle className="w-3 h-3" />Disputed</span> : <button onClick={() => onReportIssue(record)} className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-maroon dark:hover:text-golden transition-colors border border-zinc-300 dark:border-zinc-700 px-2 py-1 hover:border-maroon dark:hover:border-golden">Report Issue</button>}
+        <div className="flex flex-col items-end gap-1">
+          <StatusBadge status={record.status} />
+          {record.excuseStatus ? <ExcuseStatusBadge status={record.excuseStatus} /> : null}
+          {record.excuseReviewNote ? (
+            <p className="max-w-[14rem] text-[10px] normal-case tracking-normal text-zinc-400">
+              Note: {record.excuseReviewNote}
+            </p>
+          ) : null}
+        </div>
+      </td>
+      <td className="px-6 py-4 text-right">
+        <div className="flex flex-col items-end gap-1">
+          {record.status === 'disputed' ? (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">
+              <AlertTriangle className="w-3 h-3" />Disputed
+            </span>
+          ) : (
+            <button
+              onClick={() => onReportIssue(record)}
+              className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-maroon dark:hover:text-golden transition-colors border border-zinc-300 dark:border-zinc-700 px-2 py-1 hover:border-maroon dark:hover:border-golden"
+            >
+              Report Issue
+            </button>
+          )}
+          {canRequestExcuse ? (
+            <button
+              onClick={() => onRequestExcuse?.(record)}
+              aria-label={`Request an excuse for ${subjectName} on ${new Date(record.timestamp).toLocaleDateString()}`}
+              className="text-[10px] font-bold uppercase tracking-widest text-maroon hover:underline dark:text-golden"
+            >
+              Request excuse
+            </button>
+          ) : null}
+        </div>
       </td>
     </tr>
   )

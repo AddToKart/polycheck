@@ -10,6 +10,8 @@ export const pupColors = {
   muted: '#777177',
   mutedLight: '#A39B9D',
   golden: '#FFDF00',
+  /** Sanctioned absence (excused) accent used by charts and status badges. */
+  excused: '#0E7490',
   white: '#FFFFFF',
   black: '#0A0A0A',
 }

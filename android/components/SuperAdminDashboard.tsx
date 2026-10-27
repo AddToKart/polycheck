@@ -8,6 +8,7 @@ import { api } from '../services/api-client'
 import { useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
 import { CampusHeader } from './CampusHeader'
+import { NotificationBell } from './NotificationBell'
 import {
   CampusButton,
   CampusCard,
@@ -168,6 +169,7 @@ export function SuperAdminDashboard({ user }: { user: User }) {
         subtitle={scopeLabel ? `${scopeLabel} · accounts, activity, and service health.` : 'Institution accounts, activity, and service health.'}
         actions={(
           <>
+            <NotificationBell inverse />
             <CampusIconButton icon="search" label="Global search" onPress={() => router.push('/(faculty)/search' as never)} inverse />
             <CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />
             <CampusIconButton icon="logout" label="Sign out" onPress={signOut} inverse testID="faculty-sign-out" />

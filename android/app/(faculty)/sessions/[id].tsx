@@ -19,7 +19,7 @@ import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
 import { useCampusToast } from '../../../components/CampusToast'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
-const FILTERS: Array<AttendanceStatus | 'all'> = ['all', 'present', 'late', 'absent', 'pending', 'disputed']
+const FILTERS: Array<AttendanceStatus | 'all'> = ['all', 'present', 'late', 'absent', 'excused', 'pending', 'disputed']
 const ROSTER_PAGE_SIZE = 20
 const E2E_MODE = process.env.EXPO_PUBLIC_E2E_MODE === 'true'
 type QrSvgHandle = { toDataURL: (callback: (base64: string) => void) => void }
@@ -136,6 +136,7 @@ export default function SessionDetailScreen() {
     absent: records.filter((record) => record.status === 'absent').length,
     pending: records.filter((record) => record.status === 'pending').length,
     disputed: records.filter((record) => record.status === 'disputed').length,
+    excused: records.filter((record) => record.status === 'excused').length,
   }
 
   const generateQr = async () => {
@@ -241,7 +242,7 @@ export default function SessionDetailScreen() {
 
       <SectionHeading eyebrow="Session state" title="Live overview" />
       <AttendanceMetricGrid metrics={[
-        { label: 'Present', value: counts.present, tone: 'success' }, { label: 'Late', value: counts.late, tone: 'warning' }, { label: 'Absent', value: counts.absent, tone: 'danger' }, { label: 'Pending', value: counts.pending, tone: 'neutral' }, { label: 'Disputed', value: counts.disputed, tone: 'disputed' }, { label: session.isActive ? 'Active session' : 'Closed session', value: session.isActive ? 'Live' : 'Ended', tone: 'brand' },
+        { label: 'Present', value: counts.present, tone: 'success' }, { label: 'Late', value: counts.late, tone: 'warning' }, { label: 'Absent', value: counts.absent, tone: 'danger' }, { label: 'Excused', value: counts.excused, tone: 'excused' }, { label: 'Pending', value: counts.pending, tone: 'neutral' }, { label: 'Disputed', value: counts.disputed, tone: 'disputed' }, { label: session.isActive ? 'Active session' : 'Closed session', value: session.isActive ? 'Live' : 'Ended', tone: 'brand' },
       ]} />
 
       <CampusCard className="mb-5 p-4">

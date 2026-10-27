@@ -60,4 +60,14 @@ describe('role capability policy', () => {
   it('keeps bulk section enrollment with the owning teacher only', () => {
     expect(rolesFor(SectionsController.prototype.importEnrollments as ControllerMethod)).toEqual(['teacher'])
   })
+
+  it('keeps excuse requests student-only and decisions teacher-only', () => {
+    expect(rolesFor(AttendanceController.prototype.requestExcuse as ControllerMethod)).toEqual(['student'])
+    expect(rolesFor(AttendanceController.prototype.decideExcuse as ControllerMethod)).toEqual(['teacher'])
+    expect(rolesFor(AttendanceController.prototype.excuses as ControllerMethod)).toEqual(['teacher', 'super_admin'])
+    expect(rolesFor(AttendanceController.prototype.atRiskStudents as ControllerMethod)).toEqual([
+      'teacher',
+      'super_admin',
+    ])
+  })
 })

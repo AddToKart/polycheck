@@ -19,6 +19,7 @@ import { adminCanAccessUser, adminScope, adminUserWhere } from '../common/admin-
 import { isStrongPassword, PASSWORD_HASH_COST } from '../auth/password-policy'
 import { paginate, type PaginationParams } from '../common/utils/pagination'
 import type { AdminUserFilters } from '@polycheck/shared'
+import { NotificationsService } from '../notifications/notifications.service'
 
 const SAFE_USER_SELECT = {
   id: true,
@@ -47,6 +48,7 @@ export class UsersService {
   constructor(
     private prisma: PrismaService,
     @Optional() private events?: EventEmitter2,
+    @Optional() private notifications?: NotificationsService,
   ) {}
 
   async findAll(user: RequestUser, filters: AdminUserFilters = {}, pagination?: PaginationParams) {
@@ -319,6 +321,12 @@ export class UsersService {
       this.prisma.authSession.deleteMany({ where: { userId: id } }),
     ])
     this.events?.emit('auth.session-replaced', { userId: id, reason: 'password_reset' })
+    await this.notifications?.notify(id, {
+      type: 'password_reset',
+      title: 'Password reset',
+      body: 'An administrator reset your password. Sign in with the temporary password and change it immediately.',
+      link: '/login',
+    })
     return { message: 'Password reset successfully', userId: id }
   }
 
@@ -358,6 +366,12 @@ export class UsersService {
     this.events?.emit('auth.session-replaced', {
       userId: id,
       reason: isActive ? 'account_updated' : 'account_disabled',
+    })
+    await this.notifications?.notify(id, {
+      type: 'account_status_changed',
+      title: `Account ${isActive ? 'enabled' : 'disabled'}`,
+      body: `Your Polycheck account has been ${isActive ? 'enabled' : 'disabled'} by an administrator.`,
+      link: updated.role === 'student' ? '/student/dashboard' : '/faculty',
     })
     return updated
   }
@@ -485,6 +499,12 @@ export class UsersService {
     })
     await this.recordAdminAudit(user, 'admin.user.role_changed', id, { before: target.role, after: role })
     this.events?.emit('auth.session-replaced', { userId: id, reason: 'role_changed' })
+    await this.notifications?.notify(id, {
+      type: 'role_changed',
+      title: 'Account role updated',
+      body: `Your Polycheck role is now ${role === 'teacher' ? 'Teacher' : 'Student'}.`,
+      link: role === 'student' ? '/student/dashboard' : '/faculty',
+    })
     return updated
   }
 
@@ -531,6 +551,12 @@ export class UsersService {
       role: 'super_admin',
     })
     this.events?.emit('auth.session-replaced', { userId: target.id, reason: 'role_changed' })
+    await this.notifications?.notify(target.id, {
+      type: 'role_changed',
+      title: 'Super Admin access granted',
+      body: 'Your Polycheck account has been promoted to Super Admin.',
+      link: '/faculty',
+    })
     return updated
   }
 
@@ -578,6 +604,12 @@ export class UsersService {
       await this.recordAdminAudit(user, 'admin.user.created', created.id, {
         role: 'super_admin',
         scope: 'institution',
+      })
+      await this.notifications?.notify(created.id, {
+        type: 'role_changed',
+        title: 'Super Admin access granted',
+        body: 'Your Polycheck Super Admin account is ready.',
+        link: '/faculty',
       })
       return created
     } catch (error) {

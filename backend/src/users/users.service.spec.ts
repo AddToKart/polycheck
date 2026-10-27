@@ -690,4 +690,93 @@ describe('UsersService', () => {
       expect(prisma.user.create).not.toHaveBeenCalled()
     })
   })
+
+  describe('account notifications', () => {
+    it('notifies the target when an account is disabled', async () => {
+      const updated = { id: 'student-1', role: 'student', isActive: false }
+      const prisma = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'student-1', role: 'student', department: 'CCIS' }),
+          update: jest.fn(),
+        },
+        authSession: { deleteMany: jest.fn() },
+        $transaction: jest.fn().mockResolvedValue([updated]),
+      }
+      const notifications = { notify: jest.fn().mockResolvedValue(undefined) }
+      const service = new UsersService(prisma as never, { emit: jest.fn() } as never, notifications as never)
+
+      await expect(service.setStatus('student-1', false, institutionAdmin)).resolves.toBe(updated)
+      expect(notifications.notify).toHaveBeenCalledWith(
+        'student-1',
+        expect.objectContaining({ type: 'account_status_changed', link: '/student/dashboard' }),
+      )
+    })
+
+    it('notifies the target after an admin password reset', async () => {
+      const prisma = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'student-1', role: 'student', department: 'CCIS' }),
+          update: jest.fn(),
+        },
+        authAccount: { upsert: jest.fn() },
+        authSession: { deleteMany: jest.fn() },
+        $transaction: jest.fn().mockResolvedValue([]),
+      }
+      const notifications = { notify: jest.fn().mockResolvedValue(undefined) }
+      const service = new UsersService(prisma as never, { emit: jest.fn() } as never, notifications as never)
+
+      await service.resetPassword('student-1', 'Replacement1!Secure', institutionAdmin)
+
+      expect(notifications.notify).toHaveBeenCalledWith(
+        'student-1',
+        expect.objectContaining({ type: 'password_reset', link: '/login' }),
+      )
+    })
+
+    it('notifies the target after a role change', async () => {
+      const updated = { id: 'student-1', role: 'teacher' }
+      const prisma = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'student-1',
+            role: 'student',
+            department: 'CCIS',
+            email: 'student@pup.edu.ph',
+            studentId: 'S-001',
+            program: 'BSIT',
+            yearLevel: 2,
+          }),
+          update: jest.fn().mockResolvedValue(updated),
+        },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+      }
+      const notifications = { notify: jest.fn().mockResolvedValue(undefined) }
+      const service = new UsersService(prisma as never, { emit: jest.fn() } as never, notifications as never)
+
+      await expect(service.changeUserRole('student-1', 'teacher', institutionAdmin)).resolves.toBe(updated)
+      expect(notifications.notify).toHaveBeenCalledWith(
+        'student-1',
+        expect.objectContaining({ type: 'role_changed', link: '/faculty' }),
+      )
+    })
+
+    it('notifies a teacher promoted to super admin', async () => {
+      const updated = { id: 'teacher-1', role: 'super_admin' }
+      const prisma = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'teacher-1', role: 'teacher', department: 'CCIS' }),
+          update: jest.fn().mockResolvedValue(updated),
+        },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+      }
+      const notifications = { notify: jest.fn().mockResolvedValue(undefined) }
+      const service = new UsersService(prisma as never, { emit: jest.fn() } as never, notifications as never)
+
+      await expect(service.createAdmin({ userId: 'teacher-1' }, institutionAdmin)).resolves.toBe(updated)
+      expect(notifications.notify).toHaveBeenCalledWith(
+        'teacher-1',
+        expect.objectContaining({ type: 'role_changed', title: 'Super Admin access granted' }),
+      )
+    })
+  })
 })

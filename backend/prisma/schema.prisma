@@ -30,6 +30,7 @@ enum AttendanceStatus {
   absent
   pending
   disputed
+  excused
 }
 
 enum SectionRoleType {
@@ -71,6 +72,8 @@ model User {
   authAccounts       AuthAccount[]
   authSessions       AuthSession[]
   importBatches      ImportBatch[]
+  notifications      Notification[]
+  pushSubscriptions  PushSubscription[]
 
   @@index([role])
   @@index([studentId])
@@ -303,6 +306,13 @@ model AttendanceRecord {
   disputeResolved       Boolean          @default(false)
   manuallySet           Boolean          @default(false)
   notes                 String?
+  excuseStatus          String?
+  excuseReason          String?
+  excuseDescription     String?
+  excuseEvidencePath    String?
+  excuseReviewedBy      String?
+  excuseReviewedAt      DateTime?
+  excuseReviewNote      String?
   acceptedScanAttemptId String?          @unique
   acceptedScanAttempt   ScanAttempt?     @relation("AcceptedScanAttempt", fields: [acceptedScanAttemptId], references: [id], onDelete: Restrict)
   createdAt             DateTime         @default(now())
@@ -317,6 +327,7 @@ model AttendanceRecord {
   @@index([sessionId, status])
   @@index([sectionId, status])
   @@index([studentId, sectionId, timestamp])
+  @@index([excuseStatus])
 }
 
 model SectionRole {
@@ -401,4 +412,32 @@ model ImportBatch {
 
   @@index([actorId, createdAt])
   @@index([createdAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@index([createdAt])
+}
+
+model PushSubscription {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform   String
+  token      String   @unique
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
 }

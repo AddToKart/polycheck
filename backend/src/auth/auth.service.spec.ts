@@ -9,6 +9,7 @@ import { BetterAuthService } from './better-auth.service'
 import type { User } from '../prisma/client'
 import { DUMMY_PASSWORD_HASH, PASSWORD_HASH_COST } from './password-policy'
 import { ConfigService } from '@nestjs/config'
+import { NotificationsService } from '../notifications/notifications.service'
 
 const VALID_PASSWORD = 'correct-horse-battery-staple'
 const VALID_HASH = hashSync(VALID_PASSWORD, 10)
@@ -63,6 +64,7 @@ describe('AuthService', () => {
   }
   let betterAuth: { auth: { api: { signInEmail: jest.Mock; signOut: jest.Mock } } }
   let events: { emit: jest.Mock }
+  let notifications: { notify: jest.Mock }
 
   beforeEach(async () => {
     prisma = {
@@ -94,6 +96,7 @@ describe('AuthService', () => {
       },
     }
     events = { emit: jest.fn() }
+    notifications = { notify: jest.fn().mockResolvedValue(undefined) }
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -102,6 +105,7 @@ describe('AuthService', () => {
         { provide: RedisService, useValue: redis },
         { provide: BetterAuthService, useValue: betterAuth },
         { provide: EventEmitter2, useValue: events },
+        { provide: NotificationsService, useValue: notifications },
         {
           provide: ConfigService,
           useValue: {
@@ -337,6 +341,10 @@ describe('AuthService', () => {
         where: { id: 'user-1' },
         data: { teacherPublicKey: 'pubkey' },
       })
+      expect(notifications.notify).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ type: 'key_provisioned', link: '/faculty' }),
+      )
     })
 
     it('throws NotFoundException when user missing', async () => {

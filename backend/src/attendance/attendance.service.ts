@@ -1,25 +1,42 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type {
   AttendanceListQueryDto,
   AttendanceReportQueryDto,
   CreateManualAttendanceDto,
+  DecideExcuseDto,
+  ListExcusesQueryDto,
+  RequestExcuseDto,
   ScanAttendanceDto,
   SubmitAttendanceDto,
 } from './dto/attendance.dto'
 import { AttendanceGateway } from '../realtime/attendance.gateway'
 import { RedisService } from '../infrastructure/redis.service'
 import { createHash } from 'crypto'
-import type { AttendanceRecord, AttendanceStatus } from '../prisma/client'
+import type { AttendanceRecord, AttendanceStatus, Prisma } from '../prisma/client'
 import { ScanValidatorService } from './scan-validator.service'
 import { AttendanceScopeService } from './attendance-scope.service'
 import { AttendanceReportService } from './attendance-report.service'
 import { GeofenceService } from './geofence.service'
 import { verifyQRToken } from '@polycheck/shared'
 import { RAW_ATTENDANCE_LIMIT, type ScanEvidence, type ScanValidation } from './types'
-import { assertStudentInAdminScope } from '../common/admin-scope'
+import { assertStudentInAdminScope, adminRecordWhere } from '../common/admin-scope'
 import { lockStudentSection } from '../common/student-section-lock'
+import { ProofStorageService } from '../proofs/proof-storage.service'
+import { decodeImageDataUrl } from '../proofs/image-evidence'
+import { NotificationsService } from '../notifications/notifications.service'
 
 const OFFLINE_ACTIVATION_LOCK_TTL_SECONDS = 10
 const OFFLINE_ACTIVATION_WAIT_ATTEMPTS = 5
@@ -27,6 +44,9 @@ const OFFLINE_ACTIVATION_WAIT_MS = 50
 // Cache-hygiene lease only. Scan validation re-reads PostgreSQL session state
 // and signing keys, so this lease does not require security fencing.
 const KEY_ROTATION_LOCK_TTL_SECONDS = 10
+const EXCUSE_REQUEST_RATE_LIMIT = 10
+const EXCUSE_REQUEST_RATE_WINDOW_SECONDS = 24 * 60 * 60
+const EXCUSE_LIST_LIMIT = 500
 
 // These checks are client-reported heuristics, not cryptographic proof. They
 // are persisted as disputed attendance so teachers can review the event and
@@ -35,6 +55,8 @@ const PERSISTABLE_SECURITY_DISPUTE_REASONS = new Set(['rooted_device', 'hook_det
 
 @Injectable()
 export class AttendanceService {
+  private readonly logger = new Logger(AttendanceService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: AttendanceGateway,
@@ -43,6 +65,9 @@ export class AttendanceService {
     private readonly scope: AttendanceScopeService,
     private readonly reportService: AttendanceReportService,
     private readonly geofence: GeofenceService,
+    @Optional() private readonly notifications?: NotificationsService,
+    @Optional() private readonly storage?: ProofStorageService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   // ── Raw record access ──
@@ -407,7 +432,209 @@ export class AttendanceService {
     return this.present(record)
   }
 
-  // ── Private: offline activation recovery ──
+  // ── Excuse workflow ──
+
+  async requestExcuse(user: RequestUser, recordId: string, dto: RequestExcuseDto) {
+    if (user.role !== 'student') {
+      throw new ForbiddenException('Only students can request attendance excuses')
+    }
+    const withinLimit = await this.redis.consumeRateLimit(
+      `attendance:excuse:request:${user.id}`,
+      EXCUSE_REQUEST_RATE_LIMIT,
+      EXCUSE_REQUEST_RATE_WINDOW_SECONDS,
+    )
+    if (!withinLimit) {
+      throw new HttpException('Too many excuse requests. Try again later.', HttpStatus.TOO_MANY_REQUESTS)
+    }
+    const record = await this.prisma.attendanceRecord.findUnique({
+      where: { id: recordId },
+      include: {
+        session: { select: { teacherId: true, subjectName: true, date: true } },
+      },
+    })
+    if (!record) throw new NotFoundException('Attendance record not found')
+    if (record.studentId !== user.id) {
+      throw new ForbiddenException('You can only request an excuse for your own attendance')
+    }
+    if (record.status !== 'absent' && record.status !== 'late') {
+      throw new BadRequestException('Only absent or late attendance can be excused')
+    }
+    if (record.excuseStatus === 'requested') {
+      throw new ConflictException('This attendance record already has an open excuse request')
+    }
+    if (record.excuseStatus === 'approved') {
+      throw new ConflictException('This attendance record already has an approved excuse')
+    }
+
+    let evidencePath: string | undefined
+    if (dto.evidenceData) {
+      if (!this.storage) throw new BadRequestException('Evidence storage is not configured')
+      const maxBytes = this.config?.get<number>('MAX_PROOF_BYTES') ?? 5_000_000
+      const image = decodeImageDataUrl(dto.evidenceData, maxBytes, 'Excuse evidence')
+      evidencePath = await this.storage.store(image.buffer, image.extension, image.mime)
+    }
+
+    let updated: AttendanceRecord
+    try {
+      updated = await this.prisma.attendanceRecord.update({
+        where: { id: recordId },
+        data: {
+          excuseStatus: 'requested',
+          excuseReason: dto.reason,
+          excuseDescription: dto.description.trim(),
+          excuseEvidencePath: evidencePath ?? record.excuseEvidencePath ?? null,
+          excuseReviewedBy: null,
+          excuseReviewedAt: null,
+          excuseReviewNote: null,
+        },
+      })
+    } catch (error) {
+      if (evidencePath) {
+        try {
+          await this.storage?.remove(evidencePath)
+        } catch (removeError) {
+          this.logger.warn(`Could not remove unused excuse evidence: ${String(removeError)}`)
+        }
+      }
+      throw error
+    }
+    if (evidencePath && record.excuseEvidencePath && record.excuseEvidencePath !== evidencePath) {
+      try {
+        await this.storage?.remove(record.excuseEvidencePath)
+      } catch (error) {
+        this.logger.warn(`Could not remove replaced excuse evidence: ${String(error)}`)
+      }
+    }
+
+    await this.notifications?.notify(record.session.teacherId, {
+      type: 'excuse_requested',
+      title: 'New excuse request',
+      body: `${record.studentName} requested an excuse for ${record.session.subjectName} on ${record.session.date}.`,
+      link: '/faculty/excuses',
+    })
+    await this.recordExcuseAudit(user, 'attendance.excuse.requested', recordId, {
+      sectionId: record.sectionId,
+      sessionId: record.sessionId,
+      reason: dto.reason,
+      hasEvidence: Boolean(evidencePath),
+    })
+    return this.present(updated)
+  }
+
+  async listExcuses(user: RequestUser, query: ListExcusesQueryDto = {}) {
+    if (user.role !== 'teacher' && user.role !== 'super_admin') {
+      throw new ForbiddenException('Attendance excuses are only available to teachers and administrators')
+    }
+    if (query.startDate && query.endDate && query.endDate < query.startDate) {
+      throw new BadRequestException('endDate must be on or after startDate')
+    }
+    const scope: Prisma.AttendanceRecordWhereInput =
+      user.role === 'teacher' ? { session: { teacherId: user.id } } : adminRecordWhere(user)
+    const where: Prisma.AttendanceRecordWhereInput = {
+      AND: [
+        scope,
+        { excuseStatus: { not: null } },
+        ...(query.status ? [{ excuseStatus: query.status }] : []),
+        ...(query.sectionId ? [{ sectionId: query.sectionId }] : []),
+        ...(query.startDate || query.endDate
+          ? [
+              {
+                session: {
+                  date: {
+                    ...(query.startDate ? { gte: query.startDate } : {}),
+                    ...(query.endDate ? { lte: query.endDate } : {}),
+                  },
+                },
+              },
+            ]
+          : []),
+      ],
+    }
+    const records = await this.prisma.attendanceRecord.findMany({
+      where,
+      orderBy: [{ updatedAt: 'desc' }],
+      take: EXCUSE_LIST_LIMIT,
+      include: {
+        session: { select: { date: true, startTime: true, endTime: true, subjectName: true } },
+        section: { select: { section: true, subject: { select: { name: true, code: true } } } },
+        student: { select: { id: true, studentId: true, fullName: true, program: true } },
+      },
+    })
+    return records.map((record) => this.present(record))
+  }
+
+  async decideExcuse(user: RequestUser, recordId: string, dto: DecideExcuseDto) {
+    if (user.role !== 'teacher') {
+      throw new ForbiddenException('Only teachers can decide attendance excuses')
+    }
+    const record = await this.prisma.attendanceRecord.findUnique({
+      where: { id: recordId },
+      include: {
+        session: { select: { teacherId: true, subjectName: true, date: true } },
+      },
+    })
+    if (!record) throw new NotFoundException('Attendance record not found')
+    if (record.session.teacherId !== user.id) {
+      throw new ForbiddenException('You can only decide excuses in your own sessions')
+    }
+    if (record.excuseStatus !== 'requested') {
+      throw new ConflictException('This excuse request has already been decided')
+    }
+    const approved = dto.decision === 'approve'
+    const reviewedAt = new Date()
+    const updated = await this.prisma.attendanceRecord.update({
+      where: { id: recordId },
+      data: {
+        ...(approved ? { status: 'excused' as const } : {}),
+        excuseStatus: approved ? 'approved' : 'rejected',
+        excuseReviewedBy: user.id,
+        excuseReviewedAt: reviewedAt,
+        excuseReviewNote: dto.note?.trim() || null,
+      },
+    })
+    await this.notifications?.notify(record.studentId, {
+      type: 'excuse_decided',
+      title: approved ? 'Excuse approved' : 'Excuse rejected',
+      body: `Your excuse request for ${record.session.subjectName} on ${record.session.date} was ${
+        approved ? 'approved' : 'rejected'
+      }.`,
+      link: '/student/dashboard',
+    })
+    await this.recordExcuseAudit(
+      user,
+      approved ? 'attendance.excuse.approved' : 'attendance.excuse.rejected',
+      recordId,
+      {
+        sectionId: record.sectionId,
+        sessionId: record.sessionId,
+        studentId: record.studentId,
+        reason: record.excuseReason ?? undefined,
+      },
+    )
+    return this.present(updated)
+  }
+
+  private async recordExcuseAudit(
+    user: RequestUser,
+    action: string,
+    recordId: string,
+    metadata: Prisma.InputJsonValue,
+  ) {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          actorId: user.id,
+          actorRole: user.role,
+          action,
+          entityType: 'attendance',
+          entityId: recordId,
+          metadata,
+        },
+      })
+    } catch (error) {
+      this.logger.warn(`Could not write ${action} audit row for record ${recordId}: ${String(error)}`)
+    }
+  }
 
   private async ensureOfflineActivation(sessionId: string, qrToken: string, receivedAt: Date, offline: boolean) {
     // Serialize concurrent offline-activation attempts per session to prevent

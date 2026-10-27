@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api-client'
-import type { AdminOverview, User, Section, Subject, CalendarEvent, DashboardOverview } from '@polycheck/shared'
-import { formatTime } from '@polycheck/shared/utils'
+import type { AdminOverview, User, Section, Subject, CalendarEvent, DashboardOverview, StudentAtRisk } from '@polycheck/shared'
+import { formatTime, getRecentCampusDateRange } from '@polycheck/shared/utils'
 import {
   activityOutcomeLabel,
   activityOutcomeTone,
@@ -19,9 +19,11 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Sidebar } from '@/components/layout/sidebar'
 import StatusBadge from '@/components/StatusBadge'
 import { OfflineSyncPanel } from '@/components/OfflineSyncPanel'
+import { StudentsAtRiskCard } from '@/components/faculty/StudentsAtRiskCard'
 import { LoadingSpinner } from '@/lib/hooks'
 
 import {
@@ -56,28 +58,52 @@ const campusDate = (date = new Date()) => {
 // Teacher Dashboard Component
 // ============================================================================
 
+type DashboardPeriod = '7d' | '30d' | 'semester' | 'custom'
+
+const DASHBOARD_PERIODS: { value: DashboardPeriod; label: string }[] = [
+  { value: '7d', label: '7 days' },
+  { value: '30d', label: '30 days' },
+  { value: 'semester', label: 'This semester' },
+  { value: 'custom', label: 'Custom' },
+]
+
 function TeacherDashboard({ user }: { user: User }) {
   const [sections, setSections] = useState<Section[]>([])
   const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
   const [allSubjects, setAllSubjects] = useState<Subject[]>([])
   const [overview, setOverview] = useState<DashboardOverview | null>(null)
   const [loading, setLoading] = useState(true)
+  const [period, setPeriod] = useState<DashboardPeriod>('30d')
+  const [customFrom, setCustomFrom] = useState(() => getRecentCampusDateRange(7).startDate)
+  const [customTo, setCustomTo] = useState(() => getRecentCampusDateRange(1).endDate)
+  const [atRisk, setAtRisk] = useState<StudentAtRisk[]>([])
+  const [riskSectionId, setRiskSectionId] = useState('')
+  const [riskLoading, setRiskLoading] = useState(true)
+  const [riskError, setRiskError] = useState('')
+  const [riskRetryKey, setRiskRetryKey] = useState(0)
+
+  const reportingRange = useMemo(() => {
+    if (period === 'custom') return { startDate: customFrom, endDate: customTo }
+    if (period === 'semester') {
+      // The API exposes no semester boundary; use the current 120-day window.
+      return getRecentCampusDateRange(120)
+    }
+    return getRecentCampusDateRange(period === '7d' ? 7 : 30)
+  }, [period, customFrom, customTo])
 
   useEffect(() => {
     let cancelled = false
     const fetchData = async () => {
       const todayStr = campusDate()
       try {
-        const [allSects, subjects, nextOverview, evs] = await Promise.all([
+        const [allSects, subjects, evs] = await Promise.all([
           api.getSections(),
           api.getSubjects(),
-          api.getDashboardOverview(),
           api.getCalendarEvents(user.id, todayStr, todayStr),
         ])
         if (cancelled) return
         setSections(allSects.filter((section) => section.teacherId === user.id))
         setAllSubjects(subjects)
-        setOverview(nextOverview)
         setTodayEvents(evs.sort((a, b) => a.startTime.localeCompare(b.startTime)))
       } catch (error) {
         if (!cancelled) {
@@ -93,6 +119,55 @@ function TeacherDashboard({ user }: { user: User }) {
     }
   }, [user.id])
 
+  useEffect(() => {
+    let cancelled = false
+    if (!reportingRange.startDate || !reportingRange.endDate) return
+    if (reportingRange.endDate < reportingRange.startDate) return
+    void api
+      .getDashboardOverview({ startDate: reportingRange.startDate, endDate: reportingRange.endDate })
+      .then((nextOverview) => {
+        if (!cancelled) setOverview(nextOverview)
+      })
+      .catch((error) => {
+        if (!cancelled) console.error('Failed to load dashboard overview', error)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user.id, reportingRange.startDate, reportingRange.endDate])
+
+  useEffect(() => {
+    let cancelled = false
+    setRiskLoading(true)
+    setRiskError('')
+    void api
+      .getAtRiskStudents({ limit: 8, sectionId: riskSectionId || undefined })
+      .then((students) => {
+        if (cancelled) return
+        // The endpoint returns worst-first rows, filling the limit with
+        // on-track students when few are at risk. Keep the widget actionable:
+        // below/at-risk students plus anyone within two absences of the line.
+        setAtRisk(
+          students.filter((student) => {
+            if (student.status === 'below_threshold' || student.status === 'at_risk') return true
+            if (student.status !== 'on_track') return false
+            return (student.absencesBeforeBelowThreshold ?? Number.POSITIVE_INFINITY) <= 2
+          }),
+        )
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setRiskError(error instanceof Error ? error.message : 'The at-risk list could not load.')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRiskLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user.id, riskSectionId, riskRetryKey])
+
   const subjectMap = useMemo(() => {
     const map = new Map<string, Subject>()
     for (const s of allSubjects) map.set(s.id, s)
@@ -105,6 +180,19 @@ function TeacherDashboard({ user }: { user: User }) {
     { label: 'Sessions Today', value: overview?.counts.sessionsToday ?? 0, icon: CalendarCheck },
     { label: 'Disputes', value: overview?.counts.pendingDisputes ?? 0, icon: ClipboardList },
   ]
+
+  const periodTotals = useMemo(() => {
+    const totals = { present: 0, late: 0, absent: 0, disputed: 0 }
+    for (const day of overview?.trends ?? []) {
+      totals.present += day.present
+      totals.late += day.late
+      totals.absent += day.absent
+      totals.disputed += day.disputed
+    }
+    return totals
+  }, [overview?.trends])
+  const countedRecords = periodTotals.present + periodTotals.late + periodTotals.absent
+  const periodRate = countedRecords > 0 ? Math.round(((periodTotals.present + periodTotals.late) / countedRecords) * 100) : 0
 
   if (loading) return <LoadingSpinner className="min-h-[400px]" />
 
@@ -156,6 +244,113 @@ function TeacherDashboard({ user }: { user: User }) {
         </div>
       </div>
       
+      {/* Reporting period selector */}
+      <section
+        aria-label="Dashboard reporting period"
+        className="mb-8 flex flex-col gap-4 border border-zinc-200 bg-zinc-50/60 p-4 sm:flex-row sm:items-end sm:justify-between dark:border-zinc-800 dark:bg-zinc-900/30"
+      >
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Reporting period</p>
+          <p className="mt-1 text-xs font-medium text-zinc-600 dark:text-zinc-300">
+            {reportingRange.startDate} – {reportingRange.endDate}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <div role="group" aria-label="Reporting period presets" className="flex flex-wrap gap-1.5">
+            {DASHBOARD_PERIODS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={period === option.value}
+                onClick={() => setPeriod(option.value)}
+                className={`h-9 rounded-none border px-3 text-[10px] font-bold uppercase tracking-widest transition-colors ${
+                  period === option.value
+                    ? 'border-maroon bg-maroon text-white dark:border-golden dark:bg-golden dark:text-maroon-dark'
+                    : 'border-zinc-300 bg-white text-zinc-500 hover:border-maroon hover:text-maroon dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:border-golden dark:hover:text-golden'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          {period === 'custom' ? (
+            <div className="flex items-end gap-2">
+              <div className="space-y-1">
+                <label htmlFor="dashboard-from" className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+                  From
+                </label>
+                <Input
+                  id="dashboard-from"
+                  type="date"
+                  value={customFrom}
+                  max={customTo}
+                  onChange={(event) => setCustomFrom(event.target.value)}
+                  className="h-9 w-36 rounded-none text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="dashboard-to" className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+                  To
+                </label>
+                <Input
+                  id="dashboard-to"
+                  type="date"
+                  value={customTo}
+                  min={customFrom}
+                  onChange={(event) => setCustomTo(event.target.value)}
+                  className="h-9 w-36 rounded-none text-xs"
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      {/* Period trend summary (the overview endpoint's range semantics) */}
+      <div className="mb-8 border border-zinc-200 bg-background p-5 dark:border-zinc-800">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+              Attendance in this period
+            </p>
+            <p className="mt-1 text-sm font-bold text-foreground">
+              {countedRecords > 0
+                ? `${periodRate}% attended across ${countedRecords} record${countedRecords === 1 ? '' : 's'}`
+                : 'No counted attendance records in this period'}
+            </p>
+          </div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+            {periodTotals.disputed} disputed left out of the rate
+          </p>
+        </div>
+        <div
+          className="mt-4 flex h-2 w-full overflow-hidden bg-zinc-200 dark:bg-zinc-800"
+          role="img"
+          aria-label={`Attendance in this period: ${periodTotals.present} present, ${periodTotals.late} late, ${periodTotals.absent} absent`}
+        >
+          {countedRecords > 0 ? (
+            <>
+              <div className="h-full bg-golden" style={{ width: `${(periodTotals.present / countedRecords) * 100}%` }} />
+              <div className="h-full bg-maroon" style={{ width: `${(periodTotals.late / countedRecords) * 100}%` }} />
+              <div className="h-full bg-maroon-dark" style={{ width: `${(periodTotals.absent / countedRecords) * 100}%` }} />
+            </>
+          ) : null}
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Present', value: periodTotals.present, className: 'text-golden' },
+            { label: 'Late', value: periodTotals.late, className: 'text-maroon' },
+            { label: 'Absent', value: periodTotals.absent, className: 'text-maroon-dark dark:text-red-400' },
+            { label: 'Disputed', value: periodTotals.disputed, className: 'text-amber-600' },
+          ].map((item) => (
+            <div key={item.label}>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">{item.label}</p>
+              <p className={`text-xl font-heading font-bold ${item.className}`}>{item.value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-0 border border-zinc-300 dark:border-zinc-800 mb-12 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
         {statCards.map((stat, index) => {
@@ -255,6 +450,16 @@ function TeacherDashboard({ user }: { user: User }) {
           </div>
         )}
       </div>
+
+      <StudentsAtRiskCard
+        students={atRisk}
+        sections={sections}
+        sectionId={riskSectionId}
+        loading={riskLoading}
+        error={riskError}
+        onSectionChange={setRiskSectionId}
+        onRetry={() => setRiskRetryKey((key) => key + 1)}
+      />
 
       <div className="grid lg:grid-cols-2 gap-8">
         {/* My Subjects List */}

@@ -204,7 +204,10 @@ export class DashboardService {
     }
     for (const group of trendGroups) {
       const date = trendDates.get(group.sessionId)
-      if (!date || group.status === 'pending') continue
+      // The DashboardOverview trend contract only carries present/late/absent/
+      // disputed. Excused (like pending) is a non-counted lifecycle state and
+      // must not produce NaN by indexing an absent bucket.
+      if (!date || group.status === 'pending' || group.status === 'excused') continue
       trends.get(date)![group.status] += group._count._all
     }
     return {

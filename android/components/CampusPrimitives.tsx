@@ -42,25 +42,35 @@ type CampusIconButtonProps = {
   onPress: () => void
   inverse?: boolean
   testID?: string
+  /** Unread count rendered as a small golden badge (0 hides it). */
+  badge?: number
+  disabled?: boolean
 }
 
-export const CampusIconButton = ({ icon, label, onPress, inverse = false, testID }: CampusIconButtonProps) => {
+export const CampusIconButton = ({ icon, label, onPress, inverse = false, testID, badge = 0, disabled = false }: CampusIconButtonProps) => {
   const { isDark } = useTheme()
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={badge > 0 ? `${label}, ${badge} unread` : label}
       testID={testID}
       hitSlop={8}
+      disabled={disabled}
       onPress={onPress}
       className={joinClasses(
         'h-10 w-10 items-center justify-center rounded-none border',
         inverse
           ? 'border-white/20 bg-white/10'
           : 'border-line bg-white dark:border-line-dark dark:bg-surface-dark',
+        disabled && 'opacity-50',
       )}
     >
       <MaterialIcons name={icon} size={20} color={inverse ? '#FFFFFF' : isDark ? pupColors.golden : pupColors.maroon} />
+      {badge > 0 ? (
+        <View className="absolute -right-1.5 -top-1.5 min-w-5 items-center justify-center rounded-full bg-golden px-1 py-0.5">
+          <Text className="font-sans-bold text-[9px] leading-3 text-maroon-dark">{badge > 99 ? '99+' : badge}</Text>
+        </View>
+      ) : null}
     </Pressable>
   )
 }
@@ -181,6 +191,7 @@ const statusClasses: Record<AttendanceStatus, string> = {
   absent: 'border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300',
   pending: 'border-line bg-zinc-50 text-muted dark:border-line-dark dark:bg-white/5 dark:text-zinc-300',
   disputed: 'border-golden bg-golden/20 text-maroon-dark dark:text-golden',
+  excused: 'border-cyan-300 bg-cyan-50 text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-300',
 }
 
 const statusTextClasses: Record<AttendanceStatus, string> = {
@@ -189,6 +200,7 @@ const statusTextClasses: Record<AttendanceStatus, string> = {
   absent: 'text-red-800 dark:text-red-300',
   pending: 'text-muted dark:text-zinc-300',
   disputed: 'text-maroon-dark dark:text-golden',
+  excused: 'text-cyan-800 dark:text-cyan-300',
 }
 
 export const AttendanceStatusPill = ({ status }: { status: AttendanceStatus }) => (

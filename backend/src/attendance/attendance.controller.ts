@@ -1,20 +1,28 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Request } from '@nestjs/common'
 import { Roles } from '../common/decorators/roles.decorator'
 import {
+  AtRiskQueryDto,
   AttendanceListQueryDto,
   AttendanceReportQueryDto,
   CreateManualAttendanceDto,
+  DecideExcuseDto,
+  ListExcusesQueryDto,
+  RequestExcuseDto,
   ScanAttendanceDto,
   SubmitAttendanceDto,
   UpdateAttendanceStatusDto,
 } from './dto/attendance.dto'
 import { AttendanceService } from './attendance.service'
+import { AttendanceAtRiskService } from './attendance-at-risk.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
 import { RequiresPrivacyConsent } from '../common/decorators/privacy-consent.decorator'
 
 @Controller('attendance')
 export class AttendanceController {
-  constructor(private readonly attendance: AttendanceService) {}
+  constructor(
+    private readonly attendance: AttendanceService,
+    private readonly atRisk: AttendanceAtRiskService,
+  ) {}
 
   @Get()
   findAll(@Request() req: AuthenticatedRequest, @Query() query: AttendanceListQueryDto) {
@@ -45,6 +53,31 @@ export class AttendanceController {
   @Roles('teacher', 'super_admin')
   attempts(@Request() req: AuthenticatedRequest, @Query('sessionId') sessionId?: string) {
     return this.attendance.findAttempts(req.user, sessionId)
+  }
+
+  @Get('at-risk')
+  @Roles('teacher', 'super_admin')
+  atRiskStudents(@Request() req: AuthenticatedRequest, @Query() query: AtRiskQueryDto) {
+    return this.atRisk.list(req.user, query)
+  }
+
+  @Get('excuses')
+  @Roles('teacher', 'super_admin')
+  excuses(@Request() req: AuthenticatedRequest, @Query() query: ListExcusesQueryDto) {
+    return this.attendance.listExcuses(req.user, query)
+  }
+
+  @Post('records/:id/excuse')
+  @Roles('student')
+  @RequiresPrivacyConsent()
+  requestExcuse(@Request() req: AuthenticatedRequest, @Param('id') id: string, @Body() dto: RequestExcuseDto) {
+    return this.attendance.requestExcuse(req.user, id, dto)
+  }
+
+  @Post('records/:id/excuse/decision')
+  @Roles('teacher')
+  decideExcuse(@Request() req: AuthenticatedRequest, @Param('id') id: string, @Body() dto: DecideExcuseDto) {
+    return this.attendance.decideExcuse(req.user, id, dto)
   }
 
   @Get('student/:studentId')

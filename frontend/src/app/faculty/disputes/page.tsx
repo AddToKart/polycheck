@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   Gavel, 
@@ -24,13 +24,23 @@ import {
 } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, AttendanceRecord, DisputeReason, Subject, Section, Session } from '@polycheck/shared'
+import { formatCampusDate } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { FilterBar, FilterDateRange, FilterSelect } from '@/components/FilterBar'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useNotifications } from '@/lib/notifications'
+import { useUrlFilters } from '@/lib/hooks/use-url-filters'
 import { SecurityDisputeBadge } from './security-dispute-badge'
+
+const FILTER_SCHEMA = {
+  subjectId: { defaultValue: '' },
+  sectionId: { defaultValue: '' },
+  from: { defaultValue: '' },
+  to: { defaultValue: '' },
+} as const
 
 const DISPUTE_LABELS: Record<DisputeReason, string> = {
   outside_geofence: 'Outside Geofence',
@@ -73,8 +83,18 @@ const DISPUTE_ICONS: Record<DisputeReason, React.ElementType> = {
 }
 
 export default function DisputesPage() {
+  return (
+    <Suspense fallback={null}>
+      <DisputesContent />
+    </Suspense>
+  )
+}
+
+function DisputesContent() {
   const router = useRouter()
   const { addNotification } = useNotifications()
+  const filters = useUrlFilters(FILTER_SCHEMA)
+  const { subjectId: selectedSubjectId, sectionId: selectedSectionId, from, to } = filters.values
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [allSections, setAllSections] = useState<Section[]>([])
@@ -85,7 +105,6 @@ export default function DisputesPage() {
   // Filtering & Tab States
   const [activeTab, setActiveTab] = useState<'pending' | 'resolved'>('pending')
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all')
 
   // Expand/collapse states (collapsed by default)
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({})
@@ -166,6 +185,26 @@ export default function DisputesPage() {
     return map
   }, [allSessions])
 
+  const subjectOptions = useMemo(
+    () => subjects.map((subject) => ({ value: subject.id, label: `${subject.name} (${subject.code})` })),
+    [subjects],
+  )
+
+  const sectionOptions = useMemo(
+    () =>
+      allSections
+        .filter((section) => !selectedSubjectId || section.subjectId === selectedSubjectId)
+        .map((section) => {
+          const subject = subjectMap.get(section.subjectId)
+          return {
+            value: section.id,
+            label: `Section ${section.section}${subject ? ` · ${subject.code}` : ''}`,
+          }
+        })
+        .sort((left, right) => left.label.localeCompare(right.label)),
+    [allSections, selectedSubjectId, subjectMap],
+  )
+
   // Derived state
   const pendingCount = allDisputes.filter(r => !r.disputeResolved).length
   const resolvedCount = allDisputes.filter(r => r.disputeResolved).length
@@ -184,13 +223,18 @@ export default function DisputesPage() {
   )
 
   const records = useMemo(() =>
-    selectedSubjectId === 'all'
-      ? filteredByTabAndSearch
-      : filteredByTabAndSearch.filter(r => {
-          const sec = sectionMap.get(r.sectionId)
-          return sec && sec.subjectId === selectedSubjectId
-        }),
-    [filteredByTabAndSearch, selectedSubjectId, sectionMap]
+    filteredByTabAndSearch.filter((record) => {
+      const section = sectionMap.get(record.sectionId)
+      if (selectedSubjectId && section?.subjectId !== selectedSubjectId) return false
+      if (selectedSectionId && record.sectionId !== selectedSectionId) return false
+      if (from || to) {
+        const recordDate = formatCampusDate(new Date(record.timestamp))
+        if (from && recordDate < from) return false
+        if (to && recordDate > to) return false
+      }
+      return true
+    }),
+    [filteredByTabAndSearch, selectedSubjectId, selectedSectionId, from, to, sectionMap]
   )
 
   const groupedDisputes = useMemo(() => {
@@ -313,40 +357,61 @@ export default function DisputesPage() {
             </button>
           </div>
 
-          {/* Search & Subject Filters Row */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative flex items-center bg-white dark:bg-surface-dark border border-zinc-300 dark:border-zinc-800">
-              <input
-                type="text"
-                placeholder="Search student or ID..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-10 py-2 bg-transparent text-sm focus:outline-none dark:text-white"
-              />
-              <Search className="w-4 h-4 text-zinc-400 absolute left-3" />
-              {searchQuery && (
-                <button 
-                  onClick={() => setSearchQuery('')} 
-                  className="absolute right-3 text-zinc-400 hover:text-zinc-600 text-xs font-bold"
-                >
-                  Clear
-                </button>
-              )}
+          {/* Search & Filter Row */}
+          <FilterBar
+            onClear={() => {
+              filters.clearAll()
+              setSearchQuery('')
+            }}
+            activeCount={filters.activeCount + (searchQuery ? 1 : 0)}
+            label="Dispute filters"
+          >
+            <div className="min-w-[14rem] flex-1 space-y-1">
+              <label
+                htmlFor="dispute-search"
+                className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400"
+              >
+                Student
+              </label>
+              <div className="relative flex items-center border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900">
+                <Search className="pointer-events-none absolute left-3 w-4 h-4 text-zinc-400" />
+                <input
+                  id="dispute-search"
+                  type="search"
+                  placeholder="Search student or ID…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-9 w-full bg-transparent pl-9 pr-3 text-sm outline-none dark:text-white"
+                />
+              </div>
             </div>
 
-            <select
+            <FilterSelect
+              id="dispute-subject"
+              label="Subject"
               value={selectedSubjectId}
-              onChange={(e) => { setSelectedSubjectId(e.target.value); setExpandedSubjects({}); setExpandedSections({}); }}
-              className="px-4 py-2 border border-zinc-300 dark:border-zinc-800 rounded-none bg-white dark:bg-surface-dark text-sm focus:outline-none dark:text-zinc-300 cursor-pointer min-w-[200px]"
-            >
-              <option value="all">All Subjects</option>
-              {subjects.map((subj) => (
-                <option key={subj.id} value={subj.id}>
-                  {subj.name} ({subj.code})
-                </option>
-              ))}
-            </select>
-          </div>
+              onChange={(value) => filters.setFilters({ subjectId: value, sectionId: '' })}
+              options={subjectOptions}
+              allLabel="All subjects"
+              className="min-w-[12rem] flex-1"
+            />
+            <FilterSelect
+              id="dispute-section"
+              label="Section"
+              value={selectedSectionId}
+              onChange={(value) => filters.setFilter('sectionId', value)}
+              options={sectionOptions}
+              allLabel="All sections"
+              className="min-w-[12rem] flex-1"
+            />
+            <FilterDateRange
+              idPrefix="dispute"
+              from={from}
+              to={to}
+              onFromChange={(value) => filters.setFilter('from', value)}
+              onToChange={(value) => filters.setFilter('to', value)}
+            />
+          </FilterBar>
 
           {/* Grouped Disputes Cards */}
           <div className="space-y-4">

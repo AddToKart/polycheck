@@ -5,7 +5,7 @@ import type { AttendanceListQueryDto, AttendanceReportQueryDto } from './dto/att
 import { RAW_DATE_RANGE_DAYS } from './types'
 import type { Prisma } from '../prisma/client'
 import { formatCampusDate } from '@polycheck/shared'
-import { adminRecordWhere, adminSessionWhere } from '../common/admin-scope'
+import { adminRecordWhere, adminDepartment, adminSessionWhere } from '../common/admin-scope'
 
 @Injectable()
 export class AttendanceScopeService {
@@ -64,6 +64,10 @@ export class AttendanceScopeService {
     if (user.role === 'teacher' && query.teacherId && query.teacherId !== user.id) {
       throw new ForbiddenException('Teachers can only report on their own attendance')
     }
+    // Department filters are administrative. A department-scoped admin is
+    // always pinned to their own department, whatever the query asks for.
+    const requestedDepartment = user.role === 'super_admin' ? query.department : undefined
+    const department = user.role === 'super_admin' ? (adminDepartment(user) ?? requestedDepartment) : undefined
     return {
       AND: [
         await this.sessionScope(user),
@@ -72,6 +76,9 @@ export class AttendanceScopeService {
         ...(query.sectionId ? [{ sectionId: query.sectionId }] : []),
         ...(query.sessionId ? [{ id: query.sessionId }] : []),
         ...(query.subjectId ? [{ section: { subjectId: query.subjectId } }] : []),
+        ...(department
+          ? [{ section: { teacher: { department: { equals: department, mode: 'insensitive' as const } } } }]
+          : []),
       ],
     }
   }

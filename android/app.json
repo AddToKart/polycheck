@@ -25,7 +25,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "edu.pup.polycheck",
-      "permissions": ["android.permission.CAMERA", "android.permission.ACCESS_FINE_LOCATION"]
+      "permissions": ["android.permission.CAMERA", "android.permission.ACCESS_FINE_LOCATION", "android.permission.POST_NOTIFICATIONS"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -63,6 +63,14 @@
         {
           "cameraPermission": "Camera is used to capture proof-of-class photos during active sessions.",
           "photosPermission": "Photo access is used to select proof-of-class images."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#7B1113",
+          "defaultChannel": "default"
         }
       ],
       "@sentry/react-native/expo"

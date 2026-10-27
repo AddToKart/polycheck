@@ -46,7 +46,7 @@ export const AttendanceDateRangeCard = ({
 export type AttendanceMetric = {
   label: string
   value: string | number
-  tone: 'brand' | 'success' | 'warning' | 'danger' | 'neutral' | 'disputed'
+  tone: 'brand' | 'success' | 'warning' | 'danger' | 'neutral' | 'disputed' | 'excused'
 }
 
 const toneClasses: Record<AttendanceMetric['tone'], string> = {
@@ -56,6 +56,7 @@ const toneClasses: Record<AttendanceMetric['tone'], string> = {
   danger: 'text-red-700 dark:text-red-300',
   neutral: 'text-muted dark:text-zinc-300',
   disputed: 'text-orange-700 dark:text-orange-300',
+  excused: 'text-cyan-700 dark:text-cyan-300',
 }
 
 export const AttendanceMetricGrid = ({ metrics }: { metrics: AttendanceMetric[] }) => (
@@ -75,10 +76,11 @@ const summaryStatus = [
   { key: 'absent' as const, label: 'Absent', color: 'bg-red-500', text: 'text-red-700 dark:text-red-300' },
   { key: 'pending' as const, label: 'Pending', color: 'bg-zinc-400', text: 'text-muted dark:text-zinc-300' },
   { key: 'disputed' as const, label: 'Disputed', color: 'bg-orange-500', text: 'text-orange-700 dark:text-orange-300' },
+  { key: 'excused' as const, label: 'Excused', color: 'bg-cyan-600', text: 'text-cyan-700 dark:text-cyan-300' },
 ]
 
 export const AttendanceSummaryCard = ({ summary, onPress }: { summary: AttendanceReportSummary; onPress?: () => void }) => {
-  const total = summary.present + summary.late + summary.absent + summary.pending + summary.disputed
+  const total = summary.present + summary.late + summary.absent + summary.pending + summary.disputed + summary.excused
   const attendanceRate = total ? Math.round((summary.present / total) * 100) : 0
   return (
     <CampusCard onPress={onPress} accessibilityLabel={onPress ? `Open ${summary.subjectName} attendance` : undefined} className="p-4">
@@ -108,6 +110,7 @@ const donutColors: Record<(typeof summaryStatus)[number]['key'], string> = {
   absent: pupColors.maroonDark,
   pending: pupColors.mutedLight,
   disputed: pupColors.maroonDeep,
+  excused: pupColors.excused,
 }
 
 export const AttendanceDistributionCard = ({ totals }: { totals: AttendanceReport['totals'] }) => {

@@ -27,6 +27,7 @@ const STATUS_STYLES: Record<string, string> = {
   present: 'bg-golden text-maroon-dark',
   late: 'bg-maroon text-white',
   absent: 'bg-maroon-dark text-golden border border-golden',
+  excused: 'bg-maroon text-golden border border-golden',
   pending: 'bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
   disputed: 'bg-maroon-dark text-golden border border-golden',
 }
@@ -275,6 +276,7 @@ export default function SessionDetailPage() {
   const presentCount = records.filter((r) => r.status === 'present').length
   const lateCount = records.filter((r) => r.status === 'late').length
   const absentCount = records.filter((r) => r.status === 'absent').length
+  const excusedCount = records.filter((r) => r.status === 'excused').length
   const pendingCount = records.filter((r) => r.status === 'pending').length
   const disputedCount = records.filter((r) => r.status === 'disputed').length
   const studentMap = new Map(records.map((r) => [r.studentId, r]))
@@ -581,6 +583,7 @@ export default function SessionDetailPage() {
                   { label: 'Present', value: presentCount, color: 'text-golden' },
                   { label: 'Late', value: lateCount, color: 'text-maroon dark:text-[#FF6B6B]' },
                   { label: 'Absent', value: absentCount, color: 'text-maroon-dark dark:text-[#FF4F5A]' },
+                  { label: 'Excused', value: excusedCount, color: 'text-maroon dark:text-golden' },
                   { label: 'Pending', value: pendingCount, color: 'text-gray-400' },
                   { label: 'Disputed', value: disputedCount, color: 'text-maroon dark:text-golden' },
                 ].map((s) => (
@@ -593,7 +596,7 @@ export default function SessionDetailPage() {
 
               {/* Filters */}
               <div className="flex gap-2 mb-4 flex-wrap">
-                {(['all', 'present', 'late', 'absent', 'pending', 'disputed'] as const).map((f) => (
+                {(['all', 'present', 'late', 'absent', 'excused', 'pending', 'disputed'] as const).map((f) => (
                   <button
                     key={f}
                     className={`px-3 py-1 text-xs border ${filter === f ? 'bg-maroon dark:bg-golden border-maroon dark:border-golden text-white dark:text-maroon-dark' : 'bg-gray-100 dark:bg-surface-dark border-gray-300 dark:border-golden/15 text-gray-500 dark:text-gray-400'}`}

@@ -11,5 +11,6 @@ describe('contentSecurityPolicy', () => {
     expect(policy).toContain('connect-src')
     expect(policy).toContain('http://localhost:4000')
     expect(policy).toContain('ws://localhost:4000')
+    expect(policy).toContain('img-src \'self\' data: blob: http://localhost:4000')
   })
 })
