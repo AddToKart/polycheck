@@ -495,8 +495,43 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - Every `(faculty)` Android screen now has an explicit `useAuthGate` role list (attendance/search were previously ungated).
   - Verification: backend 508 tests / 49 suites, frontend 138 / 22, Android 177 / 13, shared 87 / 5; Playwright Chromium **66/66** (includes new console/users/server-status/import specs); live Socket.IO stream verified for super admin and denied for teachers; new API smoke covers overview/server-status/filters/edit/role/create-admin/scope denials; zero backend 5xx. Firefox/WebKit production-container caveats documented in the plan addendum.
 
+### Done (cont.)
+- **AI Assistant + Standing Evaluation (`plan/ai-assistant-plan.md`, AI0–AI6)**:
+  - Shared contract: `shared/src/types/ai.ts`, `shared/src/types/standing.ts`, `shared/src/validation/ai.ts`, plus `ApiClient` methods `getAiCapabilities`, `sendAiChatMessage`, `getAiThread`, `getMyStanding`.
+  - Backend `backend/src/ai/`: OpenAI-compatible provider (base URL/model from `ai_base_url`/`ai_model` settings with `AI_BASE_URL`/`AI_MODEL` env fallback; API key from the super-admin Institution Settings field `ai_api_key` — sealed with AES-256-GCM (`AI_KEY_ENCRYPTION_SECRET` or `BETTER_AUTH_SECRET`), never returned by `GET /settings` — with `AI_API_KEY` env as fallback; SSE streaming; tool-call assembly; `user-agent: polycheck/1.0` + `x-opencode-session` per thread; 30 s default timeout), role-keyed system prompts and tool registries (teacher, super admin, student — read/export only), Redis-backed threads (7-day TTL, ownership checks), Socket.IO `ai:thread:*` rooms, daily message caps (`AI_MAX_MESSAGES_PER_DAY`), fail-open per-tool audit rows, endpoints `GET /ai/capabilities`, `POST /ai/chat`, `GET /ai/threads/:id`.
+  - File generation `backend/src/docs/`: `GET /docs/master-list/:sectionId?format=pdf|docx` (PUP-branded, stable `MASTER_LIST_COLUMNS` layout + signature block) and `GET /docs/session-attendance/:sessionId?format=csv|pdf` (formula-safe CSV); scoped teacher/admin.
+  - Standing evaluation `backend/src/standing/`: deterministic evaluator `GET /me/standing`, `attendance_min_rate_percent` setting (default 75, clamped 0–100), projection ("absences before below threshold") and disputed/pending caveat; consumed by the student assistant.
+  - Web: Assistant sidebar item + floating launcher + `/faculty/assistant` and `/student/assistant` pages, streaming chat with attachment downloads, per-tab student standing banner, and Institution Settings fields for `attendance_min_rate_percent`, `ai_base_url`, `ai_model` (API key never rendered).
+  - Android: Assistant tab for students, faculty/super-admin More-sheet entry, shared `AssistantChat` with streaming + `expo-sharing` downloads, process-lifetime standing banner, API/realtime helpers.
+  - Role-tuned assistants: the super admin gets a distinct prompt, UI copy, starter prompts, and admin-only read tools (`get_institution_overview`, `find_users`, `get_recent_audit_activity`) in addition to institution-scoped section/session/export tools; teachers get own-section tools with "list my sections" browsing; students keep the own-data explainer set. Provider tool-call messages use the OpenAI `type: function` shape (fixes provider 400s after a tool call), `find_sections` tokenizes natural-language queries and supports a no-query browse, and master lists default to PDF.
+  - Settings/env: `backend/.env.example`, `.env.production.example`, and Compose pass the optional `AI_*` variables; the assistant stays disabled until configured.
+
+### Done (cont.)
+- **Institution Settings Redesign + AI Availability Controls (`plan/institution-settings-plan.md`, IS1–IS5)**:
+  - Web + Android settings are now four categorized tabs: Institution · Sessions & attendance · Accounts & access · AI Assistant (deep-linkable `?tab=` on web; segmented tabs on Android), with per-tab save, unsaved indicators, helper captions, and the encrypted API-key block preserved.
+  - New boolean settings (default true): `ai_assistant_enabled` (master), `ai_assistant_teacher_enabled`, `ai_assistant_student_enabled`; migration `20261027120000_ai_availability_settings` seeds them idempotently. `allow_teacher_student_provisioning` is finally surfaced in the UI, and `enrollment_code_expiry_days` is now actually consumed by section creation + code reset (previously hardcoded to 14 days).
+  - Enforcement is backend-first: `AiCapabilities.policyBlocked` reports master/role shutdowns, `POST /ai/chat` returns 403 (including regenerate), and policy checks run before provider-config details. Super admins are exempt from the teacher toggle but governed by the master.
+  - Entry-point gating: web bubble and Android Assistant tab/More-sheet item use `shouldShowAssistantEntry` — policy-blocked roles see nothing, unconfigured non-admins see nothing, super admins keep the setup affordance while the master is on.
+  - Verification: backend 619 / 58, web 220 / 34, Android 273 / 18; typecheck/lint/format/build clean; container smoke covered master-off (policyBlocked + 403), teacher-only disable, and restoration.
+
+### Done (cont.)
+- **Wave 4 — Notifications, Excuses, At-Risk & Filters (`plan/notifications-excuse-filters-plan.md`, FIL/NF/EXC/RISK)**:
+  - Notifications: `Notification` + `PushSubscription` models/migration `20261027160000_wave4_notifications_excuses`; `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/read`, `POST /notifications/push-token`; realtime `notifications:new` over the per-user gateway room; web bell + panel, Android bell + center + Expo push registration (native rebuild required); triggers for disputes, excuses, auto-absent, standing warnings, account actions/key provisioning; 30-day retention.
+  - Excuse workflow: `excused` attendance status + record fields; student requests on absent/late with optional evidence (proofs storage pipeline), teacher approve/reject queue (`/faculty/excuses`, Android `(faculty)/excuses`), review stamps, audit, notifications; standings exclude excused with caveat; reports/exports/AI counts/badges updated on both platforms.
+  - At-risk oversight: deterministic `GET /attendance/at-risk` (grouped, scope-checked) + teacher dashboard "Students to check on" widget (web + Android).
+  - Filters: URL-synced teacher filters (attendance subject/section/presets, sessions subject/section/status/date, disputes section/date, student history subject/date/status), admin reports section + department filters, teacher dashboard period selector; Android filter primitives and equivalents.
+  - Verification: backend 674 / 63 suites, web 254 / 39 files, Android 298 / 21 suites, shared 87; typecheck/lint/format/build clean; container smoke covered excuse request→approve→`excused`+notifications, at-risk ordering, and admin department filtering.
+
 ### In Progress
 - (none)
+
+### Done (cont.)
+- **Assistant Panel Redesign (`plan/assistant-panel-redesign-plan.md`, AP1–AP5 + AM1)**:
+  - Web: shared `AssistantShell` with Dock (compact panel), Theater (centered `min(1120px, 92vw) × min(760px, 86vh)` overlay with scrim) and Focus (full-page) geometries; remembered per-device preference (default Dock); no global hotkey; Esc ladder; focus trap/`aria-modal`/scroll lock; role-aware bubble label/aria/tooltip.
+  - Chat UX: markdown rendering (react-markdown + remark-gfm, token-styled tables/bold/lists, CSP-safe), collapsible tool activity, copy/regenerate/inline retry (regenerate re-runs the last user turn without duplicating it), stop-while-streaming + reconcile, attachment file cards with progress/check, smart scroll + jump pill, auto-grow composer with Stop, grouped messages and timestamps.
+  - Threads: per-user Redis index (`ai:user-threads:<userId>`, 7-day TTL, cap 20, newest-first, title = first user message ≤60 chars) kept in sync from the thread-save path; `GET /ai/threads`, `DELETE /ai/threads/:id` (ownership-checked, audited); `ThreadsRail` in Theater/Focus.
+  - Android parity: copy, collapsible activity, attachment cards, stop/reconcile, GFM tables via `react-native-markdown-display`, role empty-state parity.
+  - Verification: backend 615 tests / 58 suites, web 183 / 30, Android 214 / 16, shared 87 / 5; typecheck/lint/format/build clean; live smoke on the rebuilt Docker stack (thread list → regenerate with a single user turn → delete).
 
 ### Blocked
 - (none)
@@ -520,20 +555,21 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - Mobile scanner (`android/app/(tabs)/scan.tsx`) exposes `Upload QR Image` and `Enter Code` fallbacks alongside live camera.
 - **Database Migration Self-Healing**: Added idempotent pre-checks and backfills in `20260907090000_domain_constraints/migration.sql` to gracefully handle dirty development databases or re-runs without crashing the migration service container.
 - **Docker Compose Local Developer Experience**: Added automated 1-click startup scripts (`start-local.bat`, `start-local.sh`, `stop-local.bat`, `stop-local.sh`) and passed `NEXT_PUBLIC_ALLOW_QR_FALLBACKS: "true"` to local container builds.
-- **Comprehensive Automated Test Coverage**: 910 total passing automated tests across 89 suites monorepo-wide (87 shared, 138 web, 508 backend, 177 mobile); the web E2E suite includes 198 tests across Chromium, Firefox, and WebKit (10 engine-specific skips).
+- **Comprehensive Automated Test Coverage**: 1,313 total passing automated tests across 128 suites monorepo-wide (87 shared, 254 web, 674 backend, 298 mobile); the web E2E suite includes 198 tests across Chromium, Firefox, and WebKit (10 engine-specific skips). The AI assistant additions are covered by backend AI/docs/standing suites plus web and Android chat/standing tests.
 
 ## Next Steps
 - Connect sessions page to section context when navigated from section detail.
 - Add dispute notification badge on faculty sidebar/tab bar.
 - Add OS-scheduled background sync; the encrypted SQLite queue already syncs opportunistically while the app is active.
-- Implement push notifications (Expo Notifications / web push).
-- Add leave/excuse request workflow.
+- Web push (VAPID) for installed PWAs remains deferred; Android Expo push shipped in Wave 4 (requires a dev client/EAS rebuild).
 - Add academic calendar integration (semester dates, holidays).
 - Add dark mode support parity across all pages.
 - Mobile import file picker (`expo-document-picker`) as the fast-follow to the shipped paste-first flow (requires a native rebuild).
 - Run the super-admin Maestro flow and device smoke (users edit/role/add-admin + live Server Status) — not executed locally because adb/Maestro are unavailable.
 - Run the Lighthouse PWA checklist and physical iOS/installed-PWA offline verification before enabling `NEXT_PUBLIC_PWA_OFFLINE` in production.
 - Run the 5,000-user load simulation on staging (plan/load-simulation-plan.md LT4–LT6); the local harness is validated (200 students paced as 4×50 waves pass, 200-simultaneous burst documents the single-instance limit).
+- AI assistant follow-ups: add Maestro/Playwright journeys for faculty extraction → share/download and the student standing question; device-test Android file sharing and keyboard layout; add a per-thread send lock (concurrent `POST /ai/chat` is last-write-wins); get PUP sign-off on the external AI endpoint policy and set `AI_*` in production.
+- Confirm the attendance standing threshold policy (`attendance_min_rate_percent`, default 75) with the registrar and adjust the seeded default if needed.
 
 ## Critical Context
 - Android package: `edu.pup.polycheck`; iOS bundle: `edu.pup.polycheck`.
@@ -553,6 +589,13 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - Forced password rotation: `User.mustChangePassword` blocks protected routes with 403 `password_change_required` until `POST /auth/change-password` succeeds (web + mobile gates).
 - The mobile import sheet is paste-first by design (`expo-document-picker` deferred to avoid a native rebuild); credentials share through `android/services/file-sharing.ts`.
 - Admin console endpoints: `GET /dashboard/admin-overview`, `GET /dashboard/server-status`, `GET /users?role&q&department&status&limit&offset`, `PATCH /users/:id`, `PATCH /users/:id/role`, `POST /users/admins`. Realtime server metrics use `server:subscribe` / `server:subscribed` / `server:metrics` in the `/attendance` namespace (super_admin only, 5s, idle when unsubscribed).
+- AI assistant: `GET /ai/capabilities`, `POST /ai/chat` (teacher/super_admin/student; accepts `regenerate: true` to re-run the last user turn), `GET /ai/threads` (per-user summaries), `GET /ai/threads/:id`, `DELETE /ai/threads/:id`; the reply streams over Socket.IO `ai:thread:join` / `ai:thread:stream` (delta/done/error) in the `/attendance` namespace. Threads and the per-user summary index live in Redis (7-day TTL) and are ownership-checked. The provider is OpenAI-compatible and disabled until configured: `AI_BASE_URL` (or the `ai_base_url` setting) + `ai_api_key` (super-admin settings, stored encrypted; `GET /settings` never returns it) or `AI_API_KEY` env fallback + `AI_MODEL` (or `ai_model`); caps via `AI_MAX_MESSAGES_PER_DAY`. OpenCode Go uses `https://opencode.ai/inference/go/openai/v1` and requires `x-opencode-session` (the provider sends the thread id).
+- Document exports: `GET /docs/master-list/:sectionId?format=pdf|docx` and `GET /docs/session-attendance/:sessionId?format=csv|pdf` (teacher/super_admin, scoped). Master list columns are fixed (`MASTER_LIST_COLUMNS`) for future OCR/template work.
+- Standing evaluation: `GET /me/standing` (student only) is deterministic (no LLM); `attendance_min_rate_percent` (default 75, institution-editable) drives the dashboard banner and the student assistant. Pending/disputed records are excluded from the rate and reported as a caveat.
+- AI availability settings (all default true): `ai_assistant_enabled` (master; off hides the assistant everywhere including super admins), `ai_assistant_teacher_enabled` (teachers only; super admins exempt), `ai_assistant_student_enabled` (students). `GET /ai/capabilities` returns `policyBlocked: true` with the administrator reason, and `POST /ai/chat` rejects with 403. Settings are read per request — no restart needed.
+- Institution settings UI categories: Institution · Sessions & attendance · Accounts & access · AI Assistant (web `?tab=`; Android segmented tabs). `allow_teacher_student_provisioning` lives under Accounts; `enrollment_code_expiry_days` now controls section enrollment-code lifetime.
+- Notifications/excuses: `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/read`, `POST /notifications/push-token`; Socket.IO `notifications:new` in the user's `auth:user:<id>` room. Excuse flow: `POST /attendance/records/:id/excuse` (student, absent/late), `GET /attendance/excuses`, `POST /attendance/records/:id/excuse/decision` (teacher only; approve → `status=excused`). `excused` is excluded from the standing denominator with a caveat. At-risk: `GET /attendance/at-risk?sectionId&limit`. Report totals include `excused`; `AttendanceReportFilters.department` is admin-scoped.
+- Android push requires a dev client/EAS rebuild (`expo-notifications` plugin + `POST_NOTIFICATIONS`); web push (VAPID) remains a deferred, env-gated follow-up.
 
 ## Relevant Files
 - `shared/src/types/session.ts` — Session now has `qrValidityMinutes`, `qrGeneratedAt?`; removed `tokenWindowSeconds`
@@ -583,5 +626,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - `backend/src/sessions/dto/create-session.dto.ts` — DTO field optionality, ActivateSessionDto grace param
 - `backend/src/sessions/sessions.service.ts` — defaults on create, grace storage at activate, auto-expiry cron
 - `backend/src/attendance/attendance.service.ts` — ensureOfflineActivation relaxed grace check
+
+
 
 

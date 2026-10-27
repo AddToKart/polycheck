@@ -1,12 +1,14 @@
 # AI Assistant Chatbot + Standing Evaluation — Plan
 
-> **Status:** Plan only — not yet implemented. Companion to
+> **Status:** Implemented (AI0–AI6) — backends, web and Android clients shipped; verified
+> with 593 backend / 160 web / 204 Android tests. Outstanding device/e2e validation and
+> follow-ups are listed in §8. Companion to
 > [`super-admin-console-plan.md`](./super-admin-console-plan.md) (SA1 nav cleanup + SA7
 > realtime channel are assumed context) and [`bulk-import-plan.md`](./bulk-import-plan.md)
 > (a separate track — not duplicated here).
-> **External dependency:** the `attendance_min_rate_percent` policy value is pending the
-> product owner's research — default **75%** is seeded until then; findings only change the
-> constant, never the code path.
+> **AI provider:** optional; disabled when `AI_BASE_URL`/`AI_API_KEY` are unset. Base URL and
+> model can also be set by a super admin in Institution Settings (`ai_base_url`, `ai_model`);
+> the API key can be entered in Institution Settings (sealed at rest) with `AI_API_KEY` as an env fallback.
 
 ---
 
@@ -50,7 +52,7 @@ Flagship behaviors (agreed examples):
 
 | # | Decision |
 |---|---|
-| 1 | ✔ **Provider-agnostic via base-URL config.** OpenAI-compatible adapter driven by `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` env vars — any compatible endpoint works (OpenAI, self-hosted vLLM/LM Studio, OpenRouter, …). Super-admin Institution Settings gains a non-secret **AI endpoint input** (base URL + model name); the API key **stays env-only, never in the database**. Provider swap = config change, zero code. |
+| 1 | ✔ **Provider-agnostic via base-URL config.** OpenAI-compatible adapter driven by `AI_BASE_URL` / `AI_MODEL` (env) or the super-admin `ai_base_url` / `ai_model` settings. The API key can be entered by a super admin in Institution Settings — it is sealed with AES-256-GCM (`AI_KEY_ENCRYPTION_SECRET`, falling back to `BETTER_AUTH_SECRET`) and never returned by `GET /settings`; `AI_API_KEY` env remains a fallback. Provider swap = config change, zero code. |
 | 2 | **Tool-calling only:** the LLM never answers from memory — it invokes a governed tool registry that calls backend **services directly** with the requesting user's context. It never free-forms data, never writes raw queries, never writes attendance data. |
 | 3 | **Privacy boundary:** the LLM sees conversation text + metadata only (section/professor names, IDs, dates). Row-level data (student names, GPS, records) **never crosses the LLM boundary** — files are generated server-side from tool output. |
 | 4 | **Read/export only in v1.** No chat-driven writes: attendance submission, session creation, dispute actions. |
@@ -76,7 +78,7 @@ Flagship behaviors (agreed examples):
 | **AI0 — AI foundation** | `backend/src/ai/` module: OpenAI-compatible client (base-URL-driven, mock provider for tests), `AiChatService` (Redis threads + TTL), `AiToolRegistry` (**per-role registries + system prompts**, typed tool schemas, per-call scope checks), `AiAudit` (per-invocation events), rate/cost caps. Shared contract first: chat/tool/stream types + zod schemas + `ApiClient` methods + Socket.IO channel (`ai:chat`, per-user thread rooms). | `backend/src/ai/**`, `shared/src/types/ai.ts`, `shared/src/validation/ai.ts`, `shared/src/types/api.ts`, `backend/src/common/config` env add | registry scope-matrix tests (teacher cross-section denied; student cross-student denied; institution super admin full scope; department super admin constrained); audit row per invocation; caps enforced; mock provider in every test; typecheck green workspace-wide |
 | **AI1 — File generation service** | `backend/src/reports/docs.service.ts` — `pdfkit` + `docx` (new deps): **master-list renderer** (stable PUP-branded header: university name, subject, section, professor; fixed student table: No., student number, name, program, year; signature block) per Decision 14; session-attendance renderer; CSV reuse of the existing export pipeline; authenticated downloads (streamed attachment or short-lived URL). | `backend/package.json`, `backend/src/reports/docs.service.ts`, client `ApiClient` file hooks | PDF/DOCX of the same section are content-equivalent (snapshot tests); layout stability assertions (columns never drift); auth-checked downloads; web e2e extraction → download |
 | **AI2 — Faculty chatbot (web, teacher role)** | Floating chat panel + "Assistant" sidebar item on the faculty shell; tools: `find_my_sections(q)`, `get_section_master_list(id, format)`, `get_section_sessions(id, date?)`, `get_session_attendance(id)`; disambiguation candidate-cards flow; streaming replies; file attachments; teacher system prompt. | `frontend/src/app/faculty/page.tsx`, `frontend/src/components/Assistant/**`, sidebar + faculty layout | Playwright: "extract software engineering section 1's master list" → resolves → download offered; ambiguity → cards; out-of-scope request → real tool-layer denial + polite chat copy |
-| **AI3 — Super admin role unlock (same train)** | Super-admin registry + system prompt: institution-wide lookup via `admin-scope` (any in-scope section's master list, sessions, attendance); audited admin extractions; **AI endpoint input (base URL + model name, non-secret) added to Institution Settings** (web; Android settings fast-follow). | `backend/src/ai/**` (super registry), `frontend/src/app/faculty/settings/page.tsx`, `backend/src/common/admin-scope.ts` reuse | department admin limited to own department; institution admin full; audit events carry scope; settings input round-trips and never persists the API key |
+| **AI3 — Super admin role unlock (same train)** | Super-admin registry + system prompt: institution-wide lookup via `admin-scope` (any in-scope section's master list, sessions, attendance); audited admin extractions; **AI endpoint input (base URL + model) and encrypted API-key field added to Institution Settings** (web + Android). | `backend/src/ai/**` (super registry), `frontend/src/app/faculty/settings/page.tsx`, `backend/src/common/admin-scope.ts` reuse | department admin limited to own department; institution admin full; audit events carry scope; settings input round-trips and never persists the API key |
 | **AI4 — Standing Evaluation (non-AI; parallel to AI0–AI3)** | New setting `attendance_min_rate_percent` (75 default, institution-wide, SA-editable); deterministic evaluator endpoint (`rate`, recent-window trend, "absences remaining before below-threshold" projection, disputed-record caveats); **student dashboard banner** (web + Android): triggers only below threshold / projected breach, **dismissable per session** (Decision: stays hidden until next session/app start), supportive copy + "talk to Prof." action; feeds AI5 thrifting | `backend/src/settings/**` (+ DTO + seed default), new `backend/src/standing/**` (or dashboard extension), `shared` types, `frontend/src/app/student/dashboard/page.tsx`, `android/app/(tabs)/dashboard.tsx` | projection math unit-tested (threshold edges, disputed exclusion); hidden above threshold; Android renders from SQLite cache offline; teacher surfaces unaffected; dismissal honored per session |
 | **AI5 — Student chatbot (web + Android)** | Read-only tools: `get_my_subjects`, `get_my_attendance_summary(sectionId)`, `evaluate_attendance_standing(sectionId)` (consumes AI4 evaluator), `get_professor(sectionId)`, `draft_professor_message(sectionId, concern)`; FAQ how-to (enroll, QR, schedule). Student system prompt enforces Decisions 8–10; Android dry offline state (18). | `backend/src/ai/**` (student registry), `shared` student DTOs, `frontend/src/app/student/**`, `android/app/(tabs)/**` | redaction guard suite (no geofence mechanics in any sampled answer/payload); no-guarantee phrasing enforced (prompt + tool framing tests); professor email absent from all payloads; cross-student and write attempts denied at the registry |
 | **AI6 — Mobile completion + journeys** | Faculty chatbot on Android with `expo-sharing` file handoff; Maestro flows: master-list extraction (faculty), standing question (student); offline degradation polish; Parity Gate sign-off. | `android/app/(faculty)/**`, `android/app/(tabs)/**`, `android/services/api-client.ts`, Maestro specs | files share via the native system sheet; 375 backend / 93 frontend / 135 android existing tests stay green + new suites |
@@ -87,7 +89,7 @@ Flagship behaviors (agreed examples):
 - The broader AI backlog from the evaluation matrix (fraud radar, audit-log anomaly, NL analytics, teacher at-risk list, import copilot, settings advisor, student digest, schedule concierge) — individually re-add later.
 - **OCR of handwritten sheets / official-form template replication** — explicitly deferred per Decision 14 until the template/training work matures.
 - Push notifications / automated messaging to professors.
-- Per-section threshold overrides (v2 option); LLM-computed standings (never); API keys in the database (never).
+- Per-section threshold overrides (v2 option); LLM-computed standings (never); plaintext API keys at rest (never — the settings-stored key is AES-256-GCM sealed).
 
 ## 6. Testing Strategy
 
@@ -99,7 +101,7 @@ Flagship behaviors (agreed examples):
 | E2E (Playwright) | AI2/AI3 journeys + denial tests; banner + dismissal persistence on web |
 | E2E (Maestro) | AI6 flows (faculty extraction, student standing), offline assistant state |
 | Guard suite | system-prompt + tool-output redaction scans on the student surface; no-guarantee phrasing tests |
-| CI hygiene | mock provider everywhere; key/base-URL env-only assertions; existing suites stay green |
+| CI hygiene | mock provider everywhere; key never returned by `GET /settings`; existing suites stay green |
 
 ## 7. Risks & Mitigations
 
@@ -122,8 +124,38 @@ Flagship behaviors (agreed examples):
 
 ## 9. Resolved Questions (from the review — no longer open)
 
-Base-URL-driven provider adapter (API key env-only) | provisional + stable-layout master-list template | bubble + sidebar placement | super admin same Phase 1 with distinct instructions/registry | 75% institution-wide default | Socket.IO transport | banner dismissible per session.
+Base-URL-driven provider adapter (settings-stored key sealed at rest, env fallback) | provisional + stable-layout master-list template | bubble + sidebar placement | super admin same Phase 1 with distinct instructions/registry | 75% institution-wide default | Socket.IO transport | banner dismissible per session.
 
 ## 10. Remaining Open Item
 
 - **Threshold research:** the product owner is validating the correct passing rule; until then the seeded default is 75% and it is institution-editable in the meantime.
+
+## 11. Implementation Addendum (delivered)
+
+| Area | Delivered |
+|---|---|
+| Shared contract | `shared/src/types/ai.ts`, `shared/src/types/standing.ts`, `shared/src/validation/ai.ts`, `ApiClient` methods (`getAiCapabilities`, `sendAiChatMessage`, `getAiThread`, `getMyStanding`). |
+| Backend AI (`backend/src/ai/`) | OpenAI-compatible provider (settings/env base URL + model, settings key sealed with AES-256-GCM or env fallback, SSE streaming, tool-call assembly, timeout), role-keyed system prompts and tool registries (teacher, super admin, student), Redis threads (7-day TTL, ownership checks), Socket.IO `ai:thread:*` channel, daily message caps, fail-open per-tool audit rows, `/ai/capabilities`, `/ai/chat`, `/ai/threads/:id`. |
+| Files (`backend/src/docs/`) | `GET /docs/master-list/:sectionId?format=pdf|docx` and `GET /docs/session-attendance/:sessionId?format=csv|pdf` — PUP-branded stable-layout master list with `MASTER_LIST_COLUMNS`, formula-safe CSV, scoped to the requesting teacher / admin scope. |
+| Standing (`backend/src/standing/`) | Deterministic evaluator (`GET /me/standing`), `attendance_min_rate_percent` setting (default 75, clamped 0–100), projection + disputed/pending caveat; consumed by the student bot. |
+| Web | Sidebar + floating launcher + full-page assistant (streaming, attachment downloads, retry/watchdog), students route `/student/assistant`, student standing banner (per-tab dismissal), settings fields for threshold + AI base URL/model (key never in UI). |
+| Android | Assistant tab (student) + faculty/super-admin entry via the More sheet, shared `AssistantChat` with streaming/attachments via `expo-sharing`, student standing banner (process-lifetime dismissal), API client + realtime helpers. |
+| Verification | Backend typecheck + 58 suites / 593 tests + eslint + prettier clean; web tsc + 160 tests + eslint clean; Android tsc + 15 suites / 204 tests; shared rebuilt. |
+
+### Known follow-ups
+
+- Maestro flows for the faculty extraction → share sheet and the student standing question are not yet written; Playwright AI journeys likewise not added to `e2e/`.
+- Android file share and keyboard layout need a physical-device pass.
+- Concurrent `POST /ai/chat` calls on the same thread are last-write-wins; a per-thread lock/409 is the hardening follow-up.
+- Thread restoration on Android is session-scoped (no persistence) by design for now.
+- Provider retries/backoff are not implemented; the client surfaces a retryable error.
+- The threshold value still awaits the product owner’s policy research; the seeded default (75%) is institution-editable.
+
+
+### Role-tuned assistant follow-up (delivered)
+
+- Super admin assistant now has a distinct system prompt, web/Android UI copy, starter prompts, and three admin-only read tools: `get_institution_overview`, `find_users`, `get_recent_audit_activity` (all scope-enforced via `admin-scope.ts`, audited, no row-level data returned to the LLM).
+- Teacher assistant browses own sections with `find_sections` (query optional) and defaults master lists to PDF; student assistant unchanged (own-data explainer).
+- Fixed provider 400s after a tool call: assistant tool-call messages now use the OpenAI `type: "function"` shape, and provider rejection bodies are logged (sanitized) for diagnosis.
+- `find_sections` tokenizes natural-language queries (stopword-filtered) so phrases like "Extract the master list for Software Engineering CCIS 3104 Section A as PDF" resolve correctly.
+- Verified end-to-end with the configured provider: institution overview (admin), list-my-sections (teacher), and master-list PDF generation + authenticated download.
