@@ -1,5 +1,5 @@
 import { Platform } from 'react-native'
-import { classifyAttendanceSyncError, getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRow, type EnrollImportRequest, type EnrollImportResult, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput } from '@polycheck/shared'
+import { classifyAttendanceSyncError, getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRow, type EnrollImportRequest, type EnrollImportResult, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput, type AiCapabilities, type AiChatSendInput, type AiChatSendResult, type AiChatThread, type AiThreadSummary, type AttendanceStanding, type AppNotification, type NotificationReadInput, type PushTokenInput, type StudentAtRisk, type ExcuseDecision, type ExcuseReason } from '@polycheck/shared'
 import { API_BASE } from './api-config'
 import { getOrCreateTeacherSigningKey } from './signing-key'
 import { getOrCreateInstallationId } from './device-id'
@@ -136,6 +136,28 @@ async function authHeaders(): Promise<Record<string, string>> {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   }
+}
+
+const ASSISTANT_MIME_TYPES: Record<string, string> = {
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  csv: 'text/csv',
+}
+
+const ASSISTANT_UTIS: Record<string, string> = {
+  pdf: 'com.adobe.pdf',
+  docx: 'org.openxmlformats.wordprocessingml.document',
+  csv: 'public.comma-separated-values-text',
+}
+
+function safeDownloadFileName(fileName: string): string {
+  const safe = fileName.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')
+  return safe || 'assistant-download'
+}
+
+function assistantFileExtension(fileName: string): string {
+  const index = fileName.lastIndexOf('.')
+  return index === -1 ? '' : fileName.slice(index + 1).toLowerCase()
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
@@ -706,6 +728,37 @@ export const api = {
     return post('/disputes', data)
   },
 
+  // ── Excuses (Wave 4) ──
+  requestExcuse(
+    recordId: string,
+    input: { reason: ExcuseReason; description: string; evidenceData?: string },
+  ): Promise<AttendanceRecord> {
+    return post(`/attendance/records/${encodeURIComponent(recordId)}/excuse`, input)
+  },
+  listExcuses(filters: { status?: 'requested' | 'approved' | 'rejected'; sectionId?: string; startDate?: string; endDate?: string } = {}): Promise<AttendanceRecord[]> {
+    return get(queryPath('/attendance/excuses', { ...filters }))
+  },
+  decideExcuse(recordId: string, decision: ExcuseDecision, note?: string): Promise<AttendanceRecord> {
+    return post(`/attendance/records/${encodeURIComponent(recordId)}/excuse/decision`, { decision, note })
+  },
+  getAtRiskStudents(filters: { sectionId?: string; limit?: number } = {}): Promise<StudentAtRisk[]> {
+    return get(queryPath('/attendance/at-risk', { ...filters }))
+  },
+
+  // ── Notifications (Wave 4) ──
+  getNotifications(filters: { unreadOnly?: boolean; limit?: number } = {}): Promise<AppNotification[]> {
+    return get(queryPath('/notifications', { unreadOnly: filters.unreadOnly ? 'true' : undefined, limit: filters.limit }))
+  },
+  getUnreadNotificationCount(): Promise<number> {
+    return get('/notifications/unread-count')
+  },
+  markNotificationsRead(input: NotificationReadInput = { all: true }): Promise<number> {
+    return post('/notifications/read', input)
+  },
+  registerPushToken(input: PushTokenInput): Promise<boolean> {
+    return post('/notifications/push-token', input)
+  },
+
   // ── Users ──
   getStudents(): Promise<Student[]> { return get('/users/students') },
   getStudent(id: string): Promise<Student> { return get(`/users/${id}`) },
@@ -953,6 +1006,89 @@ export const api = {
       return { students, sections, sessions }
     }
   },
+
+  // ── AI assistant (AI0/AI2/AI3) ──
+  getAiCapabilities(): Promise<AiCapabilities> {
+    return get('/ai/capabilities')
+  },
+  sendAiChatMessage(data: AiChatSendInput): Promise<AiChatSendResult> {
+    return post('/ai/chat', data)
+  },
+  getAiThread(threadId: string): Promise<AiChatThread> {
+    return get(`/ai/threads/${encodeURIComponent(threadId)}`)
+  },
+  listAiThreads(): Promise<AiThreadSummary[]> {
+    return get('/ai/threads')
+  },
+  deleteAiThread(threadId: string): Promise<boolean> {
+    return del(`/ai/threads/${encodeURIComponent(threadId)}`)
+  },
+  /**
+   * Authenticated assistant file handoff (AI1/AI6). Downloads into a unique
+   * cache subfolder and opens the native share sheet. Throws a user-facing
+   * message so screens can toast it without inspecting native errors.
+   */
+  async downloadAssistantFile(downloadPath: string, filename: string): Promise<void> {
+    const token = await getTokenFromStore()
+    if (!token) throw new Error('Sign in again to download assistant files.')
+
+    let FileSystemModule: typeof import('expo-file-system/legacy') | null = null
+    let SharingModule: typeof import('expo-sharing') | null = null
+    try {
+      FileSystemModule = require('expo-file-system/legacy')
+      SharingModule = require('expo-sharing')
+    } catch {
+      // Modules are always present in a native build; treat a load failure as
+      // unavailable rather than crashing the chat surface.
+    }
+
+    if (!FileSystemModule?.cacheDirectory) {
+      throw new Error('Temporary file storage is unavailable on this device.')
+    }
+    if (!SharingModule || !(await SharingModule.isAvailableAsync())) {
+      throw new Error('The system share sheet is unavailable on this device.')
+    }
+
+    const safeName = safeDownloadFileName(filename)
+    const extension = assistantFileExtension(safeName)
+    const folder = `${FileSystemModule.cacheDirectory}assistant-downloads/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}/`
+    const localUri = `${folder}${safeName}`
+
+    await FileSystemModule.makeDirectoryAsync(folder, { intermediates: true })
+    const normalizedPath = downloadPath.startsWith('/') ? downloadPath : `/${downloadPath}`
+
+    let result: { uri: string; status: number }
+    try {
+      result = await FileSystemModule.downloadAsync(`${API_BASE}${normalizedPath}`, localUri, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    } catch (error) {
+      await FileSystemModule.deleteAsync(folder, { idempotent: true }).catch(() => undefined)
+      throw error instanceof Error ? error : new Error('The file could not be downloaded. Please try again.')
+    }
+
+    if (result.status < 200 || result.status >= 300) {
+      await FileSystemModule.deleteAsync(folder, { idempotent: true }).catch(() => undefined)
+      if (result.status === 401 || result.status === 403) {
+        throw new Error('Your session cannot access this file. Sign in again and retry.')
+      }
+      throw new Error('The file could not be downloaded. Please try again.')
+    }
+
+    // The cache copy is intentionally kept: the receiving app may still read
+    // it while the share sheet finishes, and the OS owns cache eviction.
+    await SharingModule.shareAsync(result.uri, {
+      mimeType: ASSISTANT_MIME_TYPES[extension] ?? 'application/octet-stream',
+      UTI: ASSISTANT_UTIS[extension],
+      dialogTitle: filename,
+    })
+  },
+
+  // ── Standing evaluation (AI4) ──
+  getMyStanding(): Promise<AttendanceStanding[]> {
+    return get('/me/standing')
+  },
 }
 
 api satisfies ApiClient
+
