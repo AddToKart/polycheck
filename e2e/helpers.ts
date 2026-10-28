@@ -1,4 +1,6 @@
-import { expect, Page } from '@playwright/test'
+import { expect, Page, type APIRequestContext } from '@playwright/test'
+
+export const API_BASE = 'http://localhost:4000/api'
 
 export const SEED_PASSWORD = 'PolycheckLocal1!'
 
@@ -6,6 +8,33 @@ export const FACULTY_EMAIL = 'jmdelacruz@pup.edu.ph'
 export const ADMIN_EMAIL = 'mcreyes@pup.edu.ph'
 export const STUDENT_ID = '2024-00001-MN-0'
 export const STUDENT_EMAIL = 'amreyes@iskolar.pup.edu.ph'
+
+/** PUP campus (Asia/Manila, UTC+8) calendar date, matching shared `formatCampusDate`. */
+export function campusDate(daysAgo = 0): string {
+  const date = new Date(Date.now() + 8 * 60 * 60 * 1000)
+  date.setUTCDate(date.getUTCDate() - daysAgo)
+  return date.toISOString().slice(0, 10)
+}
+
+/**
+ * Authenticate an isolated API context. Tests must never share an account's
+ * browser cookie and API cookie: single-active-session enforcement invalidates
+ * the older session. Use `request`/`pwRequest.newContext()` for setup when the
+ * page will later log in as the same account.
+ */
+export async function apiLoginFaculty(request: APIRequestContext, email = FACULTY_EMAIL) {
+  const response = await request.post(`${API_BASE}/auth/login/faculty`, {
+    data: { email, password: SEED_PASSWORD },
+  })
+  expect(response.ok(), await response.text()).toBeTruthy()
+}
+
+export async function apiLoginStudent(request: APIRequestContext, studentId = STUDENT_ID) {
+  const response = await request.post(`${API_BASE}/auth/login/student`, {
+    data: { studentId, password: SEED_PASSWORD },
+  })
+  expect(response.ok(), await response.text()).toBeTruthy()
+}
 
 interface TrackedError {
   message: string
@@ -34,6 +63,16 @@ const CANCELLATION_SHAPED_ERRORS = [
   /^\[pageerror\] TypeError: Load failed$/, // WebKit
   /^\[pageerror\] Failed to fetch$/, // Chromium
   /due to access control checks\.$/, // WebKit cancelled fetch (RSC/API)
+]
+
+/**
+ * Firefox reports Zod's JIT feature probe as a CSP eval violation even though
+ * the probe failure is caught and the jitless parser is used (the app configures
+ * `z.jitless`). This exact message is browser noise, not an app regression.
+ */
+const KNOWN_BROWSER_NOISE = [
+  /^\[console\.error\] \[JavaScript Error: "Content-Security-Policy: The page’s settings blocked a JavaScript eval \(script-src\)/,
+  /^\[console\.error\] \[JavaScript Error: "Content-Security-Policy: The page's settings blocked a JavaScript eval \(script-src\)/,
 ]
 
 function markCancellationWindow(tracker: ErrorTracker) {
@@ -81,6 +120,7 @@ export function assertNoErrors(errors: string[], allowedPatterns: RegExp[] = [])
     if (allowedPatterns.some((pattern) => pattern.test(error))) return false
     // Browsers may request a missing favicon independently of app runtime.
     if (error.includes('favicon')) return false
+    if (KNOWN_BROWSER_NOISE.some((pattern) => pattern.test(error))) return false
     if (!CANCELLATION_SHAPED_ERRORS.some((pattern) => pattern.test(error))) return true
 
     const entry = tracker?.entries[index]
@@ -177,30 +217,50 @@ export async function shot(page: Page, name: string) {
   await page.screenshot({ path: `e2e-shots/${name}.png`, fullPage: true })
 }
 
-/**
- * Create a fresh session via the API using the page's auth cookie (shares the
- * browser context's cookie jar). Used to test session activation flows without
- * mutating seed sessions — each run gets its own disposable session.
- */
-export async function createDisposableSession(
-  page: Page,
-  opts: { sectionId?: string; subjectName?: string; daysFromNow?: number } = {},
+interface SessionSeedOptions {
+  sectionId?: string
+  subjectName?: string
+  startTime?: string
+  endTime?: string
+}
+
+async function postSession(
+  request: APIRequestContext,
+  data: { sectionId: string; subjectName: string; date: string; startTime: string; endTime: string },
 ) {
-  const { sectionId = 'sec-001', subjectName = 'Software Engineering' } = opts
+  return request.post(`${API_BASE}/sessions`, {
+    data: {
+      ...data,
+      geofence: { latitude: 14.8697, longitude: 120.9991, radiusMeters: 40 },
+    },
+  })
+}
+
+/**
+ * Create a fresh future session via an authenticated API context. Used to test
+ * workflows without mutating seed sessions — each run gets its own disposable
+ * session. Sessions persist after tests end, so bump the date until accepted.
+ */
+export async function createFutureSession(
+  request: APIRequestContext,
+  opts: SessionSeedOptions & { daysFromNow?: number } = {},
+) {
+  const {
+    sectionId = 'sec-001',
+    subjectName = 'Software Engineering',
+    startTime = '09:00',
+    endTime = '10:30',
+  } = opts
   let daysFromNow = opts.daysFromNow ?? 10
-  // Sessions persist after tests end, so bump the date until the backend accepts it
   for (let attempt = 0; attempt < 365; attempt++) {
     const date = new Date()
     date.setDate(date.getDate() + daysFromNow)
-    const res = await page.request.post('http://localhost:4000/api/sessions', {
-      data: {
-        sectionId,
-        subjectName,
-        date: date.toISOString().slice(0, 10),
-        startTime: '09:00',
-        endTime: '10:30',
-        geofence: { latitude: 14.8697, longitude: 120.9991, radiusMeters: 40 },
-      },
+    const res = await postSession(request, {
+      sectionId,
+      subjectName,
+      date: date.toISOString().slice(0, 10),
+      startTime,
+      endTime,
     })
     if (res.ok()) {
       const session = (await res.json()) as { id: string }
@@ -210,7 +270,66 @@ export async function createDisposableSession(
       daysFromNow++
       continue
     }
-    throw new Error(`createDisposableSession failed: ${res.status()} ${await res.text()}`)
+    throw new Error(`createFutureSession failed: ${res.status()} ${await res.text()}`)
   }
-  throw new Error('createDisposableSession failed: could not find a free date within one year')
+  throw new Error('createFutureSession failed: could not find a free date within one year')
+}
+
+/**
+ * Create a session dated inside the attendance report's default 30-day window
+ * (today .. 29 days ago). Used when a journey must render recent report totals
+ * regardless of whether the local database has smoke-test data.
+ */
+export async function createRecentSession(request: APIRequestContext, opts: SessionSeedOptions = {}) {
+  const {
+    sectionId = 'sec-001',
+    subjectName = 'Software Engineering',
+    startTime = '14:00',
+    endTime = '15:30',
+  } = opts
+  const timeSlots = [
+    [startTime, endTime],
+    ['16:00', '17:30'],
+    ['07:00', '08:30'],
+  ] as const
+  for (let daysAgo = 0; daysAgo < 30; daysAgo++) {
+    for (const [slotStart, slotEnd] of timeSlots) {
+      const res = await postSession(request, {
+        sectionId,
+        subjectName,
+        date: campusDate(daysAgo),
+        startTime: slotStart,
+        endTime: slotEnd,
+      })
+      if (res.ok()) {
+        const session = (await res.json()) as { id: string }
+        return session.id
+      }
+      if (res.status() !== 409) {
+        throw new Error(`createRecentSession failed: ${res.status()} ${await res.text()}`)
+      }
+    }
+  }
+  throw new Error('createRecentSession failed: could not find a free recent date/time slot')
+}
+
+/** Create (or upsert) a manual attendance record for a section student. */
+export async function createManualAttendance(
+  request: APIRequestContext,
+  input: { sessionId: string; sectionId?: string; studentId?: string; status: string },
+) {
+  const { sessionId, sectionId = 'sec-001', studentId = 's-001', status } = input
+  const res = await request.post(`${API_BASE}/attendance`, {
+    data: { sessionId, sectionId, studentId, status },
+  })
+  expect(res.ok(), await res.text()).toBeTruthy()
+  return (await res.json()) as { id: string; status: string }
+}
+
+/** Page-bound convenience wrapper for specs that already logged in as faculty. */
+export async function createDisposableSession(
+  page: Page,
+  opts: { sectionId?: string; subjectName?: string; daysFromNow?: number } = {},
+) {
+  return createFutureSession(page.request, opts)
 }

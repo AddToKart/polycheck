@@ -23,20 +23,28 @@ async function createTeacher(page: Page, suffix: number) {
 }
 
 async function createStudent(page: Page, suffix: number) {
-  const studentId = `2026-${String(suffix).slice(-5).padStart(5, '0')}-MN-0`
-  const response = await page.request.post(`${API_BASE}/users/students`, {
-    data: {
-      fullName: `E2E Admin Student ${suffix}`,
-      studentId,
-      email: `e2e.admin.student.${suffix}@iskolar.pup.edu.ph`,
-      password: PASSWORD,
-      program: 'BS Information Technology',
-      yearLevel: 1,
-      department: 'CCIS',
-    },
-  })
-  expect(response.ok(), await response.text()).toBeTruthy()
-  return { studentId, fullName: `E2E Admin Student ${suffix}` }
+  // The ID's 5-digit middle segment repeats every 100 seconds when derived from
+  // Date.now(); retry with a fresh random segment so repeated local runs on a
+  // shared database do not collide.
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const studentId = `2026-${String(Math.floor(Math.random() * 100_000)).padStart(5, '0')}-MN-0`
+    const response = await page.request.post(`${API_BASE}/users/students`, {
+      data: {
+        fullName: `E2E Admin Student ${suffix}`,
+        studentId,
+        email: `e2e.admin.student.${suffix}.${attempt}@iskolar.pup.edu.ph`,
+        password: PASSWORD,
+        program: 'BS Information Technology',
+        yearLevel: 1,
+        department: 'CCIS',
+      },
+    })
+    if (response.ok()) return { studentId, fullName: `E2E Admin Student ${suffix}` }
+    if (response.status() !== 409) {
+      expect(response.ok(), await response.text()).toBeTruthy()
+    }
+  }
+  throw new Error('createStudent failed: could not find a free student ID after 10 attempts')
 }
 
 test.describe('Super Admin user management', () => {

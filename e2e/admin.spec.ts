@@ -57,7 +57,8 @@ test.describe('Super Admin Flows', () => {
     await page.getByRole('button', { name: 'Create Teacher' }).click()
     await expect(page.getByText('Teacher account created')).toBeVisible()
 
-    // The new teacher appears in the teachers table
+    // The directory paginates server-side now; search for the new account.
+    await page.getByLabel('Search accounts').fill(email)
     const row = page.getByRole('row').filter({ hasText: email })
     await expect(row).toBeVisible()
     await expect(row.getByText('Active')).toBeVisible()

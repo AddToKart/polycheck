@@ -115,6 +115,7 @@ test.describe('Auth & Session', () => {
       'System Reports',
       'Audit Log',
       'Server Status',
+      'Assistant',
       'Institution Settings',
       'Global Search',
     ])
