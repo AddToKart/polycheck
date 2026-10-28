@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Optional } from '@nestjs/common'
-import type { AdminOverview, AdminOverviewHealth, AuditLogEntry } from '@polycheck/shared'
+import type { AdminOverview, AdminOverviewHealth, AuditLogEntry, DashboardOverview } from '@polycheck/shared'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { parseIsoDate } from '../common/utils/iso-date'
@@ -153,7 +153,10 @@ export class DashboardService {
     }))
   }
 
-  async overview(user: RequestUser, requested: Pick<ReportFilters, 'startDate' | 'endDate'> = {}) {
+  async overview(
+    user: RequestUser,
+    requested: Pick<ReportFilters, 'startDate' | 'endDate'> = {},
+  ): Promise<DashboardOverview> {
     const range = this.resolveDateRange(requested.startDate, requested.endDate, DASHBOARD_RANGE_DAYS, 7)
     const sessionScope = this.sessionScope(user)
     const recordScope = await this.recordScope(user)
@@ -198,16 +201,23 @@ export class DashboardService {
       _count: { _all: true },
     })
     const trendDates = new Map(trendSessions.map((session) => [session.id, session.date]))
-    const trends = new Map<string, { date: string; present: number; late: number; absent: number; disputed: number }>()
+    type TrendBucket = {
+      date: string
+      present: number
+      late: number
+      absent: number
+      disputed: number
+      excused: number
+    }
+    const trends = new Map<string, TrendBucket>()
     for (const date of this.dateSequence(range.startDate, range.endDate)) {
-      trends.set(date, { date, present: 0, late: 0, absent: 0, disputed: 0 })
+      trends.set(date, { date, present: 0, late: 0, absent: 0, disputed: 0, excused: 0 })
     }
     for (const group of trendGroups) {
       const date = trendDates.get(group.sessionId)
-      // The DashboardOverview trend contract only carries present/late/absent/
-      // disputed. Excused (like pending) is a non-counted lifecycle state and
-      // must not produce NaN by indexing an absent bucket.
-      if (!date || group.status === 'pending' || group.status === 'excused') continue
+      // Pending stays out of the trend stacks (totals already expose it);
+      // every other status maps to its contract bucket, excused included.
+      if (!date || group.status === 'pending') continue
       trends.get(date)![group.status] += group._count._all
     }
     return {

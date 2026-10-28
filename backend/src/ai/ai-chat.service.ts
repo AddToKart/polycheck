@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   HttpException,
   HttpStatus,
@@ -39,6 +40,7 @@ const MAX_THREAD_MESSAGES = 30
 const HISTORY_MESSAGE_LIMIT = 20
 const MAX_TOOL_ITERATIONS = 4
 const RUN_BUDGET_MS = 60_000
+const RUN_LOCK_TTL_SECONDS = 180
 const DAILY_MESSAGE_LIMIT = 100
 const ERROR_TEXT = 'The assistant could not complete that request.'
 
@@ -92,33 +94,54 @@ export class AiChatService {
       if (lastUserIndex === -1) throw new BadRequestException('Nothing to regenerate')
       // Regeneration replaces the previous assistant turn rather than duplicating the user message.
       thread.messages = thread.messages.slice(0, lastUserIndex + 1)
-    } else {
-      thread.messages.push({
-        id: randomUUID(),
-        threadId: thread.id,
-        role: 'user',
-        content: input.message,
-        createdAt: now,
-      })
     }
 
-    thread.messages.push({
-      id: messageId,
-      threadId: thread.id,
-      role: 'assistant',
-      content: '',
-      createdAt: now,
-    })
-    thread.messages = thread.messages.slice(-MAX_THREAD_MESSAGES)
-    thread.updatedAt = now
-    await this.saveThread(thread)
+    // One in-flight reply per conversation. The lock is acquired before the
+    // thread is mutated so a rejected send cannot leave a dangling placeholder
+    // turn behind, and it is owned by this request's token so a delayed release
+    // can never clear a lock another send has since acquired.
+    const lockKey = this.runLockKey(thread.id)
+    const lockToken = await this.redis.acquireLock(lockKey, RUN_LOCK_TTL_SECONDS)
+    if (!lockToken) {
+      throw new ConflictException('A reply is already being drafted for this conversation')
+    }
 
-    void this.run(user, thread, messageId).catch((error) => {
+    try {
+      if (!regenerate) {
+        thread.messages.push({
+          id: randomUUID(),
+          threadId: thread.id,
+          role: 'user',
+          content: input.message,
+          createdAt: now,
+        })
+      }
+
+      thread.messages.push({
+        id: messageId,
+        threadId: thread.id,
+        role: 'assistant',
+        content: '',
+        createdAt: now,
+      })
+      thread.messages = thread.messages.slice(-MAX_THREAD_MESSAGES)
+      thread.updatedAt = now
+      await this.saveThread(thread)
+    } catch (error) {
+      await this.releaseRunLock(lockKey, lockToken)
+      throw error
+    }
+
+    void this.run(user, thread, messageId, lockKey, lockToken).catch(async (error) => {
       this.logger.error(
         `AI chat run escaped its error boundary for thread ${thread.id}: ${
           error instanceof Error ? error.message : 'unknown error'
         }`,
       )
+      // `run` releases the lock in its own finally; releasing again here only
+      // covers a synchronous throw before that boundary and is a no-op unless
+      // this request still owns the lock.
+      await this.releaseRunLock(lockKey, lockToken)
     })
 
     return { threadId: thread.id, messageId }
@@ -179,15 +202,22 @@ export class AiChatService {
     if (!allowed) throw new HttpException('Daily assistant limit reached', HttpStatus.TOO_MANY_REQUESTS)
   }
 
-  private async run(user: RequestUser, thread: StoredAiThread, messageId: string): Promise<void> {
+  private async run(
+    user: RequestUser,
+    thread: StoredAiThread,
+    messageId: string,
+    lockKey: string,
+    lockToken: string,
+  ): Promise<void> {
     const invocations: AiToolInvocationSummary[] = []
     const attachments = new Map<string, AiChatAttachment>()
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), RUN_BUDGET_MS)
-    timer.unref?.()
     let model = 'unknown'
+    let timer: ReturnType<typeof setTimeout> | undefined
 
     try {
+      timer = setTimeout(() => controller.abort(), RUN_BUDGET_MS)
+      timer.unref?.()
       const capabilities = await this.provider.describe(user)
       if (capabilities.policyBlocked) {
         throw new ForbiddenException(capabilities.reason ?? 'The AI assistant has been disabled by your administrator.')
@@ -257,7 +287,24 @@ export class AiChatService {
       })
       await this.audit.recordChatRun(user, thread.id, 'failed', { model, toolCount: invocations.length })
     } finally {
-      clearTimeout(timer)
+      if (timer) clearTimeout(timer)
+      // Covers success, provider failure, timeouts, and escaped errors alike.
+      await this.releaseRunLock(lockKey, lockToken)
+    }
+  }
+
+  /**
+   * Best-effort release: the lock carries a TTL, so a failed release degrades to
+   * a short 409 window rather than a permanently stuck conversation. The
+   * ownership token makes a late release from a previous run harmless.
+   */
+  private async releaseRunLock(lockKey: string, lockToken: string) {
+    try {
+      await this.redis.releaseLock(lockKey, lockToken)
+    } catch (error) {
+      this.logger.warn(
+        `Could not release the AI run lock ${lockKey}: ${error instanceof Error ? error.message : 'unknown error'}`,
+      )
     }
   }
 
@@ -483,6 +530,10 @@ export class AiChatService {
 
   private threadKey(threadId: string) {
     return `ai:thread:${threadId}`
+  }
+
+  private runLockKey(threadId: string) {
+    return `ai:run:${threadId}`
   }
 
   private threadIndexKey(userId: string) {

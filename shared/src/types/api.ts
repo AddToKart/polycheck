@@ -203,6 +203,7 @@ export interface DashboardOverview {
     late: number
     absent: number
     disputed: number
+    excused: number
   }>
   recentAttendance: Array<{
     id: string

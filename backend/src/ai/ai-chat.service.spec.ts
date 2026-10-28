@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   HttpException,
   NotFoundException,
@@ -23,6 +24,8 @@ const masterListAttachment: AiChatAttachment = {
 
 function makeChat() {
   const store = new Map<string, unknown>()
+  const locks = new Map<string, string>()
+  let lockSequence = 0
   const redis = {
     getJson: jest.fn(async (key: string) => (store.has(key) ? structuredClone(store.get(key)) : null)),
     setJson: jest.fn(async (key: string, value: unknown) => {
@@ -34,6 +37,17 @@ function makeChat() {
       return true
     }),
     consumeRateLimit: jest.fn().mockResolvedValue(true),
+    acquireLock: jest.fn(async (key: string) => {
+      if (locks.has(key)) return null
+      const token = `lock-owner-${++lockSequence}`
+      locks.set(key, token)
+      return token
+    }),
+    releaseLock: jest.fn(async (key: string, ownershipToken: string) => {
+      if (locks.get(key) !== ownershipToken) return false
+      locks.delete(key)
+      return true
+    }),
   }
   const provider = {
     describe: jest.fn().mockResolvedValue({ enabled: true, model: 'test-model', maxMessageChars: 2_000 }),
@@ -61,7 +75,16 @@ function makeChat() {
     audit as never,
     config as never,
   )
-  return { service, store, redis, provider, registry, stream, audit, config }
+  return { service, store, locks, redis, provider, registry, stream, audit, config }
+}
+
+async function waitFor(predicate: () => boolean, description: string, timeoutMs = 2_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (predicate()) return
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+  throw new Error(`Timed out waiting for ${description}`)
 }
 
 function waitForDone(stream: { emitToThread: jest.Mock }) {
@@ -509,7 +532,7 @@ describe('AiChatService', () => {
   })
 
   it('requires a thread and a user turn to regenerate', async () => {
-    const { service, store } = makeChat()
+    const { service, store, locks } = makeChat()
 
     await expect(service.start(teacher as never, { message: 'retry', regenerate: true })).rejects.toBeInstanceOf(
       BadRequestException,
@@ -529,5 +552,121 @@ describe('AiChatService', () => {
     ).rejects.toThrow('Nothing to regenerate')
 
     expect(store.get('ai:thread:empty-thread')).toMatchObject({ messages: [] })
+    expect(locks.size).toBe(0)
+  })
+
+  describe('per-thread send lock', () => {
+    it('rejects a second send while a reply is being drafted for the same conversation', async () => {
+      const { service, provider, stream, store, redis, locks } = makeChat()
+      let releaseChat: (() => void) | undefined
+      provider.chat.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            releaseChat = () => resolve({ content: 'Reply', toolCalls: [] })
+          }),
+      )
+      const done = waitForDone(stream)
+
+      const first = await service.start(teacher as never, { message: 'first' })
+      await waitFor(() => locks.has(`ai:run:${first.threadId}`), 'the first run lock')
+
+      let error: unknown
+      try {
+        await service.start(teacher as never, { message: 'second', threadId: first.threadId })
+      } catch (caught) {
+        error = caught
+      }
+
+      expect(error).toBeInstanceOf(ConflictException)
+      expect((error as ConflictException).getStatus()).toBe(409)
+      expect((error as ConflictException).message).toBe('A reply is already being drafted for this conversation')
+      // The rejected send must not leave a dangling user/assistant turn behind.
+      const duringConflict = store.get(`ai:thread:${first.threadId}`) as { messages: AiChatMessage[] }
+      expect(duringConflict.messages).toHaveLength(2)
+
+      releaseChat?.()
+      await done
+      await waitFor(() => !locks.has(`ai:run:${first.threadId}`), 'the first run lock release')
+      expect(redis.releaseLock).toHaveBeenCalledWith(`ai:run:${first.threadId}`, expect.any(String))
+    })
+
+    it('releases the lock after a failed run so the same conversation can be retried', async () => {
+      const { service, provider, stream, redis, locks } = makeChat()
+      provider.chat.mockRejectedValueOnce(new Error('provider down'))
+      const failed = waitForError(stream)
+
+      const first = await service.start(teacher as never, { message: 'hello' })
+      await failed
+      await waitFor(() => !locks.has(`ai:run:${first.threadId}`), 'the failed run lock release')
+      expect(redis.releaseLock).toHaveBeenCalledWith(`ai:run:${first.threadId}`, expect.any(String))
+
+      const done = waitForDone(stream)
+      const retry = await service.start(teacher as never, { message: 'try again', threadId: first.threadId })
+      await done
+
+      expect(retry.threadId).toBe(first.threadId)
+      await waitFor(() => !locks.has(`ai:run:${first.threadId}`), 'the retry lock release')
+    })
+
+    it('does not block sends on other conversations', async () => {
+      const { service, provider, locks } = makeChat()
+      let releaseFirst: (() => void) | undefined
+      provider.chat
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              releaseFirst = () => resolve({ content: 'First reply', toolCalls: [] })
+            }),
+        )
+        .mockResolvedValue({ content: 'Second reply', toolCalls: [] })
+
+      const first = await service.start(teacher as never, { message: 'first' })
+      const second = await service.start(teacher as never, { message: 'second' })
+
+      expect(second.threadId).not.toBe(first.threadId)
+      await waitFor(() => !locks.has(`ai:run:${second.threadId}`), 'the second run lock release')
+      expect(locks.get(`ai:run:${first.threadId}`)).toBeDefined()
+
+      releaseFirst?.()
+      await waitFor(() => !locks.has(`ai:run:${first.threadId}`), 'the first run lock release')
+    })
+
+    it('applies the same lock to regenerate requests', async () => {
+      const { service, provider, stream, store, locks } = makeChat()
+      const firstDone = waitForDone(stream)
+      const created = await service.start(teacher as never, { message: 'original question' })
+      await firstDone
+      await waitFor(() => !locks.has(`ai:run:${created.threadId}`), 'the initial run lock release')
+
+      let releaseRegenerate: (() => void) | undefined
+      provider.chat.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            releaseRegenerate = () => resolve({ content: 'Fresh reply', toolCalls: [] })
+          }),
+      )
+      const regeneratedDone = waitForDone(stream)
+      const regenerated = await service.start(teacher as never, {
+        message: 'original question',
+        threadId: created.threadId,
+        regenerate: true,
+      })
+
+      await expect(
+        service.start(teacher as never, {
+          message: 'original question',
+          threadId: created.threadId,
+          regenerate: true,
+        }),
+      ).rejects.toBeInstanceOf(ConflictException)
+
+      releaseRegenerate?.()
+      await regeneratedDone
+      await waitFor(() => !locks.has(`ai:run:${created.threadId}`), 'the regenerate lock release')
+
+      expect(regenerated.threadId).toBe(created.threadId)
+      const stored = store.get(`ai:thread:${created.threadId}`) as { messages: AiChatMessage[] }
+      expect(stored.messages.map((message) => message.role)).toEqual(['user', 'assistant'])
+    })
   })
 })

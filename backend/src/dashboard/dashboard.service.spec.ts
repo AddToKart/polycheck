@@ -231,7 +231,11 @@ describe('DashboardService', () => {
       attendanceRecord: {
         count: jest.fn().mockResolvedValue(3),
         findMany: jest.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([]),
-        groupBy: jest.fn().mockResolvedValue([{ sessionId: 'session-1', status: 'present', _count: { _all: 12 } }]),
+        groupBy: jest.fn().mockResolvedValue([
+          { sessionId: 'session-1', status: 'present', _count: { _all: 12 } },
+          { sessionId: 'session-1', status: 'excused', _count: { _all: 2 } },
+          { sessionId: 'session-1', status: 'pending', _count: { _all: 5 } },
+        ]),
       },
     }
     const service = new DashboardService(prisma as never)
@@ -254,7 +258,50 @@ describe('DashboardService', () => {
     expect(prisma.attendanceRecord.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({ by: ['sessionId', 'status'], _count: { _all: true } }),
     )
-    expect(result.trends[0]).toEqual(expect.objectContaining({ date: '2026-07-14', present: 12 }))
+    expect(result.trends[0]).toEqual({
+      date: '2026-07-14',
+      present: 12,
+      late: 0,
+      absent: 0,
+      disputed: 0,
+      excused: 2,
+    })
+  })
+
+  it('counts excused attendance per day and emits zero buckets for empty days', async () => {
+    const prisma = {
+      section: {
+        count: jest.fn().mockResolvedValue(1),
+        groupBy: jest.fn().mockResolvedValue([{ subjectId: 'subject-1' }]),
+      },
+      enrollment: { groupBy: jest.fn().mockResolvedValue([]) },
+      session: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'session-14', date: '2026-07-14' },
+          { id: 'session-16', date: '2026-07-16' },
+        ]),
+      },
+      attendanceRecord: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
+        groupBy: jest.fn().mockResolvedValue([
+          { sessionId: 'session-14', status: 'present', _count: { _all: 10 } },
+          { sessionId: 'session-14', status: 'excused', _count: { _all: 4 } },
+          { sessionId: 'session-14', status: 'pending', _count: { _all: 3 } },
+          { sessionId: 'session-16', status: 'excused', _count: { _all: 1 } },
+        ]),
+      },
+    }
+    const service = new DashboardService(prisma as never)
+
+    const result = await service.overview(teacher, { startDate: '2026-07-14', endDate: '2026-07-16' })
+
+    expect(result.trends).toEqual([
+      { date: '2026-07-14', present: 10, late: 0, absent: 0, disputed: 0, excused: 4 },
+      { date: '2026-07-15', present: 0, late: 0, absent: 0, disputed: 0, excused: 0 },
+      { date: '2026-07-16', present: 0, late: 0, absent: 0, disputed: 0, excused: 1 },
+    ])
   })
 
   it('uses the Manila campus day for dashboard counts and default ranges', async () => {
