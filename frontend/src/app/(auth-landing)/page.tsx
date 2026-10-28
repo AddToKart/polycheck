@@ -12,7 +12,6 @@ export default function HomePage() {
     setExitingRoute(route)
     setTimeout(() => {
       router.push(route)
-      setExitingRoute(null)
     }, 280) // Snappy 280ms delay
   }
 

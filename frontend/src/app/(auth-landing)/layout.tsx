@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { ArrowLeft } from 'lucide-react'
@@ -45,12 +45,15 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
   const isFacultyLogin = pathname === '/login/faculty'
   const isLogin = isStudentLogin || isFacultyLogin
 
+  useEffect(() => {
+    setExitingRoute(null)
+  }, [pathname])
+
   const handleBack = (e: React.MouseEvent) => {
     e.preventDefault()
     setExitingRoute('/')
     setTimeout(() => {
       router.push('/')
-      setExitingRoute(null)
     }, 280) // Snappy 280ms delay
   }
 
