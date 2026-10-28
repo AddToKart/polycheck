@@ -303,7 +303,7 @@ export default function FacultyExcusesScreen() {
                     onPress={() => setSelectedRecord(null)}
                     className="h-11 w-11 items-center justify-center rounded-full bg-zinc-100 dark:bg-white/10"
                   >
-                    <MaterialIcons name="close" size={21} color={isDark ? '#FFFFFF' : pupColors.maroonDark} />
+                    <MaterialIcons name="close" size={21} color={isDark ? pupColors.white : pupColors.maroonDark} />
                   </Pressable>
                 </View>
 
@@ -338,7 +338,7 @@ export default function FacultyExcusesScreen() {
                       value={reviewNote}
                       onChangeText={setReviewNote}
                       placeholder="Explain the decision for the audit trail."
-                      placeholderTextColor={isDark ? pupColors.muted : pupColors.mutedLight}
+                      placeholderTextColor={isDark ? pupColors.mutedLight : pupColors.muted}
                       maxLength={500}
                       multiline
                     />

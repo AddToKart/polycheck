@@ -51,7 +51,7 @@ const ReportSelect = ({ label, value, placeholder, options, open, onToggle, onSe
         <MaterialIcons name={open ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={22} color={isDark ? pupColors.golden : pupColors.maroon} />
       </Pressable>
       {open ? (
-        <View className="mt-2 overflow-hidden rounded-2xl border border-line bg-white dark:border-line-dark dark:bg-[#1A1517]">
+        <View className="mt-2 overflow-hidden rounded-2xl border border-line bg-white dark:border-line-dark dark:bg-surface-dark">
           <Pressable accessibilityRole="button" onPress={() => onSelect('')} className="min-h-12 justify-center border-b border-line px-4 dark:border-line-dark">
             <Text className={`font-sans-semibold text-sm ${value ? 'text-ink dark:text-white' : 'text-maroon dark:text-golden'}`}>{placeholder}</Text>
           </Pressable>

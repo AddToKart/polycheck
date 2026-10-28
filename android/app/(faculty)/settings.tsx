@@ -196,9 +196,9 @@ export default function InstitutionSettingsScreen() {
   const roleSwitchesDisabled = areAiRoleSwitchesDisabled(values)
   const activeTabSaveable = isTabSaveable(activeTab, values)
   const statusIconColor = assistantStatus.tone === 'ready'
-    ? isDark ? '#34D399' : '#047857'
+    ? isDark ? pupColors.successLight : pupColors.success
     : assistantStatus.tone === 'warning'
-      ? isDark ? '#FCD34D' : '#B45309'
+      ? isDark ? pupColors.warningLight : pupColors.warning
       : isDark ? pupColors.mutedLight : pupColors.muted
 
   const renderField = (field: SettingFieldDefinition) => (
@@ -241,13 +241,13 @@ export default function InstitutionSettingsScreen() {
 
       {loading ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color={pupColors.maroon} />
+          <ActivityIndicator size="large" color={isDark ? pupColors.golden : pupColors.maroon} />
         </View>
       ) : loadError ? (
         <View className="flex-1 justify-center px-4">
           <CampusCard>
             <View className="mb-4 h-12 w-12 items-center justify-center bg-red-50 dark:bg-red-950/30">
-              <MaterialIcons name="cloud-off" size={24} color={isDark ? '#FCA5A5' : '#B91C1C'} />
+              <MaterialIcons name="cloud-off" size={24} color={isDark ? pupColors.dangerLight : pupColors.dangerDeep} />
             </View>
             <Text className="font-sans-bold text-lg text-ink dark:text-white">Unable to load settings</Text>
             <Text accessibilityLiveRegion="polite" className="mt-2 font-sans text-sm leading-5 text-muted dark:text-zinc-400">
@@ -288,7 +288,7 @@ export default function InstitutionSettingsScreen() {
 
           {!canEdit ? (
             <View className="mx-4 mt-3 flex-row items-start gap-2 border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-800 dark:bg-amber-950/20">
-              <MaterialIcons name="lock-outline" size={15} color={isDark ? '#FCD34D' : '#B45309'} style={{ marginTop: 2 }} />
+              <MaterialIcons name="lock-outline" size={15} color={isDark ? pupColors.warningLight : pupColors.warning} style={{ marginTop: 2 }} />
               <Text className="flex-1 font-sans text-[11px] leading-5 text-amber-800 dark:text-amber-300">
                 Department administrators have read-only access. An institution administrator must change campus-wide defaults.
               </Text>

@@ -30,24 +30,27 @@ import {
   type AdminHealthTone,
 } from './super-admin-dashboard-helpers'
 
-const healthPalette: Record<AdminHealthTone, { icon: keyof typeof MaterialIcons.glyphMap; iconColor: string; iconBg: string; pill: string; pillText: string }> = {
+const healthPalette: Record<AdminHealthTone, { icon: keyof typeof MaterialIcons.glyphMap; iconColor: string; iconColorDark: string; iconBg: string; pill: string; pillText: string }> = {
   healthy: {
     icon: 'check-circle',
-    iconColor: '#047857',
+    iconColor: pupColors.success,
+    iconColorDark: pupColors.successLight,
     iconBg: 'bg-emerald-50 dark:bg-emerald-950/40',
     pill: 'border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30',
     pillText: 'text-emerald-700 dark:text-emerald-300',
   },
   degraded: {
     icon: 'warning',
-    iconColor: '#B45309',
+    iconColor: pupColors.warning,
+    iconColorDark: pupColors.warningLight,
     iconBg: 'bg-amber-50 dark:bg-amber-950/40',
     pill: 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30',
     pillText: 'text-amber-700 dark:text-amber-300',
   },
   unavailable: {
     icon: 'error-outline',
-    iconColor: '#DC2626',
+    iconColor: pupColors.danger,
+    iconColorDark: pupColors.dangerLight,
     iconBg: 'bg-red-50 dark:bg-red-950/40',
     pill: 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30',
     pillText: 'text-red-700 dark:text-red-300',
@@ -55,9 +58,9 @@ const healthPalette: Record<AdminHealthTone, { icon: keyof typeof MaterialIcons.
 }
 
 const outcomePalette = {
-  success: { icon: 'check-circle' as const, iconColor: '#047857', iconBg: 'bg-emerald-50 dark:bg-emerald-950/40', pill: 'border-emerald-200 dark:border-emerald-800', text: 'text-emerald-700 dark:text-emerald-300' },
-  error: { icon: 'error' as const, iconColor: '#DC2626', iconBg: 'bg-red-50 dark:bg-red-950/40', pill: 'border-red-200 dark:border-red-800', text: 'text-red-700 dark:text-red-300' },
-  neutral: { icon: 'history' as const, iconColor: pupColors.maroon, iconBg: 'bg-maroon/5 dark:bg-golden/10', pill: 'border-line dark:border-line-dark', text: 'text-muted dark:text-zinc-300' },
+  success: { icon: 'check-circle' as const, iconColor: pupColors.success, iconColorDark: pupColors.successLight, iconBg: 'bg-emerald-50 dark:bg-emerald-950/40', pill: 'border-emerald-200 dark:border-emerald-800', text: 'text-emerald-700 dark:text-emerald-300' },
+  error: { icon: 'error' as const, iconColor: pupColors.danger, iconColorDark: pupColors.dangerLight, iconBg: 'bg-red-50 dark:bg-red-950/40', pill: 'border-red-200 dark:border-red-800', text: 'text-red-700 dark:text-red-300' },
+  neutral: { icon: 'history' as const, iconColor: pupColors.maroon, iconColorDark: pupColors.golden, iconBg: 'bg-maroon/5 dark:bg-golden/10', pill: 'border-line dark:border-line-dark', text: 'text-muted dark:text-zinc-300' },
 }
 
 const AccountSplitCard = ({ label, icon, split }: { label: string; icon: keyof typeof MaterialIcons.glyphMap; split: AccountSplit }) => {
@@ -83,17 +86,20 @@ const AccountSplitCard = ({ label, icon, split }: { label: string; icon: keyof t
   )
 }
 
-const HealthRow = ({ label, ok }: { label: string; ok: boolean }) => (
-  <View className="flex-row items-center justify-between border-t border-line py-2 dark:border-line-dark">
-    <Text className="font-sans text-xs text-muted dark:text-zinc-400">{label}</Text>
-    <View className="flex-row items-center gap-1.5">
-      <MaterialIcons name={ok ? 'check-circle' : 'cancel'} size={15} color={ok ? '#047857' : '#DC2626'} />
-      <Text className={`font-sans-bold text-[10px] uppercase tracking-wider ${ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
-        {ok ? 'Responding' : 'Unavailable'}
-      </Text>
+const HealthRow = ({ label, ok }: { label: string; ok: boolean }) => {
+  const { isDark } = useTheme()
+  return (
+    <View className="flex-row items-center justify-between border-t border-line py-2 dark:border-line-dark">
+      <Text className="font-sans text-xs text-muted dark:text-zinc-400">{label}</Text>
+      <View className="flex-row items-center gap-1.5">
+        <MaterialIcons name={ok ? 'check-circle' : 'cancel'} size={15} color={ok ? isDark ? pupColors.successLight : pupColors.success : isDark ? pupColors.dangerLight : pupColors.danger} />
+        <Text className={`font-sans-bold text-[10px] uppercase tracking-wider ${ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+          {ok ? 'Responding' : 'Unavailable'}
+        </Text>
+      </View>
     </View>
-  </View>
-)
+  )
+}
 
 const QuickAction = ({ icon, label, detail, onPress }: { icon: keyof typeof MaterialIcons.glyphMap; label: string; detail: string; onPress: () => void }) => {
   const { isDark } = useTheme()
@@ -189,7 +195,7 @@ export function SuperAdminDashboard({ user }: { user: User }) {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadOverview('refresh')} tintColor={isDark ? pupColors.golden : pupColors.maroon} />}
         >
           {error && !overview ? (
-            <CampusCard className="mb-5 border-l-red-600 p-4">
+            <CampusCard className="mb-5 border-l-red-600 border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/20">
               <Text accessibilityLiveRegion="assertive" className="font-sans-bold text-sm text-red-900 dark:text-red-200">Unable to load the administrator overview</Text>
               <Text className="mt-1 font-sans text-xs leading-5 text-red-700 dark:text-red-300">{error}</Text>
               <CampusButton label="Try again" icon="refresh" onPress={() => void loadOverview('initial')} className="mt-4" />
@@ -221,7 +227,7 @@ export function SuperAdminDashboard({ user }: { user: User }) {
           <CampusCard className="mb-7 p-4" testID="super-admin-health-tile">
             <View className="flex-row items-start gap-3">
               <View className={`h-11 w-11 items-center justify-center ${healthStyle.iconBg}`}>
-                <MaterialIcons name={healthStyle.icon} size={22} color={healthStyle.iconColor} />
+                <MaterialIcons name={healthStyle.icon} size={22} color={isDark ? healthStyle.iconColorDark : healthStyle.iconColor} />
               </View>
               <View className="flex-1">
                 <Text className="font-sans-bold text-base text-ink dark:text-white">{health.label}</Text>
@@ -256,7 +262,7 @@ export function SuperAdminDashboard({ user }: { user: User }) {
                   >
                     <View className="flex-row items-start gap-3">
                       <View className={`h-10 w-10 items-center justify-center ${palette.iconBg}`}>
-                        <MaterialIcons name={palette.icon} size={19} color={outcome.tone === 'neutral' && isDark ? pupColors.golden : palette.iconColor} />
+                        <MaterialIcons name={palette.icon} size={19} color={isDark ? palette.iconColorDark : palette.iconColor} />
                       </View>
                       <View className="flex-1">
                         <Text className="font-sans-bold text-sm text-ink dark:text-white" numberOfLines={2}>{humanizeAuditAction(entry.action)}</Text>

@@ -122,7 +122,7 @@ export function AtRiskWidget({
                   <View className={`rounded-none border px-2 py-1 ${meta.classes}`}>
                     <Text className={`font-sans-bold text-[9px] uppercase tracking-wider ${meta.textClasses}`}>{meta.label}</Text>
                   </View>
-                  <MaterialIcons name="chevron-right" size={19} color={isDark ? '#A1A1AA' : '#746C6E'} />
+                  <MaterialIcons name="chevron-right" size={19} color={isDark ? pupColors.mutedLight : pupColors.muted} />
                 </Pressable>
               )
             })}

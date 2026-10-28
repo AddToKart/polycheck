@@ -80,13 +80,14 @@ const summaryStatus = [
 ]
 
 export const AttendanceSummaryCard = ({ summary, onPress }: { summary: AttendanceReportSummary; onPress?: () => void }) => {
+  const { isDark } = useTheme()
   const total = summary.present + summary.late + summary.absent + summary.pending + summary.disputed + summary.excused
   const attendanceRate = total ? Math.round((summary.present / total) * 100) : 0
   return (
     <CampusCard onPress={onPress} accessibilityLabel={onPress ? `Open ${summary.subjectName} attendance` : undefined} className="p-4">
       <View className="flex-row items-start justify-between gap-3">
         <View className="flex-1"><Text className="font-sans-bold text-base text-ink dark:text-white">{summary.subjectName}</Text><Text className="mt-1 font-sans text-xs text-muted dark:text-zinc-400">{summary.totalSessions} sessions · {attendanceRate}% present</Text></View>
-        {onPress ? <MaterialIcons name="chevron-right" size={21} color="#746C6E" /> : null}
+        {onPress ? <MaterialIcons name="chevron-right" size={21} color={isDark ? pupColors.mutedLight : pupColors.muted} /> : null}
       </View>
       <View className="mt-4 h-2 flex-row overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10">
         {summaryStatus.map((status) => summary[status.key] > 0 ? (

@@ -49,3 +49,34 @@ exactly `"true"`). Local `.env` may set `true`; production tooling must set or i
 
 - `app/debug.tsx` (style-prop baseline screen) was deleted before release; do not reintroduce
   debug routes — Expo Router exposes every file route to deep links.
+
+## Wave 4 device verification runbook (notifications, excuses, filters)
+
+Wave 4 (`plan/notifications-excuse-filters-plan.md`) adds `expo-notifications`, a
+`POST_NOTIFICATIONS` permission, and a notification channel, so a **new dev client /
+EAS build is required** before testing push. JS-only screens still hot-reload.
+
+1. Build and install: `eas build --profile development --platform android` (or
+   `npx expo run:android`) on a physical device or emulator with Play Services.
+2. Permissions: sign in -> accept the Android 13+ notification prompt; verify
+   `POST_NOTIFICATIONS` appears in app settings. Denying must not crash the app.
+3. Push registration: confirm the app registers a token (`POST /notifications/push-token`)
+   when `extra.eas.projectId` exists; without FCM/EAS credentials it skips safely in debug.
+4. Notification center: bell badge increments for a seeded event (student files an excuse
+   from another session), list opens, tap deep-links to `(faculty)/excuses`, Mark all read
+   clears the badge; unread count survives a cold restart.
+5. Push delivery: background the app, trigger an excuse/decision event, verify the
+   notification arrives and tapping routes to the right screen. Check the monochrome
+   notification icon renders correctly (alpha-masked).
+6. Excuses: student requests from History (reason, description, optional photo), teacher
+   approves/rejects with a note in `(faculty)/excuses`; approve flips the record to
+   Excused and the student receives a notification.
+7. Filters: faculty attendance accepts subject/section/date presets (including deep links),
+   sessions show the section-context chip and clear action, disputes accept section/date,
+   reports accept section (and department for institution admins), student history filters
+   by subject/date/status.
+8. Small screens: verify the settings segmented tabs, filter panels, and the excuse sheet
+   keyboard behavior at 360dp width.
+
+Record results in the release ticket. CI runs typecheck + jest; Maestro flows for the
+Wave 4 journeys are tracked as a follow-up (device-dependent).

@@ -194,8 +194,8 @@ export default function SectionDetailScreen() {
 
             <View className="mb-4 min-h-14 flex-row items-center rounded-none border border-zinc-300 bg-white px-4 dark:border-zinc-700 dark:bg-surface-dark">
               <MaterialIcons name="search" size={20} color={isDark ? pupColors.golden : pupColors.maroon} />
-              <TextInput accessibilityLabel="Search enrolled students" className="h-full flex-1 px-3 font-sans text-sm text-ink dark:text-white" placeholder="Search roster by student name or ID..." placeholderTextColor={isDark ? '#71717A' : '#8A8284'} value={search} onChangeText={setSearch} />
-              {search ? <Pressable accessibilityRole="button" onPress={() => setSearch('')} className="h-10 w-10 items-center justify-center"><MaterialIcons name="close" size={18} color="#746C6E" /></Pressable> : null}
+              <TextInput accessibilityLabel="Search enrolled students" className="h-full flex-1 px-3 font-sans text-sm text-ink dark:text-white" placeholder="Search roster by student name or ID..." placeholderTextColor={isDark ? pupColors.mutedLight : pupColors.muted} value={search} onChangeText={setSearch} />
+              {search ? <Pressable accessibilityRole="button" onPress={() => setSearch('')} className="h-10 w-10 items-center justify-center"><MaterialIcons name="close" size={18} color={isDark ? pupColors.mutedLight : pupColors.muted} /></Pressable> : null}
             </View>
 
             <View className="gap-3">
@@ -213,7 +213,7 @@ export default function SectionDetailScreen() {
                         <Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">{student.studentId} · {student.program}</Text>
                       </View>
                       <Text className="font-heading text-xl text-maroon dark:text-golden">{rate}%</Text>
-                      <MaterialIcons name="chevron-right" size={20} color="#746C6E" />
+                      <MaterialIcons name="chevron-right" size={20} color={isDark ? pupColors.mutedLight : pupColors.muted} />
                     </View>
 
                     <View className="mt-3 h-2 overflow-hidden rounded-none bg-zinc-100 dark:bg-white/10">
@@ -345,7 +345,7 @@ export default function SectionDetailScreen() {
                             <Text className="font-sans-bold text-xs uppercase tracking-wider text-maroon dark:text-golden">{activePresidentPermission ? 'Revoke grant' : 'Grant 24 hours'}</Text>
                           </Pressable>
                           <Pressable accessibilityRole="button" accessibilityLabel="Remove president" onPress={() => { void api.removeSectionRole(id!, president.studentId, 'president').then(refreshRoles).catch((error) => showToast('error', 'Unable to remove role', error instanceof Error ? error.message : 'Please try again.')) }} className="h-10 w-10 items-center justify-center rounded-none border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30">
-                            <MaterialIcons name="delete-outline" size={18} color="#DC2626" />
+                            <MaterialIcons name="delete-outline" size={18} color={isDark ? pupColors.dangerLight : pupColors.danger} />
                           </Pressable>
                         </View>
                       </View>
@@ -369,7 +369,7 @@ export default function SectionDetailScreen() {
                         <View key={role.id} className="min-h-10 flex-row items-center gap-2 rounded-none border border-zinc-300 bg-zinc-50 pl-3 pr-1 dark:border-zinc-700 dark:bg-white/5">
                           <Text className="font-sans-bold text-xs text-ink dark:text-white">{role.studentName}</Text>
                           <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${role.studentName} as QAC`} onPress={() => { void api.removeSectionRole(id!, role.studentId, 'qac').then(refreshRoles).catch((error) => showToast('error', 'Unable to remove role', error instanceof Error ? error.message : 'Please try again.')) }} className="h-8 w-8 items-center justify-center">
-                            <MaterialIcons name="close" size={16} color="#DC2626" />
+                            <MaterialIcons name="close" size={16} color={isDark ? pupColors.dangerLight : pupColors.danger} />
                           </Pressable>
                         </View>
                       ))}
@@ -400,7 +400,7 @@ export default function SectionDetailScreen() {
                       />
                       <View className="min-h-14 flex-row items-center rounded-none border border-zinc-300 bg-zinc-50 px-4 dark:border-zinc-700 dark:bg-white/5">
                         <MaterialIcons name="search" size={20} color={isDark ? pupColors.golden : pupColors.maroon} />
-                        <TextInput accessibilityLabel="Search students to enroll" className="h-full flex-1 px-3 font-sans text-sm text-ink dark:text-white" placeholder="Name or student number" placeholderTextColor={isDark ? '#71717A' : '#8A8284'} value={enrollSearch} onChangeText={setEnrollSearch} />
+                        <TextInput accessibilityLabel="Search students to enroll" className="h-full flex-1 px-3 font-sans text-sm text-ink dark:text-white" placeholder="Name or student number" placeholderTextColor={isDark ? pupColors.mutedLight : pupColors.muted} value={enrollSearch} onChangeText={setEnrollSearch} />
                       </View>
                       <View className="mt-3 gap-2">
                         {enrollCandidates.slice(0, 6).map((student) => (
@@ -431,8 +431,17 @@ export default function SectionDetailScreen() {
               eyebrow="Class schedule"
               title="Section sessions"
               actionLabel={isTeacher ? 'Create Session' : undefined}
-              onAction={isTeacher ? () => router.push('/(faculty)/sessions/create') : undefined}
+              onAction={isTeacher ? () => router.push({ pathname: '/(faculty)/sessions/create', params: { sectionId: section.id } }) : undefined}
             />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="View every session for this section"
+              onPress={() => router.push({ pathname: '/(faculty)/sessions', params: { sectionId: section.id } })}
+              className="mb-4 min-h-11 flex-row items-center gap-2 self-start rounded-none border border-maroon/30 bg-maroon/5 px-3 dark:border-golden/30 dark:bg-golden/10"
+            >
+              <MaterialIcons name="filter-alt" size={16} color={isDark ? pupColors.golden : pupColors.maroon} />
+              <Text className="font-sans-bold text-[10px] uppercase tracking-wider text-maroon dark:text-golden">View in all sessions</Text>
+            </Pressable>
             <View className="gap-3">
               {sessions.map((session) => (
                 <CampusCard key={session.id} onPress={() => router.push({ pathname: '/(faculty)/sessions/[id]', params: { id: session.id } })} accessibilityLabel={`Open session on ${session.date}`} className="p-4">
@@ -447,7 +456,7 @@ export default function SectionDetailScreen() {
                     <View className={`rounded-none border px-2.5 py-1 ${session.isActive ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40' : 'border-line bg-zinc-50 text-muted dark:border-line-dark dark:bg-white/5'}`}>
                       <Text className={`font-sans-bold text-[9px] uppercase tracking-wider ${session.isActive ? 'text-emerald-800 dark:text-emerald-300' : 'text-muted dark:text-zinc-400'}`}>{session.isActive ? 'Live' : 'Ended'}</Text>
                     </View>
-                    <MaterialIcons name="chevron-right" size={20} color="#746C6E" />
+                    <MaterialIcons name="chevron-right" size={20} color={isDark ? pupColors.mutedLight : pupColors.muted} />
                   </View>
                 </CampusCard>
               ))}

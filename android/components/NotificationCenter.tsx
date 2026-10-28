@@ -183,7 +183,7 @@ export function NotificationCenter() {
             {relativeTimeLabel(notification.createdAt, now)}
           </Text>
         </View>
-        <MaterialIcons name="chevron-right" size={20} color={isDark ? '#A1A1AA' : '#746C6E'} />
+        <MaterialIcons name="chevron-right" size={20} color={isDark ? pupColors.mutedLight : pupColors.muted} />
       </Pressable>
     )
   }
@@ -210,7 +210,7 @@ export function NotificationCenter() {
         </View>
       ) : error && !notifications.length ? (
         <View className="px-4 pt-4">
-          <CampusCard className="border-l-red-600 p-4">
+          <CampusCard className="border-l-red-600 border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/20">
             <Text accessibilityLiveRegion="assertive" className="font-sans-bold text-sm text-red-900 dark:text-red-200">Unable to load notifications</Text>
             <Text className="mt-1 font-sans text-xs leading-5 text-red-700 dark:text-red-300">{error}</Text>
             <CampusButton label="Try again" icon="refresh" variant="secondary" onPress={() => { setLoading(true); void refresh('initial') }} className="mt-4" />

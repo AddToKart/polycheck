@@ -65,7 +65,7 @@ export const CampusIconButton = ({ icon, label, onPress, inverse = false, testID
         disabled && 'opacity-50',
       )}
     >
-      <MaterialIcons name={icon} size={20} color={inverse ? '#FFFFFF' : isDark ? pupColors.golden : pupColors.maroon} />
+      <MaterialIcons name={icon} size={20} color={inverse ? pupColors.white : isDark ? pupColors.golden : pupColors.maroon} />
       {badge > 0 ? (
         <View className="absolute -right-1.5 -top-1.5 min-w-5 items-center justify-center rounded-full bg-golden px-1 py-0.5">
           <Text className="font-sans-bold text-[9px] leading-3 text-maroon-dark">{badge > 99 ? '99+' : badge}</Text>
@@ -108,7 +108,7 @@ export const CampusButton = ({
   const iconColor = variant === 'secondary'
     ? isDark ? pupColors.golden : pupColors.maroon
     : variant === 'primary'
-      ? isDark ? pupColors.maroonDark : '#FFFFFF'
+      ? isDark ? pupColors.maroonDark : pupColors.white
       : pupColors.maroonDark
 
   return (
@@ -169,9 +169,9 @@ type MetricTileProps = {
 export const MetricTile = ({ label, value, icon, emphasis = 'brand', testID }: MetricTileProps) => {
   const { isDark } = useTheme()
   const colors = emphasis === 'alert'
-    ? { bg: 'bg-red-50 dark:bg-red-950/20', icon: '#DC2626', value: 'text-red-700 dark:text-red-300' }
+    ? { bg: 'bg-red-50 dark:bg-red-950/20', icon: isDark ? pupColors.dangerLight : pupColors.danger, value: 'text-red-700 dark:text-red-300' }
     : emphasis === 'neutral'
-      ? { bg: 'bg-zinc-100 dark:bg-white/5', icon: '#746C6E', value: 'text-ink dark:text-white' }
+      ? { bg: 'bg-zinc-100 dark:bg-white/5', icon: isDark ? pupColors.mutedLight : pupColors.muted, value: 'text-ink dark:text-white' }
       : { bg: 'bg-maroon/5 dark:bg-golden/10', icon: pupColors.maroon, value: 'text-maroon dark:text-golden' }
 
   return (

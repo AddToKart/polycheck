@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -15,6 +15,7 @@ import { SuperAdminDashboard } from '../../components/SuperAdminDashboard'
 import { AtRiskWidget } from '../../components/AtRiskWidget'
 import { NotificationBell } from '../../components/NotificationBell'
 import { useCampusToast } from '../../components/CampusToast'
+import { summarizeDashboardTrends, type TrendSegmentKey } from '../../lib/dashboard-trend'
 import {
   CampusButton,
   CampusCard,
@@ -34,6 +35,13 @@ const campusDateFormatter = new Intl.DateTimeFormat('en-US', {
 const campusDate = (date = new Date()) => {
   const parts = new Map(campusDateFormatter.formatToParts(date).map((part) => [part.type, part.value]))
   return `${parts.get('year')}-${parts.get('month')}-${parts.get('day')}`
+}
+
+const trendTextClasses: Record<TrendSegmentKey, string> = {
+  present: 'text-emerald-700 dark:text-emerald-300',
+  late: 'text-amber-700 dark:text-amber-300',
+  absent: 'text-red-700 dark:text-red-300',
+  excused: 'text-cyan-700 dark:text-cyan-300',
 }
 
 /**
@@ -79,6 +87,7 @@ function TeacherDashboard({ user }: { user: User }) {
 
   const sessionsToday = overview?.counts.sessionsToday ?? 0
   const pendingDisputes = overview?.counts.pendingDisputes ?? 0
+  const trend = useMemo(() => summarizeDashboardTrends(overview?.trends), [overview?.trends])
 
   const refresh = async () => {
     setRefreshing(true)
@@ -127,7 +136,7 @@ function TeacherDashboard({ user }: { user: User }) {
           >
             <View className="flex-row items-center gap-3">
               <View className="h-10 w-10 items-center justify-center rounded-none bg-red-100 dark:bg-red-900/40">
-                <MaterialIcons name="gavel" size={20} color={isDark ? '#FCA5A5' : '#B91C1C'} />
+                <MaterialIcons name="gavel" size={20} color={isDark ? pupColors.dangerLight : pupColors.dangerDeep} />
               </View>
               <View className="flex-1">
                 <Text className="font-sans-bold text-sm uppercase tracking-wider text-red-900 dark:text-red-200">
@@ -137,7 +146,7 @@ function TeacherDashboard({ user }: { user: User }) {
                   {pendingDisputes} record{pendingDisputes === 1 ? ' is' : 's are'} waiting for a decision.
                 </Text>
               </View>
-              <MaterialIcons name="arrow-forward" size={18} color={isDark ? '#FCA5A5' : '#B91C1C'} />
+              <MaterialIcons name="arrow-forward" size={18} color={isDark ? pupColors.dangerLight : pupColors.dangerDeep} />
             </View>
           </CampusCard>
         ) : null}
@@ -148,6 +157,49 @@ function TeacherDashboard({ user }: { user: User }) {
           <MetricTile label="Sessions Today" value={sessionsToday} icon="today" />
           <MetricTile label="Pending Disputes" value={pendingDisputes} icon="gavel" emphasis={pendingDisputes ? 'alert' : 'neutral'} />
         </View>
+
+        <SectionHeading
+          eyebrow="Attendance"
+          title="Attendance trend"
+          actionLabel="Details"
+          onAction={() => router.push('/(faculty)/attendance')}
+        />
+        <CampusCard className="mb-7 p-4" testID="faculty-attendance-trend">
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="flex-1">
+              <Text className="font-sans-bold text-[10px] uppercase tracking-[2px] text-muted dark:text-zinc-500">
+                {overview?.trendRange ? `${overview.trendRange.startDate} – ${overview.trendRange.endDate}` : 'Recent period'}
+              </Text>
+              <Text className="mt-1 font-sans-bold text-sm text-ink dark:text-white">
+                {trend.counted > 0
+                  ? `${trend.attendanceRate}% attended across ${trend.counted} record${trend.counted === 1 ? '' : 's'}`
+                  : 'No counted attendance in this period'}
+              </Text>
+            </View>
+            <Text className="font-sans-bold text-[10px] uppercase tracking-wider text-muted dark:text-zinc-500">
+              {trend.totals.disputed} disputed
+            </Text>
+          </View>
+          <View
+            accessibilityRole="image"
+            accessibilityLabel={`Attendance trend: ${trend.segments.map((segment) => `${segment.value} ${segment.label.toLowerCase()}`).join(', ')}`}
+            className="mt-4 h-2 w-full flex-row overflow-hidden bg-zinc-100 dark:bg-white/10"
+          >
+            {trend.segments.filter((segment) => segment.value > 0).map((segment) => (
+              <View key={segment.key} style={{ width: `${segment.percent}%`, backgroundColor: segment.color }} />
+            ))}
+          </View>
+          <View className="mt-4 flex-row flex-wrap gap-x-4 gap-y-2">
+            {trend.segments.map((segment) => (
+              <View key={segment.key} className="flex-row items-center gap-1.5">
+                <View className="h-2 w-2 rounded-full" style={{ backgroundColor: segment.color }} />
+                <Text className={`font-sans-bold text-[10px] ${trendTextClasses[segment.key]}`}>
+                  {segment.value} {segment.label}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </CampusCard>
 
         <AtRiskWidget sections={sections} refreshSignal={refreshSignal} />
 
@@ -172,7 +224,7 @@ function TeacherDashboard({ user }: { user: User }) {
                     <MaterialIcons
                       name={active ? 'radio-button-checked' : completed ? 'check-circle' : moved ? 'event-busy' : 'event'}
                       size={20}
-                      color={active ? pupColors.maroonDark : moved ? '#DC2626' : isDark ? pupColors.golden : pupColors.maroon}
+                      color={active ? pupColors.maroonDark : moved ? (isDark ? pupColors.dangerLight : pupColors.danger) : isDark ? pupColors.golden : pupColors.maroon}
                     />
                   </View>
                   <View className="flex-1">
@@ -237,7 +289,7 @@ function TeacherDashboard({ user }: { user: User }) {
                       Section {section.section} · {section.studentCount} Students
                     </Text>
                   </View>
-                  <MaterialIcons name="chevron-right" size={22} color={isDark ? '#A1A1AA' : '#746C6E'} />
+                  <MaterialIcons name="chevron-right" size={22} color={isDark ? pupColors.mutedLight : pupColors.muted} />
                 </View>
               </CampusCard>
             )

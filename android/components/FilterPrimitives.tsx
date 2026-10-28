@@ -170,7 +170,7 @@ export function FilterSelect({
                 onPress={close}
                 className="h-11 w-11 items-center justify-center rounded-full bg-zinc-100 dark:bg-white/10"
               >
-                <MaterialIcons name="close" size={20} color={isDark ? '#FFFFFF' : pupColors.maroonDark} />
+                <MaterialIcons name="close" size={20} color={isDark ? pupColors.white : pupColors.maroonDark} />
               </Pressable>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
