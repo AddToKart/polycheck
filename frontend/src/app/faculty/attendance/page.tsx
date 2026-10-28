@@ -189,11 +189,11 @@ function AttendanceOverviewContent() {
   const statCards = [
     { label: 'Total Sessions', value: totals.totalSessions, color: 'text-foreground' },
     { label: 'Present', value: totals.present, color: 'text-golden' },
-    { label: 'Late', value: totals.late, color: 'text-maroon' },
+    { label: 'Late', value: totals.late, color: 'text-maroon dark:text-red-300' },
     { label: 'Absent', value: totals.absent, color: 'text-maroon-dark dark:text-red-400' },
     { label: 'Excused', value: totals.excused ?? 0, color: 'text-maroon dark:text-golden' },
-    { label: 'Pending', value: totals.pending, color: 'text-zinc-500' },
-    { label: 'Disputed', value: totals.disputed, color: 'text-amber-600' },
+    { label: 'Pending', value: totals.pending, color: 'text-zinc-500 dark:text-zinc-400' },
+    { label: 'Disputed', value: totals.disputed, color: 'text-amber-600 dark:text-amber-400' },
   ]
 
   return (
@@ -304,7 +304,7 @@ function AttendanceOverviewContent() {
           {/* By Subject Table */}
           <div className="border border-zinc-300 dark:border-zinc-800">
             <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
                 By Subject · Click to view students
               </p>
               {loading ? (
@@ -320,11 +320,11 @@ function AttendanceOverviewContent() {
                     <th className="text-left px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Subject</th>
                     <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Sessions</th>
                     <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-golden">Present</th>
-                    <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-maroon">Late</th>
+                    <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-red-300">Late</th>
                     <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-maroon-dark dark:text-red-400">Absent</th>
                     <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">Excused</th>
-                    <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Pending</th>
-                    <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-amber-600">Disputed</th>
+                    <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Pending</th>
+                    <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400">Disputed</th>
                     <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
@@ -371,7 +371,7 @@ function AttendanceOverviewContent() {
                           <Badge variant="pending">{s.pending}</Badge>
                         </td>
                         <td className="px-4 py-4 text-center">
-                          <Badge className="bg-amber-600 text-white">{s.disputed}</Badge>
+                          <Badge className="bg-amber-600 text-white dark:bg-amber-500 dark:text-maroon-dark">{s.disputed}</Badge>
                         </td>
                         <td className="px-4 py-4 text-right">
                           <ChevronRight className="w-4 h-4 text-zinc-300 dark:text-zinc-600 group-hover:text-maroon dark:group-hover:text-golden transition-colors ml-auto" />

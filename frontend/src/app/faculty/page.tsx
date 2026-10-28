@@ -15,6 +15,8 @@ import {
   formatRelativeTime,
   summarizeAdminHealth,
 } from '@/lib/admin-overview'
+import { buildTrendSegments, stackedTrendTotal, summarizeTrends } from '@/lib/dashboard-trends'
+import { isCancellationShapedError } from '@/lib/abort-errors'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -106,7 +108,7 @@ function TeacherDashboard({ user }: { user: User }) {
         setAllSubjects(subjects)
         setTodayEvents(evs.sort((a, b) => a.startTime.localeCompare(b.startTime)))
       } catch (error) {
-        if (!cancelled) {
+        if (!cancelled && !isCancellationShapedError(error)) {
           console.error('Failed to load teacher dashboard data', error)
         }
       } finally {
@@ -129,7 +131,9 @@ function TeacherDashboard({ user }: { user: User }) {
         if (!cancelled) setOverview(nextOverview)
       })
       .catch((error) => {
-        if (!cancelled) console.error('Failed to load dashboard overview', error)
+        if (!cancelled && !isCancellationShapedError(error)) {
+          console.error('Failed to load dashboard overview', error)
+        }
       })
     return () => {
       cancelled = true
@@ -181,16 +185,9 @@ function TeacherDashboard({ user }: { user: User }) {
     { label: 'Disputes', value: overview?.counts.pendingDisputes ?? 0, icon: ClipboardList },
   ]
 
-  const periodTotals = useMemo(() => {
-    const totals = { present: 0, late: 0, absent: 0, disputed: 0 }
-    for (const day of overview?.trends ?? []) {
-      totals.present += day.present
-      totals.late += day.late
-      totals.absent += day.absent
-      totals.disputed += day.disputed
-    }
-    return totals
-  }, [overview?.trends])
+  const periodTotals = useMemo(() => summarizeTrends(overview?.trends), [overview?.trends])
+  const trendSegments = buildTrendSegments(periodTotals)
+  const stackedRecords = stackedTrendTotal(periodTotals)
   const countedRecords = periodTotals.present + periodTotals.late + periodTotals.absent
   const periodRate = countedRecords > 0 ? Math.round(((periodTotals.present + periodTotals.late) / countedRecords) * 100) : 0
 
@@ -320,34 +317,44 @@ function TeacherDashboard({ user }: { user: User }) {
             </p>
           </div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-            {periodTotals.disputed} disputed left out of the rate
+            {periodTotals.disputed} disputed · {periodTotals.excused} excused excluded from the rate
           </p>
         </div>
         <div
           className="mt-4 flex h-2 w-full overflow-hidden bg-zinc-200 dark:bg-zinc-800"
           role="img"
-          aria-label={`Attendance in this period: ${periodTotals.present} present, ${periodTotals.late} late, ${periodTotals.absent} absent`}
+          aria-label={`Attendance in this period: ${periodTotals.present} present, ${periodTotals.late} late, ${periodTotals.absent} absent, ${periodTotals.excused} excused. ${periodTotals.disputed} disputed records are excluded from the stack.`}
         >
-          {countedRecords > 0 ? (
-            <>
-              <div className="h-full bg-golden" style={{ width: `${(periodTotals.present / countedRecords) * 100}%` }} />
-              <div className="h-full bg-maroon" style={{ width: `${(periodTotals.late / countedRecords) * 100}%` }} />
-              <div className="h-full bg-maroon-dark" style={{ width: `${(periodTotals.absent / countedRecords) * 100}%` }} />
-            </>
-          ) : null}
+          {stackedRecords > 0
+            ? trendSegments.map((segment) =>
+                segment.percent > 0 ? (
+                  <div
+                    key={segment.key}
+                    className={`h-full ${segment.barClassName}`}
+                    style={{ width: `${segment.percent}%` }}
+                  />
+                ) : null,
+              )
+            : null}
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            { label: 'Present', value: periodTotals.present, className: 'text-golden' },
-            { label: 'Late', value: periodTotals.late, className: 'text-maroon' },
-            { label: 'Absent', value: periodTotals.absent, className: 'text-maroon-dark dark:text-red-400' },
-            { label: 'Disputed', value: periodTotals.disputed, className: 'text-amber-600' },
-          ].map((item) => (
-            <div key={item.label}>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">{item.label}</p>
-              <p className={`text-xl font-heading font-bold ${item.className}`}>{item.value}</p>
+        {periodTotals.excused > 0 ? (
+          <p className="mt-2 text-[10px] text-zinc-500 dark:text-zinc-400">
+            Excused records are shown in the stack but excluded from the attendance rate.
+          </p>
+        ) : null}
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {trendSegments.map((segment) => (
+            <div key={segment.key}>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">{segment.label}</p>
+              <p className={`text-xl font-heading font-bold ${segment.textClassName}`}>{segment.value}</p>
             </div>
           ))}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Disputed</p>
+            <p className="text-xl font-heading font-bold text-amber-600 dark:text-amber-400">
+              {periodTotals.disputed}
+            </p>
+          </div>
         </div>
       </div>
 

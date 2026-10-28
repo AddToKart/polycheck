@@ -326,7 +326,7 @@ function DisputesContent() {
         <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-300/80 dark:border-zinc-800">
           <div>
             <h1 className="text-xl font-heading font-bold text-maroon-dark dark:text-golden">Disputed Records</h1>
-            <p className="text-xs text-gray-400 dark:text-gray-500">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
               {pendingCount} pending, {resolvedCount} resolved
             </p>
           </div>
@@ -420,7 +420,7 @@ function DisputesContent() {
                 <CardContent className="p-12 text-center">
                   <CheckCircle className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mx-auto mb-4" />
                   <h2 className="text-lg font-heading font-bold dark:text-white mb-2">No {activeTab} disputes found</h2>
-                  <p className="text-sm text-gray-400 dark:text-gray-500">
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
                     Try adjusting your filters or search keywords.
                   </p>
                 </CardContent>
@@ -600,28 +600,28 @@ function DisputesContent() {
                     </div>
                   )}
                   <div className="flex gap-2 items-start">
-                    <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-16 pt-0.5">Reason:</span>
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-16 pt-0.5">Reason:</span>
                     <div className="space-y-1">
                       <span className="text-maroon dark:text-golden font-bold block">{selectedRecord.disputeReason ? DISPUTE_LABELS[selectedRecord.disputeReason] : 'Unknown'}</span>
                       <SecurityDisputeBadge reason={selectedRecord.disputeReason} />
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-16">Subject:</span>
-                    <span className="dark:text-gray-300">{rSubj ? rSubj.name : 'Unknown'}</span>
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-16">Subject:</span>
+                    <span className="dark:text-zinc-300">{rSubj ? rSubj.name : 'Unknown'}</span>
                   </div>
                   <div className="flex gap-2">
-                    <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-16">Section:</span>
-                    <span className="dark:text-gray-300">Section {rSec ? rSec.section : 'Unknown'}</span>
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-16">Section:</span>
+                    <span className="dark:text-zinc-300">Section {rSec ? rSec.section : 'Unknown'}</span>
                   </div>
                   <div className="flex gap-2">
-                    <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-16">Session:</span>
-                    <span className="dark:text-gray-300">{new Date(selectedRecord.timestamp).toLocaleDateString()} {rSess ? `· ${rSess.startTime} - ${rSess.endTime}` : ''}</span>
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-16">Session:</span>
+                    <span className="dark:text-zinc-300">{new Date(selectedRecord.timestamp).toLocaleDateString()} {rSess ? `· ${rSess.startTime} - ${rSess.endTime}` : ''}</span>
                   </div>
                   {selectedRecord.notes && (
                     <div className="flex gap-2">
-                      <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-16">Notes:</span>
-                      <span className="dark:text-gray-300">{selectedRecord.notes}</span>
+                      <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-16">Notes:</span>
+                      <span className="dark:text-zinc-300">{selectedRecord.notes}</span>
                     </div>
                   )}
                 </div>
@@ -630,7 +630,7 @@ function DisputesContent() {
 
             {!selectedRecord.disputeResolved && user.role === 'teacher' ? (
               <>
-                <p className="text-xs uppercase tracking-[0.5px] text-gray-400 dark:text-gray-500 mb-3">What would you like to do?</p>
+                <p className="text-xs uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-3">What would you like to do?</p>
 
                 <Button className="w-full bg-green-600 hover:bg-green-700 text-white flex items-center gap-2 mb-2 rounded-none" onClick={() => handleResolve('accept')}>
                   <CheckCircle className="w-4 h-4" /> Accept — Keep as Present
@@ -640,7 +640,7 @@ function DisputesContent() {
                   <XCircle className="w-4 h-4" /> Reject — Mark as Absent
                 </Button>
 
-                <p className="text-xs uppercase tracking-[0.5px] text-gray-400 dark:text-gray-500 mb-2">Or override to:</p>
+                <p className="text-xs uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-2">Or override to:</p>
                 <div className="flex gap-2 mb-4">
                   {(['present', 'late', 'absent'] as const).map((s) => (
                     <Button key={s} variant="outline" className="flex-1 rounded-none" onClick={() => handleResolve('override', s)}>
@@ -657,7 +657,7 @@ function DisputesContent() {
               </div>
             )}
 
-            <Button variant="ghost" className="w-full text-gray-400 rounded-none" onClick={() => setSelectedRecord(null)}>
+            <Button variant="ghost" className="w-full text-zinc-500 dark:text-zinc-400 rounded-none" onClick={() => setSelectedRecord(null)}>
               {selectedRecord.disputeResolved ? 'Close' : 'Cancel'}
             </Button>
             </>

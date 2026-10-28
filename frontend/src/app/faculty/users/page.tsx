@@ -409,7 +409,7 @@ export default function UsersPage() {
                 {departmentScoped ? (
                   <>
                     <p className="text-sm font-medium leading-none">Department</p>
-                    <div className="mt-2 flex h-10 items-center border border-dashed border-zinc-300 px-3 text-sm text-zinc-500 dark:border-zinc-700">
+                    <div className="mt-2 flex h-10 items-center border border-dashed border-zinc-300 px-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
                       {user.department ?? 'Department scoped'}
                     </div>
                   </>
@@ -430,7 +430,7 @@ export default function UsersPage() {
                 <Label htmlFor="user-status">Filter by status</Label>
                 <select
                   id="user-status"
-                  className="mt-2 h-10 w-full border border-zinc-300 bg-white px-3 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                  className="mt-2 h-10 w-full border border-zinc-300 bg-white px-3 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
                   value={status}
                   onChange={(event) => {
                     setStatus(event.target.value as UserStatusFilter)
@@ -474,7 +474,7 @@ export default function UsersPage() {
                   <LoadingSpinner size="lg" />
                 </div>
               ) : page.data.length === 0 ? (
-                <div className="p-12 text-center text-sm text-zinc-500">
+                <div className="p-12 text-center text-sm text-zinc-500 dark:text-zinc-400">
                   No accounts match these filters.
                 </div>
               ) : (
@@ -567,7 +567,7 @@ export default function UsersPage() {
                 </div>
               )}
               <div className="flex flex-col gap-3 border-t border-zinc-200 px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800">
-                <span className="text-zinc-500">{userRangeLabel(page)}</span>
+                <span className="text-zinc-500 dark:text-zinc-400">{userRangeLabel(page)}</span>
                 <div className="flex items-center gap-3">
                   <Button
                     variant="outline"
@@ -577,7 +577,7 @@ export default function UsersPage() {
                   >
                     Previous
                   </Button>
-                  <span className="text-xs text-zinc-500">
+                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
                     Page {userPageNumber(page)} of {userPageCount(page) || 1}
                   </span>
                   <Button

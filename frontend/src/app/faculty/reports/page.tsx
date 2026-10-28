@@ -255,7 +255,7 @@ export default function ReportsPage() {
             <Card>
               <CardContent className="p-5">
                 <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Total Records</p>
-                <p className="text-3xl font-bold text-maroon">{report?.totals.totalRecords ?? 0}</p>
+                <p className="text-3xl font-bold text-maroon dark:text-golden">{report?.totals.totalRecords ?? 0}</p>
               </CardContent>
             </Card>
             <Card>
@@ -267,25 +267,25 @@ export default function ReportsPage() {
             <Card>
               <CardContent className="p-5">
                 <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Late %</p>
-                <p className="text-3xl font-bold text-maroon">{latePct}%</p>
+                <p className="text-3xl font-bold text-maroon dark:text-red-300">{latePct}%</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-5">
                 <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Absent %</p>
-                <p className="text-3xl font-bold text-maroon-dark">{absentPct}%</p>
+                <p className="text-3xl font-bold text-maroon-dark dark:text-red-400">{absentPct}%</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-5">
                 <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Pending %</p>
-                <p className="text-3xl font-bold text-zinc-500">{pendingPct}%</p>
+                <p className="text-3xl font-bold text-zinc-500 dark:text-zinc-400">{pendingPct}%</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-5">
                 <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Disputed %</p>
-                <p className="text-3xl font-bold text-amber-600">{disputedPct}%</p>
+                <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">{disputedPct}%</p>
               </CardContent>
             </Card>
             <Card>
@@ -304,7 +304,7 @@ export default function ReportsPage() {
                 <p className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4">Attendance Distribution</p>
                 <div className="flex items-center justify-center gap-8">
                   <svg width="140" height="140" viewBox="0 0 140 140" className="shrink-0">
-                    <circle cx="70" cy="70" r="60" fill="none" stroke="#E4E4E7" strokeWidth="20" />
+                    <circle cx="70" cy="70" r="60" fill="none" strokeWidth="20" className="stroke-zinc-200 dark:stroke-zinc-800" />
                     {total.total > 0 && (
                       <>
                         <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.golden} strokeWidth="20"
@@ -325,13 +325,13 @@ export default function ReportsPage() {
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke="#A1A1AA" strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.chartPending} strokeWidth="20"
                           strokeDasharray={`${(total.pending / total.total) * 377} 377`}
                           strokeDashoffset={-(((total.present + total.late + total.absent) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke="#D97706" strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.chartDisputed} strokeWidth="20"
                           strokeDasharray={`${(total.disputed / total.total) * 377} 377`}
                           strokeDashoffset={-(((total.present + total.late + total.absent + total.pending) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
@@ -351,10 +351,10 @@ export default function ReportsPage() {
                   <div className="space-y-3">
                     {[
                       { label: 'Present', count: total.present, pct: presentPct, color: pupColors.golden, textColor: 'text-golden' },
-                      { label: 'Late', count: total.late, pct: latePct, color: pupColors.maroon, textColor: 'text-maroon' },
-                      { label: 'Absent', count: total.absent, pct: absentPct, color: pupColors.maroonDark, textColor: 'text-maroon-dark' },
-                      { label: 'Pending', count: total.pending, pct: pendingPct, color: '#A1A1AA', textColor: 'text-zinc-500' },
-                      { label: 'Disputed', count: total.disputed, pct: disputedPct, color: '#D97706', textColor: 'text-amber-600' },
+                      { label: 'Late', count: total.late, pct: latePct, color: pupColors.maroon, textColor: 'text-maroon dark:text-red-300' },
+                      { label: 'Absent', count: total.absent, pct: absentPct, color: pupColors.maroonDark, textColor: 'text-maroon-dark dark:text-red-400' },
+                      { label: 'Pending', count: total.pending, pct: pendingPct, color: pupColors.chartPending, textColor: 'text-zinc-500 dark:text-zinc-400' },
+                      { label: 'Disputed', count: total.disputed, pct: disputedPct, color: pupColors.chartDisputed, textColor: 'text-amber-600 dark:text-amber-400' },
                       { label: 'Excused', count: total.excused, pct: excusedPct, color: pupColors.goldenDark, textColor: 'text-golden-dark' },
                     ].map((item) => (
                       <div key={item.label} className="flex items-center gap-3">
@@ -381,7 +381,7 @@ export default function ReportsPage() {
                     style={{ width: `${presentPct}%` }}
                   />
                 </div>
-                <p className="text-xs font-medium text-zinc-500 mt-2 uppercase tracking-wider">
+                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mt-2 uppercase tracking-wider">
                   {total.present} of {total.total} records marked present
                 </p>
               </CardContent>

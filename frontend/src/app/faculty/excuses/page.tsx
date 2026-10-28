@@ -223,7 +223,7 @@ function ExcusesContent() {
         <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-300/80 dark:border-zinc-800">
           <div>
             <h1 className="text-xl font-heading font-bold text-maroon-dark dark:text-golden">Excuse Requests</h1>
-            <p className="text-xs text-gray-400 dark:text-gray-500">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
               {isTeacher
                 ? `${pendingCount} awaiting review, ${resolvedCount} resolved`
                 : `${pendingCount} pending, ${resolvedCount} resolved · read-only oversight`}
@@ -240,7 +240,7 @@ function ExcusesContent() {
               className={`px-6 py-3 text-sm font-semibold border-b-2 transition-colors duration-150 rounded-none focus:outline-none ${
                 tab === 'pending'
                   ? 'border-maroon dark:border-golden text-maroon dark:text-golden'
-                  : 'border-transparent text-zinc-400 dark:text-zinc-500 hover:text-zinc-600'
+                  : 'border-transparent text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300'
               }`}
             >
               Pending Requests ({pendingCount})
@@ -252,7 +252,7 @@ function ExcusesContent() {
               className={`px-6 py-3 text-sm font-semibold border-b-2 transition-colors duration-150 rounded-none focus:outline-none ${
                 tab === 'resolved'
                   ? 'border-maroon dark:border-golden text-maroon dark:text-golden'
-                  : 'border-transparent text-zinc-400 dark:text-zinc-500 hover:text-zinc-600'
+                  : 'border-transparent text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300'
               }`}
             >
               Resolved History ({resolvedCount})
@@ -301,7 +301,7 @@ function ExcusesContent() {
                 <h2 className="text-lg font-heading font-bold dark:text-white mb-2">
                   No {tab === 'pending' ? 'pending' : 'resolved'} excuses found
                 </h2>
-                <p className="text-sm text-gray-400 dark:text-gray-500">
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">
                   Try adjusting the section or date filters.
                 </p>
               </CardContent>
@@ -381,41 +381,41 @@ function ExcusesContent() {
 
               <div className="bg-zinc-50 dark:bg-pup-black border border-zinc-200 dark:border-zinc-800 p-4 mb-4 space-y-2 text-sm rounded-none">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-zinc-500 dark:text-gray-500">Status</span>
+                  <span className="text-zinc-500 dark:text-zinc-400">Status</span>
                   {selected.excuseStatus ? <ExcuseStatusBadge status={selected.excuseStatus} /> : null}
                 </div>
                 <div className="flex gap-2">
-                  <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-20">Subject</span>
-                  <span className="dark:text-gray-300">{selectedSubject?.name ?? 'Unknown'}</span>
+                  <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-20">Subject</span>
+                  <span className="dark:text-zinc-300">{selectedSubject?.name ?? 'Unknown'}</span>
                 </div>
                 <div className="flex gap-2">
-                  <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-20">Section</span>
-                  <span className="dark:text-gray-300">{selectedSection ? `Section ${selectedSection.section}` : 'Unknown'}</span>
+                  <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-20">Section</span>
+                  <span className="dark:text-zinc-300">{selectedSection ? `Section ${selectedSection.section}` : 'Unknown'}</span>
                 </div>
                 <div className="flex gap-2">
-                  <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-20">Session</span>
-                  <span className="dark:text-gray-300">{formatDateTime(selected.timestamp)}</span>
+                  <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-20">Session</span>
+                  <span className="dark:text-zinc-300">{formatDateTime(selected.timestamp)}</span>
                 </div>
                 <div className="flex gap-2">
-                  <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-20">Reason</span>
+                  <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-20">Reason</span>
                   <span className="font-bold text-maroon dark:text-golden">
                     {selected.excuseReason ? EXCUSE_REASON_LABELS[selected.excuseReason] : 'Unknown'}
                   </span>
                 </div>
                 <div className="flex gap-2">
-                  <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-20">Details</span>
-                  <span className="dark:text-gray-300">{selected.excuseDescription ?? 'No description provided.'}</span>
+                  <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-20">Details</span>
+                  <span className="dark:text-zinc-300">{selected.excuseDescription ?? 'No description provided.'}</span>
                 </div>
                 {selected.excuseReviewedAt ? (
                   <div className="flex gap-2">
-                    <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-20">Reviewed</span>
-                    <span className="dark:text-gray-300">{formatDateTime(selected.excuseReviewedAt)}</span>
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-20">Reviewed</span>
+                    <span className="dark:text-zinc-300">{formatDateTime(selected.excuseReviewedAt)}</span>
                   </div>
                 ) : null}
                 {selected.excuseReviewNote ? (
                   <div className="flex gap-2">
-                    <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-20">Note</span>
-                    <span className="dark:text-gray-300">{selected.excuseReviewNote}</span>
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-20">Note</span>
+                    <span className="dark:text-zinc-300">{selected.excuseReviewNote}</span>
                   </div>
                 ) : null}
               </div>
@@ -510,7 +510,7 @@ function ExcusesContent() {
 
               <Button
                 variant="ghost"
-                className="w-full rounded-none text-gray-400"
+                className="w-full rounded-none text-zinc-500 dark:text-zinc-400"
                 onClick={() => setSelected(null)}
                 disabled={deciding}
               >

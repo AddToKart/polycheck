@@ -18,6 +18,8 @@
   --color-surface-dark: #121215;
   --color-pup-white: #FFFFFF;
   --color-pup-black: #0A0A0A;
+  --color-id-paper: #FDFBF7;
+  --color-id-paper-dark: #1A1A1A;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-body);

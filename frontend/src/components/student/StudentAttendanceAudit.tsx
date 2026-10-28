@@ -92,10 +92,10 @@ export function StudentAttendanceAudit(props: StudentAttendanceAuditProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30">
-                <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Subject</th>
-                <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Date/Time</th>
-                <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Result</th>
-                <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Action</th>
+                <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Subject</th>
+                <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Date/Time</th>
+                <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Result</th>
+                <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -131,7 +131,7 @@ export function StudentAttendanceAudit(props: StudentAttendanceAuditProps) {
                 key={index}
                 variant={props.page === index ? 'default' : 'outline'}
                 size="sm"
-                className={`rounded-none text-xs font-bold w-8 h-8 p-0 ${props.page === index ? 'bg-maroon hover:bg-maroon-dark text-white border-maroon' : 'text-zinc-500 hover:text-foreground'}`}
+                className={`rounded-none text-xs font-bold w-8 h-8 p-0 ${props.page === index ? 'bg-maroon hover:bg-maroon-dark text-white border-maroon dark:bg-golden dark:hover:bg-golden-dark dark:text-maroon-dark dark:border-golden' : 'text-zinc-500 dark:text-zinc-400 hover:text-foreground'}`}
                 onClick={() => props.onPageChange(index)}
               >
                 {index + 1}

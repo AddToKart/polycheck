@@ -150,7 +150,7 @@ export default function StudentDetailPage() {
               <div className={`w-full h-full relative transition-transform duration-700 [transform-style:preserve-3d] ${flipped ? '[transform:rotateY(180deg)]' : ''}`}>
                 
                 {/* Front Face */}
-                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] bg-white border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
+                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] bg-white dark:bg-id-paper-dark border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
                   {/* PUP Header */}
                   <div className="bg-maroon px-5 py-3 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800">
                     <div>
@@ -163,7 +163,7 @@ export default function StudentDetailPage() {
                   </div>
 
                   {/* Body */}
-                  <div className="flex-1 flex p-5 items-center gap-6 relative bg-[#fdfbf7] dark:bg-[#1a1a1a]">
+                  <div className="flex-1 flex p-5 items-center gap-6 relative bg-id-paper dark:bg-id-paper-dark">
                     <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]" style={{ backgroundImage: 'url(/pup-logo.png)', backgroundPosition: 'center', backgroundSize: 'contain', backgroundRepeat: 'no-repeat' }}></div>
                     <div className="w-24 h-32 bg-maroon dark:bg-golden flex items-center justify-center shrink-0 border-2 border-zinc-300 dark:border-zinc-800 shadow-md relative z-10">
                       <span className="text-2xl font-heading font-bold text-white dark:text-maroon-dark">
@@ -193,12 +193,12 @@ export default function StudentDetailPage() {
                 </div>
 
                 {/* Back Face */}
-                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] bg-white border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
+                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] bg-id-paper dark:bg-id-paper-dark border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
                   {/* Magnetic Stripe */}
                   <div className="bg-zinc-950 h-10 w-full mt-5"></div>
                   
                   {/* Content */}
-                  <div className="flex-1 p-5 flex text-zinc-950 dark:text-zinc-50 gap-4 bg-[#fdfbf7] dark:bg-[#1a1a1a]">
+                  <div className="flex-1 p-5 flex text-zinc-950 dark:text-zinc-50 gap-4 bg-id-paper dark:bg-id-paper-dark">
                     <div className="w-2/3 flex flex-col justify-between">
                       <div>
                         <p className="text-[10px] font-bold text-maroon dark:text-golden uppercase tracking-wider mb-1">Conditions of Use</p>

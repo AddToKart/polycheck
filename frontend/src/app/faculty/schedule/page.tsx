@@ -28,10 +28,10 @@ import {
 } from '@/lib/calendar-utils'
 
 function getEventStyle(event: CalendarEvent): string {
-  if (event.status === 'moved') return 'border-l-zinc-300 bg-zinc-50/50 dark:bg-zinc-900/10 border-dashed opacity-60'
-  if (event.type === 'schedule') return 'border-l-zinc-300 bg-transparent hover:bg-zinc-50/50 dark:hover:bg-zinc-900/30 border-dashed'
+  if (event.status === 'moved') return 'border-l-zinc-300 dark:border-l-zinc-600 bg-zinc-50/50 dark:bg-zinc-900/10 border-dashed opacity-60'
+  if (event.type === 'schedule') return 'border-l-zinc-300 dark:border-l-zinc-600 bg-transparent hover:bg-zinc-50/50 dark:hover:bg-zinc-900/30 border-dashed'
   if (event.isActive) return 'border-l-green-500 bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-950/50'
-  return 'border-l-zinc-400 bg-zinc-50 dark:bg-zinc-800/30 hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
+  return 'border-l-zinc-400 dark:border-l-zinc-500 bg-zinc-50 dark:bg-zinc-800/30 hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
 }
 
 function getEventTextClass(event: CalendarEvent): string {
@@ -411,11 +411,11 @@ function Legend({ className }: { className?: string }) {
   return (
     <div className={`flex flex-wrap items-center gap-6 mt-6 px-1 ${className || ''}`}>
       <div className="flex items-center gap-2">
-        <div className="w-3 h-3 border-l-4 border-zinc-300 bg-transparent border-dashed" />
+        <div className="w-3 h-3 border-l-4 border-zinc-300 dark:border-l-zinc-600 bg-transparent border-dashed" />
         <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Class scheduled (no session yet)</span>
       </div>
       <div className="flex items-center gap-2">
-        <div className="w-3 h-3 border-l-4 border-zinc-300 bg-zinc-50/50 dark:bg-zinc-900/10 border-dashed opacity-60" />
+        <div className="w-3 h-3 border-l-4 border-zinc-300 dark:border-l-zinc-600 bg-zinc-50/50 dark:bg-zinc-900/10 border-dashed opacity-60" />
         <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Class slot moved</span>
       </div>
       <div className="flex items-center gap-2">
@@ -423,7 +423,7 @@ function Legend({ className }: { className?: string }) {
         <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Active Session</span>
       </div>
       <div className="flex items-center gap-2">
-        <div className="w-3 h-3 border-l-4 border-zinc-400 bg-zinc-50 dark:bg-zinc-800/30" />
+        <div className="w-3 h-3 border-l-4 border-zinc-400 dark:border-l-zinc-500 bg-zinc-50 dark:bg-zinc-800/30" />
         <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Completed Session</span>
       </div>
     </div>

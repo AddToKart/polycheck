@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { LoadingSpinner } from '@/lib/hooks'
+import { createSessionHref, sessionsListHref } from '@/lib/section-context'
 
 const PAGE_SIZE = 10
 
@@ -492,16 +493,21 @@ export default function SectionDetailPage() {
           </>}
 
           <Card className="mb-6 border-t-4 border-t-maroon dark:border-t-golden">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
               <CardTitle className="flex items-center gap-2 text-base text-zinc-800 dark:text-zinc-100">
                 <CalendarDays className="h-5 w-5 text-maroon dark:text-golden" />
                 Section Sessions
               </CardTitle>
-              {user.role === 'teacher' && (
-                <Button size="sm" asChild>
-                  <Link href="/faculty/sessions/create">Create Session</Link>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={sessionsListHref(id)}>All sessions</Link>
                 </Button>
-              )}
+                {user.role === 'teacher' && (
+                  <Button size="sm" asChild>
+                    <Link href={createSessionHref(id)}>Create Session</Link>
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {sessions.length === 0 ? (

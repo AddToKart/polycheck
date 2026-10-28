@@ -1,9 +1,9 @@
 'use client'
 
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, ArrowRight } from 'lucide-react'
+import { Plus, ArrowLeft, ArrowRight, Layers, X } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Session, Subject, Section } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -12,6 +12,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { FilterBar, FilterChipGroup, FilterDateRange, FilterSelect } from '@/components/FilterBar'
 import { useUrlFilters } from '@/lib/hooks/use-url-filters'
+import { createSessionHref, sectionContextHref } from '@/lib/section-context'
 import { deriveSessionStatus, SESSION_STATUS_LABELS } from '@/lib/session-status'
 
 const FILTER_SCHEMA = {
@@ -31,6 +32,7 @@ const STATUS_BADGE_CLASSES: Record<ReturnType<typeof deriveSessionStatus>, strin
 
 function SessionsContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const filters = useUrlFilters(FILTER_SCHEMA)
   const { subjectId, sectionId, status, from, to } = filters.values
   const [user, setUser] = useState<User | null>(null)
@@ -115,6 +117,12 @@ function SessionsContent() {
     [allSections, allSubjects, subjectId],
   )
 
+  const activeSection = sectionId ? sectionMap.get(sectionId) : undefined
+  const activeSubject = activeSection
+    ? allSubjects.find((subject) => subject.id === activeSection.subjectId)
+    : undefined
+  const clearSectionHref = sectionContextHref('/faculty/sessions', searchParams?.toString() ?? '', null)
+
   const getSectionLabel = (targetSectionId: string) => {
     const sec = sectionMap.get(targetSectionId)
     if (!sec) return 'Unknown Section'
@@ -153,13 +161,57 @@ function SessionsContent() {
             </div>
             {user.role === 'teacher' && (
               <Button asChild>
-                <Link href="/faculty/sessions/create">
+                <Link href={createSessionHref(sectionId)}>
                   <Plus className="w-4 h-4" />
                   New Session
                 </Link>
               </Button>
             )}
           </div>
+
+          {sectionId ? (
+            <section
+              aria-label="Active section context"
+              className="mb-6 flex flex-col gap-3 border border-maroon/30 bg-maroon/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-golden/30 dark:bg-golden/5"
+            >
+              <div className="flex items-start gap-3">
+                <Layers className="mt-0.5 h-4 w-4 shrink-0 text-maroon dark:text-golden" aria-hidden="true" />
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+                    Section context
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-foreground">
+                    {activeSubject ? `${activeSubject.name} (${activeSubject.code})` : 'Unknown subject'}
+                    {activeSection ? ` · Section ${activeSection.section}` : ''}
+                    {activeSection?.room ? ` · ${activeSection.room}` : ''}
+                  </p>
+                  {!activeSection ? (
+                    <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                      This section is not available. Clear the context to see every session again.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-3 self-start sm:self-auto">
+                {activeSection ? (
+                  <Link
+                    href={`/faculty/sections/${activeSection.id}`}
+                    className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-500 transition-colors hover:text-maroon dark:text-zinc-400 dark:hover:text-golden"
+                  >
+                    <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                    Section detail
+                  </Link>
+                ) : null}
+                <Link
+                  href={clearSectionHref}
+                  className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-maroon transition-colors hover:underline dark:text-golden"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  Clear section
+                </Link>
+              </div>
+            </section>
+          ) : null}
 
           <FilterBar
             className="mb-8"
@@ -223,7 +275,7 @@ function SessionsContent() {
                     <CardTitle className="text-lg">{subjectName}</CardTitle>
                     {subject && (
                       <Link
-                        href={`/faculty/subjects/${subject.id}/sessions`}
+                        href={sectionContextHref(`/faculty/subjects/${subject.id}/sessions`, '', sectionId)}
                         className="text-xs font-bold uppercase tracking-widest text-maroon dark:text-golden hover:underline flex items-center gap-1"
                       >
                         All Sessions <ArrowRight className="w-3 h-3" />
@@ -314,11 +366,22 @@ function SessionsContent() {
             </div>
           ) : filteredSessions.length === 0 ? (
             <div className="border border-dashed border-zinc-300 py-16 text-center dark:border-zinc-700">
-              <p className="text-lg font-heading font-bold text-foreground">No sessions match these filters</p>
-              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Adjust the subject, section, status, or dates.</p>
-              <Button variant="outline" className="mt-4" onClick={filters.clearAll}>
-                Clear filters
-              </Button>
+              <p className="text-lg font-heading font-bold text-foreground">
+                {sectionId ? 'No sessions match this section and filters' : 'No sessions match these filters'}
+              </p>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                Adjust the subject, section, status, or dates.
+              </p>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                {sectionId ? (
+                  <Button variant="outline" asChild>
+                    <Link href={clearSectionHref}>Clear section</Link>
+                  </Button>
+                ) : null}
+                <Button variant="outline" onClick={filters.clearAll}>
+                  Clear filters
+                </Button>
+              </div>
             </div>
           ) : null}
         </div>

@@ -10,10 +10,10 @@ import { StudentDigitalId } from './StudentDigitalId'
 
 const statCards = [
   { key: 'present', label: 'Present', color: 'text-golden' },
-  { key: 'late', label: 'Late', color: 'text-maroon' },
-  { key: 'absent', label: 'Absent', color: 'text-maroon-dark' },
+  { key: 'late', label: 'Late', color: 'text-maroon dark:text-red-300' },
+  { key: 'absent', label: 'Absent', color: 'text-maroon-dark dark:text-red-400' },
   { key: 'excused', label: 'Excused', color: 'text-maroon dark:text-golden' },
-  { key: 'disputed', label: 'Disputed', color: 'text-maroon-dark dark:text-golden' },
+  { key: 'disputed', label: 'Disputed', color: 'text-amber-600 dark:text-amber-400' },
 ] as const
 
 interface StudentDashboardOverviewProps {
@@ -95,7 +95,7 @@ export function StudentDashboardOverview(props: StudentDashboardOverviewProps) {
           <CardHeader className="border-b border-zinc-300 dark:border-zinc-800 p-6"><CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2"><Clock className="w-4 h-4 text-maroon dark:text-golden" />Recent Scans</CardTitle></CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto"><table className="w-full text-sm">
-              <thead><tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30"><th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Subject</th><th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Date/Time</th><th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Result</th><th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Action</th></tr></thead>
+              <thead><tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30"><th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Subject</th><th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Date/Time</th><th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Result</th><th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Action</th></tr></thead>
               <tbody>
                 {records.map((record) => <AttendanceRow key={record.id} record={record} subjectName={sectionSubjectName(record.sectionId)} onReportIssue={props.onReportIssue} onRequestExcuse={props.onRequestExcuse} />)}
                 {records.length === 0 ? <tr><td colSpan={4} className="px-6 py-16 text-center text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest">Audit log is empty</td></tr> : null}
@@ -139,7 +139,7 @@ export function AttendanceRow({
           <StatusBadge status={record.status} />
           {record.excuseStatus ? <ExcuseStatusBadge status={record.excuseStatus} /> : null}
           {record.excuseReviewNote ? (
-            <p className="max-w-[14rem] text-[10px] normal-case tracking-normal text-zinc-400">
+            <p className="max-w-[14rem] text-[10px] normal-case tracking-normal text-zinc-400 dark:text-zinc-500">
               Note: {record.excuseReviewNote}
             </p>
           ) : null}

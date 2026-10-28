@@ -86,7 +86,7 @@ export function StudentWeeklySchedule({ date, onDateChange, sections, sessions, 
 
 function ScheduleEvent({ event }: { event: CalendarEvent }) {
   const isGhost = event.type === 'schedule'
-  const borderColor = isGhost ? 'border-l-zinc-300 bg-transparent border-dashed' : (event.studentStatus ? STATUS_BORDER[event.studentStatus] || 'border-l-zinc-400 bg-zinc-50 dark:bg-zinc-800/30' : 'border-l-zinc-400 bg-zinc-50 dark:bg-zinc-800/30')
+  const borderColor = isGhost ? 'border-l-zinc-300 dark:border-l-zinc-600 bg-transparent border-dashed' : (event.studentStatus ? STATUS_BORDER[event.studentStatus] || 'border-l-zinc-400 bg-zinc-50 dark:bg-zinc-800/30' : 'border-l-zinc-400 bg-zinc-50 dark:bg-zinc-800/30')
   const textColor = isGhost ? 'text-zinc-300 dark:text-zinc-600' : (event.studentStatus ? STATUS_TEXT[event.studentStatus] || 'text-zinc-500' : 'text-zinc-500')
   const statusIcon = event.studentStatus ? STATUS_ICONS[event.studentStatus] : null
   const statusLabel = event.studentStatus ? event.studentStatus.charAt(0).toUpperCase() + event.studentStatus.slice(1) : null
