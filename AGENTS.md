@@ -522,6 +522,13 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - Filters: URL-synced teacher filters (attendance subject/section/presets, sessions subject/section/status/date, disputes section/date, student history subject/date/status), admin reports section + department filters, teacher dashboard period selector; Android filter primitives and equivalents.
   - Verification: backend 674 / 63 suites, web 254 / 39 files, Android 298 / 21 suites, shared 87; typecheck/lint/format/build clean; container smoke covered excuse request→approve→`excused`+notifications, at-risk ordering, and admin department filtering.
 
+### Done (cont.)
+- **Release Readiness — QA + Polish (`plan/release-readiness-plan.md`, QA-1–QA-4, PL-1–PL-5)**:
+  - Web E2E restored and extended to cover the new surfaces: assistant dock/theater ladder, excuse request→approve, notification center badge/deep-link/mark-read, filter deep links, standing-banner dismissal. Hardened the suite: super-admin nav expectation, server-side user search in the admin journey, collision-free E2E student IDs (random + 409 retry), Zod CSP eval-probe allowlist, abort-shaped dashboard fetch logging suppressed, and service workers blocked for UI journeys (`playwright.config.ts`; offline PWA has separate coverage).
+  - Final matrix: Chromium 69 passed / 5 skipped / 0 failed, Firefox 64 / 10 / 0, WebKit 64 / 10 / 0.
+  - PL polish: sessions `?sectionId` context banner + clear (web + Android), dark-mode parity sweep across both platforms (raw hex moved to tokens), per-thread Redis assistant send lock (409 on concurrent send/regenerate), `excused` bucket in dashboard trends on both platforms, Android Wave 4 device runbook in `android/RELEASE.md`.
+  - Verification: backend 679 / 63, web 265 / 41 files, Android 307 / 22, shared 87; typecheck/lint/format/build clean; Docker stack rebuilt.
+
 ### In Progress
 - (none)
 
@@ -555,7 +562,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - Mobile scanner (`android/app/(tabs)/scan.tsx`) exposes `Upload QR Image` and `Enter Code` fallbacks alongside live camera.
 - **Database Migration Self-Healing**: Added idempotent pre-checks and backfills in `20260907090000_domain_constraints/migration.sql` to gracefully handle dirty development databases or re-runs without crashing the migration service container.
 - **Docker Compose Local Developer Experience**: Added automated 1-click startup scripts (`start-local.bat`, `start-local.sh`, `stop-local.bat`, `stop-local.sh`) and passed `NEXT_PUBLIC_ALLOW_QR_FALLBACKS: "true"` to local container builds.
-- **Comprehensive Automated Test Coverage**: 1,313 total passing automated tests across 128 suites monorepo-wide (87 shared, 254 web, 674 backend, 298 mobile); the web E2E suite includes 198 tests across Chromium, Firefox, and WebKit (10 engine-specific skips). The AI assistant additions are covered by backend AI/docs/standing suites plus web and Android chat/standing tests.
+- **Comprehensive Automated Test Coverage**: 1,338 total passing automated tests across 131 suites monorepo-wide (87 shared, 265 web, 679 backend, 307 mobile); the web E2E suite includes 198 tests across Chromium, Firefox, and WebKit (10 engine-specific skips). The AI assistant additions are covered by backend AI/docs/standing suites plus web and Android chat/standing tests.
 
 ## Next Steps
 - Connect sessions page to section context when navigated from section detail.
@@ -626,6 +633,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - `backend/src/sessions/dto/create-session.dto.ts` — DTO field optionality, ActivateSessionDto grace param
 - `backend/src/sessions/sessions.service.ts` — defaults on create, grace storage at activate, auto-expiry cron
 - `backend/src/attendance/attendance.service.ts` — ensureOfflineActivation relaxed grace check
+
 
 
 
