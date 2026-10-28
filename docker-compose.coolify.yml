@@ -37,7 +37,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public
     command: ["sh", "docker-entrypoint.sh", "migrate"]
 
@@ -52,10 +52,10 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public
       SEED_PASSWORD: ${SEED_PASSWORD:-PolycheckSeed123!}
-      ALLOW_PRODUCTION_SEED: "true"
+      ALLOW_PRODUCTION_SEED: "false"
     command: ["node", "dist-seed/prisma/seed.js"]
 
   backend:
@@ -73,14 +73,14 @@ services:
       seed:
         condition: service_completed_successfully
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       PORT: 4000
       DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public&connection_limit=50
       REDIS_URL: redis://redis:6379/0
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-polycheck_super_secret_auth_key_2026}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4000}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://your-frontend.vercel.app,http://localhost:3000}
-      FRONTEND_URL: ${FRONTEND_URL:-https://your-frontend.vercel.app}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://polycheck-api.addtokart.tech}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://your-frontend.vercel.app,http://localhost:3000,*}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       TRUST_PROXY: "true"
       UPLOAD_DIR: /app/backend/uploads
       STORAGE_DRIVER: local
