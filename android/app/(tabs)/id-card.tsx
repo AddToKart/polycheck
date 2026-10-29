@@ -139,6 +139,7 @@ export default function IdCardScreen() {
         subtitle="Keep this ready for identity checks on campus."
         actions={(
           <>
+            <CampusIconButton icon="manage-accounts" label="Profile and security" onPress={() => router.push('/profile')} inverse />
             <CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />
             <CampusIconButton icon="logout" label="Sign out" onPress={signOut} inverse />
           </>
@@ -174,6 +175,26 @@ export default function IdCardScreen() {
             Tap card to view {isFlipped ? 'front' : 'back'}
           </Text>
         </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open profile and device security"
+          onPress={() => router.push('/profile')}
+          className="mt-4 flex-row items-center justify-center gap-2 self-center border border-line px-4 py-2 dark:border-line-dark"
+        >
+          <MaterialIcons
+            name={user?.deviceCooldownUntil ? 'phonelink-lock' : 'smartphone'}
+            size={14}
+            color={user?.deviceCooldownUntil ? pupColors.golden : isDark ? '#A39B9D' : pupColors.muted}
+          />
+          <Text className="font-sans-bold text-[10px] uppercase tracking-widest text-muted dark:text-zinc-400">
+            {user?.deviceCooldownUntil
+              ? 'Device locked · review'
+              : user?.boundDeviceId
+                ? 'Device active · profile'
+                : 'Profile & device security'}
+          </Text>
+        </Pressable>
       </View>
     </SafeAreaView>
   )

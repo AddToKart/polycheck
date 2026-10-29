@@ -15,6 +15,22 @@ export interface User {
   privacyConsentedAt?: string
   /** True for bulk-generated or admin-reset credentials until the user changes it. */
   mustChangePassword?: boolean
+  /** Mobile installation id bound to a student account (anti-cheat device binding). */
+  boundDeviceId?: string | null
+  deviceBoundAt?: string | null
+  /** While set and in the future, student mobile logins are rejected. */
+  deviceCooldownUntil?: string | null
+  /** Nullable per-teacher override; null means "follow the institution setting". */
+  canResetStudentPasswords?: boolean | null
+  canEmergencyUnbindDevices?: boolean | null
+  /** Effective teacher capabilities (post institution-policy merge), teacher accounts only. */
+  delegatedPermissions?: {
+    canResetStudentPasswords: boolean
+    canEmergencyUnbindDevices: boolean
+  }
+  /** Secondary contact channels owned by the user (never the login identity). */
+  contactEmail?: string | null
+  contactPhone?: string | null
   createdAt: string
   updatedAt: string
 }

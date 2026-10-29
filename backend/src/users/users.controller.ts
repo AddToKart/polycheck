@@ -3,6 +3,12 @@ import { UsersService } from './users.service'
 import { Roles } from '../common/decorators/roles.decorator'
 import { CreateStudentDto, CreateTeacherDto, ResetPasswordDto, SetUserStatusDto } from './dto/manage-user.dto'
 import { AdminUserQueryDto, ChangeUserRoleDto, CreateAdminDto, UpdateUserDto } from './dto/admin-user.dto'
+import {
+  EmergencyDeviceReleaseDto,
+  TeacherResetStudentPasswordDto,
+  UnregisterDeviceDto,
+  UpdateContactsDto,
+} from './dto/governance.dto'
 import { StudentImportRequestDto } from './dto/import-students.dto'
 import { StudentImportQueueService } from './student-import-queue.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
@@ -65,6 +71,39 @@ export class UsersController {
   @Roles('super_admin')
   createStudent(@Body() dto: CreateStudentDto, @Request() req: AuthenticatedRequest) {
     return this.users.createStudent(dto, req.user)
+  }
+
+  // ── Account governance (GOV) ──
+
+  @Post('students/:id/teacher-reset-password')
+  @Roles('teacher')
+  teacherResetStudentPassword(
+    @Param('id') id: string,
+    @Body() dto: TeacherResetStudentPasswordDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.users.teacherResetStudentPassword(id, dto, req.user, req.ip)
+  }
+
+  @Post('students/:id/device-release')
+  @Roles('teacher')
+  emergencyReleaseDevice(
+    @Param('id') id: string,
+    @Body() dto: EmergencyDeviceReleaseDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.users.emergencyReleaseDevice(id, dto, req.user, req.ip)
+  }
+
+  @Post('me/device/unregister')
+  @Roles('student')
+  unregisterDevice(@Body() dto: UnregisterDeviceDto, @Request() req: AuthenticatedRequest) {
+    return this.users.unregisterDevice(req.user, dto.deviceId, req.ip)
+  }
+
+  @Patch('me/contacts')
+  updateContacts(@Body() dto: UpdateContactsDto, @Request() req: AuthenticatedRequest) {
+    return this.users.updateContacts(req.user, dto)
   }
 
   @Post('admins')

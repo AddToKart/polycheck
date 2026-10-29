@@ -9,10 +9,13 @@ const INTEGER_SETTING_RANGES = {
   default_grace_period_minutes: { min: 0, max: 60 },
   enrollment_code_expiry_days: { min: 1, max: 90 },
   attendance_min_rate_percent: { min: 0, max: 100 },
+  device_cooldown_hours: { min: 1, max: 24 },
 } as const
 
 const BOOLEAN_SETTING_KEYS = [
   'allow_teacher_student_provisioning',
+  'allow_teacher_password_reset',
+  'allow_teacher_emergency_device_unbind',
   'ai_assistant_enabled',
   'ai_assistant_teacher_enabled',
   'ai_assistant_student_enabled',
@@ -71,6 +74,24 @@ export class SettingsService {
     if (!/^-?\d+$/.test(trimmed)) return fallback
     const parsed = Number.parseInt(trimmed, 10)
     return Number.isSafeInteger(parsed) ? parsed : fallback
+  }
+
+  /**
+   * Delegated classroom governance policy. Booleans default to enabled so the
+   * feature works out of the box; the cooldown is clamped to its documented
+   * 1–24 hour range even if a hand-edited row holds an out-of-range value.
+   */
+  async getTeacherDelegationPolicies() {
+    const [teacherPasswordReset, teacherEmergencyUnbind, rawCooldownHours] = await Promise.all([
+      this.getBoolean('allow_teacher_password_reset', true),
+      this.getBoolean('allow_teacher_emergency_device_unbind', true),
+      this.getInteger('device_cooldown_hours', 2),
+    ])
+    return {
+      teacherPasswordReset,
+      teacherEmergencyUnbind,
+      deviceCooldownHours: Math.min(24, Math.max(1, rawCooldownHours)),
+    }
   }
 
   /** Decrypted AI API key stored by a super admin, or null when unset. */

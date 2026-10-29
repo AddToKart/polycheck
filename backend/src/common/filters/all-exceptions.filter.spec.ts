@@ -59,6 +59,28 @@ describe('AllExceptionsFilter', () => {
     })
   })
 
+  it('preserves remainingMinutes alongside a device-cooldown code', () => {
+    const exception = new BadRequestException({
+      statusCode: 403,
+      error: 'Forbidden',
+      code: 'device_cooldown_active',
+      remainingMinutes: 42,
+      message: 'Device change cooldown is active',
+    })
+
+    filter.catch(exception, makeHost('/auth/mobile/login/student'))
+
+    expect(response.json).toHaveBeenCalledWith({
+      statusCode: 400,
+      error: 'BadRequestException',
+      message: 'Device change cooldown is active',
+      code: 'device_cooldown_active',
+      remainingMinutes: 42,
+      path: '/auth/mobile/login/student',
+      timestamp: expect.any(String),
+    })
+  })
+
   it('returns a 413 Payload Too Large response for status-marked payloads', () => {
     filter.catch({ status: 413 }, makeHost())
 

@@ -15,7 +15,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       const responseData = exception.getResponse()
       const responseObject =
         typeof responseData === 'object' && responseData !== null
-          ? (responseData as { message?: unknown; code?: unknown; error?: unknown })
+          ? (responseData as { message?: unknown; code?: unknown; error?: unknown; remainingMinutes?: unknown })
           : null
 
       const message = responseObject && 'message' in responseObject ? responseObject.message : responseData
@@ -24,9 +24,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
         error: exception.name,
         message,
         // Preserve machine-readable markers (password_change_required,
-        // import_checksum_mismatch, idempotency codes, ...) that clients
-        // branch on instead of matching human-readable messages.
+        // device_cooldown_active, import_checksum_mismatch, idempotency codes,
+        // ...) that clients branch on instead of matching human-readable
+        // messages. remainingMinutes travels with device cooldown rejections so
+        // clients can render an accurate countdown without re-deriving clocks.
         ...(responseObject && typeof responseObject.code === 'string' ? { code: responseObject.code } : {}),
+        ...(responseObject && typeof responseObject.remainingMinutes === 'number'
+          ? { remainingMinutes: responseObject.remainingMinutes }
+          : {}),
         path: request.originalUrl,
         timestamp: new Date().toISOString(),
       })

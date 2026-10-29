@@ -55,7 +55,12 @@ describe('settings tab configuration', () => {
       'enrollment_code_expiry_days',
       'attendance_min_rate_percent',
     ])
-    expect(TAB_SETTING_KEYS.accounts).toEqual(['allow_teacher_student_provisioning'])
+    expect(TAB_SETTING_KEYS.accounts).toEqual([
+      'allow_teacher_student_provisioning',
+      'allow_teacher_password_reset',
+      'allow_teacher_emergency_device_unbind',
+      'device_cooldown_hours',
+    ])
     expect(TAB_SETTING_KEYS.ai).toEqual([
       'ai_assistant_enabled',
       'ai_assistant_teacher_enabled',
@@ -65,7 +70,7 @@ describe('settings tab configuration', () => {
     ])
     expect(fieldsForTab('sessions')).toHaveLength(5)
     expect(switchesForTab('ai')).toHaveLength(3)
-    expect(switchesForTab('accounts')).toHaveLength(1)
+    expect(switchesForTab('accounts')).toHaveLength(3)
   })
 
   it('documents runtime defaults (AI on, provisioning off)', () => {

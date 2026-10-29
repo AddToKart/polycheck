@@ -31,7 +31,8 @@ export interface CreateSubjectInput {
 export interface CreateTeacherInput {
   fullName: string
   email: string
-  password: string
+  /** Optional. When omitted the server generates a temporary password and returns it once. */
+  password?: string
   department?: string
 }
 
@@ -39,15 +40,68 @@ export interface CreateStudentInput {
   fullName: string
   studentId: string
   email?: string
-  password: string
+  /** Optional. When omitted the server generates a temporary password and returns it once. */
+  password?: string
   program: string
   yearLevel: number
   department: string
 }
 
+export interface CreateTeacherResult extends Teacher {
+  /** Present only when the server generated the credential; shown exactly once. */
+  temporaryPassword?: string
+}
+
+export interface CreateStudentResult extends Student {
+  /** Present only when the server generated the credential; shown exactly once. */
+  temporaryPassword?: string
+}
+
 export interface ResetUserPasswordResult {
   message: string
   userId: string
+  /** Present only when the server generated the credential; shown exactly once. */
+  temporaryPassword?: string
+}
+
+export type EmergencyDeviceReleaseReason = 'dead_battery' | 'lost_or_damaged' | 'borrowed_device' | 'other'
+
+export interface EmergencyDeviceReleaseInput {
+  sectionId: string
+  reason: EmergencyDeviceReleaseReason
+  note?: string
+}
+
+export interface EmergencyDeviceReleaseResult {
+  user: User
+  clearedCooldown: boolean
+  message: string
+}
+
+export interface TeacherResetStudentPasswordResult {
+  userId: string
+  /** Server-generated temporary password; shown exactly once. */
+  temporaryPassword: string
+  message: string
+}
+
+export interface UnregisterDeviceResult {
+  user: User
+  cooldownHours: number
+  cooldownUntil: string
+  message: string
+}
+
+export interface UpdateContactsInput {
+  /** Empty string clears the stored value. */
+  contactEmail?: string
+  /** Empty string clears the stored value. */
+  contactPhone?: string
+}
+
+export interface DelegatedTeacherPermissions {
+  canResetStudentPasswords: boolean
+  canEmergencyUnbindDevices: boolean
 }
 
 export interface CreateSectionInput {
@@ -343,10 +397,22 @@ export interface ApiClient {
   updateUser(id: string, input: UpdateUserInput): Promise<User>
   changeUserRole(id: string, role: AssignableRole): Promise<User>
   createAdmin(input: CreateAdminInput): Promise<User>
-  createTeacher(data: CreateTeacherInput): Promise<Teacher>
-  createStudent(data: CreateStudentInput): Promise<Student>
-  resetUserPassword(id: string, password: string): Promise<ResetUserPasswordResult>
+  createTeacher(data: CreateTeacherInput): Promise<CreateTeacherResult>
+  createStudent(data: CreateStudentInput): Promise<CreateStudentResult>
+  resetUserPassword(id: string, password?: string): Promise<ResetUserPasswordResult>
   setUserStatus(id: string, isActive: boolean): Promise<User>
+
+  // ── Account governance (GOV) ──
+  teacherResetStudentPassword(
+    studentId: string,
+    sectionId: string,
+  ): Promise<TeacherResetStudentPasswordResult>
+  emergencyReleaseDevice(
+    studentId: string,
+    input: EmergencyDeviceReleaseInput,
+  ): Promise<EmergencyDeviceReleaseResult>
+  unregisterDevice(deviceId: string): Promise<UnregisterDeviceResult>
+  updateContacts(input: UpdateContactsInput): Promise<User>
 
   // ── Bulk import ──
   importStudents(data: StudentImportRequest): Promise<StudentImportResult>

@@ -2,6 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -12,6 +14,7 @@ import type { RequestUser } from '../auth/authenticated-principal'
 import { hash } from 'bcryptjs'
 import type { CreateStudentDto, CreateTeacherDto } from './dto/manage-user.dto'
 import type { CreateAdminDto, UpdateUserDto } from './dto/admin-user.dto'
+import type { EmergencyDeviceReleaseDto, TeacherResetStudentPasswordDto, UpdateContactsDto } from './dto/governance.dto'
 import { Prisma } from '../prisma/client'
 import { randomUUID } from 'crypto'
 import { EventEmitter2 } from '@nestjs/event-emitter'
@@ -20,6 +23,12 @@ import { isStrongPassword, PASSWORD_HASH_COST } from '../auth/password-policy'
 import { paginate, type PaginationParams } from '../common/utils/pagination'
 import type { AdminUserFilters } from '@polycheck/shared'
 import { NotificationsService } from '../notifications/notifications.service'
+import { RedisService } from '../infrastructure/redis.service'
+import { SettingsService } from '../settings/settings.service'
+import { lockStudentSection } from '../common/student-section-lock'
+import { ErrorCode } from '../common/constants/error-codes'
+import { DeviceBindingService } from './device-binding.service'
+import { generateTemporaryPassword } from './password-generator'
 
 const SAFE_USER_SELECT = {
   id: true,
@@ -37,9 +46,39 @@ const SAFE_USER_SELECT = {
   updatedAt: true,
 } as const satisfies Prisma.UserSelect
 
+const GOVERNANCE_USER_SELECT = {
+  ...SAFE_USER_SELECT,
+  boundDeviceId: true,
+  deviceBoundAt: true,
+  deviceCooldownUntil: true,
+  canResetStudentPasswords: true,
+  canEmergencyUnbindDevices: true,
+  contactEmail: true,
+  contactPhone: true,
+} as const satisfies Prisma.UserSelect
+
 type SafeUser = Prisma.UserGetPayload<{ select: typeof SAFE_USER_SELECT }>
 
 const DEFAULT_LIST_LIMIT = 100
+
+// Delegated classroom actions are rate limited per teacher so a compromised
+// account cannot mass-reset a roster. Limits are env-tunable like login limits.
+const TEACHER_RESET_RATE_LIMIT = positiveInt(process.env.TEACHER_RESET_RATE_LIMIT, 10)
+const TEACHER_RESET_RATE_WINDOW_SECONDS = positiveInt(process.env.TEACHER_RESET_RATE_WINDOW_SECONDS, 3600)
+const TEACHER_DEVICE_RELEASE_RATE_LIMIT = positiveInt(process.env.TEACHER_DEVICE_RELEASE_RATE_LIMIT, 10)
+const TEACHER_DEVICE_RELEASE_RATE_WINDOW_SECONDS = positiveInt(
+  process.env.TEACHER_DEVICE_RELEASE_RATE_WINDOW_SECONDS,
+  3600,
+)
+const DEVICE_UNREGISTER_RATE_LIMIT = positiveInt(process.env.DEVICE_UNREGISTER_RATE_LIMIT, 5)
+const DEVICE_UNREGISTER_RATE_WINDOW_SECONDS = positiveInt(process.env.DEVICE_UNREGISTER_RATE_WINDOW_SECONDS, 3600)
+const CONTACT_UPDATE_RATE_LIMIT = positiveInt(process.env.CONTACT_UPDATE_RATE_LIMIT, 10)
+const CONTACT_UPDATE_RATE_WINDOW_SECONDS = positiveInt(process.env.CONTACT_UPDATE_RATE_WINDOW_SECONDS, 900)
+
+function positiveInt(value: string | undefined, fallback: number) {
+  const parsed = value === undefined ? NaN : Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
+}
 
 @Injectable()
 export class UsersService {
@@ -49,6 +88,9 @@ export class UsersService {
     private prisma: PrismaService,
     @Optional() private events?: EventEmitter2,
     @Optional() private notifications?: NotificationsService,
+    @Optional() private deviceBinding?: DeviceBindingService,
+    @Optional() private settings?: SettingsService,
+    @Optional() private redis?: RedisService,
   ) {}
 
   async findAll(user: RequestUser, filters: AdminUserFilters = {}, pagination?: PaginationParams) {
@@ -182,11 +224,13 @@ export class UsersService {
       select: { id: true },
     })
     if (exists) throw new ConflictException('A user with this email already exists')
-    const password = await hash(dto.password, PASSWORD_HASH_COST)
+    const generated = dto.password === undefined
+    const temporaryPassword = dto.password ?? generateTemporaryPassword()
+    const password = await hash(temporaryPassword, PASSWORD_HASH_COST)
     const id = randomUUID()
     const now = new Date()
     try {
-      return await this.prisma.user.create({
+      const created = await this.prisma.user.create({
         data: {
           id,
           fullName: dto.fullName.trim(),
@@ -195,6 +239,7 @@ export class UsersService {
           password,
           department: dto.department?.trim(),
           role: 'teacher',
+          ...(generated ? { mustChangePassword: true } : {}),
           authAccounts: {
             create: {
               id: randomUUID(),
@@ -219,6 +264,11 @@ export class UsersService {
           updatedAt: true,
         },
       })
+      await this.recordAdminAudit(user, 'admin.user.created', created.id, {
+        role: 'teacher',
+        generatedPassword: generated,
+      })
+      return { ...created, ...(generated ? { temporaryPassword } : {}) }
     } catch (error) {
       this.rethrowUniqueConflict(error)
     }
@@ -236,7 +286,9 @@ export class UsersService {
     })
     if (exists) throw new ConflictException('A user with this student ID or email already exists')
 
-    const password = await hash(dto.password, PASSWORD_HASH_COST)
+    const generated = dto.password === undefined
+    const temporaryPassword = dto.password ?? generateTemporaryPassword()
+    const password = await hash(temporaryPassword, PASSWORD_HASH_COST)
     const id = randomUUID()
     const now = new Date()
     try {
@@ -252,6 +304,7 @@ export class UsersService {
           yearLevel: dto.yearLevel,
           department: dto.department?.trim() ?? null,
           role: 'student',
+          ...(generated ? { mustChangePassword: true } : {}),
           authAccounts: {
             create: {
               id: randomUUID(),
@@ -279,13 +332,17 @@ export class UsersService {
           updatedAt: true,
         },
       })
-      return { ...student, enrolledSectionIds: [] }
+      await this.recordAdminAudit(user, 'admin.user.created', student.id, {
+        role: 'student',
+        generatedPassword: generated,
+      })
+      return { ...student, enrolledSectionIds: [], ...(generated ? { temporaryPassword } : {}) }
     } catch (error) {
       this.rethrowUniqueConflict(error)
     }
   }
 
-  async resetPassword(id: string, password: string, user: RequestUser) {
+  async resetPassword(id: string, password: string | undefined, user: RequestUser) {
     this.assertSuperAdmin(user)
     const target = await this.prisma.user.findUnique({
       where: { id },
@@ -297,7 +354,9 @@ export class UsersService {
     }
     this.assertDepartmentScope(user, target.department ?? undefined)
 
-    const passwordHash = await hash(password, PASSWORD_HASH_COST)
+    const generated = password === undefined
+    const temporaryPassword = password ?? generateTemporaryPassword()
+    const passwordHash = await hash(temporaryPassword, PASSWORD_HASH_COST)
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id },
@@ -321,13 +380,279 @@ export class UsersService {
       this.prisma.authSession.deleteMany({ where: { userId: id } }),
     ])
     this.events?.emit('auth.session-replaced', { userId: id, reason: 'password_reset' })
+    await this.recordAdminAudit(user, 'admin.user.password_reset', id, { generated })
     await this.notifications?.notify(id, {
       type: 'password_reset',
       title: 'Password reset',
       body: 'An administrator reset your password. Sign in with the temporary password and change it immediately.',
       link: '/login',
     })
-    return { message: 'Password reset successfully', userId: id }
+    return {
+      message: 'Password reset successfully',
+      userId: id,
+      ...(generated ? { temporaryPassword } : {}),
+    }
+  }
+
+  /**
+   * Delegated in-classroom reset. A teacher may only reset a student who is
+   * currently enrolled in the section they are acting from, the institution
+   * policy must be enabled, and the teacher must not carry a disabling
+   * override. The temporary credential is returned exactly once.
+   */
+  async teacherResetStudentPassword(
+    studentId: string,
+    dto: TeacherResetStudentPasswordDto,
+    user: RequestUser,
+    ipAddress?: string,
+  ) {
+    if (user.role !== 'teacher') {
+      throw new ForbiddenException('Only teachers can reset student passwords')
+    }
+    await this.assertTeacherCapability(user.id, 'passwordReset')
+    const withinLimit = await this.consumeLimit(
+      `users:reset-student-password:${user.id}`,
+      TEACHER_RESET_RATE_LIMIT,
+      TEACHER_RESET_RATE_WINDOW_SECONDS,
+    )
+    if (!withinLimit) {
+      throw new HttpException('Too many password resets. Try again later.', HttpStatus.TOO_MANY_REQUESTS)
+    }
+
+    const temporaryPassword = generateTemporaryPassword()
+    const passwordHash = await hash(temporaryPassword, PASSWORD_HASH_COST)
+    const now = new Date()
+    await this.prisma.$transaction(async (tx) => {
+      await this.assertStudentInTeacherSection(tx, studentId, dto.sectionId, user.id)
+      await tx.user.update({
+        where: { id: studentId },
+        data: { password: passwordHash, mustChangePassword: true, authVersion: { increment: 1 } },
+      })
+      await tx.authAccount.upsert({
+        where: { providerId_accountId: { providerId: 'credential', accountId: studentId } },
+        update: { password: passwordHash, updatedAt: now },
+        create: {
+          id: randomUUID(),
+          accountId: studentId,
+          providerId: 'credential',
+          userId: studentId,
+          password: passwordHash,
+          createdAt: now,
+          updatedAt: now,
+        },
+      })
+      await tx.authSession.deleteMany({ where: { userId: studentId } })
+    })
+
+    this.events?.emit('auth.session-replaced', { userId: studentId, reason: 'teacher_password_reset' })
+    await this.recordAdminAudit(user, 'teacher.password_reset', studentId, {
+      sectionId: dto.sectionId,
+      ipAddress: ipAddress ?? null,
+      outcome: 'succeeded',
+    })
+    await this.notifications?.notify(studentId, {
+      type: 'password_reset',
+      title: 'Password reset by your instructor',
+      body: 'Your instructor issued a temporary password. Sign in and change it immediately.',
+      link: '/login',
+    })
+    return {
+      userId: studentId,
+      temporaryPassword,
+      message: "Temporary password generated. It must be changed on the student's next login.",
+    }
+  }
+
+  /**
+   * Teacher safety net for a lost/damaged/borrowed device. Clears the binding
+   * and cooldown so the student can log in on a replacement device immediately.
+   */
+  async emergencyReleaseDevice(
+    studentId: string,
+    dto: EmergencyDeviceReleaseDto,
+    user: RequestUser,
+    ipAddress?: string,
+  ) {
+    if (user.role !== 'teacher') {
+      throw new ForbiddenException('Only teachers can release a student device')
+    }
+    await this.assertTeacherCapability(user.id, 'deviceRelease')
+    const withinLimit = await this.consumeLimit(
+      `users:device-release:${user.id}`,
+      TEACHER_DEVICE_RELEASE_RATE_LIMIT,
+      TEACHER_DEVICE_RELEASE_RATE_WINDOW_SECONDS,
+    )
+    if (!withinLimit) {
+      throw new HttpException('Too many device releases. Try again later.', HttpStatus.TOO_MANY_REQUESTS)
+    }
+
+    const now = new Date()
+    const clearedCooldown = await this.prisma.$transaction(async (tx) => {
+      await this.assertStudentInTeacherSection(tx, studentId, dto.sectionId, user.id)
+      const target = await tx.user.findUnique({
+        where: { id: studentId },
+        select: { boundDeviceId: true, deviceCooldownUntil: true },
+      })
+      if (!target) throw new NotFoundException('User not found')
+      const hadBinding = target.boundDeviceId !== null
+      const hadCooldown = target.deviceCooldownUntil !== null && target.deviceCooldownUntil.getTime() > now.getTime()
+      await tx.user.update({
+        where: { id: studentId },
+        data: { boundDeviceId: null, deviceBoundAt: null, deviceCooldownUntil: null },
+      })
+      if (hadBinding || hadCooldown) {
+        await tx.authSession.deleteMany({ where: { userId: studentId } })
+      }
+      return hadCooldown
+    })
+
+    await this.recordAdminAudit(user, 'teacher.device_release', studentId, {
+      sectionId: dto.sectionId,
+      reason: dto.reason,
+      note: dto.note ?? null,
+      ipAddress: ipAddress ?? null,
+      clearedCooldown,
+    })
+    await this.notifications?.notify(studentId, {
+      type: 'device_released',
+      title: 'Device released',
+      body: 'Your instructor released your device binding. You can sign in on a device again.',
+      link: '/login',
+    })
+    const profile = await this.loadGovernanceProfile(studentId)
+    return {
+      user: profile,
+      clearedCooldown,
+      message: 'Device released. The student can log in on a new device now.',
+    }
+  }
+
+  /** Student self-service unregister; delegates cooldown/session revocation. */
+  async unregisterDevice(user: RequestUser, deviceId: string | undefined, ipAddress?: string) {
+    if (user.role !== 'student') {
+      throw new ForbiddenException('Only students can unregister a mobile device')
+    }
+    if (!this.deviceBinding) throw new ForbiddenException('Device binding is unavailable')
+    const withinLimit = await this.consumeLimit(
+      `users:device-unregister:${user.id}`,
+      DEVICE_UNREGISTER_RATE_LIMIT,
+      DEVICE_UNREGISTER_RATE_WINDOW_SECONDS,
+    )
+    if (!withinLimit) {
+      throw new HttpException('Too many device changes. Try again later.', HttpStatus.TOO_MANY_REQUESTS)
+    }
+    const result = await this.deviceBinding.unregisterStudentDevice(user.id, deviceId, ipAddress)
+    const profile = await this.loadGovernanceProfile(user.id)
+    return {
+      user: profile,
+      cooldownHours: result.cooldownHours,
+      cooldownUntil: result.cooldownUntil.toISOString(),
+      message: `Device unregistered. Mobile logins are locked for ${result.cooldownHours} hour(s); your instructor can release you sooner.`,
+    }
+  }
+
+  /** Self-service secondary contact channels (never the login identity). */
+  async updateContacts(user: RequestUser, dto: UpdateContactsDto) {
+    const data: Prisma.UserUpdateInput = {}
+    if (dto.contactEmail !== undefined) {
+      const value = dto.contactEmail.trim()
+      if (value !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+        throw new BadRequestException('contactEmail must be a valid email address')
+      }
+      data.contactEmail = value === '' ? null : value
+    }
+    if (dto.contactPhone !== undefined) {
+      const value = dto.contactPhone.trim()
+      if (value !== '' && !/^\+?[0-9\s-]{7,20}$/.test(value)) {
+        throw new BadRequestException('contactPhone must be a valid phone number')
+      }
+      data.contactPhone = value === '' ? null : value
+    }
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException('Provide at least one contact field')
+    }
+    const withinLimit = await this.consumeLimit(
+      `users:contacts:${user.id}`,
+      CONTACT_UPDATE_RATE_LIMIT,
+      CONTACT_UPDATE_RATE_WINDOW_SECONDS,
+    )
+    if (!withinLimit) {
+      throw new HttpException('Too many contact updates. Try again later.', HttpStatus.TOO_MANY_REQUESTS)
+    }
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data,
+      select: GOVERNANCE_USER_SELECT,
+    })
+    await this.recordAdminAudit(user, 'contact.updated', user.id, {
+      fields: Object.keys(data),
+    })
+    return updated
+  }
+
+  private async assertTeacherCapability(teacherId: string, capability: 'passwordReset' | 'deviceRelease') {
+    if (!this.settings) throw new ForbiddenException('Delegated teacher capabilities are unavailable')
+    const policies = await this.settings.getTeacherDelegationPolicies()
+    const policyEnabled =
+      capability === 'passwordReset' ? policies.teacherPasswordReset : policies.teacherEmergencyUnbind
+    if (!policyEnabled) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        error: 'Forbidden',
+        code: ErrorCode.TEACHER_POLICY_DISABLED,
+        message: 'This capability has been disabled by institution policy',
+      })
+    }
+    const teacher = await this.prisma.user.findUnique({
+      where: { id: teacherId },
+      select: { canResetStudentPasswords: true, canEmergencyUnbindDevices: true },
+    })
+    const override =
+      capability === 'passwordReset' ? teacher?.canResetStudentPasswords : teacher?.canEmergencyUnbindDevices
+    if (override === false) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        error: 'Forbidden',
+        code: ErrorCode.TEACHER_PERMISSION_DISABLED,
+        message: 'This capability is disabled for your account',
+      })
+    }
+  }
+
+  private async assertStudentInTeacherSection(
+    tx: Prisma.TransactionClient,
+    studentId: string,
+    sectionId: string,
+    teacherId: string,
+  ) {
+    await lockStudentSection(tx, studentId, sectionId)
+    const enrollment = await tx.enrollment.findUnique({
+      where: { studentId_sectionId: { studentId, sectionId } },
+      select: { id: true, section: { select: { teacherId: true } }, student: { select: { role: true } } },
+    })
+    if (!enrollment || enrollment.section.teacherId !== teacherId) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        error: 'Forbidden',
+        code: ErrorCode.NOT_ENROLLED,
+        message: 'Student is not enrolled in this section',
+      })
+    }
+    if (enrollment.student.role !== 'student') {
+      throw new ForbiddenException('Only student accounts can be managed here')
+    }
+    return enrollment
+  }
+
+  private async loadGovernanceProfile(id: string) {
+    const profile = await this.prisma.user.findUnique({ where: { id }, select: GOVERNANCE_USER_SELECT })
+    if (!profile) throw new NotFoundException('User not found')
+    return profile
+  }
+
+  private async consumeLimit(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+    if (!this.redis) return true
+    return this.redis.consumeRateLimit(key, limit, windowSeconds)
   }
 
   async setStatus(id: string, isActive: boolean, user: RequestUser) {
@@ -395,8 +720,15 @@ export class UsersService {
     if ((dto.program !== undefined || dto.yearLevel !== undefined) && target.role !== 'student') {
       throw new BadRequestException('Program and year level can only be edited for student accounts')
     }
+    const permissionFieldsProvided =
+      dto.canResetStudentPasswords !== undefined || dto.canEmergencyUnbindDevices !== undefined
+    if (permissionFieldsProvided && target.role !== 'teacher') {
+      throw new BadRequestException('Delegated capabilities can only be edited for teacher accounts')
+    }
 
     const data: Prisma.UserUpdateInput = {}
+    if (dto.canResetStudentPasswords !== undefined) data.canResetStudentPasswords = dto.canResetStudentPasswords
+    if (dto.canEmergencyUnbindDevices !== undefined) data.canEmergencyUnbindDevices = dto.canEmergencyUnbindDevices
     if (dto.fullName !== undefined) {
       const fullName = dto.fullName.trim()
       if (fullName.length < 2) throw new BadRequestException('fullName must be at least 2 characters')
@@ -494,7 +826,11 @@ export class UsersService {
 
     const updated = await this.prisma.user.update({
       where: { id },
-      data: { role },
+      data: {
+        role,
+        // Delegated teacher capabilities do not carry over to a student account.
+        ...(role === 'student' ? { canResetStudentPasswords: null, canEmergencyUnbindDevices: null } : {}),
+      },
       select: SAFE_USER_SELECT,
     })
     await this.recordAdminAudit(user, 'admin.user.role_changed', id, { before: target.role, after: role })

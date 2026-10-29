@@ -178,12 +178,72 @@ describe('SettingsService', () => {
     expect(prisma.institutionSetting.upsert).not.toHaveBeenCalled()
   })
 
+  it('validates the delegated-governance switches and cooldown range', async () => {
+    const stored = new Map<string, string>()
+    const prisma = {
+      institutionSetting: {
+        findUnique: jest.fn(async ({ where }: { where: { key: string } }) =>
+          stored.has(where.key) ? { value: stored.get(where.key) } : null,
+        ),
+        upsert: jest.fn(async ({ create }: { create: { key: string; value: string } }) => {
+          stored.set(create.key, create.value)
+          return create
+        }),
+      },
+    }
+    const service = new SettingsService(prisma as never, config as never)
+
+    await expect(service.getTeacherDelegationPolicies()).resolves.toEqual({
+      teacherPasswordReset: true,
+      teacherEmergencyUnbind: true,
+      deviceCooldownHours: 2,
+    })
+
+    await service.set('allow_teacher_password_reset', 'false', 'admin-1')
+    await service.set('allow_teacher_emergency_device_unbind', 'false', 'admin-1')
+    await service.set('device_cooldown_hours', '8', 'admin-1')
+    await expect(service.getTeacherDelegationPolicies()).resolves.toEqual({
+      teacherPasswordReset: false,
+      teacherEmergencyUnbind: false,
+      deviceCooldownHours: 8,
+    })
+
+    await expect(service.set('device_cooldown_hours', '0', 'admin-1')).rejects.toBeInstanceOf(BadRequestException)
+    await expect(service.set('device_cooldown_hours', '25', 'admin-1')).rejects.toBeInstanceOf(BadRequestException)
+    await expect(service.set('device_cooldown_hours', '2.5', 'admin-1')).rejects.toBeInstanceOf(BadRequestException)
+    await expect(service.set('allow_teacher_password_reset', 'yes', 'admin-1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    )
+  })
+
+  it('clamps a hand-edited cooldown row into the documented range', async () => {
+    const prisma = {
+      institutionSetting: {
+        findUnique: jest.fn(async ({ where }: { where: { key: string } }) => {
+          if (where.key === 'device_cooldown_hours') return { value: '96' }
+          if (where.key === 'allow_teacher_password_reset') return { value: 'true' }
+          if (where.key === 'allow_teacher_emergency_device_unbind') return { value: 'false' }
+          return null
+        }),
+      },
+    }
+    const service = new SettingsService(prisma as never, config as never)
+
+    await expect(service.getTeacherDelegationPolicies()).resolves.toEqual({
+      teacherPasswordReset: true,
+      teacherEmergencyUnbind: false,
+      deviceCooldownHours: 24,
+    })
+  })
+
   it.each([
     ['unknown_setting', '1'],
     ['default_qr_validity_minutes', '16'],
     ['default_geofence_radius_meters', '9'],
     ['default_grace_period_minutes', '-1'],
     ['enrollment_code_expiry_days', '91'],
+    ['device_cooldown_hours', '0'],
+    ['device_cooldown_hours', '25'],
   ])('rejects unsupported or out-of-range values: %s=%s', async (key, value) => {
     const prisma = { institutionSetting: { upsert: jest.fn() } }
     const service = new SettingsService(prisma as never, config as never)

@@ -544,7 +544,11 @@ describe('UsersService', () => {
       const service = new UsersService(prisma as never, { emit: jest.fn() } as never)
 
       await expect(service.changeUserRole('teacher-1', 'student', institutionAdmin)).resolves.toBe(updated)
-      expect(prisma.user.update.mock.calls[0][0].data).toEqual({ role: 'student' })
+      expect(prisma.user.update.mock.calls[0][0].data).toEqual({
+        role: 'student',
+        canResetStudentPasswords: null,
+        canEmergencyUnbindDevices: null,
+      })
     })
 
     it('rejects a no-op role change', async () => {
@@ -777,6 +781,295 @@ describe('UsersService', () => {
         'teacher-1',
         expect.objectContaining({ type: 'role_changed', title: 'Super Admin access granted' }),
       )
+    })
+  })
+
+  describe('delegated classroom governance', () => {
+    const teacherActor: RequestUser = { id: 'teacher-1', role: 'teacher' }
+
+    function governancePrisma(
+      options: {
+        teacher?: { canResetStudentPasswords?: boolean | null; canEmergencyUnbindDevices?: boolean | null }
+        enrollment?: unknown
+        target?: Record<string, unknown>
+      } = {},
+    ) {
+      const prisma = {
+        user: {
+          findUnique: jest.fn(async ({ where }: { where: { id: string } }) => {
+            if (where.id === 'teacher-1') {
+              return {
+                canResetStudentPasswords: options.teacher?.canResetStudentPasswords ?? null,
+                canEmergencyUnbindDevices: options.teacher?.canEmergencyUnbindDevices ?? null,
+              }
+            }
+            return (
+              options.target ?? {
+                id: 'student-1',
+                role: 'student',
+                boundDeviceId: null,
+                deviceBoundAt: null,
+                deviceCooldownUntil: null,
+              }
+            )
+          }),
+          update: jest.fn().mockResolvedValue({}),
+        },
+        enrollment: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue(
+              options.enrollment === undefined
+                ? { id: 'enr-1', section: { teacherId: 'teacher-1' }, student: { role: 'student' } }
+                : options.enrollment,
+            ),
+        },
+        authAccount: { upsert: jest.fn().mockResolvedValue({}) },
+        authSession: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+        $executeRaw: jest.fn().mockResolvedValue(1),
+        $transaction: jest.fn(),
+      }
+      prisma.$transaction.mockImplementation(async (callback: (tx: unknown) => unknown) => callback(prisma))
+      return prisma
+    }
+
+    function governanceService(prisma: ReturnType<typeof governancePrisma>, policyEnabled = true) {
+      const settings = {
+        getTeacherDelegationPolicies: jest.fn().mockResolvedValue({
+          teacherPasswordReset: policyEnabled,
+          teacherEmergencyUnbind: policyEnabled,
+          deviceCooldownHours: 2,
+        }),
+      }
+      const redis = { consumeRateLimit: jest.fn().mockResolvedValue(true) }
+      const notifications = { notify: jest.fn().mockResolvedValue(undefined) }
+      const events = { emit: jest.fn() }
+      const service = new UsersService(
+        prisma as never,
+        events as never,
+        notifications as never,
+        undefined,
+        settings as never,
+        redis as never,
+      )
+      return { service, settings, redis, notifications, events }
+    }
+
+    const codeOf = async (promise: Promise<unknown>) => {
+      try {
+        await promise
+      } catch (error) {
+        return (error as { getResponse?: () => { code?: string } }).getResponse?.().code
+      }
+      throw new Error('Expected the promise to reject')
+    }
+
+    it('blocks teacher resets when the institution policy is disabled', async () => {
+      const prisma = governancePrisma()
+      const { service } = governanceService(prisma, false)
+
+      expect(await codeOf(service.teacherResetStudentPassword('student-1', { sectionId: 'sec-1' }, teacherActor))).toBe(
+        'teacher_policy_disabled',
+      )
+      expect(prisma.$transaction).not.toHaveBeenCalled()
+    })
+
+    it('blocks teacher resets when the per-teacher override is disabled', async () => {
+      const prisma = governancePrisma({ teacher: { canResetStudentPasswords: false } })
+      const { service } = governanceService(prisma)
+
+      expect(await codeOf(service.teacherResetStudentPassword('student-1', { sectionId: 'sec-1' }, teacherActor))).toBe(
+        'teacher_permission_disabled',
+      )
+      expect(prisma.$transaction).not.toHaveBeenCalled()
+    })
+
+    it('blocks resets for students outside the acting teacher section', async () => {
+      const prisma = governancePrisma({ enrollment: null })
+      const { service } = governanceService(prisma)
+
+      expect(await codeOf(service.teacherResetStudentPassword('student-1', { sectionId: 'sec-1' }, teacherActor))).toBe(
+        'not_enrolled',
+      )
+      expect(prisma.user.update).not.toHaveBeenCalled()
+    })
+
+    it('issues a strong one-time password, forces rotation, revokes sessions, and audits the reset', async () => {
+      const prisma = governancePrisma()
+      const { service, notifications, events } = governanceService(prisma)
+
+      const result = await service.teacherResetStudentPassword(
+        'student-1',
+        { sectionId: 'sec-1' },
+        teacherActor,
+        '203.0.113.7',
+      )
+
+      expect(result.userId).toBe('student-1')
+      expect(result.temporaryPassword).toMatch(/^PUP-[A-Z2-9]{8}-[a-z]{2}[!@#$%_-]$/)
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'student-1' },
+        data: expect.objectContaining({
+          mustChangePassword: true,
+          authVersion: { increment: 1 },
+          password: expect.any(String),
+        }),
+      })
+      expect(prisma.authSession.deleteMany).toHaveBeenCalledWith({ where: { userId: 'student-1' } })
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          action: 'teacher.password_reset',
+          actorId: 'teacher-1',
+          entityId: 'student-1',
+          metadata: expect.objectContaining({ sectionId: 'sec-1', ipAddress: '203.0.113.7' }),
+        }),
+      })
+      expect(notifications.notify).toHaveBeenCalledWith(
+        'student-1',
+        expect.objectContaining({ type: 'password_reset' }),
+      )
+      expect(events.emit).toHaveBeenCalledWith('auth.session-replaced', {
+        userId: 'student-1',
+        reason: 'teacher_password_reset',
+      })
+    })
+
+    it('releases a bound, cooled-down device and records the reason', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-30T10:00:00.000Z'))
+      try {
+        const prisma = governancePrisma({
+          target: {
+            id: 'student-1',
+            role: 'student',
+            boundDeviceId: 'mobile-abcd',
+            deviceBoundAt: new Date('2026-10-01T00:00:00.000Z'),
+            deviceCooldownUntil: new Date('2026-10-30T11:00:00.000Z'),
+          },
+        })
+        const { service } = governanceService(prisma)
+
+        const result = await service.emergencyReleaseDevice(
+          'student-1',
+          { sectionId: 'sec-1', reason: 'lost_or_damaged', note: 'Phone left in a jeepney' },
+          teacherActor,
+          '203.0.113.8',
+        )
+
+        expect(result.clearedCooldown).toBe(true)
+        expect(prisma.user.update).toHaveBeenCalledWith({
+          where: { id: 'student-1' },
+          data: { boundDeviceId: null, deviceBoundAt: null, deviceCooldownUntil: null },
+        })
+        expect(prisma.authSession.deleteMany).toHaveBeenCalledWith({ where: { userId: 'student-1' } })
+        expect(prisma.auditLog.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            action: 'teacher.device_release',
+            metadata: expect.objectContaining({
+              sectionId: 'sec-1',
+              reason: 'lost_or_damaged',
+              note: 'Phone left in a jeepney',
+              clearedCooldown: true,
+            }),
+          }),
+        })
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('is idempotent for a student without a binding or cooldown', async () => {
+      const prisma = governancePrisma()
+      const { service } = governanceService(prisma)
+
+      const result = await service.emergencyReleaseDevice(
+        'student-1',
+        { sectionId: 'sec-1', reason: 'other' },
+        teacherActor,
+      )
+      expect(result.clearedCooldown).toBe(false)
+      expect(prisma.authSession.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it('updates contacts and audits the change', async () => {
+      const prisma = {
+        user: {
+          update: jest.fn().mockResolvedValue({
+            id: 'student-1',
+            contactEmail: 'juan@example.com',
+            contactPhone: null,
+          }),
+        },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+      }
+      const service = new UsersService(prisma as never)
+
+      const result = await service.updateContacts(
+        { id: 'student-1', role: 'student' },
+        { contactEmail: 'juan@example.com', contactPhone: '' },
+      )
+
+      expect(result).toMatchObject({ id: 'student-1', contactEmail: 'juan@example.com' })
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'student-1' },
+        data: { contactEmail: 'juan@example.com', contactPhone: null },
+        select: expect.any(Object),
+      })
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ action: 'contact.updated', entityId: 'student-1' }),
+      })
+    })
+
+    it('rejects malformed contact values', async () => {
+      const prisma = { user: { update: jest.fn() } }
+      const service = new UsersService(prisma as never)
+
+      await expect(
+        service.updateContacts({ id: 'student-1', role: 'student' }, { contactEmail: 'not-an-email' }),
+      ).rejects.toBeInstanceOf(BadRequestException)
+      await expect(
+        service.updateContacts({ id: 'student-1', role: 'student' }, { contactPhone: 'call-me' }),
+      ).rejects.toBeInstanceOf(BadRequestException)
+      await expect(service.updateContacts({ id: 'student-1', role: 'student' }, {})).rejects.toBeInstanceOf(
+        BadRequestException,
+      )
+      expect(prisma.user.update).not.toHaveBeenCalled()
+    })
+
+    it('only accepts delegated capability fields for teacher targets', async () => {
+      const prisma = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'student-1', role: 'student', department: 'CCIS' }),
+        },
+      }
+      const service = new UsersService(prisma as never)
+
+      await expect(
+        service.updateUser('student-1', { canResetStudentPasswords: true }, institutionAdmin),
+      ).rejects.toThrow('Delegated capabilities can only be edited for teacher accounts')
+    })
+
+    it('generates a temporary password when creating a teacher without one', async () => {
+      const created = { id: 'teacher-9', fullName: 'New Teacher', email: 'new@pup.edu', role: 'teacher' }
+      const prisma = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue(created),
+        },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+      }
+      const service = new UsersService(prisma as never)
+
+      const result = await service.createTeacher({ fullName: 'New Teacher', email: 'new@pup.edu' }, institutionAdmin)
+
+      expect(result.temporaryPassword).toMatch(/^PUP-/)
+      expect(prisma.user.create.mock.calls[0][0].data).toMatchObject({ mustChangePassword: true })
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          action: 'admin.user.created',
+          metadata: expect.objectContaining({ generatedPassword: true }),
+        }),
+      })
     })
   })
 })

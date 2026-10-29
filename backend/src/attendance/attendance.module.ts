@@ -10,9 +10,10 @@ import { RealtimeModule } from '../realtime/realtime.module'
 import { NotificationsModule } from '../notifications/notifications.module'
 import { ProofsModule } from '../proofs/proofs.module'
 import { StandingModule } from '../standing/standing.module'
+import { UsersModule } from '../users/users.module'
 
 @Module({
-  imports: [RealtimeModule, NotificationsModule, ProofsModule, StandingModule],
+  imports: [RealtimeModule, NotificationsModule, ProofsModule, StandingModule, UsersModule],
   controllers: [AttendanceController],
   providers: [
     AttendanceScopeService,

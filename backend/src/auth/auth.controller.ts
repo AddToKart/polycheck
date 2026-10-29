@@ -61,7 +61,10 @@ export class AuthController {
   @Public()
   @Post('mobile/login/student')
   async loginStudentMobile(@Body() dto: LoginStudentDto, @Req() req: ExpressRequest) {
-    const result = await this.auth.loginStudent(dto.studentId, dto.password, req.ip, toWebHeaders(req.headers))
+    const result = await this.auth.loginStudent(dto.studentId, dto.password, req.ip, toWebHeaders(req.headers), {
+      channel: 'mobile',
+      deviceId: dto.deviceId,
+    })
     if (!result.token) throw new Error('Better Auth did not issue a mobile bearer token')
     return { user: result.user, token: result.token }
   }
@@ -69,7 +72,9 @@ export class AuthController {
   @Public()
   @Post('mobile/login/faculty')
   async loginFacultyMobile(@Body() dto: LoginFacultyDto, @Req() req: ExpressRequest) {
-    const result = await this.auth.loginFaculty(dto.email, dto.password, req.ip, toWebHeaders(req.headers))
+    const result = await this.auth.loginFaculty(dto.email, dto.password, req.ip, toWebHeaders(req.headers), {
+      channel: 'mobile',
+    })
     if (!result.token) throw new Error('Better Auth did not issue a mobile bearer token')
     return { user: result.user, token: result.token }
   }

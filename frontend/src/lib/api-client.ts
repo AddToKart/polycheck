@@ -1,4 +1,4 @@
-import { classifyAttendanceSyncError, getRecentCampusDateRange, haversineDistance, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRequest, type EnrollImportResult, type EnrollImportRow, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput, type AiCapabilities, type AiChatSendInput, type AiChatSendResult, type AiChatThread, type AiThreadSummary, type AttendanceStanding, type AppNotification, type NotificationReadInput, type PushTokenInput, type StudentAtRisk, type ExcuseDecision, type ExcuseReason } from '@polycheck/shared'
+import { classifyAttendanceSyncError, getRecentCampusDateRange, haversineDistance, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRequest, type EnrollImportResult, type EnrollImportRow, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput, type AiCapabilities, type AiChatSendInput, type AiChatSendResult, type AiChatThread, type AiThreadSummary, type AttendanceStanding, type AppNotification, type NotificationReadInput, type PushTokenInput, type StudentAtRisk, type ExcuseDecision, type ExcuseReason, type CreateTeacherResult, type CreateStudentResult, type TeacherResetStudentPasswordResult, type EmergencyDeviceReleaseInput, type EmergencyDeviceReleaseResult, type UnregisterDeviceResult, type UpdateContactsInput } from '@polycheck/shared'
 import { getOrCreateTeacherSigningKey, isSigningKeyProvisioned, markSigningKeyProvisioned } from './signing-key'
 import { API_BASE } from './api-config'
 import {
@@ -39,6 +39,8 @@ export class ApiHttpError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
+    readonly remainingMinutes?: number,
   ) {
     super(message)
     this.name = 'ApiHttpError'
@@ -119,7 +121,9 @@ async function handleResponse<T>(res: Response): Promise<T> {
       saveUser(null)
     }
     const message = Array.isArray(err.message) ? err.message.join('. ') : err.message
-    throw new ApiHttpError(message || 'Request failed', res.status)
+    const code = typeof err.code === 'string' ? err.code : undefined
+    const remainingMinutes = typeof err.remainingMinutes === 'number' ? err.remainingMinutes : undefined
+    throw new ApiHttpError(message || 'Request failed', res.status, code, remainingMinutes)
   }
   return res.json()
 }
@@ -824,17 +828,37 @@ const apiBase = {
   createAdmin(input: CreateAdminInput): Promise<User> {
     return post('/users/admins', input)
   },
-  createTeacher(data: CreateTeacherInput): Promise<Teacher> {
+  createTeacher(data: CreateTeacherInput): Promise<CreateTeacherResult> {
     return post('/users/teachers', data)
   },
-  createStudent(data: CreateStudentInput): Promise<Student> {
+  createStudent(data: CreateStudentInput): Promise<CreateStudentResult> {
     return post('/users/students', data)
   },
-  resetUserPassword(id: string, password: string): Promise<ResetUserPasswordResult> {
-    return patch(`/users/${id}/password`, { password })
+  resetUserPassword(id: string, password?: string): Promise<ResetUserPasswordResult> {
+    return patch(`/users/${id}/password`, password === undefined ? {} : { password })
   },
   setUserStatus(id: string, isActive: boolean): Promise<User> {
     return patch(`/users/${id}/status`, { isActive })
+  },
+  teacherResetStudentPassword(
+    studentId: string,
+    sectionId: string,
+  ): Promise<TeacherResetStudentPasswordResult> {
+    return post(`/users/students/${studentId}/teacher-reset-password`, { sectionId })
+  },
+  emergencyReleaseDevice(
+    studentId: string,
+    input: EmergencyDeviceReleaseInput,
+  ): Promise<EmergencyDeviceReleaseResult> {
+    return post(`/users/students/${studentId}/device-release`, input)
+  },
+  unregisterDevice(deviceId: string): Promise<UnregisterDeviceResult> {
+    return post('/users/me/device/unregister', { deviceId })
+  },
+  async updateContacts(input: UpdateContactsInput): Promise<User> {
+    const updated = await patch<User>('/users/me/contacts', input)
+    saveUser(updated)
+    return updated
   },
   importStudents(data: StudentImportRequest): Promise<StudentImportResult> {
     return post('/users/students/import', data, data.idempotencyKey)

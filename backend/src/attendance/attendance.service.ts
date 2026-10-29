@@ -37,6 +37,7 @@ import { lockStudentSection } from '../common/student-section-lock'
 import { ProofStorageService } from '../proofs/proof-storage.service'
 import { decodeImageDataUrl } from '../proofs/image-evidence'
 import { NotificationsService } from '../notifications/notifications.service'
+import { DeviceBindingService } from '../users/device-binding.service'
 
 const OFFLINE_ACTIVATION_LOCK_TTL_SECONDS = 10
 const OFFLINE_ACTIVATION_WAIT_ATTEMPTS = 5
@@ -68,6 +69,7 @@ export class AttendanceService {
     @Optional() private readonly notifications?: NotificationsService,
     @Optional() private readonly storage?: ProofStorageService,
     @Optional() private readonly config?: ConfigService,
+    @Optional() private readonly deviceBinding?: DeviceBindingService,
   ) {}
 
   // ── Raw record access ──
@@ -194,6 +196,10 @@ export class AttendanceService {
   }
 
   private async processScanSubmission(user: RequestUser, evidence: ScanEvidence, offline: boolean) {
+    // Defensive device-cooldown gate: unregister revokes sessions, so a cooled
+    // student normally cannot reach this path, but a session created just
+    // before the unregister committed (or a manual DB edit) must not scan.
+    await this.deviceBinding?.assertScanAllowed(user.id)
     const receivedAt = new Date()
     const tokenHash = createHash('sha256').update(evidence.qrToken).digest('hex')
     const replay = await this.scanValidator.findReplay(user.id, evidence, tokenHash)
@@ -369,6 +375,19 @@ export class AttendanceService {
         status: transactionResult.priorStatus,
         reason: 'duplicate',
         message: 'Attendance was already submitted for this session',
+      }
+    }
+    // Lazy device binding on the first accepted scan for students whose account
+    // predates device binding. Failures must not undo the committed record.
+    if (this.deviceBinding) {
+      try {
+        await this.deviceBinding.registerBinding(user.id, evidence.deviceId, user.role)
+      } catch (error) {
+        this.logger.warn(
+          `Could not bind device for student ${user.id} after accepted scan: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
       }
     }
     this.realtime.emitAttendanceUpdated(transactionResult.record)

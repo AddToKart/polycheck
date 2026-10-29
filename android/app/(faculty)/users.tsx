@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
+import * as Clipboard from 'expo-clipboard'
 import { router } from 'expo-router'
 import type { AdminUserStatusFilter, SuperAdmin, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
@@ -45,8 +46,7 @@ const EMAIL_PATTERN = /^\S+@\S+\.\S+$/
 const emptyProfileForm: UserProfileForm = { fullName: '', department: '', email: '', program: '', yearLevel: '' }
 const emptyAdminForm = { fullName: '', email: '', department: '', password: '' }
 
-const AccountSheet = ({ visible, title, description, children, onClose }: { visible: boolean; title: string; description: string; children: ReactNode; onClose: () => void }) => {
-  const { isDark } = useTheme()
+const AccountSheet = ({ visible, title, description, children, onClose }: { visible: boolean; title: string; description: string; children: ReactNode; onClose: () => void }) => {  const { isDark } = useTheme()
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 justify-end bg-black/80" onPress={onClose}>
@@ -68,8 +68,59 @@ const AccountSheet = ({ visible, title, description, children, onClose }: { visi
   )
 }
 
-const FilterChip = ({ label, selected, onPress, testID }: { label: string; selected: boolean; onPress: () => void; testID?: string }) => (
-  <Pressable
+const PermissionChoiceRow = ({
+  label,
+  value,
+  onChange,
+  testID,
+}: {
+  label: string
+  value: 'inherit' | 'allow' | 'deny'
+  onChange: (value: 'inherit' | 'allow' | 'deny') => void
+  testID?: string
+}) => {
+  const options: { value: 'inherit' | 'allow' | 'deny'; label: string }[] = [
+    { value: 'inherit', label: 'Default' },
+    { value: 'allow', label: 'Allowed' },
+    { value: 'deny', label: 'Disabled' },
+  ]
+  return (
+    <View className="gap-1.5" testID={testID}>
+      <Text className="font-sans text-xs text-ink dark:text-white">{label}</Text>
+      <View className="flex-row gap-2">
+        {options.map((option) => {
+          const selected = value === option.value
+          return (
+            <Pressable
+              key={option.value}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`${label}: ${option.label}`}
+              onPress={() => onChange(option.value)}
+              className={
+                selected
+                  ? 'flex-1 items-center border border-maroon bg-maroon px-2 py-2 dark:border-golden dark:bg-golden'
+                  : 'flex-1 items-center border border-line px-2 py-2 dark:border-line-dark'
+              }
+            >
+              <Text
+                className={
+                  selected
+                    ? 'font-sans-bold text-[10px] uppercase tracking-wide text-white dark:text-maroon-ink'
+                    : 'font-sans-bold text-[10px] uppercase tracking-wide text-muted dark:text-zinc-300'
+                }
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          )
+        })}
+      </View>
+    </View>
+  )
+}
+
+const FilterChip = ({ label, selected, onPress, testID }: { label: string; selected: boolean; onPress: () => void; testID?: string }) => (  <Pressable
     testID={testID}
     accessibilityRole="button"
     accessibilityState={{ selected }}
@@ -216,10 +267,12 @@ export default function FacultyUsersScreen() {
   const [editTarget, setEditTarget] = useState<User | null>(null)
   const [showAddAdmin, setShowAddAdmin] = useState(false)
 
-  const [teacherForm, setTeacherForm] = useState({ fullName: '', email: '', department: '', password: '' })
-  const [studentForm, setStudentForm] = useState({ fullName: '', studentId: '', email: '', program: '', yearLevel: '', department: '', password: '' })
-  const [passwordForm, setPasswordForm] = useState({ password: '', confirmPassword: '' })
+  const [teacherForm, setTeacherForm] = useState({ fullName: '', email: '', department: '' })
+  const [studentForm, setStudentForm] = useState({ fullName: '', studentId: '', email: '', program: '', yearLevel: '', department: '' })
   const [editForm, setEditForm] = useState<UserProfileForm>(emptyProfileForm)
+  const [editResetPermission, setEditResetPermission] = useState<'inherit' | 'allow' | 'deny'>('inherit')
+  const [editUnbindPermission, setEditUnbindPermission] = useState<'inherit' | 'allow' | 'deny'>('inherit')
+  const [credential, setCredential] = useState<{ name: string; identifier: string; password: string } | null>(null)
 
   const [adminMode, setAdminMode] = useState<'promote' | 'create'>('promote')
   const [adminForm, setAdminForm] = useState(emptyAdminForm)
@@ -343,18 +396,24 @@ export default function FacultyUsersScreen() {
   }
 
   const createTeacher = async () => {
-    if (teacherForm.fullName.trim().length < 2 || !teacherForm.email.includes('@') || !meetsPasswordPolicy(teacherForm.password)) {
-      showToast('warning', 'Check the form', 'Enter a name, valid email, and a 12+ character password with uppercase, lowercase, number, and symbol.')
+    if (teacherForm.fullName.trim().length < 2 || !teacherForm.email.includes('@')) {
+      showToast('warning', 'Check the form', 'Enter a name and valid email. A temporary password is generated automatically.')
       return
     }
     setSubmitting(true)
     try {
-      await api.createTeacher(teacherForm)
-      setTeacherForm({ fullName: '', email: '', department: '', password: '' })
+      const created = await api.createTeacher(teacherForm)
+      setTeacherForm({ fullName: '', email: '', department: '' })
       setShowCreateTeacher(false)
       setActiveTab('teachers')
       refreshAfterMutation()
-      showToast('success', 'Teacher created', 'The new account can sign in immediately.')
+      if (created.temporaryPassword) {
+        setCredential({ name: created.fullName, identifier: created.email ?? '', password: created.temporaryPassword })
+        await Clipboard.setStringAsync(created.temporaryPassword)
+        showToast('success', 'Teacher created', 'Temporary password copied. Share it in person.')
+      } else {
+        showToast('success', 'Teacher created', 'The new account can sign in immediately.')
+      }
     } catch (createError) {
       showToast('error', 'Unable to create teacher', createError instanceof Error ? createError.message : 'Please try again.')
     } finally {
@@ -365,18 +424,24 @@ export default function FacultyUsersScreen() {
   const createStudent = async () => {
     const yearLevel = Number(studentForm.yearLevel)
     const validEmail = studentForm.email.trim() === '' || EMAIL_PATTERN.test(studentForm.email.trim())
-    if (studentForm.fullName.trim().length < 2 || !/^\d{4}-\d{5}-[A-Z]{2}-\d$/.test(studentForm.studentId.trim().toUpperCase()) || !validEmail || studentForm.program.trim().length < 2 || !Number.isInteger(yearLevel) || yearLevel < 1 || yearLevel > 8 || studentForm.department.trim().length < 2 || !meetsPasswordPolicy(studentForm.password)) {
-      showToast('warning', 'Check the form', 'Complete required fields, use student ID 2024-12345-MN-0, and provide a strong 12+ character password.')
+    if (studentForm.fullName.trim().length < 2 || !/^\d{4}-\d{5}-[A-Z]{2}-\d$/.test(studentForm.studentId.trim().toUpperCase()) || !validEmail || studentForm.program.trim().length < 2 || !Number.isInteger(yearLevel) || yearLevel < 1 || yearLevel > 8 || studentForm.department.trim().length < 2) {
+      showToast('warning', 'Check the form', 'Complete required fields and use student ID 2024-12345-MN-0.')
       return
     }
     setSubmitting(true)
     try {
-      await api.createStudent({ fullName: studentForm.fullName.trim(), studentId: studentForm.studentId.trim().toUpperCase(), email: studentForm.email.trim() || undefined, program: studentForm.program.trim(), yearLevel, department: studentForm.department.trim(), password: studentForm.password })
-      setStudentForm({ fullName: '', studentId: '', email: '', program: '', yearLevel: '', department: '', password: '' })
+      const created = await api.createStudent({ fullName: studentForm.fullName.trim(), studentId: studentForm.studentId.trim().toUpperCase(), email: studentForm.email.trim() || undefined, program: studentForm.program.trim(), yearLevel, department: studentForm.department.trim() })
+      setStudentForm({ fullName: '', studentId: '', email: '', program: '', yearLevel: '', department: '' })
       setShowCreateStudent(false)
       setActiveTab('students')
       refreshAfterMutation()
-      showToast('success', 'Student created', 'The new account can sign in immediately.')
+      if (created.temporaryPassword) {
+        setCredential({ name: created.fullName, identifier: created.studentId, password: created.temporaryPassword })
+        await Clipboard.setStringAsync(created.temporaryPassword)
+        showToast('success', 'Student created', 'Temporary password copied. Share it in person.')
+      } else {
+        showToast('success', 'Student created', 'The new account can sign in immediately.')
+      }
     } catch (createError) {
       showToast('error', 'Unable to create student', createError instanceof Error ? createError.message : 'Please try again.')
     } finally {
@@ -386,16 +451,20 @@ export default function FacultyUsersScreen() {
 
   const resetPassword = async () => {
     if (!resetTarget) return
-    if (!meetsPasswordPolicy(passwordForm.password) || passwordForm.password !== passwordForm.confirmPassword) {
-      showToast('warning', 'Check the password', 'Passwords must match and contain at least 12 characters with uppercase, lowercase, number, and symbol.')
-      return
-    }
     setSubmitting(true)
     try {
-      await api.resetUserPassword(resetTarget.id, passwordForm.password)
-      setPasswordForm({ password: '', confirmPassword: '' })
+      const result = await api.resetUserPassword(resetTarget.id)
+      const target = resetTarget
       setResetTarget(null)
-      showToast('success', 'Password reset', 'All existing sessions were revoked.')
+      showToast('success', 'Password reset', 'A temporary password was generated; existing sessions were revoked.')
+      if (result.temporaryPassword) {
+        setCredential({
+          name: target.fullName,
+          identifier: target.studentId ?? target.email ?? target.id,
+          password: result.temporaryPassword,
+        })
+        await Clipboard.setStringAsync(result.temporaryPassword)
+      }
     } catch (resetError) {
       showToast('error', 'Unable to reset password', resetError instanceof Error ? resetError.message : 'Please try again.')
     } finally {
@@ -412,6 +481,8 @@ export default function FacultyUsersScreen() {
       program: account.program ?? '',
       yearLevel: account.yearLevel ? String(account.yearLevel) : '',
     })
+    setEditResetPermission(account.canResetStudentPasswords === null || account.canResetStudentPasswords === undefined ? 'inherit' : account.canResetStudentPasswords ? 'allow' : 'deny')
+    setEditUnbindPermission(account.canEmergencyUnbindDevices === null || account.canEmergencyUnbindDevices === undefined ? 'inherit' : account.canEmergencyUnbindDevices ? 'allow' : 'deny')
   }
 
   const saveProfile = async () => {
@@ -421,9 +492,16 @@ export default function FacultyUsersScreen() {
       showToast('warning', 'Check the form', result.error)
       return
     }
+    const input = { ...result.input }
+    if (editTarget.role === 'teacher') {
+      const nextReset = editResetPermission === 'inherit' ? null : editResetPermission === 'allow'
+      const nextUnbind = editUnbindPermission === 'inherit' ? null : editUnbindPermission === 'allow'
+      if (nextReset !== (editTarget.canResetStudentPasswords ?? null)) input.canResetStudentPasswords = nextReset
+      if (nextUnbind !== (editTarget.canEmergencyUnbindDevices ?? null)) input.canEmergencyUnbindDevices = nextUnbind
+    }
     setSubmitting(true)
     try {
-      const updated = await api.updateUser(editTarget.id, result.input)
+      const updated = await api.updateUser(editTarget.id, input)
       setUsers((current) => current.map((account) => account.id === updated.id ? { ...account, ...updated } : account))
       setEditTarget(null)
       showToast('success', 'Profile updated', `${updated.fullName}'s account details were saved.`)
@@ -708,7 +786,7 @@ export default function FacultyUsersScreen() {
             account={account}
             busy={busyUserId === account.id}
             onStatus={() => changeStatus(account)}
-            onReset={() => { setPasswordForm({ password: '', confirmPassword: '' }); setResetTarget(account) }}
+            onReset={() => { setResetTarget(account) }}
             onEdit={() => openEdit(account)}
             onRoleChange={() => requestRoleChange(account)}
           />
@@ -747,18 +825,18 @@ export default function FacultyUsersScreen() {
 
       <AccountSheet visible={showCreateTeacher} title="Create teacher" description="The account can sign in immediately. Use a temporary password that satisfies the campus security policy." onClose={() => setShowCreateTeacher(false)}>
         <ScrollView className="mt-4" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <View className="gap-4"><CampusFormField label="Full name" icon="person" value={teacherForm.fullName} onChangeText={(fullName) => setTeacherForm((form) => ({ ...form, fullName }))} autoCapitalize="words" /><CampusFormField label="PUP email" icon="mail" value={teacherForm.email} onChangeText={(email) => setTeacherForm((form) => ({ ...form, email }))} keyboardType="email-address" autoCapitalize="none" /><CampusFormField label="Department" icon="business" value={teacherForm.department} onChangeText={(department) => setTeacherForm((form) => ({ ...form, department }))} /><CampusFormField label="Temporary password" icon="lock" hint="12+ characters with uppercase, lowercase, number, and symbol." value={teacherForm.password} onChangeText={(password) => setTeacherForm((form) => ({ ...form, password }))} secureTextEntry autoCapitalize="none" /><CampusButton label={submitting ? 'Creating…' : 'Create teacher'} icon="person-add" disabled={submitting} onPress={() => void createTeacher()} /></View>
+          <View className="gap-4"><CampusFormField label="Full name" icon="person" value={teacherForm.fullName} onChangeText={(fullName) => setTeacherForm((form) => ({ ...form, fullName }))} autoCapitalize="words" /><CampusFormField label="PUP email" icon="mail" value={teacherForm.email} onChangeText={(email) => setTeacherForm((form) => ({ ...form, email }))} keyboardType="email-address" autoCapitalize="none" /><CampusFormField label="Department" icon="business" value={teacherForm.department} onChangeText={(department) => setTeacherForm((form) => ({ ...form, department }))} /><Text className="font-sans text-[10px] leading-4 text-muted dark:text-zinc-500">A secure temporary password is generated automatically and shown once. The teacher must change it on first sign-in.</Text><CampusButton label={submitting ? 'Creating…' : 'Create teacher'} icon="person-add" disabled={submitting} onPress={() => void createTeacher()} /></View>
         </ScrollView>
       </AccountSheet>
 
       <AccountSheet visible={showCreateStudent} title="Create student" description="Create a verified student account. Email is optional; student ID remains available for sign-in." onClose={() => setShowCreateStudent(false)}>
         <ScrollView className="mt-4" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <View className="gap-4"><CampusFormField label="Full name" icon="person" value={studentForm.fullName} onChangeText={(fullName) => setStudentForm((form) => ({ ...form, fullName }))} /><CampusFormField label="Student ID" icon="fingerprint" hint="Format: 2024-12345-MN-0" value={studentForm.studentId} onChangeText={(studentId) => setStudentForm((form) => ({ ...form, studentId: studentId.toUpperCase() }))} autoCapitalize="characters" /><CampusFormField label="PUP email (optional)" icon="mail" value={studentForm.email} onChangeText={(email) => setStudentForm((form) => ({ ...form, email }))} keyboardType="email-address" autoCapitalize="none" /><CampusFormField label="Program" icon="school" value={studentForm.program} onChangeText={(program) => setStudentForm((form) => ({ ...form, program }))} /><CampusFormField label="Year level" icon="format-list-numbered" value={studentForm.yearLevel} onChangeText={(yearLevel) => setStudentForm((form) => ({ ...form, yearLevel }))} keyboardType="number-pad" /><CampusFormField label="Department" icon="business" value={studentForm.department} onChangeText={(department) => setStudentForm((form) => ({ ...form, department }))} /><CampusFormField label="Temporary password" icon="lock" hint="12+ characters with uppercase, lowercase, number, and symbol." value={studentForm.password} onChangeText={(password) => setStudentForm((form) => ({ ...form, password }))} secureTextEntry autoCapitalize="none" /><CampusButton label={submitting ? 'Creating…' : 'Create student'} icon="person-add" disabled={submitting} onPress={() => void createStudent()} /></View>
+          <View className="gap-4"><CampusFormField label="Full name" icon="person" value={studentForm.fullName} onChangeText={(fullName) => setStudentForm((form) => ({ ...form, fullName }))} /><CampusFormField label="Student ID" icon="fingerprint" hint="Format: 2024-12345-MN-0" value={studentForm.studentId} onChangeText={(studentId) => setStudentForm((form) => ({ ...form, studentId: studentId.toUpperCase() }))} autoCapitalize="characters" /><CampusFormField label="PUP email (optional)" icon="mail" value={studentForm.email} onChangeText={(email) => setStudentForm((form) => ({ ...form, email }))} keyboardType="email-address" autoCapitalize="none" /><CampusFormField label="Program" icon="school" value={studentForm.program} onChangeText={(program) => setStudentForm((form) => ({ ...form, program }))} /><CampusFormField label="Year level" icon="format-list-numbered" value={studentForm.yearLevel} onChangeText={(yearLevel) => setStudentForm((form) => ({ ...form, yearLevel }))} keyboardType="number-pad" /><CampusFormField label="Department" icon="business" value={studentForm.department} onChangeText={(department) => setStudentForm((form) => ({ ...form, department }))} /><Text className="font-sans text-[10px] leading-4 text-muted dark:text-zinc-500">A secure temporary password is generated automatically and shown once. Share it in person; the student must change it on first sign-in.</Text><CampusButton label={submitting ? 'Creating…' : 'Create student'} icon="person-add" disabled={submitting} onPress={() => void createStudent()} /></View>
         </ScrollView>
       </AccountSheet>
 
-      <AccountSheet visible={!!resetTarget} title="Reset password" description={`Set a temporary password for ${resetTarget?.fullName ?? 'this account'}. Existing sessions will be revoked.`} onClose={() => setResetTarget(null)}>
-        <View className="mt-4 gap-4"><CampusFormField label="New temporary password" icon="lock" value={passwordForm.password} onChangeText={(password) => setPasswordForm((form) => ({ ...form, password }))} secureTextEntry autoCapitalize="none" /><CampusFormField label="Confirm password" icon="lock-outline" hint="12+ characters with uppercase, lowercase, number, and symbol." value={passwordForm.confirmPassword} onChangeText={(confirmPassword) => setPasswordForm((form) => ({ ...form, confirmPassword }))} secureTextEntry autoCapitalize="none" /><CampusButton label={submitting ? 'Resetting…' : 'Reset password'} icon="key" disabled={submitting} onPress={() => void resetPassword()} /></View>
+      <AccountSheet visible={!!resetTarget} title="Reset password" description={`A new temporary password will be generated for ${resetTarget?.fullName ?? 'this account'} and shown once. Existing sessions will be revoked.`} onClose={() => setResetTarget(null)}>
+        <View className="mt-4 gap-4"><Text className="font-sans text-xs leading-5 text-muted dark:text-zinc-400">Copy the generated password and hand it to the account holder in person. They must change it at next sign-in.</Text><CampusButton label={submitting ? 'Generating…' : 'Generate temporary password'} icon="key" disabled={submitting} onPress={() => void resetPassword()} /></View>
       </AccountSheet>
 
       <AccountSheet
@@ -774,6 +852,24 @@ export default function FacultyUsersScreen() {
             {editFields.includes('email') ? <CampusFormField testID="edit-email" label="PUP email" icon="mail" value={editForm.email} onChangeText={(email) => setEditForm((form) => ({ ...form, email }))} keyboardType="email-address" autoCapitalize="none" /> : null}
             {editFields.includes('program') ? <CampusFormField testID="edit-program" label="Program" icon="school" value={editForm.program} onChangeText={(program) => setEditForm((form) => ({ ...form, program }))} /> : null}
             {editFields.includes('yearLevel') ? <CampusFormField testID="edit-year-level" label="Year level" icon="format-list-numbered" value={editForm.yearLevel} onChangeText={(yearLevel) => setEditForm((form) => ({ ...form, yearLevel }))} keyboardType="number-pad" /> : null}
+            {editTarget?.role === 'teacher' ? (
+              <View className="gap-3 border border-line p-3 dark:border-line-dark">
+                <Text className="font-sans-bold text-[10px] uppercase tracking-[1.5px] text-muted dark:text-zinc-500">Delegated classroom capabilities</Text>
+                <PermissionChoiceRow
+                  label="Student password resets"
+                  value={editResetPermission}
+                  onChange={setEditResetPermission}
+                  testID="edit-reset-permission"
+                />
+                <PermissionChoiceRow
+                  label="Emergency device release"
+                  value={editUnbindPermission}
+                  onChange={setEditUnbindPermission}
+                  testID="edit-unbind-permission"
+                />
+                <Text className="font-sans text-[10px] leading-4 text-muted dark:text-zinc-500">Follow institution default unless this teacher needs a stricter setting. A per-teacher override can restrict but never enable a disabled institution capability.</Text>
+              </View>
+            ) : null}
             <CampusButton label={submitting ? 'Saving…' : 'Save profile'} icon="save" disabled={submitting} onPress={() => void saveProfile()} testID="edit-save" />
           </View>
         </ScrollView>
@@ -907,6 +1003,39 @@ export default function FacultyUsersScreen() {
         mode="students"
         onCompleted={() => refreshAfterMutation()}
       />
+
+      <Modal visible={credential !== null} transparent animationType="fade" onRequestClose={() => setCredential(null)}>
+        <View className="flex-1 items-center justify-center bg-black/70 px-6">
+          <View className="w-full border-t-4 border-golden bg-white p-6 dark:bg-surface-dark" testID="user-credential-modal">
+            <View className="mb-3 h-12 w-12 items-center justify-center bg-maroon">
+              <MaterialIcons name="key" size={24} color={pupColors.golden} />
+            </View>
+            <Text className="font-heading text-xl text-ink dark:text-white">Temporary credentials</Text>
+            <Text className="mt-1 font-sans text-xs leading-5 text-muted dark:text-zinc-400">
+              Share this password with {credential?.name ?? 'the account holder'} in person. It will not be shown
+              again, and it must be changed on first sign-in.
+            </Text>
+            {credential ? (
+              <Text className="mt-2 font-sans text-[11px] text-muted dark:text-zinc-500">{credential.identifier}</Text>
+            ) : null}
+            <View className="mt-4 border border-line bg-campus px-3 py-3 dark:border-line-dark dark:bg-zinc-900">
+              <Text className="text-center font-mono text-lg font-bold text-ink dark:text-golden">{credential?.password}</Text>
+            </View>
+            <View className="mt-5 flex-row gap-3">
+              <CampusButton
+                className="flex-1"
+                label="Copy"
+                icon="content-copy"
+                onPress={() => {
+                  if (!credential) return
+                  void Clipboard.setStringAsync(credential.password).then(() => showToast('info', 'Copied', 'Temporary password copied.'))
+                }}
+              />
+              <CampusButton className="flex-1" label="Done" icon="check" variant="secondary" onPress={() => setCredential(null)} />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   )
 }

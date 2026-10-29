@@ -19,6 +19,7 @@ import type { AdminUserPage, User } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { BulkImportDialog } from '@/components/import/BulkImportDialog'
 import { CreateAdminDialog } from '@/components/admin/create-admin-dialog'
+import { CredentialResultDialog, type CredentialSummary } from '@/components/admin/credential-result-dialog'
 import { UserProfileDialog } from '@/components/admin/user-profile-dialog'
 import { UserRoleDialog } from '@/components/admin/user-role-dialog'
 import { Card, CardContent } from '@/components/ui/card'
@@ -74,17 +75,16 @@ export default function UsersPage() {
   const [editTarget, setEditTarget] = useState<User | null>(null)
   const [roleTarget, setRoleTarget] = useState<User | null>(null)
   const [resetTarget, setResetTarget] = useState<User | null>(null)
-  const [teacherForm, setTeacherForm] = useState({ fullName: '', email: '', password: '', department: '' })
+  const [credentials, setCredentials] = useState<CredentialSummary | null>(null)
+  const [teacherForm, setTeacherForm] = useState({ fullName: '', email: '', department: '' })
   const [studentForm, setStudentForm] = useState({
     fullName: '',
     studentId: '',
     email: '',
-    password: '',
     program: '',
     yearLevel: '1',
     department: '',
   })
-  const [passwordForm, setPasswordForm] = useState({ password: '', confirmPassword: '' })
   const firstFilterRender = useRef(true)
 
   const institutionAdmin = user
@@ -189,12 +189,27 @@ export default function UsersPage() {
     setSubmitting(true)
     setError('')
     try {
-      await api.createTeacher(teacherForm)
-      setTeacherForm({ fullName: '', email: '', password: '', department: '' })
+      const created = await api.createTeacher({
+        fullName: teacherForm.fullName,
+        email: teacherForm.email,
+        department: teacherForm.department.trim() || undefined,
+      })
+      setTeacherForm({ fullName: '', email: '', department: '' })
       setShowCreateTeacher(false)
       setOffset(0)
       refresh()
-      addNotification('success', 'Teacher account created', 'The teacher can sign in with the temporary password.')
+      const suffix = created.temporaryPassword
+        ? 'A temporary password was generated. Share it with the teacher in person.'
+        : 'The teacher can sign in with the temporary password.'
+      addNotification('success', 'Teacher account created', suffix)
+      if (created.temporaryPassword) {
+        setCredentials({
+          role: 'teacher',
+          name: created.fullName,
+          identifier: created.email ?? '',
+          password: created.temporaryPassword,
+        })
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to create teacher account')
     } finally {
@@ -207,16 +222,31 @@ export default function UsersPage() {
     setSubmitting(true)
     setError('')
     try {
-      await api.createStudent({
-        ...studentForm,
+      const created = await api.createStudent({
+        fullName: studentForm.fullName,
+        studentId: studentForm.studentId,
         email: studentForm.email.trim() || undefined,
+        program: studentForm.program,
         yearLevel: Number(studentForm.yearLevel),
+        department: studentForm.department,
       })
-      setStudentForm({ fullName: '', studentId: '', email: '', password: '', program: '', yearLevel: '1', department: '' })
+      setStudentForm({ fullName: '', studentId: '', email: '', program: '', yearLevel: '1', department: '' })
       setShowCreateStudent(false)
       setOffset(0)
       refresh()
-      addNotification('success', 'Student account created', 'The student can sign in with the temporary password.')
+      addNotification(
+        'success',
+        'Student account created',
+        'A temporary password was generated. Share it with the student in person; they must change it at first sign-in.',
+      )
+      if (created.temporaryPassword) {
+        setCredentials({
+          role: 'student',
+          name: created.fullName,
+          identifier: created.studentId,
+          password: created.temporaryPassword,
+        })
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to create student account')
     } finally {
@@ -227,21 +257,24 @@ export default function UsersPage() {
   const handleResetPassword = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!resetTarget) return
-    if (passwordForm.password !== passwordForm.confirmPassword) {
-      setError('The password confirmation does not match')
-      return
-    }
     setSubmitting(true)
     setError('')
     try {
-      await api.resetUserPassword(resetTarget.id, passwordForm.password)
-      setPasswordForm({ password: '', confirmPassword: '' })
+      const result = await api.resetUserPassword(resetTarget.id)
       setResetTarget(null)
       addNotification(
         'success',
         'Password reset',
-        `Password reset for ${resetTarget.fullName}; existing sessions were revoked.`,
+        `A temporary password was issued for ${resetTarget.fullName}; existing sessions were revoked.`,
       )
+      if (result.temporaryPassword) {
+        setCredentials({
+          role: resetTarget.role === 'teacher' ? 'teacher' : 'student',
+          name: resetTarget.fullName,
+          identifier: resetTarget.studentId ?? resetTarget.email ?? resetTarget.id,
+          password: result.temporaryPassword,
+        })
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to reset password')
     } finally {
@@ -539,7 +572,6 @@ export default function UsersPage() {
                                   size="sm"
                                   onClick={() => {
                                     setError('')
-                                    setPasswordForm({ password: '', confirmPassword: '' })
                                     setResetTarget(row)
                                   }}
                                 >
@@ -599,7 +631,9 @@ export default function UsersPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create teacher account</DialogTitle>
-            <DialogDescription>The teacher can sign in immediately using this email and temporary password.</DialogDescription>
+            <DialogDescription>
+              A secure temporary password is generated automatically and shown once after creation.
+            </DialogDescription>
           </DialogHeader>
           <form className="mt-5 space-y-4" onSubmit={handleCreateTeacher}>
             <div className="space-y-2">
@@ -614,10 +648,9 @@ export default function UsersPage() {
               <Label htmlFor="teacher-department">Department</Label>
               <Input id="teacher-department" value={teacherForm.department} onChange={(e) => setTeacherForm((form) => ({ ...form, department: e.target.value }))} />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="teacher-password">Temporary password</Label>
-              <Input id="teacher-password" type="password" value={teacherForm.password} onChange={(e) => setTeacherForm((form) => ({ ...form, password: e.target.value }))} minLength={12} pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{12,128}" title="Use at least 12 characters with uppercase, lowercase, number, and special character" required />
-            </div>
+            <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+              The teacher must change the temporary password on first sign-in.
+            </p>
             {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setShowCreateTeacher(false)}>Cancel</Button>
@@ -631,7 +664,9 @@ export default function UsersPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create student account</DialogTitle>
-            <DialogDescription>The student signs in using the student ID and temporary password.</DialogDescription>
+            <DialogDescription>
+              A secure temporary password is generated automatically and shown once after creation.
+            </DialogDescription>
           </DialogHeader>
           <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={handleCreateStudent}>
             <div className="space-y-2 sm:col-span-2">
@@ -658,10 +693,9 @@ export default function UsersPage() {
               <Label htmlFor="student-department">Department</Label>
               <Input id="student-department" value={studentForm.department} onChange={(e) => setStudentForm((form) => ({ ...form, department: e.target.value }))} minLength={2} required />
             </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="student-password">Temporary password</Label>
-              <Input id="student-password" type="password" value={studentForm.password} onChange={(e) => setStudentForm((form) => ({ ...form, password: e.target.value }))} minLength={12} pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{12,128}" title="Use at least 12 characters with uppercase, lowercase, number, and special character" required />
-            </div>
+            <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 sm:col-span-2 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+              Share the generated temporary password in person. The student must change it on first sign-in.
+            </p>
             {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400 sm:col-span-2">{error}</p>}
             <div className="flex justify-end gap-3 pt-2 sm:col-span-2">
               <Button type="button" variant="outline" onClick={() => setShowCreateStudent(false)}>Cancel</Button>
@@ -675,25 +709,25 @@ export default function UsersPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Reset password</DialogTitle>
-            <DialogDescription>Set a temporary password for {resetTarget?.fullName}. Every existing session for this account will be revoked immediately.</DialogDescription>
+            <DialogDescription>
+              A new temporary password will be generated for {resetTarget?.fullName} and shown once. Every existing
+              session for this account will be revoked immediately.
+            </DialogDescription>
           </DialogHeader>
           <form className="mt-5 space-y-4" onSubmit={handleResetPassword}>
-            <div className="space-y-2">
-              <Label htmlFor="reset-password">New temporary password</Label>
-              <Input id="reset-password" type="password" value={passwordForm.password} onChange={(e) => setPasswordForm((form) => ({ ...form, password: e.target.value }))} minLength={12} pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{12,128}" title="Use at least 12 characters with uppercase, lowercase, number, and special character" required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="reset-password-confirm">Confirm password</Label>
-              <Input id="reset-password-confirm" type="password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((form) => ({ ...form, confirmPassword: e.target.value }))} minLength={12} required />
-            </div>
+            <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+              Copy the generated password to a secure channel and hand it to the account holder in person.
+            </p>
             {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setResetTarget(null)}>Cancel</Button>
-              <Button type="submit" disabled={submitting}>{submitting ? 'Resetting…' : 'Reset Password'}</Button>
+              <Button type="submit" disabled={submitting}>{submitting ? 'Resetting…' : 'Generate password'}</Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
+
+      <CredentialResultDialog credentials={credentials} onOpenChange={(open) => { if (!open) setCredentials(null) }} />
 
       <UserProfileDialog
         open={editTarget !== null}

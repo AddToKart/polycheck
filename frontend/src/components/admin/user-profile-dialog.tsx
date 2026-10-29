@@ -18,6 +18,17 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
+type PermissionChoice = 'inherit' | 'allow' | 'deny'
+
+function choiceFor(value: boolean | null | undefined): PermissionChoice {
+  if (value === null || value === undefined) return 'inherit'
+  return value ? 'allow' : 'deny'
+}
+
+function valueFor(choice: PermissionChoice): boolean | null {
+  return choice === 'inherit' ? null : choice === 'allow'
+}
+
 const emptyValues: Record<EditableUserField, string> = {
   fullName: '',
   department: '',
@@ -36,12 +47,16 @@ interface UserProfileDialogProps {
 export function UserProfileDialog({ open, onOpenChange, target, onSaved }: UserProfileDialogProps) {
   const { addNotification } = useNotifications()
   const [values, setValues] = useState(emptyValues)
+  const [resetPermission, setResetPermission] = useState<PermissionChoice>('inherit')
+  const [unbindPermission, setUnbindPermission] = useState<PermissionChoice>('inherit')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     if (!open || !target) return
     setValues(editableValuesForUser(target))
+    setResetPermission(choiceFor(target.canResetStudentPasswords))
+    setUnbindPermission(choiceFor(target.canEmergencyUnbindDevices))
     setError('')
   }, [open, target])
 
@@ -58,6 +73,14 @@ export function UserProfileDialog({ open, onOpenChange, target, onSaved }: UserP
       return
     }
     const input = buildUserUpdateInput(target, values)
+    if (target.role === 'teacher') {
+      const nextReset = valueFor(resetPermission)
+      const nextUnbind = valueFor(unbindPermission)
+      if (nextReset !== (target.canResetStudentPasswords ?? null)) input.canResetStudentPasswords = nextReset
+      if (nextUnbind !== (target.canEmergencyUnbindDevices ?? null)) {
+        input.canEmergencyUnbindDevices = nextUnbind
+      }
+    }
     if (!hasUserChanges(input)) {
       addNotification('info', 'No changes', 'Update at least one profile field before saving.')
       return
@@ -145,6 +168,49 @@ export function UserProfileDialog({ open, onOpenChange, target, onSaved }: UserP
                 required
               />
             </div>
+          ) : null}
+          {target.role === 'teacher' ? (
+            <fieldset className="space-y-4 rounded-xl border border-zinc-200 p-4 sm:col-span-2 dark:border-zinc-800">
+              <legend className="px-1 text-xs font-bold uppercase tracking-widest text-zinc-500">
+                Delegated classroom capabilities
+              </legend>
+              <div className="space-y-2">
+                <Label htmlFor="edit-user-reset-permission">Student password resets</Label>
+                <select
+                  id="edit-user-reset-permission"
+                  className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+                  value={resetPermission}
+                  onChange={(event) => setResetPermission(event.target.value as PermissionChoice)}
+                >
+                  <option value="inherit">Follow institution default</option>
+                  <option value="allow">Allowed</option>
+                  <option value="deny">Disabled</option>
+                </select>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Issue temporary passwords to students enrolled in this teacher&apos;s sections.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-user-unbind-permission">Emergency device release</Label>
+                <select
+                  id="edit-user-unbind-permission"
+                  className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+                  value={unbindPermission}
+                  onChange={(event) => setUnbindPermission(event.target.value as PermissionChoice)}
+                >
+                  <option value="inherit">Follow institution default</option>
+                  <option value="allow">Allowed</option>
+                  <option value="deny">Disabled</option>
+                </select>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Clear a student&apos;s bound device and cooldown from this teacher&apos;s roster.
+                </p>
+              </div>
+              <p className="text-[11px] text-zinc-400">
+                Institution switches act as a master gate: a per-teacher override can restrict but never enable a
+                disabled institution capability.
+              </p>
+            </fieldset>
           ) : null}
           {error ? (
             <p role="alert" className="text-sm text-red-600 dark:text-red-400 sm:col-span-2">

@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { api } from '../services/api-client'
+import { formatCooldownRemaining } from '@polycheck/shared/utils'
+import { api, ApiRequestError } from '../services/api-client'
 import { useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
 import { CampusIconButton } from './CampusPrimitives'
@@ -21,6 +22,7 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
   const [password, setPassword] = useState('')
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [cooldown, setCooldown] = useState<{ minutes: number; message: string } | null>(null)
 
   const isStudent = portal === 'student'
   const identityLabel = isStudent ? 'Student Number' : 'PUP Email Address'
@@ -46,6 +48,10 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
       router.replace(isStudent ? '/(tabs)/dashboard' : '/(faculty)/dashboard')
     } catch (error) {
       setLoading(false)
+      if (error instanceof ApiRequestError && error.code === 'device_cooldown_active') {
+        setCooldown({ minutes: error.remainingMinutes ?? 0, message: error.message })
+        return
+      }
       showToast(
         'error',
         'Unable to sign in',
@@ -273,6 +279,47 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal visible={cooldown !== null} transparent animationType="fade" onRequestClose={() => setCooldown(null)}>
+        <View className="flex-1 items-center justify-center bg-black/60 px-6">
+          <View className="w-full border-t-4 border-golden bg-white p-6 dark:bg-[#1F191D]" testID={`${portal}-cooldown-modal`}>
+            <View className="mb-3 h-12 w-12 items-center justify-center bg-maroon">
+              <MaterialIcons name="phonelink-lock" size={24} color={pupColors.golden} />
+            </View>
+            <Text
+              className="text-ink dark:text-white"
+              style={{ fontFamily: 'Lora_400Regular', fontSize: 22 }}
+            >
+              Device change locked
+            </Text>
+            <Text className="mt-2 font-sans text-sm leading-5 text-muted dark:text-zinc-300">
+              This account recently unregistered a mobile device. For anti-cheat, mobile sign-ins stay locked for a
+              short cooldown.
+            </Text>
+            <View className="mt-4 items-center border border-amber-400 bg-amber-50 px-3 py-3 dark:bg-amber-950">
+              <Text className="font-sans-bold text-[10px] uppercase tracking-[1.5px] text-amber-800 dark:text-amber-300">
+                Remaining cooldown
+              </Text>
+              <Text className="mt-1 font-heading text-2xl text-amber-900 dark:text-amber-200">
+                {formatCooldownRemaining(cooldown?.minutes ?? 0)}
+              </Text>
+            </View>
+            <Text className="mt-4 font-sans text-xs leading-5 text-muted dark:text-zinc-400">
+              Ask your instructor for an emergency device release if you need access sooner. Your web dashboard stays
+              available on any browser.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss cooldown notice"
+              testID={`${portal}-cooldown-dismiss`}
+              onPress={() => setCooldown(null)}
+              className="mt-5 min-h-12 items-center justify-center bg-maroon"
+            >
+              <Text className="font-sans-bold text-sm uppercase tracking-wider text-white">Got it</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   )
 }

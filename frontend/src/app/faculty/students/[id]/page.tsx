@@ -7,6 +7,7 @@ import { ArrowLeft, UserX, RefreshCw, School } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Student, Session, AttendanceRecord, AttendanceStatus } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
+import { StudentGovernanceActions } from '@/components/faculty/StudentGovernanceActions'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -77,6 +78,11 @@ export default function StudentDetailPage() {
       await api.removeStudentFromSection(sectionId, studentId)
       router.push(`/faculty/sections/${sectionId}`)
     }
+  }
+
+  const refreshStudent = async () => {
+    const refreshed = await api.getStudent(studentId)
+    setStudent(refreshed)
   }
 
   const handleCycleStatus = async (record: AttendanceRecord) => {
@@ -230,6 +236,18 @@ export default function StudentDetailPage() {
             </div>
             <p className="text-center text-xs text-zinc-500 font-bold uppercase tracking-widest mt-4 animate-pulse">Click card to flip</p>
           </div>
+
+          {/* Delegated account governance */}
+          {isTeacher ? (
+            <div className="mb-6 flex flex-col items-center gap-3">
+              <StudentGovernanceActions
+                student={student}
+                sectionId={sectionId || null}
+                permissions={user.delegatedPermissions}
+                onChanged={() => void refreshStudent()}
+              />
+            </div>
+          ) : null}
 
           {/* Remove from Subject */}
           {isTeacher && (

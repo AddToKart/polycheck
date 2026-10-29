@@ -540,6 +540,14 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - Android parity: copy, collapsible activity, attachment cards, stop/reconcile, GFM tables via `react-native-markdown-display`, role empty-state parity.
   - Verification: backend 615 tests / 58 suites, web 183 / 30, Android 214 / 16, shared 87 / 5; typecheck/lint/format/build clean; live smoke on the rebuilt Docker stack (thread list → regenerate with a single user turn → delete).
 
+### Done (cont.)
+- **Account Governance — delegated resets, teacher overrides, device binding/cooldown, universal profile (`plan/account-governance-plan.md`, GOV-0–GOV-7)**:
+  - **Shared contract**: `User` gains `boundDeviceId`/`deviceBoundAt`/`deviceCooldownUntil`/nullable teacher permissions/contacts/`delegatedPermissions`; new `ApiClient` methods (`teacherResetStudentPassword`, `emergencyReleaseDevice`, `unregisterDevice`, `updateContacts`); create/reset inputs accept omitted passwords and results carry a one-time `temporaryPassword`; pure `effectivePermission`/`cooldownRemainingMinutes`/`formatCooldownRemaining` helpers + zod schemas.
+  - **Backend**: migration `20261030120000_account_governance_device_binding` (7 nullable User columns + idempotent settings rows); settings keys `allow_teacher_password_reset`, `allow_teacher_emergency_device_unbind`, `device_cooldown_hours` (1–24, default 2) with `getTeacherDelegationPolicies()`. New `DeviceBindingService` (mobile-login cooldown gate, lazy write-on-change binding, self-unregister arming `max(existing, now+N)` + revoking all sessions, effective-permission merge). New `UsersService` governance methods with advisory-locked enrollment checks, rate limits, fail-open audits (`teacher.password_reset`, `teacher.device_release`, `student.device_unregister`, `contact.updated`), notifications, and a crypto-random `PUP-XXXXXXXX-XX!` generator satisfying the 12-char policy. Mobile login DTOs accept `deviceId`; attendance scan acceptance lazily binds; self-service change-password now bumps `authVersion` while advancing the invoking session's `generation`; `GET /auth/me` exposes teacher `delegatedPermissions`; `AllExceptionsFilter` forwards `remainingMinutes`.
+  - **Web**: ApiHttpError carries `code`/`remainingMinutes`; Accounts settings tab exposes the two switches + cooldown field; Users create/reset flows generate credentials server-side and show a copyable `CredentialResultDialog`; teacher User dialog gains tri-state permission overrides; student detail + section roster share `StudentGovernanceActions` (reset modal → credential dialog, emergency release reason modal, device status chips); new `/profile` page (identity, password rotation, contacts, student device panel with cooldown countdown + unregister confirm) and a Profile sidebar entry for all roles.
+  - **Android**: mobile login sends the SecureStore installation id and branches on typed `device_cooldown_active` with a branded countdown modal; new root `/profile` screen (identity/password/contacts/device + unregister Alert); ID-card device chip + profile shortcut; student detail gains reset/release actions and credential/release sheets; Users screen uses generated credentials, copy sheets, and permission tri-state; More sheet gains Profile & security; settings mirror adds the governance controls; the uppercase `PASSWORD_CHANGE_REQUIRED` dead-branch is fixed.
+  - **Verification**: backend 712 / 65 suites, web 274 / 44, Android 310 / 23, shared 95 / 6; `pnpm lint`, backend format/validate, `pnpm build` clean. New/updated Playwright coverage in `e2e/account-governance.spec.ts` and `e2e/admin.spec.ts` (generated-credential modals).
+
 ### Blocked
 - (none)
 
@@ -552,6 +560,9 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - `expo-sharing` + `react-native-svg` ref are used for sharing the QR image on mobile; web also supports token copy/download.
 - Audit logging fails open: if the initial audit-row insert fails, the mutation still runs and the failure is logged with full request context (method, path, actor) rather than returning 500. This preserves in-class availability when the audit table is briefly unavailable; the trade-off (a possible missing audit row for that one mutation) is accepted and observable in logs. Audit completion/failure updates remain best-effort and merge request context.
 - Signing-key rotation serializes against activation cache publication via the per-teacher `key-rotation:<id>` Redis lock; cache publication is best-effort and skips (DB fallback) when rotation holds the lock. Production image references must be `@sha256:` digests — tags are retargetable and rejected by `validate-production-images.sh`.
+- Device binding is student-only and uses the existing SecureStore installation id (`mobile-…`); web cookie sessions are exempt. Binding is written lazily on mobile login success and accepted scans (write-on-change). Self-service unregister clears the binding, revokes all sessions, and arms `deviceCooldownUntil = max(existing, now + device_cooldown_hours)`; during cooldown every student mobile login is rejected with `403 code=device_cooldown_active` + `remainingMinutes` (device-agnostic), and teachers clear it instantly through the audited Emergency Device Release. Institution switches are a master gate: per-teacher overrides (`null` = inherit) can restrict but never enable a disabled capability.
+- Delegated temporary passwords are generated server-side (`node:crypto`, unambiguous alphabet) so every credential satisfies the 12-character PUP policy; they are returned exactly once and force rotation (`mustChangePassword`). Audit actions follow the lowercase-dot convention (`teacher.password_reset`, `teacher.device_release`, `student.device_unregister`, `contact.updated`); generated account creations reuse `admin.user.created` with `generatedPassword: true`.
+- Self-service password changes bump `authVersion` and advance the current Better Auth session's `generation` in the same transaction — other sessions die immediately while the rotating session survives; an account cooldown/limit is enforced server-side on every delegated action even if the UI hides the button.
 
 - **Auth Landing Animation & Layout Fix**: Moved auth pages from `app/login/` into `app/(auth-landing)/login/` (with role sub-routes `faculty` and `student`) within a shared route group. This preserves layout state and prevents full unmounts, restoring smooth CSS/motion animations and logo transitions when switching between login views.
 - **Student Scan QR Fallback Options (Web & Mobile)**:
@@ -562,7 +573,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - Mobile scanner (`android/app/(tabs)/scan.tsx`) exposes `Upload QR Image` and `Enter Code` fallbacks alongside live camera.
 - **Database Migration Self-Healing**: Added idempotent pre-checks and backfills in `20260907090000_domain_constraints/migration.sql` to gracefully handle dirty development databases or re-runs without crashing the migration service container.
 - **Docker Compose Local Developer Experience**: Added automated 1-click startup scripts (`start-local.bat`, `start-local.sh`, `stop-local.bat`, `stop-local.sh`) and passed `NEXT_PUBLIC_ALLOW_QR_FALLBACKS: "true"` to local container builds.
-- **Comprehensive Automated Test Coverage**: 1,338 total passing automated tests across 131 suites monorepo-wide (87 shared, 265 web, 679 backend, 307 mobile); the web E2E suite includes 198 tests across Chromium, Firefox, and WebKit (10 engine-specific skips). The AI assistant additions are covered by backend AI/docs/standing suites plus web and Android chat/standing tests.
+- **Comprehensive Automated Test Coverage**: 1,391 total passing automated tests across 138 suites monorepo-wide (95 shared, 274 web, 712 backend, 310 mobile); the web E2E suite includes 198 tests across Chromium, Firefox, and WebKit (10 engine-specific skips), plus the account-governance journey spec. The AI assistant additions are covered by backend AI/docs/standing suites plus web and Android chat/standing tests.
 
 ## Next Steps
 - Connect sessions page to section context when navigated from section detail.
@@ -603,6 +614,8 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - Institution settings UI categories: Institution · Sessions & attendance · Accounts & access · AI Assistant (web `?tab=`; Android segmented tabs). `allow_teacher_student_provisioning` lives under Accounts; `enrollment_code_expiry_days` now controls section enrollment-code lifetime.
 - Notifications/excuses: `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/read`, `POST /notifications/push-token`; Socket.IO `notifications:new` in the user's `auth:user:<id>` room. Excuse flow: `POST /attendance/records/:id/excuse` (student, absent/late), `GET /attendance/excuses`, `POST /attendance/records/:id/excuse/decision` (teacher only; approve → `status=excused`). `excused` is excluded from the standing denominator with a caveat. At-risk: `GET /attendance/at-risk?sectionId&limit`. Report totals include `excused`; `AttendanceReportFilters.department` is admin-scoped.
 - Android push requires a dev client/EAS rebuild (`expo-notifications` plugin + `POST_NOTIFICATIONS`); web push (VAPID) remains a deferred, env-gated follow-up.
+- Account governance endpoints: `POST /api/users/students/:id/teacher-reset-password` (`{ sectionId }`, teacher; returns the one-time `temporaryPassword`), `POST /api/users/students/:id/device-release` (`{ sectionId, reason, note? }`, teacher), `POST /api/users/me/device/unregister` (student self-service; body `{ deviceId? }`), `PATCH /api/users/me/contacts` (`{ contactEmail?, contactPhone? }`, empty string clears). Mobile login routes accept an optional `deviceId`; cooldown failures return `403 code=device_cooldown_active` + `remainingMinutes`. Teacher-effective capabilities arrive via `GET /auth/me` → `delegatedPermissions`.
+- Governance settings (`Institution Settings → Accounts & access`): `allow_teacher_password_reset` (default true), `allow_teacher_emergency_device_unbind` (default true), `device_cooldown_hours` (1–24, default 2). Per-teacher nullable overrides live on `User.canResetStudentPasswords` / `canEmergencyUnbindDevices` and are edited through `PATCH /users/:id` (teacher targets only).
 
 ## Relevant Files
 - `shared/src/types/session.ts` — Session now has `qrValidityMinutes`, `qrGeneratedAt?`; removed `tokenWindowSeconds`
@@ -633,6 +646,16 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - `backend/src/sessions/dto/create-session.dto.ts` — DTO field optionality, ActivateSessionDto grace param
 - `backend/src/sessions/sessions.service.ts` — defaults on create, grace storage at activate, auto-expiry cron
 - `backend/src/attendance/attendance.service.ts` — ensureOfflineActivation relaxed grace check
+- `backend/src/users/device-binding.service.ts` — mobile cooldown gate, lazy binding, self-unregister, effective teacher permissions
+- `backend/src/users/password-generator.ts` — server-side `PUP-…` temporary credential generator
+- `backend/src/users/users.service.ts` — delegated reset/release/contacts, generated credentials, permission overrides
+- `backend/prisma/migrations/20261030120000_account_governance_device_binding/` — device/permission columns + governance settings seeds
+- `frontend/src/components/faculty/StudentGovernanceActions.tsx` — shared teacher reset/release actions
+- `frontend/src/components/profile/` — universal profile page, password/contacts/device panels
+- `frontend/src/components/admin/credential-result-dialog.tsx` — one-time temporary credential modal with copy
+- `android/app/profile.tsx` — universal mobile profile + unregister flow
+- `android/app/(faculty)/student/[id].tsx` — mobile teacher reset/release actions and credential sheets
+- `shared/src/utils/permissions.ts` — effective-permission merge + cooldown countdown helpers
 
 
 

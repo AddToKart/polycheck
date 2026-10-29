@@ -92,6 +92,17 @@ export const SETTING_FIELDS: readonly SettingFieldDefinition[] = [
     caption: 'Standing threshold — students below this rate are flagged on their dashboard.',
   },
   {
+    key: 'device_cooldown_hours',
+    tab: 'accounts',
+    label: 'Device change cooldown (hours)',
+    type: 'number',
+    defaultValue: '2',
+    min: 1,
+    max: 24,
+    caption:
+      'After a student unregisters their mobile device, mobile logins stay locked for this many hours. Instructors can release a student sooner.',
+  },
+  {
     key: 'ai_base_url',
     tab: 'ai',
     label: 'AI endpoint base URL (optional)',
@@ -131,6 +142,22 @@ export const SETTING_SWITCHES: readonly SettingSwitchDefinition[] = [
     defaultValue: 'false',
   },
   {
+    key: 'allow_teacher_password_reset',
+    tab: 'accounts',
+    label: 'Allow teacher password resets',
+    caption:
+      'Let teachers issue temporary passwords to students enrolled in their own sections. Per-teacher overrides can restrict this further.',
+    defaultValue: 'true',
+  },
+  {
+    key: 'allow_teacher_emergency_device_unbind',
+    tab: 'accounts',
+    label: 'Allow emergency device release',
+    caption:
+      'Let teachers clear a student device binding and cooldown from the roster when a phone is lost, damaged, or borrowed.',
+    defaultValue: 'true',
+  },
+  {
     key: 'ai_assistant_enabled',
     tab: 'ai',
     label: 'AI assistant enabled',
@@ -157,7 +184,10 @@ export const SETTING_SWITCHES: readonly SettingSwitchDefinition[] = [
 export const TAB_SETTING_KEYS: Record<SettingsTabId, readonly string[]> = {
   institution: SETTING_FIELDS.filter((field) => field.tab === 'institution').map((field) => field.key),
   sessions: SETTING_FIELDS.filter((field) => field.tab === 'sessions').map((field) => field.key),
-  accounts: SETTING_SWITCHES.filter((item) => item.tab === 'accounts').map((item) => item.key),
+  accounts: [
+    ...SETTING_SWITCHES.filter((item) => item.tab === 'accounts').map((item) => item.key),
+    ...SETTING_FIELDS.filter((field) => field.tab === 'accounts').map((field) => field.key),
+  ],
   ai: [
     ...SETTING_SWITCHES.filter((item) => item.tab === 'ai').map((item) => item.key),
     ...SETTING_FIELDS.filter((field) => field.tab === 'ai').map((field) => field.key),

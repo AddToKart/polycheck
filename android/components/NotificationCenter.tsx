@@ -32,6 +32,7 @@ const TYPE_ICONS: Record<NotificationType, keyof typeof MaterialIcons.glyphMap> 
   account_status_changed: 'manage-accounts',
   password_reset: 'lock-reset',
   role_changed: 'swap-horiz',
+  device_released: 'smartphone',
   key_provisioned: 'vpn-key',
 }
 

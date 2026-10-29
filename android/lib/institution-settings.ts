@@ -109,6 +109,16 @@ export const SETTING_FIELDS: readonly SettingFieldDefinition[] = [
     caption: 'Standing threshold — students below this rate are flagged.',
   },
   {
+    key: 'device_cooldown_hours',
+    tab: 'accounts',
+    label: 'Device change cooldown (hours)',
+    defaultValue: '2',
+    keyboardType: 'number-pad',
+    icon: 'timer',
+    caption:
+      'After a student unregisters their mobile device, mobile logins stay locked for this many hours (1–24). Instructors can release a student sooner.',
+  },
+  {
     key: 'ai_base_url',
     tab: 'ai',
     label: 'AI endpoint base URL (optional)',
@@ -150,6 +160,22 @@ export const SETTING_SWITCHES: readonly SettingSwitchDefinition[] = [
     defaultValue: 'false',
   },
   {
+    key: 'allow_teacher_password_reset',
+    tab: 'accounts',
+    label: 'Allow teacher password resets',
+    caption:
+      'Let teachers issue temporary passwords to students enrolled in their own sections. Per-teacher overrides can restrict this further.',
+    defaultValue: 'true',
+  },
+  {
+    key: 'allow_teacher_emergency_device_unbind',
+    tab: 'accounts',
+    label: 'Allow emergency device release',
+    caption:
+      'Let teachers clear a student device binding and cooldown from the roster when a phone is lost, damaged, or borrowed.',
+    defaultValue: 'true',
+  },
+  {
     key: 'ai_assistant_enabled',
     tab: 'ai',
     label: 'AI assistant enabled',
@@ -183,7 +209,10 @@ export function switchesForTab(tab: SettingsTabId): readonly SettingSwitchDefini
 export const TAB_SETTING_KEYS: Record<SettingsTabId, readonly string[]> = {
   institution: fieldsForTab('institution').map((field) => field.key),
   sessions: fieldsForTab('sessions').map((field) => field.key),
-  accounts: switchesForTab('accounts').map((item) => item.key),
+  accounts: [
+    ...switchesForTab('accounts').map((item) => item.key),
+    ...fieldsForTab('accounts').map((field) => field.key),
+  ],
   ai: [
     ...switchesForTab('ai').map((item) => item.key),
     ...fieldsForTab('ai').map((field) => field.key),

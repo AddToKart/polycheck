@@ -1,4 +1,4 @@
-import { IsEmail, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator'
+import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator'
 import { Type } from 'class-transformer'
 import { IsStrongPassword } from '../../common/decorators/strong-password.decorator'
 
@@ -23,6 +23,12 @@ export class UpdateUserDto {
   @IsOptional() @IsEmail() @MaxLength(254) email?: string
   @IsOptional() @IsString() @MinLength(2) @MaxLength(150) program?: string
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(8) yearLevel?: number
+  /**
+   * Teacher-only governance overrides. Null clears the override and follows
+   * the institution setting; omitted fields are left untouched.
+   */
+  @IsOptional() @IsBoolean() canResetStudentPasswords?: boolean | null
+  @IsOptional() @IsBoolean() canEmergencyUnbindDevices?: boolean | null
 }
 
 /** Only student <-> teacher transitions are assignable (Locked Decision 6). */

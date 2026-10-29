@@ -151,4 +151,5 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   password_reset: 'Account',
   role_changed: 'Account',
   key_provisioned: 'Security',
+  device_released: 'Security',
 }

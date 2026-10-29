@@ -282,7 +282,8 @@ function InstitutionSettingsPageInner() {
   const masterSwitch = settingByKey('ai_assistant_enabled')
   const teacherSwitch = settingByKey('ai_assistant_teacher_enabled')
   const studentSwitch = settingByKey('ai_assistant_student_enabled')
-  const provisioningSwitch = settingByKey('allow_teacher_student_provisioning')
+  const accountsSwitches = SETTING_SWITCHES.filter((item) => item.tab === 'accounts')
+  const accountsFields = SETTING_FIELDS.filter((field) => field.tab === 'accounts')
 
   const aiFields = SETTING_FIELDS.filter((field) => field.tab === 'ai')
   const institutionField = SETTING_FIELDS.find((field) => field.key === 'institution_name')
@@ -403,15 +404,33 @@ function InstitutionSettingsPageInner() {
                   </div>
                 ) : null}
 
-                {activeTab === 'accounts' && provisioningSwitch ? (
-                  <SettingSwitch
-                    id={provisioningSwitch.key}
-                    label={provisioningSwitch.label}
-                    caption={provisioningSwitch.caption}
-                    checked={values[provisioningSwitch.key] === 'true'}
-                    disabled={!canEdit || loading}
-                    onCheckedChange={(checked) => updateSwitch(provisioningSwitch.key, checked)}
-                  />
+                {activeTab === 'accounts' ? (
+                  <div className="space-y-6">
+                    {accountsSwitches.map((item) => (
+                      <SettingSwitch
+                        key={item.key}
+                        id={item.key}
+                        label={item.label}
+                        caption={item.caption}
+                        checked={values[item.key] === 'true'}
+                        disabled={!canEdit || loading}
+                        onCheckedChange={(checked) => updateSwitch(item.key, checked)}
+                      />
+                    ))}
+                    {accountsFields.length > 0 ? (
+                      <div className="grid gap-6 sm:grid-cols-2">
+                        {accountsFields.map((field) => (
+                          <SettingFieldRow
+                            key={field.key}
+                            field={field}
+                            value={values[field.key] ?? ''}
+                            disabled={!canEdit || loading}
+                            onChange={(value) => updateValue(field.key, value)}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
 
                 {activeTab === 'ai' ? (

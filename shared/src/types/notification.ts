@@ -9,6 +9,7 @@ export type NotificationType =
   | 'password_reset'
   | 'role_changed'
   | 'key_provisioned'
+  | 'device_released'
 
 export interface AppNotification {
   id: string

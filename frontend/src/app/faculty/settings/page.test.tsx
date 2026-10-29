@@ -234,7 +234,7 @@ describe('Institution Settings tabs', () => {
         'true',
       ),
     )
-    expect(apiMock.setSetting).toHaveBeenCalledTimes(1)
+    expect(apiMock.setSetting).toHaveBeenCalledTimes(TAB_SETTING_KEYS.accounts.length)
     expect(await screen.findByText('Account access settings saved.')).toBeInTheDocument()
   })
 

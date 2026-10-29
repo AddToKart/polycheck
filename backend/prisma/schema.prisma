@@ -56,6 +56,14 @@ model User {
   isActive          Boolean  @default(true)
   mustChangePassword Boolean @default(false)
   authVersion       Int      @default(0)
+  // Account governance: delegated teacher capabilities and mobile device binding.
+  boundDeviceId             String?
+  deviceBoundAt             DateTime?
+  deviceCooldownUntil       DateTime?
+  canResetStudentPasswords  Boolean?
+  canEmergencyUnbindDevices Boolean?
+  contactEmail              String?
+  contactPhone              String?
   privacyConsentVersion String?
   privacyConsentedAt     DateTime?
   createdAt         DateTime @default(now())

@@ -109,6 +109,48 @@ export const ProofOfClassUploadSchema = z.object({
   uploadedByStudentName: z.string().min(1),
 })
 
+// ── Account governance (GOV) ──
+
+export const EmergencyDeviceReleaseReasonSchema = z.enum([
+  'dead_battery',
+  'lost_or_damaged',
+  'borrowed_device',
+  'other',
+])
+
+export const TeacherResetStudentPasswordSchema = z.object({
+  sectionId: z.string().min(1, 'Section is required').max(64),
+})
+
+export const EmergencyDeviceReleaseSchema = z.object({
+  sectionId: z.string().min(1, 'Section is required').max(64),
+  reason: EmergencyDeviceReleaseReasonSchema,
+  note: z.string().trim().max(280, 'Reason note must be 280 characters or fewer').optional(),
+})
+
+const OptionalEmailOrEmptySchema = z
+  .string()
+  .trim()
+  .max(254)
+  .refine((value) => value === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value), 'Must be a valid email address')
+
+const OptionalPhoneOrEmptySchema = z
+  .string()
+  .trim()
+  .max(20)
+  .refine((value) => value === '' || /^\+?[0-9\s-]{7,20}$/.test(value), 'Must be a valid phone number')
+
+export const UpdateContactsSchema = z
+  .object({
+    contactEmail: OptionalEmailOrEmptySchema.optional(),
+    contactPhone: OptionalPhoneOrEmptySchema.optional(),
+  })
+  .refine((value) => value.contactEmail !== undefined || value.contactPhone !== undefined, {
+    message: 'Provide at least one contact field',
+  })
+
+export const DeviceCooldownHoursSchema = z.number().int().min(1).max(24)
+
 export * from './bulk-import'
 export * from './ai'
 export * from './excuse'

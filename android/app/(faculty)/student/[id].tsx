@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AccessibilityInfo, ActivityIndicator, Alert, Animated, Image, Pressable, ScrollView, Text, View } from 'react-native'
+import { AccessibilityInfo, ActivityIndicator, Alert, Animated, Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
-import type { AttendanceRecord, AttendanceStatus, Session, Student } from '@polycheck/shared'
+import type { AttendanceRecord, AttendanceStatus, EmergencyDeviceReleaseReason, Session, Student } from '@polycheck/shared'
+import * as Clipboard from 'expo-clipboard'
 import { api } from '../../../services/api-client'
 import { useAuthGate } from '../../../hooks/use-auth-gate'
 import { useTheme } from '../../../theme/ThemeContext'
@@ -11,16 +12,25 @@ import { pupColors } from '../../../theme/colors'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
 import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
+import { useCampusToast } from '../../../components/CampusToast'
 import QRCode from 'react-native-qrcode-svg'
 import * as Crypto from 'expo-crypto'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 const SESSION_PAGE_SIZE = 5
 
+const RELEASE_REASONS: { value: EmergencyDeviceReleaseReason; label: string }[] = [
+  { value: 'dead_battery', label: 'Dead battery' },
+  { value: 'lost_or_damaged', label: 'Lost or damaged phone' },
+  { value: 'borrowed_device', label: 'Borrowed device' },
+  { value: 'other', label: 'Other reason' },
+]
+
 const IdLabel = ({ label, value, prominent = false }: { label: string; value: string; prominent?: boolean }) => <View><Text className="font-sans-bold text-[7px] uppercase tracking-[1.4px] text-zinc-500 dark:text-white/45">{label}</Text><Text className={`mt-1 font-sans-bold uppercase text-ink dark:text-white ${prominent ? 'text-lg text-maroon dark:text-golden' : 'text-[10px]'}`} numberOfLines={2}>{value}</Text></View>
 
 export default function StudentDetailScreen() {
   const { isDark, toggle } = useTheme()
+  const { showToast } = useCampusToast()
   const { id: studentId, sectionId } = useLocalSearchParams<{ id: string; sectionId: string }>()
   const currentUser = useAuthGate(['teacher', 'super_admin'])
   const [student, setStudent] = useState<Student | null>(null)
@@ -30,18 +40,25 @@ export default function StudentDetailScreen() {
   const [sessionPage, setSessionPage] = useState(0)
   const [isFlipped, setIsFlipped] = useState(false)
   const [reduceMotion, setReduceMotion] = useState(false)
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
+  const [credential, setCredential] = useState<string | null>(null)
+  const [releaseOpen, setReleaseOpen] = useState(false)
+  const [releaseReason, setReleaseReason] = useState<EmergencyDeviceReleaseReason>('lost_or_damaged')
+  const [releaseNote, setReleaseNote] = useState('')
+  const [releasing, setReleasing] = useState(false)
   const flipAnimation = useRef(new Animated.Value(0)).current
 
   const loadData = useCallback(async () => {
     if (!studentId || !currentUser) return
     try {
-      let activeSectionId: string | undefined = sectionId
-      if (!activeSectionId) {
+      let nextSectionId: string | undefined = sectionId
+      if (!nextSectionId) {
         const enrollments = await api.getEnrollments()
-        activeSectionId = enrollments.find((enrollment) => enrollment.studentId === studentId)?.sectionId
+        nextSectionId = enrollments.find((enrollment) => enrollment.studentId === studentId)?.sectionId
       }
-      if (!activeSectionId) { router.back(); return }
-      const [nextStudent, nextSessions, nextRecords] = await Promise.all([api.getStudent(studentId), api.getSectionSessions(activeSectionId), api.getStudentAttendanceForSection(studentId, activeSectionId)])
+      if (!nextSectionId) { router.back(); return }
+      setActiveSectionId(nextSectionId)
+      const [nextStudent, nextSessions, nextRecords] = await Promise.all([api.getStudent(studentId), api.getSectionSessions(nextSectionId), api.getStudentAttendanceForSection(studentId, nextSectionId)])
       setStudent(nextStudent)
       setSessions(nextSessions)
       setRecords(nextRecords)
@@ -86,8 +103,62 @@ export default function StudentDetailScreen() {
     ])
   }
 
-  const cycleStatus = async (record: AttendanceRecord) => {
-    const currentIndex = STATUS_CYCLE.indexOf(record.status)
+  const resetPassword = () => {
+    if (!activeSectionId) {
+      Alert.alert('Section context unavailable', 'Open this student from the section roster to reset the password.')
+      return
+    }
+    Alert.alert(
+      'Reset password?',
+      `A new temporary password will be generated for ${student.fullName}. All of their sessions will be revoked and they must change it at next sign-in.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Generate',
+          onPress: () => {
+            void (async () => {
+              try {
+                const result = await api.teacherResetStudentPassword(studentId!, activeSectionId)
+                setCredential(result.temporaryPassword)
+                await Clipboard.setStringAsync(result.temporaryPassword)
+                showToast('success', 'Temporary password copied', 'Share it with the student in person.')
+              } catch (error) {
+                Alert.alert('Unable to reset password', error instanceof Error ? error.message : 'Please try again.')
+              }
+            })()
+          },
+        },
+      ],
+    )
+  }
+
+  const copyCredential = async () => {
+    if (!credential) return
+    await Clipboard.setStringAsync(credential)
+    showToast('info', 'Copied', 'Temporary password copied to the clipboard.')
+  }
+
+  const releaseDevice = async () => {
+    if (!activeSectionId) return
+    setReleasing(true)
+    try {
+      await api.emergencyReleaseDevice(studentId!, {
+        sectionId: activeSectionId,
+        reason: releaseReason,
+        ...(releaseNote.trim() ? { note: releaseNote.trim() } : {}),
+      })
+      setReleaseOpen(false)
+      setReleaseNote('')
+      showToast('success', 'Device released', 'The student can sign in on a device again. The action was audited.')
+      await loadData()
+    } catch (error) {
+      Alert.alert('Unable to release device', error instanceof Error ? error.message : 'Please try again.')
+    } finally {
+      setReleasing(false)
+    }
+  }
+
+  const cycleStatus = async (record: AttendanceRecord) => {    const currentIndex = STATUS_CYCLE.indexOf(record.status)
     const nextStatus = STATUS_CYCLE[(currentIndex + 1) % STATUS_CYCLE.length]
     try {
       await api.updateAttendanceStatus(record.id, nextStatus)
@@ -143,7 +214,29 @@ export default function StudentDetailScreen() {
       </View>
       <Text className="mb-7 text-center font-sans-bold text-[10px] uppercase tracking-[1.3px] text-muted dark:text-zinc-500">Tap the card to view the {isFlipped ? 'front' : 'back'}</Text>
 
-      {isTeacher ? <CampusButton label="Remove from section" icon="person-remove" variant="secondary" onPress={remove} className="mb-7 border-red-300 dark:border-red-800" /> : null}
+      {isTeacher ? <CampusButton label="Remove from section" icon="person-remove" variant="secondary" onPress={remove} className="mb-4 border-red-300 dark:border-red-800" /> : null}
+
+      {isTeacher ? (
+        <View className="mb-7 gap-3">
+          {student.deviceCooldownUntil ? (
+            <View className="self-center border border-amber-400 bg-amber-50 px-3 py-1 dark:bg-amber-950">
+              <Text className="font-sans-bold text-[10px] uppercase tracking-[1.5px] text-amber-800 dark:text-amber-300">
+                Device change locked
+              </Text>
+            </View>
+          ) : student.deviceBoundAt ? (
+            <View className="self-center border border-emerald-400 bg-emerald-50 px-3 py-1 dark:bg-emerald-950">
+              <Text className="font-sans-bold text-[10px] uppercase tracking-[1.5px] text-emerald-800 dark:text-emerald-300">
+                Mobile device bound
+              </Text>
+            </View>
+          ) : null}
+          <View className="flex-row gap-3">
+            <CampusButton className="flex-1" label="Reset password" icon="key" variant="secondary" onPress={resetPassword} />
+            <CampusButton className="flex-1" label="Release device" icon="phonelink-erase" variant="secondary" onPress={() => setReleaseOpen(true)} />
+          </View>
+        </View>
+      ) : null}
 
       <SectionHeading eyebrow="Attendance" title="Student performance" />
       <AttendanceMetricGrid metrics={[{ label: 'Present', value: totalPresent, tone: 'success' }, { label: 'Late', value: totalLate, tone: 'warning' }, { label: 'Absent', value: totalAbsent, tone: 'danger' }]} />
@@ -154,6 +247,74 @@ export default function StudentDetailScreen() {
       })}{!sessions.length ? <CampusEmptyState icon="event-busy" title="No sessions yet" description="Attendance will appear after the first class meeting is created." /> : null}</View>
       {sessionPageCount > 1 ? <View className="mt-5 flex-row items-center gap-3"><CampusButton className="flex-1" label="Previous" variant="secondary" disabled={sessionPage === 0} onPress={() => setSessionPage((value) => Math.max(0, value - 1))} /><Text className="font-sans-bold text-xs text-muted dark:text-zinc-400">{sessionPage + 1}/{sessionPageCount}</Text><CampusButton className="flex-1" label="Next" variant="secondary" disabled={sessionPage === sessionPageCount - 1} onPress={() => setSessionPage((value) => Math.min(sessionPageCount - 1, value + 1))} /></View> : null}
     </ScrollView>
-  </SafeAreaView>
-)
+
+      <Modal visible={credential !== null} transparent animationType="fade" onRequestClose={() => setCredential(null)}>
+        <View className="flex-1 items-center justify-center bg-black/60 px-6">
+          <View className="w-full border-t-4 border-golden bg-white p-6 dark:bg-[#1F191D]" testID="teacher-credential-modal">
+            <View className="mb-3 h-12 w-12 items-center justify-center bg-maroon">
+              <MaterialIcons name="key" size={24} color={pupColors.golden} />
+            </View>
+            <Text className="font-heading text-xl text-ink dark:text-white">Temporary credentials</Text>
+            <Text className="mt-1 font-sans text-xs leading-5 text-muted dark:text-zinc-400">
+              Share this password with {student.fullName} in person. It will not be shown again, and it must be
+              changed on first sign-in.
+            </Text>
+            <View className="mt-4 border border-line bg-campus px-3 py-3 dark:border-line-dark dark:bg-zinc-900">
+              <Text className="text-center font-mono text-lg font-bold text-ink dark:text-golden">{credential}</Text>
+            </View>
+            <View className="mt-5 flex-row gap-3">
+              <CampusButton className="flex-1" label="Copy" icon="content-copy" onPress={() => void copyCredential()} />
+              <CampusButton className="flex-1" label="Done" icon="check" variant="secondary" onPress={() => setCredential(null)} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={releaseOpen} transparent animationType="fade" onRequestClose={() => setReleaseOpen(false)}>
+        <View className="flex-1 items-center justify-center bg-black/60 px-6">
+          <View className="w-full border-t-4 border-golden bg-white p-6 dark:bg-[#1F191D]" testID="teacher-device-release-modal">
+            <Text className="font-heading text-xl text-ink dark:text-white">Emergency device release</Text>
+            <Text className="mt-1 font-sans text-xs leading-5 text-muted dark:text-zinc-400">
+              Clears {student.fullName}&apos;s bound device and cooldown so they can sign in immediately. The reason is
+              recorded in the audit log.
+            </Text>
+            <View className="mt-4 gap-2">
+              {RELEASE_REASONS.map((item) => {
+                const selected = releaseReason === item.value
+                return (
+                  <Pressable
+                    key={item.value}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => setReleaseReason(item.value)}
+                    className={
+                      selected
+                        ? 'flex-row items-center justify-between border border-maroon bg-maroon/5 px-3 py-2 dark:border-golden dark:bg-golden/10'
+                        : 'flex-row items-center justify-between border border-line px-3 py-2 dark:border-line-dark'
+                    }
+                  >
+                    <Text className="font-sans text-sm text-ink dark:text-white">{item.label}</Text>
+                    {selected ? <MaterialIcons name="check" size={16} color={isDark ? pupColors.golden : pupColors.maroon} /> : null}
+                  </Pressable>
+                )
+              })}
+            </View>
+            <TextInput
+              value={releaseNote}
+              onChangeText={setReleaseNote}
+              maxLength={280}
+              placeholder="Optional note for the audit log"
+              placeholderTextColor={isDark ? '#A39B9D' : pupColors.mutedLight}
+              className="mt-3 border border-line bg-campus px-3 py-2 font-sans text-sm text-ink dark:border-line-dark dark:bg-zinc-900 dark:text-white"
+              accessibilityLabel="Release note"
+            />
+            <View className="mt-5 flex-row gap-3">
+              <CampusButton className="flex-1" label="Cancel" variant="secondary" onPress={() => setReleaseOpen(false)} />
+              <CampusButton className="flex-1" label={releasing ? 'Releasing…' : 'Release'} icon="phonelink-erase" disabled={releasing} onPress={() => void releaseDevice()} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  )
 }

@@ -1,5 +1,5 @@
 import { Platform } from 'react-native'
-import { classifyAttendanceSyncError, getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRow, type EnrollImportRequest, type EnrollImportResult, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput, type AiCapabilities, type AiChatSendInput, type AiChatSendResult, type AiChatThread, type AiThreadSummary, type AttendanceStanding, type AppNotification, type NotificationReadInput, type PushTokenInput, type StudentAtRisk, type ExcuseDecision, type ExcuseReason } from '@polycheck/shared'
+import { classifyAttendanceSyncError, getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRow, type EnrollImportRequest, type EnrollImportResult, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput, type AiCapabilities, type AiChatSendInput, type AiChatSendResult, type AiChatThread, type AiThreadSummary, type AttendanceStanding, type AppNotification, type NotificationReadInput, type PushTokenInput, type StudentAtRisk, type ExcuseDecision, type ExcuseReason, type CreateTeacherResult, type CreateStudentResult, type TeacherResetStudentPasswordResult, type EmergencyDeviceReleaseInput, type EmergencyDeviceReleaseResult, type UnregisterDeviceResult, type UpdateContactsInput } from '@polycheck/shared'
 import { API_BASE } from './api-config'
 import { getOrCreateTeacherSigningKey } from './signing-key'
 import { getOrCreateInstallationId } from './device-id'
@@ -109,8 +109,13 @@ const FETCH_TIMEOUT = 10_000
 // Offline fallback data — returns empty arrays for first-run / unsynced users
 // instead of displaying fake subjects that don't correspond to real data.
 
-class ApiRequestError extends Error {
-  constructor(message: string, readonly status: number, readonly code?: string) {
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+    readonly remainingMinutes?: number,
+  ) {
     super(message)
   }
 }
@@ -179,16 +184,43 @@ async function handleResponse<T>(res: Response): Promise<T> {
     }
     const message = data && typeof data === 'object' ? data.message : res.statusText
     const code = data && typeof data === 'object' && typeof data.code === 'string' ? data.code : undefined
-    if (res.status === 403 && code === 'PASSWORD_CHANGE_REQUIRED' && currentUser && !currentUser.mustChangePassword) {
+    const remainingMinutes =
+      data && typeof data === 'object' && typeof data.remainingMinutes === 'number'
+        ? data.remainingMinutes
+        : undefined
+    if (res.status === 403 && code === 'password_change_required' && currentUser && !currentUser.mustChangePassword) {
       // Admin reset the password while this device kept an older cached
       // profile. Flag it locally so the blocking password gate takes over.
       currentUser = { ...currentUser, mustChangePassword: true }
       await saveUserToStore(currentUser)
       notifyAuthListeners()
     }
-    throw new ApiRequestError(Array.isArray(message) ? message.join('. ') : message || 'Request failed', res.status, code)
+    throw new ApiRequestError(Array.isArray(message) ? message.join('. ') : message || 'Request failed', res.status, code, remainingMinutes)
   }
   return (data ?? {}) as T
+}
+
+/**
+ * Parses a failed login response into the shared typed error shape so callers
+ * can branch on `device_cooldown_active` and render the remaining minutes.
+ */
+async function throwLoginError(res: Response, fallback: string): Promise<never> {
+  const data = await res.json().catch(() => ({ message: fallback }))
+  const rawMessage = data && typeof data === 'object' ? (data as { message?: unknown }).message : undefined
+  const message = Array.isArray(rawMessage)
+    ? rawMessage.join('. ')
+    : typeof rawMessage === 'string'
+      ? rawMessage
+      : fallback
+  const code =
+    data && typeof data === 'object' && typeof (data as { code?: unknown }).code === 'string'
+      ? ((data as { code: string }).code)
+      : undefined
+  const remainingMinutes =
+    data && typeof data === 'object' && typeof (data as { remainingMinutes?: unknown }).remainingMinutes === 'number'
+      ? ((data as { remainingMinutes: number }).remainingMinutes)
+      : undefined
+  throw new ApiRequestError(message, res.status, code, remainingMinutes)
 }
 
 async function get<T>(path: string): Promise<T> {
@@ -245,15 +277,13 @@ export const api = {
   },
 
   async loginStudent(studentId: string, password?: string): Promise<User | null> {
+    const deviceId = await getOrCreateInstallationId().catch(() => undefined)
     const res = await fetchWithTimeout(`${API_BASE}/auth/mobile/login/student`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ studentId, password: password ?? '' }),
+      body: JSON.stringify({ studentId, password: password ?? '', ...(deviceId ? { deviceId } : {}) }),
     })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: 'Login failed' }))
-      throw new Error(err.message || 'Login failed')
-    }
+    if (!res.ok) await throwLoginError(res, 'Login failed')
     const data = await res.json()
     currentUser = data.user as User
     await initializeOfflineStore(currentUser.id)
@@ -264,15 +294,13 @@ export const api = {
   },
 
   async loginFaculty(email: string, password?: string): Promise<User | null> {
+    const deviceId = await getOrCreateInstallationId().catch(() => undefined)
     const res = await fetchWithTimeout(`${API_BASE}/auth/mobile/login/faculty`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password: password ?? '' }),
+      body: JSON.stringify({ email, password: password ?? '', ...(deviceId ? { deviceId } : {}) }),
     })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: 'Login failed' }))
-      throw new Error(err.message || 'Login failed')
-    }
+    if (!res.ok) await throwLoginError(res, 'Login failed')
     const data = await res.json()
     currentUser = data.user as User
     await initializeOfflineStore(currentUser.id)
@@ -313,7 +341,7 @@ export const api = {
         notifyAuthListeners()
         return cachedUser
       }
-      if (error instanceof ApiRequestError && error.status === 403 && error.code === 'PASSWORD_CHANGE_REQUIRED') {
+      if (error instanceof ApiRequestError && error.status === 403 && error.code === 'password_change_required') {
         // The backend blocks protected endpoints until the temporary password
         // is replaced. Keep the cached profile (flagged) so the password gate
         // takes over instead of silently signing the user out.
@@ -355,7 +383,7 @@ export const api = {
       notifyAuthListeners()
       return nextUser
     } catch (error) {
-      if (error instanceof ApiRequestError && error.status === 403 && error.code === 'PASSWORD_CHANGE_REQUIRED') {
+      if (error instanceof ApiRequestError && error.status === 403 && error.code === 'password_change_required') {
         // A 403 here is an ordinary validation message (e.g. a current-password
         // requirement), not a reason to drop the authenticated session.
         throw new Error(error.message && error.message !== 'Forbidden' ? error.message : 'You must change your temporary password before continuing.')
@@ -782,17 +810,41 @@ export const api = {
   createAdmin(input: CreateAdminInput): Promise<User> {
     return post('/users/admins', input)
   },
-  createTeacher(data: CreateTeacherInput): Promise<Teacher> {
+  createTeacher(data: CreateTeacherInput): Promise<CreateTeacherResult> {
     return post('/users/teachers', data)
   },
-  createStudent(data: CreateStudentInput): Promise<Student> {
+  createStudent(data: CreateStudentInput): Promise<CreateStudentResult> {
     return post('/users/students', data)
   },
-  resetUserPassword(id: string, password: string): Promise<ResetUserPasswordResult> {
-    return patch(`/users/${id}/password`, { password })
+  resetUserPassword(id: string, password?: string): Promise<ResetUserPasswordResult> {
+    return patch(`/users/${id}/password`, password === undefined ? {} : { password })
   },
   setUserStatus(id: string, isActive: boolean): Promise<User> {
     return patch(`/users/${id}/status`, { isActive })
+  },
+  teacherResetStudentPassword(
+    studentId: string,
+    sectionId: string,
+  ): Promise<TeacherResetStudentPasswordResult> {
+    return post(`/users/students/${studentId}/teacher-reset-password`, { sectionId })
+  },
+  emergencyReleaseDevice(
+    studentId: string,
+    input: EmergencyDeviceReleaseInput,
+  ): Promise<EmergencyDeviceReleaseResult> {
+    return post(`/users/students/${studentId}/device-release`, input)
+  },
+  unregisterDevice(deviceId: string): Promise<UnregisterDeviceResult> {
+    return post('/users/me/device/unregister', { deviceId })
+  },
+  async updateContacts(input: UpdateContactsInput): Promise<User> {
+    const updated = await patch<User>('/users/me/contacts', input)
+    if (currentUser) {
+      currentUser = { ...currentUser, ...updated }
+      await saveUserToStore(currentUser)
+      notifyAuthListeners()
+    }
+    return updated
   },
 
   // ── Bulk import ──

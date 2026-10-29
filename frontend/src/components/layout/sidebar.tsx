@@ -25,6 +25,7 @@ import {
   Server,
   Sparkles,
   ClipboardCheck,
+  UserRound,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -41,6 +42,7 @@ const studentNav: NavItem[] = [
   { label: 'Schedule', href: '/student/schedule', icon: Calendar },
   { label: 'Attendance History', href: '/student/dashboard?tab=attendance', icon: Clock },
   { label: 'Assistant', href: '/student/assistant', icon: Sparkles },
+  { label: 'Profile', href: '/profile', icon: UserRound },
 ]
 
 // Navigation for standard teachers
@@ -53,6 +55,7 @@ const teacherNav: NavItem[] = [
   { label: 'Disputes', href: '/faculty/disputes', icon: Gavel },
   { label: 'Excuses', href: '/faculty/excuses', icon: ClipboardCheck },
   { label: 'Assistant', href: '/faculty/assistant', icon: Sparkles },
+  { label: 'Profile', href: '/profile', icon: UserRound },
   { label: 'Search', href: '/faculty/search', icon: Search },
 ]
 
@@ -68,6 +71,7 @@ const superAdminNav: NavItem[] = [
   { label: 'Server Status', href: '/faculty/server-status', icon: Server },
   { label: 'Assistant', href: '/faculty/assistant', icon: Sparkles },
   { label: 'Institution Settings', href: '/faculty/settings', icon: Settings },
+  { label: 'Profile', href: '/profile', icon: UserRound },
   { label: 'Global Search', href: '/faculty/search', icon: Search },
 ]
 

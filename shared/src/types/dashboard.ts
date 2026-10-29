@@ -56,6 +56,9 @@ export interface UpdateUserInput {
   email?: string
   program?: string
   yearLevel?: number
+  /** Teacher-only governance overrides; null clears the override and follows the institution setting. */
+  canResetStudentPasswords?: boolean | null
+  canEmergencyUnbindDevices?: boolean | null
 }
 
 /** Only student <-> teacher transitions are allowed (Locked Decision 6). */
