@@ -5,25 +5,28 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import type { Section, Subject } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
+import { useAuthGate } from '../../../hooks/use-auth-gate'
 import { useTheme } from '../../../theme/ThemeContext'
+import { pupColors } from '../../../theme/colors'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
 
 export default function SubjectDetailScreen() {
   const { isDark, toggle } = useTheme()
   const { id } = useLocalSearchParams<{ id: string }>()
+  const currentUser = useAuthGate(['teacher', 'super_admin'])
   const [subject, setSubject] = useState<Subject | null>(null)
   const [sections, setSections] = useState<Section[]>([])
-  const isTeacher = api.getCurrentUser()?.role === 'teacher'
+  const isTeacher = currentUser?.role === 'teacher'
 
   useEffect(() => {
-    if (!id) return
+    if (!id || !currentUser) return
     void Promise.all([api.getSubject(id), api.getSections(id)])
       .then(([nextSubject, nextSections]) => { setSubject(nextSubject); setSections(nextSections) })
       .catch(() => router.back())
-  }, [id])
+  }, [id, currentUser])
 
-  if (!subject) return null
+  if (!currentUser || !subject) return null
 
   return (
     <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
@@ -46,8 +49,8 @@ export default function SubjectDetailScreen() {
                   <Text className="font-sans-bold text-base text-ink dark:text-white">Section {section.section}</Text>
                   <Text className="mt-1 font-sans text-xs text-muted dark:text-zinc-400">{section.teacherName}</Text>
                   <View className="mt-4 gap-2">
-                    <View className="flex-row items-center gap-2"><MaterialIcons name="room" size={16} color={isDark ? '#A1A1AA' : '#746C6E'} /><Text className="font-sans text-xs text-muted dark:text-zinc-400">{section.room || 'Room TBA'}</Text></View>
-                    <View className="flex-row items-center gap-2"><MaterialIcons name="groups" size={16} color={isDark ? '#A1A1AA' : '#746C6E'} /><Text className="font-sans text-xs text-muted dark:text-zinc-400">{section.studentCount} students</Text></View>
+                    <View className="flex-row items-center gap-2"><MaterialIcons name="room" size={16} color={isDark ? pupColors.mutedLight : pupColors.muted} /><Text className="font-sans text-xs text-muted dark:text-zinc-400">{section.room || 'Room TBA'}</Text></View>
+                    <View className="flex-row items-center gap-2"><MaterialIcons name="groups" size={16} color={isDark ? pupColors.mutedLight : pupColors.muted} /><Text className="font-sans text-xs text-muted dark:text-zinc-400">{section.studentCount} students</Text></View>
                   </View>
                   <View className="mt-4 flex-row items-center justify-between border-t border-line pt-4 dark:border-line-dark">
                     <Text className="font-sans-bold text-xs text-maroon dark:text-golden">View section</Text>

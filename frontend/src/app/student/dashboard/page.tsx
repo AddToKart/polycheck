@@ -9,9 +9,14 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { StudentAttendanceAudit } from '@/components/student/StudentAttendanceAudit'
 import { StudentDashboardOverview } from '@/components/student/StudentDashboardOverview'
 import { StudentDisputeDialog, StudentEnrollmentDialog } from '@/components/student/StudentDashboardDialogs'
+import { StudentExcuseDialog } from '@/components/student/StudentExcuseDialog'
 import { StudentSubjectsGrid } from '@/components/student/StudentSubjectsGrid'
+import { StudentStandingBanner } from '@/components/StudentStandingBanner'
 import { StudentWeeklySchedule } from '@/components/student/StudentWeeklySchedule'
+import { IosInstallCallout } from '@/components/pwa/IosInstallCallout'
 import { Button } from '@/components/ui/button'
+import { OfflineSyncPanel } from '@/components/OfflineSyncPanel'
+import { OfflineReadinessChip } from '@/components/offline/OfflineReadinessChip'
 import { api } from '@/lib/api-client'
 
 const ScanQrModal = lazy(() => import('@/components/ScanQrModal'))
@@ -29,10 +34,14 @@ function StudentDashboardContent() {
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard')
   const [attendancePage, setAttendancePage] = useState(0)
   const [attendanceFilter, setAttendanceFilter] = useState<'all' | AttendanceStatus>('all')
+  const [attendanceSubjectId, setAttendanceSubjectId] = useState('all')
+  const [attendanceFrom, setAttendanceFrom] = useState('')
+  const [attendanceTo, setAttendanceTo] = useState('')
   const [isIdModalOpen, setIsIdModalOpen] = useState(false)
   const [isIdFlipped, setIsIdFlipped] = useState(false)
   const [scheduleDate, setScheduleDate] = useState(new Date())
   const [disputeRecord, setDisputeRecord] = useState<AttendanceRecord | null>(null)
+  const [excuseRecord, setExcuseRecord] = useState<AttendanceRecord | null>(null)
   const [disputeReason, setDisputeReason] = useState('')
   const [disputeDescription, setDisputeDescription] = useState('')
   const [disputeFeedback, setDisputeFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
@@ -74,26 +83,57 @@ function StudentDashboardContent() {
       } catch {
         // The authenticated shell stays usable while the next navigation retries data loading.
       }
+      void api.refreshServerClockOffset().catch(() => undefined)
     }
     void load()
   }, [router])
 
-  useEffect(() => setAttendancePage(0), [activeTab, attendanceFilter])
+  useEffect(() => setAttendancePage(0), [activeTab, attendanceFilter, attendanceSubjectId, attendanceFrom, attendanceTo])
 
   const subjectMap = useMemo(() => new Map(allSubjects.map((subject) => [subject.id, { name: subject.name, code: subject.code }])), [allSubjects])
+  const sectionSubjectMap = useMemo(() => new Map(sections.map((section) => [section.id, section.subjectId])), [sections])
+  const attendanceSubjectOptions = useMemo(() => {
+    const seen = new Set<string>()
+    return sections
+      .map((section) => section.subjectId)
+      .filter((subjectId) => {
+        if (seen.has(subjectId)) return false
+        seen.add(subjectId)
+        return true
+      })
+      .map((subjectId) => {
+        const subject = subjectMap.get(subjectId)
+        return { value: subjectId, label: subject ? `${subject.name} (${subject.code})` : subjectId }
+      })
+      .sort((left, right) => left.label.localeCompare(right.label))
+  }, [sections, subjectMap])
   const todayEvents = useMemo(() => {
     const today = formatCampusDate()
     return generateStudentCalendarEvents(sections, sessions, records, (id) => subjectMap.get(id), today, today)
       .sort((left, right) => left.startTime.localeCompare(right.startTime))
   }, [records, sections, sessions, subjectMap])
   const sortedRecords = useMemo(() => [...records].sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime()), [records])
-  const filteredRecords = useMemo(() => attendanceFilter === 'all' ? sortedRecords : sortedRecords.filter((record) => record.status === attendanceFilter), [attendanceFilter, sortedRecords])
+  const filteredRecords = useMemo(
+    () =>
+      sortedRecords.filter((record) => {
+        if (attendanceFilter !== 'all' && record.status !== attendanceFilter) return false
+        if (attendanceSubjectId !== 'all' && sectionSubjectMap.get(record.sectionId) !== attendanceSubjectId) return false
+        if (attendanceFrom || attendanceTo) {
+          const recordDate = formatCampusDate(new Date(record.timestamp))
+          if (attendanceFrom && recordDate < attendanceFrom) return false
+          if (attendanceTo && recordDate > attendanceTo) return false
+        }
+        return true
+      }),
+    [attendanceFilter, attendanceFrom, attendanceSubjectId, attendanceTo, sectionSubjectMap, sortedRecords],
+  )
   const attendancePageCount = Math.max(1, Math.ceil(filteredRecords.length / ATTENDANCE_PAGE_SIZE))
   const pagedRecords = useMemo(() => filteredRecords.slice(attendancePage * ATTENDANCE_PAGE_SIZE, (attendancePage + 1) * ATTENDANCE_PAGE_SIZE), [attendancePage, filteredRecords])
   const stats = useMemo(() => ({
     present: records.filter((record) => record.status === 'present').length,
     late: records.filter((record) => record.status === 'late').length,
     absent: records.filter((record) => record.status === 'absent').length,
+    excused: records.filter((record) => record.status === 'excused').length,
     disputed: records.filter((record) => record.status === 'disputed').length,
   }), [records])
 
@@ -112,6 +152,26 @@ function StudentDashboardContent() {
     setDisputeReason('')
     setDisputeDescription('')
     setDisputeFeedback(null)
+  }
+
+  const openExcuse = (record: AttendanceRecord) => {
+    setExcuseRecord(record)
+  }
+
+  const clearAttendanceFilters = () => {
+    setAttendanceFilter('all')
+    setAttendanceSubjectId('all')
+    setAttendanceFrom('')
+    setAttendanceTo('')
+  }
+
+  const refreshAttendance = async () => {
+    if (!user) return
+    try {
+      setRecords(await api.getAttendanceForStudent(user.id))
+    } catch {
+      // Keep the current rows visible; retrying navigation reloads them.
+    }
   }
 
   const handleEnrollSubmit = async (event: React.FormEvent) => {
@@ -172,12 +232,24 @@ function StudentDashboardContent() {
             </div>
           </div>
 
-          {activeTab === 'dashboard' ? <StudentDashboardOverview user={user} stats={stats} todayEvents={todayEvents} records={records} isIdOpen={isIdModalOpen} isIdFlipped={isIdFlipped} onOpenId={() => setIsIdModalOpen(true)} onCloseId={() => setIsIdModalOpen(false)} onFlipId={() => setIsIdFlipped((value) => !value)} onOpenSchedule={() => router.push('?tab=schedule')} onOpenScanner={openScanner} onReportIssue={openDispute} sectionSubjectName={sectionSubjectName} /> : null}
+          <StudentStandingBanner userId={user.id} />
+
+          {activeTab === 'dashboard' ? (
+            <div className="mb-6 space-y-4">
+              <IosInstallCallout />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <OfflineReadinessChip />
+              </div>
+              <OfflineSyncPanel />
+            </div>
+          ) : null}
+          {activeTab === 'dashboard' ? <StudentDashboardOverview user={user} stats={stats} todayEvents={todayEvents} records={records} isIdOpen={isIdModalOpen} isIdFlipped={isIdFlipped} onOpenId={() => setIsIdModalOpen(true)} onCloseId={() => setIsIdModalOpen(false)} onFlipId={() => setIsIdFlipped((value) => !value)} onOpenSchedule={() => router.push('?tab=schedule')} onOpenScanner={openScanner} onReportIssue={openDispute} onRequestExcuse={openExcuse} sectionSubjectName={sectionSubjectName} /> : null}
           {activeTab === 'subjects' ? <StudentSubjectsGrid sections={sections} subjectMap={subjectMap} /> : null}
           {activeTab === 'schedule' ? <StudentWeeklySchedule date={scheduleDate} onDateChange={setScheduleDate} sections={sections} sessions={sessions} records={records} subjectMap={subjectMap} /> : null}
-          {activeTab === 'attendance' ? <StudentAttendanceAudit records={pagedRecords} filteredCount={filteredRecords.length} filter={attendanceFilter} page={attendancePage} pageCount={attendancePageCount} pageSize={ATTENDANCE_PAGE_SIZE} onFilterChange={setAttendanceFilter} onPageChange={setAttendancePage} onReportIssue={openDispute} sectionSubjectName={sectionSubjectName} /> : null}
+          {activeTab === 'attendance' ? <StudentAttendanceAudit records={pagedRecords} filteredCount={filteredRecords.length} filter={attendanceFilter} page={attendancePage} pageCount={attendancePageCount} pageSize={ATTENDANCE_PAGE_SIZE} onFilterChange={setAttendanceFilter} onPageChange={setAttendancePage} onReportIssue={openDispute} onRequestExcuse={openExcuse} sectionSubjectName={sectionSubjectName} subjectOptions={attendanceSubjectOptions} subjectId={attendanceSubjectId} fromDate={attendanceFrom} toDate={attendanceTo} onSubjectChange={setAttendanceSubjectId} onFromDateChange={setAttendanceFrom} onToDateChange={setAttendanceTo} onClearFilters={clearAttendanceFilters} /> : null}
 
           <StudentDisputeDialog record={disputeRecord} reason={disputeReason} description={disputeDescription} feedback={disputeFeedback} subjectName={disputeRecord ? sectionSubjectName(disputeRecord.sectionId) : ''} onClose={() => { setDisputeRecord(null); setDisputeFeedback(null) }} onReasonChange={setDisputeReason} onDescriptionChange={setDisputeDescription} onSubmit={() => void handleSubmitDispute()} />
+          <StudentExcuseDialog record={excuseRecord} subjectName={excuseRecord ? sectionSubjectName(excuseRecord.sectionId) : ''} onClose={() => setExcuseRecord(null)} onSubmitted={() => { setExcuseRecord(null); void refreshAttendance() }} />
           <StudentEnrollmentDialog open={isEnrollModalOpen} code={enrollCode} loading={enrollLoading} success={enrollSuccess} error={enrollError} onOpenChange={setIsEnrollModalOpen} onCodeChange={setEnrollCode} onSubmit={(event) => void handleEnrollSubmit(event)} />
         </div>
       </main>

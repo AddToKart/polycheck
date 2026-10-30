@@ -14,6 +14,10 @@ allowBuilds:
   prisma: true
   sharp: true
   unrs-resolver: true
+auditConfig:
+  ignoreGhsas:
+    - GHSA-vfj7-8cjw-p6xm
+    - GHSA-86w9-cpqp-85rv
 minimumReleaseAgeExclude:
   - '@expo/cli@57.0.11 || 57.0.12'
   - '@expo/inline-modules@0.1.4'
@@ -33,15 +37,32 @@ minimumReleaseAgeExclude:
   - expo@57.0.9 || 57.0.10
   - '@expo/router-server@57.0.5'
   - expo-linking@57.0.5
+  - maplibre-gl@6.13.0
 overrides:
-  "@nestjs/swagger>js-yaml": 5.2.2
-  "ajv>fast-uri": 3.1.5
+  "@nestjs/swagger>js-yaml": 5.4.3
+  "@xmldom/xmldom@>=0.8.0 <0.9.0": 0.8.15
+  "@xmldom/xmldom@>=0.9.0 <0.10.0": 0.9.12
+  "ajv>fast-uri": 3.1.8
+  browserslist: 4.28.7
+  compression: 1.8.2
+  deepmerge-ts: 8.0.0
+  engine.io: 6.6.11
   expo-constants: 57.0.9
+  image-size: 2.0.3
+  "js-yaml@>=4.0.0 <5.0.0": 4.3.2
   lightningcss: 1.30.1
-  "minimatch@>=10.0.0>brace-expansion": 5.0.9
+  "minimatch@>=10.0.0>brace-expansion": 5.0.12
+  multer: 2.4.0
+  mysql2: 3.23.1
+  "nanoid@>=3.0.0 <4.0.0": 3.3.18
   "next>postcss": 8.5.25
-  "next>sharp": 0.35.0
-  "qs@>=6.11.1 <=6.15.1": 6.15.2
-  "react-devtools-core>shell-quote": 1.9.0
+  "next>sharp": 0.35.5
+  proxy-addr: 2.0.8
+  qs: 6.16.0
+  "qs@>=6.11.1 <=6.15.1": 6.16.0
+  "react-devtools-core>shell-quote": 1.11.0
   "socket.io-parser@>=4.0.0 <4.2.7": 4.2.7
+  source-map-js: 1.2.2
+  undici: 8.10.2
+  vitest: 4.1.11
   "xcode>uuid": 11.1.1

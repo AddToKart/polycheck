@@ -26,7 +26,10 @@ export function AuthSessionMonitor() {
     return monitorAuthSession(() => {
       try { sessionStorage.setItem(REPLACEMENT_NOTICE_KEY, 'true') } catch { /* Best-effort notice persistence. */ }
       void api.logout()
-      window.location.assign('/')
+      // A full reload is deliberate: it clears all in-memory state after the
+      // session was revoked. `replace` also keeps the revoked page out of
+      // history so the back button cannot restore protected content.
+      window.location.replace('/')
     })
   }, [addNotification])
 

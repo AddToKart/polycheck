@@ -16,6 +16,7 @@ import { SessionPermissionsModule } from './session-permissions/session-permissi
 import { ProofsModule } from './proofs/proofs.module'
 import { DashboardModule } from './dashboard/dashboard.module'
 import { SessionAuthGuard } from './common/guards/session-auth.guard'
+import { PasswordChangeGuard } from './common/guards/password-change.guard'
 import { RolesGuard } from './common/guards/roles.guard'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
 import { HealthController } from './health.controller'
@@ -32,6 +33,12 @@ import { ObservabilityModule } from './observability/observability.module'
 import { HttpMetricsInterceptor } from './observability/http-metrics.interceptor'
 import { DistributedRateLimitGuard } from './common/guards/distributed-rate-limit.guard'
 import { PrivacyConsentGuard } from './common/guards/privacy-consent.guard'
+import { AuditLogsModule } from './audit-logs/audit-logs.module'
+import { AiModule } from './ai/ai.module'
+import { DocsModule } from './docs/docs.module'
+import { StandingModule } from './standing/standing.module'
+import { NotificationsModule } from './notifications/notifications.module'
+import { ReportsModule } from './reports/reports.module'
 
 @Module({
   imports: [
@@ -71,6 +78,12 @@ import { PrivacyConsentGuard } from './common/guards/privacy-consent.guard'
     InfrastructureModule,
     SyncModule,
     SettingsModule,
+    AuditLogsModule,
+    AiModule,
+    DocsModule,
+    StandingModule,
+    NotificationsModule,
+    ReportsModule,
     MaintenanceModule,
   ],
   providers: [
@@ -81,6 +94,10 @@ import { PrivacyConsentGuard } from './common/guards/privacy-consent.guard'
     {
       provide: APP_GUARD,
       useClass: SessionAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PasswordChangeGuard,
     },
     {
       provide: APP_GUARD,

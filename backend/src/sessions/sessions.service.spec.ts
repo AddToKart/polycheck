@@ -764,6 +764,45 @@ describe('SessionsService', () => {
         300,
       )
     })
+
+    it('notifies only students whose pending records are marked absent', async () => {
+      const session = makeSession({ isActive: true })
+      prisma.session.findUnique.mockResolvedValue(session)
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      const ended = { ...session, isActive: false, endedAt: new Date() }
+      const tx = {
+        attendanceRecord: {
+          findMany: jest.fn().mockResolvedValue([{ studentId: 'stu-1' }, { studentId: 'stu-2' }]),
+          updateMany: jest.fn().mockResolvedValue({ count: 2 }),
+        },
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(ended),
+        },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      const notifications = { notifyAttendanceAbsent: jest.fn().mockResolvedValue(true) }
+      const serviceWithNotifications = new SessionsService(
+        prisma as never,
+        realtime as never,
+        redis as never,
+        notifications as never,
+      )
+
+      await serviceWithNotifications.end('sess-1', teacherUser)
+
+      expect(tx.attendanceRecord.findMany).toHaveBeenCalledWith({
+        where: { sessionId: 'sess-1', status: 'pending' },
+        select: { studentId: true },
+      })
+      expect(notifications.notifyAttendanceAbsent).toHaveBeenCalledTimes(2)
+      expect(notifications.notifyAttendanceAbsent).toHaveBeenCalledWith('stu-1', {
+        sessionId: 'sess-1',
+        subjectName: 'CS 101',
+        date: '2026-07-14',
+      })
+    })
   })
 
   describe('autoEndExpiredSessions', () => {
@@ -823,6 +862,44 @@ describe('SessionsService', () => {
       expect(tx.session.findUniqueOrThrow).not.toHaveBeenCalled()
       expect(realtime.emitSessionState).not.toHaveBeenCalled()
       expect(redis.delete).not.toHaveBeenCalled()
+    })
+
+    it('notifies students auto-marked absent without ever touching excused records', async () => {
+      const qrGeneratedAt = new Date(Date.now() - 20 * 60_000)
+      const qrTokenExpiresAt = new Date(Date.now() - 10 * 60_000)
+      const session = makeSession({ isActive: true, qrGeneratedAt, qrTokenExpiresAt, gracePeriodMinutes: 5 })
+      prisma.session.findMany.mockResolvedValue([session])
+      const ended = { ...session, isActive: false, endedAt: new Date() }
+      const tx = {
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(ended),
+        },
+        attendanceRecord: {
+          findMany: jest.fn().mockResolvedValue([{ studentId: 'stu-1' }]),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+      const notifications = { notifyAttendanceAbsent: jest.fn().mockResolvedValue(true) }
+      const serviceWithNotifications = new SessionsService(
+        prisma as never,
+        realtime as never,
+        redis as never,
+        notifications as never,
+      )
+
+      await serviceWithNotifications.autoEndExpiredSessions()
+
+      expect(tx.attendanceRecord.updateMany).toHaveBeenCalledWith({
+        where: { sessionId: 'sess-1', status: 'pending' },
+        data: { status: 'absent', timestamp: expect.any(Date), manuallySet: false },
+      })
+      expect(notifications.notifyAttendanceAbsent).toHaveBeenCalledWith('stu-1', {
+        sessionId: 'sess-1',
+        subjectName: 'CS 101',
+        date: '2026-07-14',
+      })
     })
   })
 

@@ -1,14 +1,21 @@
-import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, RefreshControl, ScrollView, Text, View } from 'react-native'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { formatTime } from '@polycheck/shared/utils'
 import type { CalendarEvent, DashboardOverview, Section, Subject, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
+import { useAuthGate } from '../../hooks/use-auth-gate'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
+import { OfflineSyncPanel } from '../../components/OfflineSyncPanel'
+import { SuperAdminDashboard } from '../../components/SuperAdminDashboard'
+import { AtRiskWidget } from '../../components/AtRiskWidget'
+import { NotificationBell } from '../../components/NotificationBell'
+import { useCampusToast } from '../../components/CampusToast'
+import { summarizeDashboardTrends, type TrendSegmentKey } from '../../lib/dashboard-trend'
 import {
   CampusButton,
   CampusCard,
@@ -30,54 +37,65 @@ const campusDate = (date = new Date()) => {
   return `${parts.get('year')}-${parts.get('month')}-${parts.get('day')}`
 }
 
+const trendTextClasses: Record<TrendSegmentKey, string> = {
+  present: 'text-emerald-700 dark:text-emerald-300',
+  late: 'text-amber-700 dark:text-amber-300',
+  absent: 'text-red-700 dark:text-red-300',
+  excused: 'text-cyan-700 dark:text-cyan-300',
+}
+
+/**
+ * Super admins get the administration console only (SA2). Classroom feeds
+ * (sections, today's sessions, attendance trend) stay on the teacher screen.
+ */
 export default function FacultyDashboardScreen() {
+  const currentUser = useAuthGate(['teacher', 'super_admin'])
+
+  if (!currentUser) return null
+  if (currentUser.role === 'super_admin') return <SuperAdminDashboard user={currentUser} />
+
+  return <TeacherDashboard user={currentUser} />
+}
+
+function TeacherDashboard({ user }: { user: User }) {
   const { isDark, toggle } = useTheme()
-  const [user, setUser] = useState<User | null>(api.getCurrentUser())
+  const { showToast } = useCampusToast()
   const [sections, setSections] = useState<Section[]>([])
   const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
   const [subjects, setSubjects] = useState<Record<string, Subject>>({})
   const [overview, setOverview] = useState<DashboardOverview | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [refreshSignal, setRefreshSignal] = useState(0)
 
-  const loadDashboard = useCallback(async (currentUser: User) => {
+  const loadDashboard = useCallback(async () => {
     const today = campusDate()
     const [nextSections, events, subjectList, nextOverview] = await Promise.all([
       api.getSections(),
-      api.getCalendarEvents(currentUser.id, today, today),
+      api.getCalendarEvents(user.id, today, today),
       api.getSubjects(),
       api.getDashboardOverview(),
     ])
-    setSections(nextSections.filter((section) => section.teacherId === currentUser.id || currentUser.role === 'super_admin'))
+    setSections(nextSections.filter((section) => section.teacherId === user.id))
     setTodayEvents(events.sort((a, b) => a.startTime.localeCompare(b.startTime)))
     setSubjects(Object.fromEntries(subjectList.map((subject) => [subject.id, subject])))
     setOverview(nextOverview)
-  }, [])
+  }, [user.id])
 
   useEffect(() => {
-    const currentUser = api.getCurrentUser()
-    if (!currentUser) return
-    setUser(currentUser)
-    void loadDashboard(currentUser).catch(() => Alert.alert('Unable to load dashboard', 'Pull down to try again.'))
-  }, [loadDashboard])
+    void loadDashboard().catch(() => showToast('error', 'Unable to load dashboard', 'Pull down to try again.'))
+  }, [loadDashboard, showToast])
 
-  if (!user) {
-    return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark">
-        <ActivityIndicator size="large" color={pupColors.maroon} />
-      </SafeAreaView>
-    )
-  }
-
-  const isSuper = user.role === 'super_admin'
   const sessionsToday = overview?.counts.sessionsToday ?? 0
   const pendingDisputes = overview?.counts.pendingDisputes ?? 0
+  const trend = useMemo(() => summarizeDashboardTrends(overview?.trends), [overview?.trends])
 
   const refresh = async () => {
     setRefreshing(true)
     try {
-      await loadDashboard(user)
+      await loadDashboard()
+      setRefreshSignal((value) => value + 1)
     } catch {
-      Alert.alert('Unable to refresh', 'Check your connection and try again.')
+      showToast('error', 'Unable to refresh', 'Check your connection and try again.')
     } finally {
       setRefreshing(false)
     }
@@ -89,13 +107,14 @@ export default function FacultyDashboardScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID={isSuper ? 'super-admin-dashboard-screen' : 'faculty-dashboard-screen'}>
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID="faculty-dashboard-screen">
       <CampusHeader
-        eyebrow={isSuper ? 'University Oversight' : 'Faculty Workspace'}
+        eyebrow="Faculty Workspace"
         title={user.fullName}
-        subtitle={isSuper ? 'Institution activity and reporting at a glance.' : 'Your classes, sessions, and attendance today.'}
+        subtitle="Your classes, sessions, and attendance today."
         actions={(
           <>
+            <NotificationBell inverse />
             <CampusIconButton icon="search" label="Search" onPress={() => router.push('/(faculty)/search')} inverse />
             <CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />
             <CampusIconButton icon="logout" label="Sign out" onPress={signOut} inverse testID="faculty-sign-out" />
@@ -108,6 +127,7 @@ export default function FacultyDashboardScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={isDark ? pupColors.golden : pupColors.maroon} />}
       >
+        <OfflineSyncPanel />
         {pendingDisputes > 0 ? (
           <CampusCard
             className="mb-4 rounded-none border-l-4 border-l-red-600 border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/20"
@@ -116,17 +136,17 @@ export default function FacultyDashboardScreen() {
           >
             <View className="flex-row items-center gap-3">
               <View className="h-10 w-10 items-center justify-center rounded-none bg-red-100 dark:bg-red-900/40">
-                <MaterialIcons name="gavel" size={20} color={isDark ? '#FCA5A5' : '#B91C1C'} />
+                <MaterialIcons name="gavel" size={20} color={isDark ? pupColors.dangerLight : pupColors.dangerDeep} />
               </View>
               <View className="flex-1">
                 <Text className="font-sans-bold text-sm uppercase tracking-wider text-red-900 dark:text-red-200">
-                  {isSuper ? 'Disputes Need Teacher Action' : 'Attendance Disputes To Review'}
+                  Attendance Disputes To Review
                 </Text>
                 <Text className="mt-0.5 font-sans text-xs text-red-700 dark:text-red-300">
                   {pendingDisputes} record{pendingDisputes === 1 ? ' is' : 's are'} waiting for a decision.
                 </Text>
               </View>
-              <MaterialIcons name="arrow-forward" size={18} color={isDark ? '#FCA5A5' : '#B91C1C'} />
+              <MaterialIcons name="arrow-forward" size={18} color={isDark ? pupColors.dangerLight : pupColors.dangerDeep} />
             </View>
           </CampusCard>
         ) : null}
@@ -139,8 +159,53 @@ export default function FacultyDashboardScreen() {
         </View>
 
         <SectionHeading
+          eyebrow="Attendance"
+          title="Attendance trend"
+          actionLabel="Details"
+          onAction={() => router.push('/(faculty)/attendance')}
+        />
+        <CampusCard className="mb-7 p-4" testID="faculty-attendance-trend">
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="flex-1">
+              <Text className="font-sans-bold text-[10px] uppercase tracking-[2px] text-muted dark:text-zinc-500">
+                {overview?.trendRange ? `${overview.trendRange.startDate} – ${overview.trendRange.endDate}` : 'Recent period'}
+              </Text>
+              <Text className="mt-1 font-sans-bold text-sm text-ink dark:text-white">
+                {trend.counted > 0
+                  ? `${trend.attendanceRate}% attended across ${trend.counted} record${trend.counted === 1 ? '' : 's'}`
+                  : 'No counted attendance in this period'}
+              </Text>
+            </View>
+            <Text className="font-sans-bold text-[10px] uppercase tracking-wider text-muted dark:text-zinc-500">
+              {trend.totals.disputed} disputed
+            </Text>
+          </View>
+          <View
+            accessibilityRole="image"
+            accessibilityLabel={`Attendance trend: ${trend.segments.map((segment) => `${segment.value} ${segment.label.toLowerCase()}`).join(', ')}`}
+            className="mt-4 h-2 w-full flex-row overflow-hidden bg-zinc-100 dark:bg-white/10"
+          >
+            {trend.segments.filter((segment) => segment.value > 0).map((segment) => (
+              <View key={segment.key} style={{ width: `${segment.percent}%`, backgroundColor: segment.color }} />
+            ))}
+          </View>
+          <View className="mt-4 flex-row flex-wrap gap-x-4 gap-y-2">
+            {trend.segments.map((segment) => (
+              <View key={segment.key} className="flex-row items-center gap-1.5">
+                <View className="h-2 w-2 rounded-full" style={{ backgroundColor: segment.color }} />
+                <Text className={`font-sans-bold text-[10px] ${trendTextClasses[segment.key]}`}>
+                  {segment.value} {segment.label}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </CampusCard>
+
+        <AtRiskWidget sections={sections} refreshSignal={refreshSignal} />
+
+        <SectionHeading
           eyebrow="Today"
-          title={isSuper ? 'Session Monitoring' : 'Class Schedule'}
+          title="Class Schedule"
           actionLabel="Calendar"
           onAction={() => router.push('/(faculty)/schedule')}
         />
@@ -159,7 +224,7 @@ export default function FacultyDashboardScreen() {
                     <MaterialIcons
                       name={active ? 'radio-button-checked' : completed ? 'check-circle' : moved ? 'event-busy' : 'event'}
                       size={20}
-                      color={active ? pupColors.maroonDark : moved ? '#DC2626' : isDark ? pupColors.golden : pupColors.maroon}
+                      color={active ? pupColors.maroonDark : moved ? (isDark ? pupColors.dangerLight : pupColors.danger) : isDark ? pupColors.golden : pupColors.maroon}
                     />
                   </View>
                   <View className="flex-1">
@@ -176,10 +241,10 @@ export default function FacultyDashboardScreen() {
                 <View className="mt-4 border-t border-line pt-3 dark:border-line-dark">
                   {active ? (
                     <CampusButton label="Open active session" icon="arrow-forward" onPress={() => router.push(`/(faculty)/sessions/${event.id}`)} />
-                  ) : completed || moved || isSuper ? (
+                  ) : completed || moved ? (
                     <View className="self-start rounded-none border border-line bg-zinc-100 px-3 py-1.5 dark:border-line-dark dark:bg-white/5">
                       <Text className={`font-sans-bold text-[10px] uppercase tracking-widest ${moved ? 'text-red-700 dark:text-red-300' : 'text-muted dark:text-zinc-300'}`}>
-                        {moved ? 'Moved' : completed ? 'Completed' : 'Scheduled'}
+                        {moved ? 'Moved' : 'Completed'}
                       </Text>
                     </View>
                   ) : (
@@ -197,8 +262,8 @@ export default function FacultyDashboardScreen() {
         </View>
 
         <SectionHeading
-          eyebrow={isSuper ? 'Institution' : 'Teaching'}
-          title={isSuper ? 'Subject Directory' : 'My Classes'}
+          eyebrow="Teaching"
+          title="My Classes"
           actionLabel="View All"
           onAction={() => router.push('/(faculty)/subjects')}
         />
@@ -224,7 +289,7 @@ export default function FacultyDashboardScreen() {
                       Section {section.section} · {section.studentCount} Students
                     </Text>
                   </View>
-                  <MaterialIcons name="chevron-right" size={22} color={isDark ? '#A1A1AA' : '#746C6E'} />
+                  <MaterialIcons name="chevron-right" size={22} color={isDark ? pupColors.mutedLight : pupColors.muted} />
                 </View>
               </CampusCard>
             )

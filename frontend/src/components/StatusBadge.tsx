@@ -6,6 +6,7 @@ const statusStyles: Record<AttendanceStatus, string> = {
   absent: 'bg-maroon-dark text-golden border border-golden',
   pending: 'bg-white text-maroon border border-maroon',
   disputed: 'bg-maroon-dark text-golden border border-golden',
+  excused: 'bg-maroon text-golden border border-golden',
 }
 
 export default function StatusBadge({ status }: { status: AttendanceStatus }) {

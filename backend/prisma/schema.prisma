@@ -30,11 +30,35 @@ enum AttendanceStatus {
   absent
   pending
   disputed
+  excused
 }
 
 enum SectionRoleType {
   president
   qac
+}
+
+enum ReportCategory {
+  scanner_camera
+  geofence_gps
+  ui_display
+  enrollment_roster
+  account_login
+  feedback_suggestion
+}
+
+enum ReportSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum ReportStatus {
+  open
+  in_review
+  resolved
+  dismissed
 }
 
 model User {
@@ -53,7 +77,16 @@ model User {
   scope             String?
   teacherPublicKey  String?
   isActive          Boolean  @default(true)
+  mustChangePassword Boolean @default(false)
   authVersion       Int      @default(0)
+  // Account governance: delegated teacher capabilities and mobile device binding.
+  boundDeviceId             String?
+  deviceBoundAt             DateTime?
+  deviceCooldownUntil       DateTime?
+  canResetStudentPasswords  Boolean?
+  canEmergencyUnbindDevices Boolean?
+  contactEmail              String?
+  contactPhone              String?
   privacyConsentVersion String?
   privacyConsentedAt     DateTime?
   createdAt         DateTime @default(now())
@@ -69,6 +102,10 @@ model User {
   scanAttempts       ScanAttempt[]
   authAccounts       AuthAccount[]
   authSessions       AuthSession[]
+  importBatches      ImportBatch[]
+  notifications      Notification[]
+  pushSubscriptions  PushSubscription[]
+  systemReports      SystemReport[]
 
   @@index([role])
   @@index([studentId])
@@ -301,6 +338,13 @@ model AttendanceRecord {
   disputeResolved       Boolean          @default(false)
   manuallySet           Boolean          @default(false)
   notes                 String?
+  excuseStatus          String?
+  excuseReason          String?
+  excuseDescription     String?
+  excuseEvidencePath    String?
+  excuseReviewedBy      String?
+  excuseReviewedAt      DateTime?
+  excuseReviewNote      String?
   acceptedScanAttemptId String?          @unique
   acceptedScanAttempt   ScanAttempt?     @relation("AcceptedScanAttempt", fields: [acceptedScanAttemptId], references: [id], onDelete: Restrict)
   createdAt             DateTime         @default(now())
@@ -315,6 +359,7 @@ model AttendanceRecord {
   @@index([sessionId, status])
   @@index([sectionId, status])
   @@index([studentId, sectionId, timestamp])
+  @@index([excuseStatus])
 }
 
 model SectionRole {
@@ -380,4 +425,78 @@ model AuditLog {
   @@index([actorId, createdAt])
   @@index([entityType, entityId, createdAt])
   @@index([action, createdAt])
+}
+
+model ImportBatch {
+  id          String   @id @default(cuid())
+  kind        String
+  actorId     String
+  actor       User     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  department  String?
+  total       Int
+  created     Int
+  updated     Int
+  skipped     Int
+  failed      Int
+  summary     Json?
+  rowChecksum String
+  createdAt   DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@index([createdAt])
+}
+
+model SystemReport {
+  id            String         @id @default(cuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userRole      UserRole
+  category      ReportCategory
+  severity      ReportSeverity @default(medium)
+  title         String
+  description   String
+  status        ReportStatus   @default(open)
+  deviceInfo    String?
+  appVersion    String?
+  route         String?
+  networkType   String?
+  screenshotUrl String?
+  adminNotes    String?
+  resolvedAt    DateTime?
+  resolvedBy    String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([category])
+  @@index([severity])
+}
+
+model PushSubscription {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform   String
+  token      String   @unique
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
 }

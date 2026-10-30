@@ -3,15 +3,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Search, Key, RefreshCw, Ban, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle, CalendarDays } from 'lucide-react'
+import { ArrowLeft, FileUp, Search, Key, RefreshCw, Ban, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle, CalendarDays } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Section, Session, Student, SectionRole, SessionPermission } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
+import { BulkImportDialog } from '@/components/import/BulkImportDialog'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { LoadingSpinner } from '@/lib/hooks'
+import { createSessionHref, sessionsListHref } from '@/lib/section-context'
 
 const PAGE_SIZE = 10
 
@@ -26,6 +28,7 @@ export default function SectionDetailPage() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
   const [isEnrollOpen, setIsEnrollOpen] = useState(false)
+  const [isImportOpen, setIsImportOpen] = useState(false)
   const [enrollSearch, setEnrollSearch] = useState('')
   const [enrollSuccess, setEnrollSuccess] = useState('')
 
@@ -259,6 +262,13 @@ export default function SectionDetailPage() {
             </CardHeader>
             {isEnrollOpen && (
               <CardContent>
+                {user?.role === 'teacher' ? (
+                  <div className="mb-3 flex justify-end">
+                    <Button variant="outline" size="sm" onClick={() => setIsImportOpen(true)}>
+                      <FileUp className="w-3.5 h-3.5 mr-1.5" /> Import from master list
+                    </Button>
+                  </div>
+                ) : null}
                 {enrollSuccess && (
                   <div className="border border-green-300 bg-green-50 dark:bg-green-950/30 dark:border-green-800 p-3 mb-4 text-xs text-green-700 dark:text-green-300 font-medium">
                     Enrolled {enrollSuccess} successfully!
@@ -318,6 +328,16 @@ export default function SectionDetailPage() {
               </CardContent>
             )}
           </Card>
+
+          <BulkImportDialog
+            open={isImportOpen}
+            onOpenChange={setIsImportOpen}
+            mode="enrollments"
+            sectionId={id}
+            onCompleted={() => {
+              void api.getSectionStudents(id!).then(setStudents)
+            }}
+          />
 
           {/* Section Roles */}
           <Card className="mb-6 border-t-4 border-t-maroon dark:border-t-golden">
@@ -473,16 +493,21 @@ export default function SectionDetailPage() {
           </>}
 
           <Card className="mb-6 border-t-4 border-t-maroon dark:border-t-golden">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
               <CardTitle className="flex items-center gap-2 text-base text-zinc-800 dark:text-zinc-100">
                 <CalendarDays className="h-5 w-5 text-maroon dark:text-golden" />
                 Section Sessions
               </CardTitle>
-              {user.role === 'teacher' && (
-                <Button size="sm" asChild>
-                  <Link href="/faculty/sessions/create">Create Session</Link>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={sessionsListHref(id)}>All sessions</Link>
                 </Button>
-              )}
+                {user.role === 'teacher' && (
+                  <Button size="sm" asChild>
+                    <Link href={createSessionHref(id)}>Create Session</Link>
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {sessions.length === 0 ? (

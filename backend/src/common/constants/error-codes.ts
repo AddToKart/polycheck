@@ -21,6 +21,12 @@ export const ErrorCode = {
   VALIDATION_FAILED: 'validation_failed',
   IDEMPOTENCY_REPLAY: 'idempotency_replay',
   IDEMPOTENCY_RESPONSE_UNAVAILABLE: 'idempotency_response_unavailable',
+  PASSWORD_CHANGE_REQUIRED: 'password_change_required',
+  DEVICE_COOLDOWN_ACTIVE: 'device_cooldown_active',
+  TEACHER_POLICY_DISABLED: 'teacher_policy_disabled',
+  TEACHER_PERMISSION_DISABLED: 'teacher_permission_disabled',
+  IMPORT_CHECKSUM_MISMATCH: 'import_checksum_mismatch',
+  IMPORT_QUEUE_UNAVAILABLE: 'import_queue_unavailable',
 } as const
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode]

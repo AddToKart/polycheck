@@ -5,6 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import type { Section, Session, Student, Subject } from '@polycheck/shared'
 import { api } from '../../services/api-client'
+import { useAuthGate } from '../../hooks/use-auth-gate'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
@@ -28,15 +29,20 @@ const SearchResultCard = ({ icon, title, subtitle, onPress }: { icon: keyof type
 
 export default function FacultySearchScreen() {
   const { isDark } = useTheme()
+  const currentUser = useAuthGate(['teacher', 'super_admin'])
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Results>(emptyResults)
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [searching, setSearching] = useState(false)
   const [searched, setSearched] = useState(false)
 
-  useEffect(() => { void api.getSubjects().then(setSubjects) }, [])
+  useEffect(() => {
+    if (!currentUser) return
+    void api.getSubjects().then(setSubjects)
+  }, [currentUser])
   useEffect(() => {
     const trimmed = query.trim()
+    if (!currentUser) return
     if (trimmed.length < 2) {
       setResults(emptyResults)
       setSearched(false)
@@ -52,10 +58,12 @@ export default function FacultySearchScreen() {
         .finally(() => { if (active) setSearching(false) })
     }, 250)
     return () => { active = false; clearTimeout(timeout) }
-  }, [query])
+  }, [currentUser, query])
 
   const subjectMap = useMemo(() => new Map(subjects.map((subject) => [subject.id, subject])), [subjects])
   const totalResults = results.students.length + results.sections.length + results.sessions.length
+
+  if (!currentUser) return null
 
   return (
     <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">

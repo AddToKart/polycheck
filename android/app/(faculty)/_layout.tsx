@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
-import { AccessibilityInfo, Animated, Modal, Platform, Pressable, Text, View } from 'react-native'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { AccessibilityInfo, Animated, AppState, Modal, Platform, Pressable, Text, View } from 'react-native'
 import { Tabs, router } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import type { AiCapabilities } from '@polycheck/shared'
 import { api } from '../../services/api-client'
+import { shouldShowAssistantEntry } from '../../lib/assistant-visibility'
 import { fonts } from '../../theme/typography'
 import { pupColors } from '../../theme/colors'
 import { useTheme } from '../../theme/ThemeContext'
@@ -13,7 +15,7 @@ function TabIcon({ name, color }: { name: keyof typeof MaterialIcons.glyphMap; f
 }
 
 // Bottom sheet for "More" — reveals Schedule + Attendance
-function MoreSheet({ visible, onClose, isDark, isSuper }: { visible: boolean; onClose: () => void; isDark: boolean; isSuper: boolean }) {
+function MoreSheet({ visible, onClose, isDark, isSuper, showAssistant, pendingExcuses }: { visible: boolean; onClose: () => void; isDark: boolean; isSuper: boolean; showAssistant: boolean; pendingExcuses: number }) {
   const insets = useSafeAreaInsets()
   const slideAnim = useRef(new Animated.Value(300)).current
   const [reduceMotion, setReduceMotion] = useState(false)
@@ -29,19 +31,35 @@ function MoreSheet({ visible, onClose, isDark, isSuper }: { visible: boolean; on
     }
   }, [reduceMotion, slideAnim, visible])
 
-  const items = isSuper
+  // SA1 supersedes MP2 Locked Decision 4: no proactive classroom entries for super admins (Option A keeps deep links).
+  // Institution AI policy hides the Assistant entry per role (master → teachers;
+  // super admins keep the unconfigured setup affordance while master is on).
+  type MoreItem = {
+    icon: keyof typeof MaterialIcons.glyphMap
+    label: string
+    sub: string
+    route: string
+    badge?: number
+  }
+  const baseItems: MoreItem[] = isSuper
     ? [
-        { icon: 'event' as const, label: 'Session Monitoring', sub: 'Observe institution sessions', route: '/(faculty)/sessions' },
-        { icon: 'assignment' as const, label: 'Attendance Monitoring', sub: 'Read-only logs and export', route: '/(faculty)/attendance' },
-        { icon: 'gavel' as const, label: 'Dispute Monitoring', sub: 'Track teacher resolution', route: '/(faculty)/disputes' },
-        { icon: 'search' as const, label: 'Global Search', sub: 'Find users and sections', route: '/(faculty)/search' },
-        { icon: 'settings' as const, label: 'Institution Settings', sub: 'Configure institution defaults', route: '/(faculty)/settings' },
+        { icon: 'search', label: 'Global Search', sub: 'Find users and sections', route: '/(faculty)/search' },
+        { icon: 'settings', label: 'Institution Settings', sub: 'Configure institution defaults', route: '/(faculty)/settings' },
+        { icon: 'history', label: 'Audit Log', sub: 'Review administrative changes', route: '/(faculty)/audit-logs' },
+        { icon: 'receipt-long', label: 'System Reports', sub: 'Triage campus issue reports', route: '/(faculty)/system-reports' },
+        { icon: 'manage-accounts', label: 'Profile & security', sub: 'Your account, password and devices', route: '/profile' },
+        { icon: 'smart-toy', label: 'Assistant', sub: 'Oversight, accounts & exports', route: '/(faculty)/assistant' },
       ]
     : [
-        { icon: 'calendar-today' as const, label: 'Schedule', sub: 'Weekly class schedule', route: '/(faculty)/schedule' },
-        { icon: 'assignment' as const, label: 'Attendance', sub: 'Overview & export', route: '/(faculty)/attendance' },
-        { icon: 'search' as const, label: 'Search', sub: 'Find students and sections', route: '/(faculty)/search' },
+        { icon: 'calendar-today', label: 'Schedule', sub: 'Weekly class schedule', route: '/(faculty)/schedule' },
+        { icon: 'assignment', label: 'Attendance', sub: 'Overview & export', route: '/(faculty)/attendance' },
+        { icon: 'assignment-turned-in', label: 'Excuses', sub: pendingExcuses > 0 ? `${pendingExcuses} waiting · Review excuse requests` : 'Review student excuse requests', route: '/(faculty)/excuses', badge: pendingExcuses },
+        { icon: 'flag', label: 'Report an Issue', sub: 'Bugs, GPS quirks, or ideas', route: '/report-issue' },
+        { icon: 'search', label: 'Search', sub: 'Find students and sections', route: '/(faculty)/search' },
+        { icon: 'manage-accounts', label: 'Profile & security', sub: 'Your account, password and devices', route: '/profile' },
+        { icon: 'smart-toy', label: 'Assistant', sub: 'Ask about your sections and exports', route: '/(faculty)/assistant' },
       ]
+  const items = baseItems.filter((item) => showAssistant || item.route !== '/(faculty)/assistant')
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -57,7 +75,7 @@ function MoreSheet({ visible, onClose, isDark, isSuper }: { visible: boolean; on
             <View className="h-1 w-10 bg-zinc-400 dark:bg-zinc-600" />
           </View>
 
-          <Text className="px-1 pb-3 font-sans-bold text-[10px] uppercase tracking-[2.5px] text-maroon dark:text-golden">More faculty tools</Text>
+          <Text className="px-1 pb-3 font-sans-bold text-[10px] uppercase tracking-[2.5px] text-maroon dark:text-golden">{isSuper ? 'Administration tools' : 'More faculty tools'}</Text>
 
           {items.map((item) => (
             <Pressable
@@ -75,6 +93,11 @@ function MoreSheet({ visible, onClose, isDark, isSuper }: { visible: boolean; on
                 <Text className="font-sans-bold text-sm text-ink dark:text-white uppercase tracking-wider">{item.label}</Text>
                 <Text className="mt-0.5 font-sans text-xs text-muted dark:text-zinc-400">{item.sub}</Text>
               </View>
+              {item.badge && item.badge > 0 ? (
+                <View className="min-w-6 items-center justify-center rounded-full bg-golden px-2 py-1">
+                  <Text className="font-sans-bold text-[10px] text-maroon-dark">{item.badge > 99 ? '99+' : item.badge}</Text>
+                </View>
+              ) : null}
               <MaterialIcons name="chevron-right" size={20} color={isDark ? '#A1A1AA' : '#746C6E'} />
             </Pressable>
           ))}
@@ -90,6 +113,42 @@ export default function FacultyLayout() {
   const currentUser = api.getCurrentUser()
   const isSuper = currentUser?.role === 'super_admin'
   const [moreVisible, setMoreVisible] = useState(false)
+  const [capabilities, setCapabilities] = useState<AiCapabilities | null>(null)
+  const [pendingExcuses, setPendingExcuses] = useState(0)
+
+  const loadCapabilities = useCallback(() => {
+    void api.getAiCapabilities()
+      .then(setCapabilities)
+      .catch(() => setCapabilities(null))
+  }, [])
+
+  // Fetch on mount, when the app returns to the foreground, and whenever the
+  // More sheet opens so a policy saved in Institution Settings applies without
+  // an app restart. Failed reads default to hidden.
+  useEffect(() => {
+    loadCapabilities()
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') loadCapabilities()
+    })
+    return () => subscription.remove()
+  }, [loadCapabilities])
+
+  useEffect(() => {
+    if (moreVisible) loadCapabilities()
+  }, [loadCapabilities, moreVisible])
+
+  // Pending excuse count is refreshed whenever the More sheet opens so the
+  // teacher sees a current queue without a dedicated tab badge.
+  useEffect(() => {
+    if (!moreVisible || isSuper) return
+    let active = true
+    void api.listExcuses({ status: 'requested' })
+      .then((records) => { if (active) setPendingExcuses(records.length) })
+      .catch(() => { if (active) setPendingExcuses(0) })
+    return () => { active = false }
+  }, [isSuper, moreVisible])
+
+  const showAssistant = shouldShowAssistantEntry(isSuper ? 'super_admin' : 'teacher', capabilities)
 
   const tabStyle = {
     position: 'absolute' as const,
@@ -136,6 +195,7 @@ export default function FacultyLayout() {
               case 'sessions':
               case 'sessions/index': iconName = 'event'; break
               case 'disputes': iconName = 'gavel'; break
+              case 'assistant': iconName = 'smart-toy'; break
               case 'more-tab': iconName = 'more-horiz'; break
               case 'users': iconName = 'people'; break
               case 'reports': iconName = 'assessment'; break
@@ -145,10 +205,20 @@ export default function FacultyLayout() {
           },
         })}
       >
+        {/* Super-admin tab bar: Dashboard · Users · Reports · More.
+            Teacher tab bar: Dashboard · Subjects · Sessions · Disputes · More. */}
         <Tabs.Screen name="dashboard" options={{ title: 'Dashboard', tabBarLabel: 'Dashboard', tabBarButtonTestID: 'faculty-tab-dashboard' }} />
-        <Tabs.Screen name="subjects" options={{ title: 'Subjects', tabBarLabel: 'Subjects', tabBarButtonTestID: 'faculty-tab-subjects' }} />
+        <Tabs.Screen name="subjects" options={{ title: 'Subjects', tabBarLabel: 'Subjects', href: isSuper ? null : undefined, tabBarButtonTestID: 'faculty-tab-subjects' }} />
         <Tabs.Screen name="sessions" options={{ title: 'Sessions', tabBarLabel: 'Sessions', href: isSuper ? null : undefined, tabBarButtonTestID: 'faculty-tab-sessions' }} />
         <Tabs.Screen name="disputes" options={{ title: 'Disputes', tabBarLabel: 'Disputes', href: isSuper ? null : undefined, tabBarButtonTestID: 'faculty-tab-disputes' }} />
+        <Tabs.Screen
+          name="users"
+          options={{ title: 'Users', tabBarLabel: 'Users', href: isSuper ? undefined : null, tabBarButtonTestID: 'admin-tab-users' }}
+        />
+        <Tabs.Screen
+          name="reports"
+          options={{ title: 'Reports', tabBarLabel: 'Reports', href: isSuper ? undefined : null, tabBarButtonTestID: 'admin-tab-reports' }}
+        />
         {/* More tab — opens bottom sheet instead of navigating */}
         <Tabs.Screen
           name="more-tab"
@@ -176,20 +246,16 @@ export default function FacultyLayout() {
         <Tabs.Screen name="student/[id]" options={{ href: null }} />
         <Tabs.Screen name="search" options={{ href: null }} />
         <Tabs.Screen name="settings" options={{ href: null }} />
-        {/* Attendance + Schedule hidden from tab bar — accessible via More sheet */}
+        <Tabs.Screen name="audit-logs" options={{ href: null }} />
+        <Tabs.Screen name="assistant" options={{ href: null }} />
+        <Tabs.Screen name="excuses" options={{ href: null }} />
+        <Tabs.Screen name="notifications" options={{ href: null }} />
+        {/* Attendance + Schedule hidden from tab bar — accessible via More sheet or deep link */}
         <Tabs.Screen name="attendance" options={{ href: null }} />
         <Tabs.Screen name="schedule" options={{ href: null }} />
-        <Tabs.Screen
-          name="users"
-          options={{ title: 'Users', tabBarLabel: 'Users', href: isSuper ? undefined : null, tabBarButtonTestID: 'admin-tab-users' }}
-        />
-        <Tabs.Screen
-          name="reports"
-          options={{ title: 'Reports', tabBarLabel: 'Reports', href: isSuper ? undefined : null, tabBarButtonTestID: 'admin-tab-reports' }}
-        />
       </Tabs>
 
-      <MoreSheet visible={moreVisible} onClose={() => setMoreVisible(false)} isDark={isDark} isSuper={isSuper} />
+      <MoreSheet visible={moreVisible} onClose={() => setMoreVisible(false)} isDark={isDark} isSuper={isSuper} showAssistant={showAssistant} pendingExcuses={pendingExcuses} />
     </>
   )
 }

@@ -6,6 +6,8 @@ import type { User } from '@polycheck/shared'
 import { api } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/lib/hooks'
+import { OfflineBanner } from '@/components/OfflineBanner'
+import { PendingPasswordChange } from '@/components/auth/PendingPasswordChange'
 
 type DashboardArea = 'faculty' | 'student'
 type GuardState = 'checking' | 'ready' | 'unavailable'
@@ -25,6 +27,7 @@ export function SessionGuard({
 }) {
   const router = useRouter()
   const [state, setState] = useState<GuardState>('checking')
+  const [pendingUser, setPendingUser] = useState<User | null>(null)
   const verificationInFlightRef = useRef(false)
 
   const verifySession = useCallback(async (background = false) => {
@@ -38,6 +41,12 @@ export function SessionGuard({
         router.replace('/')
         return
       }
+      if (user.mustChangePassword) {
+        setPendingUser(user)
+        setState('ready')
+        return
+      }
+      setPendingUser(null)
       setState('ready')
     } catch {
       // A background network failure is not proof that auth was revoked. Keep
@@ -124,5 +133,30 @@ export function SessionGuard({
     )
   }
 
-  return <>{children}</>
+  if (pendingUser) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-zinc-100 px-6 py-12 dark:bg-pup-black">
+        <div className="w-full max-w-md border border-zinc-200 bg-white p-8 dark:border-golden/15 dark:bg-surface-dark">
+          <PendingPasswordChange
+            user={pendingUser}
+            onDone={() => {
+              setPendingUser(null)
+              setState('ready')
+            }}
+            onCancel={() => {
+              void api.logout()
+              router.replace('/')
+            }}
+          />
+        </div>
+      </main>
+    )
+  }
+
+  return (
+    <>
+      <OfflineBanner />
+      {children}
+    </>
+  )
 }

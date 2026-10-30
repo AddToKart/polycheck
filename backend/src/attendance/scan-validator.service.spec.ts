@@ -160,6 +160,14 @@ describe('ScanValidatorService', () => {
       expect(result.reason).toBe('outside_geofence')
     })
 
+    it('returns absent when outside geofence even with broad accuracy circle', async () => {
+      geofence.calculateDistance.mockReturnValue(100)
+      const result = await service.validateScan(studentUser, makeEvidence({ accuracyMeters: 80 }), false, new Date())
+      expect(result.success).toBe(false)
+      expect(result.status).toBe('absent')
+      expect(result.reason).toBe('outside_geofence')
+    })
+
     it('returns disputed when location uncertainty extends outside geofence', async () => {
       geofence.calculateDistance.mockReturnValue(45) // 45 + 10 accuracy = 55 > 50 radius
       const result = await service.validateScan(studentUser, makeEvidence({ accuracyMeters: 10 }), false, new Date())
@@ -195,6 +203,17 @@ describe('ScanValidatorService', () => {
       expect(result.distanceMeters).toBe(5)
     })
 
+    it('requires teacher review when an on-time offline scan arrives after expiry', async () => {
+      const result = await service.validateScan(studentUser, makeEvidence(), true, new Date(ISSUED_AT + 90 * 60_000))
+      expect(result).toMatchObject({ success: true, status: 'disputed', reason: 'delayed_offline_sync' })
+    })
+
+    it('rejects offline evidence when enrollment was removed before sync', async () => {
+      prisma.enrollment.findUnique.mockResolvedValue(null)
+      const result = await service.validateScan(studentUser, makeEvidence(), true, new Date(ISSUED_AT + 60_000))
+      expect(result).toMatchObject({ success: false, reason: 'not_enrolled' })
+    })
+
     it('returns late status when scanned after validity window but within grace', async () => {
       const lateTime = ISSUED_AT + 12 * 60_000 // 12 min after issued (validity=10)
       mockedVerify.mockReturnValue(validPayload({ validityMinutes: 10, gracePeriodMinutes: 5 }) as any)
@@ -209,6 +228,62 @@ describe('ScanValidatorService', () => {
       )
       expect(result.success).toBe(true)
       expect(result.status).toBe('late')
+    })
+
+    it('flags emulator as disputed with emulator_detected reason', async () => {
+      const result = await service.validateScan(
+        studentUser,
+        makeEvidence({ deviceSecurity: { emulatorDetected: true } }),
+        false,
+        new Date(ISSUED_AT + 60_000),
+      )
+      expect(result.success).toBe(false)
+      expect(result.status).toBe('disputed')
+      expect(result.reason).toBe('emulator_detected')
+      expect(result.riskSignals).toContain('emulator_detected')
+    })
+
+    it('flags rooted device as disputed with rooted_device reason', async () => {
+      const result = await service.validateScan(
+        studentUser,
+        makeEvidence({ deviceSecurity: { rootDetected: true } }),
+        false,
+        new Date(ISSUED_AT + 60_000),
+      )
+      expect(result.success).toBe(false)
+      expect(result.status).toBe('disputed')
+      expect(result.reason).toBe('rooted_device')
+      expect(result.riskSignals).toContain('rooted_device')
+      expect(result.riskSignals?.filter((signal) => signal === 'rooted_device')).toHaveLength(1)
+    })
+
+    it('enforces the geofence before retaining rooted-device evidence for review', async () => {
+      geofence.calculateDistance.mockReturnValue(100)
+
+      const result = await service.validateScan(
+        studentUser,
+        makeEvidence({ deviceSecurity: { rootDetected: true } }),
+        false,
+        new Date(ISSUED_AT + 60_000),
+      )
+
+      expect(result.success).toBe(false)
+      expect(result.status).toBe('absent')
+      expect(result.reason).toBe('outside_geofence')
+      expect(result.riskSignals).toContain('rooted_device')
+    })
+
+    it('flags hooking framework as disputed with hook_detected reason', async () => {
+      const result = await service.validateScan(
+        studentUser,
+        makeEvidence({ deviceSecurity: { hookDetected: true } }),
+        false,
+        new Date(ISSUED_AT + 60_000),
+      )
+      expect(result.success).toBe(false)
+      expect(result.status).toBe('disputed')
+      expect(result.reason).toBe('hook_detected')
+      expect(result.riskSignals).toContain('hook_detected')
     })
   })
 
@@ -267,6 +342,29 @@ describe('ScanValidatorService', () => {
       expect(result).not.toBeNull()
       expect(result!.success).toBe(true)
       expect(result!.record).toBe(record)
+    })
+
+    it('treats changed device-security evidence as a conflicting replay', async () => {
+      prisma.scanAttempt.findUnique.mockResolvedValue({
+        sessionId: 'sess-1',
+        tokenHash: 'hash',
+        latitude: 14.5863,
+        longitude: 121.0,
+        deviceId: 'device-1',
+        inputChannel: 'camera',
+        accuracyMeters: 10,
+        mocked: false,
+        clientScannedAt: new Date(ISSUED_AT),
+        locationCapturedAt: new Date(ISSUED_AT + 2_000),
+        riskSignals: [],
+        acceptedAttendanceRecord: { id: 'rec-1', status: 'present' },
+        reason: null,
+        message: null,
+      })
+
+      const result = await service.findReplay('stu-1', makeEvidence({ deviceSecurity: { rootDetected: true } }), 'hash')
+
+      expect(result).toEqual(expect.objectContaining({ success: false, reason: 'client_attempt_conflict' }))
     })
   })
 })

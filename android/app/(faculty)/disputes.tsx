@@ -10,12 +10,17 @@ import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
+import { FilterChipsRow, FilterSelect } from '../../components/FilterPrimitives'
+import { useCampusToast } from '../../components/CampusToast'
+import { datePresetRange, isInDateRange, type DatePreset } from '../../lib/filters'
 
 const DISPUTE_LABELS: Record<DisputeReason, string> = {
   outside_geofence: 'Outside geofence', expired_token: 'Expired token', duplicate_submission: 'Duplicate submission',
   invalid_signature: 'Invalid signature', device_mismatch: 'Device mismatch', suspicious_coordinates: 'Suspicious GPS',
   delayed_offline_sync: 'Delayed offline sync', invalid_timestamp: 'Invalid timestamp', token_mismatch: 'QR token mismatch',
   session_inactive: 'Inactive session', not_enrolled: 'Not enrolled', qr_expired: 'QR expired', rate_limited: 'Rate limited',
+  mocked_location: 'Mock GPS / Fake location', rooted_device: 'Rooted / Jailbroken device', hook_detected: 'Hooking tool detected',
+  emulator_detected: 'Android emulator detected',
 }
 
 const DISPUTE_ICONS: Record<DisputeReason, keyof typeof MaterialIcons.glyphMap> = {
@@ -23,6 +28,8 @@ const DISPUTE_ICONS: Record<DisputeReason, keyof typeof MaterialIcons.glyphMap> 
   invalid_signature: 'fingerprint', device_mismatch: 'devices', suspicious_coordinates: 'gps-fixed',
   delayed_offline_sync: 'cloud-off', invalid_timestamp: 'access-time', token_mismatch: 'qr-code-2',
   session_inactive: 'timer-off', not_enrolled: 'person-off', qr_expired: 'timer-off', rate_limited: 'speed',
+  mocked_location: 'wrong-location', rooted_device: 'security', hook_detected: 'code',
+  emulator_detected: 'phone-android',
 }
 
 type DisputeGroup = {
@@ -45,6 +52,7 @@ const DetailRow = ({ label, value }: { label: string; value: string }) => (
 
 export default function DisputesScreen() {
   const { isDark, toggle } = useTheme()
+  const { showToast } = useCampusToast()
   const currentUser = useAuthGate(['teacher', 'super_admin'])
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
@@ -54,6 +62,8 @@ export default function DisputesScreen() {
   const [activeTab, setActiveTab] = useState<'pending' | 'resolved'>('pending')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedSubjectId, setSelectedSubjectId] = useState('all')
+  const [selectedSectionId, setSelectedSectionId] = useState('')
+  const [datePreset, setDatePreset] = useState<DatePreset>('all')
   const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null)
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({})
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
@@ -68,19 +78,45 @@ export default function DisputesScreen() {
         setSections(Object.fromEntries(sectionList.map((section) => [section.id, section])))
         setSessions(Object.fromEntries(sessionList.map((session) => [session.id, session])))
       })
-      .catch(() => Alert.alert('Unable to load disputes', 'Please check your connection and try again.'))
-  }, [currentUser])
+      .catch(() => showToast('error', 'Unable to load disputes', 'Please check your connection and try again.'))
+  }, [currentUser, showToast])
 
   const pendingCount = disputes.filter((record) => record.status === 'disputed').length
   const resolvedCount = disputes.filter((record) => record.disputeResolved).length
 
-  const records = useMemo(() => disputes.filter((record) => {
-    if (activeTab === 'pending' && record.status !== 'disputed') return false
-    if (activeTab === 'resolved' && !record.disputeResolved) return false
-    if (searchQuery && !`${record.studentName} ${record.studentId}`.toLowerCase().includes(searchQuery.toLowerCase())) return false
-    if (selectedSubjectId !== 'all' && sections[record.sectionId]?.subjectId !== selectedSubjectId) return false
-    return true
-  }), [activeTab, disputes, searchQuery, sections, selectedSubjectId])
+  const records = useMemo(() => {
+    const dateRange = datePresetRange(datePreset)
+    return disputes.filter((record) => {
+      if (activeTab === 'pending' && record.status !== 'disputed') return false
+      if (activeTab === 'resolved' && !record.disputeResolved) return false
+      if (searchQuery && !`${record.studentName} ${record.studentId}`.toLowerCase().includes(searchQuery.toLowerCase())) return false
+      if (selectedSubjectId !== 'all' && sections[record.sectionId]?.subjectId !== selectedSubjectId) return false
+      if (selectedSectionId && record.sectionId !== selectedSectionId) return false
+      if (!isInDateRange(record.timestamp, dateRange.startDate, dateRange.endDate)) return false
+      return true
+    })
+  }, [activeTab, datePreset, disputes, searchQuery, sections, selectedSectionId, selectedSubjectId])
+
+  const sectionOptions = useMemo(() => Object.values(sections)
+    .filter((section) => selectedSubjectId === 'all' || section.subjectId === selectedSubjectId)
+    .map((section) => ({
+      id: section.id,
+      label: `Section ${section.section}`,
+      hint: subjects.find((subject) => subject.id === section.subjectId)?.code,
+    })), [sections, selectedSubjectId, subjects])
+
+  const selectSubject = (subjectId: string) => {
+    setSelectedSubjectId(subjectId)
+    if (selectedSectionId && subjectId !== 'all' && sections[selectedSectionId]?.subjectId !== subjectId) {
+      setSelectedSectionId('')
+    }
+  }
+
+  const dateOptions: Array<{ value: DatePreset; label: string }> = [
+    { value: 'all', label: 'All time' },
+    { value: '7d', label: 'Last 7 days' },
+    { value: '30d', label: 'Last 30 days' },
+  ]
 
   const groups = useMemo<DisputeGroup[]>(() => {
     const grouped: Record<string, {
@@ -121,8 +157,14 @@ export default function DisputesScreen() {
       const updated = await api.resolveDispute(selectedRecord.id, resolution, newStatus)
       setDisputes((previous) => previous.map((record) => record.id === updated.id ? updated : record))
       setSelectedRecord(null)
+      const detail = resolution === 'accept'
+        ? 'The student is marked present.'
+        : resolution === 'reject'
+          ? 'The record is marked absent.'
+          : `Attendance set to ${newStatus ?? 'the chosen status'}.`
+      showToast('success', 'Dispute resolved', detail)
     } catch (error) {
-      Alert.alert('Unable to resolve dispute', error instanceof Error ? error.message : 'Please try again.')
+      showToast('error', 'Unable to resolve dispute', error instanceof Error ? error.message : 'Please try again.')
     }
   }
 
@@ -161,9 +203,29 @@ export default function DisputesScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 py-3">
           {[{ id: 'all', label: 'All subjects' }, ...subjects.map((subject) => ({ id: subject.id, label: subject.code }))].map((option) => {
             const active = selectedSubjectId === option.id
-            return <Pressable key={option.id} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => setSelectedSubjectId(option.id)} className={`min-h-11 justify-center rounded-full border px-4 ${active ? 'border-maroon bg-maroon dark:border-golden dark:bg-golden' : 'border-line bg-white dark:border-line-dark dark:bg-surface-dark'}`}><Text className={`font-sans-bold text-xs ${active ? 'text-white dark:text-maroon-dark' : 'text-muted dark:text-zinc-300'}`}>{option.label}</Text></Pressable>
+            return <Pressable key={option.id} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => selectSubject(option.id)} className={`min-h-11 justify-center rounded-full border px-4 ${active ? 'border-maroon bg-maroon dark:border-golden dark:bg-golden' : 'border-line bg-white dark:border-line-dark dark:bg-surface-dark'}`}><Text className={`font-sans-bold text-xs ${active ? 'text-white dark:text-maroon-dark' : 'text-muted dark:text-zinc-300'}`}>{option.label}</Text></Pressable>
           })}
         </ScrollView>
+
+        <View className="flex-row flex-wrap gap-2 pb-3">
+          <FilterSelect
+            label="Section"
+            value={selectedSectionId}
+            placeholder="All sections"
+            options={sectionOptions}
+            onSelect={setSelectedSectionId}
+            testID="disputes-section-filter"
+          />
+        </View>
+        <View className="pb-3">
+          <FilterChipsRow
+            label="Dispute date"
+            options={dateOptions}
+            value={datePreset}
+            onChange={setDatePreset}
+            testID="disputes-date-filter"
+          />
+        </View>
 
         <View className="flex-row rounded-2xl bg-zinc-200/70 p-1 dark:bg-white/5">
           {([{ id: 'pending', label: `Pending (${pendingCount})` }, { id: 'resolved', label: `Resolved (${resolvedCount})` }] as const).map((tab) => {
@@ -174,7 +236,7 @@ export default function DisputesScreen() {
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 8, gap: 12 }} showsVerticalScrollIndicator={false}>
-        {!records.length ? <CampusEmptyState icon="verified" title={`No ${activeTab} records`} description="Adjust the student search or subject filter to broaden this view." /> : null}
+        {!records.length ? <CampusEmptyState icon="verified" title={`No ${activeTab} records`} description="Adjust the student search, subject, section, or date filter to broaden this view." /> : null}
         {groups.map((subject) => {
           const count = subject.sections.reduce((sum, section) => sum + section.sessions.reduce((sessionSum, session) => sessionSum + session.records.length, 0), 0)
           const expanded = !!expandedSubjects[subject.subjectId]

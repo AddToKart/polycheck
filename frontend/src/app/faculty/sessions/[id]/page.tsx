@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { ArrowLeft, QrCode, Timer, Play, StopCircle, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2, Copy, Download, Check } from 'lucide-react'
 import { api } from '@/lib/api-client'
+import { isNetworkFailure } from '@/lib/api-client'
 import type { User, Session, AttendanceRecord, AttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
@@ -26,7 +27,8 @@ const STATUS_STYLES: Record<string, string> = {
   present: 'bg-golden text-maroon-dark',
   late: 'bg-maroon text-white',
   absent: 'bg-maroon-dark text-golden border border-golden',
-  pending: 'bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+  excused: 'bg-maroon text-golden border border-golden',
+  pending: 'bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
   disputed: 'bg-maroon-dark text-golden border border-golden',
 }
 
@@ -90,7 +92,10 @@ export default function SessionDetailPage() {
       const [s, nextRecords, nextProofs] = await Promise.all([
         api.getSession(id),
         api.getAttendanceRecords(id),
-        api.getProofsOfClass(id),
+        api.getProofsOfClass(id).catch((error) => {
+          if (isNetworkFailure(error)) return [] as ProofOfClass[]
+          throw error
+        }),
       ])
       if (!requestCoordinatorRef.current.canCommitRead(readEpoch)) return false
       setSession(s)
@@ -135,7 +140,10 @@ export default function SessionDetailPage() {
       const [nextSession, nextRecords, nextProofs] = await Promise.all([
         api.getSession(id),
         api.getAttendanceRecords(id),
-        api.getProofsOfClass(id),
+        api.getProofsOfClass(id).catch((error) => {
+          if (isNetworkFailure(error)) return [] as ProofOfClass[]
+          throw error
+        }),
       ])
       const section = await api.getSection(nextSession.sectionId)
       if (cu.role === 'teacher' && section.teacherId !== cu.id) {
@@ -199,7 +207,10 @@ export default function SessionDetailPage() {
 
   useEffect(() => {
     if (!session?.isActive || realtimeConnected) return
-    const poll = setInterval(() => { void refreshData() }, 10000)
+    const poll = setInterval(() => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return
+      void refreshData()
+    }, 10000)
     return () => clearInterval(poll)
   }, [session?.isActive, realtimeConnected, refreshData])
 
@@ -265,6 +276,7 @@ export default function SessionDetailPage() {
   const presentCount = records.filter((r) => r.status === 'present').length
   const lateCount = records.filter((r) => r.status === 'late').length
   const absentCount = records.filter((r) => r.status === 'absent').length
+  const excusedCount = records.filter((r) => r.status === 'excused').length
   const pendingCount = records.filter((r) => r.status === 'pending').length
   const disputedCount = records.filter((r) => r.status === 'disputed').length
   const studentMap = new Map(records.map((r) => [r.studentId, r]))
@@ -374,14 +386,14 @@ export default function SessionDetailPage() {
     <div className="flex h-screen bg-zinc-100 dark:bg-pup-black">
       <Sidebar user={user} onLogout={handleLogout} backHref="/faculty/sessions" backLabel="Back to Sessions" />
       <div className="flex-1 overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-pup-black border-b border-gray-200 dark:border-zinc-800">
+        <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-200 dark:border-zinc-800">
           <div className="flex items-center gap-3">
             <button onClick={() => router.back()} className="p-1 hover:opacity-70">
               <ArrowLeft className="w-5 h-5 text-maroon dark:text-golden" />
             </button>
             <div>
               <h1 className="text-xl font-heading font-bold text-maroon-dark dark:text-golden">{session.subjectName}</h1>
-              <p className="text-xs text-gray-400 dark:text-gray-500">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
                 {new Date(session.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · {session.startTime}-{session.endTime}
               </p>
             </div>
@@ -430,7 +442,7 @@ export default function SessionDetailPage() {
                       <Image src={qrDataUrl} width={180} height={180} unoptimized alt="Scannable session QR code" />
                     </button>
                     {countdown && (
-                      <p className={`text-sm mt-2 font-mono ${countdown === 'Grace ended' ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                      <p className={`text-sm mt-2 font-mono ${countdown === 'Grace ended' ? 'text-red-500' : 'text-zinc-500 dark:text-zinc-400'}`}>
                         {countdown.includes('Grace') ? countdown : `Expires in: ${countdown}`}
                       </p>
                     )}
@@ -463,10 +475,10 @@ export default function SessionDetailPage() {
                     </div>
                   </>
                 ) : session.isActive ? (
-                  <p className="text-sm text-gray-400 dark:text-gray-500">Generating QR...</p>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">Generating QR...</p>
                 ) : (
                   <>
-                    <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">Generate a QR code to start the session</p>
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">Generate a QR code to start the session</p>
                     <Button className="bg-maroon hover:bg-maroon-dark dark:bg-golden dark:hover:bg-golden-dark dark:text-maroon-dark flex items-center gap-2" onClick={() => setShowValidityPrompt(true)}>
                       <Play className="w-4 h-4" /> Generate QR Code
                     </Button>
@@ -485,23 +497,23 @@ export default function SessionDetailPage() {
               </div>
               <div className="flex gap-6 flex-wrap">
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.5px] text-gray-400 dark:text-gray-500 mb-1">Status</p>
-                  <Badge className={session.isActive ? 'bg-green-500 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}>
+                  <p className="text-[10px] uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-1">Status</p>
+                  <Badge className={session.isActive ? 'bg-green-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}>
                     {session.isActive ? 'Active' : 'Inactive'}
                   </Badge>
                 </div>
                 {session.isActive && session.qrValidityMinutes ? (
                   <div>
-                    <p className="text-[10px] uppercase tracking-[0.5px] text-gray-400 dark:text-gray-500 mb-1">QR Validity</p>
+                    <p className="text-[10px] uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-1">QR Validity</p>
                     <p className="text-sm font-semibold dark:text-white">{session.qrValidityMinutes} min</p>
                   </div>
                 ) : null}
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.5px] text-gray-400 dark:text-gray-500 mb-1">Grace Period</p>
+                  <p className="text-[10px] uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-1">Grace Period</p>
                   <p className="text-sm font-semibold dark:text-white">{session.gracePeriodMinutes} min</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.5px] text-gray-400 dark:text-gray-500 mb-1">Room</p>
+                  <p className="text-[10px] uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-1">Room</p>
                   <p className="text-sm font-semibold dark:text-white">{session.room || '—'}</p>
                 </div>
               </div>
@@ -526,20 +538,20 @@ export default function SessionDetailPage() {
               <div className="flex items-center gap-2 mb-4">
                 <Camera className="w-5 h-5 text-maroon dark:text-golden" />
                 <h2 className="text-base font-bold dark:text-white">Proof of Class</h2>
-                <span className="text-xs text-gray-400 dark:text-gray-500">({proofsOfClass.length})</span>
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">({proofsOfClass.length})</span>
               </div>
               {proofsOfClass.length === 0 ? (
-                <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No proof photos uploaded yet.</p>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center py-4">No proof photos uploaded yet.</p>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {proofsOfClass.map((poc) => (
-                    <div key={poc.id} className="border border-gray-200 dark:border-golden/15 p-3 bg-gray-50 dark:bg-pup-black">
+                    <div key={poc.id} className="border border-zinc-200 dark:border-golden/15 p-3 bg-zinc-50 dark:bg-pup-black">
                       <div className="w-full aspect-video bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center mb-2">
                         <Camera className="w-8 h-8 text-zinc-400" />
                       </div>
                       <p className="text-xs font-medium dark:text-white truncate">{poc.uploadedByStudentName}</p>
-                      <p className="text-[10px] text-gray-400">{new Date(poc.uploadedAt).toLocaleString()}</p>
-                      {poc.description && <p className="text-[10px] text-gray-500 mt-1 italic">&quot;{poc.description}&quot;</p>}
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{new Date(poc.uploadedAt).toLocaleString()}</p>
+                      {poc.description && <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1 italic">&quot;{poc.description}&quot;</p>}
                       {isTeacher && (
                         <button
                           className="mt-2 text-[10px] text-red-500 hover:text-red-700 flex items-center gap-1"
@@ -561,32 +573,33 @@ export default function SessionDetailPage() {
               <div className="flex items-center gap-2 mb-2">
                 <Users className="w-5 h-5 text-maroon dark:text-golden" />
                 <h2 className="text-base font-bold dark:text-white">Student Roster</h2>
-                <span className="text-xs text-gray-400 dark:text-gray-500">({enrolledStudents.length})</span>
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">({enrolledStudents.length})</span>
               </div>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-3">{refreshLabel}</p>
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mb-3">{refreshLabel}</p>
 
               {/* Summary */}
               <div className="flex justify-around mb-4">
                 {[
                   { label: 'Present', value: presentCount, color: 'text-golden' },
-                  { label: 'Late', value: lateCount, color: 'text-maroon dark:text-[#FF6B6B]' },
-                  { label: 'Absent', value: absentCount, color: 'text-maroon-dark dark:text-[#FF4F5A]' },
-                  { label: 'Pending', value: pendingCount, color: 'text-gray-400' },
+                  { label: 'Late', value: lateCount, color: 'text-maroon dark:text-red-300' },
+                  { label: 'Absent', value: absentCount, color: 'text-maroon-dark dark:text-red-400' },
+                  { label: 'Excused', value: excusedCount, color: 'text-maroon dark:text-golden' },
+                  { label: 'Pending', value: pendingCount, color: 'text-zinc-500 dark:text-zinc-400' },
                   { label: 'Disputed', value: disputedCount, color: 'text-maroon dark:text-golden' },
                 ].map((s) => (
                   <div key={s.label} className="text-center">
                     <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-                    <p className="text-[10px] text-gray-400 dark:text-gray-500">{s.label}</p>
+                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{s.label}</p>
                   </div>
                 ))}
               </div>
 
               {/* Filters */}
               <div className="flex gap-2 mb-4 flex-wrap">
-                {(['all', 'present', 'late', 'absent', 'pending', 'disputed'] as const).map((f) => (
+                {(['all', 'present', 'late', 'absent', 'excused', 'pending', 'disputed'] as const).map((f) => (
                   <button
                     key={f}
-                    className={`px-3 py-1 text-xs border ${filter === f ? 'bg-maroon dark:bg-golden border-maroon dark:border-golden text-white dark:text-maroon-dark' : 'bg-gray-100 dark:bg-surface-dark border-gray-300 dark:border-golden/15 text-gray-500 dark:text-gray-400'}`}
+                    className={`px-3 py-1 text-xs border ${filter === f ? 'bg-maroon dark:bg-golden border-maroon dark:border-golden text-white dark:text-maroon-dark' : 'bg-zinc-100 dark:bg-surface-dark border-zinc-300 dark:border-golden/15 text-zinc-500 dark:text-zinc-400'}`}
                     onClick={() => setFilter(f)}
                   >
                     {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -596,7 +609,7 @@ export default function SessionDetailPage() {
 
               {/* Student List */}
               {enrolledStudents.length === 0 ? (
-                <p className="text-center py-8 text-gray-400 dark:text-gray-500">No enrolled students.</p>
+                <p className="text-center py-8 text-zinc-500 dark:text-zinc-400">No enrolled students.</p>
               ) : (
                 <div className="space-y-1">
                   {enrolledStudents.map((student) => {
@@ -606,20 +619,20 @@ export default function SessionDetailPage() {
                     return (
                       <button
                         key={student.id}
-                        className={`w-full flex items-center justify-between px-3 py-2.5 border-b border-gray-100 dark:border-zinc-900 text-left ${isTeacher ? 'hover:bg-gray-50 dark:hover:bg-zinc-900' : 'cursor-default'}`}
+                        className={`w-full flex items-center justify-between px-3 py-2.5 border-b border-zinc-100 dark:border-zinc-800 text-left ${isTeacher ? 'hover:bg-zinc-50 dark:hover:bg-zinc-900' : 'cursor-default'}`}
                         onClick={() => { if (isTeacher) handleManualOverride(student.id, status) }}
                         disabled={!isTeacher}
                       >
                         <div>
                           <p className="text-sm font-medium dark:text-white">{student.fullName}</p>
-                          <p className="text-xs text-gray-400 dark:text-gray-500">{student.studentId}</p>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400">{student.studentId}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           {record?.manuallySet && <Edit3 className="w-3.5 h-3.5 text-maroon dark:text-golden" />}
                           <span className={`px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[status] || STATUS_STYLES.pending}`}>
                             {status.charAt(0).toUpperCase() + status.slice(1)}
                           </span>
-                          {isTeacher && <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />}
+                          {isTeacher && <ChevronRight className="w-4 h-4 text-zinc-300 dark:text-zinc-600" />}
                         </div>
                       </button>
                     )
@@ -649,7 +662,7 @@ export default function SessionDetailPage() {
           </DialogHeader>
             <div className="space-y-4 mb-6">
               <div>
-                <label htmlFor="qr-validity" className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">QR Validity</label>
+                <label htmlFor="qr-validity" className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">QR Validity</label>
                 <div className="flex items-center gap-2">
                   <Input
                     id="qr-validity"
@@ -660,11 +673,11 @@ export default function SessionDetailPage() {
                     min={1}
                     max={15}
                   />
-                  <span className="text-sm text-gray-500 dark:text-gray-400">minutes</span>
+                  <span className="text-sm text-zinc-500 dark:text-zinc-400">minutes</span>
                 </div>
               </div>
               <div>
-                <label htmlFor="grace-period" className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Grace Period</label>
+                <label htmlFor="grace-period" className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Grace Period</label>
                 <div className="flex items-center gap-2">
                   <Input
                     id="grace-period"
@@ -675,7 +688,7 @@ export default function SessionDetailPage() {
                     min={0}
                     max={60}
                   />
-                  <span className="text-sm text-gray-500 dark:text-gray-400">minutes</span>
+                  <span className="text-sm text-zinc-500 dark:text-zinc-400">minutes</span>
                 </div>
               </div>
             </div>

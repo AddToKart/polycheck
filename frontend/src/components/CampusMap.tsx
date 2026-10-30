@@ -9,18 +9,20 @@ import { MapPin } from 'lucide-react'
 import { pupColors } from '@/lib/colors'
 
 const STATUS_MARKER_COLORS: Record<string, string> = {
-  present: '#22C55E',
+  present: pupColors.present,
   late: pupColors.golden,
-  absent: '#EF4444',
-  pending: '#9CA3AF',
-  disputed: '#F59E0B',
+  absent: pupColors.absent,
+  excused: pupColors.goldenDark,
+  pending: pupColors.pending,
+  disputed: pupColors.disputed,
 }
 
 const STATUS_TEXT_CLASSES: Record<string, string> = {
   present: 'text-green-600 dark:text-green-400',
   late: 'text-yellow-600 dark:text-yellow-300',
   absent: 'text-red-600 dark:text-red-400',
-  pending: 'text-gray-400 dark:text-gray-500',
+  excused: 'text-maroon dark:text-golden',
+  pending: 'text-zinc-500 dark:text-zinc-400',
   disputed: 'text-amber-500 dark:text-amber-300',
 }
 
@@ -93,7 +95,7 @@ function CampusBuildingsLayer({ campus }: { campus: CampusConfig }) {
       },
       paint: {
         'text-color': pupColors.maroon,
-        'text-halo-color': '#FFFFFF',
+        'text-halo-color': pupColors.white,
         'text-halo-width': 2,
         'text-opacity': 0.85,
       },
@@ -129,17 +131,17 @@ function StudentPopoverCard({ studentName, studentId, studentProgram, status, ti
   return (
     <div className="min-w-[180px]">
       <p className="text-sm font-bold text-maroon-dark dark:text-white">{studentName}</p>
-      <p className="text-xs text-gray-500 dark:text-gray-400">{studentId}{studentProgram ? ` · ${studentProgram}` : ''}</p>
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">{studentId}{studentProgram ? ` · ${studentProgram}` : ''}</p>
       <div className="flex items-center gap-2 mt-1.5">
         <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${STATUS_TEXT_CLASSES[status] || ''}`}>
           {status.charAt(0).toUpperCase() + status.slice(1)}
         </span>
-        <span className="text-[10px] text-gray-400 dark:text-gray-500">
+        <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
           {new Date(timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
         </span>
       </div>
       {deviceId && deviceId !== 'manual' && (
-        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">Device: {deviceId}</p>
+        <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">Device: {deviceId}</p>
       )}
     </div>
   )
@@ -228,6 +230,10 @@ export default function CampusMap({ session, records, isActive, refreshLabel }: 
         <span className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: STATUS_MARKER_COLORS.absent }} />
           Absent
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: STATUS_MARKER_COLORS.excused }} />
+          Excused
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: STATUS_MARKER_COLORS.pending }} />

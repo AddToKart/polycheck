@@ -3,19 +3,26 @@ import {
   UnauthorizedException,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
   HttpException,
   HttpStatus,
   Logger,
+  Optional,
 } from '@nestjs/common'
-import { compare } from 'bcryptjs'
+import { compare, hash } from 'bcryptjs'
 import { createHash } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import type { User } from '../prisma/client'
 import { BetterAuthService } from './better-auth.service'
 import { EventEmitter2 } from '@nestjs/event-emitter'
-import { DUMMY_PASSWORD_HASH } from './password-policy'
+import { DUMMY_PASSWORD_HASH, PASSWORD_HASH_COST } from './password-policy'
 import { ConfigService } from '@nestjs/config'
+import type { ChangePasswordDto } from './dto/change-password.dto'
+import { NotificationsService } from '../notifications/notifications.service'
+import { DeviceBindingService } from '../users/device-binding.service'
+import type { DelegatedTeacherPermissions } from '@polycheck/shared'
 
 // Login rate limits are env-tunable so strict production values can be relaxed for
 // local development and E2E automation. Defaults: 10 attempts/identity/min, 30/IP/min.
@@ -30,6 +37,10 @@ const KEY_PROVISION_RATE_WINDOW = positiveInt(process.env.KEY_PROVISION_RATE_WIN
 // repeated revoke/flood abuse while still allowing a compromised key to be
 // invalidated immediately.
 const KEY_REVOKE_RATE_LIMIT = positiveInt(process.env.KEY_REVOKE_RATE_LIMIT, 3)
+// Password changes are rate limited per account (default 5/15 minutes) to
+// prevent online guessing even from an already-authenticated session.
+const PASSWORD_CHANGE_RATE_LIMIT = positiveInt(process.env.PASSWORD_CHANGE_RATE_LIMIT, 5)
+const PASSWORD_CHANGE_RATE_WINDOW_SECONDS = positiveInt(process.env.PASSWORD_CHANGE_RATE_WINDOW_SECONDS, 900)
 // Cache-hygiene lease only. Scan validation always reads the PostgreSQL key,
 // so lease expiry cannot make a stale Redis key authoritative.
 const KEY_ROTATION_LOCK_TTL_SECONDS = 10
@@ -54,10 +65,19 @@ export interface AuthResult {
     photoUrl?: string | null
     scope?: string | null
     isActive: boolean
+    mustChangePassword: boolean
     createdAt: Date
     updatedAt: Date
     privacyConsentVersion?: string | null
     privacyConsentedAt?: Date | null
+    boundDeviceId?: string | null
+    deviceBoundAt?: Date | null
+    deviceCooldownUntil?: Date | null
+    contactEmail?: string | null
+    contactPhone?: string | null
+    canResetStudentPasswords?: boolean | null
+    canEmergencyUnbindDevices?: boolean | null
+    delegatedPermissions?: DelegatedTeacherPermissions
   }
 }
 
@@ -71,6 +91,8 @@ export class AuthService {
     private betterAuth: BetterAuthService,
     private events: EventEmitter2,
     private config: ConfigService,
+    @Optional() private notifications?: NotificationsService,
+    @Optional() private deviceBinding?: DeviceBindingService,
   ) {}
 
   privacyNotice() {
@@ -78,7 +100,7 @@ export class AuthService {
       version: this.config.getOrThrow<string>('PRIVACY_NOTICE_VERSION'),
       url: this.config.getOrThrow<string>('PRIVACY_NOTICE_URL'),
       summary:
-        'Polycheck stores attendance time, classroom location evidence, device installation identity, and scan risk signals to verify attendance and investigate disputes. Access is role-scoped, and retention is limited by institutional policy.',
+        'Polycheck stores attendance time, classroom location evidence, device installation identity, client-reported device-integrity evidence, and scan risk signals to verify attendance and investigate disputes. Access is role-scoped, and retention is limited by institutional policy.',
     }
   }
 
@@ -99,6 +121,7 @@ export class AuthService {
     password: string,
     clientAddress = 'unknown',
     headers = new Headers(),
+    mobile?: { channel: 'mobile'; deviceId?: string },
   ): Promise<AuthResult> {
     const normalizedStudentId = studentId.trim().toUpperCase()
     await this.assertLoginWithinLimit('student', normalizedStudentId, clientAddress)
@@ -117,7 +140,26 @@ export class AuthService {
       throw new ForbiddenException('Account is disabled')
     }
 
-    return this.createSession(user, password, headers)
+    // Reject before creating a session: Better Auth would replace the active
+    // session on login, and a cooldown rejection must not sign the student out
+    // of a still-valid device.
+    if (mobile?.channel === 'mobile') {
+      await this.deviceBinding?.assertMobileLoginAllowed(user.id)
+    }
+
+    const result = await this.createSession(user, password, headers)
+    if (mobile?.channel === 'mobile') {
+      try {
+        await this.deviceBinding?.registerBinding(user.id, mobile.deviceId, user.role)
+      } catch (error) {
+        // Binding is a security hardening layer; a transient failure must not
+        // turn a successful credential check into a failed login.
+        this.logger.warn(
+          `Could not bind device for user ${user.id}: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+    }
+    return result
   }
 
   async loginFaculty(
@@ -125,6 +167,7 @@ export class AuthService {
     password: string,
     clientAddress = 'unknown',
     headers = new Headers(),
+    mobile?: { channel: 'mobile' },
   ): Promise<AuthResult> {
     const normalizedEmail = email.toLowerCase()
     await this.assertLoginWithinLimit('faculty', normalizedEmail, clientAddress)
@@ -143,13 +186,29 @@ export class AuthService {
       throw new ForbiddenException('Account is disabled')
     }
 
-    return this.createSession(user, password, headers)
+    // Staff accounts are never device-locked; the mobile flag only documents
+    // the caller for future policy hooks.
+    void mobile
+    const result = await this.createSession(user, password, headers)
+    return this.withDelegatedPermissions(result, user)
   }
 
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } })
     if (!user) throw new NotFoundException('User not found')
-    return this.sanitizeUser(user)
+    const sanitized = this.sanitizeUser(user)
+    if (user.role !== 'teacher' || !this.deviceBinding) return sanitized
+    try {
+      const delegatedPermissions = await this.deviceBinding.getEffectiveTeacherPermissions(user.id)
+      return { ...sanitized, delegatedPermissions }
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve delegated permissions for ${user.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+      return sanitized
+    }
   }
 
   async provisionKey(userId: string, publicKey: string) {
@@ -188,6 +247,12 @@ export class AuthService {
       `Signing key provisioned for user ${userId} (previous key: ${previousKey ? 'replaced' : 'first provision'})`,
     )
     this.events.emit('auth.key-provisioned', { userId, hadPreviousKey: !!previousKey })
+    await this.notifications?.notify(userId, {
+      type: 'key_provisioned',
+      title: 'Signing key provisioned',
+      body: 'A new QR signing key is now active on your teacher account.',
+      link: '/faculty',
+    })
 
     return { message: 'Public key provisioned successfully' }
   }
@@ -241,6 +306,71 @@ export class AuthService {
   async logout(headers: Headers) {
     const result = await this.betterAuth.auth.api.signOut({ headers, returnHeaders: true })
     return { message: 'Logged out successfully', headers: result.headers }
+  }
+
+  /**
+   * Rotates the credential password and clears the forced-change flag. The
+   * `authVersion` is bumped and the invoking session's generation is advanced
+   * in the same transaction: stale sessions (any other device) fail the
+   * generation check immediately while the current session survives.
+   */
+  async changePassword(userId: string, dto: ChangePasswordDto, authSessionId?: string) {
+    const withinLimit = await this.redis.consumeRateLimit(
+      `auth:change-password:${userId}`,
+      PASSWORD_CHANGE_RATE_LIMIT,
+      PASSWORD_CHANGE_RATE_WINDOW_SECONDS,
+    )
+    if (!withinLimit) {
+      throw new HttpException('Too many password change attempts. Try again later.', HttpStatus.TOO_MANY_REQUESTS)
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, password: true, mustChangePassword: true },
+    })
+    if (!user) throw new NotFoundException('User not found')
+
+    if (dto.currentPassword) {
+      const valid = await compare(dto.currentPassword, user.password)
+      if (!valid) throw new UnauthorizedException('Current password is incorrect')
+    } else if (!user.mustChangePassword) {
+      throw new BadRequestException('Current password is required to change your password')
+    }
+
+    const passwordHash = await hash(dto.newPassword, PASSWORD_HASH_COST)
+    const now = new Date()
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { id: userId },
+        data: { password: passwordHash, mustChangePassword: false, authVersion: { increment: 1 } },
+        select: { authVersion: true },
+      })
+      await tx.authAccount.upsert({
+        where: { providerId_accountId: { providerId: 'credential', accountId: userId } },
+        update: { password: passwordHash, updatedAt: now },
+        create: {
+          id: randomUUID(),
+          accountId: userId,
+          providerId: 'credential',
+          userId,
+          password: passwordHash,
+          createdAt: now,
+          updatedAt: now,
+        },
+      })
+      if (authSessionId) {
+        await tx.authSession.updateMany({
+          where: { id: authSessionId, userId },
+          data: { generation: updated.authVersion },
+        })
+      }
+      // Keep the session that performed the rotation, revoke every other one.
+      await tx.authSession.deleteMany({
+        where: { userId, ...(authSessionId ? { id: { not: authSessionId } } : {}) },
+      })
+    })
+
+    return this.getProfile(userId)
   }
 
   private async createSession(user: User, password: string, headers: Headers): Promise<AuthResult> {
@@ -309,6 +439,21 @@ export class AuthService {
     }
   }
 
+  private async withDelegatedPermissions(result: AuthResult, user: User): Promise<AuthResult> {
+    if (user.role !== 'teacher' || !this.deviceBinding) return result
+    try {
+      const delegatedPermissions = await this.deviceBinding.getEffectiveTeacherPermissions(user.id)
+      return { ...result, user: { ...result.user, delegatedPermissions } }
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve delegated permissions for ${user.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+      return result
+    }
+  }
+
   private sanitizeUser(user: User) {
     return {
       id: user.id,
@@ -322,8 +467,16 @@ export class AuthService {
       photoUrl: user.photoUrl,
       scope: user.scope,
       isActive: user.isActive,
+      mustChangePassword: user.mustChangePassword,
       privacyConsentVersion: user.privacyConsentVersion,
       privacyConsentedAt: user.privacyConsentedAt,
+      boundDeviceId: user.boundDeviceId,
+      deviceBoundAt: user.deviceBoundAt,
+      deviceCooldownUntil: user.deviceCooldownUntil,
+      contactEmail: user.contactEmail,
+      contactPhone: user.contactPhone,
+      canResetStudentPasswords: user.canResetStudentPasswords,
+      canEmergencyUnbindDevices: user.canEmergencyUnbindDevices,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     }

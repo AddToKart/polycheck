@@ -11,11 +11,11 @@ services:
     environment:
       POSTGRES_DB: polycheck
       POSTGRES_USER: polycheck
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-polycheck_local_db_2026}
     volumes:
       - local-postgres-data:/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U polycheck -d polycheck"]
       interval: 5s
@@ -47,10 +47,13 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      seed:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: development
       PORT: 4000
-      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-polycheck_local_db_2026}@postgres:5432/polycheck?schema=public
+      # Local load-test headroom (see plan/load-simulation-plan.md LT3); production unchanged.
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-polycheck_local_db_2026}@postgres:5432/polycheck?schema=public&connection_limit=50
       REDIS_URL: redis://redis:6379/0
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-polycheck-local-better-auth-secret-2026}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4000}
@@ -64,8 +67,15 @@ services:
       LOGIN_IP_RATE_LIMIT: ${LOGIN_IP_RATE_LIMIT:-1000}
       API_RATE_LIMIT: ${API_RATE_LIMIT:-2000}
       API_RATE_WINDOW_SECONDS: ${API_RATE_WINDOW_SECONDS:-60}
-      KEY_PROVISION_RATE_LIMIT: ${KEY_PROVISION_RATE_LIMIT:-3}
+      KEY_PROVISION_RATE_LIMIT: ${KEY_PROVISION_RATE_LIMIT:-200}
       KEY_PROVISION_RATE_WINDOW_SECONDS: ${KEY_PROVISION_RATE_WINDOW_SECONDS:-3600}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_KEY_ENCRYPTION_SECRET: ${AI_KEY_ENCRYPTION_SECRET:-}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-30000}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
+      AI_MAX_MESSAGES_PER_DAY: ${AI_MAX_MESSAGES_PER_DAY:-100}
     volumes:
       - local-proof-uploads:/app/backend/uploads
     ports:
@@ -96,6 +106,8 @@ services:
       dockerfile: Dockerfile.frontend
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api}
+        NEXT_PUBLIC_ALLOW_QR_FALLBACKS: ${NEXT_PUBLIC_ALLOW_QR_FALLBACKS:-true}
+        NEXT_PUBLIC_PWA_OFFLINE: ${NEXT_PUBLIC_PWA_OFFLINE:-true}
     restart: unless-stopped
     depends_on:
       backend:
@@ -113,9 +125,9 @@ services:
       start_period: 10s
 
   seed:
-    profiles: ["tools"]
     image: polycheck-backend-local
     build: *backend-build
+    restart: "no"
     depends_on:
       postgres:
         condition: service_healthy
@@ -129,9 +141,9 @@ services:
     # The production image prunes dev dependencies, so the seed is compiled to
     # plain JS (dist-seed) during the Docker build instead of using ts-node.
     command: ["node", "dist-seed/prisma/seed.js"]
-    restart: "no"
 
 volumes:
   local-postgres-data:
   local-redis-data:
   local-proof-uploads:
+

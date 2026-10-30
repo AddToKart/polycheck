@@ -29,7 +29,7 @@ export const ScheduleDaySchema = z.object({
 export const GeofenceConfigSchema = z.object({
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
-  radiusMeters: z.number().min(10).max(500),
+  radiusMeters: z.number().int().min(10).max(500),
 })
 
 export const SubjectCreateSchema = z.object({
@@ -44,8 +44,10 @@ export const SectionCreateSchema = z.object({
   room: z.string().min(1, 'Room is required'),
   schedule: z.array(ScheduleDaySchema).min(1, 'At least one schedule day required'),
   semester: z.string().min(1, 'Semester is required'),
-  teacherId: z.string().min(1, 'Teacher is required'),
-  teacherName: z.string().min(1, 'Teacher name is required'),
+  // Derived from the authenticated teacher by the API; accepted only for
+  // backward-compatible callers that still include them.
+  teacherId: z.string().min(1).optional(),
+  teacherName: z.string().min(1).optional(),
 })
 
 export const SessionCreateSchema = z.object({
@@ -68,16 +70,26 @@ export const SessionCreateSchema = z.object({
   path: ['endTime'],
 })
 
+export const AttendanceStatusSchema = z.enum(['present', 'late', 'absent', 'pending', 'disputed', 'excused'])
+
 export const AttendanceRecordSchema = z.object({
   sessionId: z.string().min(1),
   sectionId: z.string().min(1),
   studentId: z.string().min(1),
-  timestamp: z.string().datetime(),
+  status: AttendanceStatusSchema,
+  timestamp: z.string().datetime().optional(),
   coordinates: z.object({
     latitude: z.number().min(-90).max(90),
     longitude: z.number().min(-180).max(180),
-  }),
+  }).optional(),
   deviceId: z.string().optional(),
+  excuseStatus: z.enum(['requested', 'approved', 'rejected']).optional(),
+  excuseReason: z.enum(['medical', 'family_emergency', 'school_activity', 'transportation', 'bereavement', 'other']).optional(),
+  excuseDescription: z.string().max(1_000).optional(),
+  excuseEvidencePath: z.string().optional(),
+  excuseReviewedBy: z.string().optional(),
+  excuseReviewedAt: z.string().optional(),
+  excuseReviewNote: z.string().max(500).optional(),
 })
 
 export const SectionRoleTypeEnum = z.enum(['president', 'qac'])
@@ -96,3 +108,95 @@ export const ProofOfClassUploadSchema = z.object({
   uploadedBy: z.string().min(1),
   uploadedByStudentName: z.string().min(1),
 })
+
+// ── Account governance (GOV) ──
+
+export const EmergencyDeviceReleaseReasonSchema = z.enum([
+  'dead_battery',
+  'lost_or_damaged',
+  'borrowed_device',
+  'other',
+])
+
+export const TeacherResetStudentPasswordSchema = z.object({
+  sectionId: z.string().min(1, 'Section is required').max(64),
+})
+
+export const EmergencyDeviceReleaseSchema = z.object({
+  sectionId: z.string().min(1, 'Section is required').max(64),
+  reason: EmergencyDeviceReleaseReasonSchema,
+  note: z.string().trim().max(280, 'Reason note must be 280 characters or fewer').optional(),
+})
+
+const OptionalEmailOrEmptySchema = z
+  .string()
+  .trim()
+  .max(254)
+  .refine((value) => value === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value), 'Must be a valid email address')
+
+const OptionalPhoneOrEmptySchema = z
+  .string()
+  .trim()
+  .max(20)
+  .refine((value) => value === '' || /^\+?[0-9\s-]{7,20}$/.test(value), 'Must be a valid phone number')
+
+export const UpdateContactsSchema = z
+  .object({
+    contactEmail: OptionalEmailOrEmptySchema.optional(),
+    contactPhone: OptionalPhoneOrEmptySchema.optional(),
+  })
+  .refine((value) => value.contactEmail !== undefined || value.contactPhone !== undefined, {
+    message: 'Provide at least one contact field',
+  })
+
+export const DeviceCooldownHoursSchema = z.number().int().min(1).max(24)
+
+// ── System issue & feedback reporting (SR) ──
+
+export const ReportCategorySchema = z.enum([
+  'scanner_camera',
+  'geofence_gps',
+  'ui_display',
+  'enrollment_roster',
+  'account_login',
+  'feedback_suggestion',
+])
+
+export const ReportSeveritySchema = z.enum(['low', 'medium', 'high', 'critical'])
+
+export const ReportStatusSchema = z.enum(['open', 'in_review', 'resolved', 'dismissed'])
+
+const BoundedTelemetrySchema = z.string().trim().max(200)
+
+export const CreateSystemReportSchema = z.object({
+  category: ReportCategorySchema,
+  severity: ReportSeveritySchema,
+  title: z
+    .string()
+    .trim()
+    .min(5, 'Title must be 5-120 characters')
+    .max(120, 'Title must be 5-120 characters'),
+  description: z
+    .string()
+    .trim()
+    .min(10, 'Describe the issue in at least 10 characters')
+    .max(4_000, 'Description must be 4,000 characters or fewer'),
+  screenshotData: z
+    .string()
+    .max(7_500_000)
+    .regex(/^data:image\/(?:jpeg|png|webp);base64,/, 'Screenshot must be a JPEG, PNG, or WebP data URL')
+    .optional(),
+  deviceInfo: BoundedTelemetrySchema.optional(),
+  appVersion: BoundedTelemetrySchema.optional(),
+  route: BoundedTelemetrySchema.optional(),
+  networkType: z.string().trim().max(20).optional(),
+})
+
+export const UpdateSystemReportStatusSchema = z.object({
+  status: ReportStatusSchema,
+  adminNotes: z.string().trim().max(2_000, 'Admin notes must be 2,000 characters or fewer').optional(),
+})
+
+export * from './bulk-import'
+export * from './ai'
+export * from './excuse'

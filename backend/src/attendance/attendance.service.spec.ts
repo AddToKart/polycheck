@@ -506,6 +506,42 @@ describe('AttendanceService', () => {
       expect(realtime.emitAttendanceUpdated).not.toHaveBeenCalled()
     })
 
+    it('persists rooted-device evidence as a disputed attendance event for review', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      prisma.attendanceRecord.findUnique.mockResolvedValue(makeRosterRecord())
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(
+        makeRosterRecord({ status: 'disputed', disputeReason: 'rooted_device' }),
+      )
+
+      const result = await service.submit(studentUser, {
+        ...submitArgs,
+        clientAttemptId: 'attempt-rooted',
+        accuracyMeters: 5,
+        locationCapturedAt: new Date().toISOString(),
+        mocked: false,
+        inputChannel: 'camera',
+        deviceSecurity: { rootDetected: true },
+      })
+
+      expect(result).toEqual(expect.objectContaining({ success: false, reason: 'rooted_device' }))
+      expect(prisma.scanAttempt.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          outcome: 'flagged',
+          riskSignals: expect.arrayContaining(['rooted_device']),
+        }),
+      })
+      expect(prisma.attendanceRecord.updateMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({ status: { in: ['pending', 'absent'] } }),
+        data: expect.objectContaining({ status: 'disputed', disputeReason: 'rooted_device' }),
+      })
+      expect(realtime.emitAttendanceUpdated).toHaveBeenCalled()
+    })
+
     it('denies geofence uncertainty when accuracy extends beyond the radius', async () => {
       prisma.session.findUnique.mockResolvedValue(makeCachedSession())
       redis.getJson.mockResolvedValue(makeCachedSession())
@@ -812,12 +848,7 @@ describe('AttendanceService', () => {
       prisma.attendanceRecord.createMany.mockResolvedValue({ count: 0 })
       mockedVerifyQRToken.mockReturnValue(validPayload())
 
-      const result = await (service as any).performOfflineActivation(
-        'sess-1',
-        VALID_TOKEN,
-        new Date(),
-        false,
-      )
+      const result = await (service as any).performOfflineActivation('sess-1', VALID_TOKEN, new Date(), false)
 
       expect(result).toBe('activated')
       expect(redis.setJson).not.toHaveBeenCalledWith(

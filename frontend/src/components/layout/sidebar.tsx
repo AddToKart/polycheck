@@ -21,10 +21,19 @@ import {
   Clock,
   Search,
   Settings,
+  FileClock,
+  Server,
+  Sparkles,
+  ClipboardCheck,
+  UserRound,
+  Flag,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import ThemeToggle from '@/components/ThemeToggle'
+import { NotificationBell } from './NotificationBell'
+import { useNotificationCenter } from '@/lib/hooks/use-notification-center'
+import { ReportIssueDialog } from '@/components/reports/ReportIssueDialog'
 
 type NavItem = { label: string; href: string; icon: any }
 
@@ -34,6 +43,8 @@ const studentNav: NavItem[] = [
   { label: 'My Subjects', href: '/student/dashboard?tab=subjects', icon: BookOpen },
   { label: 'Schedule', href: '/student/schedule', icon: Calendar },
   { label: 'Attendance History', href: '/student/dashboard?tab=attendance', icon: Clock },
+  { label: 'Assistant', href: '/student/assistant', icon: Sparkles },
+  { label: 'Profile', href: '/profile', icon: UserRound },
 ]
 
 // Navigation for standard teachers
@@ -44,20 +55,26 @@ const teacherNav: NavItem[] = [
   { label: 'Attendance Log', href: '/faculty/attendance', icon: ClipboardList },
   { label: 'Schedule', href: '/faculty/schedule', icon: Calendar },
   { label: 'Disputes', href: '/faculty/disputes', icon: Gavel },
+  { label: 'Excuses', href: '/faculty/excuses', icon: ClipboardCheck },
+  { label: 'Assistant', href: '/faculty/assistant', icon: Sparkles },
+  { label: 'Profile', href: '/profile', icon: UserRound },
   { label: 'Search', href: '/faculty/search', icon: Search },
 ]
 
-// Navigation for super admins
+// Navigation for super admins — administration console only (SA1).
+// Classroom feeds (subjects, sessions, attendance, disputes, schedule) are
+// intentionally absent. Option A keeps those routes reachable via Global
+// Search results or deep links; they are never proactive surfaces.
 const superAdminNav: NavItem[] = [
   { label: 'Dashboard', href: '/faculty', icon: LayoutDashboard },
-  { label: 'Subject Directory', href: '/faculty/subjects', icon: BookOpen },
-  { label: 'Session Monitoring', href: '/faculty/sessions', icon: CalendarCheck },
-  { label: 'Attendance Monitoring', href: '/faculty/attendance', icon: ClipboardList },
-  { label: 'Dispute Monitoring', href: '/faculty/disputes', icon: Gavel },
-  { label: 'Global Search', href: '/faculty/search', icon: Search },
   { label: 'User Management', href: '/faculty/users', icon: Users },
   { label: 'System Reports', href: '/faculty/reports', icon: BarChart3 },
+  { label: 'Audit Log', href: '/faculty/audit-logs', icon: FileClock },
+  { label: 'Server Status', href: '/faculty/server-status', icon: Server },
+  { label: 'Assistant', href: '/faculty/assistant', icon: Sparkles },
   { label: 'Institution Settings', href: '/faculty/settings', icon: Settings },
+  { label: 'Profile', href: '/profile', icon: UserRound },
+  { label: 'Global Search', href: '/faculty/search', icon: Search },
 ]
 
 interface SidebarProps {
@@ -74,6 +91,9 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [reportOpen, setReportOpen] = useState(false)
+  const canReport = user.role === 'student' || user.role === 'teacher'
+  const notificationCenter = useNotificationCenter(user.id)
   const isSuper = user.role === 'super_admin'
   const showSearch = !backHref && (user.role === 'teacher' || user.role === 'super_admin')
   
@@ -100,6 +120,16 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <NotificationBell
+            notifications={notificationCenter.notifications}
+            unreadCount={notificationCenter.unreadCount}
+            loading={notificationCenter.status === 'loading'}
+            error={notificationCenter.error}
+            onOpen={() => void notificationCenter.refresh()}
+            onMarkAll={() => void notificationCenter.markAllRead()}
+            onMarkRead={(notification) => notificationCenter.markRead(notification)}
+            triggerClassName="text-golden hover:bg-white/10 dark:text-maroon-dark dark:hover:bg-maroon-dark/10"
+          />
           <Image src="/pup-logo.png" width={32} height={32} alt="PUP Logo" className="w-8 h-8 shrink-0 object-contain" />
           <button
             onClick={() => setIsOpen(false)}
@@ -202,6 +232,18 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
             <p className="text-xs text-zinc-500 truncate">{user.email}</p>
           </div>
         </div>
+        {canReport ? (
+          <Button
+            variant="outline"
+            className="mb-3 w-full justify-center gap-2 text-xs font-bold uppercase tracking-widest text-maroon dark:text-golden hover:bg-maroon hover:text-white"
+            onClick={() => {
+              setReportOpen(true)
+            }}
+          >
+            <Flag className="w-4 h-4" />
+            Report an Issue
+          </Button>
+        ) : null}
         <Button
           variant="outline"
           className="w-full justify-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-600 dark:text-zinc-400 hover:text-white hover:bg-maroon hover:border-maroon transition-colors"
@@ -222,13 +264,25 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
           <Image src="/pup-logo.png" width={24} height={24} alt="PUP Logo" className="w-6 h-6 shrink-0 object-contain" />
           <span className="font-heading font-bold text-lg tracking-tight">Polycheck</span>
         </div>
-        <button 
-          onClick={() => setIsOpen(true)}
-          className="p-2 hover:bg-white/10 dark:hover:bg-zinc-800 transition-colors"
-          aria-label="Open navigation menu"
-        >
-          <Menu className="w-6 h-6 text-white dark:text-golden" />
-        </button>
+        <div className="flex items-center gap-1">
+          <NotificationBell
+            notifications={notificationCenter.notifications}
+            unreadCount={notificationCenter.unreadCount}
+            loading={notificationCenter.status === 'loading'}
+            error={notificationCenter.error}
+            onOpen={() => void notificationCenter.refresh()}
+            onMarkAll={() => void notificationCenter.markAllRead()}
+            onMarkRead={(notification) => notificationCenter.markRead(notification)}
+            triggerClassName="text-white hover:bg-white/10 dark:text-golden dark:hover:bg-zinc-800"
+          />
+          <button 
+            onClick={() => setIsOpen(true)}
+            className="p-2 hover:bg-white/10 dark:hover:bg-zinc-800 transition-colors"
+            aria-label="Open navigation menu"
+          >
+            <Menu className="w-6 h-6 text-white dark:text-golden" />
+          </button>
+        </div>
       </div>
 
       {/* Mobile Slide-Out Drawer Overlay */}
@@ -247,9 +301,12 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
       )}
 
       {/* Desktop Persistent Sidebar */}
-      <aside className="hidden md:flex w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col shrink-0 h-dvh sticky top-0 overflow-hidden">
+      <aside className="hidden md:flex w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex-col shrink-0 h-dvh sticky top-0 overflow-hidden">
         {sidebarContent}
       </aside>
+
+      {canReport ? <ReportIssueDialog open={reportOpen} onOpenChange={setReportOpen} /> : null}
     </>
   )
 }
+

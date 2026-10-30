@@ -1,28 +1,47 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api-client'
-import type { User, Section, Subject, CalendarEvent, DashboardOverview } from '@polycheck/shared'
-import { formatTime } from '@polycheck/shared/utils'
+import type { AdminOverview, User, Section, Subject, CalendarEvent, DashboardOverview, StudentAtRisk } from '@polycheck/shared'
+import { formatTime, getRecentCampusDateRange } from '@polycheck/shared/utils'
+import {
+  activityOutcomeLabel,
+  activityOutcomeTone,
+  buildAccountSplits,
+  formatActivityAction,
+  formatHealthTimestamp,
+  formatRelativeTime,
+  summarizeAdminHealth,
+} from '@/lib/admin-overview'
+import { buildTrendSegments, stackedTrendTotal, summarizeTrends } from '@/lib/dashboard-trends'
+import { isCancellationShapedError } from '@/lib/abort-errors'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Sidebar } from '@/components/layout/sidebar'
 import StatusBadge from '@/components/StatusBadge'
+import { OfflineSyncPanel } from '@/components/OfflineSyncPanel'
+import { StudentsAtRiskCard } from '@/components/faculty/StudentsAtRiskCard'
 import { LoadingSpinner } from '@/lib/hooks'
 
 import {
+  Activity,
   BookOpen,
   CalendarCheck,
   ClipboardList,
+  Clock,
+  Database,
+  FileClock,
+  Settings,
+  ShieldCheck,
+  UserCheck,
   Users,
   ArrowRight,
-  Clock,
-  ShieldCheck,
-  BarChart3
+  BarChart3,
 } from 'lucide-react'
 
 const campusDateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -41,31 +60,117 @@ const campusDate = (date = new Date()) => {
 // Teacher Dashboard Component
 // ============================================================================
 
+type DashboardPeriod = '7d' | '30d' | 'semester' | 'custom'
+
+const DASHBOARD_PERIODS: { value: DashboardPeriod; label: string }[] = [
+  { value: '7d', label: '7 days' },
+  { value: '30d', label: '30 days' },
+  { value: 'semester', label: 'This semester' },
+  { value: 'custom', label: 'Custom' },
+]
+
 function TeacherDashboard({ user }: { user: User }) {
   const [sections, setSections] = useState<Section[]>([])
   const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
   const [allSubjects, setAllSubjects] = useState<Subject[]>([])
   const [overview, setOverview] = useState<DashboardOverview | null>(null)
   const [loading, setLoading] = useState(true)
+  const [period, setPeriod] = useState<DashboardPeriod>('30d')
+  const [customFrom, setCustomFrom] = useState(() => getRecentCampusDateRange(7).startDate)
+  const [customTo, setCustomTo] = useState(() => getRecentCampusDateRange(1).endDate)
+  const [atRisk, setAtRisk] = useState<StudentAtRisk[]>([])
+  const [riskSectionId, setRiskSectionId] = useState('')
+  const [riskLoading, setRiskLoading] = useState(true)
+  const [riskError, setRiskError] = useState('')
+  const [riskRetryKey, setRiskRetryKey] = useState(0)
+
+  const reportingRange = useMemo(() => {
+    if (period === 'custom') return { startDate: customFrom, endDate: customTo }
+    if (period === 'semester') {
+      // The API exposes no semester boundary; use the current 120-day window.
+      return getRecentCampusDateRange(120)
+    }
+    return getRecentCampusDateRange(period === '7d' ? 7 : 30)
+  }, [period, customFrom, customTo])
 
   useEffect(() => {
+    let cancelled = false
     const fetchData = async () => {
       const todayStr = campusDate()
-      const [allSects, subjects, nextOverview, evs] = await Promise.all([
-        api.getSections(),
-        api.getSubjects(),
-        api.getDashboardOverview(),
-        api.getCalendarEvents(user.id, todayStr, todayStr),
-      ])
-      setSections(allSects.filter((section) => section.teacherId === user.id))
-      setAllSubjects(subjects)
-      setOverview(nextOverview)
-      setTodayEvents(evs.sort((a, b) => a.startTime.localeCompare(b.startTime)))
-
-      setLoading(false)
+      try {
+        const [allSects, subjects, evs] = await Promise.all([
+          api.getSections(),
+          api.getSubjects(),
+          api.getCalendarEvents(user.id, todayStr, todayStr),
+        ])
+        if (cancelled) return
+        setSections(allSects.filter((section) => section.teacherId === user.id))
+        setAllSubjects(subjects)
+        setTodayEvents(evs.sort((a, b) => a.startTime.localeCompare(b.startTime)))
+      } catch (error) {
+        if (!cancelled && !isCancellationShapedError(error)) {
+          console.error('Failed to load teacher dashboard data', error)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
     fetchData()
+    return () => {
+      cancelled = true
+    }
   }, [user.id])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!reportingRange.startDate || !reportingRange.endDate) return
+    if (reportingRange.endDate < reportingRange.startDate) return
+    void api
+      .getDashboardOverview({ startDate: reportingRange.startDate, endDate: reportingRange.endDate })
+      .then((nextOverview) => {
+        if (!cancelled) setOverview(nextOverview)
+      })
+      .catch((error) => {
+        if (!cancelled && !isCancellationShapedError(error)) {
+          console.error('Failed to load dashboard overview', error)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user.id, reportingRange.startDate, reportingRange.endDate])
+
+  useEffect(() => {
+    let cancelled = false
+    setRiskLoading(true)
+    setRiskError('')
+    void api
+      .getAtRiskStudents({ limit: 8, sectionId: riskSectionId || undefined })
+      .then((students) => {
+        if (cancelled) return
+        // The endpoint returns worst-first rows, filling the limit with
+        // on-track students when few are at risk. Keep the widget actionable:
+        // below/at-risk students plus anyone within two absences of the line.
+        setAtRisk(
+          students.filter((student) => {
+            if (student.status === 'below_threshold' || student.status === 'at_risk') return true
+            if (student.status !== 'on_track') return false
+            return (student.absencesBeforeBelowThreshold ?? Number.POSITIVE_INFINITY) <= 2
+          }),
+        )
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setRiskError(error instanceof Error ? error.message : 'The at-risk list could not load.')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRiskLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user.id, riskSectionId, riskRetryKey])
 
   const subjectMap = useMemo(() => {
     const map = new Map<string, Subject>()
@@ -79,6 +184,12 @@ function TeacherDashboard({ user }: { user: User }) {
     { label: 'Sessions Today', value: overview?.counts.sessionsToday ?? 0, icon: CalendarCheck },
     { label: 'Disputes', value: overview?.counts.pendingDisputes ?? 0, icon: ClipboardList },
   ]
+
+  const periodTotals = useMemo(() => summarizeTrends(overview?.trends), [overview?.trends])
+  const trendSegments = buildTrendSegments(periodTotals)
+  const stackedRecords = stackedTrendTotal(periodTotals)
+  const countedRecords = periodTotals.present + periodTotals.late + periodTotals.absent
+  const periodRate = countedRecords > 0 ? Math.round(((periodTotals.present + periodTotals.late) / countedRecords) * 100) : 0
 
   if (loading) return <LoadingSpinner className="min-h-[400px]" />
 
@@ -130,6 +241,123 @@ function TeacherDashboard({ user }: { user: User }) {
         </div>
       </div>
       
+      {/* Reporting period selector */}
+      <section
+        aria-label="Dashboard reporting period"
+        className="mb-8 flex flex-col gap-4 border border-zinc-200 bg-zinc-50/60 p-4 sm:flex-row sm:items-end sm:justify-between dark:border-zinc-800 dark:bg-zinc-900/30"
+      >
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Reporting period</p>
+          <p className="mt-1 text-xs font-medium text-zinc-600 dark:text-zinc-300">
+            {reportingRange.startDate} – {reportingRange.endDate}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <div role="group" aria-label="Reporting period presets" className="flex flex-wrap gap-1.5">
+            {DASHBOARD_PERIODS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={period === option.value}
+                onClick={() => setPeriod(option.value)}
+                className={`h-9 rounded-none border px-3 text-[10px] font-bold uppercase tracking-widest transition-colors ${
+                  period === option.value
+                    ? 'border-maroon bg-maroon text-white dark:border-golden dark:bg-golden dark:text-maroon-dark'
+                    : 'border-zinc-300 bg-white text-zinc-500 hover:border-maroon hover:text-maroon dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:border-golden dark:hover:text-golden'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          {period === 'custom' ? (
+            <div className="flex items-end gap-2">
+              <div className="space-y-1">
+                <label htmlFor="dashboard-from" className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+                  From
+                </label>
+                <Input
+                  id="dashboard-from"
+                  type="date"
+                  value={customFrom}
+                  max={customTo}
+                  onChange={(event) => setCustomFrom(event.target.value)}
+                  className="h-9 w-36 rounded-none text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="dashboard-to" className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+                  To
+                </label>
+                <Input
+                  id="dashboard-to"
+                  type="date"
+                  value={customTo}
+                  min={customFrom}
+                  onChange={(event) => setCustomTo(event.target.value)}
+                  className="h-9 w-36 rounded-none text-xs"
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      {/* Period trend summary (the overview endpoint's range semantics) */}
+      <div className="mb-8 border border-zinc-200 bg-background p-5 dark:border-zinc-800">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+              Attendance in this period
+            </p>
+            <p className="mt-1 text-sm font-bold text-foreground">
+              {countedRecords > 0
+                ? `${periodRate}% attended across ${countedRecords} record${countedRecords === 1 ? '' : 's'}`
+                : 'No counted attendance records in this period'}
+            </p>
+          </div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+            {periodTotals.disputed} disputed · {periodTotals.excused} excused excluded from the rate
+          </p>
+        </div>
+        <div
+          className="mt-4 flex h-2 w-full overflow-hidden bg-zinc-200 dark:bg-zinc-800"
+          role="img"
+          aria-label={`Attendance in this period: ${periodTotals.present} present, ${periodTotals.late} late, ${periodTotals.absent} absent, ${periodTotals.excused} excused. ${periodTotals.disputed} disputed records are excluded from the stack.`}
+        >
+          {stackedRecords > 0
+            ? trendSegments.map((segment) =>
+                segment.percent > 0 ? (
+                  <div
+                    key={segment.key}
+                    className={`h-full ${segment.barClassName}`}
+                    style={{ width: `${segment.percent}%` }}
+                  />
+                ) : null,
+              )
+            : null}
+        </div>
+        {periodTotals.excused > 0 ? (
+          <p className="mt-2 text-[10px] text-zinc-500 dark:text-zinc-400">
+            Excused records are shown in the stack but excluded from the attendance rate.
+          </p>
+        ) : null}
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {trendSegments.map((segment) => (
+            <div key={segment.key}>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">{segment.label}</p>
+              <p className={`text-xl font-heading font-bold ${segment.textClassName}`}>{segment.value}</p>
+            </div>
+          ))}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Disputed</p>
+            <p className="text-xl font-heading font-bold text-amber-600 dark:text-amber-400">
+              {periodTotals.disputed}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-0 border border-zinc-300 dark:border-zinc-800 mb-12 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
         {statCards.map((stat, index) => {
@@ -230,6 +458,16 @@ function TeacherDashboard({ user }: { user: User }) {
         )}
       </div>
 
+      <StudentsAtRiskCard
+        students={atRisk}
+        sections={sections}
+        sectionId={riskSectionId}
+        loading={riskLoading}
+        error={riskError}
+        onSectionChange={setRiskSectionId}
+        onRetry={() => setRiskRetryKey((key) => key + 1)}
+      />
+
       <div className="grid lg:grid-cols-2 gap-8">
         {/* My Subjects List */}
         <Card className="rounded-none border-zinc-300/80 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden">
@@ -302,46 +540,118 @@ function TeacherDashboard({ user }: { user: User }) {
 // Super Admin Dashboard Component
 // ============================================================================
 
-function SuperAdminDashboard({ user }: { user: User }) {
-  const [loading, setLoading] = useState(true)
-  const [overview, setOverview] = useState<DashboardOverview | null>(null)
+const outcomeStyles: Record<string, string> = {
+  success:
+    'border-green-300 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300',
+  danger: 'border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300',
+  neutral:
+    'border-zinc-300 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300',
+}
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setOverview(await api.getDashboardOverview())
+const healthToneClasses: Record<string, string> = {
+  operational: 'border-green-300 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300',
+  degraded: 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300',
+  unavailable: 'border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300',
+}
+
+function SuperAdminDashboard({ user }: { user: User }) {
+  const [overview, setOverview] = useState<AdminOverview | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const startedRef = useRef(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      setOverview(await api.getAdminOverview())
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to load the administration overview')
+    } finally {
       setLoading(false)
     }
-    fetchData()
   }, [])
 
-  const weeklyTrends = (overview?.trends ?? []).map((trend) => {
-    const total = trend.present + trend.late + trend.absent + trend.disputed || 1
-    return {
-      day: new Date(`${trend.date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short' }),
-      present: Math.round((trend.present / total) * 100),
-      late: Math.round((trend.late / total) * 100),
-      absent: Math.round((trend.absent / total) * 100),
-    }
-  })
-  const anomalies = (overview?.recentDisputes ?? []).map((record) => ({
-    id: record.id,
-    type: record.disputeReason ?? 'Attendance Dispute',
-    student: record.studentName,
-    time: new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    severity: record.disputeReason?.toLowerCase().includes('geo') ? 'High' : 'Medium',
-  }))
-  
+  useEffect(() => {
+    // One request per mount even under React StrictMode's double-invoked
+    // effects; the retry button still calls load() directly.
+    if (startedRef.current) return
+    startedRef.current = true
+    void load()
+  }, [load])
+
+  if (loading && !overview) return <LoadingSpinner className="min-h-[400px]" />
+
+  if (error && !overview) {
+    return (
+      <div
+        role="alert"
+        className="border border-red-300 bg-red-50 p-8 text-center dark:border-red-900 dark:bg-red-950/30"
+      >
+        <p className="text-sm font-bold uppercase tracking-widest text-red-700 dark:text-red-300">
+          The administration overview couldn’t load
+        </p>
+        <p className="mt-2 text-sm text-red-700/80 dark:text-red-300/80">{error}</p>
+        <Button className="mt-5" onClick={() => void load()}>
+          Try Again
+        </Button>
+      </div>
+    )
+  }
+
+  const counts = overview?.counts
+  const health = overview ? summarizeAdminHealth(overview.health) : null
+  const accountSplits = counts ? buildAccountSplits(counts) : []
+  const recentActivity = overview?.recentActivity ?? []
+
   const statCards = [
-    { label: 'Total Faculty', value: overview?.counts.faculty ?? 0, icon: Users },
-    { label: 'Total Students', value: overview?.counts.students ?? 0, icon: Users },
-    { label: 'Total Subjects', value: overview?.counts.subjects ?? 0, icon: BookOpen },
-    { label: 'System Health', value: 'Nominal', icon: ShieldCheck },
+    {
+      label: 'Active Faculty',
+      value: counts?.activeFaculty ?? 0,
+      caption: `${counts?.disabledFaculty ?? 0} disabled`,
+      icon: UserCheck,
+    },
+    {
+      label: 'Active Students',
+      value: counts?.activeStudents ?? 0,
+      caption: `${counts?.disabledStudents ?? 0} disabled`,
+      icon: Users,
+    },
+    {
+      label: 'Active Sessions Now',
+      value: counts?.activeSessions ?? 0,
+      caption: 'Live class sessions',
+      icon: Activity,
+    },
+    {
+      label: 'Pending Disputes',
+      value: counts?.pendingDisputes ?? 0,
+      caption: 'Awaiting faculty review',
+      icon: ClipboardList,
+    },
   ]
 
-  if (loading) return <LoadingSpinner className="min-h-[400px]" />
-  
+  const quickActions = [
+    { label: 'Manage Users', href: '/faculty/users', icon: Users, description: 'Edit accounts, roles, and access.' },
+    { label: 'Reports', href: '/faculty/reports', icon: BarChart3, description: 'Institution-wide attendance summaries.' },
+    { label: 'Audit Log', href: '/faculty/audit-logs', icon: FileClock, description: 'Trace administrative changes.' },
+    { label: 'Settings', href: '/faculty/settings', icon: Settings, description: 'Institution-wide defaults.' },
+  ]
+
   return (
     <>
+      {error ? (
+        <div
+          role="alert"
+          className="mb-6 flex flex-col gap-2 border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
+        >
+          <span>{error}</span>
+          <Button variant="outline" size="sm" onClick={() => void load()}>
+            Refresh
+          </Button>
+        </div>
+      ) : null}
+
       {/* Header Area */}
       <div className="flex flex-col md:flex-row items-start md:items-end justify-between mb-12 border-b border-zinc-200 dark:border-zinc-800 pb-8">
         <div>
@@ -351,14 +661,25 @@ function SuperAdminDashboard({ user }: { user: User }) {
           <h1 className="text-4xl md:text-5xl font-heading font-bold text-foreground tracking-tight">
             {user.fullName}
           </h1>
+          <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+            {overview?.scope === 'department'
+              ? `${overview.department ?? 'Department'} scope`
+              : 'Institution-wide accounts, audit, and operations.'}
+          </p>
         </div>
-        <div className="mt-4 md:mt-0">
+        <div className="mt-4 md:mt-0 flex flex-col items-start gap-2 md:items-end">
           <Badge variant='default' className={`px-4 py-1.5 text-xs font-bold uppercase tracking-widest rounded-none bg-golden text-maroon hover:bg-golden`}>
             Super Administrator
           </Badge>
+          <Link
+            href="/faculty/server-status"
+            className="text-[10px] font-bold uppercase tracking-widest text-maroon hover:underline dark:text-golden"
+          >
+            View server status
+          </Link>
         </div>
       </div>
-      
+
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-0 border border-zinc-300 dark:border-zinc-800 mb-12 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
         {statCards.map((stat, index) => {
@@ -369,114 +690,182 @@ function SuperAdminDashboard({ user }: { user: User }) {
                 <Icon className="w-4 h-4" />
                 <p className="text-[10px] font-bold uppercase tracking-widest">{stat.label}</p>
               </div>
-              <p className="text-4xl font-heading font-bold text-foreground">
-                {stat.value}
-              </p>
+              <p className="text-4xl font-heading font-bold text-foreground">{stat.value}</p>
+              <p className="mt-2 text-[10px] uppercase tracking-widest text-zinc-400">{stat.caption}</p>
             </div>
           )
         })}
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-8 mb-12">
-        {/* System Activity Chart */}
-        <Card className="lg:col-span-2 rounded-none border-zinc-300/80 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden">
-          <CardHeader className="border-b border-zinc-200 dark:border-zinc-800 p-6">
+      <div className="grid gap-8 mb-12 lg:grid-cols-5">
+        {/* Accounts panel */}
+        <Card className="rounded-none border-zinc-300/80 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden lg:col-span-2">
+          <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-zinc-200 dark:border-zinc-800 p-6 bg-zinc-50 dark:bg-zinc-900/50">
             <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-maroon dark:text-golden" />
-              University Attendance Trend
+              <Users className="w-4 h-4 text-maroon dark:text-golden" />
+              Accounts
             </CardTitle>
+            <Button variant="ghost" size="sm" className="gap-1 text-[10px] font-bold uppercase tracking-widest hover:text-maroon dark:hover:text-golden" asChild>
+              <Link href="/faculty/users">
+                Manage
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+            </Button>
           </CardHeader>
-          <CardContent className="p-8">
-            <div className="flex items-end justify-between h-48 gap-2">
-              {weeklyTrends.map((day) => (
-                <div key={day.day} className="flex-1 h-full flex flex-col justify-end items-center group">
-                  <div className="w-full flex-1 flex flex-col justify-end gap-[1px]">
-                    <div className="w-full bg-maroon-dark dark:bg-maroon transition-all" style={{ height: `${day.absent}%` }} title={`Absent: ${day.absent}%`} />
-                    <div className="w-full bg-golden transition-all" style={{ height: `${day.late}%` }} title={`Late: ${day.late}%`} />
-                    <div className="w-full bg-maroon dark:bg-white transition-all group-hover:opacity-90" style={{ height: `${day.present}%` }} title={`Present: ${day.present}%`} />
+          <CardContent className="p-6 space-y-6">
+            {accountSplits.map((split) => (
+              <div key={split.key}>
+                <div className="flex items-end justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-bold text-foreground">{split.label}</p>
+                    <p className="text-[10px] uppercase tracking-widest text-zinc-400">
+                      {split.active.toLocaleString()} active · {split.inactive.toLocaleString()} disabled
+                    </p>
                   </div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mt-4">{day.day}</span>
+                  <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400">
+                    {split.activePercent}% active
+                  </p>
                 </div>
-              ))}
-            </div>
-            <div className="flex justify-center gap-6 mt-8 pt-6 border-t border-dashed border-zinc-200 dark:border-zinc-800">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-maroon dark:bg-white border border-zinc-900/10"></div>
-                <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-500">Present</span>
+                <div
+                  className="mt-3 h-1.5 w-full overflow-hidden bg-zinc-200 dark:bg-zinc-800"
+                  role="img"
+                  aria-label={`${split.label}: ${split.active} active, ${split.inactive} disabled`}
+                >
+                  <div
+                    className="h-full bg-maroon dark:bg-golden"
+                    style={{ width: `${split.activePercent}%` }}
+                  />
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-golden border border-zinc-900/10"></div>
-                <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-500">Late</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-maroon-dark dark:bg-maroon border border-zinc-900/10"></div>
-                <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-500">Absent</span>
-              </div>
-            </div>
+            ))}
+            {accountSplits.length === 0 ? (
+              <p className="text-sm text-zinc-500">Account counts are unavailable right now.</p>
+            ) : null}
           </CardContent>
         </Card>
 
-        {/* Anomaly Log */}
-        <Card className="rounded-none border-zinc-300/80 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden flex flex-col">
-          <CardHeader className="border-b border-zinc-200 dark:border-zinc-800 p-6">
-            <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 text-maroon dark:text-red-400">
-              <ShieldCheck className="w-4 h-4" />
-              Detected Anomalies
+        {/* Recent administrative activity */}
+        <Card className="rounded-none border-zinc-300/80 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden lg:col-span-3">
+          <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-zinc-200 dark:border-zinc-800 p-6 bg-zinc-50 dark:bg-zinc-900/50">
+            <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+              <Clock className="w-4 h-4 text-maroon dark:text-golden" />
+              Recent administrative activity
             </CardTitle>
+            <Button variant="ghost" size="sm" className="gap-1 text-[10px] font-bold uppercase tracking-widest hover:text-maroon dark:hover:text-golden" asChild>
+              <Link href="/faculty/audit-logs">
+                Full log
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+            </Button>
           </CardHeader>
-          <CardContent className="p-0 flex-1 flex flex-col">
-            <div className="flex-1">
-              {anomalies.length === 0 && (
-                <div className="p-8 text-center">
-                  <ShieldCheck className="w-8 h-8 text-zinc-300 dark:text-zinc-700 mx-auto mb-3" />
-                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">No anomalies detected</p>
-                  <p className="text-xs text-zinc-400 mt-1">Disputed records will appear here for review.</p>
-                </div>
-              )}
-              {anomalies.map((anomaly, idx) => (
-                <div key={anomaly.id} className={`p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-colors ${idx !== 0 ? 'border-t border-zinc-200 dark:border-zinc-800' : ''}`}>
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-xs font-bold text-foreground">{anomaly.type}</span>
-                    <span className={`text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 ${anomaly.severity === 'High' ? 'bg-maroon text-white dark:bg-red-900/30 dark:text-red-400' : 'bg-golden/20 text-golden'}`}>{anomaly.severity}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs text-zinc-500">
-                    <span>{anomaly.student}</span>
-                    <span>{anomaly.time}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="border-t border-zinc-200 dark:border-zinc-800 p-4">
-              <Button variant="outline" className="w-full text-[10px] font-bold uppercase tracking-widest rounded-none">
-                View Audit Log <ArrowRight className="w-3 h-3 ml-2" />
-              </Button>
-            </div>
+          <CardContent className="p-0">
+            {recentActivity.length === 0 ? (
+              <div className="p-12 text-center">
+                <Clock className="mx-auto mb-3 h-8 w-8 text-zinc-300 dark:text-zinc-700" />
+                <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">
+                  No administrative activity yet
+                </p>
+              </div>
+            ) : (
+              <ul>
+                {recentActivity.slice(0, 6).map((entry, index) => (
+                  <li
+                    key={entry.id}
+                    className={`flex items-start justify-between gap-4 p-4 ${index !== 0 ? 'border-t border-zinc-200 dark:border-zinc-800' : ''}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-foreground">
+                        {formatActivityAction(entry.action)}
+                      </p>
+                      <p className="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
+                        {entry.actorName} · {entry.actorRole.replace('_', ' ')} · {formatRelativeTime(entry.createdAt)}
+                      </p>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={outcomeStyles[activityOutcomeTone(entry.outcome)]}
+                    >
+                      {activityOutcomeLabel(entry.outcome)}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Admin Actions */}
-      <div className="mb-12">
-        <div className="flex items-center gap-2 mb-6">
-          <div className="w-1.5 h-1.5 bg-maroon dark:bg-golden" />
-          <h2 className="text-lg font-heading font-bold uppercase tracking-wider">Administrative Controls</h2>
-        </div>
-        <div className="grid md:grid-cols-3 gap-6">
-          <Link href="/faculty/users" className="group block p-6 border border-zinc-300 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 hover:bg-maroon hover:border-maroon dark:hover:bg-zinc-800 transition-all duration-300 relative overflow-hidden shadow-[0_4px_20px_rgba(123,17,19,0.02)] hover:shadow-md">
-            <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity"><ArrowRight className="w-5 h-5 text-white dark:text-golden" /></div>
-            <h3 className="text-xl font-heading font-bold text-foreground group-hover:text-white dark:group-hover:text-golden mb-2">Manage Users</h3>
-            <p className="text-sm text-zinc-500 group-hover:text-zinc-300 dark:group-hover:text-zinc-400">Add, edit, or remove faculty and student accounts.</p>
-          </Link>
-          <Link href="/faculty/subjects" className="group block p-6 border border-zinc-300 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 hover:bg-maroon hover:border-maroon dark:hover:bg-zinc-800 transition-all duration-300 relative overflow-hidden shadow-[0_4px_20px_rgba(123,17,19,0.02)] hover:shadow-md">
-            <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity"><ArrowRight className="w-5 h-5 text-white dark:text-golden" /></div>
-            <h3 className="text-xl font-heading font-bold text-foreground group-hover:text-white dark:group-hover:text-golden mb-2">View Global Subjects</h3>
-            <p className="text-sm text-zinc-500 group-hover:text-zinc-300 dark:group-hover:text-zinc-400">Oversee all active subjects and enrollment metrics.</p>
-          </Link>
-          <Link href="/faculty/reports" className="group block p-6 border border-zinc-300 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 hover:bg-maroon hover:border-maroon dark:hover:bg-zinc-800 transition-all duration-300 relative overflow-hidden shadow-[0_4px_20px_rgba(123,17,19,0.02)] hover:shadow-md">
-            <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity"><ArrowRight className="w-5 h-5 text-white dark:text-golden" /></div>
-            <h3 className="text-xl font-heading font-bold text-foreground group-hover:text-white dark:group-hover:text-golden mb-2">System Reports</h3>
-            <p className="text-sm text-zinc-500 group-hover:text-zinc-300 dark:group-hover:text-zinc-400">Export structured data and generate audit logs.</p>
-          </Link>
+      {/* System health + quick actions */}
+      <div className="grid gap-8 lg:grid-cols-2 mb-12">
+        <Card className="rounded-none border-zinc-300/80 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden">
+          <CardHeader className="border-b border-zinc-200 dark:border-zinc-800 p-6">
+            <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+              <Database className="w-4 h-4 text-maroon dark:text-golden" />
+              System Health
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            {health ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`inline-flex h-10 w-10 items-center justify-center border ${healthToneClasses[health.state]}`}
+                    aria-hidden="true"
+                  >
+                    <ShieldCheck className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-2xl font-heading font-bold text-foreground">{health.label}</p>
+                    <p role="status" className="text-xs text-zinc-500 dark:text-zinc-400">
+                      {health.statusLine}
+                    </p>
+                  </div>
+                </div>
+                <ul className="mt-5 space-y-2">
+                  {health.services.map((service) => (
+                    <li key={service.label} className="flex items-center justify-between text-xs">
+                      <span className="font-bold uppercase tracking-widest text-zinc-500">{service.label}</span>
+                      <span className={service.ok ? 'font-bold text-green-700 dark:text-green-400' : 'font-bold text-red-700 dark:text-red-400'}>
+                        {service.ok ? 'Connected' : 'Unavailable'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-4 border-t border-dashed border-zinc-200 pt-4 text-[10px] uppercase tracking-widest text-zinc-400 dark:border-zinc-800">
+                  Checked {overview ? formatHealthTimestamp(overview.health.timestamp) : '—'}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-500">Health data is unavailable.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <div>
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-1.5 h-1.5 bg-maroon dark:bg-golden" />
+            <h2 className="text-lg font-heading font-bold uppercase tracking-wider">Administrative Controls</h2>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {quickActions.map((action) => {
+              const Icon = action.icon
+              return (
+                <Link
+                  key={action.href}
+                  href={action.href}
+                  className="group block border border-zinc-300 p-5 transition-colors hover:border-maroon hover:bg-maroon dark:border-zinc-800 dark:hover:border-golden dark:hover:bg-zinc-900"
+                >
+                  <div className="flex items-center gap-2 text-maroon dark:text-golden group-hover:text-white dark:group-hover:text-golden">
+                    <Icon className="h-4 w-4" />
+                    <h3 className="text-sm font-heading font-bold">{action.label}</h3>
+                  </div>
+                  <p className="mt-2 text-xs text-zinc-500 group-hover:text-white/80 dark:group-hover:text-zinc-400">
+                    {action.description}
+                  </p>
+                </Link>
+              )
+            })}
+          </div>
         </div>
       </div>
     </>
@@ -527,7 +916,14 @@ export default function FacultyPortalPage() {
       <Sidebar user={user} onLogout={handleLogout} />
       <main className="flex-1 overflow-y-auto">
         <div className="p-8 md:p-12 max-w-6xl mx-auto">
-          {isSuper ? <SuperAdminDashboard user={user} /> : <TeacherDashboard user={user} />}
+          {isSuper ? (
+            <SuperAdminDashboard user={user} />
+          ) : (
+            <>
+              <OfflineSyncPanel className="mb-6" />
+              <TeacherDashboard user={user} />
+            </>
+          )}
         </div>
       </main>
     </div>

@@ -1,5 +1,6 @@
 import { Platform } from 'react-native'
-import { getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice } from '@polycheck/shared'
+import { classifyAttendanceSyncError, getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRow, type EnrollImportRequest, type EnrollImportResult, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput, type AiCapabilities, type AiChatSendInput, type AiChatSendResult, type AiChatThread, type AiThreadSummary, type AttendanceStanding, type AppNotification, type NotificationReadInput, type PushTokenInput, type StudentAtRisk, type ExcuseDecision, type ExcuseReason, type CreateTeacherResult, type CreateStudentResult, type TeacherResetStudentPasswordResult, type EmergencyDeviceReleaseInput, type EmergencyDeviceReleaseResult, type UnregisterDeviceResult, type UpdateContactsInput, type SystemReport, type SystemReportFilters, type SystemReportPage, type SystemReportStats, type CreateSystemReportInput, type UpdateSystemReportStatusInput } from '@polycheck/shared'
+import { bytesToBase64 } from '../lib/base64'
 import { API_BASE } from './api-config'
 import { getOrCreateTeacherSigningKey } from './signing-key'
 import { getOrCreateInstallationId } from './device-id'
@@ -26,7 +27,6 @@ import {
   setOfflineOwner,
   setServerClockOffset,
   type OfflineOperationKind,
-  type OfflineSendResult,
 } from './offline-store'
 
 const STORAGE_KEY = 'polycheck-user'
@@ -92,28 +92,8 @@ function queryPath(path: string, values: Record<string, string | number | undefi
   return query ? `${path}?${query}` : path
 }
 
-export function classifyAttendanceSyncError(
-  error: string,
-): Extract<OfflineSendResult, { outcome: 'retryable' | 'terminal' }> {
-  const message = error.toLowerCase()
-  const terminalEvidenceFailures = [
-    'signature is invalid',
-    'does not match this session',
-    'outside the session geofence',
-    'mocked locations are not accepted',
-    'location accuracy is too poor',
-    'location fix is stale',
-    'location uncertainty extends outside',
-    'scan timestamp is invalid',
-    'attendance window has expired',
-    'already submitted for this session',
-    'not enrolled in this section',
-    'clientattemptid was already used',
-  ]
-  return terminalEvidenceFailures.some((failure) => message.includes(failure))
-    ? { outcome: 'terminal', error }
-    : { outcome: 'retryable', error }
-}
+// Re-exported for existing consumers/tests; the implementation is shared with web.
+export { classifyAttendanceSyncError }
 
 function notifyAuthListeners() {
   for (const listener of authListeners) listener(currentUser)
@@ -130,8 +110,13 @@ const FETCH_TIMEOUT = 10_000
 // Offline fallback data — returns empty arrays for first-run / unsynced users
 // instead of displaying fake subjects that don't correspond to real data.
 
-class ApiRequestError extends Error {
-  constructor(message: string, readonly status: number) {
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+    readonly remainingMinutes?: number,
+  ) {
     super(message)
   }
 }
@@ -159,6 +144,28 @@ async function authHeaders(): Promise<Record<string, string>> {
   }
 }
 
+const ASSISTANT_MIME_TYPES: Record<string, string> = {
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  csv: 'text/csv',
+}
+
+const ASSISTANT_UTIS: Record<string, string> = {
+  pdf: 'com.adobe.pdf',
+  docx: 'org.openxmlformats.wordprocessingml.document',
+  csv: 'public.comma-separated-values-text',
+}
+
+function safeDownloadFileName(fileName: string): string {
+  const safe = fileName.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')
+  return safe || 'assistant-download'
+}
+
+function assistantFileExtension(fileName: string): string {
+  const index = fileName.lastIndexOf('.')
+  return index === -1 ? '' : fileName.slice(index + 1).toLowerCase()
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 204) return undefined as T
   const text = await res.text()
@@ -177,9 +184,44 @@ async function handleResponse<T>(res: Response): Promise<T> {
       notifyAuthListeners()
     }
     const message = data && typeof data === 'object' ? data.message : res.statusText
-    throw new ApiRequestError(Array.isArray(message) ? message.join('. ') : message || 'Request failed', res.status)
+    const code = data && typeof data === 'object' && typeof data.code === 'string' ? data.code : undefined
+    const remainingMinutes =
+      data && typeof data === 'object' && typeof data.remainingMinutes === 'number'
+        ? data.remainingMinutes
+        : undefined
+    if (res.status === 403 && code === 'password_change_required' && currentUser && !currentUser.mustChangePassword) {
+      // Admin reset the password while this device kept an older cached
+      // profile. Flag it locally so the blocking password gate takes over.
+      currentUser = { ...currentUser, mustChangePassword: true }
+      await saveUserToStore(currentUser)
+      notifyAuthListeners()
+    }
+    throw new ApiRequestError(Array.isArray(message) ? message.join('. ') : message || 'Request failed', res.status, code, remainingMinutes)
   }
   return (data ?? {}) as T
+}
+
+/**
+ * Parses a failed login response into the shared typed error shape so callers
+ * can branch on `device_cooldown_active` and render the remaining minutes.
+ */
+async function throwLoginError(res: Response, fallback: string): Promise<never> {
+  const data = await res.json().catch(() => ({ message: fallback }))
+  const rawMessage = data && typeof data === 'object' ? (data as { message?: unknown }).message : undefined
+  const message = Array.isArray(rawMessage)
+    ? rawMessage.join('. ')
+    : typeof rawMessage === 'string'
+      ? rawMessage
+      : fallback
+  const code =
+    data && typeof data === 'object' && typeof (data as { code?: unknown }).code === 'string'
+      ? ((data as { code: string }).code)
+      : undefined
+  const remainingMinutes =
+    data && typeof data === 'object' && typeof (data as { remainingMinutes?: unknown }).remainingMinutes === 'number'
+      ? ((data as { remainingMinutes: number }).remainingMinutes)
+      : undefined
+  throw new ApiRequestError(message, res.status, code, remainingMinutes)
 }
 
 async function get<T>(path: string): Promise<T> {
@@ -187,10 +229,10 @@ async function get<T>(path: string): Promise<T> {
   return handleResponse<T>(res)
 }
 
-async function post<T>(path: string, body?: unknown): Promise<T> {
+async function post<T>(path: string, body?: unknown, operationId?: string): Promise<T> {
   const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: await authHeaders(),
+    headers: { ...await authHeaders(), ...(operationId ? { 'Idempotency-Key': operationId } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   return handleResponse<T>(res)
@@ -236,15 +278,13 @@ export const api = {
   },
 
   async loginStudent(studentId: string, password?: string): Promise<User | null> {
+    const deviceId = await getOrCreateInstallationId().catch(() => undefined)
     const res = await fetchWithTimeout(`${API_BASE}/auth/mobile/login/student`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ studentId, password: password ?? '' }),
+      body: JSON.stringify({ studentId, password: password ?? '', ...(deviceId ? { deviceId } : {}) }),
     })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: 'Login failed' }))
-      throw new Error(err.message || 'Login failed')
-    }
+    if (!res.ok) await throwLoginError(res, 'Login failed')
     const data = await res.json()
     currentUser = data.user as User
     await initializeOfflineStore(currentUser.id)
@@ -255,15 +295,13 @@ export const api = {
   },
 
   async loginFaculty(email: string, password?: string): Promise<User | null> {
+    const deviceId = await getOrCreateInstallationId().catch(() => undefined)
     const res = await fetchWithTimeout(`${API_BASE}/auth/mobile/login/faculty`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password: password ?? '' }),
+      body: JSON.stringify({ email, password: password ?? '', ...(deviceId ? { deviceId } : {}) }),
     })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: 'Login failed' }))
-      throw new Error(err.message || 'Login failed')
-    }
+    if (!res.ok) await throwLoginError(res, 'Login failed')
     const data = await res.json()
     currentUser = data.user as User
     await initializeOfflineStore(currentUser.id)
@@ -291,7 +329,10 @@ export const api = {
     currentUser = cachedUser
     await initializeOfflineStore(cachedUser.id)
     try {
-      const profile = await get<User>('/auth/me')
+      // Cold start gets a shorter verification budget so a black-holed network
+      // cannot hold the splash for the full request timeout.
+      const response = await fetchWithTimeout(`${API_BASE}/auth/me`, { headers: await authHeaders() }, 4_000)
+      const profile = await handleResponse<User>(response)
       currentUser = profile
       await saveUserToStore(profile)
       notifyAuthListeners()
@@ -301,10 +342,54 @@ export const api = {
         notifyAuthListeners()
         return cachedUser
       }
+      if (error instanceof ApiRequestError && error.status === 403 && error.code === 'password_change_required') {
+        // The backend blocks protected endpoints until the temporary password
+        // is replaced. Keep the cached profile (flagged) so the password gate
+        // takes over instead of silently signing the user out.
+        const flagged = { ...cachedUser, mustChangePassword: true }
+        currentUser = flagged
+        await saveUserToStore(flagged)
+        notifyAuthListeners()
+        return flagged
+      }
       setOfflineOwner(null)
       currentUser = null
       await Promise.all([saveUserToStore(null), setTokenInStore(null)])
       return null
+    }
+  },
+
+  async changePassword(currentPassword: string | undefined, newPassword: string): Promise<User> {
+    try {
+      // The shared contract types this as a full User. Some server builds
+      // return only the rotation status, so accept both shapes and merge.
+      const result = await post<User | { message?: string; mustChangePassword?: boolean }>(
+        '/auth/change-password',
+        { currentPassword, newPassword },
+      )
+      const existing = currentUser ?? await loadUserFromStore()
+      let nextUser: User
+      if (result && typeof result === 'object' && 'role' in result && 'fullName' in result) {
+        nextUser = result
+      } else if (existing) {
+        nextUser = {
+          ...existing,
+          mustChangePassword: (result as { mustChangePassword?: boolean }).mustChangePassword ?? false,
+        }
+      } else {
+        nextUser = await get<User>('/auth/me')
+      }
+      currentUser = nextUser
+      await saveUserToStore(nextUser)
+      notifyAuthListeners()
+      return nextUser
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 403 && error.code === 'password_change_required') {
+        // A 403 here is an ordinary validation message (e.g. a current-password
+        // requirement), not a reason to drop the authenticated session.
+        throw new Error(error.message && error.message !== 'Forbidden' ? error.message : 'You must change your temporary password before continuing.')
+      }
+      throw error
     }
   },
 
@@ -479,10 +564,20 @@ export const api = {
     }, key.secretKey)
     try {
       // Public key persists server-side and provisioning is rate limited, so only
-      // upload when it was not already provisioned in this session.
+      // upload when it was not already provisioned in this session. A key that
+      // matches the cached session is already known to the server.
       if (!provisionedTeacherKeys.has(user.id)) {
-        await post('/auth/provision-key', { publicKey: key.publicKey })
-        provisionedTeacherKeys.add(user.id)
+        if (session.teacherPublicKey === key.publicKey) {
+          provisionedTeacherKeys.add(user.id)
+        } else {
+          try {
+            await post('/auth/provision-key', { publicKey: key.publicKey })
+            provisionedTeacherKeys.add(user.id)
+          } catch (error) {
+            if (!isNetworkError(error)) throw error
+            throw new Error('Connect to the internet once to register this device before generating offline QR codes.')
+          }
+        }
       }
       const activated = await post<Session>(`/sessions/${sessionId}/activate`, { validityMinutes, gracePeriodMinutes: effectiveGrace, token })
       await cacheSessions([activated])
@@ -520,8 +615,15 @@ export const api = {
       return ended
     }
   },
-  getSectionSessions(sectionId: string): Promise<Session[]> {
-    return get(`/sessions?sectionId=${sectionId}`)
+  async getSectionSessions(sectionId: string): Promise<Session[]> {
+    try {
+      const sessions = await get<Session[]>(`/sessions?sectionId=${sectionId}`)
+      await cacheSessions(sessions)
+      return sessions
+    } catch (error) {
+      if (!isNetworkError(error)) throw error
+      return getCachedSessions(sectionId)
+    }
   },
 
   // ── Attendance ──
@@ -541,6 +643,12 @@ export const api = {
   },
   getDashboardOverview(filters: Pick<AttendanceReportFilters, 'startDate' | 'endDate'> = {}): Promise<DashboardOverview> {
     return get(queryPath('/dashboard/overview', filters))
+  },
+  getAdminOverview(): Promise<AdminOverview> {
+    return get('/dashboard/admin-overview')
+  },
+  getServerStatus(): Promise<ServerStatusSnapshot> {
+    return get('/dashboard/server-status')
   },
   getAttendanceForStudent(studentId: string): Promise<AttendanceRecord[]> {
     return get(`/attendance/student/${studentId}`)
@@ -570,18 +678,19 @@ export const api = {
       const validityEnd = tokenPayload.issuedAt + tokenPayload.validityMinutes * 60_000
       const graceEnd = validityEnd + tokenPayload.gracePeriodMinutes * 60_000
       if (evidence?.mocked === true) return { error: 'Mocked locations are not accepted' }
-      if ((evidence?.accuracyMeters ?? 0) > 50) return { error: 'Location accuracy is too poor to verify attendance' }
-      if (evidence?.locationCapturedAt && Math.abs(capturedAt - new Date(evidence.locationCapturedAt).getTime()) > 2 * 60_000) {
-        return { error: 'Location fix is stale. Acquire a fresh location and try again.' }
-      }
       const cachedSession = await getCachedSession(sessionId)
       if (!cachedSession || !isWithinGeofence(lat, lon, cachedSession.geofence.latitude, cachedSession.geofence.longitude, cachedSession.geofence.radiusMeters)) {
         return { error: 'You are outside the session geofence' }
+      }
+      if ((evidence?.accuracyMeters ?? 0) > 50) return { error: 'Location accuracy is too poor to verify attendance' }
+      if (evidence?.locationCapturedAt && Math.abs(capturedAt - new Date(evidence.locationCapturedAt).getTime()) > 2 * 60_000) {
+        return { error: 'Location fix is stale. Acquire a fresh location and try again.' }
       }
       if (!Number.isFinite(capturedAt) || capturedAt < tokenPayload.issuedAt - 30_000 || capturedAt > graceEnd) {
         return { error: 'The QR attendance window has expired' }
       }
       await enqueueOfflineOperation('attendance_scan', payload)
+      const deviceSecurityFlagged = Object.values(evidence?.deviceSecurity ?? {}).some((detected) => detected === true)
       const record: AttendanceRecord = {
         id: `offline:${sessionId}:${studentId}`,
         sessionId,
@@ -589,7 +698,7 @@ export const api = {
         studentId,
         studentName,
         timestamp,
-        status: capturedAt <= validityEnd ? 'present' : 'late',
+        status: deviceSecurityFlagged ? 'disputed' : capturedAt <= validityEnd ? 'present' : 'late',
         coordinates: { latitude: lat, longitude: lon },
         deviceId,
         tokenSnapshot: qrToken,
@@ -648,24 +757,159 @@ export const api = {
     return post('/disputes', data)
   },
 
+  // ── Excuses (Wave 4) ──
+  requestExcuse(
+    recordId: string,
+    input: { reason: ExcuseReason; description: string; evidenceData?: string },
+  ): Promise<AttendanceRecord> {
+    return post(`/attendance/records/${encodeURIComponent(recordId)}/excuse`, input)
+  },
+  listExcuses(filters: { status?: 'requested' | 'approved' | 'rejected'; sectionId?: string; startDate?: string; endDate?: string } = {}): Promise<AttendanceRecord[]> {
+    return get(queryPath('/attendance/excuses', { ...filters }))
+  },
+  decideExcuse(recordId: string, decision: ExcuseDecision, note?: string): Promise<AttendanceRecord> {
+    return post(`/attendance/records/${encodeURIComponent(recordId)}/excuse/decision`, { decision, note })
+  },
+  getAtRiskStudents(filters: { sectionId?: string; limit?: number } = {}): Promise<StudentAtRisk[]> {
+    return get(queryPath('/attendance/at-risk', { ...filters }))
+  },
+
+  // ── Notifications (Wave 4) ──
+  getNotifications(filters: { unreadOnly?: boolean; limit?: number } = {}): Promise<AppNotification[]> {
+    return get(queryPath('/notifications', { unreadOnly: filters.unreadOnly ? 'true' : undefined, limit: filters.limit }))
+  },
+  getUnreadNotificationCount(): Promise<number> {
+    return get('/notifications/unread-count')
+  },
+  markNotificationsRead(input: NotificationReadInput = { all: true }): Promise<number> {
+    return post('/notifications/read', input)
+  },
+  registerPushToken(input: PushTokenInput): Promise<boolean> {
+    return post('/notifications/push-token', input)
+  },
+
   // ── Users ──
   getStudents(): Promise<Student[]> { return get('/users/students') },
   getStudent(id: string): Promise<Student> { return get(`/users/${id}`) },
   getTeachers(): Promise<Teacher[]> { return get('/users/teachers') },
-  createTeacher(data: CreateTeacherInput): Promise<Teacher> {
+  getUsers(filters: AdminUserFilters = {}): Promise<AdminUserPage> {
+    return get(queryPath('/users', {
+      role: filters.role,
+      q: filters.q,
+      department: filters.department,
+      status: filters.status,
+      limit: filters.limit,
+      offset: filters.offset,
+    }))
+  },
+  updateUser(id: string, input: UpdateUserInput): Promise<User> {
+    return patch(`/users/${id}`, input)
+  },
+  changeUserRole(id: string, role: AssignableRole): Promise<User> {
+    return patch(`/users/${id}/role`, { role })
+  },
+  createAdmin(input: CreateAdminInput): Promise<User> {
+    return post('/users/admins', input)
+  },
+  createTeacher(data: CreateTeacherInput): Promise<CreateTeacherResult> {
     return post('/users/teachers', data)
   },
-  createStudent(data: CreateStudentInput): Promise<Student> {
+  createStudent(data: CreateStudentInput): Promise<CreateStudentResult> {
     return post('/users/students', data)
   },
-  resetUserPassword(id: string, password: string): Promise<ResetUserPasswordResult> {
-    return patch(`/users/${id}/password`, { password })
+  resetUserPassword(id: string, password?: string): Promise<ResetUserPasswordResult> {
+    return patch(`/users/${id}/password`, password === undefined ? {} : { password })
   },
   setUserStatus(id: string, isActive: boolean): Promise<User> {
     return patch(`/users/${id}/status`, { isActive })
   },
+  teacherResetStudentPassword(
+    studentId: string,
+    sectionId: string,
+  ): Promise<TeacherResetStudentPasswordResult> {
+    return post(`/users/students/${studentId}/teacher-reset-password`, { sectionId })
+  },
+  emergencyReleaseDevice(
+    studentId: string,
+    input: EmergencyDeviceReleaseInput,
+  ): Promise<EmergencyDeviceReleaseResult> {
+    return post(`/users/students/${studentId}/device-release`, input)
+  },
+  unregisterDevice(deviceId: string): Promise<UnregisterDeviceResult> {
+    return post('/users/me/device/unregister', { deviceId })
+  },
+  async updateContacts(input: UpdateContactsInput): Promise<User> {
+    const updated = await patch<User>('/users/me/contacts', input)
+    if (currentUser) {
+      currentUser = { ...currentUser, ...updated }
+      await saveUserToStore(currentUser)
+      notifyAuthListeners()
+    }
+    return updated
+  },
+
+  // ── System issue & feedback reporting (SR) ──
+  createSystemReport(input: CreateSystemReportInput): Promise<SystemReport> {
+    return post('/reports', input)
+  },
+  getMySystemReports(): Promise<SystemReport[]> {
+    return get('/reports/my')
+  },
+  getSystemReports(filters: SystemReportFilters = {}): Promise<SystemReportPage> {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    }
+    const query = params.toString()
+    return get(`/reports${query ? `?${query}` : ''}`)
+  },
+  getSystemReportStats(): Promise<SystemReportStats> {
+    return get('/reports/stats')
+  },
+  getSystemReport(id: string): Promise<SystemReport> {
+    return get(`/reports/${id}`)
+  },
+  updateSystemReportStatus(id: string, input: UpdateSystemReportStatusInput): Promise<SystemReport> {
+    return patch(`/reports/${id}/status`, input)
+  },
+  /**
+   * Streams the report screenshot with the bearer token and returns it as a
+   * data URL for <Image source={{ uri }}>. Returns null when the attachment is
+   * missing or the submission lost.
+   */
+  async getReportScreenshotDataUrl(reportId: string): Promise<string | null> {
+    try {
+      const res = await fetchWithTimeout(`${API_BASE}/reports/${reportId}/screenshot`, {
+        headers: await authHeaders(),
+      })
+      if (!res.ok) return null
+      const contentType = res.headers.get('content-type') ?? 'image/jpeg'
+      const buffer = new Uint8Array(await res.arrayBuffer())
+      return `data:${contentType};base64,${bytesToBase64(buffer)}`
+    } catch {
+      return null
+    }
+  },
+
+  // ── Bulk import ──
+  importStudents(data: StudentImportRequest): Promise<StudentImportResult> {
+    return post('/users/students/import', data, data.idempotencyKey)
+  },
+  getStudentImportJob(jobId: string): Promise<ImportJobStatus> {
+    return get(`/users/students/import/jobs/${encodeURIComponent(jobId)}`)
+  },
+  previewEnrollImport(sectionId: string, rows: EnrollImportRow[]): Promise<EnrollImportResult> {
+    return post(`/sections/${sectionId}/enrollments/import`, { mode: 'validate', rows })
+  },
+  importSectionEnrollments(sectionId: string, data: EnrollImportRequest): Promise<EnrollImportResult> {
+    return post(`/sections/${sectionId}/enrollments/import`, data, data.idempotencyKey)
+  },
+
   getSettings(): Promise<{ key: string; value: string; updatedAt: string }[]> {
     return get('/settings')
+  },
+  getAuditLogs(filters: AuditLogFilters = {}): Promise<AuditLogPage> {
+    return get(queryPath('/audit-logs', { ...filters }))
   },
   setSetting(key: string, value: string): Promise<{ key: string; value: string; updatedAt: string }> {
     return put(`/settings/${encodeURIComponent(key)}`, { value })
@@ -692,7 +936,16 @@ export const api = {
     return del(`/section-roles/${sectionId}/${studentId}/${role}`)
   },
   getSectionRoles(sectionId: string): Promise<SectionRole[]> { return get(`/section-roles/${sectionId}`) },
-  getStudentRoles(studentId: string): Promise<SectionRole[]> { return get(`/section-roles/student/${studentId}`) },
+  async getStudentRoles(studentId: string): Promise<SectionRole[]> {
+    try {
+      return await get<SectionRole[]>(`/section-roles/student/${studentId}`)
+    } catch (error) {
+      // Roles are auxiliary on class detail screens; offline shows no badges
+      // instead of failing the whole cached page.
+      if (!isNetworkError(error)) throw error
+      return []
+    }
+  },
 
   // ── Session Permissions ──
   grantSessionPermission(sectionId: string, studentId: string): Promise<SessionPermission> {
@@ -718,7 +971,8 @@ export const api = {
 
   // ── Miscellaneous ──
   enrollStudent(data: EnrollStudentInput): Promise<boolean> {
-    return post(`/sections/${data.sectionId}/enroll-student`, data)
+    const { sectionId, ...body } = data
+    return post(`/sections/${sectionId}/enroll-student`, body)
   },
   getCalendarEvents(userId: string, startDate: string, endDate: string): Promise<CalendarEvent[]> {
     return get(`/calendar/events?startDate=${startDate}&endDate=${endDate}`)
@@ -731,31 +985,76 @@ export const api = {
     const user = this.getCurrentUser()
     if (!user) return
     await initializeOfflineStore(user.id)
-    await drainOfflineQueue(async (kind: OfflineOperationKind, payload) => {
-      if (kind === 'attendance_scan') {
-        const response = await post<{
-          queued: false
-          results: Array<AttendanceRecord | { error: string }>
-        }>('/sync/attendance', {
-          records: [payload],
-        })
-        const result = response.results[0]
-        if (!result) return { outcome: 'retryable', error: 'Attendance sync returned no result' }
-        if ('error' in result) return classifyAttendanceSyncError(result.error)
-        await removeCachedAttendanceAttempt(String(payload.sessionId), user.id)
-        await cacheAttendanceRecords([{ ...result, isSynced: true }])
-        return { outcome: 'synced' }
+    await drainOfflineQueue(async (kind: OfflineOperationKind, payload, operationId) => {
+      try {
+        if (kind === 'attendance_scan') {
+          const response = await post<{
+            queued: false
+            results: Array<AttendanceRecord | { error: string; retryable?: boolean }>
+          } | { queued: true; receiptId: string }>('/sync/attendance/batches', {
+            records: [payload],
+          })
+          const completion = response.queued
+            ? await get<{ state: 'completed'; results: Array<AttendanceRecord | { error: string; retryable?: boolean }> } | { state: 'pending' | 'failed' }>(`/sync/attendance/batches/${response.receiptId}`)
+            : { state: 'completed' as const, results: response.results }
+          if (completion.state !== 'completed') return { outcome: 'pending', error: 'Awaiting server confirmation' }
+          const result = completion.results[0]
+          if (!result) return { outcome: 'retryable', error: 'Attendance sync returned no result' }
+          if ('error' in result) {
+            const classified = result.retryable === false
+              ? { outcome: 'terminal' as const, error: result.error }
+              : classifyAttendanceSyncError(result.error)
+            // Terminal evidence will never sync; remove the phantom optimistic
+            // row so history does not claim it is still awaiting confirmation.
+            if (classified.outcome === 'terminal') {
+              await removeCachedAttendanceAttempt(String(payload.sessionId), user.id)
+            }
+            return classified
+          }
+          await removeCachedAttendanceAttempt(String(payload.sessionId), user.id)
+          await cacheAttendanceRecords([{ ...result, isSynced: true }])
+          return { outcome: 'synced' }
+        }
+        if (kind === 'scan_attempt') {
+          const result = await post<SubmitAttendanceResult>('/attendance/check', payload, operationId)
+          if (!result.success) return { outcome: 'terminal', error: result.message || result.reason || 'Check-in rejected' }
+          return
+        }
+        const sessionId = String(payload.sessionId)
+        if (kind === 'session_activation') {
+          const sessionId = String(payload.sessionId)
+          const activated = await post<Session>(`/sessions/${sessionId}/activate`, { validityMinutes: payload.validityMinutes, gracePeriodMinutes: payload.gracePeriodMinutes, token: payload.token }, operationId)
+          // Apply the authoritative response: the server may have ended the
+          // session already if the QR window fully expired before sync.
+          await cacheSessions([activated])
+          return
+        }
+        if (kind !== 'session_end') return { outcome: 'terminal', error: 'Unknown offline operation. Contact support.' }
+        await post(`/sessions/${sessionId}/end`, undefined, operationId)
+      } catch (error) {
+        if (error instanceof ApiRequestError && error.status === 409 && (kind === 'session_activation' || kind === 'session_end')) {
+          // Read directly from the server: cached local state cannot prove a commit.
+          try {
+            const session = await get<Session>(`/sessions/${String(payload.sessionId)}`)
+            const committed = kind === 'session_activation'
+              ? Boolean(payload.token && session.qrToken === payload.token)
+              : Boolean(session.endedAt)
+            if (committed) {
+              await cacheSessions([session])
+              return { outcome: 'synced' }
+            }
+            if (session.qrToken || session.endedAt) return { outcome: 'terminal', error: 'Session changed on the server. Review it with your instructor.' }
+            return { outcome: 'retryable', error: 'Session operation is still in progress' }
+          } catch (reconciliationError) {
+            error = reconciliationError
+          }
+        }
+        const message = error instanceof Error ? error.message : 'Sync failed'
+        if (error instanceof ApiRequestError && [400, 403, 404, 410, 422].includes(error.status)) {
+          return { outcome: 'terminal', error: message }
+        }
+        return { outcome: 'retryable', error: message }
       }
-      if (kind === 'scan_attempt') {
-        await post('/attendance/check', payload)
-        return
-      }
-      const sessionId = String(payload.sessionId)
-      if (kind === 'session_activation') {
-        await post(`/sessions/${sessionId}/activate`, { validityMinutes: payload.validityMinutes, gracePeriodMinutes: payload.gracePeriodMinutes, token: payload.token })
-        return
-      }
-      await post(`/sessions/${sessionId}/end`)
     })
   },
   async preSyncOfflineData(): Promise<void> {
@@ -803,6 +1102,89 @@ export const api = {
       return { students, sections, sessions }
     }
   },
+
+  // ── AI assistant (AI0/AI2/AI3) ──
+  getAiCapabilities(): Promise<AiCapabilities> {
+    return get('/ai/capabilities')
+  },
+  sendAiChatMessage(data: AiChatSendInput): Promise<AiChatSendResult> {
+    return post('/ai/chat', data)
+  },
+  getAiThread(threadId: string): Promise<AiChatThread> {
+    return get(`/ai/threads/${encodeURIComponent(threadId)}`)
+  },
+  listAiThreads(): Promise<AiThreadSummary[]> {
+    return get('/ai/threads')
+  },
+  deleteAiThread(threadId: string): Promise<boolean> {
+    return del(`/ai/threads/${encodeURIComponent(threadId)}`)
+  },
+  /**
+   * Authenticated assistant file handoff (AI1/AI6). Downloads into a unique
+   * cache subfolder and opens the native share sheet. Throws a user-facing
+   * message so screens can toast it without inspecting native errors.
+   */
+  async downloadAssistantFile(downloadPath: string, filename: string): Promise<void> {
+    const token = await getTokenFromStore()
+    if (!token) throw new Error('Sign in again to download assistant files.')
+
+    let FileSystemModule: typeof import('expo-file-system/legacy') | null = null
+    let SharingModule: typeof import('expo-sharing') | null = null
+    try {
+      FileSystemModule = require('expo-file-system/legacy')
+      SharingModule = require('expo-sharing')
+    } catch {
+      // Modules are always present in a native build; treat a load failure as
+      // unavailable rather than crashing the chat surface.
+    }
+
+    if (!FileSystemModule?.cacheDirectory) {
+      throw new Error('Temporary file storage is unavailable on this device.')
+    }
+    if (!SharingModule || !(await SharingModule.isAvailableAsync())) {
+      throw new Error('The system share sheet is unavailable on this device.')
+    }
+
+    const safeName = safeDownloadFileName(filename)
+    const extension = assistantFileExtension(safeName)
+    const folder = `${FileSystemModule.cacheDirectory}assistant-downloads/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}/`
+    const localUri = `${folder}${safeName}`
+
+    await FileSystemModule.makeDirectoryAsync(folder, { intermediates: true })
+    const normalizedPath = downloadPath.startsWith('/') ? downloadPath : `/${downloadPath}`
+
+    let result: { uri: string; status: number }
+    try {
+      result = await FileSystemModule.downloadAsync(`${API_BASE}${normalizedPath}`, localUri, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    } catch (error) {
+      await FileSystemModule.deleteAsync(folder, { idempotent: true }).catch(() => undefined)
+      throw error instanceof Error ? error : new Error('The file could not be downloaded. Please try again.')
+    }
+
+    if (result.status < 200 || result.status >= 300) {
+      await FileSystemModule.deleteAsync(folder, { idempotent: true }).catch(() => undefined)
+      if (result.status === 401 || result.status === 403) {
+        throw new Error('Your session cannot access this file. Sign in again and retry.')
+      }
+      throw new Error('The file could not be downloaded. Please try again.')
+    }
+
+    // The cache copy is intentionally kept: the receiving app may still read
+    // it while the share sheet finishes, and the OS owns cache eviction.
+    await SharingModule.shareAsync(result.uri, {
+      mimeType: ASSISTANT_MIME_TYPES[extension] ?? 'application/octet-stream',
+      UTI: ASSISTANT_UTIS[extension],
+      dialogTitle: filename,
+    })
+  },
+
+  // ── Standing evaluation (AI4) ──
+  getMyStanding(): Promise<AttendanceStanding[]> {
+    return get('/me/standing')
+  },
 }
 
 api satisfies ApiClient
+

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   Gavel, 
@@ -18,16 +18,29 @@ import {
   Calendar,
   ChevronDown,
   ChevronUp,
-  Search
+  Search,
+  ShieldAlert,
+  Cpu,
 } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, AttendanceRecord, DisputeReason, Subject, Section, Session } from '@polycheck/shared'
+import { formatCampusDate } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { FilterBar, FilterDateRange, FilterSelect } from '@/components/FilterBar'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useNotifications } from '@/lib/notifications'
+import { useUrlFilters } from '@/lib/hooks/use-url-filters'
+import { SecurityDisputeBadge } from './security-dispute-badge'
+
+const FILTER_SCHEMA = {
+  subjectId: { defaultValue: '' },
+  sectionId: { defaultValue: '' },
+  from: { defaultValue: '' },
+  to: { defaultValue: '' },
+} as const
 
 const DISPUTE_LABELS: Record<DisputeReason, string> = {
   outside_geofence: 'Outside Geofence',
@@ -43,6 +56,10 @@ const DISPUTE_LABELS: Record<DisputeReason, string> = {
   not_enrolled: 'Not Enrolled',
   qr_expired: 'QR Expired',
   rate_limited: 'Rate Limited',
+  mocked_location: 'Mock GPS / Fake Location',
+  rooted_device: 'Rooted / Jailbroken Device',
+  hook_detected: 'Hooking Tool Detected',
+  emulator_detected: 'Android Emulator Detected',
 }
 
 const DISPUTE_ICONS: Record<DisputeReason, React.ElementType> = {
@@ -59,11 +76,25 @@ const DISPUTE_ICONS: Record<DisputeReason, React.ElementType> = {
   not_enrolled: AlertTriangle,
   qr_expired: Timer,
   rate_limited: AlertTriangle,
+  mocked_location: AlertTriangle,
+  rooted_device: ShieldAlert,
+  hook_detected: Cpu,
+  emulator_detected: Smartphone,
 }
 
 export default function DisputesPage() {
+  return (
+    <Suspense fallback={null}>
+      <DisputesContent />
+    </Suspense>
+  )
+}
+
+function DisputesContent() {
   const router = useRouter()
   const { addNotification } = useNotifications()
+  const filters = useUrlFilters(FILTER_SCHEMA)
+  const { subjectId: selectedSubjectId, sectionId: selectedSectionId, from, to } = filters.values
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [allSections, setAllSections] = useState<Section[]>([])
@@ -74,7 +105,6 @@ export default function DisputesPage() {
   // Filtering & Tab States
   const [activeTab, setActiveTab] = useState<'pending' | 'resolved'>('pending')
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all')
 
   // Expand/collapse states (collapsed by default)
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({})
@@ -155,6 +185,26 @@ export default function DisputesPage() {
     return map
   }, [allSessions])
 
+  const subjectOptions = useMemo(
+    () => subjects.map((subject) => ({ value: subject.id, label: `${subject.name} (${subject.code})` })),
+    [subjects],
+  )
+
+  const sectionOptions = useMemo(
+    () =>
+      allSections
+        .filter((section) => !selectedSubjectId || section.subjectId === selectedSubjectId)
+        .map((section) => {
+          const subject = subjectMap.get(section.subjectId)
+          return {
+            value: section.id,
+            label: `Section ${section.section}${subject ? ` · ${subject.code}` : ''}`,
+          }
+        })
+        .sort((left, right) => left.label.localeCompare(right.label)),
+    [allSections, selectedSubjectId, subjectMap],
+  )
+
   // Derived state
   const pendingCount = allDisputes.filter(r => !r.disputeResolved).length
   const resolvedCount = allDisputes.filter(r => r.disputeResolved).length
@@ -173,13 +223,18 @@ export default function DisputesPage() {
   )
 
   const records = useMemo(() =>
-    selectedSubjectId === 'all'
-      ? filteredByTabAndSearch
-      : filteredByTabAndSearch.filter(r => {
-          const sec = sectionMap.get(r.sectionId)
-          return sec && sec.subjectId === selectedSubjectId
-        }),
-    [filteredByTabAndSearch, selectedSubjectId, sectionMap]
+    filteredByTabAndSearch.filter((record) => {
+      const section = sectionMap.get(record.sectionId)
+      if (selectedSubjectId && section?.subjectId !== selectedSubjectId) return false
+      if (selectedSectionId && record.sectionId !== selectedSectionId) return false
+      if (from || to) {
+        const recordDate = formatCampusDate(new Date(record.timestamp))
+        if (from && recordDate < from) return false
+        if (to && recordDate > to) return false
+      }
+      return true
+    }),
+    [filteredByTabAndSearch, selectedSubjectId, selectedSectionId, from, to, sectionMap]
   )
 
   const groupedDisputes = useMemo(() => {
@@ -271,7 +326,7 @@ export default function DisputesPage() {
         <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-300/80 dark:border-zinc-800">
           <div>
             <h1 className="text-xl font-heading font-bold text-maroon-dark dark:text-golden">Disputed Records</h1>
-            <p className="text-xs text-gray-400 dark:text-gray-500">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
               {pendingCount} pending, {resolvedCount} resolved
             </p>
           </div>
@@ -302,40 +357,61 @@ export default function DisputesPage() {
             </button>
           </div>
 
-          {/* Search & Subject Filters Row */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative flex items-center bg-white dark:bg-surface-dark border border-zinc-300 dark:border-zinc-800">
-              <input
-                type="text"
-                placeholder="Search student or ID..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-10 py-2 bg-transparent text-sm focus:outline-none dark:text-white"
-              />
-              <Search className="w-4 h-4 text-zinc-400 absolute left-3" />
-              {searchQuery && (
-                <button 
-                  onClick={() => setSearchQuery('')} 
-                  className="absolute right-3 text-zinc-400 hover:text-zinc-600 text-xs font-bold"
-                >
-                  Clear
-                </button>
-              )}
+          {/* Search & Filter Row */}
+          <FilterBar
+            onClear={() => {
+              filters.clearAll()
+              setSearchQuery('')
+            }}
+            activeCount={filters.activeCount + (searchQuery ? 1 : 0)}
+            label="Dispute filters"
+          >
+            <div className="min-w-[14rem] flex-1 space-y-1">
+              <label
+                htmlFor="dispute-search"
+                className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400"
+              >
+                Student
+              </label>
+              <div className="relative flex items-center border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900">
+                <Search className="pointer-events-none absolute left-3 w-4 h-4 text-zinc-400" />
+                <input
+                  id="dispute-search"
+                  type="search"
+                  placeholder="Search student or ID…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-9 w-full bg-transparent pl-9 pr-3 text-sm outline-none dark:text-white"
+                />
+              </div>
             </div>
 
-            <select
+            <FilterSelect
+              id="dispute-subject"
+              label="Subject"
               value={selectedSubjectId}
-              onChange={(e) => { setSelectedSubjectId(e.target.value); setExpandedSubjects({}); setExpandedSections({}); }}
-              className="px-4 py-2 border border-zinc-300 dark:border-zinc-800 rounded-none bg-white dark:bg-surface-dark text-sm focus:outline-none dark:text-zinc-300 cursor-pointer min-w-[200px]"
-            >
-              <option value="all">All Subjects</option>
-              {subjects.map((subj) => (
-                <option key={subj.id} value={subj.id}>
-                  {subj.name} ({subj.code})
-                </option>
-              ))}
-            </select>
-          </div>
+              onChange={(value) => filters.setFilters({ subjectId: value, sectionId: '' })}
+              options={subjectOptions}
+              allLabel="All subjects"
+              className="min-w-[12rem] flex-1"
+            />
+            <FilterSelect
+              id="dispute-section"
+              label="Section"
+              value={selectedSectionId}
+              onChange={(value) => filters.setFilter('sectionId', value)}
+              options={sectionOptions}
+              allLabel="All sections"
+              className="min-w-[12rem] flex-1"
+            />
+            <FilterDateRange
+              idPrefix="dispute"
+              from={from}
+              to={to}
+              onFromChange={(value) => filters.setFilter('from', value)}
+              onToChange={(value) => filters.setFilter('to', value)}
+            />
+          </FilterBar>
 
           {/* Grouped Disputes Cards */}
           <div className="space-y-4">
@@ -344,7 +420,7 @@ export default function DisputesPage() {
                 <CardContent className="p-12 text-center">
                   <CheckCircle className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mx-auto mb-4" />
                   <h2 className="text-lg font-heading font-bold dark:text-white mb-2">No {activeTab} disputes found</h2>
-                  <p className="text-sm text-gray-400 dark:text-gray-500">
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
                     Try adjusting your filters or search keywords.
                   </p>
                 </CardContent>
@@ -460,8 +536,9 @@ export default function DisputesPage() {
                                                     {record.disputeReason ? DISPUTE_LABELS[record.disputeReason] : 'Unknown'}
                                                   </span>
                                                 </div>
+                                                <SecurityDisputeBadge reason={record.disputeReason} />
                                                 {record.notes && (
-                                                  <div className="text-[11px] text-zinc-500 dark:text-zinc-400 line-clamp-2">
+                                                  <div className="text-[11px] text-zinc-500 dark:text-zinc-400 line-clamp-2 mt-1">
                                                     {record.notes}
                                                   </div>
                                                 )}
@@ -522,26 +599,29 @@ export default function DisputesPage() {
                       </span>
                     </div>
                   )}
-                  <div className="flex gap-2">
-                    <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-16">Reason:</span>
-                    <span className="text-maroon dark:text-golden font-bold">{selectedRecord.disputeReason ? DISPUTE_LABELS[selectedRecord.disputeReason] : 'Unknown'}</span>
+                  <div className="flex gap-2 items-start">
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-16 pt-0.5">Reason:</span>
+                    <div className="space-y-1">
+                      <span className="text-maroon dark:text-golden font-bold block">{selectedRecord.disputeReason ? DISPUTE_LABELS[selectedRecord.disputeReason] : 'Unknown'}</span>
+                      <SecurityDisputeBadge reason={selectedRecord.disputeReason} />
+                    </div>
                   </div>
                   <div className="flex gap-2">
-                    <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-16">Subject:</span>
-                    <span className="dark:text-gray-300">{rSubj ? rSubj.name : 'Unknown'}</span>
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-16">Subject:</span>
+                    <span className="dark:text-zinc-300">{rSubj ? rSubj.name : 'Unknown'}</span>
                   </div>
                   <div className="flex gap-2">
-                    <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-16">Section:</span>
-                    <span className="dark:text-gray-300">Section {rSec ? rSec.section : 'Unknown'}</span>
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-16">Section:</span>
+                    <span className="dark:text-zinc-300">Section {rSec ? rSec.section : 'Unknown'}</span>
                   </div>
                   <div className="flex gap-2">
-                    <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-16">Session:</span>
-                    <span className="dark:text-gray-300">{new Date(selectedRecord.timestamp).toLocaleDateString()} {rSess ? `· ${rSess.startTime} - ${rSess.endTime}` : ''}</span>
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-16">Session:</span>
+                    <span className="dark:text-zinc-300">{new Date(selectedRecord.timestamp).toLocaleDateString()} {rSess ? `· ${rSess.startTime} - ${rSess.endTime}` : ''}</span>
                   </div>
                   {selectedRecord.notes && (
                     <div className="flex gap-2">
-                      <span className="text-zinc-500 dark:text-gray-500 shrink-0 w-16">Notes:</span>
-                      <span className="dark:text-gray-300">{selectedRecord.notes}</span>
+                      <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-16">Notes:</span>
+                      <span className="dark:text-zinc-300">{selectedRecord.notes}</span>
                     </div>
                   )}
                 </div>
@@ -550,7 +630,7 @@ export default function DisputesPage() {
 
             {!selectedRecord.disputeResolved && user.role === 'teacher' ? (
               <>
-                <p className="text-xs uppercase tracking-[0.5px] text-gray-400 dark:text-gray-500 mb-3">What would you like to do?</p>
+                <p className="text-xs uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-3">What would you like to do?</p>
 
                 <Button className="w-full bg-green-600 hover:bg-green-700 text-white flex items-center gap-2 mb-2 rounded-none" onClick={() => handleResolve('accept')}>
                   <CheckCircle className="w-4 h-4" /> Accept — Keep as Present
@@ -560,7 +640,7 @@ export default function DisputesPage() {
                   <XCircle className="w-4 h-4" /> Reject — Mark as Absent
                 </Button>
 
-                <p className="text-xs uppercase tracking-[0.5px] text-gray-400 dark:text-gray-500 mb-2">Or override to:</p>
+                <p className="text-xs uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-2">Or override to:</p>
                 <div className="flex gap-2 mb-4">
                   {(['present', 'late', 'absent'] as const).map((s) => (
                     <Button key={s} variant="outline" className="flex-1 rounded-none" onClick={() => handleResolve('override', s)}>
@@ -577,7 +657,7 @@ export default function DisputesPage() {
               </div>
             )}
 
-            <Button variant="ghost" className="w-full text-gray-400 rounded-none" onClick={() => setSelectedRecord(null)}>
+            <Button variant="ghost" className="w-full text-zinc-500 dark:text-zinc-400 rounded-none" onClick={() => setSelectedRecord(null)}>
               {selectedRecord.disputeResolved ? 'Close' : 'Cancel'}
             </Button>
             </>

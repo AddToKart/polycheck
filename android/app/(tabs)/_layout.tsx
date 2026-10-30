@@ -1,7 +1,11 @@
-import { Platform } from 'react-native'
+import { useEffect, useState } from 'react'
+import { AppState, Platform } from 'react-native'
 import { Tabs } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import type { AiCapabilities } from '@polycheck/shared'
+import { api } from '../../services/api-client'
+import { shouldShowAssistantEntry } from '../../lib/assistant-visibility'
 import { pupColors } from '../../theme/colors'
 import { useTheme } from '../../theme/ThemeContext'
 
@@ -9,6 +13,7 @@ const iconMap: Record<string, keyof typeof MaterialIcons.glyphMap> = {
   dashboard: 'grid-view',
   schedule: 'calendar-month',
   scan: 'qr-code-scanner',
+  assistant: 'smart-toy',
   history: 'history',
 }
 
@@ -16,6 +21,29 @@ export default function TabLayout() {
   const { isDark } = useTheme()
   const insets = useSafeAreaInsets()
   const bottomMargin = Math.max(insets.bottom, 12)
+  const [capabilities, setCapabilities] = useState<AiCapabilities | null>(null)
+
+  // Institution AI policy gates the Assistant tab (master → students). A
+  // failed read hides the entry point; the assistant screen keeps its own
+  // unavailable state for anything reached through a deep link.
+  useEffect(() => {
+    let active = true
+    const load = () => {
+      void api.getAiCapabilities()
+        .then((next) => { if (active) setCapabilities(next) })
+        .catch(() => { if (active) setCapabilities(null) })
+    }
+    load()
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') load()
+    })
+    return () => {
+      active = false
+      subscription.remove()
+    }
+  }, [])
+
+  const assistantVisible = shouldShowAssistantEntry('student', capabilities)
 
   return (
     <Tabs
@@ -79,7 +107,17 @@ export default function TabLayout() {
       <Tabs.Screen name="schedule" options={{ title: 'Schedule', tabBarLabel: 'Schedule', tabBarButtonTestID: 'student-tab-schedule' }} />
       <Tabs.Screen name="enroll" options={{ href: null }} />
       <Tabs.Screen name="scan" options={{ title: 'Scan', tabBarLabel: 'Scan', tabBarButtonTestID: 'student-tab-scan' }} />
+      <Tabs.Screen
+        name="assistant"
+        options={{
+          title: 'Assistant',
+          tabBarLabel: 'Assistant',
+          tabBarButtonTestID: 'student-tab-assistant',
+          href: assistantVisible ? undefined : null,
+        }}
+      />
       <Tabs.Screen name="id-card" options={{ href: null }} />
+      <Tabs.Screen name="notifications" options={{ href: null }} />
       <Tabs.Screen name="history" options={{ title: 'Audit', tabBarLabel: 'Audit', tabBarButtonTestID: 'student-tab-audit' }} />
       <Tabs.Screen name="subject-info/[id]" options={{ href: null }} />
       <Tabs.Screen name="subject-info/[id]/create-session" options={{ href: null }} />

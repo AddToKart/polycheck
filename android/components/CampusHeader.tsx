@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Image, Pressable, Text, View } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
+import { pupColors } from '../theme/colors'
 
 type CampusHeaderProps = {
   eyebrow: string
@@ -23,7 +24,7 @@ export const CampusHeader = ({ eyebrow, title, subtitle, onBack, actions }: Camp
               onPress={onBack}
               className="h-10 w-10 items-center justify-center rounded-none border border-white/20 bg-white/10"
             >
-              <MaterialIcons name="arrow-back" size={20} color="#FFFFFF" />
+              <MaterialIcons name="arrow-back" size={20} color={pupColors.white} />
             </Pressable>
           ) : (
             <Image source={require('../assets/pup-logo.png')} className="h-10 w-10" resizeMode="contain" />

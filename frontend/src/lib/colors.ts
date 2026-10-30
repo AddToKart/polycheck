@@ -11,4 +11,13 @@ export const pupColors = {
   surfaceDark: '#121215',
   black: '#0A0A0A',
   white: '#FFFFFF',
+  // Attendance marker colors (maplibre paint, not CSS). `excused` uses
+  // goldenDark in the map layer below.
+  present: '#22C55E',
+  absent: '#EF4444',
+  pending: '#9CA3AF',
+  disputed: '#F59E0B',
+  // Chart-only neutrals that need a raw value in SVG/legend props.
+  chartPending: '#A1A1AA',
+  chartDisputed: '#D97706',
 } as const

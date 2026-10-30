@@ -13,15 +13,25 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       const status = exception.getStatus()
       const responseData = exception.getResponse()
+      const responseObject =
+        typeof responseData === 'object' && responseData !== null
+          ? (responseData as { message?: unknown; code?: unknown; error?: unknown; remainingMinutes?: unknown })
+          : null
 
-      const message =
-        typeof responseData === 'object' && responseData !== null && 'message' in responseData
-          ? (responseData as { message: unknown }).message
-          : responseData
+      const message = responseObject && 'message' in responseObject ? responseObject.message : responseData
       response.status(status).json({
         statusCode: status,
         error: exception.name,
         message,
+        // Preserve machine-readable markers (password_change_required,
+        // device_cooldown_active, import_checksum_mismatch, idempotency codes,
+        // ...) that clients branch on instead of matching human-readable
+        // messages. remainingMinutes travels with device cooldown rejections so
+        // clients can render an accurate countdown without re-deriving clocks.
+        ...(responseObject && typeof responseObject.code === 'string' ? { code: responseObject.code } : {}),
+        ...(responseObject && typeof responseObject.remainingMinutes === 'number'
+          ? { remainingMinutes: responseObject.remainingMinutes }
+          : {}),
         path: request.originalUrl,
         timestamp: new Date().toISOString(),
       })

@@ -5,6 +5,7 @@ import type { RequestUser } from '../auth/authenticated-principal'
 import type { Session } from '../prisma/client'
 import { ProofStorageService } from './proof-storage.service'
 import { assertSectionInAdminScope } from '../common/admin-scope'
+import { decodeImageDataUrl } from './image-evidence'
 
 interface UploadProofInput {
   sectionId: string
@@ -118,22 +119,8 @@ export class ProofsService {
   }
 
   private decodeImage(value: string) {
-    const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(value)
-    if (!match) throw new BadRequestException('Proof must be a JPEG, PNG, or WebP data URL')
-    const buffer = Buffer.from(match[2], 'base64')
     const maxBytes = this.config.get<number>('MAX_PROOF_BYTES') ?? 5_000_000
-    if (buffer.length === 0 || buffer.length > maxBytes) {
-      throw new BadRequestException(`Proof image must be between 1 byte and ${maxBytes} bytes`)
-    }
-    const mime = match[1]
-    const validMagic =
-      (mime === 'image/jpeg' && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) ||
-      (mime === 'image/png' && buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) ||
-      (mime === 'image/webp' &&
-        buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
-        buffer.subarray(8, 12).toString('ascii') === 'WEBP')
-    if (!validMagic) throw new BadRequestException('Proof image content does not match its declared type')
-    return { buffer, extension: mime === 'image/jpeg' ? 'jpg' : mime.slice('image/'.length), mime }
+    return decodeImageDataUrl(value, maxBytes, 'Proof')
   }
 
   private present<T extends { id: string; photoUrl: string }>(proof: T) {

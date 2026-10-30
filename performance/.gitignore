@@ -1,3 +1,4 @@
 tokens*.json
 !tokens.example.json
 *.summary.json
+*fixture*.json

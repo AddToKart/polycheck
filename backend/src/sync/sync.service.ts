@@ -1,4 +1,13 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common'
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common'
+import { createHash } from 'crypto'
 import { ConfigService } from '@nestjs/config'
 import { Queue, QueueEvents, Worker } from 'bullmq'
 import type { Job } from 'bullmq'
@@ -19,6 +28,7 @@ interface SyncJobData {
 export class SyncService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SyncService.name)
   private connection?: IORedis
+  private producerConnection?: IORedis
   private queue?: Queue<SyncJobData, SyncResult[]>
   private events?: QueueEvents
   private worker?: Worker<SyncJobData, SyncResult[]>
@@ -46,7 +56,15 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
         lazyConnect: true,
       })
       await this.connection.connect()
-      this.queue = new Queue<SyncJobData, SyncResult[]>(QUEUE_NAME, { connection: this.connection })
+      this.producerConnection = new IORedis(redisUrl, {
+        maxRetriesPerRequest: 1,
+        enableOfflineQueue: false,
+        commandTimeout: 3_000,
+        connectTimeout: 3_000,
+        lazyConnect: true,
+      })
+      await this.producerConnection.connect()
+      this.queue = new Queue<SyncJobData, SyncResult[]>(QUEUE_NAME, { connection: this.producerConnection })
       this.events = new QueueEvents(QUEUE_NAME, { connection: this.connection })
       this.worker = new Worker<SyncJobData, SyncResult[]>(QUEUE_NAME, (job) => this.processJob(job), {
         connection: this.connection,
@@ -95,8 +113,56 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     void this.refreshQueueMetrics()
     // The job is durable before waiting, but SQLite records are acknowledged only after
     // the worker returns authoritative per-record results.
-    const results = await job.waitUntilFinished(this.events, 60_000)
+    const results = await job.waitUntilFinished(this.events, 5_000)
     return { queued: false as const, results }
+  }
+
+  // A receipt is not an attendance acknowledgment. Clients retain evidence until
+  // status() returns completed, including across process death or a lost response.
+  async enqueue(user: RequestUser, records: ScanAttendanceDto[]) {
+    if (!this.queue) return { queued: false as const, results: await this.processRecords(user, records) }
+    const jobId = createHash('sha256')
+      .update(JSON.stringify([user.id, records]))
+      .digest('hex')
+    try {
+      const existing = await this.queue.getJob(jobId)
+      if (existing && (await existing.getState()) === 'failed') await existing.retry()
+      await this.queue.add(
+        'process-batch',
+        { user: { id: user.id, role: user.role }, records },
+        {
+          jobId,
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 1_000 },
+          removeOnComplete: { age: 86_400, count: 100_000 },
+          removeOnFail: { age: 7 * 86_400, count: 100_000 },
+        },
+      )
+      return { queued: true as const, receiptId: jobId }
+    } catch {
+      throw new ServiceUnavailableException(
+        'Sync is temporarily unavailable. Keep the check-in on this device and retry.',
+      )
+    }
+  }
+
+  async status(user: RequestUser, receiptId: string) {
+    if (!/^[a-f0-9]{64}$/.test(receiptId)) throw new NotFoundException('Sync receipt not found')
+    if (!this.queue) throw new ServiceUnavailableException('Sync queue is unavailable')
+    const job = await this.queue.getJob(receiptId)
+    if (!job || job.data.user.id !== user.id) throw new NotFoundException('Sync receipt not found')
+    const state = await job.getState()
+    if (state === 'completed') {
+      // getJob() is a snapshot. The worker can finish between that read and
+      // getState(), so reload the committed result before acknowledging it.
+      const completed = await this.queue.getJob(receiptId)
+      if (completed?.data.user.id === user.id && Array.isArray(completed.returnvalue)) {
+        return { state: 'completed' as const, results: completed.returnvalue }
+      }
+      return { state: 'pending' as const }
+    }
+    if (state === 'failed') return { state: 'failed' as const }
+    return { state: 'pending' as const }
   }
 
   private async processRecords(user: RequestUser, records: ScanAttendanceDto[]) {
@@ -160,6 +226,8 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     this.metricsRefreshTimer = undefined
     await Promise.allSettled([this.worker?.close(), this.events?.close(), this.queue?.close()].filter(Boolean))
     this.connection?.disconnect()
+    this.producerConnection?.disconnect()
+    this.producerConnection = undefined
     this.worker = undefined
     this.events = undefined
     this.queue = undefined

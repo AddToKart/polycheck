@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing'
 import { ForbiddenException, HttpException, HttpStatus, NotFoundException, UnauthorizedException } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
-import { getRounds, hashSync } from 'bcryptjs'
+import { compare, getRounds, hashSync } from 'bcryptjs'
 import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import { AuthService } from './auth.service'
@@ -9,6 +9,8 @@ import { BetterAuthService } from './better-auth.service'
 import type { User } from '../prisma/client'
 import { DUMMY_PASSWORD_HASH, PASSWORD_HASH_COST } from './password-policy'
 import { ConfigService } from '@nestjs/config'
+import { NotificationsService } from '../notifications/notifications.service'
+import { DeviceBindingService } from '../users/device-binding.service'
 
 const VALID_PASSWORD = 'correct-horse-battery-staple'
 const VALID_HASH = hashSync(VALID_PASSWORD, 10)
@@ -30,6 +32,7 @@ function buildUser(overrides: Partial<User> = {}): User {
     scope: null,
     teacherPublicKey: null,
     isActive: true,
+    mustChangePassword: false,
     authVersion: 0,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-07-01'),
@@ -44,7 +47,13 @@ describe('AuthService', () => {
   })
 
   let service: AuthService
-  let prisma: { user: { findUnique: jest.Mock; update: jest.Mock }; session: { findMany: jest.Mock } }
+  let prisma: {
+    user: { findUnique: jest.Mock; update: jest.Mock }
+    session: { findMany: jest.Mock }
+    authAccount: { upsert: jest.Mock }
+    authSession: { deleteMany: jest.Mock; updateMany: jest.Mock }
+    $transaction: jest.Mock
+  }
   let redis: {
     consumeRateLimit: jest.Mock
     getJson: jest.Mock
@@ -56,11 +65,23 @@ describe('AuthService', () => {
   }
   let betterAuth: { auth: { api: { signInEmail: jest.Mock; signOut: jest.Mock } } }
   let events: { emit: jest.Mock }
+  let notifications: { notify: jest.Mock }
+  let deviceBinding: {
+    assertMobileLoginAllowed: jest.Mock
+    registerBinding: jest.Mock
+    getEffectiveTeacherPermissions: jest.Mock
+  }
 
   beforeEach(async () => {
     prisma = {
-      user: { findUnique: jest.fn(), update: jest.fn() },
+      user: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({ authVersion: 1 }) },
       session: { findMany: jest.fn().mockResolvedValue([]) },
+      authAccount: { upsert: jest.fn().mockResolvedValue({}) },
+      authSession: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => callback(prisma)),
     }
     redis = {
       consumeRateLimit: jest.fn().mockResolvedValue(true),
@@ -84,6 +105,15 @@ describe('AuthService', () => {
       },
     }
     events = { emit: jest.fn() }
+    notifications = { notify: jest.fn().mockResolvedValue(undefined) }
+    deviceBinding = {
+      assertMobileLoginAllowed: jest.fn().mockResolvedValue(undefined),
+      registerBinding: jest.fn().mockResolvedValue(undefined),
+      getEffectiveTeacherPermissions: jest.fn().mockResolvedValue({
+        canResetStudentPasswords: true,
+        canEmergencyUnbindDevices: true,
+      }),
+    }
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -92,6 +122,8 @@ describe('AuthService', () => {
         { provide: RedisService, useValue: redis },
         { provide: BetterAuthService, useValue: betterAuth },
         { provide: EventEmitter2, useValue: events },
+        { provide: NotificationsService, useValue: notifications },
+        { provide: DeviceBindingService, useValue: deviceBinding },
         {
           provide: ConfigService,
           useValue: {
@@ -113,6 +145,7 @@ describe('AuthService', () => {
       expect(result.token).toBe('signed-bearer-token')
       expect(result.user.id).toBe('user-1')
       expect(result.user.role).toBe('student')
+      expect(result.user.mustChangePassword).toBe(false)
       expect(result.user).not.toHaveProperty('password')
       expect(betterAuth.auth.api.signInEmail).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -219,6 +252,145 @@ describe('AuthService', () => {
     })
   })
 
+  describe('changePassword', () => {
+    it('rotates a forced temporary password and keeps the current session', async () => {
+      prisma.user.findUnique
+        .mockResolvedValueOnce(buildUser({ mustChangePassword: true }))
+        .mockResolvedValueOnce(buildUser({ mustChangePassword: false }))
+
+      const result = await service.changePassword('user-1', { newPassword: 'Replacement1!Secure' }, 'auth-sess-1')
+
+      expect(result).toMatchObject({ id: 'user-1', mustChangePassword: false })
+      expect(prisma.user.update.mock.calls[0][0].data).toMatchObject({
+        mustChangePassword: false,
+        authVersion: { increment: 1 },
+      })
+      expect(prisma.authSession.updateMany).toHaveBeenCalledWith({
+        where: { id: 'auth-sess-1', userId: 'user-1' },
+        data: { generation: 1 },
+      })
+      const updateData = prisma.user.update.mock.calls[0][0].data
+      await expect(compare('Replacement1!Secure', updateData.password)).resolves.toBe(true)
+      expect(prisma.authAccount.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { providerId_accountId: { providerId: 'credential', accountId: 'user-1' } },
+          update: expect.objectContaining({ password: updateData.password }),
+        }),
+      )
+      expect(prisma.authSession.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', id: { not: 'auth-sess-1' } },
+      })
+    })
+
+    it('verifies the current password for voluntary changes and rejects a mismatch', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser({ mustChangePassword: false }))
+
+      await expect(
+        service.changePassword(
+          'user-1',
+          { currentPassword: 'wrong-password', newPassword: 'Replacement1!Secure' },
+          'auth-sess-1',
+        ),
+      ).rejects.toThrow(UnauthorizedException)
+      expect(prisma.user.update).not.toHaveBeenCalled()
+
+      await service.changePassword(
+        'user-1',
+        { currentPassword: VALID_PASSWORD, newPassword: 'Replacement1!Secure' },
+        'auth-sess-1',
+      )
+      expect(prisma.user.update).toHaveBeenCalled()
+    })
+
+    it('requires the current password once the account is no longer forced', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser({ mustChangePassword: false }))
+
+      await expect(service.changePassword('user-1', { newPassword: 'Replacement1!Secure' })).rejects.toThrow(
+        'Current password is required',
+      )
+      expect(prisma.user.update).not.toHaveBeenCalled()
+    })
+
+    it('rate limits password change attempts', async () => {
+      redis.consumeRateLimit.mockResolvedValueOnce(false)
+
+      await expect(service.changePassword('user-1', { newPassword: 'Replacement1!Secure' })).rejects.toThrow(
+        HttpException,
+      )
+      expect(prisma.user.findUnique).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('mobile device governance', () => {
+    it('rejects a cooled student mobile login before creating a session', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser())
+      deviceBinding.assertMobileLoginAllowed.mockRejectedValueOnce(
+        new ForbiddenException({
+          statusCode: 403,
+          error: 'Forbidden',
+          code: 'device_cooldown_active',
+          remainingMinutes: 42,
+          message: 'Device change cooldown is active',
+        }),
+      )
+
+      await expect(
+        service.loginStudent('S-001', VALID_PASSWORD, '127.0.0.1', new Headers(), {
+          channel: 'mobile',
+          deviceId: 'mobile-abc',
+        }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'device_cooldown_active', remainingMinutes: 42 }),
+      })
+      expect(betterAuth.auth.api.signInEmail).not.toHaveBeenCalled()
+      expect(deviceBinding.registerBinding).not.toHaveBeenCalled()
+    })
+
+    it('binds the installation id after a successful mobile login', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser())
+
+      await service.loginStudent('S-001', VALID_PASSWORD, '127.0.0.1', new Headers(), {
+        channel: 'mobile',
+        deviceId: 'mobile-abc',
+      })
+
+      expect(deviceBinding.assertMobileLoginAllowed).toHaveBeenCalledWith('user-1')
+      expect(deviceBinding.registerBinding).toHaveBeenCalledWith('user-1', 'mobile-abc', 'student')
+    })
+
+    it('never applies device rules to web logins', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser())
+
+      await service.loginStudent('S-001', VALID_PASSWORD)
+
+      expect(deviceBinding.assertMobileLoginAllowed).not.toHaveBeenCalled()
+      expect(deviceBinding.registerBinding).not.toHaveBeenCalled()
+    })
+
+    it('adds effective delegated permissions for teacher logins and profiles', async () => {
+      const teacher = buildUser({
+        id: 'teacher-1',
+        studentId: null,
+        email: 'teacher@pup.edu',
+        role: 'teacher',
+        department: 'CS',
+      })
+      prisma.user.findUnique.mockResolvedValue(teacher)
+
+      const login = await service.loginFaculty('teacher@pup.edu', VALID_PASSWORD)
+      expect(login.user.delegatedPermissions).toEqual({
+        canResetStudentPasswords: true,
+        canEmergencyUnbindDevices: true,
+      })
+
+      const profile = await service.getProfile('teacher-1')
+      expect(profile).toMatchObject({
+        id: 'teacher-1',
+        delegatedPermissions: { canResetStudentPasswords: true, canEmergencyUnbindDevices: true },
+      })
+    })
+  })
+
   describe('privacy consent', () => {
     it('returns the configured public notice without authentication state', () => {
       expect(service.privacyNotice()).toEqual({
@@ -263,6 +435,10 @@ describe('AuthService', () => {
         where: { id: 'user-1' },
         data: { teacherPublicKey: 'pubkey' },
       })
+      expect(notifications.notify).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ type: 'key_provisioned', link: '/faculty' }),
+      )
     })
 
     it('throws NotFoundException when user missing', async () => {

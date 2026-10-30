@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native'
+import { Modal, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -12,6 +12,7 @@ import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../components/CampusPrimitives'
 import { StudentMonthCalendar, StudentWeekCalendar } from '../../components/StudentCalendarViews'
+import { useCampusToast } from '../../components/CampusToast'
 
 const EventDetail = ({ icon, label, value }: { icon: keyof typeof MaterialIcons.glyphMap; label: string; value: string }) => {
   const { isDark } = useTheme()
@@ -28,7 +29,8 @@ const EventDetail = ({ icon, label, value }: { icon: keyof typeof MaterialIcons.
 
 export default function FacultyScheduleScreen() {
   const { isDark, toggle } = useTheme()
-  const currentUser = useAuthGate(['teacher'])
+  const { showToast } = useCampusToast()
+  const currentUser = useAuthGate(['teacher', 'super_admin'])
   const [user, setUser] = useState<User | null>(null)
   const [viewMode, setViewMode] = useState<'month' | 'week'>('month')
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -50,8 +52,8 @@ export default function FacultyScheduleScreen() {
       : { start: getWeekDays(currentDate)[0].date, end: getWeekDays(currentDate)[6].date }
     void Promise.all([api.getCalendarEvents(user.id, range.start, range.end), api.getAttendanceRecords(undefined, range.start, range.end)])
       .then(([nextEvents, nextRecords]) => { setEvents(nextEvents); setAttendanceRecords(nextRecords) })
-      .catch(() => Alert.alert('Unable to load schedule', 'Please check your connection and try again.'))
-  }, [currentDate, user, viewMode])
+      .catch(() => showToast('error', 'Unable to load schedule', 'Please check your connection and try again.'))
+  }, [currentDate, showToast, user, viewMode])
 
   const monthDays = useMemo(() => getMonthDays(currentDate.getFullYear(), currentDate.getMonth()), [currentDate])
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate])
@@ -81,16 +83,17 @@ export default function FacultyScheduleScreen() {
 
   if (!user) return null
 
+  const isSuper = user.role === 'super_admin'
   const displayRange = viewMode === 'month'
     ? `${getMonthName(currentDate.getMonth())} ${currentDate.getFullYear()}`
     : `${new Date(`${weekDays[0].date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} – ${new Date(`${weekDays[6].date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}`
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID="faculty-schedule-screen">
       <CampusHeader
-        eyebrow="Faculty calendar"
-        title="Teaching schedule"
-        subtitle="See class patterns, active meetings, and rescheduled sessions in one place."
+        eyebrow={isSuper ? 'Institution calendar' : 'Faculty calendar'}
+        title={isSuper ? 'Campus schedule' : 'Teaching schedule'}
+        subtitle={isSuper ? 'See class patterns, active meetings, and rescheduled sessions across the institution.' : 'See class patterns, active meetings, and rescheduled sessions in one place.'}
         actions={<CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />}
       />
 

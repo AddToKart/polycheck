@@ -9,16 +9,17 @@ class SetSettingDto {
 }
 
 @Controller('settings')
-@Roles('super_admin')
 export class SettingsController {
   constructor(private readonly settings: SettingsService) {}
 
   @Get()
+  @Roles('teacher', 'super_admin')
   list() {
     return this.settings.list()
   }
 
   @Put(':key')
+  @Roles('super_admin')
   set(@Request() req: AuthenticatedRequest, @Param('key') key: string, @Body() dto: SetSettingDto) {
     if (req.user.scope !== 'institution') {
       throw new ForbiddenException('Only institution administrators can change institution settings')

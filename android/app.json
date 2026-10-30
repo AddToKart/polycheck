@@ -21,10 +21,11 @@
       "adaptiveIcon": {
         "backgroundColor": "#7B1113",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png"
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "edu.pup.polycheck",
-      "permissions": ["android.permission.CAMERA", "android.permission.ACCESS_FINE_LOCATION"]
+      "permissions": ["android.permission.CAMERA", "android.permission.ACCESS_FINE_LOCATION", "android.permission.POST_NOTIFICATIONS"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -33,9 +34,22 @@
       "expo-router",
       "expo-status-bar",
       [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#7B1113",
+          "dark": {
+            "backgroundColor": "#0A0A0A"
+          }
+        }
+      ],
+      [
         "expo-camera",
         {
-          "cameraPermission": "Camera is used to scan QR codes for attendance check-in."
+          "cameraPermission": "Camera is used to scan QR codes for attendance check-in.",
+          "microphonePermission": false
         }
       ],
       [
@@ -49,6 +63,14 @@
         {
           "cameraPermission": "Camera is used to capture proof-of-class photos during active sessions.",
           "photosPermission": "Photo access is used to select proof-of-class images."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#7B1113",
+          "defaultChannel": "default"
         }
       ],
       "@sentry/react-native/expo"

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import * as Location from 'expo-location'
-import { formatCampusDate, type Section, type Session, type Subject, type User } from '@polycheck/shared'
+import { formatCampusDate, type Section, type Session, type Subject } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
+import { useAuthGate } from '../../../hooks/use-auth-gate'
 import { useTheme } from '../../../theme/ThemeContext'
 import { pupColors } from '../../../theme/colors'
 import MapView from '../../../components/MapView'
@@ -13,6 +14,7 @@ import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard, SectionHeading } from '../../../components/CampusPrimitives'
 import { CampusFormField } from '../../../components/CampusFormField'
 import { CampusPickerField, ChoiceSheet, formatCampusTime, TimePickerSheet } from '../../../components/CampusPickerSheets'
+import { useCampusToast } from '../../../components/CampusToast'
 
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -25,7 +27,10 @@ const ToggleRow = ({ checked, label, description, onPress }: { checked: boolean;
 
 export default function CreateSessionScreen() {
   const { isDark } = useTheme()
-  const [user, setUser] = useState<User | null>(null)
+  const { showToast } = useCampusToast()
+  const params = useLocalSearchParams<{ sectionId?: string }>()
+  const requestedSectionId = typeof params.sectionId === 'string' ? params.sectionId : ''
+  const user = useAuthGate(['teacher'])
   const [mapFocus, setMapFocus] = useState(false)
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [sections, setSections] = useState<Section[]>([])
@@ -39,6 +44,8 @@ export default function CreateSessionScreen() {
   const [latitude, setLatitude] = useState(14.8697)
   const [longitude, setLongitude] = useState(120.9991)
   const [radius, setRadius] = useState(40)
+  const [defaultQrValidity, setDefaultQrValidity] = useState(5)
+  const [defaultGracePeriod, setDefaultGracePeriod] = useState(15)
   const [recenterKey, setRecenterKey] = useState(0)
   const [locating, setLocating] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -55,20 +62,40 @@ export default function CreateSessionScreen() {
   const [showReplaceDatePicker, setShowReplaceDatePicker] = useState(false)
 
   useEffect(() => {
-    const currentUser = api.getCurrentUser()
-    if (!currentUser || currentUser.role !== 'teacher') {
-      router.replace('/(faculty)/dashboard')
-      return
-    }
-    setUser(currentUser)
-    void api.getSubjects().then(setSubjects).catch(() => Alert.alert('Unable to load subjects', 'Please try again.'))
-  }, [])
+    if (!user) return
+    void Promise.all([api.getSubjects(), api.getSettings()])
+      .then(([nextSubjects, settings]) => {
+        setSubjects(nextSubjects)
+        const configured = new Map(settings.map((setting) => [setting.key, Number(setting.value)]))
+        const nextRadius = configured.get('default_geofence_radius_meters')
+        const nextValidity = configured.get('default_qr_validity_minutes')
+        const nextGrace = configured.get('default_grace_period_minutes')
+        if (nextRadius && nextRadius >= 10 && nextRadius <= 500) setRadius(nextRadius)
+        if (nextValidity && nextValidity >= 1 && nextValidity <= 15) setDefaultQrValidity(nextValidity)
+        if (nextGrace !== undefined && nextGrace >= 0 && nextGrace <= 60) setDefaultGracePeriod(nextGrace)
+      })
+      .catch(() => showToast('warning', 'Unable to load session defaults', 'The standard defaults will be used.'))
+  }, [showToast, user])
 
   useEffect(() => {
     if (!selectedSubjectId) { setSections([]); setSectionId(''); return }
-    void api.getSections(selectedSubjectId).then((nextSections) => setSections(nextSections.filter((section) => section.teacherId === user?.id)))
+    void api.getSections(selectedSubjectId).then((nextSections) => setSections(nextSections.filter((section) => section.teacherId === user?.id))).catch(() => showToast('warning', 'Unable to load sections', 'Check your connection and try again.'))
     setSectionId('')
   }, [selectedSubjectId, user?.id])
+
+  // Preselect the section when the screen was opened from a section context.
+  useEffect(() => {
+    if (!requestedSectionId) return
+    if (sections.some((section) => section.id === requestedSectionId)) {
+      setSectionId(requestedSectionId)
+      return
+    }
+    void api.getSection(requestedSectionId)
+      .then((section) => {
+        if (section) setSelectedSubjectId(section.subjectId)
+      })
+      .catch(() => undefined)
+  }, [requestedSectionId, sections])
 
   const selectedSubject = subjects.find((subject) => subject.id === selectedSubjectId)
   const selectedSection = sections.find((section) => section.id === sectionId)
@@ -84,7 +111,7 @@ export default function CreateSessionScreen() {
 
   useEffect(() => {
     if (!sectionId) { setSectionSessions([]); return }
-    void api.getSessions(sectionId).then(setSectionSessions)
+    void api.getSessions(sectionId).then(setSectionSessions).catch(() => setSectionSessions([]))
   }, [sectionId])
 
   const replaceDates = useMemo(() => {
@@ -127,28 +154,29 @@ export default function CreateSessionScreen() {
     setLocating(true)
     try {
       const permission = await Location.requestForegroundPermissionsAsync()
-      if (permission.status !== 'granted') { Alert.alert('Location permission needed', 'Allow location access to pin your current position.'); return }
+      if (permission.status !== 'granted') { showToast('warning', 'Location permission needed', 'Allow location access to pin your current position.'); return }
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
       setLatitude(location.coords.latitude)
       setLongitude(location.coords.longitude)
       setRecenterKey((value) => value + 1)
-    } catch { Alert.alert('Unable to locate you', 'Turn on device location and try again.') } finally { setLocating(false) }
+    } catch { showToast('error', 'Unable to locate you', 'Turn on device location and try again.') } finally { setLocating(false) }
   }
 
   const create = async () => {
     if (!sectionId || !selectedSection || submitting) return
-    if (endTime <= startTime) { Alert.alert('Check the time', 'End time must be later than start time.'); return }
+    if (endTime <= startTime) { showToast('warning', 'Check the time', 'End time must be later than start time.'); return }
     setSubmitting(true)
     try {
       if (bulkMode) {
-        await api.createBulkSessions({ sectionId, subjectName: selectedParentSubject?.name ?? '', startDate: bulkStartDate, endDate: bulkEndDate, daysOfWeek: bulkDays, startTime, endTime, room: room || undefined, geofence: { latitude, longitude, radiusMeters: radius }, teacherId: user.id })
-        Alert.alert('Sessions created', `${bulkCount} recurring sessions were created.`)
+        await api.createBulkSessions({ sectionId, subjectName: selectedParentSubject?.name ?? '', startDate: bulkStartDate, endDate: bulkEndDate, daysOfWeek: bulkDays, startTime, endTime, room: room || undefined, qrValidityMinutes: defaultQrValidity, gracePeriodMinutes: defaultGracePeriod, geofence: { latitude, longitude, radiusMeters: radius }, teacherId: user.id })
+        showToast('success', 'Sessions created', `${bulkCount} recurring sessions were created.`)
       } else {
         const replaced = replaceDates.find((item) => item.dateStr === rescheduledFromDate)
-        await api.createSession({ sectionId, subjectName: selectedParentSubject?.name ?? '', date, startTime, endTime, room: room || undefined, geofence: { latitude, longitude, radiusMeters: radius }, teacherId: user.id, isRescheduled: isRescheduled || undefined, rescheduledFromDate: isRescheduled ? rescheduledFromDate : undefined, originalScheduleTime: isRescheduled ? replaced?.scheduleTime : undefined, originalRoom: isRescheduled ? replaced?.room : undefined })
+        await api.createSession({ sectionId, subjectName: selectedParentSubject?.name ?? '', date, startTime, endTime, room: room || undefined, qrValidityMinutes: defaultQrValidity, gracePeriodMinutes: defaultGracePeriod, geofence: { latitude, longitude, radiusMeters: radius }, teacherId: user.id, isRescheduled: isRescheduled || undefined, rescheduledFromDate: isRescheduled ? rescheduledFromDate : undefined, originalScheduleTime: isRescheduled ? replaced?.scheduleTime : undefined, originalRoom: isRescheduled ? replaced?.room : undefined })
+        showToast('success', 'Session created', 'The class session is ready for activation.')
       }
       router.back()
-    } catch (error) { Alert.alert('Unable to create session', error instanceof Error ? error.message : 'Please try again.') } finally { setSubmitting(false) }
+    } catch (error) { showToast('error', 'Unable to create session', error instanceof Error ? error.message : 'Please try again.') } finally { setSubmitting(false) }
   }
 
   const disabled = !sectionId || (bulkMode && bulkCount === 0) || hasConflict || submitting

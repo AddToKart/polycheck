@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native'
+import { useEffect, useMemo, useState } from 'react'
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { getRecentCampusDateRange, type AttendanceReport, type Subject, type Teacher } from '@polycheck/shared'
+import { getRecentCampusDateRange, type AttendanceReport, type Section, type Subject, type Teacher } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
 import { shareCsvFile } from '../../services/file-sharing'
@@ -18,6 +18,8 @@ import {
   AttendanceMetricGrid,
   AttendanceSummaryCard,
 } from '../../components/AttendanceReportCards'
+import { useCampusToast } from '../../components/CampusToast'
+import { uniqueDepartments } from '../../components/users-screen-helpers'
 
 const { startDate: defaultStartDate, endDate: defaultEndDate } = getRecentCampusDateRange(30)
 
@@ -49,7 +51,7 @@ const ReportSelect = ({ label, value, placeholder, options, open, onToggle, onSe
         <MaterialIcons name={open ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={22} color={isDark ? pupColors.golden : pupColors.maroon} />
       </Pressable>
       {open ? (
-        <View className="mt-2 overflow-hidden rounded-2xl border border-line bg-white dark:border-line-dark dark:bg-[#1A1517]">
+        <View className="mt-2 overflow-hidden rounded-2xl border border-line bg-white dark:border-line-dark dark:bg-surface-dark">
           <Pressable accessibilityRole="button" onPress={() => onSelect('')} className="min-h-12 justify-center border-b border-line px-4 dark:border-line-dark">
             <Text className={`font-sans-semibold text-sm ${value ? 'text-ink dark:text-white' : 'text-maroon dark:text-golden'}`}>{placeholder}</Text>
           </Pressable>
@@ -73,15 +75,22 @@ const ReportSelect = ({ label, value, placeholder, options, open, onToggle, onSe
 
 export default function FacultyReportsScreen() {
   const { isDark, toggle } = useTheme()
+  const { showToast } = useCampusToast()
   const currentUser = useAuthGate(['super_admin'])
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
+  const [sections, setSections] = useState<Section[]>([])
+  const [adminScope, setAdminScope] = useState<'institution' | 'department' | null>(null)
   const [report, setReport] = useState<AttendanceReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedSubject, setSelectedSubject] = useState('')
   const [selectedTeacher, setSelectedTeacher] = useState('')
+  const [selectedSection, setSelectedSection] = useState('')
+  const [selectedDepartment, setSelectedDepartment] = useState('')
   const [showSubjectDropdown, setShowSubjectDropdown] = useState(false)
   const [showTeacherDropdown, setShowTeacherDropdown] = useState(false)
+  const [showSectionDropdown, setShowSectionDropdown] = useState(false)
+  const [showDepartmentDropdown, setShowDepartmentDropdown] = useState(false)
   const [startDate, setStartDate] = useState(defaultStartDate)
   const [endDate, setEndDate] = useState(defaultEndDate)
   const [startPickerVisible, setStartPickerVisible] = useState(false)
@@ -89,13 +98,27 @@ export default function FacultyReportsScreen() {
 
   useEffect(() => {
     if (!currentUser) return
-    void Promise.all([api.getSubjects(), api.getTeachers()])
-      .then(([nextSubjects, nextTeachers]) => {
+    void Promise.all([api.getSubjects(), api.getTeachers(), api.getSections(), api.getAdminOverview()])
+      .then(([nextSubjects, nextTeachers, nextSections, overview]) => {
         setSubjects(nextSubjects)
         setTeachers(nextTeachers)
+        setSections(nextSections)
+        setAdminScope(overview.scope)
       })
-      .catch(() => Alert.alert('Unable to load filters', 'Subject and teacher choices are temporarily unavailable.'))
-  }, [currentUser])
+      .catch(() => showToast('error', 'Unable to load filters', 'Subject, teacher, section, and department choices are temporarily unavailable.'))
+  }, [currentUser, showToast])
+
+  const departmentOptions = useMemo(
+    () => uniqueDepartments(teachers, currentUser?.department),
+    [currentUser?.department, teachers],
+  )
+
+  const sectionOptions = useMemo(() => sections
+    .filter((section) => !selectedSubject || section.subjectId === selectedSubject)
+    .map((section) => ({
+      id: section.id,
+      label: `Section ${section.section}${subjects.find((subject) => subject.id === section.subjectId)?.code ? ` · ${subjects.find((subject) => subject.id === section.subjectId)?.code}` : ''}`,
+    })), [sections, selectedSubject, subjects])
 
   useEffect(() => {
     if (!currentUser || !startDate || !endDate) return
@@ -106,29 +129,48 @@ export default function FacultyReportsScreen() {
       endDate,
       subjectId: selectedSubject || undefined,
       teacherId: selectedTeacher || undefined,
+      sectionId: selectedSection || undefined,
+      department: selectedDepartment || undefined,
     }).then((nextReport) => {
       if (active) setReport(nextReport)
     }).catch(() => {
-      if (active) Alert.alert('Unable to load report', 'Please check the selected filters and try again.')
+      if (active) showToast('error', 'Unable to load report', 'Please check the selected filters and try again.')
     }).finally(() => {
       if (active) setLoading(false)
     })
     return () => { active = false }
-  }, [currentUser, selectedSubject, selectedTeacher, startDate, endDate])
+  }, [currentUser, selectedDepartment, selectedSection, selectedSubject, selectedTeacher, showToast, startDate, endDate])
 
   if (!currentUser) return null
 
-  const totals = report?.totals ?? { totalRecords: 0, totalSessions: 0, present: 0, late: 0, absent: 0, pending: 0, disputed: 0 }
+  const totals = report?.totals ?? { totalRecords: 0, totalSessions: 0, present: 0, late: 0, absent: 0, pending: 0, disputed: 0, excused: 0 }
   const presentRate = totals.totalRecords ? Math.round((totals.present / totals.totalRecords) * 100) : 0
-  const isFiltered = selectedSubject !== '' || selectedTeacher !== '' || startDate !== defaultStartDate || endDate !== defaultEndDate
+  const isFiltered = selectedSubject !== '' || selectedTeacher !== '' || selectedSection !== '' || selectedDepartment !== '' || startDate !== defaultStartDate || endDate !== defaultEndDate
+
+  const closeDropdowns = () => {
+    setShowSubjectDropdown(false)
+    setShowTeacherDropdown(false)
+    setShowSectionDropdown(false)
+    setShowDepartmentDropdown(false)
+  }
 
   const resetFilters = () => {
     setSelectedSubject('')
     setSelectedTeacher('')
+    setSelectedSection('')
+    setSelectedDepartment('')
     setStartDate(defaultStartDate)
     setEndDate(defaultEndDate)
+    closeDropdowns()
+  }
+
+  const selectSubject = (id: string) => {
+    setSelectedSubject(id)
     setShowSubjectDropdown(false)
-    setShowTeacherDropdown(false)
+    if (selectedSection && id) {
+      const section = sections.find((candidate) => candidate.id === selectedSection)
+      if (section?.subjectId !== id) setSelectedSection('')
+    }
   }
 
   const handleExport = async () => {
@@ -138,10 +180,12 @@ export default function FacultyReportsScreen() {
         endDate,
         subjectId: selectedSubject || undefined,
         teacherId: selectedTeacher || undefined,
+        sectionId: selectedSection || undefined,
+        department: selectedDepartment || undefined,
       })
       await shareCsvFile(csv, `polycheck-report-${startDate}-to-${endDate}.csv`, 'Export filtered attendance report')
     } catch (error) {
-      Alert.alert('Export failed', error instanceof Error ? error.message : 'Please narrow the report filters.')
+      showToast('error', 'Export failed', error instanceof Error ? error.message : 'Please narrow the report filters.')
     }
   }
 
@@ -185,12 +229,30 @@ export default function FacultyReportsScreen() {
             options={subjects.map((subject) => ({ id: subject.id, label: `${subject.name} (${subject.code})` }))}
             open={showSubjectDropdown}
             onToggle={() => {
-              setShowSubjectDropdown((open) => !open)
-              setShowTeacherDropdown(false)
+              const next = !showSubjectDropdown
+              closeDropdowns()
+              setShowSubjectDropdown(next)
+            }}
+            onSelect={selectSubject}
+          />
+          <ReportSelect
+            label="Section"
+            value={selectedSection}
+            placeholder="All sections"
+            options={sectionOptions}
+            open={showSectionDropdown}
+            onToggle={() => {
+              const next = !showSectionDropdown
+              closeDropdowns()
+              setShowSectionDropdown(next)
             }}
             onSelect={(id) => {
-              setSelectedSubject(id)
-              setShowSubjectDropdown(false)
+              setSelectedSection(id)
+              setShowSectionDropdown(false)
+              if (id) {
+                const section = sections.find((candidate) => candidate.id === id)
+                if (section && !selectedSubject) setSelectedSubject(section.subjectId)
+              }
             }}
           />
           <ReportSelect
@@ -200,14 +262,33 @@ export default function FacultyReportsScreen() {
             options={teachers.map((teacher) => ({ id: teacher.id, label: teacher.fullName }))}
             open={showTeacherDropdown}
             onToggle={() => {
-              setShowTeacherDropdown((open) => !open)
-              setShowSubjectDropdown(false)
+              const next = !showTeacherDropdown
+              closeDropdowns()
+              setShowTeacherDropdown(next)
             }}
             onSelect={(id) => {
               setSelectedTeacher(id)
               setShowTeacherDropdown(false)
             }}
           />
+          {adminScope === 'institution' ? (
+            <ReportSelect
+              label="Department"
+              value={selectedDepartment}
+              placeholder="All departments"
+              options={departmentOptions.map((department) => ({ id: department, label: department }))}
+              open={showDepartmentDropdown}
+              onToggle={() => {
+                const next = !showDepartmentDropdown
+                closeDropdowns()
+                setShowDepartmentDropdown(next)
+              }}
+              onSelect={(id) => {
+                setSelectedDepartment(id)
+                setShowDepartmentDropdown(false)
+              }}
+            />
+          ) : null}
         </CampusCard>
 
         <AttendanceDateRangeCard
@@ -232,6 +313,7 @@ export default function FacultyReportsScreen() {
               { label: 'Present rate', value: `${presentRate}%`, tone: 'success' },
               { label: 'Late', value: totals.late, tone: 'warning' },
               { label: 'Absent', value: totals.absent, tone: 'danger' },
+              { label: 'Excused', value: totals.excused, tone: 'excused' },
               { label: 'Pending', value: totals.pending, tone: 'neutral' },
               { label: 'Disputed', value: totals.disputed, tone: 'disputed' },
             ]} />

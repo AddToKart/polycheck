@@ -16,9 +16,10 @@ import { subscribeToSession } from '../../../services/realtime'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
 import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
+import { useCampusToast } from '../../../components/CampusToast'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
-const FILTERS: Array<AttendanceStatus | 'all'> = ['all', 'present', 'late', 'absent', 'pending', 'disputed']
+const FILTERS: Array<AttendanceStatus | 'all'> = ['all', 'present', 'late', 'absent', 'excused', 'pending', 'disputed']
 const ROSTER_PAGE_SIZE = 20
 const E2E_MODE = process.env.EXPO_PUBLIC_E2E_MODE === 'true'
 type QrSvgHandle = { toDataURL: (callback: (base64: string) => void) => void }
@@ -30,6 +31,7 @@ const CardTitle = ({ icon, title, detail }: { icon: keyof typeof MaterialIcons.g
 
 export default function SessionDetailScreen() {
   const { isDark, toggle } = useTheme()
+  const { showToast } = useCampusToast()
   const { id } = useLocalSearchParams<{ id: string }>()
   const currentUser = useAuthGate(['teacher', 'super_admin'])
   const [user, setUser] = useState<User | null>(null)
@@ -63,8 +65,8 @@ export default function SessionDetailScreen() {
       setRecords(nextRecords)
       setProofsOfClass(nextProofs)
       setLastUpdated(new Date())
-    } catch { Alert.alert('Unable to refresh session', 'Please check your connection and try again.') }
-  }, [id])
+    } catch { showToast('error', 'Unable to refresh session', 'Please check your connection and try again.') }
+  }, [id, showToast])
 
   useEffect(() => {
     if (!currentUser) return
@@ -134,22 +136,29 @@ export default function SessionDetailScreen() {
     absent: records.filter((record) => record.status === 'absent').length,
     pending: records.filter((record) => record.status === 'pending').length,
     disputed: records.filter((record) => record.status === 'disputed').length,
+    excused: records.filter((record) => record.status === 'excused').length,
   }
 
   const generateQr = async () => {
     const validity = Number(validityMinutes)
     const grace = Number(graceMinutes)
     if (!Number.isInteger(validity) || validity < 1 || validity > 15 || !Number.isInteger(grace) || grace < 0 || grace > 60) {
-      Alert.alert('Check QR settings', 'Validity must be 1–15 minutes and grace period must be 0–60 minutes.')
+      showToast('warning', 'Check QR settings', 'Validity must be 1–15 minutes and grace period must be 0–60 minutes.')
       return
     }
-    try { await api.generateQrCode(session.id, validity, grace); setShowValidityPrompt(false); await refreshData() }
-    catch (error) { Alert.alert('Unable to generate QR code', error instanceof Error ? error.message : 'Please try again.') }
+    try {
+      await api.generateQrCode(session.id, validity, grace)
+      setShowValidityPrompt(false)
+      await refreshData()
+      showToast('success', 'QR code generated', `Students can scan within the ${validity}-minute window.`)
+    } catch (error) {
+      showToast('error', 'Unable to generate QR code', error instanceof Error ? error.message : 'Please try again.')
+    }
   }
 
   const endSession = () => Alert.alert('End session?', 'Pending students will be marked absent and the session will close.', [
     { text: 'Cancel', style: 'cancel' },
-    { text: 'End session', style: 'destructive', onPress: () => { void api.endSession(session.id).then(refreshData) } },
+    { text: 'End session', style: 'destructive', onPress: () => { void api.endSession(session.id).then(refreshData).catch((error) => showToast('error', 'Unable to end session', error instanceof Error ? error.message : 'Please try again.')) } },
   ])
 
   const override = async (studentId: string, currentStatus: AttendanceStatus) => {
@@ -163,13 +172,13 @@ export default function SessionDetailScreen() {
         await api.addAttendanceRecord({ id: `a-${Date.now()}`, sessionId: session.id, sectionId: session.sectionId, studentId, studentName: student?.fullName ?? 'Unknown', timestamp: new Date().toISOString(), status: nextStatus, coordinates: { latitude: 0, longitude: 0 }, deviceId: 'manual', isSynced: true, syncedAt: new Date().toISOString(), manuallySet: true })
       }
       await refreshData()
-    } catch (error) { Alert.alert('Unable to update attendance', error instanceof Error ? error.message : 'Please try again.') }
+    } catch (error) { showToast('error', 'Unable to update attendance', error instanceof Error ? error.message : 'Please try again.') }
   }
 
   const copyQrToken = async () => {
     if (!session.qrToken) return
     await Clipboard.setStringAsync(session.qrToken)
-    Alert.alert('QR token copied', 'The signed session token is ready to paste.')
+    showToast('success', 'QR token copied', 'The signed session token is ready to paste.')
   }
 
   const shareQrToken = async () => {
@@ -183,14 +192,14 @@ export default function SessionDetailScreen() {
   const shareQrImage = async () => {
     const qrCode = qrCodeRef.current
     if (!qrCode) {
-      Alert.alert('QR image unavailable', 'Wait for the QR code to finish rendering and try again.')
+      showToast('warning', 'QR image unavailable', 'Wait for the QR code to finish rendering and try again.')
       return
     }
     try {
       const base64 = await new Promise<string>((resolve) => qrCode.toDataURL(resolve))
       await sharePngFile(base64, `polycheck-qr-${session.id}.png`)
     } catch (error) {
-      Alert.alert('Unable to share QR image', error instanceof Error ? error.message : 'Please try again.')
+      showToast('error', 'Unable to share QR image', error instanceof Error ? error.message : 'Please try again.')
     }
   }
 
@@ -212,7 +221,7 @@ export default function SessionDetailScreen() {
       {isTeacher ? <CampusCard className="mb-5 items-center overflow-hidden bg-maroon dark:bg-maroon-deep">
         <View className="mb-4 w-full flex-row items-center"><View className="h-9 w-9 items-center justify-center rounded-xl bg-white/10"><MaterialIcons name="qr-code-2" size={19} color={pupColors.golden} /></View><View className="ml-3 flex-1"><Text className="font-sans-bold text-base text-white">Session QR</Text><Text className="mt-1 font-sans text-xs text-white/60">Students scan this code inside the geofence.</Text></View></View>
         {session.qrToken ? <>
-          <Pressable accessibilityRole="button" accessibilityLabel="Open QR code full screen" onPress={() => setShowQrModal(true)} className="rounded-[26px] bg-white p-3"><QRCode value={session.qrToken} size={160} quietZone={6} backgroundColor="#FFFFFF" color="#0A0A0A" getRef={(ref: QrSvgHandle | null) => { qrCodeRef.current = ref }} /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open QR code full screen" onPress={() => setShowQrModal(true)} className="rounded-[26px] bg-white p-3"><QRCode value={session.qrToken} size={160} quietZone={6} backgroundColor={pupColors.white} color={pupColors.black} getRef={(ref: QrSvgHandle | null) => { qrCodeRef.current = ref }} /></Pressable>
           {E2E_MODE ? <Text testID="session-e2e-token" selectable numberOfLines={1} className="mt-1 max-w-full text-[1px] text-maroon">{session.qrToken}</Text> : null}
           <Text accessibilityLiveRegion="polite" className="mt-4 font-sans-bold text-sm text-golden">{countdown === 'Grace ended' ? 'Grace period ended' : countdown.includes('Grace') ? countdown : countdown ? `Expires in ${countdown}` : 'Active'}</Text>
           <View className="mt-3 flex-row flex-wrap justify-center gap-2">
@@ -223,7 +232,7 @@ export default function SessionDetailScreen() {
               { label: 'Share image', icon: 'image' as const, onPress: () => { void shareQrImage() } },
             ].map((action) => (
               <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress} className="min-h-11 flex-row items-center gap-2 rounded-2xl bg-white/10 px-4">
-                <MaterialIcons name={action.icon} size={18} color="#FFFFFF" />
+                <MaterialIcons name={action.icon} size={18} color={pupColors.white} />
                 <Text className="font-sans-bold text-xs text-white">{action.label}</Text>
               </Pressable>
             ))}
@@ -233,7 +242,7 @@ export default function SessionDetailScreen() {
 
       <SectionHeading eyebrow="Session state" title="Live overview" />
       <AttendanceMetricGrid metrics={[
-        { label: 'Present', value: counts.present, tone: 'success' }, { label: 'Late', value: counts.late, tone: 'warning' }, { label: 'Absent', value: counts.absent, tone: 'danger' }, { label: 'Pending', value: counts.pending, tone: 'neutral' }, { label: 'Disputed', value: counts.disputed, tone: 'disputed' }, { label: session.isActive ? 'Active session' : 'Closed session', value: session.isActive ? 'Live' : 'Ended', tone: 'brand' },
+        { label: 'Present', value: counts.present, tone: 'success' }, { label: 'Late', value: counts.late, tone: 'warning' }, { label: 'Absent', value: counts.absent, tone: 'danger' }, { label: 'Excused', value: counts.excused, tone: 'excused' }, { label: 'Pending', value: counts.pending, tone: 'neutral' }, { label: 'Disputed', value: counts.disputed, tone: 'disputed' }, { label: session.isActive ? 'Active session' : 'Closed session', value: session.isActive ? 'Live' : 'Ended', tone: 'brand' },
       ]} />
 
       <CampusCard className="mb-5 p-4">
@@ -256,7 +265,7 @@ export default function SessionDetailScreen() {
 
       <CampusCard className="mb-5 p-4">
         <CardTitle icon="camera-alt" title="Proof of class" detail={`${proofsOfClass.length} uploads`} />
-        {!proofsOfClass.length ? <CampusEmptyState icon="add-a-photo" title="No proof uploaded" description="QAC officers can attach classroom evidence during this session." /> : <View className="flex-row flex-wrap gap-3">{proofsOfClass.map((proof) => <View key={proof.id} className="min-w-[46%] flex-1 rounded-2xl border border-line bg-zinc-50 p-3 dark:border-line-dark dark:bg-white/5"><View className="mb-3 aspect-video items-center justify-center rounded-xl bg-zinc-200 dark:bg-zinc-800"><MaterialIcons name="camera-alt" size={25} color="#746C6E" /></View><Text className="font-sans-bold text-xs text-ink dark:text-white" numberOfLines={1}>{proof.uploadedByStudentName}</Text><Text className="mt-1 font-sans text-[9px] text-muted dark:text-zinc-500">{new Date(proof.uploadedAt).toLocaleString()}</Text>{proof.description ? <Text className="mt-2 font-sans text-[10px] italic text-muted dark:text-zinc-400" numberOfLines={2}>{proof.description}</Text> : null}{isTeacher ? <Pressable accessibilityRole="button" accessibilityLabel={`Delete proof by ${proof.uploadedByStudentName}`} onPress={() => { void api.deleteProofOfClass(proof.id).then(refreshData) }} className="mt-2 min-h-10 flex-row items-center gap-1"><MaterialIcons name="delete-outline" size={15} color="#DC2626" /><Text className="font-sans-bold text-[10px] text-red-600">Delete</Text></Pressable> : null}</View>)}</View>}
+        {!proofsOfClass.length ? <CampusEmptyState icon="add-a-photo" title="No proof uploaded" description="QAC officers can attach classroom evidence during this session." /> : <View className="flex-row flex-wrap gap-3">{proofsOfClass.map((proof) => <View key={proof.id} className="min-w-[46%] flex-1 rounded-2xl border border-line bg-zinc-50 p-3 dark:border-line-dark dark:bg-white/5"><View className="mb-3 aspect-video items-center justify-center rounded-xl bg-zinc-200 dark:bg-zinc-800"><MaterialIcons name="camera-alt" size={25} color={isDark ? pupColors.mutedLight : pupColors.muted} /></View><Text className="font-sans-bold text-xs text-ink dark:text-white" numberOfLines={1}>{proof.uploadedByStudentName}</Text><Text className="mt-1 font-sans text-[9px] text-muted dark:text-zinc-500">{new Date(proof.uploadedAt).toLocaleString()}</Text>{proof.description ? <Text className="mt-2 font-sans text-[10px] italic text-muted dark:text-zinc-400" numberOfLines={2}>{proof.description}</Text> : null}{isTeacher ? <Pressable accessibilityRole="button" accessibilityLabel={`Delete proof by ${proof.uploadedByStudentName}`} onPress={() => { void api.deleteProofOfClass(proof.id).then(refreshData).catch((error) => showToast('error', 'Unable to delete proof', error instanceof Error ? error.message : 'Please try again.')) }} className="mt-2 min-h-10 flex-row items-center gap-1"><MaterialIcons name="delete-outline" size={15} color={isDark ? pupColors.dangerLight : pupColors.danger} /><Text className="font-sans-bold text-[10px] text-red-600 dark:text-red-300">Delete</Text></Pressable> : null}</View>)}</View>}
       </CampusCard>
 
       <SectionHeading eyebrow="Roster" title="Student attendance" />
@@ -270,7 +279,7 @@ export default function SessionDetailScreen() {
         {!filteredStudents.length ? <View className="p-4"><CampusEmptyState icon="group-off" title={enrolledStudents.length ? 'No matching students' : 'No enrolled students'} description={enrolledStudents.length ? 'Choose a different attendance filter.' : 'Add students from the section details screen.'} /></View> : pagedStudents.map((student) => {
           const record = studentMap.get(student.id)
           const status = record?.status ?? 'pending'
-          return <Pressable key={student.id} testID={`session-roster-${student.id}-${status}`} disabled={!isTeacher} accessibilityRole={isTeacher ? 'button' : undefined} accessibilityLabel={isTeacher ? `Change ${student.fullName} attendance, currently ${status}` : undefined} onPress={() => void override(student.id, status)} className="min-h-16 flex-row items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 dark:border-line-dark"><View className="h-11 w-11 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10"><Text className="font-sans-bold text-xs text-maroon dark:text-golden">{student.fullName.split(' ').map((part) => part[0]).join('').slice(0, 2)}</Text></View><View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">{student.fullName}</Text><Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">{student.studentId}{record?.manuallySet ? ' · Manual override' : ''}</Text></View><AttendanceStatusPill status={status} />{isTeacher ? <MaterialIcons name="chevron-right" size={19} color="#746C6E" /> : null}</Pressable>
+          return <Pressable key={student.id} testID={`session-roster-${student.id}-${status}`} disabled={!isTeacher} accessibilityRole={isTeacher ? 'button' : undefined} accessibilityLabel={isTeacher ? `Change ${student.fullName} attendance, currently ${status}` : undefined} onPress={() => void override(student.id, status)} className="min-h-16 flex-row items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 dark:border-line-dark"><View className="h-11 w-11 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10"><Text className="font-sans-bold text-xs text-maroon dark:text-golden">{student.fullName.split(' ').map((part) => part[0]).join('').slice(0, 2)}</Text></View><View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">{student.fullName}</Text><Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">{student.studentId}{record?.manuallySet ? ' · Manual override' : ''}</Text></View><AttendanceStatusPill status={status} />{isTeacher ? <MaterialIcons name="chevron-right" size={19} color={isDark ? pupColors.mutedLight : pupColors.muted} /> : null}</Pressable>
         })}
         {rosterPageCount > 1 ? <View className="flex-row items-center justify-between border-t border-line px-4 py-3 dark:border-line-dark"><CampusButton className="min-h-11 px-3" label="Previous" variant="secondary" disabled={safeRosterPage === 1} onPress={() => setRosterPage((page) => Math.max(1, page - 1))} /><Text className="font-sans-medium text-xs text-muted dark:text-zinc-400">Page {safeRosterPage} of {rosterPageCount}</Text><CampusButton className="min-h-11 px-3" label="Next" variant="secondary" disabled={safeRosterPage === rosterPageCount} onPress={() => setRosterPage((page) => Math.min(rosterPageCount, page + 1))} /></View> : null}
       </CampusCard>
@@ -314,7 +323,7 @@ export default function SessionDetailScreen() {
       </Pressable>
     </Modal>
 
-      <Modal visible={isTeacher && showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}><Pressable accessibilityRole="button" accessibilityLabel="Close full-screen QR code" className="flex-1 items-center justify-center bg-black/95 px-5" onPress={() => setShowQrModal(false)}>{session.qrToken ? <View className="rounded-[32px] bg-white p-4"><QRCode value={session.qrToken} size={270} quietZone={8} backgroundColor="#FFFFFF" color="#0A0A0A" /></View> : null}<Text className="mt-6 font-sans-medium text-sm text-white/60">Tap anywhere to close</Text></Pressable></Modal>
+      <Modal visible={isTeacher && showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}><Pressable accessibilityRole="button" accessibilityLabel="Close full-screen QR code" className="flex-1 items-center justify-center bg-black/95 px-5" onPress={() => setShowQrModal(false)}>{session.qrToken ? <View className="rounded-[32px] bg-white p-4"><QRCode value={session.qrToken} size={270} quietZone={8} backgroundColor={pupColors.white} color={pupColors.black} /></View> : null}<Text className="mt-6 font-sans-medium text-sm text-white/60">Tap anywhere to close</Text></Pressable></Modal>
     </SafeAreaView>
   )
 }

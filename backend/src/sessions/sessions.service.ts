@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { verifyQRToken } from '@polycheck/shared'
@@ -17,10 +18,12 @@ import { Prisma, type Session } from '../prisma/client'
 import { parseIsoDate } from '../common/utils/iso-date'
 import { adminSessionWhere, assertSectionInAdminScope } from '../common/admin-scope'
 import { lockStudentSection } from '../common/student-section-lock'
+import { NotificationsService } from '../notifications/notifications.service'
 
 const AUTO_END_LOCK_TTL_SECONDS = 5 * 60
 const MAX_QR_VALIDITY_MINUTES = 15
 const MAX_QR_GRACE_MINUTES = 60
+const ABSENT_NOTIFICATION_BATCH_SIZE = 10
 // Cache-hygiene lease only. Scan authorization always re-reads PostgreSQL, so
 // lease expiry cannot make a stale cached key or session state authoritative.
 const KEY_ROTATION_LOCK_TTL_SECONDS = 10
@@ -31,6 +34,7 @@ export class SessionsService {
     private readonly prisma: PrismaService,
     private readonly realtime: AttendanceGateway,
     private readonly redis: RedisService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   async findAll(user: RequestUser, sectionId?: string) {
@@ -260,7 +264,13 @@ export class SessionsService {
     const session = await this.prisma.session.findUnique({ where: { id } })
     if (!session) throw new NotFoundException('Session not found')
     await this.assertTeacherOwnsSection(session.sectionId, user.id)
-    const ended = await this.prisma.$transaction(async (tx) => {
+    const { ended, pending } = await this.prisma.$transaction(async (tx) => {
+      const pendingRecords = this.notifications
+        ? await tx.attendanceRecord.findMany({
+            where: { sessionId: id, status: 'pending' },
+            select: { studentId: true },
+          })
+        : []
       const sessionResult = await tx.session.updateMany({
         where: { id, isActive: true },
         data: { isActive: false, endedAt: new Date(), qrToken: null, qrTokenExpiresAt: null, qrGeneratedAt: null },
@@ -270,10 +280,11 @@ export class SessionsService {
         where: { sessionId: id, status: 'pending' },
         data: { status: 'absent', timestamp: new Date(), manuallySet: false },
       })
-      return tx.session.findUniqueOrThrow({ where: { id } })
+      return { ended: await tx.session.findUniqueOrThrow({ where: { id } }), pending: pendingRecords }
     })
     this.realtime.emitSessionState(ended, 'ended')
     await this.invalidateActiveSessionCache(ended)
+    await this.notifyAbsentStudents(ended, pending)
     return this.present(ended, await this.teacherPublicKey(session.teacherId), true)
   }
 
@@ -301,7 +312,7 @@ export class SessionsService {
 
       for (const session of expired) {
         try {
-          const ended = await this.prisma.$transaction(async (tx) => {
+          const result = await this.prisma.$transaction(async (tx) => {
             const claim = await tx.session.updateMany({
               where: {
                 id: session.id,
@@ -318,17 +329,25 @@ export class SessionsService {
               },
             })
             if (claim.count === 0) return null
+            const pendingRecords = this.notifications
+              ? await tx.attendanceRecord.findMany({
+                  where: { sessionId: session.id, status: 'pending' },
+                  select: { studentId: true },
+                })
+              : []
 
             await tx.attendanceRecord.updateMany({
               where: { sessionId: session.id, status: 'pending' },
               data: { status: 'absent', timestamp: now, manuallySet: false },
             })
-            return tx.session.findUniqueOrThrow({ where: { id: session.id } })
+            return { ended: await tx.session.findUniqueOrThrow({ where: { id: session.id } }), pending: pendingRecords }
           })
-          if (!ended) continue
+          if (!result) continue
+          const { ended, pending } = result
 
           this.realtime.emitSessionState(ended, 'ended')
           await this.invalidateActiveSessionCache(ended)
+          await this.notifyAbsentStudents(ended, pending)
           Logger.log(`Automatically ended expired session ${session.id} (${session.subjectName})`, 'SessionsService')
         } catch (error) {
           Logger.error(
@@ -353,6 +372,30 @@ export class SessionsService {
           )
         }
       }
+    }
+  }
+
+  private async notifyAbsentStudents(
+    session: Pick<Session, 'id' | 'subjectName' | 'date'>,
+    pending: Array<{ studentId: string }>,
+  ) {
+    if (!this.notifications || pending.length === 0) return
+    let failed = 0
+    for (let index = 0; index < pending.length; index += ABSENT_NOTIFICATION_BATCH_SIZE) {
+      const batch = pending.slice(index, index + ABSENT_NOTIFICATION_BATCH_SIZE)
+      const results = await Promise.allSettled(
+        batch.map((record) =>
+          this.notifications!.notifyAttendanceAbsent(record.studentId, {
+            sessionId: session.id,
+            subjectName: session.subjectName,
+            date: session.date,
+          }),
+        ),
+      )
+      failed += results.filter((result) => result.status === 'rejected').length
+    }
+    if (failed > 0) {
+      Logger.warn(`Could not notify ${failed} student(s) marked absent in session ${session.id}`, 'SessionsService')
     }
   }
 
@@ -490,10 +533,7 @@ export class SessionsService {
         await this.invalidateActiveSessionCache(currentSession ?? session)
         return
       }
-      const ttlSeconds = Math.max(
-        300,
-        (currentSession.qrValidityMinutes + currentSession.gracePeriodMinutes) * 60,
-      )
+      const ttlSeconds = Math.max(300, (currentSession.qrValidityMinutes + currentSession.gracePeriodMinutes) * 60)
       const published = await this.redis.setJson(
         `active-session:${currentSession.id}`,
         { ...currentSession, teacherPublicKey: currentKey ?? undefined },
@@ -518,7 +558,10 @@ export class SessionsService {
     try {
       const deleted = await this.redis.delete(cacheKey)
       if (deleted) return
-      Logger.error(`Cache delete could not reach configured Redis for ${session.id}; republishing ended state`, 'SessionsService')
+      Logger.error(
+        `Cache delete could not reach configured Redis for ${session.id}; republishing ended state`,
+        'SessionsService',
+      )
     } catch (deleteError) {
       Logger.error(
         `Cache delete failed for ${session.id}; republishing ended state: ${
@@ -529,7 +572,8 @@ export class SessionsService {
     }
     try {
       const published = await this.redis.setJson(cacheKey, { ...session, teacherPublicKey: undefined }, 300)
-      if (!published) Logger.error(`Ended-state cache publication was not distributed for ${session.id}`, 'SessionsService')
+      if (!published)
+        Logger.error(`Ended-state cache publication was not distributed for ${session.id}`, 'SessionsService')
     } catch (publishError) {
       Logger.error(
         `Failed to republish ended state for ${session.id}: ${

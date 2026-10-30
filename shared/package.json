@@ -20,6 +20,11 @@
       "types": "./dist/map/index.d.ts",
       "import": "./dist/map/index.mjs",
       "require": "./dist/map/index.js"
+    },
+    "./validation": {
+      "types": "./dist/validation/index.d.ts",
+      "import": "./dist/validation/index.mjs",
+      "require": "./dist/validation/index.js"
     }
   },
   "scripts": {
@@ -29,12 +34,14 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "papaparse": "^5.7.0",
     "tweetnacl": "^1.0.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/papaparse": "^5.5.2",
     "tsup": "^8.3.0",
     "typescript": "~6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

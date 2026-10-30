@@ -42,25 +42,35 @@ type CampusIconButtonProps = {
   onPress: () => void
   inverse?: boolean
   testID?: string
+  /** Unread count rendered as a small golden badge (0 hides it). */
+  badge?: number
+  disabled?: boolean
 }
 
-export const CampusIconButton = ({ icon, label, onPress, inverse = false, testID }: CampusIconButtonProps) => {
+export const CampusIconButton = ({ icon, label, onPress, inverse = false, testID, badge = 0, disabled = false }: CampusIconButtonProps) => {
   const { isDark } = useTheme()
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={badge > 0 ? `${label}, ${badge} unread` : label}
       testID={testID}
       hitSlop={8}
+      disabled={disabled}
       onPress={onPress}
       className={joinClasses(
         'h-10 w-10 items-center justify-center rounded-none border',
         inverse
           ? 'border-white/20 bg-white/10'
           : 'border-line bg-white dark:border-line-dark dark:bg-surface-dark',
+        disabled && 'opacity-50',
       )}
     >
-      <MaterialIcons name={icon} size={20} color={inverse ? '#FFFFFF' : isDark ? pupColors.golden : pupColors.maroon} />
+      <MaterialIcons name={icon} size={20} color={inverse ? pupColors.white : isDark ? pupColors.golden : pupColors.maroon} />
+      {badge > 0 ? (
+        <View className="absolute -right-1.5 -top-1.5 min-w-5 items-center justify-center rounded-full bg-golden px-1 py-0.5">
+          <Text className="font-sans-bold text-[9px] leading-3 text-maroon-dark">{badge > 99 ? '99+' : badge}</Text>
+        </View>
+      ) : null}
     </Pressable>
   )
 }
@@ -98,7 +108,7 @@ export const CampusButton = ({
   const iconColor = variant === 'secondary'
     ? isDark ? pupColors.golden : pupColors.maroon
     : variant === 'primary'
-      ? isDark ? pupColors.maroonDark : '#FFFFFF'
+      ? isDark ? pupColors.maroonDark : pupColors.white
       : pupColors.maroonDark
 
   return (
@@ -153,18 +163,19 @@ type MetricTileProps = {
   value: string | number
   icon: keyof typeof MaterialIcons.glyphMap
   emphasis?: 'brand' | 'alert' | 'neutral'
+  testID?: string
 }
 
-export const MetricTile = ({ label, value, icon, emphasis = 'brand' }: MetricTileProps) => {
+export const MetricTile = ({ label, value, icon, emphasis = 'brand', testID }: MetricTileProps) => {
   const { isDark } = useTheme()
   const colors = emphasis === 'alert'
-    ? { bg: 'bg-red-50 dark:bg-red-950/20', icon: '#DC2626', value: 'text-red-700 dark:text-red-300' }
+    ? { bg: 'bg-red-50 dark:bg-red-950/20', icon: isDark ? pupColors.dangerLight : pupColors.danger, value: 'text-red-700 dark:text-red-300' }
     : emphasis === 'neutral'
-      ? { bg: 'bg-zinc-100 dark:bg-white/5', icon: '#746C6E', value: 'text-ink dark:text-white' }
+      ? { bg: 'bg-zinc-100 dark:bg-white/5', icon: isDark ? pupColors.mutedLight : pupColors.muted, value: 'text-ink dark:text-white' }
       : { bg: 'bg-maroon/5 dark:bg-golden/10', icon: pupColors.maroon, value: 'text-maroon dark:text-golden' }
 
   return (
-    <View className="min-w-[46%] flex-1 rounded-none border border-line bg-white p-4 dark:border-line-dark dark:bg-surface-dark border-t-4 border-t-maroon dark:border-t-golden">
+    <View testID={testID} className="min-w-[46%] flex-1 rounded-none border border-line bg-white p-4 dark:border-line-dark dark:bg-surface-dark border-t-4 border-t-maroon dark:border-t-golden">
       <View className={joinClasses('mb-3 h-9 w-9 items-center justify-center rounded-none', colors.bg)}>
         <MaterialIcons name={icon} size={18} color={emphasis === 'brand' && isDark ? pupColors.golden : colors.icon} />
       </View>
@@ -180,6 +191,7 @@ const statusClasses: Record<AttendanceStatus, string> = {
   absent: 'border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300',
   pending: 'border-line bg-zinc-50 text-muted dark:border-line-dark dark:bg-white/5 dark:text-zinc-300',
   disputed: 'border-golden bg-golden/20 text-maroon-dark dark:text-golden',
+  excused: 'border-cyan-300 bg-cyan-50 text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-300',
 }
 
 const statusTextClasses: Record<AttendanceStatus, string> = {
@@ -188,6 +200,7 @@ const statusTextClasses: Record<AttendanceStatus, string> = {
   absent: 'text-red-800 dark:text-red-300',
   pending: 'text-muted dark:text-zinc-300',
   disputed: 'text-maroon-dark dark:text-golden',
+  excused: 'text-cyan-800 dark:text-cyan-300',
 }
 
 export const AttendanceStatusPill = ({ status }: { status: AttendanceStatus }) => (

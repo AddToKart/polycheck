@@ -1,6 +1,8 @@
 import { ForbiddenException } from '@nestjs/common'
 import { SectionsService } from './sections.service'
 
+const settings = { getInteger: jest.fn().mockResolvedValue(14) }
+
 const section = {
   id: 'section-1',
   subjectId: 'subject-1',
@@ -21,7 +23,7 @@ const section = {
 describe('SectionsService', () => {
   it('prevents teachers from opening another teacher section', async () => {
     const prisma = { section: { findUnique: jest.fn().mockResolvedValue(section) } }
-    const service = new SectionsService(prisma as never)
+    const service = new SectionsService(prisma as never, settings as never)
 
     await expect(service.findOne('section-1', { id: 'teacher-2', role: 'teacher' })).rejects.toThrow(ForbiddenException)
   })
@@ -31,7 +33,7 @@ describe('SectionsService', () => {
       section: { findUnique: jest.fn().mockResolvedValue(section) },
       enrollment: { findUnique: jest.fn().mockResolvedValue({ id: 'enrollment-1' }) },
     }
-    const service = new SectionsService(prisma as never)
+    const service = new SectionsService(prisma as never, settings as never)
 
     const result = await service.findOne('section-1', { id: 'student-1', role: 'student' })
 
@@ -47,7 +49,7 @@ describe('SectionsService', () => {
       section: { findUnique: jest.fn().mockResolvedValue(section) },
       $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
     }
-    const service = new SectionsService(prisma as never)
+    const service = new SectionsService(prisma as never, settings as never)
 
     await service.update(
       'section-1',
@@ -62,7 +64,7 @@ describe('SectionsService', () => {
 
   it('limits the enrollment list to sections owned by the teacher', async () => {
     const prisma = { enrollment: { findMany: jest.fn().mockResolvedValue([]) } }
-    const service = new SectionsService(prisma as never)
+    const service = new SectionsService(prisma as never, settings as never)
 
     await service.findEnrollments({ id: 'teacher-1', role: 'teacher' })
 
@@ -74,7 +76,7 @@ describe('SectionsService', () => {
 
   it('limits the enrollment list to the authenticated student', async () => {
     const prisma = { enrollment: { findMany: jest.fn().mockResolvedValue([]) } }
-    const service = new SectionsService(prisma as never)
+    const service = new SectionsService(prisma as never, settings as never)
 
     await service.findEnrollments({ id: 'student-1', role: 'student' })
 
@@ -86,7 +88,7 @@ describe('SectionsService', () => {
 
   it('limits department administrators to enrollments in their department', async () => {
     const prisma = { enrollment: { findMany: jest.fn().mockResolvedValue([]) } }
-    const service = new SectionsService(prisma as never)
+    const service = new SectionsService(prisma as never, settings as never)
 
     await service.findEnrollments({
       id: 'admin-1',
@@ -115,7 +117,7 @@ describe('SectionsService', () => {
       user: { findUnique: jest.fn().mockResolvedValue({ id: 'student-2', role: 'student' }) },
       $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
     }
-    const service = new SectionsService(prisma as never)
+    const service = new SectionsService(prisma as never, settings as never)
 
     await service.enrollStudent('section-1', 'teacher-1', 'student-2')
 
@@ -142,12 +144,14 @@ describe('SectionsService', () => {
     const prisma = {
       $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
     }
-    const service = new SectionsService(prisma as never)
+    const service = new SectionsService(prisma as never, settings as never)
 
     await service.removeStudent('section-1', 'teacher-1', 'student-1')
 
-    expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
-    expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+    // Section lock first, then the student/section pair lock, both before the
+    // membership read so imports and enroll-code joins cannot race.
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(2)
+    expect(tx.$executeRaw.mock.invocationCallOrder[1]).toBeLessThan(
       tx.enrollment.findUnique.mock.invocationCallOrder[0],
     )
     expect(tx.sectionRole.deleteMany).toHaveBeenCalledWith({
@@ -164,5 +168,24 @@ describe('SectionsService', () => {
       where: { id: 'section-1' },
       data: { studentCount: { decrement: 1 } },
     })
+  })
+
+  it('uses the institution enrollment-code expiry setting when resetting a code', async () => {
+    const prisma = {
+      section: {
+        findUnique: jest.fn().mockResolvedValue(section),
+        update: jest.fn().mockResolvedValue(section),
+      },
+    }
+    const configured = { getInteger: jest.fn().mockResolvedValue(30) }
+    const service = new SectionsService(prisma as never, configured as never)
+
+    await service.resetEnrollmentCode('section-1', 'teacher-1')
+
+    expect(configured.getInteger).toHaveBeenCalledWith('enrollment_code_expiry_days', 14)
+    const data = prisma.section.update.mock.calls[0][0].data as { enrollmentCodeExpiry: Date }
+    const days = (data.enrollmentCodeExpiry.getTime() - Date.now()) / 86_400_000
+    expect(days).toBeGreaterThan(29.9)
+    expect(days).toBeLessThan(30.1)
   })
 })

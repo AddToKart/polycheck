@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert, ScrollView, Text, View } from 'react-native'
+import { ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
@@ -9,6 +9,7 @@ import { useTheme } from '../../../theme/ThemeContext'
 import { pupColors } from '../../../theme/colors'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, SectionHeading } from '../../../components/CampusPrimitives'
+import { useCampusToast } from '../../../components/CampusToast'
 
 const InfoRow = ({ icon, label, value }: { icon: keyof typeof MaterialIcons.glyphMap; label: string; value: string }) => {
   const { isDark } = useTheme()
@@ -27,6 +28,7 @@ const InfoRow = ({ icon, label, value }: { icon: keyof typeof MaterialIcons.glyp
 
 export default function StudentSubjectInfoScreen() {
   const { isDark } = useTheme()
+  const { showToast } = useCampusToast()
   const { id } = useLocalSearchParams<{ id: string }>()
   const [section, setSection] = useState<Section | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
@@ -70,7 +72,7 @@ export default function StudentSubjectInfoScreen() {
 
   const createSession = () => {
     if (!hasPermission) {
-      Alert.alert('Permission expired', 'Ask your instructor to renew your session creation permission.')
+      showToast('warning', 'Permission expired', 'Ask your instructor to renew your session creation permission.')
       return
     }
     router.push({ pathname: '/(tabs)/subject-info/[id]/create-session', params: { id } })

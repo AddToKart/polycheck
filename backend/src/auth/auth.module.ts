@@ -4,9 +4,11 @@ import { AuthService } from './auth.service'
 import { InfrastructureModule } from '../infrastructure/infrastructure.module'
 import { BetterAuthService } from './better-auth.service'
 import { SessionAuthenticator } from './session-authenticator.service'
+import { NotificationsModule } from '../notifications/notifications.module'
+import { UsersModule } from '../users/users.module'
 
 @Module({
-  imports: [InfrastructureModule],
+  imports: [InfrastructureModule, NotificationsModule, UsersModule],
   controllers: [AuthController],
   providers: [AuthService, BetterAuthService, SessionAuthenticator],
   exports: [AuthService, BetterAuthService, SessionAuthenticator],

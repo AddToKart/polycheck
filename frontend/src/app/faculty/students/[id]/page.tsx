@@ -7,6 +7,7 @@ import { ArrowLeft, UserX, RefreshCw, School } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Student, Session, AttendanceRecord, AttendanceStatus } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
+import { StudentGovernanceActions } from '@/components/faculty/StudentGovernanceActions'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -16,6 +17,7 @@ const statusConfig: Record<AttendanceStatus, { label: string; bg: string; text: 
   present: { label: 'Present', bg: 'bg-amber-50 dark:bg-amber-950', text: 'text-amber-600' },
   late: { label: 'Late', bg: 'bg-red-50 dark:bg-red-950', text: 'text-red-700' },
   absent: { label: 'Absent', bg: 'bg-zinc-100 dark:bg-zinc-800', text: 'text-zinc-600' },
+  excused: { label: 'Excused', bg: 'bg-maroon text-golden border border-golden', text: '' },
   pending: { label: 'Pending', bg: 'bg-white dark:bg-zinc-900', text: 'text-maroon' },
   disputed: { label: 'Disputed', bg: 'bg-zinc-900 dark:bg-black', text: 'text-amber-400' },
 }
@@ -76,6 +78,11 @@ export default function StudentDetailPage() {
       await api.removeStudentFromSection(sectionId, studentId)
       router.push(`/faculty/sections/${sectionId}`)
     }
+  }
+
+  const refreshStudent = async () => {
+    const refreshed = await api.getStudent(studentId)
+    setStudent(refreshed)
   }
 
   const handleCycleStatus = async (record: AttendanceRecord) => {
@@ -149,7 +156,7 @@ export default function StudentDetailPage() {
               <div className={`w-full h-full relative transition-transform duration-700 [transform-style:preserve-3d] ${flipped ? '[transform:rotateY(180deg)]' : ''}`}>
                 
                 {/* Front Face */}
-                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] bg-white border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
+                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] bg-white dark:bg-id-paper-dark border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
                   {/* PUP Header */}
                   <div className="bg-maroon px-5 py-3 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800">
                     <div>
@@ -162,7 +169,7 @@ export default function StudentDetailPage() {
                   </div>
 
                   {/* Body */}
-                  <div className="flex-1 flex p-5 items-center gap-6 relative bg-[#fdfbf7] dark:bg-[#1a1a1a]">
+                  <div className="flex-1 flex p-5 items-center gap-6 relative bg-id-paper dark:bg-id-paper-dark">
                     <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]" style={{ backgroundImage: 'url(/pup-logo.png)', backgroundPosition: 'center', backgroundSize: 'contain', backgroundRepeat: 'no-repeat' }}></div>
                     <div className="w-24 h-32 bg-maroon dark:bg-golden flex items-center justify-center shrink-0 border-2 border-zinc-300 dark:border-zinc-800 shadow-md relative z-10">
                       <span className="text-2xl font-heading font-bold text-white dark:text-maroon-dark">
@@ -192,12 +199,12 @@ export default function StudentDetailPage() {
                 </div>
 
                 {/* Back Face */}
-                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] bg-white border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
+                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] bg-id-paper dark:bg-id-paper-dark border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
                   {/* Magnetic Stripe */}
                   <div className="bg-zinc-950 h-10 w-full mt-5"></div>
                   
                   {/* Content */}
-                  <div className="flex-1 p-5 flex text-zinc-950 dark:text-zinc-50 gap-4 bg-[#fdfbf7] dark:bg-[#1a1a1a]">
+                  <div className="flex-1 p-5 flex text-zinc-950 dark:text-zinc-50 gap-4 bg-id-paper dark:bg-id-paper-dark">
                     <div className="w-2/3 flex flex-col justify-between">
                       <div>
                         <p className="text-[10px] font-bold text-maroon dark:text-golden uppercase tracking-wider mb-1">Conditions of Use</p>
@@ -229,6 +236,18 @@ export default function StudentDetailPage() {
             </div>
             <p className="text-center text-xs text-zinc-500 font-bold uppercase tracking-widest mt-4 animate-pulse">Click card to flip</p>
           </div>
+
+          {/* Delegated account governance */}
+          {isTeacher ? (
+            <div className="mb-6 flex flex-col items-center gap-3">
+              <StudentGovernanceActions
+                student={student}
+                sectionId={sectionId || null}
+                permissions={user.delegatedPermissions}
+                onChanged={() => void refreshStudent()}
+              />
+            </div>
+          ) : null}
 
           {/* Remove from Subject */}
           {isTeacher && (

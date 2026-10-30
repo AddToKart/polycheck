@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, ScrollView, Text, TextInput, View } from 'react-native'
+import { ScrollView, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -9,9 +9,11 @@ import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusCard, CampusEmptyState } from '../../components/CampusPrimitives'
+import { useCampusToast } from '../../components/CampusToast'
 
 export default function StudentSubjectsListScreen() {
   const { isDark } = useTheme()
+  const { showToast } = useCampusToast()
   const [searchQuery, setSearchQuery] = useState('')
   const [mySections, setMySections] = useState<Section[]>([])
   const [myAttendance, setMyAttendance] = useState<AttendanceRecord[]>([])
@@ -28,8 +30,8 @@ export default function StudentSubjectsListScreen() {
         setMyAttendance(attendance)
         setSubjects(Object.fromEntries(allSubjects.map((subject) => [subject.id, subject])))
       })
-      .catch(() => Alert.alert('Unable to load classes', 'Check your connection and try again.'))
-  }, [student?.id])
+      .catch(() => showToast('error', 'Unable to load classes', 'Check your connection and try again.'))
+  }, [showToast, student?.id])
 
   const filteredSections = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()

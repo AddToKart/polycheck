@@ -189,7 +189,7 @@ describe('real API client', () => {
     const { api } = await import('./api-client')
 
     try {
-      const request = expect(api.getSubjects()).rejects.toMatchObject({ name: 'AbortError' })
+      const request = expect(api.getAttendanceSummaries()).rejects.toMatchObject({ name: 'AbortError' })
       await vi.advanceTimersByTimeAsync(15_000)
       await request
     } finally {
@@ -303,14 +303,14 @@ describe('real API client', () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ message: ['Error A', 'Error B'] }, 422))
     const { api } = await import('./api-client')
 
-    await expect(api.getSubjects()).rejects.toThrow('Error A. Error B')
+    await expect(api.getAttendanceSummaries()).rejects.toThrow('Error A. Error B')
   })
 
   it('handleResponse falls back to status text on unparseable error', async () => {
     vi.mocked(fetch).mockResolvedValue(new Response('Not JSON', { status: 502, statusText: 'Bad Gateway' }))
     const { api } = await import('./api-client')
 
-    await expect(api.getSubjects()).rejects.toThrow('Bad Gateway')
+    await expect(api.getAttendanceSummaries()).rejects.toThrow('Bad Gateway')
   })
 
   it('handleResponse returns undefined for 204 No Content', async () => {
@@ -353,7 +353,10 @@ describe('real API client', () => {
     expect(result).toBe(true)
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining('/sections/sec-1/enroll-student'),
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ studentId: 'stu-1', studentName: 'Test' }),
+      }),
     )
   })
 
@@ -364,5 +367,61 @@ describe('real API client', () => {
     await api.search('hello world & special=chars')
     const url = vi.mocked(fetch).mock.calls[0]?.[0] as string
     expect(url).toContain(encodeURIComponent('hello world & special=chars'))
+  })
+
+  it('fetches the super-admin overview and server status endpoints', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ scope: 'institution', counts: {} }))
+    const { api } = await import('./api-client')
+
+    await api.getAdminOverview()
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.polycheck.test/api/dashboard/admin-overview',
+      expect.anything(),
+    )
+
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ timestamp: '2026-10-26T02:30:00.000Z' }))
+    await api.getServerStatus()
+    expect(fetch).toHaveBeenLastCalledWith(
+      'https://api.polycheck.test/api/dashboard/server-status',
+      expect.anything(),
+    )
+  })
+
+  it('getUsers forwards server-side filters and caps the page size', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ data: [], total: 0, limit: 100, offset: 20, hasMore: false }))
+    const { api } = await import('./api-client')
+
+    await api.getUsers({ role: 'student', q: 'Reyes', department: 'CCIS', status: 'inactive', limit: 500, offset: 20 })
+    const url = vi.mocked(fetch).mock.calls[0]?.[0] as string
+    expect(url).toContain('/users?')
+    expect(url).toContain('role=student')
+    expect(url).toContain('q=Reyes')
+    expect(url).toContain('department=CCIS')
+    expect(url).toContain('status=inactive')
+    expect(url).toContain('limit=100')
+    expect(url).toContain('offset=20')
+  })
+
+  it('edits profiles, changes roles, and provisions admins through the admin endpoints', async () => {
+    vi.mocked(fetch).mockImplementation(async () => jsonResponse(teacher))
+    const { api } = await import('./api-client')
+
+    await api.updateUser('teacher-1', { fullName: 'Updated Teacher' })
+    expect(fetch).toHaveBeenLastCalledWith(
+      'https://api.polycheck.test/api/users/teacher-1',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ fullName: 'Updated Teacher' }) }),
+    )
+
+    await api.changeUserRole('teacher-1', 'student')
+    expect(fetch).toHaveBeenLastCalledWith(
+      'https://api.polycheck.test/api/users/teacher-1/role',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ role: 'student' }) }),
+    )
+
+    await api.createAdmin({ userId: 'teacher-1' })
+    expect(fetch).toHaveBeenLastCalledWith(
+      'https://api.polycheck.test/api/users/admins',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ userId: 'teacher-1' }) }),
+    )
   })
 })

@@ -1,5 +1,5 @@
 appId: edu.pup.polycheck
-name: Super-admin oversight navigation
+name: Super-admin administration console journey
 tags:
   - smoke
   - super-admin
@@ -18,19 +18,109 @@ env:
     visible:
       id: super-admin-dashboard-screen
     timeout: 20000
+- extendedWaitUntil:
+    visible:
+      id: super-admin-tile-active-faculty
+    timeout: 20000
 
-- tapOn:
-    id: faculty-tab-subjects
-- assertVisible: Subject directory
-- tapOn:
+# SA2 — administration tiles and feeds (no classroom surfaces).
+- assertVisible:
+    id: super-admin-tile-active-faculty
+- assertVisible:
+    id: super-admin-tile-active-students
+- assertVisible:
+    id: super-admin-tile-active-sessions
+- assertVisible:
+    id: super-admin-tile-pending-disputes
+- assertNotVisible: Subject directory
+- assertNotVisible: Session Monitoring
+- assertNotVisible: Class Schedule
+
+# SA1 — super-admin tab bar is Dashboard · Users · Reports · More.
+- assertVisible:
+    id: faculty-tab-dashboard
+- assertVisible:
     id: admin-tab-users
-- assertVisible: Campus users
+- assertVisible:
+    id: admin-tab-reports
+- assertVisible:
+    id: faculty-tab-more
+- assertNotVisible:
+    id: faculty-tab-subjects
+- assertNotVisible:
+    id: faculty-tab-sessions
+- assertNotVisible:
+    id: faculty-tab-disputes
+
+# The health and audit panels sit below the fold on a phone.
+- scrollUntilVisible:
+    element:
+      text: "System status"
+    direction: DOWN
+- assertVisible: System status
+- scrollUntilVisible:
+    element:
+      text: "Recent administrative activity"
+    direction: DOWN
+- assertVisible: Recent administrative activity
+
 - tapOn:
     id: admin-tab-reports
 - assertVisible: Attendance reports
 - tapOn:
+    id: admin-tab-users
+- assertVisible: Campus users
+
+# SA5 — server-side search, edit sheet, and role-change confirmation.
+- tapOn:
+    id: users-tab-students
+- tapOn:
+    id: users-search-input
+- inputText: "Alexandra"
+- hideKeyboard
+- extendedWaitUntil:
+    visible: Alexandra Marie Reyes
+    timeout: 10000
+- tapOn: Edit profile for Alexandra Marie Reyes
+- assertVisible: Edit profile
+- assertVisible: Student · Student numbers cannot be changed.
+- tapOn:
+    id: account-sheet-close
+- tapOn: Change role for Alexandra Marie Reyes
+- assertVisible: Change Alexandra Marie Reyes to teacher?
+- tapOn: Cancel
+- waitForAnimationToEnd
+
+# SA5 — super-admin provisioning sheet (institution-scope administrators only).
+- tapOn:
+    id: users-tab-admins
+- assertVisible:
+    id: users-add-super-admin
+- tapOn:
+    id: users-add-super-admin
+- assertVisible: Add super administrator
+- assertVisible: Promote teacher
+- assertVisible: Create new
+- tapOn:
+    id: account-sheet-close
+
+# SA1 — More sheet contains admin items only (MP2 Schedule superseded).
+- tapOn:
     id: faculty-tab-more
 - assertVisible:
     id: faculty-more-sheet
-- tapOn: Session Monitoring
-- assertVisible: Session monitoring
+- assertVisible: Global Search
+- assertVisible: Institution Settings
+- assertVisible: Audit Log
+- assertNotVisible: Schedule
+- assertNotVisible: Session Monitoring
+- assertNotVisible: Attendance Monitoring
+- assertNotVisible: Dispute Monitoring
+
+- tapOn: Audit Log
+- assertVisible: Audit log
+- back
+- tapOn:
+    id: faculty-tab-dashboard
+- assertVisible:
+    id: super-admin-dashboard-screen

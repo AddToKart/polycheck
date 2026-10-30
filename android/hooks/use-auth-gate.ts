@@ -14,6 +14,7 @@ export type AllowedRole = User['role']
  * open). It returns the current user when allowed, otherwise redirects:
  *
  * - not logged in → '/' (login)
+ * - temporary password → '/change-password' (blocking gate)
  * - wrong role    → the user's own dashboard group
  *
  * Screens must call it unconditionally at the top and guard their data
@@ -28,6 +29,8 @@ export function useAuthGate(roles: AllowedRole[] = []): User | null {
     const allowedRoles = rolesKey ? rolesKey.split(',') : []
     if (!user) {
       router.replace('/')
+    } else if (user.mustChangePassword) {
+      router.replace('/change-password')
     } else if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
       router.replace(user.role === 'student' ? '/(tabs)/dashboard' : '/(faculty)/dashboard')
     }

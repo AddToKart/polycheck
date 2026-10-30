@@ -58,6 +58,7 @@ export class AttendanceReportService {
           absent: 0,
           disputed: 0,
           pending: 0,
+          excused: 0,
         },
       ]),
     )
@@ -66,15 +67,17 @@ export class AttendanceReportService {
     const rows = [...summaries.values()].sort((left, right) => left.subjectName.localeCompare(right.subjectName))
     const totals = rows.reduce(
       (total, row) => ({
-        totalRecords: total.totalRecords + row.present + row.late + row.absent + row.pending + row.disputed,
+        totalRecords:
+          total.totalRecords + row.present + row.late + row.absent + row.pending + row.disputed + row.excused,
         totalSessions: total.totalSessions + row.totalSessions,
         present: total.present + row.present,
         late: total.late + row.late,
         absent: total.absent + row.absent,
         pending: total.pending + row.pending,
         disputed: total.disputed + row.disputed,
+        excused: total.excused + row.excused,
       }),
-      { totalRecords: 0, totalSessions: 0, present: 0, late: 0, absent: 0, pending: 0, disputed: 0 },
+      { totalRecords: 0, totalSessions: 0, present: 0, late: 0, absent: 0, pending: 0, disputed: 0, excused: 0 },
     )
     return { range, totals, summaries: rows }
   }
