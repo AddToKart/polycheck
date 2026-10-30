@@ -1,14 +1,17 @@
 'use client'
 
 import { useState } from 'react'
-import { Mail, ShieldCheck, Smartphone, UserRound } from 'lucide-react'
+import { Flag, Mail, ShieldCheck, Smartphone, UserRound } from 'lucide-react'
 import type { User } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { ChangePasswordForm } from './ChangePasswordForm'
 import { ContactSettingsForm, DevicePanel } from './ProfileSecurity'
+import { ReportIssueDialog } from '@/components/reports/ReportIssueDialog'
+import { MyReportsPanel } from '@/components/reports/MyReportsPanel'
 
-type ProfileTab = 'security' | 'contacts' | 'device'
+type ProfileTab = 'security' | 'contacts' | 'device' | 'reports'
 
 const roleLabel = (role: User['role']) =>
   role === 'super_admin' ? 'Super Admin' : role === 'teacher' ? 'Teacher' : 'Student'
@@ -23,12 +26,16 @@ export function ProfilePage({
   onLogout: () => void
 }) {
   const [tab, setTab] = useState<ProfileTab>('security')
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reloadSignal, setReloadSignal] = useState(0)
   const isStudent = user.role === 'student'
+  const canReport = user.role === 'student' || user.role === 'teacher'
 
   const tabs: { id: ProfileTab; label: string; icon: typeof ShieldCheck }[] = [
     { id: 'security', label: 'Password & security', icon: ShieldCheck },
     { id: 'contacts', label: 'Contact information', icon: Mail },
     ...(isStudent ? [{ id: 'device' as const, label: 'Device & anti-cheat', icon: Smartphone }] : []),
+    ...(canReport ? [{ id: 'reports' as const, label: 'My reports', icon: Flag }] : []),
   ]
 
   return (
@@ -38,12 +45,23 @@ export function ProfilePage({
         <div className="mx-auto max-w-4xl p-6 sm:p-8">
           <div className="mb-8 flex items-center gap-3">
             <UserRound className="h-7 w-7 text-maroon dark:text-golden" aria-hidden="true" />
-            <div>
+            <div className="flex-1">
               <h1 className="font-heading text-2xl font-bold text-maroon dark:text-white">My Profile</h1>
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
                 Your institutional identity, credentials, contacts, and device security.
               </p>
             </div>
+            {canReport ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2"
+                onClick={() => setReportOpen(true)}
+              >
+                <Flag className="h-4 w-4" aria-hidden="true" />
+                Report an issue
+              </Button>
+            ) : null}
           </div>
 
           <Card className="mb-6 overflow-hidden">
@@ -133,9 +151,20 @@ export function ProfilePage({
               {tab === 'device' && isStudent ? (
                 <DevicePanel user={user} onUpdated={onUpdated} onLoggedOut={onLogout} />
               ) : null}
+              {tab === 'reports' && canReport ? <MyReportsPanel reloadSignal={reloadSignal} /> : null}
             </CardContent>
           </Card>
-        </div>
+
+        {canReport ? (
+          <ReportIssueDialog
+            open={reportOpen}
+            onOpenChange={(open) => {
+              setReportOpen(open)
+              if (!open) setReloadSignal((value) => value + 1)
+            }}
+          />
+        ) : null}
+      </div>
       </main>
     </div>
   )

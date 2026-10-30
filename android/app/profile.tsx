@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Alert, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, FlatList, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { cooldownRemainingMinutes, formatCooldownRemaining } from '@polycheck/shared/utils'
+import { REPORT_CATEGORY_LABELS, REPORT_STATUS_LABELS, type SystemReport } from '@polycheck/shared'
 import { api } from '../services/api-client'
 import { useAuthGate } from '../hooks/use-auth-gate'
 import { useTheme } from '../theme/ThemeContext'
@@ -42,6 +43,7 @@ export default function ProfileScreen() {
   const [savingPassword, setSavingPassword] = useState(false)
   const [savingContacts, setSavingContacts] = useState(false)
   const [cooldownNow, setCooldownNow] = useState(() => Date.now())
+  const [myReports, setMyReports] = useState<SystemReport[]>([])
 
   const cooldownMinutes = cooldownRemainingMinutes(current?.deviceCooldownUntil ?? null, cooldownNow)
 
@@ -50,6 +52,22 @@ export default function ProfileScreen() {
     const timer = setInterval(() => setCooldownNow(Date.now()), 30_000)
     return () => clearInterval(timer)
   }, [cooldownMinutes])
+
+  useEffect(() => {
+    if (!current || (current.role !== 'student' && current.role !== 'teacher')) return
+    let active = true
+    api
+      .getMySystemReports()
+      .then((rows) => {
+        if (active) setMyReports(rows)
+      })
+      .catch(() => {
+        /* Best-effort: the section falls back to its empty state. */
+      })
+    return () => {
+      active = false
+    }
+  }, [current])
 
   const identity = useMemo(() => {
     if (!current) return []
@@ -336,6 +354,56 @@ export default function ProfileScreen() {
                 onPress={confirmUnregister}
                 className="mt-4"
               />
+            </CampusCard>
+          </>
+        ) : null}
+
+        {(current.role === 'student' || current.role === 'teacher') ? (
+          <>
+            <SectionHeading title="Feedback & reports" eyebrow="Help improve Polycheck" />
+            <CampusCard className="p-5">
+              <Text className="font-sans text-xs leading-5 text-muted dark:text-zinc-400">
+                Bug, GPS quirk, or idea? Report it and follow the status here. Super admins triage every submission.
+              </Text>
+              <CampusButton
+                testID="profile-report-issue"
+                label="Report an issue"
+                icon="flag"
+                onPress={() => router.push('/report-issue')}
+                className="mt-4"
+              />
+              <View className="mt-5 gap-3" testID="profile-my-reports">
+                {myReports.map((report) => (
+                  <View key={report.id} className="border border-line p-3 dark:border-line-dark">
+                    <View className="flex-row items-center gap-2">
+                      <View className="rounded-full bg-maroon px-2 py-0.5 dark:bg-golden">
+                        <Text className="font-sans-bold text-[8px] uppercase tracking-widest text-white dark:text-maroon-ink">
+                          {REPORT_STATUS_LABELS[report.status]}
+                        </Text>
+                      </View>
+                      <Text className="font-sans-bold text-[8px] uppercase tracking-widest text-muted dark:text-zinc-500">
+                        {REPORT_CATEGORY_LABELS[report.category]}
+                      </Text>
+                      <Text className="flex-1 text-right font-sans text-[9px] text-muted dark:text-zinc-500">
+                        {new Date(report.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                      </Text>
+                    </View>
+                    <Text className="mt-1.5 font-sans-bold text-xs text-ink dark:text-white" numberOfLines={1}>
+                      {report.title}
+                    </Text>
+                    {report.adminNotes ? (
+                      <Text className="mt-1 font-sans text-[10px] leading-4 text-muted dark:text-zinc-400" numberOfLines={2}>
+                        Admin: {report.adminNotes}
+                      </Text>
+                    ) : null}
+                  </View>
+                ))}
+                {myReports.length === 0 ? (
+                  <Text className="font-sans text-[10px] text-muted dark:text-zinc-500">
+                    No reports yet — the first one starts the conversation.
+                  </Text>
+                ) : null}
+              </View>
             </CampusCard>
           </>
         ) : null}

@@ -21,6 +21,14 @@ import type { AttendanceStanding } from './standing'
 import type { AppNotification, NotificationReadInput, PushTokenInput } from './notification'
 import type { StudentAtRisk } from './at-risk'
 import type { ExcuseDecision, ExcuseReason } from './attendance'
+import type {
+  CreateSystemReportInput,
+  SystemReport,
+  SystemReportFilters,
+  SystemReportPage,
+  SystemReportStats,
+  UpdateSystemReportStatusInput,
+} from './system-report'
 
 export interface CreateSubjectInput {
   name: string
@@ -413,6 +421,14 @@ export interface ApiClient {
   ): Promise<EmergencyDeviceReleaseResult>
   unregisterDevice(deviceId: string): Promise<UnregisterDeviceResult>
   updateContacts(input: UpdateContactsInput): Promise<User>
+
+  // ── System issue & feedback reporting (SR) ──
+  createSystemReport(input: CreateSystemReportInput): Promise<SystemReport>
+  getMySystemReports(): Promise<SystemReport[]>
+  getSystemReports(filters?: SystemReportFilters, options?: { signal?: AbortSignal }): Promise<SystemReportPage>
+  getSystemReportStats(): Promise<SystemReportStats>
+  getSystemReport(id: string): Promise<SystemReport>
+  updateSystemReportStatus(id: string, input: UpdateSystemReportStatusInput): Promise<SystemReport>
 
   // ── Bulk import ──
   importStudents(data: StudentImportRequest): Promise<StudentImportResult>

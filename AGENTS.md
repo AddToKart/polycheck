@@ -548,6 +548,14 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - **Android**: mobile login sends the SecureStore installation id and branches on typed `device_cooldown_active` with a branded countdown modal; new root `/profile` screen (identity/password/contacts/device + unregister Alert); ID-card device chip + profile shortcut; student detail gains reset/release actions and credential/release sheets; Users screen uses generated credentials, copy sheets, and permission tri-state; More sheet gains Profile & security; settings mirror adds the governance controls; the uppercase `PASSWORD_CHANGE_REQUIRED` dead-branch is fixed.
   - **Verification**: backend 712 / 65 suites, web 274 / 44, Android 310 / 23, shared 95 / 6; `pnpm lint`, backend format/validate, `pnpm build` clean. New/updated Playwright coverage in `e2e/account-governance.spec.ts` and `e2e/admin.spec.ts` (generated-credential modals).
 
+### Done (cont.)
+- **System Issue & Feedback Reporting (`plan/system-reports-plan.md`, SR-0–SR-7)**:
+  - **Shared contract**: `ReportCategory`/`ReportSeverity`/`ReportStatus` unions + label maps, `SystemReport`/`CreateSystemReportInput` (with client telemetry fields: `deviceInfo`, `appVersion`, `route`, `networkType`), filters/page/stats types, `CreateSystemReportSchema` + status-update zod, and `ApiClient` methods (`createSystemReport`, `getMySystemReports`, `getSystemReports`, `getSystemReportStats`, `getSystemReport`, `updateSystemReportStatus`). Fixed a latent shared-packaging gap: `@polycheck/shared/validation` is now a real export path (tsup entry + exports map).
+  - **Backend**: model `SystemReport` (enums `ReportCategory`/`ReportSeverity`/`ReportStatus`, FK `User` cascade) via migration `20261031120000_system_reports_and_feedback`; `backend/src/reports/` module: `POST /reports` (student/teacher, Redis rate limit 5/hour/user), `GET /reports/my` (latest 100), `GET /reports` + `GET /reports/stats` (super admin; filters category/severity/status/role/search/dates + pagination), `GET /reports/:id`, `PATCH /reports/:id/status` (institution scope only — department chairs read-only), `GET /reports/:id/screenshot` (owner or super admin). Identity (`userId`/`userRole`) is stamped server-side; screenshots reuse the proof pipeline (`decodeImageDataUrl` ≤5 MB + `ProofStorageService`) with a fail-open attachment (storage errors keep the report); `admin.report.status_changed` audits (fail-open) with `from/to/noteUpdated/ipAddress`; `resolvedAt`/`resolvedBy` stamped on entering resolved and cleared when leaving; submitter notified via new `system_report_resolved` type.
+  - **Web**: `report-telemetry.ts` (pure UA summarizer + `navigator.connection` mapping); `ReportIssueDialog` (category hints, severity radio pills, 5–120 title/description validation via shared zod, 5 MB image attach) hosted in the sidebar footer for students/teachers and on `/profile`; profile gains "My reports" tab (`MyReportsPanel` status pills + admin notes); new `/faculty/system-reports` cockpit (5 metric cards incl. unresolved + scanner/GPS + resolved-this-month + critical, category/severity/status/role/date/search filters, table → detail drawer with telemetry grid, streamed screenshot, status select + admin notes; department-scope read-only banner); notification label/destination maps extended.
+  - **Android**: `report-issue.tsx` route (students/teachers; auto device label from `Platform` + `expo-constants` version, `usePathname`, network `unknown` until expo-network lands, `expo-image-picker` attach); Faculty More sheet gains "Report an Issue", super More sheet gains "System Reports"; profile screen gains report entry + "My reports" section; new `(faculty)/system-reports.tsx` cockpit (MetricTiles, status/category chips, search, detail bottom sheet with diagnostics + auth'd screenshot fetch (new exported `getReportScreenshotDataUrl` + tested `bytesToBase64`), triage controls); notification icon map extended.
+  - **Verification**: shared 95 / 6, backend 727 / 66, web 283 / 46, Android 314 / 24; typecheck/lint/format/build clean; Docker stack rebuilt and smoke-passed (migration applied; student create → `GET /reports/my`; 6th submission → 429 `rate_limited`; admin resolve → `resolvedAt`/`resolvedBy` + audit `open->resolved` + `system_report_resolved` notification; `/faculty/system-reports` and `/profile` serve 200; smoke data cleaned).
+
 ### Blocked
 - (none)
 
@@ -573,7 +581,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - Mobile scanner (`android/app/(tabs)/scan.tsx`) exposes `Upload QR Image` and `Enter Code` fallbacks alongside live camera.
 - **Database Migration Self-Healing**: Added idempotent pre-checks and backfills in `20260907090000_domain_constraints/migration.sql` to gracefully handle dirty development databases or re-runs without crashing the migration service container.
 - **Docker Compose Local Developer Experience**: Added automated 1-click startup scripts (`start-local.bat`, `start-local.sh`, `stop-local.bat`, `stop-local.sh`) and passed `NEXT_PUBLIC_ALLOW_QR_FALLBACKS: "true"` to local container builds.
-- **Comprehensive Automated Test Coverage**: 1,391 total passing automated tests across 138 suites monorepo-wide (95 shared, 274 web, 712 backend, 310 mobile); the web E2E suite includes 198 tests across Chromium, Firefox, and WebKit (10 engine-specific skips), plus the account-governance journey spec. The AI assistant additions are covered by backend AI/docs/standing suites plus web and Android chat/standing tests.
+- **Comprehensive Automated Test Coverage**: 1,419 total passing automated tests across 138 suites monorepo-wide (95 shared, 283 web, 727 backend, 314 mobile); the web E2E suite includes 198 tests across Chromium, Firefox, and WebKit (10 engine-specific skips), plus the account-governance and system-reports journey specs. The AI assistant additions are covered by backend AI/docs/standing suites plus web and Android chat/standing tests.
 
 ## Next Steps
 - Connect sessions page to section context when navigated from section detail.
@@ -616,6 +624,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - Android push requires a dev client/EAS rebuild (`expo-notifications` plugin + `POST_NOTIFICATIONS`); web push (VAPID) remains a deferred, env-gated follow-up.
 - Account governance endpoints: `POST /api/users/students/:id/teacher-reset-password` (`{ sectionId }`, teacher; returns the one-time `temporaryPassword`), `POST /api/users/students/:id/device-release` (`{ sectionId, reason, note? }`, teacher), `POST /api/users/me/device/unregister` (student self-service; body `{ deviceId? }`), `PATCH /api/users/me/contacts` (`{ contactEmail?, contactPhone? }`, empty string clears). Mobile login routes accept an optional `deviceId`; cooldown failures return `403 code=device_cooldown_active` + `remainingMinutes`. Teacher-effective capabilities arrive via `GET /auth/me` → `delegatedPermissions`.
 - Governance settings (`Institution Settings → Accounts & access`): `allow_teacher_password_reset` (default true), `allow_teacher_emergency_device_unbind` (default true), `device_cooldown_hours` (1–24, default 2). Per-teacher nullable overrides live on `User.canResetStudentPasswords` / `canEmergencyUnbindDevices` and are edited through `PATCH /users/:id` (teacher targets only).
+- System reports: `POST /api/reports` (student/teacher only, telemetry auto-captured client-side, 5/hour/user; `REPORT_CREATE_RATE_LIMIT`/`_WINDOW_SECONDS` tunable), `GET /api/reports/my`, super-admin `GET /api/reports` (+`?category&severity&status&role&search&startDate&endDate&limit&offset`), `GET /api/reports/stats`, `GET /api/reports/:id`, `PATCH /api/reports/:id/status` (institution scope; department chairs read-only), `GET /api/reports/:id/screenshot`. Audit action `admin.report.status_changed`; notification type `system_report_resolved`. Screenshots stream through the proof storage driver (local `/uploads` or `s3://` references in `SystemReport.screenshotUrl`); mobile screenshots must be fetched with the bearer token (`api.getReportScreenshotDataUrl`).
 
 ## Relevant Files
 - `shared/src/types/session.ts` — Session now has `qrValidityMinutes`, `qrGeneratedAt?`; removed `tokenWindowSeconds`
@@ -656,6 +665,15 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - `android/app/profile.tsx` — universal mobile profile + unregister flow
 - `android/app/(faculty)/student/[id].tsx` — mobile teacher reset/release actions and credential sheets
 - `shared/src/utils/permissions.ts` — effective-permission merge + cooldown countdown helpers
+- `backend/src/reports/reports.service.ts` — issue intake service: rate limits, telemetry stamping, fail-open screenshot/audit, triage + notifications
+- `backend/prisma/migrations/20261031120000_system_reports_and_feedback/` — SystemReport model + enums + indexes
+- `frontend/src/app/faculty/system-reports/page.tsx` — super-admin triage cockpit
+- `frontend/src/components/reports/ReportIssueDialog.tsx` — accessible intake dialog (sidebar + profile host)
+- `frontend/src/components/reports/MyReportsPanel.tsx` — profile "My reports" tab
+- `frontend/src/lib/report-telemetry.ts` — pure web diagnostics capture
+- `android/app/report-issue.tsx` — mobile intake screen (More-sheet + profile entry)
+- `android/app/(faculty)/system-reports.tsx` — mobile triage cockpit
+- `android/lib/base64.ts` — RFC-4648 encoder for auth'd screenshot streaming
 
 
 

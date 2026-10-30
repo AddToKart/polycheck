@@ -33,6 +33,7 @@ const TYPE_ICONS: Record<NotificationType, keyof typeof MaterialIcons.glyphMap> 
   password_reset: 'lock-reset',
   role_changed: 'swap-horiz',
   device_released: 'smartphone',
+  system_report_resolved: 'task-alt',
   key_provisioned: 'vpn-key',
 }
 

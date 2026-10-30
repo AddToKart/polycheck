@@ -46,6 +46,7 @@ function MoreSheet({ visible, onClose, isDark, isSuper, showAssistant, pendingEx
         { icon: 'search', label: 'Global Search', sub: 'Find users and sections', route: '/(faculty)/search' },
         { icon: 'settings', label: 'Institution Settings', sub: 'Configure institution defaults', route: '/(faculty)/settings' },
         { icon: 'history', label: 'Audit Log', sub: 'Review administrative changes', route: '/(faculty)/audit-logs' },
+        { icon: 'receipt-long', label: 'System Reports', sub: 'Triage campus issue reports', route: '/(faculty)/system-reports' },
         { icon: 'manage-accounts', label: 'Profile & security', sub: 'Your account, password and devices', route: '/profile' },
         { icon: 'smart-toy', label: 'Assistant', sub: 'Oversight, accounts & exports', route: '/(faculty)/assistant' },
       ]
@@ -53,6 +54,7 @@ function MoreSheet({ visible, onClose, isDark, isSuper, showAssistant, pendingEx
         { icon: 'calendar-today', label: 'Schedule', sub: 'Weekly class schedule', route: '/(faculty)/schedule' },
         { icon: 'assignment', label: 'Attendance', sub: 'Overview & export', route: '/(faculty)/attendance' },
         { icon: 'assignment-turned-in', label: 'Excuses', sub: pendingExcuses > 0 ? `${pendingExcuses} waiting · Review excuse requests` : 'Review student excuse requests', route: '/(faculty)/excuses', badge: pendingExcuses },
+        { icon: 'flag', label: 'Report an Issue', sub: 'Bugs, GPS quirks, or ideas', route: '/report-issue' },
         { icon: 'search', label: 'Search', sub: 'Find students and sections', route: '/(faculty)/search' },
         { icon: 'manage-accounts', label: 'Profile & security', sub: 'Your account, password and devices', route: '/profile' },
         { icon: 'smart-toy', label: 'Assistant', sub: 'Ask about your sections and exports', route: '/(faculty)/assistant' },

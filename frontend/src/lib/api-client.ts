@@ -1,4 +1,4 @@
-import { classifyAttendanceSyncError, getRecentCampusDateRange, haversineDistance, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRequest, type EnrollImportResult, type EnrollImportRow, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput, type AiCapabilities, type AiChatSendInput, type AiChatSendResult, type AiChatThread, type AiThreadSummary, type AttendanceStanding, type AppNotification, type NotificationReadInput, type PushTokenInput, type StudentAtRisk, type ExcuseDecision, type ExcuseReason, type CreateTeacherResult, type CreateStudentResult, type TeacherResetStudentPasswordResult, type EmergencyDeviceReleaseInput, type EmergencyDeviceReleaseResult, type UnregisterDeviceResult, type UpdateContactsInput } from '@polycheck/shared'
+import { classifyAttendanceSyncError, getRecentCampusDateRange, haversineDistance, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRequest, type EnrollImportResult, type EnrollImportRow, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput, type AiCapabilities, type AiChatSendInput, type AiChatSendResult, type AiChatThread, type AiThreadSummary, type AttendanceStanding, type AppNotification, type NotificationReadInput, type PushTokenInput, type StudentAtRisk, type ExcuseDecision, type ExcuseReason, type CreateTeacherResult, type CreateStudentResult, type TeacherResetStudentPasswordResult, type EmergencyDeviceReleaseInput, type EmergencyDeviceReleaseResult, type UnregisterDeviceResult, type UpdateContactsInput, type SystemReport, type SystemReportFilters, type SystemReportPage, type SystemReportStats, type CreateSystemReportInput, type UpdateSystemReportStatusInput } from '@polycheck/shared'
 import { getOrCreateTeacherSigningKey, isSigningKeyProvisioned, markSigningKeyProvisioned } from './signing-key'
 import { API_BASE } from './api-config'
 import {
@@ -860,6 +860,40 @@ const apiBase = {
     saveUser(updated)
     return updated
   },
+
+  // ── System issue & feedback reporting (SR) ──
+  createSystemReport(input: CreateSystemReportInput): Promise<SystemReport> {
+    return post('/reports', input)
+  },
+  getMySystemReports(): Promise<SystemReport[]> {
+    return get('/reports/my')
+  },
+  getSystemReports(filters: SystemReportFilters = {}, options: { signal?: AbortSignal } = {}): Promise<SystemReportPage> {
+    return get(
+      queryPath('/reports', {
+        category: filters.category,
+        severity: filters.severity,
+        status: filters.status,
+        role: filters.role,
+        search: filters.search,
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        limit: filters.limit,
+        offset: filters.offset,
+      }),
+      options.signal,
+    )
+  },
+  getSystemReportStats(): Promise<SystemReportStats> {
+    return get('/reports/stats')
+  },
+  getSystemReport(id: string): Promise<SystemReport> {
+    return get(`/reports/${id}`)
+  },
+  updateSystemReportStatus(id: string, input: UpdateSystemReportStatusInput): Promise<SystemReport> {
+    return patch(`/reports/${id}/status`, input)
+  },
+
   importStudents(data: StudentImportRequest): Promise<StudentImportResult> {
     return post('/users/students/import', data, data.idempotencyKey)
   },

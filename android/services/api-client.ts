@@ -1,5 +1,6 @@
 import { Platform } from 'react-native'
-import { classifyAttendanceSyncError, getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRow, type EnrollImportRequest, type EnrollImportResult, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput, type AiCapabilities, type AiChatSendInput, type AiChatSendResult, type AiChatThread, type AiThreadSummary, type AttendanceStanding, type AppNotification, type NotificationReadInput, type PushTokenInput, type StudentAtRisk, type ExcuseDecision, type ExcuseReason, type CreateTeacherResult, type CreateStudentResult, type TeacherResetStudentPasswordResult, type EmergencyDeviceReleaseInput, type EmergencyDeviceReleaseResult, type UnregisterDeviceResult, type UpdateContactsInput } from '@polycheck/shared'
+import { classifyAttendanceSyncError, getRecentCampusDateRange, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRow, type EnrollImportRequest, type EnrollImportResult, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput, type AiCapabilities, type AiChatSendInput, type AiChatSendResult, type AiChatThread, type AiThreadSummary, type AttendanceStanding, type AppNotification, type NotificationReadInput, type PushTokenInput, type StudentAtRisk, type ExcuseDecision, type ExcuseReason, type CreateTeacherResult, type CreateStudentResult, type TeacherResetStudentPasswordResult, type EmergencyDeviceReleaseInput, type EmergencyDeviceReleaseResult, type UnregisterDeviceResult, type UpdateContactsInput, type SystemReport, type SystemReportFilters, type SystemReportPage, type SystemReportStats, type CreateSystemReportInput, type UpdateSystemReportStatusInput } from '@polycheck/shared'
+import { bytesToBase64 } from '../lib/base64'
 import { API_BASE } from './api-config'
 import { getOrCreateTeacherSigningKey } from './signing-key'
 import { getOrCreateInstallationId } from './device-id'
@@ -845,6 +846,49 @@ export const api = {
       notifyAuthListeners()
     }
     return updated
+  },
+
+  // ── System issue & feedback reporting (SR) ──
+  createSystemReport(input: CreateSystemReportInput): Promise<SystemReport> {
+    return post('/reports', input)
+  },
+  getMySystemReports(): Promise<SystemReport[]> {
+    return get('/reports/my')
+  },
+  getSystemReports(filters: SystemReportFilters = {}): Promise<SystemReportPage> {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    }
+    const query = params.toString()
+    return get(`/reports${query ? `?${query}` : ''}`)
+  },
+  getSystemReportStats(): Promise<SystemReportStats> {
+    return get('/reports/stats')
+  },
+  getSystemReport(id: string): Promise<SystemReport> {
+    return get(`/reports/${id}`)
+  },
+  updateSystemReportStatus(id: string, input: UpdateSystemReportStatusInput): Promise<SystemReport> {
+    return patch(`/reports/${id}/status`, input)
+  },
+  /**
+   * Streams the report screenshot with the bearer token and returns it as a
+   * data URL for <Image source={{ uri }}>. Returns null when the attachment is
+   * missing or the submission lost.
+   */
+  async getReportScreenshotDataUrl(reportId: string): Promise<string | null> {
+    try {
+      const res = await fetchWithTimeout(`${API_BASE}/reports/${reportId}/screenshot`, {
+        headers: await authHeaders(),
+      })
+      if (!res.ok) return null
+      const contentType = res.headers.get('content-type') ?? 'image/jpeg'
+      const buffer = new Uint8Array(await res.arrayBuffer())
+      return `data:${contentType};base64,${bytesToBase64(buffer)}`
+    } catch {
+      return null
+    }
   },
 
   // ── Bulk import ──

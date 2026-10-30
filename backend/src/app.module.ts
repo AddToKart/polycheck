@@ -38,6 +38,7 @@ import { AiModule } from './ai/ai.module'
 import { DocsModule } from './docs/docs.module'
 import { StandingModule } from './standing/standing.module'
 import { NotificationsModule } from './notifications/notifications.module'
+import { ReportsModule } from './reports/reports.module'
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { NotificationsModule } from './notifications/notifications.module'
     DocsModule,
     StandingModule,
     NotificationsModule,
+    ReportsModule,
     MaintenanceModule,
   ],
   providers: [

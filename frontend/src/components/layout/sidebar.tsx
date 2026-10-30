@@ -26,12 +26,14 @@ import {
   Sparkles,
   ClipboardCheck,
   UserRound,
+  Flag,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import ThemeToggle from '@/components/ThemeToggle'
 import { NotificationBell } from './NotificationBell'
 import { useNotificationCenter } from '@/lib/hooks/use-notification-center'
+import { ReportIssueDialog } from '@/components/reports/ReportIssueDialog'
 
 type NavItem = { label: string; href: string; icon: any }
 
@@ -89,6 +91,8 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [reportOpen, setReportOpen] = useState(false)
+  const canReport = user.role === 'student' || user.role === 'teacher'
   const notificationCenter = useNotificationCenter(user.id)
   const isSuper = user.role === 'super_admin'
   const showSearch = !backHref && (user.role === 'teacher' || user.role === 'super_admin')
@@ -228,6 +232,18 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
             <p className="text-xs text-zinc-500 truncate">{user.email}</p>
           </div>
         </div>
+        {canReport ? (
+          <Button
+            variant="outline"
+            className="mb-3 w-full justify-center gap-2 text-xs font-bold uppercase tracking-widest text-maroon dark:text-golden hover:bg-maroon hover:text-white"
+            onClick={() => {
+              setReportOpen(true)
+            }}
+          >
+            <Flag className="w-4 h-4" />
+            Report an Issue
+          </Button>
+        ) : null}
         <Button
           variant="outline"
           className="w-full justify-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-600 dark:text-zinc-400 hover:text-white hover:bg-maroon hover:border-maroon transition-colors"
@@ -285,9 +301,11 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
       )}
 
       {/* Desktop Persistent Sidebar */}
-      <aside className="hidden md:flex w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col shrink-0 h-dvh sticky top-0 overflow-hidden">
+      <aside className="hidden md:flex w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex-col shrink-0 h-dvh sticky top-0 overflow-hidden">
         {sidebarContent}
       </aside>
+
+      {canReport ? <ReportIssueDialog open={reportOpen} onOpenChange={setReportOpen} /> : null}
     </>
   )
 }

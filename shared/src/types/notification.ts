@@ -10,6 +10,7 @@ export type NotificationType =
   | 'role_changed'
   | 'key_provisioned'
   | 'device_released'
+  | 'system_report_resolved'
 
 export interface AppNotification {
   id: string

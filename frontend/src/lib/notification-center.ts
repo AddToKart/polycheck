@@ -116,6 +116,7 @@ const FALLBACK_LINKS: Partial<Record<NotificationType, string>> = {
   excuse_decided: '/student/dashboard?tab=attendance',
   attendance_absent: '/student/dashboard?tab=attendance',
   standing_below_threshold: '/student/dashboard',
+  system_report_resolved: '/profile',
 }
 
 /** Student outcomes land on the attendance history, not the dashboard summary. */
@@ -152,4 +153,5 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   role_changed: 'Account',
   key_provisioned: 'Security',
   device_released: 'Security',
+  system_report_resolved: 'Reports',
 }

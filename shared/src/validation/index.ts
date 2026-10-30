@@ -151,6 +151,52 @@ export const UpdateContactsSchema = z
 
 export const DeviceCooldownHoursSchema = z.number().int().min(1).max(24)
 
+// ── System issue & feedback reporting (SR) ──
+
+export const ReportCategorySchema = z.enum([
+  'scanner_camera',
+  'geofence_gps',
+  'ui_display',
+  'enrollment_roster',
+  'account_login',
+  'feedback_suggestion',
+])
+
+export const ReportSeveritySchema = z.enum(['low', 'medium', 'high', 'critical'])
+
+export const ReportStatusSchema = z.enum(['open', 'in_review', 'resolved', 'dismissed'])
+
+const BoundedTelemetrySchema = z.string().trim().max(200)
+
+export const CreateSystemReportSchema = z.object({
+  category: ReportCategorySchema,
+  severity: ReportSeveritySchema,
+  title: z
+    .string()
+    .trim()
+    .min(5, 'Title must be 5-120 characters')
+    .max(120, 'Title must be 5-120 characters'),
+  description: z
+    .string()
+    .trim()
+    .min(10, 'Describe the issue in at least 10 characters')
+    .max(4_000, 'Description must be 4,000 characters or fewer'),
+  screenshotData: z
+    .string()
+    .max(7_500_000)
+    .regex(/^data:image\/(?:jpeg|png|webp);base64,/, 'Screenshot must be a JPEG, PNG, or WebP data URL')
+    .optional(),
+  deviceInfo: BoundedTelemetrySchema.optional(),
+  appVersion: BoundedTelemetrySchema.optional(),
+  route: BoundedTelemetrySchema.optional(),
+  networkType: z.string().trim().max(20).optional(),
+})
+
+export const UpdateSystemReportStatusSchema = z.object({
+  status: ReportStatusSchema,
+  adminNotes: z.string().trim().max(2_000, 'Admin notes must be 2,000 characters or fewer').optional(),
+})
+
 export * from './bulk-import'
 export * from './ai'
 export * from './excuse'
