@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { verifyQRToken } from '@polycheck/shared'
+import { verifyMeetingPin, verifyQRToken } from '@polycheck/shared'
 import { createHash } from 'crypto'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
@@ -9,7 +9,11 @@ import { GeofenceService } from './geofence.service'
 import {
   MAX_LOCATION_ACCURACY_METERS,
   MAX_LOCATION_AGE_MS,
+  MAX_ONLINE_CHECKPOINT_VALIDITY_SECONDS,
   MAX_WEB_LOCATION_ACCURACY_METERS,
+  MIN_ONLINE_CHECKPOINT_VALIDITY_SECONDS,
+  PIN_ATTEMPT_LIMIT,
+  PIN_ATTEMPT_WINDOW_SECONDS,
   type CachedSession,
   type ScanEvidence,
   type ScanValidation,
@@ -35,7 +39,7 @@ export class ScanValidatorService {
     if (!evidence.clientAttemptId) return null
     const attempt = await this.prisma.scanAttempt.findUnique({
       where: { studentId_clientAttemptId: { studentId, clientAttemptId: evidence.clientAttemptId } },
-      include: { acceptedAttendanceRecord: true },
+      include: { acceptedAttendanceRecord: true, acceptedCheckInRecord: true, acceptedCheckOutRecord: true },
     })
     if (!attempt) return null
     const clientScannedAt = evidence.scannedAt ? new Date(evidence.scannedAt).getTime() : null
@@ -43,8 +47,8 @@ export class ScanValidatorService {
     const exactReplay =
       attempt.sessionId === evidence.sessionId &&
       attempt.tokenHash === tokenHash &&
-      attempt.latitude === evidence.latitude &&
-      attempt.longitude === evidence.longitude &&
+      (attempt.latitude ?? null) === (evidence.latitude ?? null) &&
+      (attempt.longitude ?? null) === (evidence.longitude ?? null) &&
       (attempt.deviceId ?? undefined) === evidence.deviceId &&
       (attempt.inputChannel ?? undefined) === evidence.inputChannel &&
       (attempt.accuracyMeters ?? undefined) === evidence.accuracyMeters &&
@@ -60,7 +64,12 @@ export class ScanValidatorService {
         message: 'clientAttemptId was already used for a different scan payload',
       }
     }
-    if (!attempt.acceptedAttendanceRecord) {
+    const accepted = [
+      attempt.acceptedAttendanceRecord,
+      attempt.acceptedCheckInRecord,
+      attempt.acceptedCheckOutRecord,
+    ].find((record) => record !== null)
+    if (!accepted) {
       return {
         success: false,
         status: 'disputed' as const,
@@ -70,9 +79,9 @@ export class ScanValidatorService {
     }
     return {
       success: true,
-      status: attempt.acceptedAttendanceRecord.status,
+      status: attempt.acceptedCheckInRecord?.checkInStatus ?? accepted.status,
       message: 'Attendance was already acknowledged.',
-      record: attempt.acceptedAttendanceRecord,
+      record: accepted,
     }
   }
 
@@ -83,18 +92,16 @@ export class ScanValidatorService {
     receivedAt: Date,
   ): Promise<ScanValidation> {
     const riskSignals: string[] = []
-    const missingCoreEvidence: string[] = []
-    if (!evidence.clientAttemptId) missingCoreEvidence.push('missing_client_attempt_id')
-    if (evidence.accuracyMeters === undefined) missingCoreEvidence.push('missing_accuracy')
-    if (!evidence.locationCapturedAt) missingCoreEvidence.push('missing_location_timestamp')
-    if (!evidence.inputChannel) missingCoreEvidence.push('missing_input_channel')
-    riskSignals.push(...missingCoreEvidence)
+    let mode: ScanValidation['mode'] = undefined
+    let checkpoint: 'start' | 'end' | undefined = undefined
     if (evidence.mocked === undefined) riskSignals.push('mock_status_unavailable')
     if (evidence.mocked) riskSignals.push('mocked_location')
     riskSignals.push(...getDeviceSecuritySignals(evidence.deviceSecurity))
     if (evidence.inputChannel && evidence.inputChannel !== 'camera')
       riskSignals.push(`fallback_${evidence.inputChannel}`)
     const scannedAt = this.clientScannedAt(evidence, offline, receivedAt)
+    let distanceMeters: number | undefined
+    let geofenceRadiusMeters: number | undefined
     const failed = (
       status: ScanValidation['status'],
       reason: string,
@@ -107,6 +114,8 @@ export class ScanValidatorService {
       message,
       scannedAt,
       receivedAt,
+      mode,
+      checkpoint,
       riskSignals: [...riskSignals, ...signals],
     })
 
@@ -119,6 +128,9 @@ export class ScanValidatorService {
     // an ended session active during validation.
     const session = authoritativeSession ? { ...cached, ...authoritativeSession } : null
     if (!session) return failed('absent', 'session_not_found', 'Session not found')
+    // Cached snapshots written before hybrid mode existed (Redis/SQLite blobs)
+    // may not carry `mode`; defaulting keeps them in-person as recorded.
+    mode = session.mode ?? 'in_person'
     if (Number.isNaN(scannedAt.getTime()))
       return failed('disputed', 'invalid_timestamp', 'Scan timestamp is invalid', ['invalid_client_timestamp'])
 
@@ -134,85 +146,155 @@ export class ScanValidatorService {
     if (!teacherPublicKey) return failed('disputed', 'invalid_signature', 'Teacher signing key is unavailable')
     const payload = verifyQRToken(evidence.qrToken, teacherPublicKey)
     if (!payload) return failed('disputed', 'invalid_signature', 'QR token signature is invalid')
-    if (
-      !Number.isInteger(payload.validityMinutes) ||
-      payload.validityMinutes < 1 ||
-      payload.validityMinutes > MAX_QR_VALIDITY_MINUTES ||
-      !Number.isInteger(payload.gracePeriodMinutes) ||
-      payload.gracePeriodMinutes < 0 ||
-      payload.gracePeriodMinutes > MAX_QR_GRACE_MINUTES
-    )
-      return failed('disputed', 'token_mismatch', 'QR token timing is outside the allowed policy')
-    if (
-      (session.qrToken && evidence.qrToken !== session.qrToken) ||
-      payload.sessionId !== session.id ||
-      payload.sectionId !== session.sectionId ||
-      payload.teacherId !== session.teacherId
-    )
-      return failed('disputed', 'token_mismatch', 'QR token does not match this session')
 
-    const validityEnd = payload.issuedAt + payload.validityMinutes * 60_000
-    const graceEnd = validityEnd + payload.gracePeriodMinutes * 60_000
+    // ── Mode parity ──
+    const tokenMode = payload.mode ?? 'in_person'
+    if (tokenMode !== mode) {
+      return failed('disputed', 'token_mismatch', 'QR token does not match this session mode')
+    }
+
+    const online = mode === 'online'
+    if (online) {
+      checkpoint = payload.checkpoint
+      if (checkpoint !== 'start' && checkpoint !== 'end') {
+        return failed('disputed', 'token_mismatch', 'QR token is missing its checkpoint')
+      }
+      if (
+        payload.validitySeconds === undefined ||
+        !Number.isInteger(payload.validitySeconds) ||
+        payload.validitySeconds < MIN_ONLINE_CHECKPOINT_VALIDITY_SECONDS ||
+        payload.validitySeconds > MAX_ONLINE_CHECKPOINT_VALIDITY_SECONDS
+      ) {
+        return failed('disputed', 'token_mismatch', 'QR token timing is outside the allowed policy')
+      }
+      if (checkpoint === 'end' && payload.gracePeriodMinutes !== 0) {
+        return failed('disputed', 'token_mismatch', 'End-of-class QR codes have no grace period')
+      }
+      const armedToken = checkpoint === 'start' ? session.startQrToken : session.endQrToken
+      if (!armedToken) {
+        return failed('absent', 'checkpoint_not_armed', 'This checkpoint has not been opened yet')
+      }
+      if (
+        evidence.qrToken !== armedToken ||
+        payload.sessionId !== session.id ||
+        payload.sectionId !== session.sectionId ||
+        payload.teacherId !== session.teacherId
+      ) {
+        return failed('disputed', 'token_mismatch', 'QR token does not match this session')
+      }
+    } else {
+      if (
+        !Number.isInteger(payload.validityMinutes) ||
+        payload.validityMinutes < 1 ||
+        payload.validityMinutes > MAX_QR_VALIDITY_MINUTES ||
+        !Number.isInteger(payload.gracePeriodMinutes) ||
+        payload.gracePeriodMinutes < 0 ||
+        payload.gracePeriodMinutes > MAX_QR_GRACE_MINUTES
+      ) {
+        return failed('disputed', 'token_mismatch', 'QR token timing is outside the allowed policy')
+      }
+      if (
+        (session.qrToken && evidence.qrToken !== session.qrToken) ||
+        payload.sessionId !== session.id ||
+        payload.sectionId !== session.sectionId ||
+        payload.teacherId !== session.teacherId
+      ) {
+        return failed('disputed', 'token_mismatch', 'QR token does not match this session')
+      }
+    }
+
+    const validityMs = online ? (payload.validitySeconds ?? 0) * 1000 : payload.validityMinutes * 60_000
+    const validityEnd = payload.issuedAt + validityMs
+    const graceMs = online && checkpoint === 'end' ? 0 : payload.gracePeriodMinutes * 60_000
+    const graceEnd = validityEnd + graceMs
+
     if (!session.isActive && !offline) return failed('absent', 'session_inactive', 'Session is not active')
     if (!session.isActive && offline && !session.endedAt)
       return failed('absent', 'session_inactive', 'Session was never activated')
     if (scannedAt.getTime() < payload.issuedAt - 30_000 || scannedAt.getTime() > receivedAt.getTime() + 5 * 60_000)
       return failed('disputed', 'invalid_timestamp', 'Scan timestamp is invalid', ['implausible_client_timestamp'])
 
-    const distanceMeters = this.geofence.calculateDistance(
-      evidence.latitude,
-      evidence.longitude,
-      session.geofenceLatitude,
-      session.geofenceLongitude,
-    )
-    const withLocation = (validation: ScanValidation): ScanValidation => ({
-      ...validation,
-      distanceMeters,
-      geofenceRadiusMeters: session.geofenceRadiusMeters,
-    })
-    if (evidence.locationCapturedAt) {
-      const locationCapturedAt = new Date(evidence.locationCapturedAt)
-      const clientTimestamp = evidence.scannedAt ? new Date(evidence.scannedAt) : null
-      const locationReference =
-        clientTimestamp && !Number.isNaN(clientTimestamp.getTime()) ? clientTimestamp : scannedAt
-      const age = locationReference.getTime() - locationCapturedAt.getTime()
-      if (Number.isNaN(locationCapturedAt.getTime()) || age < -30_000 || age > MAX_LOCATION_AGE_MS)
+    if (!online) {
+      // ── Zero-GPS exception: geometry checks run for in-person sessions only ──
+      if (evidence.latitude === undefined || evidence.longitude === undefined) {
+        return failed('disputed', 'missing_location', 'Location evidence is required for in-person attendance')
+      }
+      const latitude = evidence.latitude
+      const longitude = evidence.longitude
+      distanceMeters = this.geofence.calculateDistance(
+        latitude,
+        longitude,
+        session.geofenceLatitude!,
+        session.geofenceLongitude!,
+      )
+      const radiusMeters = session.geofenceRadiusMeters!
+      geofenceRadiusMeters = radiusMeters
+      const withLocation = (validation: ScanValidation): ScanValidation => ({
+        ...validation,
+        distanceMeters,
+        geofenceRadiusMeters: radiusMeters,
+      })
+      if (evidence.locationCapturedAt) {
+        const locationCapturedAt = new Date(evidence.locationCapturedAt)
+        const clientTimestamp = evidence.scannedAt ? new Date(evidence.scannedAt) : null
+        const locationReference =
+          clientTimestamp && !Number.isNaN(clientTimestamp.getTime()) ? clientTimestamp : scannedAt
+        const age = locationReference.getTime() - locationCapturedAt.getTime()
+        if (Number.isNaN(locationCapturedAt.getTime()) || age < -30_000 || age > MAX_LOCATION_AGE_MS)
+          return withLocation(
+            failed('disputed', 'stale_location', 'Location fix is stale or has an invalid timestamp', [
+              'stale_location',
+            ]),
+          )
+      }
+      if (evidence.accuracyMeters === undefined) {
+        riskSignals.push('missing_accuracy')
+      }
+      if (!evidence.locationCapturedAt) {
+        riskSignals.push('missing_location_timestamp')
+      }
+      if (distanceMeters > radiusMeters)
         return withLocation(
-          failed('disputed', 'stale_location', 'Location fix is stale or has an invalid timestamp', ['stale_location']),
+          failed('absent', 'outside_geofence', 'You are outside the session geofence', ['outside_geofence']),
         )
+      const isWeb = Boolean(evidence.deviceId?.startsWith('web-') || evidence.inputChannel === 'image')
+      const maxAccuracy = isWeb ? MAX_WEB_LOCATION_ACCURACY_METERS : MAX_LOCATION_ACCURACY_METERS
+      if (evidence.accuracyMeters !== undefined && evidence.accuracyMeters > maxAccuracy)
+        return withLocation(
+          failed('disputed', 'poor_location_accuracy', 'Location accuracy is too poor to verify attendance', [
+            'poor_accuracy',
+          ]),
+        )
+      if (
+        !isWeb &&
+        evidence.accuracyMeters !== undefined &&
+        evidence.accuracyMeters <= radiusMeters &&
+        distanceMeters + evidence.accuracyMeters > radiusMeters
+      )
+        return withLocation(
+          failed('disputed', 'geofence_uncertain', 'Location uncertainty extends outside the session geofence', [
+            'geofence_uncertain',
+          ]),
+        )
+      if (scannedAt.getTime() > graceEnd)
+        return withLocation(
+          failed('absent', 'qr_expired', 'The QR attendance window has expired', ['client_scan_outside_window']),
+        )
+      if (evidence.mocked === true)
+        return withLocation(failed('disputed', 'mocked_location', 'Mocked locations are not accepted'))
+    } else {
+      // Online sessions are location-free by design (RA 10173 data minimization).
+      riskSignals.push('mode_online_no_gps')
+      if (evidence.latitude !== undefined || evidence.longitude !== undefined) {
+        riskSignals.push('unexpected_location_online')
+      }
+      if (scannedAt.getTime() > graceEnd)
+        return failed('absent', 'qr_expired', 'The QR attendance window has expired', ['client_scan_outside_window'])
     }
-    if (distanceMeters > session.geofenceRadiusMeters)
-      return withLocation(
-        failed('absent', 'outside_geofence', 'You are outside the session geofence', ['outside_geofence']),
-      )
-    const isWeb = Boolean(evidence.deviceId?.startsWith('web-') || evidence.inputChannel === 'image')
-    const maxAccuracy = isWeb ? MAX_WEB_LOCATION_ACCURACY_METERS : MAX_LOCATION_ACCURACY_METERS
-    if (evidence.accuracyMeters !== undefined && evidence.accuracyMeters > maxAccuracy)
-      return withLocation(
-        failed('disputed', 'poor_location_accuracy', 'Location accuracy is too poor to verify attendance', [
-          'poor_accuracy',
-        ]),
-      )
-    if (
-      !isWeb &&
-      evidence.accuracyMeters !== undefined &&
-      evidence.accuracyMeters <= session.geofenceRadiusMeters &&
-      distanceMeters + evidence.accuracyMeters > session.geofenceRadiusMeters
-    )
-      return withLocation(
-        failed('disputed', 'geofence_uncertain', 'Location uncertainty extends outside the session geofence', [
-          'geofence_uncertain',
-        ]),
-      )
-    if (scannedAt.getTime() > graceEnd)
-      return withLocation(
-        failed('absent', 'qr_expired', 'The QR attendance window has expired', ['client_scan_outside_window']),
-      )
-    if (evidence.mocked === true)
-      return withLocation(failed('disputed', 'mocked_location', 'Mocked locations are not accepted'))
+
     const deviceSecurityDispute = getPrimaryDeviceSecurityDispute(evidence.deviceSecurity)
     if (deviceSecurityDispute) {
-      return withLocation(failed('disputed', deviceSecurityDispute.reason, deviceSecurityDispute.message))
+      return failed('disputed', deviceSecurityDispute.reason, deviceSecurityDispute.message)
     }
     if (offline && (receivedAt.getTime() > graceEnd || session.endedAt)) {
       return {
@@ -221,15 +303,24 @@ export class ScanValidatorService {
         reason: 'delayed_offline_sync',
         scannedAt,
         receivedAt,
+        mode,
+        checkpoint,
         message: 'Offline check-in arrived after the attendance window and requires teacher review.',
         distanceMeters,
-        geofenceRadiusMeters: session.geofenceRadiusMeters,
+        geofenceRadiusMeters,
         riskSignals: [
           ...riskSignals,
           'delayed_offline_sync',
           ...(session.endedAt ? ['received_after_session_end'] : []),
         ],
       }
+    }
+    const missingCoreEvidence: string[] = []
+    if (!evidence.clientAttemptId) missingCoreEvidence.push('missing_client_attempt_id')
+    if (!evidence.inputChannel) missingCoreEvidence.push('missing_input_channel')
+    if (!online) {
+      if (evidence.accuracyMeters === undefined) missingCoreEvidence.push('missing_accuracy')
+      if (!evidence.locationCapturedAt) missingCoreEvidence.push('missing_location_timestamp')
     }
     if (missingCoreEvidence.length > 0) {
       return {
@@ -238,21 +329,71 @@ export class ScanValidatorService {
         reason: 'missing_scan_evidence',
         scannedAt,
         receivedAt,
+        mode,
+        checkpoint,
         message: 'Legacy scan evidence is incomplete and requires teacher review.',
         distanceMeters,
-        geofenceRadiusMeters: session.geofenceRadiusMeters,
-        riskSignals,
+        geofenceRadiusMeters,
+        riskSignals: [...riskSignals, ...missingCoreEvidence.filter((signal) => !riskSignals.includes(signal))],
       }
     }
-    const status = scannedAt.getTime() > validityEnd ? 'late' : 'present'
+
+    // ── Meeting PIN gate (online checkpoints only) ──
+    let pinVerified: boolean | undefined
+    if (online) {
+      const pinRequired = payload.pinRequired === true
+      if (pinRequired) {
+        const storedHash = checkpoint === 'start' ? session.startPinHash : session.endPinHash
+        if (!storedHash) {
+          return failed('disputed', 'pin_mismatch', 'The meeting PIN state is unavailable for this checkpoint')
+        }
+        if (payload.pinHash !== storedHash) {
+          return failed('disputed', 'pin_mismatch', 'QR token PIN state does not match the session')
+        }
+        if (!evidence.pin) {
+          return failed('absent', 'pin_required', 'Enter the meeting PIN announced by your instructor')
+        }
+        const rateKey = `pin-attempt:${session.id}:${user.id}:${checkpoint}`
+        const withinLimit = await this.redis.consumeRateLimit(rateKey, PIN_ATTEMPT_LIMIT, PIN_ATTEMPT_WINDOW_SECONDS)
+        if (!withinLimit) {
+          return failed(
+            'absent',
+            'pin_locked',
+            'Too many incorrect meeting PIN attempts. Ask your instructor to verify your attendance.',
+            ['pin_locked'],
+          )
+        }
+        const verified = await verifyMeetingPin(evidence.pin, storedHash)
+        pinVerified = verified
+        if (!verified) {
+          return {
+            ...failed('absent', 'pin_incorrect', 'The meeting PIN is incorrect'),
+            pinVerified,
+          }
+        }
+        riskSignals.push('pin_verified')
+      } else if (evidence.pin) {
+        riskSignals.push('pin_supplied_but_disabled')
+      }
+    }
+
+    const status: ScanValidation['status'] = scannedAt.getTime() > validityEnd ? 'late' : 'present'
     return {
       success: true,
       status,
       scannedAt,
       receivedAt,
-      message: status === 'late' ? 'Check-in recorded as late.' : 'Check-in successful.',
+      mode,
+      checkpoint,
+      ...(pinVerified !== undefined ? { pinVerified } : {}),
+      message:
+        online && checkpoint === 'end'
+          ? 'End-of-class check-out recorded.'
+          : status === 'late'
+            ? 'Check-in recorded as late.'
+            : 'Check-in successful.',
       distanceMeters,
-      geofenceRadiusMeters: session.geofenceRadiusMeters,
+      geofenceRadiusMeters,
       riskSignals,
     }
   }
@@ -271,6 +412,7 @@ export class ScanValidatorService {
       mocked: dto.mocked,
       inputChannel: dto.inputChannel,
       deviceSecurity: dto.deviceSecurity,
+      pin: dto.pin,
     }
   }
 
@@ -288,6 +430,7 @@ export class ScanValidatorService {
       mocked: dto.mocked,
       inputChannel: dto.inputChannel,
       deviceSecurity: dto.deviceSecurity,
+      pin: dto.pin,
     }
   }
 
@@ -302,6 +445,9 @@ export class ScanValidatorService {
     outcome: string,
     offline: boolean,
   ) {
+    // RA 10173: online sessions never persist location, even when a modified
+    // client supplies coordinates for an online token.
+    const online = validation.mode === 'online'
     return {
       sessionId: evidence.sessionId,
       studentId,
@@ -309,12 +455,14 @@ export class ScanValidatorService {
       timestamp: validation.scannedAt,
       clientScannedAt: evidence.scannedAt ? new Date(evidence.scannedAt) : undefined,
       receivedAt: validation.receivedAt,
-      locationCapturedAt: evidence.locationCapturedAt ? new Date(evidence.locationCapturedAt) : undefined,
-      latitude: evidence.latitude,
-      longitude: evidence.longitude,
-      accuracyMeters: evidence.accuracyMeters,
-      mocked: evidence.mocked,
+      locationCapturedAt: !online && evidence.locationCapturedAt ? new Date(evidence.locationCapturedAt) : undefined,
+      latitude: online ? undefined : evidence.latitude,
+      longitude: online ? undefined : evidence.longitude,
+      accuracyMeters: online ? undefined : evidence.accuracyMeters,
+      mocked: online ? undefined : evidence.mocked,
       inputChannel: evidence.inputChannel,
+      checkpoint: validation.checkpoint,
+      pinVerified: validation.pinVerified,
       deviceId: evidence.deviceId,
       offline,
       distanceMeters: validation.distanceMeters,

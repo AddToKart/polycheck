@@ -6,6 +6,7 @@ export type ScanPhase =
   | 'scanning'
   | 'decoding-image'
   | 'acquiring-location'
+  | 'entering-pin'
   | 'submitting'
   | 'success'
   | 'error'

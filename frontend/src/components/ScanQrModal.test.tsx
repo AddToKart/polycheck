@@ -89,6 +89,8 @@ vi.mock("lucide-react", () => {
     "Camera",
     "SwitchCamera",
     "Clipboard",
+    "ShieldCheck",
+    "KeyRound",
   ];
   for (const name of iconNames) {
     icons[name] = (props: any) => (
@@ -245,7 +247,7 @@ describe("ScanQrModal", () => {
       render(<ScanQrModal user={mockUser} onClose={vi.fn()} />);
     });
     expect(screen.getByText("Camera")).toBeTruthy();
-    expect(screen.getByText("Upload Image")).toBeTruthy();
+    expect(screen.getByText("Upload Screenshot")).toBeTruthy();
     expect(screen.getByText("Enter Token")).toBeTruthy();
   });
 
@@ -290,6 +292,7 @@ describe("ScanQrModal", () => {
           accuracyMeters: 10,
           inputChannel: "manual",
         }),
+        undefined,
       );
     });
   });
@@ -522,6 +525,7 @@ describe("ScanQrModal", () => {
           accuracyMeters: 10,
           inputChannel: "camera",
         }),
+        undefined,
       );
     });
     await waitFor(() => {
@@ -539,6 +543,8 @@ describe("ScanQrModal", () => {
       gracePeriodMinutes: 5,
       teacherId: "teacher-1",
       teacherName: "Teacher One",
+      mode: "in_person",
+      pinRequired: false,
     });
     await act(async () => {
       render(
@@ -598,7 +604,7 @@ describe("ScanQrModal", () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByText("Upload Image"));
+      fireEvent.click(screen.getByText("Upload Screenshot"));
     });
 
     const fileInput = document.querySelector(
@@ -635,6 +641,7 @@ describe("ScanQrModal", () => {
           accuracyMeters: 10,
           inputChannel: "image",
         }),
+        undefined,
       );
     });
     await waitFor(() => {
@@ -674,6 +681,7 @@ describe("ScanQrModal", () => {
         expect.objectContaining({
           inputChannel: "manual",
         }),
+        undefined,
       );
     });
   });
@@ -688,5 +696,120 @@ describe("ScanQrModal", () => {
     expect(screen.getByTestId("scan-tab-camera")).toHaveProperty("role", "tab");
     expect(screen.getByTestId("scan-tab-upload")).toHaveProperty("role", "tab");
     expect(screen.getByTestId("scan-tab-manual")).toHaveProperty("role", "tab");
+  });
+
+  it("online checkpoints skip geolocation and submit null coordinates (RA 10173)", async () => {
+    const geolocationSpy = vi.fn();
+    Object.defineProperty(navigator, "geolocation", {
+      value: { getCurrentPosition: geolocationSpy },
+      configurable: true,
+    });
+    (decodeTokenPayload as any).mockReturnValue({
+      sessionId: "sess-1",
+      sectionId: "sec-1",
+      teacherId: "teacher-1",
+      issuedAt: Date.now() - 5000,
+      validityMinutes: 2,
+      gracePeriodMinutes: 0,
+      validitySeconds: 90,
+      mode: "online",
+      checkpoint: "start",
+      pinRequired: false,
+    });
+
+    await act(async () => {
+      render(<ScanQrModal user={mockUser} onClose={vi.fn()} />);
+    });
+    // Upload fallback is available for online tokens regardless of env policy.
+    expect(screen.getByText("Upload Screenshot")).toBeTruthy();
+    switchToManualMode();
+    const input = screen.getByPlaceholderText(/paste or type.*token/i);
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "online-token" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /check in/i }));
+    });
+
+    await waitFor(() => {
+      expect(api.submitScan).toHaveBeenCalledWith(
+        "sess-1",
+        "stu-1",
+        "Test Student",
+        null,
+        null,
+        "web-test-installation",
+        "online-token",
+        expect.any(String),
+        expect.objectContaining({ inputChannel: "manual" }),
+        undefined,
+      );
+    });
+    expect(geolocationSpy).not.toHaveBeenCalled();
+    const evidence = (api.submitScan as any).mock.calls[0][8];
+    expect(evidence.accuracyMeters).toBeUndefined();
+    expect(evidence.locationCapturedAt).toBeUndefined();
+  });
+
+  it("prompts for the meeting PIN before submitting an online scan", async () => {
+    (decodeTokenPayload as any).mockReturnValue({
+      sessionId: "sess-1",
+      sectionId: "sec-1",
+      teacherId: "teacher-1",
+      issuedAt: Date.now() - 5000,
+      validityMinutes: 2,
+      gracePeriodMinutes: 10,
+      validitySeconds: 90,
+      mode: "online",
+      checkpoint: "start",
+      pinRequired: true,
+      pinHash: "pin-hash",
+    });
+    (api.submitScan as any).mockResolvedValue({
+      id: "att-1",
+      status: "pending",
+      checkInStatus: "present",
+      isSynced: true,
+    });
+
+    await act(async () => {
+      render(<ScanQrModal user={mockUser} onClose={vi.fn()} />);
+    });
+    switchToManualMode();
+    const input = screen.getByPlaceholderText(/paste or type.*token/i);
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "online-token" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /check in/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Enter Meeting PIN")).toBeTruthy();
+    });
+    expect(api.submitScan).not.toHaveBeenCalled();
+
+    const pinInput = screen.getByTestId("scan-pin-input");
+    await act(async () => {
+      fireEvent.change(pinInput, { target: { value: "83" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /verify/i }));
+    });
+
+    await waitFor(() => {
+      expect(api.submitScan).toHaveBeenCalledWith(
+        "sess-1",
+        "stu-1",
+        "Test Student",
+        null,
+        null,
+        "web-test-installation",
+        "online-token",
+        expect.any(String),
+        expect.objectContaining({ inputChannel: "manual" }),
+        "83",
+      );
+    });
   });
 });

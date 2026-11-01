@@ -23,11 +23,12 @@ import {
 } from "expo-camera";
 import { router, useFocusEffect } from "expo-router";
 import { decodeTokenPayload } from "@polycheck/shared/utils";
-import type { ScanInputChannel, Session } from "@polycheck/shared";
+import type { QRTokenPayload, ScanInputChannel, Session, SessionMode } from "@polycheck/shared";
 import * as Crypto from "expo-crypto";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { api } from "../../services/api-client";
+import { isMaintenanceError } from "../../lib/maintenance";
 import { useTheme } from "../../theme/ThemeContext";
 import { pupColors } from "../../theme/colors";
 import { CampusIconButton } from "../../components/CampusPrimitives";
@@ -38,15 +39,14 @@ import {
   shouldMountScannerCamera,
   isScannerOperationCurrent,
 } from "../../hooks/scanner-focus-lifecycle";
-import { isQrFallbackEnabled } from "../../hooks/qr-fallback-policy";
+import { shouldShowScanFallbacks } from "../../hooks/qr-fallback-policy";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const scanSize = Math.min(SCREEN_WIDTH * 0.82, 340);
-// Opt-in only: production builds must not expose QR fallbacks unless explicitly enabled.
-const allowQrFallbacks = isQrFallbackEnabled(process.env.EXPO_PUBLIC_ALLOW_QR_FALLBACKS);
+const allowQrFallbacksEnv = process.env.EXPO_PUBLIC_ALLOW_QR_FALLBACKS;
 
 type ScanResult = {
-  status: "present" | "late" | "absent" | "disputed" | "pending";
+  status: "present" | "late" | "absent" | "disputed" | "pending" | "incomplete";
   message: string;
 } | null;
 
@@ -64,6 +64,11 @@ const resultPresentation = {
   late: {
     icon: "schedule" as const,
     title: "MARKED LATE",
+    classes: "border-amber-500 bg-amber-950/95 text-amber-300",
+  },
+  incomplete: {
+    icon: "timelapse" as const,
+    title: "INCOMPLETE ATTENDANCE",
     classes: "border-amber-500 bg-amber-950/95 text-amber-300",
   },
   absent: {
@@ -89,6 +94,15 @@ export default function ScanScreen() {
   const [decodingImage, setDecodingImage] = useState(false);
   const [cameraPermission, requestPermission] = useCameraPermissions();
   const [activeSession, setActiveSession] = useState<Session | null>(null);
+  const [decodedMode, setDecodedMode] = useState<SessionMode | null>(null);
+  const [pinPrompt, setPinPrompt] = useState<{
+    payload: QRTokenPayload;
+    token: string;
+    channel: ScanInputChannel;
+    operationId: number;
+  } | null>(null);
+  const [pinValue, setPinValue] = useState("");
+  const [pinError, setPinError] = useState("");
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scannedRef = useRef(false);
   const focusedRef = useRef(false);
@@ -151,6 +165,10 @@ export default function ScanScreen() {
           setManualToken,
           setDecodingImage,
         });
+        setPinPrompt(null);
+        setPinValue("");
+        setPinError("");
+        setDecodedMode(null);
       };
     }, []),
   );
@@ -175,24 +193,18 @@ export default function ScanScreen() {
     [],
   );
 
-  const handleScanResult = useCallback(
-    async (token: string, inputChannel: ScanInputChannel = "camera") => {
-      if (!focusedRef.current || scannedRef.current || !token) return;
-      const operationId = scanOpRef.current;
-      scannedRef.current = true;
+  const submitDecodedToken = useCallback(
+    async (
+      payload: QRTokenPayload,
+      token: string,
+      inputChannel: ScanInputChannel,
+      operationId: number,
+      pin?: string,
+    ) => {
       const stillCurrent = () =>
         isScannerOperationCurrent(focusedRef, scanOpRef, operationId);
 
       try {
-        const payload = decodeTokenPayload(token);
-        if (!payload) {
-          showResult(
-            "absent",
-            "This QR code is not a valid Polycheck attendance token.",
-          );
-          return;
-        }
-
         const user = api.getCurrentUser();
         if (!user || !("studentId" in user)) {
           showResult(
@@ -210,28 +222,42 @@ export default function ScanScreen() {
         }
         setActiveSession(session);
 
-        const permission = await Location.requestForegroundPermissionsAsync();
-        if (!stillCurrent()) return;
-        if (permission.status !== "granted") {
-          showResult(
-            "absent",
-            "Location access is required to verify that you are inside the class geofence.",
-          );
-          return;
+        const online = (payload.mode ?? "in_person") === "online";
+        const scannedAt = await api.getTrustedTimestamp();
+        const deviceId = await getOrCreateInstallationId();
+        const securitySnapshot = await getDeviceSecuritySnapshot();
+
+        // Zero-GPS (RA 10173): online checkpoints never request location.
+        let latitude: number | null = null;
+        let longitude: number | null = null;
+        let accuracyMeters: number | undefined;
+        let locationCapturedAt: string | undefined;
+        let mocked: boolean | undefined;
+
+        if (!online) {
+          const permission = await Location.requestForegroundPermissionsAsync();
+          if (!stillCurrent()) return;
+          if (permission.status !== "granted") {
+            showResult(
+              "absent",
+              "Location access is required to verify that you are inside the class geofence.",
+            );
+            return;
+          }
+          const location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.BestForNavigation,
+          });
+          if (!stillCurrent()) return;
+          const locationAgeMs = Math.max(0, Date.now() - location.timestamp);
+          locationCapturedAt = new Date(
+            new Date(scannedAt).getTime() - locationAgeMs,
+          ).toISOString();
+          latitude = location.coords.latitude;
+          longitude = location.coords.longitude;
+          accuracyMeters = location.coords.accuracy ?? undefined;
+          mocked = location.mocked;
         }
 
-        const location = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.BestForNavigation,
-        });
-        const scannedAt = await api.getTrustedTimestamp();
-        if (!stillCurrent()) return;
-        const locationAgeMs = Math.max(0, Date.now() - location.timestamp);
-        const locationCapturedAt = new Date(
-          new Date(scannedAt).getTime() - locationAgeMs,
-        ).toISOString();
-        const deviceId = await getOrCreateInstallationId();
-        if (!stillCurrent()) return;
-        const securitySnapshot = await getDeviceSecuritySnapshot();
         if (!stillCurrent()) return;
         // This is the last cancellable client boundary. Once the HTTP request
         // below has been sent, a blur cannot retract server-side work; the
@@ -241,26 +267,71 @@ export default function ScanScreen() {
           session.id,
           user.id,
           user.fullName,
-          location.coords.latitude,
-          location.coords.longitude,
+          latitude,
+          longitude,
           deviceId,
           token,
           scannedAt,
           {
             clientAttemptId: Crypto.randomUUID(),
-            accuracyMeters: location.coords.accuracy ?? undefined,
-            locationCapturedAt,
-            mocked: location.mocked,
+            ...(accuracyMeters !== undefined ? { accuracyMeters } : {}),
+            ...(locationCapturedAt ? { locationCapturedAt } : {}),
+            ...(mocked !== undefined ? { mocked } : {}),
             inputChannel,
             deviceSecurity: securitySnapshot,
           },
+          pin,
         );
         if (!stillCurrent()) return;
 
         if ("error" in submitted) {
+          if (payload.pinRequired && pin !== undefined) {
+            setPinPrompt({ payload, token, channel: inputChannel, operationId });
+            setPinValue("");
+            setPinError(submitted.error);
+            return;
+          }
+          if (payload.pinRequired && pin === undefined) {
+            setPinPrompt({ payload, token, channel: inputChannel, operationId });
+            setPinValue("");
+            setPinError("");
+            return;
+          }
           showResult("absent", submitted.error);
           return;
         }
+
+        if (online) {
+          const checkpoint = payload.checkpoint;
+          const legStatus =
+            checkpoint === "end"
+              ? submitted.checkOutStatus ?? "present"
+              : submitted.checkInStatus ?? submitted.status;
+          const resultStatus: NonNullable<ScanResult>["status"] =
+            submitted.status === "disputed" || legStatus === "disputed"
+              ? "disputed"
+              : submitted.isSynced === false
+                ? "pending"
+                : legStatus === "late"
+                  ? "late"
+                  : legStatus === "incomplete"
+                    ? "incomplete"
+                    : "present";
+          showResult(
+            resultStatus,
+            submitted.isSynced === false
+              ? checkpoint === "end"
+                ? "Check-out saved offline and queued for sync."
+                : "Check-in saved offline and queued for sync."
+              : checkpoint === "end"
+                ? "End-of-class check-out recorded."
+                : resultStatus === "late"
+                  ? "Start-of-class check-in recorded as late."
+                  : "Start-of-class check-in recorded.",
+          );
+          return;
+        }
+
         showResult(
           !submitted.isSynced
             ? "pending"
@@ -268,15 +339,26 @@ export default function ScanScreen() {
               ? "late"
               : submitted.status === "disputed"
                 ? "disputed"
-                : submitted.status === "present"
-                  ? "present"
-                  : "absent",
+                : submitted.status === "pending"
+                  ? "pending"
+                  : submitted.status === "incomplete"
+                    ? "incomplete"
+                    : submitted.status === "present"
+                      ? "present"
+                      : "absent",
           submitted.isSynced
             ? `Attendance recorded as ${submitted.status}.`
             : "Check-in saved offline and queued for sync. Confirmation may require instructor review. Open the dashboard to check sync status.",
         );
       } catch (error) {
         if (!stillCurrent()) return;
+        if (isMaintenanceError(error)) {
+          showResult(
+            "absent",
+            "Polycheck is under scheduled maintenance. Offline attendance evidence stays securely queued on this device and will sync when servers reopen.",
+          );
+          return;
+        }
         showResult(
           "absent",
           error instanceof Error
@@ -287,6 +369,55 @@ export default function ScanScreen() {
     },
     [showResult],
   );
+
+  const handleScanResult = useCallback(
+    async (token: string, inputChannel: ScanInputChannel = "camera") => {
+      if (!focusedRef.current || scannedRef.current || !token) return;
+      const operationId = scanOpRef.current;
+      scannedRef.current = true;
+      const payload = decodeTokenPayload(token);
+      if (!payload) {
+        showResult(
+          "absent",
+          "This QR code is not a valid Polycheck attendance token.",
+        );
+        return;
+      }
+      setDecodedMode(payload.mode ?? "in_person");
+      if (payload.pinRequired) {
+        setPinPrompt({ payload, token, channel: inputChannel, operationId });
+        setPinValue("");
+        setPinError("");
+        return;
+      }
+      await submitDecodedToken(payload, token, inputChannel, operationId);
+    },
+    [showResult, submitDecodedToken],
+  );
+
+  const submitPin = useCallback(() => {
+    if (!pinPrompt) return;
+    const pin = pinValue.trim();
+    if (!/^\d{2,4}$/.test(pin)) {
+      setPinError("Enter the 2–4 digit PIN announced in class.");
+      return;
+    }
+    if (!isScannerOperationCurrent(focusedRef, scanOpRef, pinPrompt.operationId)) {
+      setPinPrompt(null);
+      return;
+    }
+    const pending = pinPrompt;
+    setPinPrompt(null);
+    setPinValue("");
+    setPinError("");
+    void submitDecodedToken(
+      pending.payload,
+      pending.token,
+      pending.channel,
+      pending.operationId,
+      pin,
+    );
+  }, [pinPrompt, pinValue, submitDecodedToken]);
 
   const handleUploadQr = useCallback(async () => {
     if (!focusedRef.current || decodingImage || scannedRef.current) return;
@@ -348,6 +479,10 @@ export default function ScanScreen() {
     isFocused,
     cameraPermission?.granted === true,
   );
+  const allowQrFallbacks = shouldShowScanFallbacks(
+    allowQrFallbacksEnv,
+    decodedMode ?? activeSession?.mode ?? null,
+  );
 
   return (
     <View
@@ -362,7 +497,7 @@ export default function ScanScreen() {
           enableTorch={torchOn}
           barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
           onBarcodeScanned={
-            showManual || decodingImage || result
+            showManual || decodingImage || result || pinPrompt
               ? undefined
               : ({ data }) => void handleScanResult(data, "camera")
           }
@@ -757,7 +892,9 @@ export default function ScanScreen() {
                 }}
               >
                 {activeSession.startTime}–{activeSession.endTime} ·{" "}
-                {activeSession.geofence.radiusMeters}m Geofence
+                {activeSession.mode === "online"
+                  ? "Online · GPS not required"
+                  : `${activeSession.geofence?.radiusMeters ?? 0}m Geofence`}
               </Text>
             </View>
             <MaterialIcons
@@ -795,7 +932,7 @@ export default function ScanScreen() {
               }}
             >
               Point your camera at your instructor’s QR code to verify
-              attendance.
+              attendance. Online classes also support a screenshot upload.
             </Text>
           </View>
         )}
@@ -840,7 +977,7 @@ export default function ScanScreen() {
                   color: "#FFFFFF",
                 }}
               >
-                {decodingImage ? "Reading…" : "Upload QR Image"}
+                {decodingImage ? "Reading…" : "Upload Screenshot"}
               </Text>
             </Pressable>
 
@@ -1026,6 +1163,98 @@ export default function ScanScreen() {
                 }}
               >
                 Verify & Check In
+              </Text>
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Online checkpoint meeting PIN */}
+      <Modal
+        visible={pinPrompt !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setPinPrompt(null);
+          setPinValue("");
+          setPinError("");
+          scannedRef.current = false;
+        }}
+      >
+        <KeyboardAvoidingView
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            backgroundColor: "rgba(0, 0, 0, 0.80)",
+            padding: 20,
+          }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <View className="border border-t-4 border-t-golden border-zinc-200 bg-white p-5 dark:border-white/20 dark:bg-surface-dark">
+            <View className="flex-row items-start justify-between">
+              <View className="flex-1">
+                <Text className="font-sans-bold text-[9px] uppercase tracking-[2px] text-maroon dark:text-golden">
+                  Online checkpoint
+                </Text>
+                <Text className="mt-1 font-sans-bold text-xl text-maroon-ink dark:text-white">
+                  Enter Meeting PIN
+                </Text>
+                <Text className="mt-2 font-sans text-xs leading-5 text-muted dark:text-zinc-400">
+                  Announced aloud by your instructor in class.
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Cancel PIN entry"
+                onPress={() => {
+                  setPinPrompt(null);
+                  setPinValue("");
+                  setPinError("");
+                  scannedRef.current = false;
+                }}
+                className="h-10 w-10 items-center justify-center border border-zinc-200 bg-zinc-100 dark:border-white/15 dark:bg-white/5"
+              >
+                <MaterialIcons
+                  name="close"
+                  size={20}
+                  color={isDark ? "#FFFFFF" : pupColors.maroonDark}
+                />
+              </Pressable>
+            </View>
+            <TextInput
+              accessibilityLabel="Meeting PIN"
+              testID="scan-pin-input"
+              className="mt-4 min-h-14 w-full border border-zinc-200 bg-campus px-4 text-center font-sans-bold text-2xl tracking-[10px] text-maroon-ink dark:border-white/20 dark:bg-campus-dark dark:text-white"
+              keyboardType="number-pad"
+              maxLength={4}
+              autoFocus
+              value={pinValue}
+              onChangeText={(value) =>
+                setPinValue(value.replace(/\D/g, "").slice(0, 4))
+              }
+              placeholder="••••"
+              placeholderTextColor={
+                isDark ? "rgba(255,255,255,0.40)" : pupColors.mutedLight
+              }
+            />
+            {pinError ? (
+              <Text
+                accessibilityLiveRegion="assertive"
+                className="mt-3 font-sans text-xs font-bold text-red-600 dark:text-red-300"
+              >
+                {pinError}
+              </Text>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Verify meeting PIN"
+              testID="scan-pin-submit"
+              disabled={!pinValue.trim()}
+              onPress={submitPin}
+              className="mt-4 min-h-12 items-center justify-center bg-maroon disabled:opacity-40"
+            >
+              <Text className="font-sans-bold text-xs uppercase tracking-[1.5px] text-white">
+                Verify & Record
               </Text>
             </Pressable>
           </View>
