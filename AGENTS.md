@@ -537,6 +537,15 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - **Android**: `lib/maintenance.ts` (store + classifier + countdown), API client parses `estimatedEnd`/publishes maintenance and keeps sync-queue items retryable; root shell overlay (student preservation notice) + exemption pill + 30 s probe; login portals show the maintenance screen; scan screen shows the preservation notice on 503; More-sheet derivation moved to `lib/more-items.ts` with IT/Oversight/Registrar items; new Server Status and At-Risk screens; settings System tab/gate; users registrar gate with role changes hidden; reports/at-risk server-status gates; shared mock parity extended.
   - **Verification**: shared **122**, backend **845 / 75 suites**, web **304 / 48 files**, Android **335 / 27 suites**; backend lint/format, frontend lint, all typechecks and `pnpm build` clean; live API matrix **20/20** (role denials + registrar designation 403); new `e2e/designations-maintenance.spec.ts` **4/4** and full Chromium suite **104 passed / 3 skipped / 0 failed**. Container stack rebuilt (migration applied, designees seeded, `/api/maintenance/status` live). Deviations recorded in the plan addendum (health probes live under the global `/api` prefix; seed registrar scoped to `CCIS`; event-based cache invalidation; backend-local oversight helper for mocked attendance specs).
 
+### Done (cont.)
+- **Responsive Web Execution (`plan/responsive-web-plan.md`, RW-0–RW-5)**:
+  - **Harness (RW-0/RW-5)**: `e2e/responsive.spec.ts` now covers **7 role groups × 4 viewports** (375×812, 390×844, 412×915, 768×1024) across **37 enumerated routes** (`e2e/responsive-routes.ts`), including the designation surfaces (`/profile`, `/faculty/at-risk`, `/faculty/system-reports`, `/faculty/settings?tab=system`, registrar `/faculty/users`). Strict page-level overflow assertions, zero exemptions. `visual-capture.spec.ts` snapshots every route at 375×812 into gitignored `e2e/captures/mobile/` (46 images).
+  - **RW-1 foundations**: `viewportFit: 'cover'`; `<640px` form controls render at 16px (iOS auto-zoom prevention); shared `Input` is `text-base sm:text-sm`; `FilterBar` children become full-row on phones; sidebar mobile chrome gets safe-area top/bottom padding and ≥44px menu/close/bell targets. Desktop unchanged.
+  - **RW-2 heavy tables**: Users and Audit Log keep the desktop table only at `md+` (`hidden md:block`; 860/900px min-widths unreachable on phones) and render stacked cards below `md`; Users row actions are shared via one component and the breakpoint is DOM-gated with `matchMedia`/`useSyncExternalStore` to avoid duplicate text locators. Reports/server-status/settings/search get stacked grids, scrollable tab pills, wrapped toolbars, and ≤92vw dialogs.
+  - **RW-3 density pass**: all student and faculty classroom routes (dashboard, subjects/sections/sessions, attendance, disputes, excuses, at-risk, assistant) collapse stat grids 5→2→1 / 4→2→1 / 3→1 below md, wrap filter/action rows, keep tables in contained scroll regions, cap dialogs at ≤92vw, and give primary icon/row controls ≥44px touch targets. Cockpit QR/PIN/override dialogs fit phones without changing dual-checkpoint logic.
+  - **RW-4 schedules**: month cells collapse to day number + three event dots below md with a phone-only day-detail panel reusing `EventPopoverContent`; week timetables stay `min-w-[700px]` inside an overscroll-contained snap region with a phone-only fade/hint and auto-scroll to today's column; `StudentWeeklySchedule` uses the same contained 7-column week on phones.
+  - **Verification**: responsive gate **28/28**; full Chromium E2E **122 passed / 3 skipped / 0 failed**; web **304 / 48 files**, shared **122**, backend **845 / 75**, Android **335 / 27**; frontend `eslint`, `tsc --noEmit`, `next build` clean; Docker frontend image rebuilt and harness run live. Impeccable detector reported only the incumbent `border-l-4` side-tab house-style warnings (no errors). Firefox/WebKit were not rerun this wave.
+
 ### In Progress
 - (none)
 
@@ -638,7 +647,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - Mobile scanner (`android/app/(tabs)/scan.tsx`) exposes `Upload QR Image` and `Enter Code` fallbacks alongside live camera.
 - **Database Migration Self-Healing**: Added idempotent pre-checks and backfills in `20260907090000_domain_constraints/migration.sql` to gracefully handle dirty development databases or re-runs without crashing the migration service container.
 - **Docker Compose Local Developer Experience**: Added automated 1-click startup scripts (`start-local.bat`, `start-local.sh`, `stop-local.bat`, `stop-local.sh`) and passed `NEXT_PUBLIC_ALLOW_QR_FALLBACKS: "true"` to local container builds.
-- **Comprehensive Automated Test Coverage**: 1,606 total passing automated tests across 159 suites/files monorepo-wide (shared 122, backend 845 / 75 suites, web 304 / 48 files, Android 335 / 27 suites). Chromium E2E: **104 passed / 3 skipped / 0 failed** including the new designations-maintenance journeys; Firefox/WebKit were not rerun for this wave (previous baseline 64 / 10 / 0).
+- **Comprehensive Automated Test Coverage**: 1,606 total passing automated tests across 159 suites/files monorepo-wide (shared 122, backend 845 / 75 suites, web 304 / 48 files, Android 335 / 27 suites). Chromium E2E: **122 passed / 3 skipped / 0 failed**, including 28 responsive-gate tests (7 role groups × 4 viewports) and 11 visual-capture tests. Firefox/WebKit were not rerun for this wave (previous baseline 64 / 10 / 0).
 
 ## Next Steps
 - Connect sessions page to section context when navigated from section detail.
@@ -656,6 +665,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - Run `e2e/designations-maintenance.spec.ts` on Firefox/WebKit (new spec verified on Chromium only this wave) and add a Maestro flow for the mobile More-sheet suites + maintenance overlay.
 - Device-smoke the Android maintenance overlay, the exemption pill, and the offline preservation notice during a real maintenance window.
 - Confirm the campus registrar policy (department-pinned today) with the Branch Director before onboarding the Registrar's Office beyond CCIS.
+- Run `e2e/responsive.spec.ts` + `e2e/visual-capture.spec.ts` on Firefox/WebKit and device-smoke the installed PWA (safe-area insets, month-day tap target, week autoscroll) before the next release.
 
 ## Critical Context
 - Android package: `edu.pup.polycheck`; iOS bundle: `edu.pup.polycheck`.
@@ -818,3 +828,16 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - `android/app/(faculty)/server-status.tsx` / `at-risk.tsx` - IT/Oversight parity screens
 - `e2e/designations-maintenance.spec.ts` - IT/head/registrar isolation + maintenance open/close journey
 - `android/__tests__/maintenance.test.ts` / `more-items.test.ts` - mobile designation/maintenance unit coverage
+- `e2e/responsive.spec.ts` + `e2e/responsive-routes.ts` - 7-role × 4-viewport overflow gate over 37 routes (zero exemptions)
+- `e2e/visual-capture.spec.ts` - mobile evidence captures for every route (gitignored `e2e/captures/mobile/`)
+- `frontend/src/app/layout.tsx` - `viewportFit: 'cover'` for safe-area insets
+- `frontend/src/app/globals.css` - <640px 16px form-control rule (iOS auto-zoom)
+- `frontend/src/components/ui/input.tsx` - `text-base sm:text-sm` touch input sizing
+- `frontend/src/components/FilterBar.tsx` - full-row filter fields on phones
+- `frontend/src/components/layout/sidebar.tsx` - safe-area mobile chrome + 44px menu/close/bell targets
+- `frontend/src/app/faculty/users/page.tsx` - desktop table (md+) + stacked cards (<md) with shared row actions and a matchMedia DOM gate
+- `frontend/src/app/faculty/audit-logs/page.tsx` - desktop table (md+) + stacked cards (<md)
+- `frontend/src/app/faculty/schedule/page.tsx` / `student/schedule/page.tsx` - month dot collapse + phone day panel; contained snap week + today autoscroll
+- `frontend/src/components/student/StudentWeeklySchedule.tsx` - contained 7-column week on phones
+- `frontend/src/app/globals.css` / `frontend/src/components/ui/input.tsx` - shared touch sizing primitives
+- `plan/responsive-web-plan.md` - executed plan + addendum (harness matrix, deviations)

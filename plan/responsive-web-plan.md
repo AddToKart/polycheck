@@ -1,6 +1,6 @@
 # Responsive Web Plan — every page consistent on phones
 
-> **Status:** Plan only — awaiting execution approval.
+> **Status:** IMPLEMENTED (RW-0 … RW-5 executed; responsive harness 28/28 green; full Chromium E2E green).
 > **Problem:** Mobile responsiveness is inconsistent across the web app. Some pages work on a
 > phone; others overflow, cram 5-column rows into 375px, or demand horizontal scrolling for
 > basic reading. Students are the primary in-class users of the PWA, and faculty increasingly
@@ -227,5 +227,68 @@ Legend: **OK** = already responsive, verified by grep/read; **FIX** = this plan 
    it's one array entry.
 
 ## 9. Addendum (post-implementation)
-_Filled in after execution: final harness matrix, CI numbers, exemptions used (expect zero),
-and the AGENTS.md progress entry._
+
+Executed after the campus-designations wave, so the inventory includes the new designation
+surfaces (`/profile`, `/faculty/at-risk`, `/faculty/system-reports`,
+`/faculty/settings?tab=system`, registrar `/faculty/users`).
+
+### Workstream results
+
+- **RW-0 harness:** `e2e/responsive.spec.ts` now runs **7 role groups × 4 viewports = 28 tests**
+  (anonymous, faculty, super admin, student, department head, IT coordinator, registrar),
+  every rendered route enumerated in `e2e/responsive-routes.ts` (37 routes; `/student` redirect
+  excluded). No exemptions. `e2e/visual-capture.spec.ts` captures all mobile routes at 375×812
+  into `e2e/captures/mobile/` (gitignored evidence).
+- **RW-1 foundations:** `viewportFit: 'cover'`; a `<640px` 16px form-control rule (kills iOS
+  auto-zoom); shared `Input` is now `text-base sm:text-sm`; `FilterBar` children go full-row
+  on phones; sidebar mobile chrome gets safe-area top/bottom padding and ≥44px menu/close/bell
+  targets. Desktop unchanged.
+- **RW-2 heavy tables:** Users and Audit Log render the desktop table only at `md+`
+  (`hidden md:block`; their 860/900px min-widths are no longer reachable on phones) and a
+  stacked card layout below `md`. Users actions are shared through one `UserRowActions`
+  component; the breakpoint is also gated with `useSyncExternalStore(matchMedia)` so only one
+  layout exists in the DOM (prevents duplicate text-based E2E matches). Registrar restrictions,
+  pagination, filters, and status/role actions are preserved.
+- **RW-3 density pass:** stat grids collapse 5→2→1 / 4→2→1 / 3→1 below md (with `md:`
+  restoring the previous desktop breakpoints); filter rows wrap with full-width fields on
+  phones; dialogs cap at ≤92vw; rosters/tables stay in contained scroll regions; cockpit QR/PIN
+  dialogs fit; touch targets ≥44px for primary icon controls. Admin reports kept the previous
+  tablet/desktop 3-up breakdown and only expands to 7-up at `lg` (a literal `md:7` would have
+  changed 768–1023px).
+- **RW-4 schedules:** month cells collapse to day number + three event dots below md; tapping a
+  day opens a phone-only day-detail panel built from the existing `EventPopoverContent` data;
+  week timetables keep `min-w-[700px]` inside a snap/overscroll-contained region with a
+  phone-only fade + hint, and auto-scroll today's column into view on mount (phone widths
+  only). `StudentWeeklySchedule` now uses the same contained 7-column week on phones instead
+  of stacked day cards.
+- **RW-5 regression:** the harness is part of the default Chromium Playwright project; the
+  mobile capture loop is evidence-only.
+
+### Verification
+
+- Responsive gate: **28/28 passed** at 375×812, 390×844, 412×915, and 768×1024 for all seven
+  role groups; zero page-level overflow, zero exemptions.
+- Full Chromium suite: **122 passed / 3 skipped / 0 failed** (includes 28 responsive + 11
+  visual-capture tests). Firefox/WebKit were not rerun this wave.
+- Web unit suite: **304 passed / 48 files**; `eslint`, `tsc --noEmit`, and `next build` clean.
+- Impeccable detector: 18 advisory "side-tab" warnings, all pre-existing `border-l-4` house
+  style (sidebar active state, existing student cards); no errors and no new antipatterns were
+  introduced by the responsive variants.
+
+### Deviations / notes
+
+1. **Breakpoint fidelity:** several "literal" matrix instructions (e.g. `md:grid-cols-7`) would
+   have changed 768–1023px rendering. Where the original used `lg`, the responsive pass keeps
+   `lg` and only adds below-md steps, honoring the pixel-identical desktop promise.
+2. **`StudentWeeklySchedule` phone strategy:** the plan expected stacked day cards there; the
+   implementation instead uses the same contained, auto-scrolled 7-column week for consistency
+   with the faculty/student schedule pages.
+3. **Users page DOM gating:** a `matchMedia` gate is used in addition to `md:` classes because
+   rendering both layouts would duplicate names/buttons in text-based E2E locators. The desktop
+   path is unchanged; SSR renders the desktop table and switches after hydration on phones.
+4. **Map heights:** the shared `MapPicker` has no height props; a wrapper supplies bounded phone
+   heights and restores the existing desktop height at `md`. If MapPicker gains a height/wrap
+   API later, replace the wrapper.
+5. **Cockpit roster:** the roster is a wrapped list, not a table; it is contained rather than
+   given a sticky first column (no horizontal scroll exists to stick against).
+
