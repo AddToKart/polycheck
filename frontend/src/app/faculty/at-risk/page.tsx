@@ -145,57 +145,105 @@ export default function AtRiskStudentsPage() {
                   </p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="border-b border-zinc-200 text-[10px] uppercase tracking-widest text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                      <tr>
-                        <th className="px-5 py-3">Student</th>
-                        <th className="px-5 py-3">Section</th>
-                        <th className="px-5 py-3">Professor</th>
-                        <th className="px-5 py-3">Rate</th>
-                        <th className="px-5 py-3">Status</th>
-                        <th className="px-5 py-3">Absences left</th>
-                        <th className="px-5 py-3">Last absence</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sorted.map((row) => (
-                        <tr
-                          key={`${row.sectionId}:${row.studentId}`}
-                          className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60"
-                        >
-                          <td className="px-5 py-3">
+                <>
+                  {/* Phone layout: stacked rows from the same oversight data */}
+                  <div className="divide-y divide-zinc-100 md:hidden dark:divide-zinc-800/60">
+                    {sorted.map((row) => (
+                      <div key={`${row.sectionId}:${row.studentId}`} className="space-y-3 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
                             <p className="font-semibold text-zinc-800 dark:text-zinc-100">{row.studentName}</p>
                             <p className="font-mono text-xs text-zinc-500 dark:text-zinc-400">
                               {row.studentNumber ?? '—'}
                             </p>
-                          </td>
-                          <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">
-                            <p>{row.subjectName}</p>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400">{row.sectionName}</p>
-                          </td>
-                          <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">{row.professorName}</td>
-                          <td className="px-5 py-3 font-semibold text-zinc-800 dark:text-zinc-100">
-                            {row.attendanceRate === null ? '—' : `${row.attendanceRate}%`}
-                          </td>
-                          <td className="px-5 py-3">
-                            <span
-                              className={`inline-block px-2 py-1 text-[10px] font-bold uppercase tracking-widest ${STATUS_CLASSES[row.status]}`}
-                            >
-                              {STATUS_LABELS[row.status]}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">
-                            {row.absencesBeforeBelowThreshold ?? '—'}
-                          </td>
-                          <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">
-                            {row.lastAbsenceDate ?? '—'}
-                          </td>
+                          </div>
+                          <span
+                            className={`inline-block px-2 py-1 text-[10px] font-bold uppercase tracking-widest ${STATUS_CLASSES[row.status]}`}
+                          >
+                            {STATUS_LABELS[row.status]}
+                          </span>
+                        </div>
+                        <div className="min-w-0 text-xs text-zinc-600 dark:text-zinc-300">
+                          <p className="font-medium">{row.subjectName}</p>
+                          <p className="text-zinc-500 dark:text-zinc-400">
+                            {row.sectionName} · {row.professorName}
+                          </p>
+                        </div>
+                        <dl className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <dt className="text-[10px] uppercase tracking-widest text-zinc-400">Rate</dt>
+                            <dd className="mt-0.5 font-semibold text-zinc-800 dark:text-zinc-100">
+                              {row.attendanceRate === null ? '—' : `${row.attendanceRate}%`}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-[10px] uppercase tracking-widest text-zinc-400">Absences left</dt>
+                            <dd className="mt-0.5 text-zinc-600 dark:text-zinc-300">
+                              {row.absencesBeforeBelowThreshold ?? '—'}
+                            </dd>
+                          </div>
+                          <div className="col-span-2">
+                            <dt className="text-[10px] uppercase tracking-widest text-zinc-400">Last absence</dt>
+                            <dd className="mt-0.5 text-zinc-600 dark:text-zinc-300">
+                              {row.lastAbsenceDate ?? '—'}
+                            </dd>
+                          </div>
+                        </dl>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="hidden overflow-x-auto md:block">
+                    <table className="w-full text-left text-sm">
+                      <thead className="border-b border-zinc-200 text-[10px] uppercase tracking-widest text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                        <tr>
+                          <th className="px-5 py-3">Student</th>
+                          <th className="px-5 py-3">Section</th>
+                          <th className="px-5 py-3">Professor</th>
+                          <th className="px-5 py-3">Rate</th>
+                          <th className="px-5 py-3">Status</th>
+                          <th className="px-5 py-3">Absences left</th>
+                          <th className="px-5 py-3">Last absence</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {sorted.map((row) => (
+                          <tr
+                            key={`${row.sectionId}:${row.studentId}`}
+                            className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60"
+                          >
+                            <td className="px-5 py-3">
+                              <p className="font-semibold text-zinc-800 dark:text-zinc-100">{row.studentName}</p>
+                              <p className="font-mono text-xs text-zinc-500 dark:text-zinc-400">
+                                {row.studentNumber ?? '—'}
+                              </p>
+                            </td>
+                            <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">
+                              <p>{row.subjectName}</p>
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400">{row.sectionName}</p>
+                            </td>
+                            <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">{row.professorName}</td>
+                            <td className="px-5 py-3 font-semibold text-zinc-800 dark:text-zinc-100">
+                              {row.attendanceRate === null ? '—' : `${row.attendanceRate}%`}
+                            </td>
+                            <td className="px-5 py-3">
+                              <span
+                                className={`inline-block px-2 py-1 text-[10px] font-bold uppercase tracking-widest ${STATUS_CLASSES[row.status]}`}
+                              >
+                                {STATUS_LABELS[row.status]}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">
+                              {row.absencesBeforeBelowThreshold ?? '—'}
+                            </td>
+                            <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">
+                              {row.lastAbsenceDate ?? '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>

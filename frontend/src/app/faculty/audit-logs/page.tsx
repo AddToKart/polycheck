@@ -83,7 +83,7 @@ export default function AuditLogsPage() {
           </div>
 
           <Card className="mb-6">
-            <CardContent className="grid gap-4 p-5 md:grid-cols-5">
+            <CardContent className="grid grid-cols-1 gap-4 p-5 md:grid-cols-5">
               <div className="relative md:col-span-2">
                 <Label htmlFor="audit-search">Search</Label>
                 <Search className="absolute bottom-3 left-3 h-4 w-4 text-zinc-400" />
@@ -109,25 +109,58 @@ export default function AuditLogsPage() {
               {loading ? <div className="flex min-h-64 items-center justify-center"><LoadingSpinner size="lg" /></div> : logs.items.length === 0 ? (
                 <div className="p-12 text-center text-sm text-zinc-500">No audited changes match these filters.</div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[900px] text-sm">
-                    <thead><tr className="border-b bg-zinc-100/80 text-left text-xs uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900"><th className="px-5 py-3">Date & time</th><th className="px-5 py-3">Actor</th><th className="px-5 py-3">Action</th><th className="px-5 py-3">Resource</th><th className="px-5 py-3">Outcome</th><th className="px-5 py-3">Source</th></tr></thead>
-                    <tbody>{logs.items.map((entry) => (
-                      <tr key={entry.id} className="border-b border-zinc-100 align-top dark:border-zinc-800">
-                        <td className="whitespace-nowrap px-5 py-4 text-zinc-600 dark:text-zinc-300">{new Date(entry.createdAt).toLocaleString('en-PH')}</td>
-                        <td className="px-5 py-4"><p className="font-semibold text-zinc-900 dark:text-white">{entry.actorName}</p><p className="mt-1 text-xs uppercase tracking-wider text-zinc-400">{entry.actorRole.replace('_', ' ')}</p></td>
-                        <td className="px-5 py-4 font-mono text-xs text-zinc-700 dark:text-zinc-200">{entry.action}</td>
-                        <td className="px-5 py-4"><p className="capitalize text-zinc-700 dark:text-zinc-200">{entry.entityType.replaceAll('-', ' ')}</p><p className="mt-1 max-w-48 truncate font-mono text-xs text-zinc-400" title={entry.entityId}>{entry.entityId ?? '—'}</p></td>
-                        <td className="px-5 py-4"><Badge variant="outline" className={outcomeStyle[entry.outcome]}>{entry.outcome === 'initiated' ? 'Incomplete' : entry.outcome}</Badge></td>
-                        <td className="px-5 py-4 font-mono text-xs text-zinc-500">{entry.ipAddress ?? '—'}</td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
-                </div>
+                <>
+                  <div className="hidden overflow-x-auto md:block">
+                    <table className="w-full min-w-[900px] text-sm">
+                      <thead><tr className="border-b bg-zinc-100/80 text-left text-xs uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900"><th className="px-5 py-3">Date & time</th><th className="px-5 py-3">Actor</th><th className="px-5 py-3">Action</th><th className="px-5 py-3">Resource</th><th className="px-5 py-3">Outcome</th><th className="px-5 py-3">Source</th></tr></thead>
+                      <tbody>{logs.items.map((entry) => (
+                        <tr key={entry.id} className="border-b border-zinc-100 align-top dark:border-zinc-800">
+                          <td className="whitespace-nowrap px-5 py-4 text-zinc-600 dark:text-zinc-300">{new Date(entry.createdAt).toLocaleString('en-PH')}</td>
+                          <td className="px-5 py-4"><p className="font-semibold text-zinc-900 dark:text-white">{entry.actorName}</p><p className="mt-1 text-xs uppercase tracking-wider text-zinc-400">{entry.actorRole.replace('_', ' ')}</p></td>
+                          <td className="px-5 py-4 font-mono text-xs text-zinc-700 dark:text-zinc-200">{entry.action}</td>
+                          <td className="px-5 py-4"><p className="capitalize text-zinc-700 dark:text-zinc-200">{entry.entityType.replaceAll('-', ' ')}</p><p className="mt-1 max-w-48 truncate font-mono text-xs text-zinc-400" title={entry.entityId}>{entry.entityId ?? '—'}</p></td>
+                          <td className="px-5 py-4"><Badge variant="outline" className={outcomeStyle[entry.outcome]}>{entry.outcome === 'initiated' ? 'Incomplete' : entry.outcome}</Badge></td>
+                          <td className="px-5 py-4 font-mono text-xs text-zinc-500">{entry.ipAddress ?? '—'}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                  <div className="divide-y divide-zinc-100 md:hidden dark:divide-zinc-800">
+                    {logs.items.map((entry) => (
+                      <div key={entry.id} className="space-y-3 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="min-w-0 break-words font-mono text-xs text-zinc-700 dark:text-zinc-200">{entry.action}</p>
+                          <Badge variant="outline" className={`shrink-0 ${outcomeStyle[entry.outcome]}`}>
+                            {entry.outcome === 'initiated' ? 'Incomplete' : entry.outcome}
+                          </Badge>
+                        </div>
+                        <div>
+                          <p className="break-words text-sm font-semibold text-zinc-900 dark:text-white">{entry.actorName}</p>
+                          <p className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-400">{entry.actorRole.replace('_', ' ')}</p>
+                        </div>
+                        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                          <div className="col-span-2">
+                            <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Date &amp; time</dt>
+                            <dd className="mt-0.5 text-zinc-600 dark:text-zinc-300">{new Date(entry.createdAt).toLocaleString('en-PH')}</dd>
+                          </div>
+                          <div className="min-w-0">
+                            <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Resource</dt>
+                            <dd className="mt-0.5 capitalize text-zinc-700 dark:text-zinc-200">{entry.entityType.replaceAll('-', ' ')}</dd>
+                            <dd className="mt-0.5 break-all font-mono text-[11px] text-zinc-400" title={entry.entityId}>{entry.entityId ?? '—'}</dd>
+                          </div>
+                          <div className="min-w-0">
+                            <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Source</dt>
+                            <dd className="mt-0.5 break-all font-mono text-[11px] text-zinc-500">{entry.ipAddress ?? '—'}</dd>
+                          </div>
+                        </dl>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
-              <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-4 text-sm dark:border-zinc-800">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-200 px-5 py-4 text-sm dark:border-zinc-800">
                 <span className="text-zinc-500">{logs.total.toLocaleString()} audited change{logs.total === 1 ? '' : 's'}</span>
-                <div className="flex items-center gap-3"><Button variant="outline" size="sm" disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}>Previous</Button><span className="text-xs text-zinc-500">Page {logs.totalPages ? logs.page : 0} of {logs.totalPages}</span><Button variant="outline" size="sm" disabled={page >= logs.totalPages || loading} onClick={() => setPage((value) => value + 1)}>Next</Button></div>
+                <div className="flex flex-wrap items-center gap-3"><Button variant="outline" size="sm" disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}>Previous</Button><span className="text-xs text-zinc-500">Page {logs.totalPages ? logs.page : 0} of {logs.totalPages}</span><Button variant="outline" size="sm" disabled={page >= logs.totalPages || loading} onClick={() => setPage((value) => value + 1)}>Next</Button></div>
               </div>
             </CardContent>
           </Card>

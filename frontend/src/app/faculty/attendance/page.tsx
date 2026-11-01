@@ -205,8 +205,8 @@ function AttendanceOverviewContent() {
       <main className="flex-1 overflow-y-auto">
         <div className="p-8 max-w-6xl mx-auto">
           {/* Header */}
-          <div className="flex items-center justify-between mb-8 border-b border-zinc-200 dark:border-zinc-800 pb-6">
-            <div>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-8 border-b border-zinc-200 dark:border-zinc-800 pb-6">
+            <div className="min-w-0">
               <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Attendance</p>
               <h1 className="text-3xl font-heading font-bold text-foreground">Attendance Overview</h1>
             </div>
@@ -229,7 +229,7 @@ function AttendanceOverviewContent() {
               onChange={handleSubjectChange}
               options={subjectOptions}
               allLabel="All subjects"
-              className="min-w-[13rem] flex-1"
+              className="min-w-[13rem] flex-1 max-sm:basis-full"
             />
             <FilterSelect
               id="attendance-section"
@@ -238,9 +238,9 @@ function AttendanceOverviewContent() {
               onChange={(value) => filters.setFilter('sectionId', value)}
               options={sectionOptions}
               allLabel="All sections"
-              className="min-w-[13rem] flex-1"
+              className="min-w-[13rem] flex-1 max-sm:basis-full"
             />
-            <div className="min-w-[13rem] space-y-1">
+            <div className="min-w-[13rem] space-y-1 max-sm:basis-full">
               <span className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
                 Quick range
               </span>
@@ -305,7 +305,7 @@ function AttendanceOverviewContent() {
 
           {/* By Subject Table */}
           <div className="border border-zinc-300 dark:border-zinc-800">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
               <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
                 By Subject · Click to view students
               </p>

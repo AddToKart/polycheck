@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   FileUp,
@@ -50,6 +50,92 @@ import {
 } from '@/lib/admin-users'
 
 const FILTER_DEBOUNCE_MS = 300
+const DESKTOP_MEDIA_QUERY = '(min-width: 768px)'
+
+function subscribeToDesktopLayout(onChange: () => void) {
+  const query = window.matchMedia(DESKTOP_MEDIA_QUERY)
+  query.addEventListener('change', onChange)
+  return () => query.removeEventListener('change', onChange)
+}
+
+/**
+ * The desktop table and the phone card list carry the same names and actions.
+ * Rendering both at once would duplicate every row in the accessibility tree
+ * (and in text-based E2E locators), so only the layout for the current
+ * breakpoint is mounted. `md` matches the CSS breakpoint used below.
+ */
+function useDesktopLayout() {
+  return useSyncExternalStore(
+    subscribeToDesktopLayout,
+    () => window.matchMedia(DESKTOP_MEDIA_QUERY).matches,
+    () => true,
+  )
+}
+
+function UserRowActions({
+  row,
+  actorRole,
+  busy,
+  touchTarget = false,
+  onEdit,
+  onChangeRole,
+  onResetPassword,
+  onToggleStatus,
+}: {
+  row: User
+  actorRole: User['role']
+  busy: boolean
+  touchTarget?: boolean
+  onEdit: (target: User) => void
+  onChangeRole: (target: User) => void
+  onResetPassword: (target: User) => void
+  onToggleStatus: (target: User) => void
+}) {
+  if (!canManageUser(row)) {
+    return (
+      <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+        Managed by operations
+      </span>
+    )
+  }
+
+  const touchClass = touchTarget ? 'min-h-11' : undefined
+
+  return (
+    <div className={touchTarget ? 'flex flex-wrap gap-2' : 'flex flex-wrap justify-end gap-2'}>
+      <Button variant="outline" size="sm" className={touchClass} onClick={() => onEdit(row)}>
+        <Pencil className="h-3.5 w-3.5" /> Edit
+      </Button>
+      {actorRole === 'super_admin' && assignableRoleFor(row) ? (
+        <Button
+          variant="outline"
+          size="sm"
+          className={touchClass}
+          onClick={() => onChangeRole(row)}
+        >
+          Change role
+        </Button>
+      ) : null}
+      <Button
+        variant="outline"
+        size="sm"
+        className={touchClass}
+        onClick={() => onResetPassword(row)}
+      >
+        <KeyRound className="h-3.5 w-3.5" /> Reset password
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        className={touchClass}
+        disabled={busy}
+        onClick={() => onToggleStatus(row)}
+      >
+        {busy ? 'Saving…' : row.isActive ? 'Disable' : 'Enable'}
+      </Button>
+    </div>
+  )
+}
 
 export default function UsersPage() {
   const router = useRouter()
@@ -87,6 +173,7 @@ export default function UsersPage() {
     department: '',
   })
   const firstFilterRender = useRef(true)
+  const desktopLayout = useDesktopLayout()
 
   const institutionAdmin = user
     ? isInstitutionAdmin({ role: user.role, scope: (user as User & { scope?: string | null }).scope })
@@ -175,6 +262,11 @@ export default function UsersPage() {
   if (!user) return null
 
   const refresh = () => setRefreshToken((value) => value + 1)
+
+  const openResetPassword = (target: User) => {
+    setError('')
+    setResetTarget(target)
+  }
 
   const handleLogout = () => {
     api.logout()
@@ -303,6 +395,10 @@ export default function UsersPage() {
     }
   }
 
+  const toggleStatus = (target: User) => {
+    void handleSetStatus(target)
+  }
+
   const fetchInactiveStudents = async () => {
     const collected: User[] = []
     let nextOffset = 0
@@ -428,7 +524,7 @@ export default function UsersPage() {
           </div>
 
           <Card className="mb-4">
-            <CardContent className="grid gap-4 p-5 md:grid-cols-4">
+            <CardContent className="grid grid-cols-1 gap-4 p-5 md:grid-cols-4">
               <div className="md:col-span-2">
                 <Label htmlFor="user-search">Search accounts</Label>
                 <div className="relative">
@@ -514,8 +610,8 @@ export default function UsersPage() {
                 <div className="p-12 text-center text-sm text-zinc-500 dark:text-zinc-400">
                   No accounts match these filters.
                 </div>
-              ) : (
-                <div className="overflow-x-auto">
+              ) : desktopLayout ? (
+                <div className="hidden overflow-x-auto md:block">
                   <table className="w-full min-w-[860px] text-sm">
                     <thead>
                       <tr className="border-b border-zinc-200 bg-zinc-50 text-left dark:border-zinc-800 dark:bg-zinc-800/50">
@@ -561,50 +657,86 @@ export default function UsersPage() {
                             </Badge>
                           </td>
                           <td className="px-5 py-3 text-right">
-                            {canManageUser(row) ? (
-                              <div className="flex flex-wrap justify-end gap-2">
-                                <Button variant="outline" size="sm" onClick={() => setEditTarget(row)}>
-                                  <Pencil className="h-3.5 w-3.5" /> Edit
-                                </Button>
-                                {user.role === 'super_admin' && assignableRoleFor(row) ? (
-                                  <Button variant="outline" size="sm" onClick={() => setRoleTarget(row)}>
-                                    Change role
-                                  </Button>
-                                ) : null}
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setError('')
-                                    setResetTarget(row)
-                                  }}
-                                >
-                                  <KeyRound className="h-3.5 w-3.5" /> Reset password
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={busyUserId === row.id}
-                                  onClick={() => void handleSetStatus(row)}
-                                >
-                                  {busyUserId === row.id ? 'Saving…' : row.isActive ? 'Disable' : 'Enable'}
-                                </Button>
-                              </div>
-                            ) : (
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-                                Managed by operations
-                              </span>
-                            )}
+                            <UserRowActions
+                              row={row}
+                              actorRole={user.role}
+                              busy={busyUserId === row.id}
+                              onEdit={setEditTarget}
+                              onChangeRole={setRoleTarget}
+                              onResetPassword={openResetPassword}
+                              onToggleStatus={toggleStatus}
+                            />
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+              ) : (
+                <div className="divide-y divide-zinc-100 md:hidden dark:divide-zinc-800">
+                  {page.data.map((row) => (
+                    <div key={row.id} className="space-y-3 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="min-w-0 flex-1 basis-40 break-words text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                          {row.fullName}
+                        </p>
+                        <div className="flex shrink-0 flex-wrap gap-1.5">
+                          <Badge variant="default">{roleLabel(row.role)}</Badge>
+                          <Badge variant={row.isActive ? 'active' : 'inactive'}>
+                            {row.isActive ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                      </div>
+                      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                        {tab === 'student' ? (
+                          <>
+                            <div className="min-w-0">
+                              <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Student ID</dt>
+                              <dd className="mt-0.5 break-all font-mono text-zinc-600 dark:text-zinc-400">{row.studentId ?? '—'}</dd>
+                            </div>
+                            <div className="min-w-0">
+                              <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Program</dt>
+                              <dd className="mt-0.5 break-words text-zinc-600 dark:text-zinc-400">{row.program ?? '—'}</dd>
+                            </div>
+                            <div className="min-w-0">
+                              <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Year</dt>
+                              <dd className="mt-0.5 text-zinc-600 dark:text-zinc-400">{row.yearLevel ? `Year ${row.yearLevel}` : '—'}</dd>
+                            </div>
+                            <div className="min-w-0">
+                              <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Department</dt>
+                              <dd className="mt-0.5 break-words text-zinc-600 dark:text-zinc-400">{row.department ?? '—'}</dd>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="col-span-2 min-w-0">
+                              <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Email</dt>
+                              <dd className="mt-0.5 break-all text-zinc-600 dark:text-zinc-400">{row.email ?? '—'}</dd>
+                            </div>
+                            <div className="col-span-2 min-w-0">
+                              <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Department</dt>
+                              <dd className="mt-0.5 break-words text-zinc-600 dark:text-zinc-400">{row.department ?? '—'}</dd>
+                            </div>
+                          </>
+                        )}
+                      </dl>
+                      <UserRowActions
+                        row={row}
+                        actorRole={user.role}
+                        busy={busyUserId === row.id}
+                        touchTarget
+                        onEdit={setEditTarget}
+                        onChangeRole={setRoleTarget}
+                        onResetPassword={openResetPassword}
+                        onToggleStatus={toggleStatus}
+                      />
+                    </div>
+                  ))}
+                </div>
               )}
               <div className="flex flex-col gap-3 border-t border-zinc-200 px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800">
                 <span className="text-zinc-500 dark:text-zinc-400">{userRangeLabel(page)}</span>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <Button
                     variant="outline"
                     size="sm"

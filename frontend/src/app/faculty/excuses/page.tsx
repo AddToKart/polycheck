@@ -220,8 +220,8 @@ function ExcusesContent() {
     <div className="flex flex-col md:flex-row min-h-screen bg-zinc-100 dark:bg-pup-black">
       <Sidebar user={user} onLogout={() => { api.logout(); router.push('/') }} />
       <main className="flex-1 overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-300/80 dark:border-zinc-800">
-          <div>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-300/80 dark:border-zinc-800">
+          <div className="min-w-0">
             <h1 className="text-xl font-heading font-bold text-maroon-dark dark:text-golden">Excuse Requests</h1>
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
               {isTeacher
@@ -232,7 +232,7 @@ function ExcusesContent() {
         </div>
 
         <div className="p-6 max-w-4xl mx-auto space-y-6">
-          <div className="flex border-b border-zinc-300 dark:border-zinc-800">
+          <div className="flex flex-wrap border-b border-zinc-300 dark:border-zinc-800">
             <button
               type="button"
               onClick={() => setTab('pending')}
@@ -271,7 +271,7 @@ function ExcusesContent() {
               onChange={(value) => filters.setFilter('sectionId', value)}
               options={sectionOptions}
               allLabel="All sections"
-              className="min-w-[14rem] flex-1"
+              className="min-w-[14rem] flex-1 max-sm:basis-full"
             />
             <FilterDateRange
               idPrefix="excuse"
@@ -313,9 +313,9 @@ function ExcusesContent() {
                   key={group.sectionId}
                   className="rounded-none border border-zinc-200 dark:border-golden/15 dark:bg-surface-dark overflow-hidden"
                 >
-                  <div className="flex items-center gap-3 border-b border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
-                    <Layers className="w-5 h-5 text-maroon dark:text-golden" aria-hidden="true" />
-                    <div>
+                  <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+                    <Layers className="w-5 h-5 shrink-0 text-maroon dark:text-golden" aria-hidden="true" />
+                    <div className="min-w-0">
                       <h2 className="text-sm font-bold text-maroon-dark dark:text-golden uppercase tracking-wide">
                         {group.subjectName}
                       </h2>
@@ -337,7 +337,7 @@ function ExcusesContent() {
                               key={record.id}
                               type="button"
                               onClick={() => openRecord(record)}
-                              className="flex w-full items-start justify-between gap-3 border border-zinc-200 px-3 py-2 text-left transition-colors hover:border-maroon/40 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:border-golden/30 dark:hover:bg-zinc-900"
+                              className="flex w-full flex-wrap items-start justify-between gap-2 border border-zinc-200 px-3 py-2 text-left transition-colors hover:border-maroon/40 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:border-golden/30 dark:hover:bg-zinc-900"
                               aria-label={`Review excuse request from ${record.studentName}`}
                             >
                               <div className="min-w-0">
@@ -366,7 +366,7 @@ function ExcusesContent() {
       </main>
 
       <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open && !deciding) setSelected(null) }}>
-        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto dark:bg-surface-dark dark:border-golden/15 p-8">
+        <DialogContent className="w-[92vw] max-h-[90vh] max-w-md overflow-y-auto dark:bg-surface-dark dark:border-golden/15 p-6 sm:p-8">
           {selected ? (
             <>
               <DialogHeader className="items-center text-center">
@@ -384,37 +384,37 @@ function ExcusesContent() {
                   <span className="text-zinc-500 dark:text-zinc-400">Status</span>
                   {selected.excuseStatus ? <ExcuseStatusBadge status={selected.excuseStatus} /> : null}
                 </div>
-                <div className="flex gap-2">
-                  <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-20">Subject</span>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                  <span className="shrink-0 sm:w-20 text-zinc-500 dark:text-zinc-400">Subject</span>
                   <span className="dark:text-zinc-300">{selectedSubject?.name ?? 'Unknown'}</span>
                 </div>
-                <div className="flex gap-2">
-                  <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-20">Section</span>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                  <span className="shrink-0 sm:w-20 text-zinc-500 dark:text-zinc-400">Section</span>
                   <span className="dark:text-zinc-300">{selectedSection ? `Section ${selectedSection.section}` : 'Unknown'}</span>
                 </div>
-                <div className="flex gap-2">
-                  <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-20">Session</span>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                  <span className="shrink-0 sm:w-20 text-zinc-500 dark:text-zinc-400">Session</span>
                   <span className="dark:text-zinc-300">{formatDateTime(selected.timestamp)}</span>
                 </div>
-                <div className="flex gap-2">
-                  <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-20">Reason</span>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                  <span className="shrink-0 sm:w-20 text-zinc-500 dark:text-zinc-400">Reason</span>
                   <span className="font-bold text-maroon dark:text-golden">
                     {selected.excuseReason ? EXCUSE_REASON_LABELS[selected.excuseReason] : 'Unknown'}
                   </span>
                 </div>
-                <div className="flex gap-2">
-                  <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-20">Details</span>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                  <span className="shrink-0 sm:w-20 text-zinc-500 dark:text-zinc-400">Details</span>
                   <span className="dark:text-zinc-300">{selected.excuseDescription ?? 'No description provided.'}</span>
                 </div>
                 {selected.excuseReviewedAt ? (
-                  <div className="flex gap-2">
-                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-20">Reviewed</span>
+                  <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                    <span className="shrink-0 sm:w-20 text-zinc-500 dark:text-zinc-400">Reviewed</span>
                     <span className="dark:text-zinc-300">{formatDateTime(selected.excuseReviewedAt)}</span>
                   </div>
                 ) : null}
                 {selected.excuseReviewNote ? (
-                  <div className="flex gap-2">
-                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-20">Note</span>
+                  <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                    <span className="shrink-0 sm:w-20 text-zinc-500 dark:text-zinc-400">Note</span>
                     <span className="dark:text-zinc-300">{selected.excuseReviewNote}</span>
                   </div>
                 ) : null}
@@ -480,7 +480,7 @@ function ExcusesContent() {
                       {decisionError}
                     </p>
                   ) : null}
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       className="flex-1 rounded-none bg-green-600 text-white hover:bg-green-700"
                       disabled={deciding}

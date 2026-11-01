@@ -325,8 +325,8 @@ function DisputesContent() {
     <div className="flex flex-col md:flex-row min-h-screen bg-zinc-100 dark:bg-pup-black">
       <Sidebar user={user} onLogout={() => { api.logout(); router.push('/') }} />
       <div className="flex-1 overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-300/80 dark:border-zinc-800">
-          <div>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-300/80 dark:border-zinc-800">
+          <div className="min-w-0">
             <h1 className="text-xl font-heading font-bold text-maroon-dark dark:text-golden">Disputed Records</h1>
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
               {pendingCount} pending, {resolvedCount} resolved
@@ -336,7 +336,7 @@ function DisputesContent() {
 
         <div className="p-6 max-w-4xl mx-auto space-y-6">
           {/* Segmented Tabs Control */}
-          <div className="flex border-b border-zinc-300 dark:border-zinc-800">
+          <div className="flex flex-wrap border-b border-zinc-300 dark:border-zinc-800">
             <button
               onClick={() => { setActiveTab('pending'); setExpandedSubjects({}); setExpandedSections({}); }}
               className={`px-6 py-3 text-sm font-semibold border-b-2 transition-colors duration-150 rounded-none focus:outline-none ${
@@ -368,7 +368,7 @@ function DisputesContent() {
             activeCount={filters.activeCount + (searchQuery ? 1 : 0)}
             label="Dispute filters"
           >
-            <div className="min-w-[14rem] flex-1 space-y-1">
+            <div className="min-w-[14rem] flex-1 space-y-1 max-sm:basis-full">
               <label
                 htmlFor="dispute-search"
                 className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400"
@@ -395,7 +395,7 @@ function DisputesContent() {
               onChange={(value) => filters.setFilters({ subjectId: value, sectionId: '' })}
               options={subjectOptions}
               allLabel="All subjects"
-              className="min-w-[12rem] flex-1"
+              className="min-w-[12rem] flex-1 max-sm:basis-full"
             />
             <FilterSelect
               id="dispute-section"
@@ -404,7 +404,7 @@ function DisputesContent() {
               onChange={(value) => filters.setFilter('sectionId', value)}
               options={sectionOptions}
               allLabel="All sections"
-              className="min-w-[12rem] flex-1"
+              className="min-w-[12rem] flex-1 max-sm:basis-full"
             />
             <FilterDateRange
               idPrefix="dispute"
@@ -444,13 +444,13 @@ function DisputesContent() {
                     {/* Subject Header (Collapsible) */}
                     <button
                       type="button"
-                      className="w-full flex items-center justify-between px-5 py-4 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 cursor-pointer select-none text-left"
+                      className="flex w-full flex-wrap items-center justify-between gap-2 px-5 py-4 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 cursor-pointer select-none text-left"
                       onClick={() => toggleSubject(subj.subjectId)}
                       aria-expanded={isSubjExpanded}
                     >
-                      <div className="flex items-center gap-3">
-                        <BookOpen className="w-5 h-5 text-maroon dark:text-golden" />
-                        <h2 className="text-sm font-bold text-maroon-dark dark:text-golden uppercase tracking-wide">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <BookOpen className="w-5 h-5 shrink-0 text-maroon dark:text-golden" />
+                        <h2 className="min-w-0 break-words text-sm font-bold text-maroon-dark dark:text-golden uppercase tracking-wide">
                           {subj.subjectName} ({subj.subjectCode})
                         </h2>
                       </div>
@@ -481,13 +481,13 @@ function DisputesContent() {
                               {/* Section Header */}
                               <button
                                 type="button"
-                                className="w-full flex items-center justify-between py-2 cursor-pointer select-none text-left"
+                                className="flex w-full flex-wrap items-center justify-between gap-2 py-2 cursor-pointer select-none text-left"
                                 onClick={() => toggleSection(sec.sectionId)}
                                 aria-expanded={isSecExpanded}
                               >
-                                <div className="flex items-center gap-2">
-                                  <Layers className="w-4 h-4 text-zinc-400 dark:text-golden" />
-                                  <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <Layers className="w-4 h-4 shrink-0 text-zinc-400 dark:text-golden" />
+                                  <h3 className="min-w-0 break-words text-sm font-semibold text-zinc-700 dark:text-zinc-300">
                                     {sec.sectionName}
                                   </h3>
                                 </div>
@@ -505,13 +505,13 @@ function DisputesContent() {
 
                               {/* Sessions List */}
                               {isSecExpanded && (
-                                <div className="pl-6 mt-3 ml-2 border-l border-zinc-200 dark:border-zinc-800 space-y-4">
+                                <div className="pl-4 mt-3 ml-2 border-l border-zinc-200 dark:border-zinc-800 space-y-4 sm:pl-6">
                                   {sec.sessions.map((sess) => (
                                     <div key={sess.sessionId} className="space-y-3">
                                       {/* Session Label */}
-                                      <div className="flex items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500">
-                                        <Calendar className="w-3.5 h-3.5" />
-                                        <span>
+                                      <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500">
+                                        <Calendar className="w-3.5 h-3.5 shrink-0" />
+                                        <span className="min-w-0 break-words">
                                           Session: {sess.sessionDate} {sess.sessionTime ? `· ${sess.sessionTime}` : ''}
                                         </span>
                                       </div>
@@ -529,10 +529,10 @@ function DisputesContent() {
                                               aria-label={`${activeTab === 'pending' ? 'Review' : 'View'} dispute from ${record.studentName}`}
                                             >
                                               <CardContent className="p-4">
-                                                <div className="flex items-center justify-between mb-2">
-                                                  <div className="flex items-center gap-2">
-                                                    <Icon className="w-4 h-4 text-maroon dark:text-golden" />
-                                                    <h4 className="text-xs font-bold dark:text-white">{record.studentName}</h4>
+                                                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                                  <div className="flex min-w-0 items-center gap-2">
+                                                    <Icon className="w-4 h-4 shrink-0 text-maroon dark:text-golden" />
+                                                    <h4 className="min-w-0 break-words text-xs font-bold dark:text-white">{record.studentName}</h4>
                                                   </div>
                                                   <span className="text-[10px] text-maroon dark:text-golden font-bold uppercase tracking-wider">
                                                     {record.disputeReason ? DISPUTE_LABELS[record.disputeReason] : 'Unknown'}
@@ -576,7 +576,7 @@ function DisputesContent() {
           if (!open) setSelectedRecord(null)
         }}
       >
-        <DialogContent className="max-w-md dark:bg-surface-dark dark:border-golden/15 p-8">
+        <DialogContent className="w-[92vw] max-h-[92vh] overflow-y-auto max-w-md dark:bg-surface-dark dark:border-golden/15 p-6 sm:p-8">
           {selectedRecord && (
             <>
             <DialogHeader className="items-center text-center">
@@ -601,29 +601,29 @@ function DisputesContent() {
                       </span>
                     </div>
                   )}
-                  <div className="flex gap-2 items-start">
-                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-16 pt-0.5">Reason:</span>
+                  <div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:gap-2">
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 sm:w-16 sm:pt-0.5">Reason:</span>
                     <div className="space-y-1">
                       <span className="text-maroon dark:text-golden font-bold block">{selectedRecord.disputeReason ? DISPUTE_LABELS[selectedRecord.disputeReason] : 'Unknown'}</span>
                       <SecurityDisputeBadge reason={selectedRecord.disputeReason} />
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-16">Subject:</span>
-                    <span className="dark:text-zinc-300">{rSubj ? rSubj.name : 'Unknown'}</span>
+                  <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 sm:w-16">Subject:</span>
+                    <span className="min-w-0 break-words dark:text-zinc-300">{rSubj ? rSubj.name : 'Unknown'}</span>
                   </div>
-                  <div className="flex gap-2">
-                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-16">Section:</span>
-                    <span className="dark:text-zinc-300">Section {rSec ? rSec.section : 'Unknown'}</span>
+                  <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 sm:w-16">Section:</span>
+                    <span className="min-w-0 break-words dark:text-zinc-300">Section {rSec ? rSec.section : 'Unknown'}</span>
                   </div>
-                  <div className="flex gap-2">
-                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-16">Session:</span>
-                    <span className="dark:text-zinc-300">{new Date(selectedRecord.timestamp).toLocaleDateString()} {rSess ? `· ${rSess.startTime} - ${rSess.endTime}` : ''}</span>
+                  <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                    <span className="text-zinc-500 dark:text-zinc-400 shrink-0 sm:w-16">Session:</span>
+                    <span className="min-w-0 break-words dark:text-zinc-300">{new Date(selectedRecord.timestamp).toLocaleDateString()} {rSess ? `· ${rSess.startTime} - ${rSess.endTime}` : ''}</span>
                   </div>
                   {selectedRecord.notes && (
-                    <div className="flex gap-2">
-                      <span className="text-zinc-500 dark:text-zinc-400 shrink-0 w-16">Notes:</span>
-                      <span className="dark:text-zinc-300">{selectedRecord.notes}</span>
+                    <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                      <span className="text-zinc-500 dark:text-zinc-400 shrink-0 sm:w-16">Notes:</span>
+                      <span className="min-w-0 break-words dark:text-zinc-300">{selectedRecord.notes}</span>
                     </div>
                   )}
                 </div>
@@ -643,7 +643,7 @@ function DisputesContent() {
                 </Button>
 
                 <p className="text-xs uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-2">Or override to:</p>
-                <div className="flex gap-2 mb-4">
+                <div className="flex flex-wrap gap-2 mb-4">
                   {(['present', 'late', 'absent'] as const).map((s) => (
                     <Button key={s} variant="outline" className="flex-1 rounded-none" onClick={() => handleResolve('override', s)}>
                       {s.charAt(0).toUpperCase() + s.slice(1)}

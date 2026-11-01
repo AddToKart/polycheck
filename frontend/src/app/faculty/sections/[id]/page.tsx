@@ -162,11 +162,11 @@ export default function SectionDetailPage() {
       <main className="flex-1 overflow-y-auto">
         <div className="p-8 max-w-6xl mx-auto">
           {/* Header */}
-          <div className="flex items-center gap-4 mb-8">
+          <div className="flex flex-wrap items-center gap-4 mb-8">
             <Link href={`/faculty/subjects/${section.subjectId}`} className="text-maroon dark:text-golden hover:underline text-sm flex items-center gap-1">
               <ArrowLeft className="w-4 h-4" /> Subject
             </Link>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-2xl font-heading font-bold text-maroon-dark dark:text-white">{subjectName}</h1>
               <p className="text-sm text-zinc-500 dark:text-zinc-400">{subjectCode} &middot; Section {section.section}</p>
             </div>
@@ -175,7 +175,7 @@ export default function SectionDetailPage() {
           {/* Section Info */}
           <Card className="mb-6 border-t-4 border-t-maroon dark:border-t-golden">
             <CardContent className="pt-6">
-              <div className="grid sm:grid-cols-4 gap-4 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div>
                   <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">Room</p>
                   <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">{section.room}</p>
@@ -213,8 +213,8 @@ export default function SectionDetailPage() {
             </CardHeader>
             <CardContent>
               {section.enrollmentCode ? (
-                <div className="flex items-center gap-4 mb-3 flex-wrap">
-                  <span className="text-2xl font-mono font-bold text-maroon dark:text-golden tracking-wider">{section.enrollmentCode}</span>
+                <div className="flex flex-wrap items-center gap-4 mb-3">
+                  <span className="break-all text-2xl font-mono font-bold text-maroon dark:text-golden tracking-wider">{section.enrollmentCode}</span>
                   {(() => {
                     if (!section.enrollmentCodeExpiry) return null
                     const expiry = new Date(section.enrollmentCodeExpiry)
@@ -238,7 +238,7 @@ export default function SectionDetailPage() {
               ) : (
                 <p className="text-sm text-zinc-400 italic mb-3">Enrollment code is disabled</p>
               )}
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button variant="default" size="sm" onClick={handleResetCode}>
                   <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Reset
                 </Button>
@@ -263,7 +263,7 @@ export default function SectionDetailPage() {
             {isEnrollOpen && (
               <CardContent>
                 {user?.role === 'teacher' ? (
-                  <div className="mb-3 flex justify-end">
+                  <div className="mb-3 flex flex-wrap justify-end gap-2">
                     <Button variant="outline" size="sm" onClick={() => setIsImportOpen(true)}>
                       <FileUp className="w-3.5 h-3.5 mr-1.5" /> Import from master list
                     </Button>
@@ -294,7 +294,7 @@ export default function SectionDetailPage() {
                     {enrollCandidates.slice(0, 10).map((s) => {
                       const isAlreadyEnrolled = enrolledIds.has(s.id)
                       return (
-                        <div key={s.id} className="flex items-center justify-between p-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
+                        <div key={s.id} className="flex flex-col gap-3 p-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
                           <div className="flex items-center gap-3 min-w-0 flex-1">
                             <div className="w-9 h-9 bg-maroon dark:bg-golden flex items-center justify-center shrink-0">
                               <span className="text-xs font-bold text-white dark:text-maroon-dark">
@@ -310,7 +310,7 @@ export default function SectionDetailPage() {
                             size="sm"
                             variant={isAlreadyEnrolled ? 'outline' : 'default'}
                             disabled={isAlreadyEnrolled}
-                            className="shrink-0 ml-2"
+                            className="shrink-0 min-h-11 sm:ml-2 md:min-h-0"
                             onClick={() => handleEnrollStudent(s.id, s.fullName)}
                           >
                             {isAlreadyEnrolled ? 'Enrolled' : 'Enroll'}
@@ -360,14 +360,14 @@ export default function SectionDetailPage() {
                     const perm = sessionPermissions.find((p) => p.studentId === pres.studentId)
                     const isExpired = perm ? expiredPermissionIds.has(perm.studentId) : true
                     return (
-                      <div className="flex items-center justify-between bg-zinc-50 dark:bg-zinc-900 p-3 border border-zinc-200 dark:border-zinc-800 mb-2">
-                        <div className="flex items-center gap-3">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-3 bg-zinc-50 dark:bg-zinc-900 p-3 border border-zinc-200 dark:border-zinc-800">
+                        <div className="flex min-w-0 items-center gap-3">
                           <div className="w-8 h-8 bg-maroon dark:bg-golden flex items-center justify-center">
                             <span className="text-[10px] font-bold text-white dark:text-maroon-dark">
                               {pres.studentName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                             </span>
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{pres.studentName}</p>
                             <p className="text-[10px] text-maroon dark:text-golden font-medium">
                               {perm && !isExpired ? (
@@ -380,23 +380,23 @@ export default function SectionDetailPage() {
                             </p>
                           </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                           {perm && !isExpired ? (
-                            <Button variant="outline" size="sm" className="text-red-500 border-red-500 text-xs" onClick={async () => {
+                            <Button variant="outline" size="sm" className="min-h-11 text-red-500 border-red-500 text-xs md:min-h-0" onClick={async () => {
                               await api.revokeSessionPermission(id, pres.studentId)
                               applyPermissions(await api.getActiveSessionPermissions(id))
                             }}>
                               <XCircle className="w-3 h-3 mr-1" /> Revoke
                             </Button>
                           ) : (
-                            <Button variant="default" size="sm" className="text-xs" onClick={async () => {
+                            <Button variant="default" size="sm" className="min-h-11 text-xs md:min-h-0" onClick={async () => {
                               await api.grantSessionPermission(id, pres.studentId)
                               applyPermissions(await api.getActiveSessionPermissions(id))
                             }}>
                               <CheckCircle className="w-3 h-3 mr-1" /> Grant 24hr
                             </Button>
                           )}
-                          <Button variant="outline" size="sm" className="text-xs text-red-400 border-red-300" onClick={async () => {
+                          <Button variant="outline" size="sm" className="min-h-11 text-xs text-red-400 border-red-300 md:min-h-0" onClick={async () => {
                             await api.removeSectionRole(id, pres.studentId, 'president')
                             setSectionRoles(await api.getSectionRoles(id))
                           }}>Remove</Button>
@@ -448,9 +448,9 @@ export default function SectionDetailPage() {
                       {qacs.length > 0 ? (
                         <div className="flex flex-wrap gap-2 mb-3">
                           {qacs.map((qac) => (
-                            <div key={qac.id} className="flex items-center gap-2 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border border-zinc-200 dark:border-zinc-800">
-                              <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{qac.studentName}</span>
-                              <button className="text-red-400 hover:text-red-600" onClick={async () => {
+                            <div key={qac.id} className="flex max-w-full items-center gap-2 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border border-zinc-200 dark:border-zinc-800">
+                              <span className="min-w-0 break-words text-sm font-medium text-zinc-800 dark:text-zinc-200">{qac.studentName}</span>
+                              <button className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-red-400 hover:text-red-600 md:min-h-0 md:min-w-0" onClick={async () => {
                                 await api.removeSectionRole(id, qac.studentId, 'qac')
                                 setSectionRoles(await api.getSectionRoles(id))
                               }}>
@@ -518,9 +518,9 @@ export default function SectionDetailPage() {
                     <Link
                       key={session.id}
                       href={`/faculty/sessions/${session.id}`}
-                      className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                      className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900"
                     >
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">
                           {new Date(`${session.date}T00:00:00`).toLocaleDateString('en-PH', {
                             weekday: 'short',
@@ -544,7 +544,7 @@ export default function SectionDetailPage() {
           </Card>
 
           {/* Attendance Overview */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <Card className="border-t-4 border-t-golden">
               <CardContent className="py-6 text-center">
                 <p className="text-3xl font-bold text-golden">{totalPresent}</p>
@@ -594,7 +594,7 @@ export default function SectionDetailPage() {
                     href={`/faculty/students/${student.id}?sectionId=${id}`}
                     className="block bg-white dark:bg-zinc-900 border border-zinc-300/80 dark:border-zinc-800 hover:border-maroon/30 dark:hover:border-golden/30 transition-colors shadow-[0_2px_8px_rgba(123,17,19,0.02)] hover:shadow-md"
                   >
-                    <div className="p-4 flex items-center gap-4">
+                    <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-4">
                       <div className="w-10 h-10 bg-maroon dark:bg-golden flex items-center justify-center shrink-0">
                         <span className="text-xs font-bold text-white dark:text-maroon-dark">
                           {student.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
@@ -605,8 +605,8 @@ export default function SectionDetailPage() {
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">{student.studentId}</p>
                         <p className="text-xs text-zinc-400 dark:text-zinc-500">{student.program}</p>
                       </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <div className="flex gap-1">
+                      <div className="flex flex-wrap items-center gap-3 sm:shrink-0">
+                        <div className="flex flex-wrap gap-1">
                           <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950 text-amber-600 border-amber-200 dark:border-amber-800">
                             P {student.attendance.present}
                           </Badge>
@@ -637,7 +637,7 @@ export default function SectionDetailPage() {
 
           {/* Pagination */}
           {pageCount > 1 && (
-            <div className="flex items-center justify-center gap-2 mt-6">
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-6">
               <Button
                 variant="outline"
                 size="sm"

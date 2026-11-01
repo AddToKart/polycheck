@@ -112,11 +112,11 @@ function SubjectSessionsContent() {
       <main className="flex-1 overflow-y-auto">
         <div className="p-8 max-w-5xl mx-auto">
           {/* Header */}
-          <div className="flex items-center gap-4 mb-6">
+          <div className="flex flex-wrap items-center gap-4 mb-6">
             <Link href={`/faculty/subjects/${id}`} className="text-maroon dark:text-golden hover:underline text-sm flex items-center gap-1">
               <ArrowLeft className="w-4 h-4" /> Subject
             </Link>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-2xl font-heading font-bold text-maroon-dark dark:text-white">{subject.name}</h1>
               <p className="text-sm text-zinc-500 dark:text-zinc-400">{subject.code} &middot; {filtered.length} session{filtered.length !== 1 ? 's' : ''}</p>
             </div>
@@ -198,8 +198,8 @@ function SubjectSessionsContent() {
               if (!sec) return null
               return (
                 <Card key={sectionId} className="mb-6">
-                  <CardHeader className="flex-row items-center justify-between pb-3 border-b border-zinc-200 dark:border-zinc-800">
-                    <CardTitle className="text-base flex items-center gap-2">
+                  <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 pb-3 border-b border-zinc-200 dark:border-zinc-800">
+                    <CardTitle className="flex items-center gap-2 text-base">
                       <CalendarDays className="w-4 h-4 text-maroon dark:text-golden" />
                       {getSectionLabel(sec)}
                     </CardTitle>
@@ -207,60 +207,62 @@ function SubjectSessionsContent() {
                       {sectionSessions.length} session{sectionSessions.length !== 1 ? 's' : ''}
                     </span>
                   </CardHeader>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
-                        <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Date</th>
-                        <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Time</th>
-                        <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Room</th>
-                        <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Status</th>
-                        <th className="text-right px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sectionSessions.map((session) => (
-                        <tr
-                          key={session.id}
-                          className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
-                          onClick={() => router.push(`/faculty/sessions/${session.id}`)}
-                        >
-                          <td className="px-6 py-3 text-zinc-900 dark:text-zinc-100">
-                            {new Date(session.date).toLocaleDateString('en-US', {
-                              weekday: 'short',
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </td>
-                          <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400">
-                            {session.startTime} - {session.endTime}
-                          </td>
-                          <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400 text-xs">
-                            {session.room || '\u2014'}
-                          </td>
-                          <td className="px-6 py-3">
-                            <Badge variant={session.isActive ? 'active' : 'inactive'}>
-                              {session.isActive ? 'Active' : 'Inactive'}
-                            </Badge>
-                          </td>
-                          <td className="px-6 py-3 text-right">
-                            {!session.isActive && (
-                              <Button
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleActivate(session.id)
-                                }}
-                                disabled={activating === session.id}
-                              >
-                                {activating === session.id ? '...' : 'Activate'}
-                              </Button>
-                            )}
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
+                          <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Date</th>
+                          <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Time</th>
+                          <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Room</th>
+                          <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Status</th>
+                          <th className="text-right px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {sectionSessions.map((session) => (
+                          <tr
+                            key={session.id}
+                            className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                            onClick={() => router.push(`/faculty/sessions/${session.id}`)}
+                          >
+                            <td className="px-6 py-3 text-zinc-900 dark:text-zinc-100">
+                              {new Date(session.date).toLocaleDateString('en-US', {
+                                weekday: 'short',
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                            </td>
+                            <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400">
+                              {session.startTime} - {session.endTime}
+                            </td>
+                            <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400 text-xs">
+                              {session.room || '\u2014'}
+                            </td>
+                            <td className="px-6 py-3">
+                              <Badge variant={session.isActive ? 'active' : 'inactive'}>
+                                {session.isActive ? 'Active' : 'Inactive'}
+                              </Badge>
+                            </td>
+                            <td className="px-6 py-3 text-right">
+                              {!session.isActive && (
+                                <Button
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleActivate(session.id)
+                                  }}
+                                  disabled={activating === session.id}
+                                >
+                                  {activating === session.id ? '...' : 'Activate'}
+                                </Button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </Card>
               )
             })
