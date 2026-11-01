@@ -30,45 +30,34 @@ export default function HomePage() {
       </div>
 
       <div className="relative grid grid-cols-1 gap-6 w-full animate-fade-in-up delay-100">
-        {/* Sliding Highlight Background */}
-        <div 
-          className="absolute left-0 right-0 h-[calc(50%-12px)] bg-white dark:bg-zinc-900 border-2 border-maroon dark:border-golden rounded-none shadow-none transition-all duration-300 ease-out pointer-events-none"
-          style={{
-            opacity: hoveredIndex !== null && !exitingRoute ? 1 : 0,
-            transform: hoveredIndex === 1 
-              ? 'translateY(calc(100% + 24px))' 
-              : 'translateY(0)',
-          }}
-        />
-
         {/* Student Portal Card */}
         <button
           onMouseEnter={() => setHoveredIndex(0)}
           onMouseLeave={() => setHoveredIndex(null)}
           onClick={() => handleNavigate('/login/student')}
-          className={`group relative w-full text-left rounded-none border border-l-4 p-8 transition-all duration-300 overflow-hidden cursor-pointer ${
+          className={`group relative w-full text-left rounded-none border border-l-4 p-8 transition-all duration-200 overflow-hidden cursor-pointer ${
             hoveredIndex === 0 && !exitingRoute
-              ? 'border-maroon dark:border-golden border-l-maroon dark:border-l-golden -translate-y-1 scale-[1.01] z-10 shadow-[0_4px_20px_rgba(123,17,19,0.06)]' 
+              ? 'border-maroon dark:border-golden border-l-maroon dark:border-l-golden -translate-y-1 bg-white dark:bg-zinc-900 shadow-[0_8px_30px_rgba(123,17,19,0.08)] z-10' 
               : hoveredIndex === 1 && !exitingRoute
-                ? 'border-zinc-300 dark:border-zinc-800 border-l-maroon/40 dark:border-l-golden/40 opacity-40 scale-[0.98]'
+                ? 'border-zinc-300 dark:border-zinc-800 border-l-zinc-300 dark:border-l-zinc-700 opacity-40 bg-white/70 dark:bg-zinc-900/40'
                 : 'border-zinc-300 dark:border-zinc-800 border-l-maroon dark:border-l-golden bg-white dark:bg-zinc-900/60 shadow-none'
           }`}
         >
-          {/* Subtle hover background */}
-          <div className="absolute -inset-px bg-maroon/[0.02] dark:bg-golden/[0.04] opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-none" />
+          {/* Subtle hover background highlight */}
+          <div className="absolute inset-0 bg-maroon/[0.02] dark:bg-golden/[0.04] opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none" />
           
           <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-6">
-            <div className="w-14 h-14 rounded-none bg-maroon/5 dark:bg-golden/5 flex items-center justify-center shrink-0 border border-maroon/20 dark:border-golden/20 group-hover:bg-maroon dark:group-hover:bg-golden group-hover:scale-105 transition-all duration-300">
-              <GraduationCap className="w-7 h-7 text-maroon dark:text-golden group-hover:text-white dark:group-hover:text-maroon-dark transition-colors duration-305" strokeWidth={1.5} />
+            <div className="w-14 h-14 rounded-none bg-maroon/5 dark:bg-golden/5 flex items-center justify-center shrink-0 border border-maroon/20 dark:border-golden/20 group-hover:bg-maroon dark:group-hover:bg-golden group-hover:scale-105 transition-all duration-200">
+              <GraduationCap className="w-7 h-7 text-maroon dark:text-golden group-hover:text-white dark:group-hover:text-maroon-dark transition-colors duration-200" strokeWidth={1.5} />
             </div>
             
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-4">
-                <h2 className="text-xl md:text-2xl font-heading font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-maroon dark:group-hover:text-golden transition-colors duration-300">
+                <h2 className="text-xl md:text-2xl font-heading font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-maroon dark:group-hover:text-golden transition-colors duration-200">
                   Student Portal
                 </h2>
-                <div className="w-8 h-8 rounded-none border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 flex items-center justify-center group-hover:bg-maroon group-hover:border-maroon dark:group-hover:bg-golden dark:group-hover:border-golden transition-colors duration-300 shrink-0">
-                  <ArrowRight className="w-4 h-4 text-zinc-400 dark:text-zinc-500 group-hover:text-white dark:group-hover:text-maroon-dark group-hover:translate-x-0.5 transition-all duration-300" />
+                <div className="w-8 h-8 rounded-none border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 flex items-center justify-center group-hover:bg-maroon group-hover:border-maroon dark:group-hover:bg-golden dark:group-hover:border-golden transition-colors duration-200 shrink-0">
+                  <ArrowRight className="w-4 h-4 text-zinc-400 dark:text-zinc-500 group-hover:text-white dark:group-hover:text-maroon-dark group-hover:translate-x-0.5 transition-all duration-200" />
                 </div>
               </div>
               <p className="text-sm text-zinc-500 dark:text-zinc-400 font-sans mt-2 leading-relaxed">
@@ -83,29 +72,29 @@ export default function HomePage() {
           onMouseEnter={() => setHoveredIndex(1)}
           onMouseLeave={() => setHoveredIndex(null)}
           onClick={() => handleNavigate('/login/faculty')}
-          className={`group relative w-full text-left rounded-none border border-l-4 p-8 transition-all duration-300 overflow-hidden cursor-pointer ${
+          className={`group relative w-full text-left rounded-none border border-l-4 p-8 transition-all duration-200 overflow-hidden cursor-pointer ${
             hoveredIndex === 1 && !exitingRoute
-              ? 'border-maroon dark:border-golden border-l-maroon dark:border-l-golden -translate-y-1 scale-[1.01] z-10 shadow-[0_4px_20px_rgba(123,17,19,0.06)]' 
+              ? 'border-maroon dark:border-golden border-l-maroon dark:border-l-golden -translate-y-1 bg-white dark:bg-zinc-900 shadow-[0_8px_30px_rgba(123,17,19,0.08)] z-10' 
               : hoveredIndex === 0 && !exitingRoute
-                ? 'border-zinc-300 dark:border-zinc-800 border-l-maroon/40 dark:border-l-golden/40 opacity-40 scale-[0.98]'
+                ? 'border-zinc-300 dark:border-zinc-800 border-l-zinc-300 dark:border-l-zinc-700 opacity-40 bg-white/70 dark:bg-zinc-900/40'
                 : 'border-zinc-300 dark:border-zinc-800 border-l-maroon dark:border-l-golden bg-white dark:bg-zinc-900/60 shadow-none'
           }`}
         >
-          {/* Subtle hover background */}
-          <div className="absolute -inset-px bg-maroon/[0.02] dark:bg-golden/[0.04] opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-none" />
+          {/* Subtle hover background highlight */}
+          <div className="absolute inset-0 bg-maroon/[0.02] dark:bg-golden/[0.04] opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none" />
           
           <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-6">
-            <div className="w-14 h-14 rounded-none bg-maroon/5 dark:bg-golden/5 flex items-center justify-center shrink-0 border border-maroon/20 dark:border-golden/20 group-hover:bg-maroon dark:group-hover:bg-golden group-hover:scale-105 transition-all duration-300">
-              <BookOpen className="w-7 h-7 text-maroon dark:text-golden group-hover:text-white dark:group-hover:text-maroon-dark transition-colors duration-305" strokeWidth={1.5} />
+            <div className="w-14 h-14 rounded-none bg-maroon/5 dark:bg-golden/5 flex items-center justify-center shrink-0 border border-maroon/20 dark:border-golden/20 group-hover:bg-maroon dark:group-hover:bg-golden group-hover:scale-105 transition-all duration-200">
+              <BookOpen className="w-7 h-7 text-maroon dark:text-golden group-hover:text-white dark:group-hover:text-maroon-dark transition-colors duration-200" strokeWidth={1.5} />
             </div>
             
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-4">
-                <h2 className="text-xl md:text-2xl font-heading font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-maroon dark:group-hover:text-golden transition-colors duration-300">
+                <h2 className="text-xl md:text-2xl font-heading font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-maroon dark:group-hover:text-golden transition-colors duration-200">
                   Faculty Portal
                 </h2>
-                <div className="w-8 h-8 rounded-none border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 flex items-center justify-center group-hover:bg-maroon group-hover:border-maroon dark:group-hover:bg-golden dark:group-hover:border-golden transition-colors duration-300 shrink-0">
-                  <ArrowRight className="w-4 h-4 text-zinc-400 dark:text-zinc-500 group-hover:text-white dark:group-hover:text-maroon-dark group-hover:translate-x-0.5 transition-all duration-300" />
+                <div className="w-8 h-8 rounded-none border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 flex items-center justify-center group-hover:bg-maroon group-hover:border-maroon dark:group-hover:bg-golden dark:group-hover:border-golden transition-colors duration-200 shrink-0">
+                  <ArrowRight className="w-4 h-4 text-zinc-400 dark:text-zinc-500 group-hover:text-white dark:group-hover:text-maroon-dark group-hover:translate-x-0.5 transition-all duration-200" />
                 </div>
               </div>
               <p className="text-sm text-zinc-500 dark:text-zinc-400 font-sans mt-2 leading-relaxed">
