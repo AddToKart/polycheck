@@ -25,6 +25,9 @@ import { InfrastructureModule } from './infrastructure/infrastructure.module'
 import { SyncModule } from './sync/sync.module'
 import { SettingsModule } from './settings/settings.module'
 import { MaintenanceModule } from './common/services/maintenance.module'
+import { MaintenanceModeModule } from './maintenance-mode/maintenance-mode.module'
+import { MaintenanceGuard } from './maintenance-mode/maintenance.guard'
+import { DesignationsGuard } from './common/guards/designations.guard'
 import { validateEnv } from './common/config/env-validation'
 import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor'
 import { AuditInterceptor } from './common/interceptors/audit.interceptor'
@@ -85,6 +88,7 @@ import { ReportsModule } from './reports/reports.module'
     NotificationsModule,
     ReportsModule,
     MaintenanceModule,
+    MaintenanceModeModule,
   ],
   providers: [
     {
@@ -101,11 +105,19 @@ import { ReportsModule } from './reports/reports.module'
     },
     {
       provide: APP_GUARD,
+      useClass: MaintenanceGuard,
+    },
+    {
+      provide: APP_GUARD,
       useClass: DistributedRateLimitGuard,
     },
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: DesignationsGuard,
     },
     {
       provide: APP_GUARD,

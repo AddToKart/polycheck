@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { SuperAdmin } from '@polycheck/shared'
+import type { SuperAdmin, User } from '@polycheck/shared'
 import { TAB_SETTING_KEYS } from './settings-config'
 
 const apiMock = vi.hoisted(() => ({
@@ -44,6 +44,29 @@ const departmentAdmin: SuperAdmin = {
   ...admin,
   id: 'admin-2',
   scope: 'department',
+}
+
+const itCoordinator: User = {
+  id: 't-003',
+  fullName: 'Prof. Bryan M. Salazar',
+  email: 'bry.mis@pup.edu.ph',
+  role: 'teacher',
+  department: 'CCIS',
+  isItCoordinator: true,
+  isActive: true,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+}
+
+const plainTeacher: User = {
+  id: 't-001',
+  fullName: 'Prof. Juan Miguel Dela Cruz',
+  email: 'jmdelacruz@pup.edu.ph',
+  role: 'teacher',
+  department: 'CCIS',
+  isActive: true,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
 }
 
 const SETTING_VALUES: Record<string, string> = {
@@ -99,7 +122,7 @@ describe('Institution Settings tabs', () => {
 
   afterEach(cleanup)
 
-  it('renders the four categories with Institution selected by default', async () => {
+  it('renders the five categories with Institution selected by default', async () => {
     await renderLoaded()
 
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
@@ -107,6 +130,7 @@ describe('Institution Settings tabs', () => {
       'Sessions & attendance',
       'Accounts & access',
       'AI Assistant',
+      'System',
     ])
     expect(screen.getByRole('tab', { name: 'Institution' })).toHaveAttribute(
       'aria-selected',
@@ -294,5 +318,64 @@ describe('Institution Settings tabs', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Institution' }))
     expect(await screen.findByLabelText('Institution name')).toBeDisabled()
+  })
+
+  it('saves the maintenance controls from the System tab', async () => {
+    navMock.tab = 'system'
+
+    render(<InstitutionSettingsPage />)
+
+    const mode = await screen.findByRole('switch', { name: 'Maintenance mode' })
+    expect(mode).toHaveAttribute('aria-checked', 'false')
+
+    fireEvent.click(mode)
+    expect(mode).toHaveAttribute('aria-checked', 'true')
+    expect(
+      screen.getByText(/Only super admins and IT coordinators can currently sign in/),
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(apiMock.setSetting).toHaveBeenCalledTimes(TAB_SETTING_KEYS.system.length),
+    )
+    expect(apiMock.setSetting).toHaveBeenCalledWith('maintenance_mode_enabled', 'true')
+    const savedKeys = apiMock.setSetting.mock.calls.map(([key]) => key as string)
+    expect(new Set(savedKeys)).toEqual(new Set(TAB_SETTING_KEYS.system))
+    expect(await screen.findByText('System maintenance settings saved.')).toBeInTheDocument()
+  })
+
+  it('gives IT coordinators the System tab only and keeps it editable', async () => {
+    apiMock.getCurrentUser.mockReturnValue(itCoordinator)
+    navMock.tab = 'system'
+
+    render(<InstitutionSettingsPage />)
+
+    const systemTab = await screen.findByRole('tab', { name: 'System' })
+    expect(systemTab).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
+    expect(screen.getByRole('switch', { name: 'Maintenance mode' })).toBeEnabled()
+    expect(screen.getByLabelText('Maintenance announcement (optional)')).toBeEnabled()
+  })
+
+  it('redirects IT coordinators from non-System deep links to the System tab', async () => {
+    apiMock.getCurrentUser.mockReturnValue(itCoordinator)
+    navMock.tab = 'accounts'
+
+    render(<InstitutionSettingsPage />)
+
+    await waitFor(() =>
+      expect(navMock.replace).toHaveBeenCalledWith('/faculty/settings?tab=system', {
+        scroll: false,
+      }),
+    )
+  })
+
+  it('bounces teachers without an IT designation', async () => {
+    apiMock.getCurrentUser.mockReturnValue(plainTeacher)
+
+    render(<InstitutionSettingsPage />)
+
+    await waitFor(() => expect(navMock.replace).toHaveBeenCalledWith('/faculty'))
   })
 })

@@ -1,4 +1,4 @@
-import { Logger, type OnModuleDestroy } from '@nestjs/common'
+import { Logger, Optional, type OnModuleDestroy } from '@nestjs/common'
 import {
   ConnectedSocket,
   MessageBody,
@@ -16,6 +16,7 @@ import {
   SERVER_SUBSCRIBE_EVENT,
   SERVER_SUBSCRIBED_EVENT,
   SERVER_UNSUBSCRIBE_EVENT,
+  isMaintenanceExempt,
   type AppNotification,
 } from '@polycheck/shared'
 import type { Server, Socket } from 'socket.io'
@@ -28,6 +29,7 @@ import { aiThreadRoom, AiStreamService } from '../ai/ai-stream.service'
 import { AiChatService } from '../ai/ai-chat.service'
 import { adminSectionInScope } from '../common/admin-scope'
 import { SERVER_STATUS_INTERVAL_MS, ServerStatusService } from './server-status.service'
+import { SystemMaintenanceService } from '../maintenance-mode/system-maintenance.service'
 
 type SocketUser = RequestUser
 
@@ -64,6 +66,7 @@ export class AttendanceGateway implements OnGatewayInit, OnModuleDestroy {
     private readonly serverStatus: ServerStatusService,
     private readonly aiStream: AiStreamService,
     private readonly aiChat: AiChatService,
+    @Optional() private readonly maintenance?: SystemMaintenanceService,
   ) {}
 
   afterInit(server: Server) {
@@ -72,7 +75,17 @@ export class AttendanceGateway implements OnGatewayInit, OnModuleDestroy {
     server.use(async (socket, next) => {
       try {
         socket.data.user = await this.sessions.authenticate(this.handshakeHeaders(socket))
-        await socket.join(this.userRoom((socket.data.user as SocketUser).id))
+        const principal = socket.data.user as SocketUser
+        // Maintenance mode closes realtime for regular users and students; the
+        // handshake is the only place a socket can be rejected before it joins
+        // any room. Exempt staff (super admins, IT coordinators) stay connected.
+        if (this.maintenance) {
+          const status = await this.maintenance.current()
+          if (status.enabled && !isMaintenanceExempt(principal)) {
+            return next(new Error('system_maintenance'))
+          }
+        }
+        await socket.join(this.userRoom(principal.id))
         next()
       } catch {
         next(new Error('Invalid or expired token'))
@@ -161,8 +174,10 @@ export class AttendanceGateway implements OnGatewayInit, OnModuleDestroy {
   private async assertServerMetricsAccess(socket: Socket) {
     const principal = await this.sessions.authenticate(this.handshakeHeaders(socket))
     socket.data.user = principal
-    if (principal.role !== 'super_admin') {
-      throw new WsException('Only super admins can subscribe to server metrics')
+    const allowed =
+      principal.role === 'super_admin' || (principal.role === 'teacher' && principal.isItCoordinator === true)
+    if (!allowed) {
+      throw new WsException('Only super admins and IT coordinators can subscribe to server metrics')
     }
   }
 

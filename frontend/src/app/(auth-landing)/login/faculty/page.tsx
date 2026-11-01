@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { PendingPasswordChange } from "@/components/auth/PendingPasswordChange";
+import { MaintenancePage } from "@/components/maintenance/MaintenancePage";
 import { useLanding } from "../../layout";
 import type { User } from "@polycheck/shared";
 
@@ -20,6 +21,7 @@ export default function FacultyLoginPage() {
   const [loading, setLoading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [pendingUser, setPendingUser] = useState<User | null>(null);
+  const [maintenance, setMaintenance] = useState<{ message?: string; estimatedEnd?: string } | null>(null);
   const { exitingRoute } = useLanding();
 
   useEffect(() => setHydrated(true), []);
@@ -38,11 +40,28 @@ export default function FacultyLoginPage() {
         setError("Invalid email or password.");
       }
     } catch (err: any) {
-      setError(err.message || "Invalid email or password.");
+      if (err?.code === "system_maintenance") {
+        setMaintenance({ message: err.message, estimatedEnd: err.estimatedEnd });
+      } else {
+        setError(err.message || "Invalid email or password.");
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  if (maintenance) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8 md:p-12 lg:p-16">
+        <MaintenancePage
+          embedded
+          showAdminLogin={false}
+          message={maintenance.message}
+          estimatedEnd={maintenance.estimatedEnd}
+        />
+      </div>
+    );
+  }
 
   if (pendingUser) {
     return (

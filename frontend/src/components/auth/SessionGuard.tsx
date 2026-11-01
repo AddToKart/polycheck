@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/lib/hooks'
 import { OfflineBanner } from '@/components/OfflineBanner'
 import { PendingPasswordChange } from '@/components/auth/PendingPasswordChange'
+import { MaintenancePage } from '@/components/maintenance/MaintenancePage'
 
 type DashboardArea = 'faculty' | 'student'
-type GuardState = 'checking' | 'ready' | 'unavailable'
+type GuardState = 'checking' | 'ready' | 'unavailable' | 'maintenance'
 const SESSION_REVALIDATION_INTERVAL_MS = 60_000
 
 const canAccess = (user: User, area: DashboardArea) =>
@@ -28,6 +29,7 @@ export function SessionGuard({
   const router = useRouter()
   const [state, setState] = useState<GuardState>('checking')
   const [pendingUser, setPendingUser] = useState<User | null>(null)
+  const [maintenance, setMaintenance] = useState<{ message?: string; estimatedEnd?: string } | null>(null)
   const verificationInFlightRef = useRef(false)
 
   const verifySession = useCallback(async (background = false) => {
@@ -47,8 +49,21 @@ export function SessionGuard({
         return
       }
       setPendingUser(null)
+      setMaintenance(null)
       setState('ready')
-    } catch {
+    } catch (error) {
+      // The institution maintenance shield is a system state, not a network
+      // failure: show the branded wall (the global provider also handles it).
+      // Duck-typed so partially mocked clients/tests keep working.
+      const failure = error as { status?: unknown; code?: unknown; message?: unknown; estimatedEnd?: unknown }
+      if (failure?.status === 503 && failure?.code === 'system_maintenance') {
+        setMaintenance({
+          message: typeof failure.message === 'string' ? failure.message : undefined,
+          estimatedEnd: typeof failure.estimatedEnd === 'string' ? failure.estimatedEnd : undefined,
+        })
+        setState('maintenance')
+        return
+      }
       // A background network failure is not proof that auth was revoked. Keep
       // already-verified content mounted and retry on the next bounded check.
       if (!background) setState('unavailable')
@@ -107,6 +122,15 @@ export function SessionGuard({
         <LoadingSpinner size="lg" />
         <p className="text-sm font-semibold text-maroon-dark dark:text-golden">Verifying your session…</p>
       </main>
+    )
+  }
+
+  if (state === 'maintenance') {
+    return (
+      <MaintenancePage
+        message={maintenance?.message}
+        estimatedEnd={maintenance?.estimatedEnd}
+      />
     )
   }
 

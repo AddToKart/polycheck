@@ -1,5 +1,12 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { EventEmitter2 } from '@nestjs/event-emitter'
+import {
+  DEFAULT_MAINTENANCE_MESSAGE,
+  MAINTENANCE_SETTINGS_CHANGED_EVENT,
+  MAINTENANCE_SETTING_KEYS,
+  isMaintenanceSettingKey,
+} from '@polycheck/shared'
 import { isSealedSecret, openSecret, sealSecret } from '../common/utils/secret-box'
 import { PrismaService } from '../prisma/prisma.service'
 
@@ -19,9 +26,16 @@ const BOOLEAN_SETTING_KEYS = [
   'ai_assistant_enabled',
   'ai_assistant_teacher_enabled',
   'ai_assistant_student_enabled',
+  'maintenance_mode_enabled',
 ] as const
 
 const OPTIONAL_STRING_SETTING_KEYS = ['ai_base_url', 'ai_model'] as const
+
+/** Free-text settings (trimmed, may be cleared with an empty value). */
+const OPTIONAL_TEXT_SETTING_KEYS = ['maintenance_message'] as const
+
+/** ISO-8601 datetime settings stored as strings; an empty value clears them. */
+const OPTIONAL_DATETIME_SETTING_KEYS = ['maintenance_until'] as const
 
 export const AI_API_KEY_SETTING = 'ai_api_key'
 
@@ -29,6 +43,8 @@ export const INSTITUTION_SETTING_KEYS = [
   'institution_name',
   ...BOOLEAN_SETTING_KEYS,
   ...OPTIONAL_STRING_SETTING_KEYS,
+  ...OPTIONAL_TEXT_SETTING_KEYS,
+  ...OPTIONAL_DATETIME_SETTING_KEYS,
   AI_API_KEY_SETTING,
   ...Object.keys(INTEGER_SETTING_RANGES),
 ] as const
@@ -36,6 +52,8 @@ export const INSTITUTION_SETTING_KEYS = [
 export type InstitutionSettingKey = (typeof INSTITUTION_SETTING_KEYS)[number]
 export type BooleanInstitutionSettingKey = (typeof BOOLEAN_SETTING_KEYS)[number]
 export type IntegerInstitutionSettingKey = keyof typeof INTEGER_SETTING_RANGES
+export type OptionalTextInstitutionSettingKey = (typeof OPTIONAL_TEXT_SETTING_KEYS)[number]
+export type OptionalDatetimeInstitutionSettingKey = (typeof OPTIONAL_DATETIME_SETTING_KEYS)[number]
 
 @Injectable()
 export class SettingsService {
@@ -44,6 +62,9 @@ export class SettingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    // Optional so existing unit tests can construct the service without the
+    // globally provided event emitter; production always injects it.
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   list() {
@@ -94,6 +115,24 @@ export class SettingsService {
     }
   }
 
+  /**
+   * Maintenance-mode snapshot used by the public status endpoint and the
+   * maintenance guard's cache refresh. `message` always resolves to the
+   * built-in default copy when no custom announcement is configured.
+   */
+  async getMaintenanceState(): Promise<{ enabled: boolean; message: string; estimatedEnd: string | null }> {
+    const rows = await this.prisma.institutionSetting.findMany({
+      where: { key: { in: [...MAINTENANCE_SETTING_KEYS] } },
+      select: { key: true, value: true },
+    })
+    const values = new Map(rows.map((row) => [row.key, row.value]))
+    const enabled = values.get('maintenance_mode_enabled') === 'true'
+    const message = (values.get('maintenance_message') ?? '').trim()
+    const rawUntil = (values.get('maintenance_until') ?? '').trim()
+    const estimatedEnd = rawUntil && !Number.isNaN(Date.parse(rawUntil)) ? rawUntil : null
+    return { enabled, message: message || DEFAULT_MAINTENANCE_MESSAGE, estimatedEnd }
+  }
+
   /** Decrypted AI API key stored by a super admin, or null when unset. */
   async getAiApiKey(): Promise<string | null> {
     const setting = await this.prisma.institutionSetting.findUnique({
@@ -113,7 +152,7 @@ export class SettingsService {
     return decrypted
   }
 
-  async set(key: string, value: string, updatedBy: string) {
+  async set(key: string, value: string, updatedBy: string, actor?: { role: string; ip?: string }) {
     const normalized = this.validate(key, value)
     if (key === AI_API_KEY_SETTING) {
       if (!normalized) {
@@ -128,11 +167,73 @@ export class SettingsService {
       })
       return { ...saved, value: '' }
     }
-    return this.prisma.institutionSetting.upsert({
+    const maintenanceKey = isMaintenanceSettingKey(key)
+    const previous = maintenanceKey ? await this.readValue(key) : null
+    const saved = await this.prisma.institutionSetting.upsert({
       where: { key },
       create: { key, value: normalized, updatedBy },
       update: { value: normalized, updatedBy },
     })
+    if (maintenanceKey) {
+      this.notifyMaintenanceChanged(key)
+      await this.recordMaintenanceAudit(key, previous, normalized, updatedBy, actor)
+    }
+    return saved
+  }
+
+  private async readValue(key: string): Promise<string | null> {
+    const row = await this.prisma.institutionSetting.findUnique({ where: { key }, select: { value: true } })
+    return row?.value ?? null
+  }
+
+  /**
+   * Explicit maintenance audit row. The generic audit interceptor already
+   * records "PUT /settings/:key"; this row makes the maintenance timeline
+   * searchable (`system.maintenance_changed`) with the before/after values.
+   * Fail-open: auditing must never block an operator closing the campus.
+   */
+  private async recordMaintenanceAudit(
+    key: string,
+    from: string | null,
+    to: string,
+    actorId: string,
+    actor?: { role: string; ip?: string },
+  ) {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          actorId,
+          actorRole: actor?.role ?? 'system',
+          action: 'system.maintenance_changed',
+          entityType: 'settings',
+          entityId: key,
+          metadata: { key, from, to, ...(actor?.ip ? { ipAddress: actor.ip } : {}) },
+        },
+      })
+    } catch (error) {
+      this.logger.warn(
+        `Could not write system.maintenance_changed audit for ${key}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    }
+  }
+
+  /**
+   * Best-effort cache invalidation. The maintenance state service owns the
+   * Redis snapshot + in-process memo; this emitter is fire-and-forget so a
+   * cache failure only widens the bounded staleness window (≤ 60 s).
+   */
+  private notifyMaintenanceChanged(key: string) {
+    try {
+      this.events?.emit(MAINTENANCE_SETTINGS_CHANGED_EVENT, { key })
+    } catch (error) {
+      this.logger.warn(
+        `Could not publish maintenance setting change for ${key}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    }
   }
 
   private encryptionSecret() {
@@ -186,6 +287,19 @@ export class SettingsService {
       if (trimmed.length === 0) return ''
       if (trimmed.length > 100 || /\s/.test(trimmed)) {
         throw new BadRequestException('ai_model must be 100 characters or fewer without spaces')
+      }
+      return trimmed
+    }
+    if (OPTIONAL_TEXT_SETTING_KEYS.includes(key as OptionalTextInstitutionSettingKey)) {
+      if (trimmed.length > 500) {
+        throw new BadRequestException(`${key} must be 500 characters or fewer`)
+      }
+      return trimmed
+    }
+    if (OPTIONAL_DATETIME_SETTING_KEYS.includes(key as OptionalDatetimeInstitutionSettingKey)) {
+      if (trimmed.length === 0) return ''
+      if (trimmed.length > 64 || Number.isNaN(Date.parse(trimmed))) {
+        throw new BadRequestException(`${key} must be a valid ISO-8601 datetime or empty`)
       }
       return trimmed
     }

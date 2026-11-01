@@ -9,7 +9,8 @@ import {
   type KeyboardEvent,
 } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { AiCapabilities, SuperAdmin } from '@polycheck/shared'
+import type { AiCapabilities, User } from '@polycheck/shared'
+import { canAccessItOperations } from '@polycheck/shared'
 import { KeyRound, Save, Settings, Sparkles, Trash2 } from 'lucide-react'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Button } from '@/components/ui/button'
@@ -45,6 +46,7 @@ const SAVE_SUCCESS: Record<SettingsTabId, string> = {
   sessions: 'Session and attendance defaults saved.',
   accounts: 'Account access settings saved.',
   ai: 'AI assistant settings saved.',
+  system: 'System maintenance settings saved.',
 }
 
 const STATUS_TONE_CLASSES: Record<AssistantStatusTone, string> = {
@@ -71,21 +73,35 @@ function SettingFieldRow({
   disabled: boolean
   onChange: (value: string) => void
 }) {
+  const sharedClasses =
+    'w-full border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-maroon focus:outline-none focus:ring-2 focus:ring-maroon/30 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100'
   return (
     <div className="space-y-2">
       <Label htmlFor={field.key}>{field.label}</Label>
-      <Input
-        id={field.key}
-        type={field.type}
-        inputMode={field.type === 'number' ? 'numeric' : undefined}
-        min={field.min}
-        max={field.max}
-        step={field.type === 'number' ? 1 : undefined}
-        placeholder={field.placeholder}
-        disabled={disabled}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
+      {field.type === 'textarea' ? (
+        <textarea
+          id={field.key}
+          rows={3}
+          placeholder={field.placeholder}
+          disabled={disabled}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={sharedClasses}
+        />
+      ) : (
+        <Input
+          id={field.key}
+          type={field.type}
+          inputMode={field.type === 'number' ? 'numeric' : undefined}
+          min={field.min}
+          max={field.max}
+          step={field.type === 'number' ? 1 : undefined}
+          placeholder={field.placeholder}
+          disabled={disabled}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
       <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">{field.caption}</p>
     </div>
   )
@@ -97,7 +113,7 @@ function InstitutionSettingsPageInner() {
 
   const tabFromUrl = resolveSettingsTab(searchParams.get('tab'))
   const [activeTab, setActiveTab] = useState<SettingsTabId>(tabFromUrl)
-  const [user, setUser] = useState<SuperAdmin | null>(null)
+  const [user, setUser] = useState<(User & { scope?: string | null }) | null>(null)
   const [values, setValues] = useState<Record<string, string>>(() => ({ ...SETTING_DEFAULTS }))
   const [saved, setSaved] = useState<Record<string, string>>(() => ({ ...SETTING_DEFAULTS }))
   const [loading, setLoading] = useState(true)
@@ -111,9 +127,20 @@ function InstitutionSettingsPageInner() {
   const [capabilitiesLoading, setCapabilitiesLoading] = useState(true)
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
 
+  // IT coordinators only see the System tab; super admins keep the full console.
+  const visibleTabs =
+    user?.role === 'super_admin' ? SETTINGS_TABS : SETTINGS_TABS.filter((tab) => tab.id === 'system')
+
   useEffect(() => {
     setActiveTab(tabFromUrl)
   }, [tabFromUrl])
+
+  useEffect(() => {
+    if (user && user.role !== 'super_admin' && activeTab !== 'system') {
+      setActiveTab('system')
+      router.replace('/faculty/settings?tab=system', { scroll: false })
+    }
+  }, [activeTab, router, user])
 
   const refreshCapabilities = useCallback(async () => {
     setCapabilitiesLoading(true)
@@ -128,11 +155,11 @@ function InstitutionSettingsPageInner() {
 
   useEffect(() => {
     const current = api.getCurrentUser()
-    if (!current || current.role !== 'super_admin') {
+    if (!current || !canAccessItOperations(current)) {
       router.replace('/faculty')
       return
     }
-    setUser(current as SuperAdmin)
+    setUser(current as User & { scope?: string | null })
     void api
       .getSettings()
       .then((settings) => {
@@ -157,19 +184,19 @@ function InstitutionSettingsPageInner() {
 
   const handleTabKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
-      const index = SETTINGS_TABS.findIndex((tab) => tab.id === activeTab)
+      const index = visibleTabs.findIndex((tab) => tab.id === activeTab)
       let next = -1
-      if (event.key === 'ArrowRight') next = (index + 1) % SETTINGS_TABS.length
+      if (event.key === 'ArrowRight') next = (index + 1) % visibleTabs.length
       else if (event.key === 'ArrowLeft')
-        next = (index - 1 + SETTINGS_TABS.length) % SETTINGS_TABS.length
+        next = (index - 1 + visibleTabs.length) % visibleTabs.length
       else if (event.key === 'Home') next = 0
-      else if (event.key === 'End') next = SETTINGS_TABS.length - 1
+      else if (event.key === 'End') next = visibleTabs.length - 1
       if (next === -1) return
       event.preventDefault()
-      selectTab(SETTINGS_TABS[next].id)
+      selectTab(visibleTabs[next].id)
       tabRefs.current[next]?.focus()
     },
-    [activeTab, selectTab],
+    [activeTab, selectTab, visibleTabs],
   )
 
   const updateValue = useCallback(
@@ -265,7 +292,8 @@ function InstitutionSettingsPageInner() {
 
   if (!user) return null
 
-  const canEdit = user.scope === 'institution'
+  const isSuperAdmin = user.role === 'super_admin'
+  const canEdit = isSuperAdmin ? user.scope === 'institution' : user.isItCoordinator === true
   const tabDirty = isTabDirty(activeTab, values, saved)
   const tabFeedback = feedback[activeTab]
   const status = describeAssistantStatus({
@@ -333,7 +361,7 @@ function InstitutionSettingsPageInner() {
             onKeyDown={handleTabKeyDown}
             className="mb-6 flex flex-wrap gap-2"
           >
-            {SETTINGS_TABS.map((tab, index) => {
+            {visibleTabs.map((tab, index) => {
               const selected = tab.id === activeTab
               const dirty = isTabDirty(tab.id, values, saved)
               return (
@@ -603,6 +631,59 @@ function InstitutionSettingsPageInner() {
                         ) : null}
                       </div>
                     </section>
+                  </div>
+                ) : null}
+
+                {activeTab === 'system' ? (
+                  <div className="space-y-6">
+                    <section className="space-y-4">
+                      <div>
+                        <h2 className="text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">
+                          Institutional maintenance
+                        </h2>
+                        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                          Closing the campus answers students and non-designated teachers with a polite
+                          maintenance screen. Health probes stay open for Docker, Coolify, and Cloudflare,
+                          and mobile devices keep their offline attendance queue.
+                        </p>
+                      </div>
+                      {SETTING_SWITCHES.filter((item) => item.tab === 'system').map((item) => (
+                        <SettingSwitch
+                          key={item.key}
+                          id={item.key}
+                          label={item.label}
+                          caption={item.caption}
+                          checked={values[item.key] === 'true'}
+                          disabled={!canEdit || loading}
+                          onCheckedChange={(checked) => updateSwitch(item.key, checked)}
+                        />
+                      ))}
+                      {values.maintenance_mode_enabled === 'true' ? (
+                        <p
+                          role="status"
+                          className="border-l-4 border-maroon bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-golden dark:bg-amber-950/30 dark:text-amber-300"
+                        >
+                          Maintenance mode is <span className="font-bold">ON</span> until you save it off.
+                          Only super admins and IT coordinators can currently sign in.
+                        </p>
+                      ) : null}
+                    </section>
+                    <section className="grid gap-6 sm:grid-cols-2">
+                      {SETTING_FIELDS.filter((field) => field.tab === 'system').map((field) => (
+                        <SettingFieldRow
+                          key={field.key}
+                          field={field}
+                          value={values[field.key] ?? ''}
+                          disabled={!canEdit || loading}
+                          onChange={(value) => updateValue(field.key, value)}
+                        />
+                      ))}
+                    </section>
+                    <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
+                      The estimated resumption is display-only and never switches maintenance off by itself.
+                      Health endpoints (<code>/health</code>, <code>/health/ready</code>) and the public status
+                      probe stay reachable throughout.
+                    </p>
                   </div>
                 ) : null}
 

@@ -7,6 +7,7 @@ export const SETTINGS_TABS = [
   { id: 'sessions', label: 'Sessions & attendance' },
   { id: 'accounts', label: 'Accounts & access' },
   { id: 'ai', label: 'AI Assistant' },
+  { id: 'system', label: 'System' },
 ] as const
 
 export type SettingsTabId = (typeof SETTINGS_TABS)[number]['id']
@@ -23,7 +24,7 @@ export interface SettingFieldDefinition {
   key: string
   tab: SettingsTabId
   label: string
-  type: 'text' | 'number'
+  type: 'text' | 'number' | 'datetime-local' | 'textarea'
   defaultValue: string
   min?: number
   max?: number
@@ -122,6 +123,27 @@ export const SETTING_FIELDS: readonly SettingFieldDefinition[] = [
     placeholder: 'deepseek-v4.1-flash',
     caption: 'Model identifier sent to the configured endpoint.',
   },
+  {
+    key: 'maintenance_message',
+    tab: 'system',
+    label: 'Maintenance announcement (optional)',
+    type: 'textarea',
+    defaultValue: '',
+    optional: true,
+    placeholder: 'Polycheck is undergoing scheduled server maintenance…',
+    caption:
+      'Shown on the branded maintenance screen. Leave blank to use the built-in copy about offline attendance preservation.',
+  },
+  {
+    key: 'maintenance_until',
+    tab: 'system',
+    label: 'Estimated resumption (optional)',
+    type: 'datetime-local',
+    defaultValue: '',
+    optional: true,
+    caption:
+      'Display-only estimate. Maintenance never turns off automatically at this time — an exempt administrator must switch it off.',
+  },
 ]
 
 export interface SettingSwitchDefinition {
@@ -179,6 +201,14 @@ export const SETTING_SWITCHES: readonly SettingSwitchDefinition[] = [
     caption: 'Hides the assistant entry point for students on web and mobile.',
     defaultValue: 'true',
   },
+  {
+    key: 'maintenance_mode_enabled',
+    tab: 'system',
+    label: 'Maintenance mode',
+    caption:
+      'Closes Polycheck for students and non-designated teachers. Super admins and IT coordinators stay signed in; health probes remain open.',
+    defaultValue: 'false',
+  },
 ]
 
 export const TAB_SETTING_KEYS: Record<SettingsTabId, readonly string[]> = {
@@ -191,6 +221,10 @@ export const TAB_SETTING_KEYS: Record<SettingsTabId, readonly string[]> = {
   ai: [
     ...SETTING_SWITCHES.filter((item) => item.tab === 'ai').map((item) => item.key),
     ...SETTING_FIELDS.filter((field) => field.tab === 'ai').map((field) => field.key),
+  ],
+  system: [
+    ...SETTING_SWITCHES.filter((item) => item.tab === 'system').map((item) => item.key),
+    ...SETTING_FIELDS.filter((field) => field.tab === 'system').map((field) => field.key),
   ],
 }
 

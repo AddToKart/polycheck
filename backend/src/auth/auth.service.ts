@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Logger,
   Optional,
+  ServiceUnavailableException,
 } from '@nestjs/common'
 import { compare, hash } from 'bcryptjs'
 import { createHash } from 'crypto'
@@ -16,13 +17,15 @@ import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import type { User } from '../prisma/client'
 import { BetterAuthService } from './better-auth.service'
+import { broadcastsLoginReplacement } from './session-policy'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { DUMMY_PASSWORD_HASH, PASSWORD_HASH_COST } from './password-policy'
 import { ConfigService } from '@nestjs/config'
 import type { ChangePasswordDto } from './dto/change-password.dto'
 import { NotificationsService } from '../notifications/notifications.service'
 import { DeviceBindingService } from '../users/device-binding.service'
-import type { DelegatedTeacherPermissions } from '@polycheck/shared'
+import { SystemMaintenanceService } from '../maintenance-mode/system-maintenance.service'
+import { DEFAULT_MAINTENANCE_MESSAGE, isMaintenanceExempt, type DelegatedTeacherPermissions } from '@polycheck/shared'
 
 // Login rate limits are env-tunable so strict production values can be relaxed for
 // local development and E2E automation. Defaults: 10 attempts/identity/min, 30/IP/min.
@@ -77,6 +80,9 @@ export interface AuthResult {
     contactPhone?: string | null
     canResetStudentPasswords?: boolean | null
     canEmergencyUnbindDevices?: boolean | null
+    isItCoordinator?: boolean
+    isDepartmentHead?: boolean
+    isUserRegistrar?: boolean
     delegatedPermissions?: DelegatedTeacherPermissions
   }
 }
@@ -93,6 +99,7 @@ export class AuthService {
     private config: ConfigService,
     @Optional() private notifications?: NotificationsService,
     @Optional() private deviceBinding?: DeviceBindingService,
+    @Optional() private maintenance?: SystemMaintenanceService,
   ) {}
 
   privacyNotice() {
@@ -140,6 +147,11 @@ export class AuthService {
       throw new ForbiddenException('Account is disabled')
     }
 
+    // Maintenance mode is enforced after credential validation so an attacker
+    // cannot learn the mode state from an unauthenticated probe. Rejecting here
+    // (rather than in the global guard) covers the @Public login routes.
+    await this.assertLoginAllowedDuringMaintenance(user)
+
     // Reject before creating a session: Better Auth would replace the active
     // session on login, and a cooldown rejection must not sign the student out
     // of a still-valid device.
@@ -185,6 +197,10 @@ export class AuthService {
     if (!user.isActive) {
       throw new ForbiddenException('Account is disabled')
     }
+
+    // See loginStudent: only super admins and IT coordinators may sign in
+    // while the institution is in maintenance mode.
+    await this.assertLoginAllowedDuringMaintenance(user)
 
     // Staff accounts are never device-locked; the mobile flag only documents
     // the caller for future policy hooks.
@@ -380,7 +396,12 @@ export class AuthService {
         headers,
         returnHeaders: true,
       })
-      this.events.emit('auth.session-replaced', { userId: user.id, reason: 'new_login' })
+      // Only students are single-device: staff logins may coexist across the
+      // web dashboard and the mobile app, so they must not kick other devices
+      // or trigger the login-replacement client path.
+      if (broadcastsLoginReplacement(user.role)) {
+        this.events.emit('auth.session-replaced', { userId: user.id, reason: 'new_login' })
+      }
       return {
         token: result.headers.get('set-auth-token') ?? undefined,
         headers: result.headers,
@@ -389,6 +410,23 @@ export class AuthService {
     } catch {
       throw new UnauthorizedException('Invalid credentials')
     }
+  }
+
+  /**
+   * Maintenance-mode interlock for the @Public login routes. Credentials and
+   * account status are validated first; only super admins and IT coordinators
+   * may create a session while the institution is closed.
+   */
+  private async assertLoginAllowedDuringMaintenance(user: User) {
+    if (!this.maintenance) return
+    if (isMaintenanceExempt({ role: user.role, isItCoordinator: user.isItCoordinator })) return
+    const status = await this.maintenance.current()
+    if (!status.enabled) return
+    throw new ServiceUnavailableException({
+      code: 'system_maintenance',
+      message: status.message ?? DEFAULT_MAINTENANCE_MESSAGE,
+      ...(status.estimatedEnd ? { estimatedEnd: status.estimatedEnd } : {}),
+    })
   }
 
   private async assertLoginWithinLimit(kind: 'student' | 'faculty', identifier: string, clientAddress: string) {
@@ -477,6 +515,9 @@ export class AuthService {
       contactPhone: user.contactPhone,
       canResetStudentPasswords: user.canResetStudentPasswords,
       canEmergencyUnbindDevices: user.canEmergencyUnbindDevices,
+      isItCoordinator: user.isItCoordinator,
+      isDepartmentHead: user.isDepartmentHead,
+      isUserRegistrar: user.isUserRegistrar,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     }

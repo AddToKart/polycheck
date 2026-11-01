@@ -23,12 +23,13 @@ const capabilities = (overrides: Partial<AiCapabilities>): AiCapabilities => ({
 })
 
 describe('settings tab routing', () => {
-  it('exposes the four locked categories', () => {
+  it('exposes the five categories (including the system maintenance tab)', () => {
     expect(SETTINGS_TABS.map((tab) => tab.id)).toEqual([
       'institution',
       'sessions',
       'accounts',
       'ai',
+      'system',
     ])
   })
 
@@ -36,6 +37,7 @@ describe('settings tab routing', () => {
     expect(resolveSettingsTab('sessions')).toBe('sessions')
     expect(resolveSettingsTab('accounts')).toBe('accounts')
     expect(resolveSettingsTab('ai')).toBe('ai')
+    expect(resolveSettingsTab('system')).toBe('system')
     expect(resolveSettingsTab('institution')).toBe('institution')
     expect(resolveSettingsTab(null)).toBe(DEFAULT_SETTINGS_TAB)
     expect(resolveSettingsTab(undefined)).toBe(DEFAULT_SETTINGS_TAB)
@@ -58,6 +60,9 @@ describe('settings tab routing', () => {
     expect(seen.has('ai_assistant_student_enabled')).toBe(true)
     expect(seen.has('ai_base_url')).toBe(true)
     expect(seen.has('ai_model')).toBe(true)
+    expect(seen.has('maintenance_mode_enabled')).toBe(true)
+    expect(seen.has('maintenance_message')).toBe(true)
+    expect(seen.has('maintenance_until')).toBe(true)
     expect(seen.has('ai_api_key')).toBe(false)
   })
 })
@@ -96,6 +101,10 @@ describe('settings dirty tracking', () => {
 
     // Optional AI fields may be cleared.
     expect(isTabSaveable('ai', { ...allEnabled, ai_base_url: '', ai_model: '' })).toBe(true)
+    // The maintenance announcement and estimate are optional.
+    expect(
+      isTabSaveable('system', { ...allEnabled, maintenance_message: '', maintenance_until: '' }),
+    ).toBe(true)
   })
 })
 

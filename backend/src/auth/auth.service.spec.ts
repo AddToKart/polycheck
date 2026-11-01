@@ -1,5 +1,12 @@
 import { Test } from '@nestjs/testing'
-import { ForbiddenException, HttpException, HttpStatus, NotFoundException, UnauthorizedException } from '@nestjs/common'
+import {
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  NotFoundException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { compare, getRounds, hashSync } from 'bcryptjs'
 import { PrismaService } from '../prisma/prisma.service'
@@ -11,6 +18,7 @@ import { DUMMY_PASSWORD_HASH, PASSWORD_HASH_COST } from './password-policy'
 import { ConfigService } from '@nestjs/config'
 import { NotificationsService } from '../notifications/notifications.service'
 import { DeviceBindingService } from '../users/device-binding.service'
+import { SystemMaintenanceService } from '../maintenance-mode/system-maintenance.service'
 
 const VALID_PASSWORD = 'correct-horse-battery-staple'
 const VALID_HASH = hashSync(VALID_PASSWORD, 10)
@@ -71,6 +79,7 @@ describe('AuthService', () => {
     registerBinding: jest.Mock
     getEffectiveTeacherPermissions: jest.Mock
   }
+  let maintenance: { current: jest.Mock; bypasses: jest.Mock }
 
   beforeEach(async () => {
     prisma = {
@@ -114,6 +123,10 @@ describe('AuthService', () => {
         canEmergencyUnbindDevices: true,
       }),
     }
+    maintenance = {
+      current: jest.fn().mockResolvedValue({ enabled: false }),
+      bypasses: jest.fn().mockReturnValue(false),
+    }
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -124,6 +137,7 @@ describe('AuthService', () => {
         { provide: EventEmitter2, useValue: events },
         { provide: NotificationsService, useValue: notifications },
         { provide: DeviceBindingService, useValue: deviceBinding },
+        { provide: SystemMaintenanceService, useValue: maintenance },
         {
           provide: ConfigService,
           useValue: {
@@ -152,6 +166,9 @@ describe('AuthService', () => {
           body: expect.objectContaining({ email: 'u-user-1@auth.polycheck.invalid' }),
         }),
       )
+      // Students are the single-device anti-cheat surface: their login replaces
+      // every other session via the authVersion bump and kicks connected
+      // devices through the realtime replacement broadcast.
       expect(events.emit).toHaveBeenCalledWith('auth.session-replaced', { userId: 'user-1', reason: 'new_login' })
     })
 
@@ -204,6 +221,25 @@ describe('AuthService', () => {
       const result = await service.loginFaculty('Teacher@PUP.edu', VALID_PASSWORD)
       expect(result.token).toBe('signed-bearer-token')
       expect(prisma.user.findUnique.mock.calls[0][0]).toEqual({ where: { email: 'teacher@pup.edu' } })
+      // Staff accounts may hold concurrent sessions: the login replacement
+      // broadcast (and its sibling-session revocation server-side) is
+      // student-only.
+      expect(events.emit).not.toHaveBeenCalledWith('auth.session-replaced', expect.anything())
+    })
+
+    it('does not broadcast the login replacement for a super admin login', async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        buildUser({
+          id: 'admin-1',
+          email: 'admin@pup.edu',
+          role: 'super_admin',
+          studentId: null,
+          department: null,
+          scope: 'institution',
+        }),
+      )
+      await service.loginFaculty('admin@pup.edu', VALID_PASSWORD)
+      expect(events.emit).not.toHaveBeenCalledWith('auth.session-replaced', expect.anything())
     })
 
     it('rejects invalid password', async () => {
@@ -580,6 +616,65 @@ describe('AuthService', () => {
       expect(result.message).toBe('Logged out successfully')
       expect(betterAuth.auth.api.signOut).toHaveBeenCalledWith({ headers, returnHeaders: true })
       expect(result.headers.get('set-cookie')).toContain('polycheck_access=')
+    })
+  })
+
+  describe('maintenance mode interlock', () => {
+    it('blocks a valid student login while maintenance is active', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser())
+      maintenance.current.mockResolvedValue({ enabled: true, message: 'Down for maintenance' })
+      await expect(service.loginStudent('S-001', VALID_PASSWORD)).rejects.toBeInstanceOf(ServiceUnavailableException)
+      expect(betterAuth.auth.api.signInEmail).not.toHaveBeenCalled()
+    })
+
+    it('returns the canonical 503 body with message and estimated resumption', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser())
+      maintenance.current.mockResolvedValue({
+        enabled: true,
+        message: 'Down for maintenance',
+        estimatedEnd: '2026-11-01T10:00:00.000Z',
+      })
+      const error = (await service.loginStudent('S-001', VALID_PASSWORD).then(
+        () => null,
+        (caught: unknown) => caught,
+      )) as ServiceUnavailableException
+      expect(error).toBeInstanceOf(ServiceUnavailableException)
+      expect(error.getStatus()).toBe(503)
+      expect(error.getResponse()).toEqual(
+        expect.objectContaining({
+          code: 'system_maintenance',
+          message: 'Down for maintenance',
+          estimatedEnd: '2026-11-01T10:00:00.000Z',
+        }),
+      )
+    })
+
+    it('blocks a non-designated teacher login', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser({ role: 'teacher', scope: null }))
+      maintenance.current.mockResolvedValue({ enabled: true, message: 'Down' })
+      await expect(service.loginFaculty('teacher@pup.edu', VALID_PASSWORD)).rejects.toBeInstanceOf(
+        ServiceUnavailableException,
+      )
+    })
+
+    it('lets an IT coordinator sign in', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser({ role: 'teacher', isItCoordinator: true }))
+      maintenance.current.mockResolvedValue({ enabled: true, message: 'Down' })
+      const result = await service.loginFaculty('teacher@pup.edu', VALID_PASSWORD)
+      expect(result.user.role).toBe('teacher')
+    })
+
+    it('lets a super admin sign in', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser({ role: 'super_admin', scope: 'institution' }))
+      maintenance.current.mockResolvedValue({ enabled: true, message: 'Down' })
+      const result = await service.loginFaculty('admin@pup.edu', VALID_PASSWORD)
+      expect(result.user.role).toBe('super_admin')
+    })
+
+    it('keeps invalid credentials as 401 before the maintenance check', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser())
+      maintenance.current.mockResolvedValue({ enabled: true, message: 'Down' })
+      await expect(service.loginStudent('S-001', 'wrong-password')).rejects.toThrow(UnauthorizedException)
     })
   })
 })
