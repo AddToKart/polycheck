@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Download, Filter } from 'lucide-react'
+import { PaginationBar } from '@/components/ui/pagination-bar'
+
+const REPORTS_PAGE_SIZE = 10
 import { api } from '@/lib/api-client'
 import { pupColors } from '@/lib/colors'
 import { isInstitutionAdmin } from '@/lib/admin-users'
@@ -35,6 +38,11 @@ export default function ReportsPage() {
   const [selectedTeacher, setSelectedTeacher] = useState('')
   const [dateFrom, setDateFrom] = useState(defaultStartDate)
   const [dateTo, setDateTo] = useState(defaultEndDate)
+  const [page, setPage] = useState(1)
+
+  useEffect(() => {
+    setPage(1)
+  }, [selectedSubject, selectedSection, selectedDepartment, selectedTeacher, dateFrom, dateTo])
   const [report, setReport] = useState<AttendanceReport | null>(null)
 
   useEffect(() => {
@@ -114,6 +122,12 @@ export default function ReportsPage() {
   }
 
   const filteredSummaries = report?.summaries ?? []
+  const totalPages = Math.max(1, Math.ceil(filteredSummaries.length / REPORTS_PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const pagedSummaries = useMemo(
+    () => filteredSummaries.slice((safePage - 1) * REPORTS_PAGE_SIZE, safePage * REPORTS_PAGE_SIZE),
+    [filteredSummaries, safePage]
+  )
   const total = {
     total: report?.totals.totalRecords ?? 0,
     present: report?.totals.present ?? 0,
@@ -437,7 +451,7 @@ export default function ReportsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredSummaries.map((s) => (
+                    {pagedSummaries.map((s) => (
                       <tr key={s.sectionId} className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
                         <td className="px-6 py-3 text-zinc-900 dark:text-zinc-100 font-medium">{s.subjectName}</td>
                         <td className="px-4 py-3 text-center text-zinc-600 dark:text-zinc-400">{s.totalSessions}</td>

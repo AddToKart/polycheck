@@ -7,6 +7,9 @@ import { canAccessAcademicOversight, type StudentAtRisk } from '@polycheck/share
 import { api } from '@/lib/api-client'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
+import { PaginationBar } from '@/components/ui/pagination-bar'
+
+const AT_RISK_PAGE_SIZE = 10
 import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/lib/hooks'
 import type { User } from '@polycheck/shared'
@@ -31,6 +34,7 @@ export default function AtRiskStudentsPage() {
   const [rows, setRows] = useState<StudentAtRisk[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
 
   useEffect(() => {
     const current = api.getCurrentUser()
@@ -72,6 +76,13 @@ export default function AtRiskStudentsPage() {
           left.sectionName.localeCompare(right.sectionName),
       ),
     [rows],
+  )
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / AT_RISK_PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const pagedRows = useMemo(
+    () => sorted.slice((safePage - 1) * AT_RISK_PAGE_SIZE, safePage * AT_RISK_PAGE_SIZE),
+    [sorted, safePage]
   )
 
   const handleLogout = () => {
@@ -148,7 +159,7 @@ export default function AtRiskStudentsPage() {
                 <>
                   {/* Phone layout: stacked rows from the same oversight data */}
                   <div className="divide-y divide-zinc-100 md:hidden dark:divide-zinc-800/60">
-                    {sorted.map((row) => (
+                    {pagedRows.map((row) => (
                       <div key={`${row.sectionId}:${row.studentId}`} className="space-y-3 p-4">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0">
@@ -206,7 +217,7 @@ export default function AtRiskStudentsPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {sorted.map((row) => (
+                        {pagedRows.map((row) => (
                           <tr
                             key={`${row.sectionId}:${row.studentId}`}
                             className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60"
@@ -243,6 +254,17 @@ export default function AtRiskStudentsPage() {
                       </tbody>
                     </table>
                   </div>
+                  {sorted.length > 0 && (
+                    <PaginationBar
+                      page={safePage}
+                      totalPages={totalPages}
+                      totalItems={sorted.length}
+                      pageSize={AT_RISK_PAGE_SIZE}
+                      itemName="students"
+                      onPageChange={setPage}
+                      showNumbers
+                    />
+                  )}
                 </>
               )}
             </CardContent>

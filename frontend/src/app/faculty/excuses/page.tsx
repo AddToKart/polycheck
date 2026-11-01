@@ -23,6 +23,9 @@ import { EXCUSE_REASON_LABELS } from '@/lib/excuse'
 import { resolveEvidenceUrl } from '@/lib/evidence-url'
 import { useNotifications } from '@/lib/notifications'
 import { LoadingSpinner } from '@/lib/hooks'
+import { PaginationBar } from '@/components/ui/pagination-bar'
+
+const EXCUSES_PER_PAGE = 10
 
 const FILTER_SCHEMA = {
   sectionId: { defaultValue: '' },
@@ -70,6 +73,11 @@ function ExcusesContent() {
   const [deciding, setDeciding] = useState(false)
   const [decisionError, setDecisionError] = useState('')
   const [evidenceFailed, setEvidenceFailed] = useState(false)
+  const [page, setPage] = useState(1)
+
+  useEffect(() => {
+    setPage(1)
+  }, [tab, sectionId, from, to])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -147,9 +155,17 @@ function ExcusesContent() {
     [records, tab],
   )
 
+  const totalPages = Math.max(1, Math.ceil(visibleRecords.length / EXCUSES_PER_PAGE))
+  const safePage = Math.min(page, totalPages)
+
+  const pagedRecords = useMemo(
+    () => visibleRecords.slice((safePage - 1) * EXCUSES_PER_PAGE, safePage * EXCUSES_PER_PAGE),
+    [visibleRecords, safePage],
+  )
+
   const grouped = useMemo(() => {
     const groups = new Map<string, SectionGroup>()
-    for (const record of visibleRecords) {
+    for (const record of pagedRecords) {
       const section = sectionMap.get(record.sectionId)
       const subject = section ? subjectMap.get(section.subjectId) : undefined
       const sectionKey = record.sectionId
@@ -175,7 +191,7 @@ function ExcusesContent() {
         students: [...group.students].sort((left, right) => left.studentName.localeCompare(right.studentName)),
       }))
       .sort((left, right) => left.subjectName.localeCompare(right.subjectName))
-  }, [visibleRecords, sectionMap, subjectMap])
+  }, [pagedRecords, sectionMap, subjectMap])
 
   const openRecord = (record: AttendanceRecord) => {
     setSelected(record)
@@ -360,6 +376,18 @@ function ExcusesContent() {
                   </div>
                 </Card>
               ))}
+              {visibleRecords.length > 0 && (
+                <PaginationBar
+                  page={safePage}
+                  totalPages={totalPages}
+                  totalItems={visibleRecords.length}
+                  pageSize={EXCUSES_PER_PAGE}
+                  itemName="requests"
+                  onPageChange={setPage}
+                  showNumbers
+                  className="rounded-none border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm"
+                />
+              )}
             </div>
           )}
         </div>

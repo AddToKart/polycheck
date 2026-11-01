@@ -23,6 +23,9 @@ import {
 import { useUrlFilters } from '@/lib/hooks/use-url-filters'
 import { useNotifications } from '@/lib/notifications'
 import { Download, ChevronRight, RefreshCw } from 'lucide-react'
+import { PaginationBar } from '@/components/ui/pagination-bar'
+
+const ATTENDANCE_PAGE_SIZE = 10
 
 const { startDate: defaultFromDate, endDate: defaultToDate } = getRecentCampusDateRange(30)
 
@@ -54,6 +57,11 @@ function AttendanceOverviewContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [retryKey, setRetryKey] = useState(0)
+  const [page, setPage] = useState(1)
+
+  useEffect(() => {
+    setPage(1)
+  }, [subjectId, sectionId, fromDate, toDate])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -132,9 +140,15 @@ function AttendanceOverviewContent() {
     [],
   )
 
-  if (!user) return null
-
   const summaries = report?.summaries ?? []
+  const totalPages = Math.max(1, Math.ceil(summaries.length / ATTENDANCE_PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const pagedSummaries = useMemo(
+    () => summaries.slice((safePage - 1) * ATTENDANCE_PAGE_SIZE, safePage * ATTENDANCE_PAGE_SIZE),
+    [summaries, safePage]
+  )
+
+  if (!user) return null
   const totals = report?.totals ?? {
     totalRecords: 0,
     totalSessions: 0,
@@ -332,7 +346,7 @@ function AttendanceOverviewContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {summaries.map((s) => {
+                  {pagedSummaries.map((s) => {
                     const section = sectionMap.get(s.sectionId)
                     return (
                       <tr
@@ -400,6 +414,18 @@ function AttendanceOverviewContent() {
                 </tbody>
               </table>
             </div>
+            {summaries.length > 0 && (
+              <PaginationBar
+                page={safePage}
+                totalPages={totalPages}
+                totalItems={summaries.length}
+                pageSize={ATTENDANCE_PAGE_SIZE}
+                itemName="sections"
+                onPageChange={setPage}
+                showNumbers
+                className="bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800"
+              />
+            )}
           </div>
         </div>
       </main>

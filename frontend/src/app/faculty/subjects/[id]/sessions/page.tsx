@@ -11,6 +11,9 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { PaginationBar } from '@/components/ui/pagination-bar'
+
+const SESSIONS_PER_PAGE = 10
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 
@@ -28,6 +31,11 @@ function SubjectSessionsContent() {
   const [searchQuery, setSearchQuery] = useState('')
   const [activating, setActivating] = useState('')
   const [allSessions, setAllSessions] = useState<Session[]>([])
+  const [page, setPage] = useState(1)
+
+  useEffect(() => {
+    setPage(1)
+  }, [sectionFilter, dayFilter, searchQuery])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -80,15 +88,22 @@ function SubjectSessionsContent() {
     return result
   }, [allSessions, subjectSections, sectionFilter, dayFilter, searchQuery])
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / SESSIONS_PER_PAGE))
+  const safePage = Math.min(page, totalPages)
+  const paged = useMemo(
+    () => filtered.slice((safePage - 1) * SESSIONS_PER_PAGE, safePage * SESSIONS_PER_PAGE),
+    [filtered, safePage]
+  )
+
   const groupedBySection = useMemo(() => {
     const map = new Map<string, Session[]>()
-    for (const s of filtered) {
+    for (const s of paged) {
       const arr = map.get(s.sectionId) || []
       arr.push(s)
       map.set(s.sectionId, arr)
     }
     return map
-  }, [filtered])
+  }, [paged])
 
   const getSectionLabel = (sec: Section) =>
     `Section ${sec.section}${sec.room ? ` \u2014 ${sec.room}` : ''}`
@@ -266,6 +281,18 @@ function SubjectSessionsContent() {
                 </Card>
               )
             })
+          )}
+          {filtered.length > 0 && (
+            <PaginationBar
+              page={safePage}
+              totalPages={totalPages}
+              totalItems={filtered.length}
+              pageSize={SESSIONS_PER_PAGE}
+              itemName="sessions"
+              onPageChange={setPage}
+              showNumbers
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm mt-6"
+            />
           )}
         </div>
       </main>

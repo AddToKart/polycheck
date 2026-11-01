@@ -34,6 +34,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useNotifications } from '@/lib/notifications'
 import { useUrlFilters } from '@/lib/hooks/use-url-filters'
 import { SecurityDisputeBadge } from './security-dispute-badge'
+import { PaginationBar } from '@/components/ui/pagination-bar'
+
+const DISPUTES_PER_PAGE = 10
 
 const FILTER_SCHEMA = {
   subjectId: { defaultValue: '' },
@@ -111,6 +114,11 @@ function DisputesContent() {
   // Expand/collapse states (collapsed by default)
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({})
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
+  const [page, setPage] = useState(1)
+
+  useEffect(() => {
+    setPage(1)
+  }, [activeTab, searchQuery, selectedSubjectId, selectedSectionId, from, to])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -239,6 +247,14 @@ function DisputesContent() {
     [filteredByTabAndSearch, selectedSubjectId, selectedSectionId, from, to, sectionMap]
   )
 
+  const totalPages = Math.max(1, Math.ceil(records.length / DISPUTES_PER_PAGE))
+  const safePage = Math.min(page, totalPages)
+
+  const pagedRecords = useMemo(
+    () => records.slice((safePage - 1) * DISPUTES_PER_PAGE, safePage * DISPUTES_PER_PAGE),
+    [records, safePage]
+  )
+
   const groupedDisputes = useMemo(() => {
     const groups: Record<
       string,
@@ -265,7 +281,7 @@ function DisputesContent() {
       }
     > = {}
 
-    records.forEach((record) => {
+    pagedRecords.forEach((record) => {
       const section = sectionMap.get(record.sectionId)
       const subject = section ? subjectMap.get(section.subjectId) : undefined
       const session = sessionMap.get(record.sessionId)
@@ -317,7 +333,7 @@ function DisputesContent() {
         sessions: Object.values(sectionGroup.sessions),
       })),
     }))
-  }, [records, sectionMap, subjectMap, sessionMap])
+  }, [pagedRecords, sectionMap, subjectMap, sessionMap])
 
   if (!user) return null
 

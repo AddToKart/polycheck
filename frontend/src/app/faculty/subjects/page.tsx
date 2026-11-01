@@ -1,9 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, ArrowRight } from 'lucide-react'
+import { PaginationBar } from '@/components/ui/pagination-bar'
+
+const SUBJECTS_PAGE_SIZE = 9
 import { api } from '@/lib/api-client'
 import type { User, Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -34,6 +37,14 @@ export default function SubjectsPage() {
     }
     init()
   }, [router])
+
+  const [page, setPage] = useState(1)
+  const totalPages = Math.max(1, Math.ceil(subjects.length / SUBJECTS_PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const pagedSubjects = useMemo(
+    () => subjects.slice((safePage - 1) * SUBJECTS_PAGE_SIZE, safePage * SUBJECTS_PAGE_SIZE),
+    [subjects, safePage]
+  )
 
   if (!user) return null
 
@@ -77,7 +88,7 @@ export default function SubjectsPage() {
 
           {/* Subjects Grid */}
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {subjects.map((subject) => {
+            {pagedSubjects.map((subject) => {
               const sectionCount = sectionCounts[subject.id] ?? 0
               return (
               <div

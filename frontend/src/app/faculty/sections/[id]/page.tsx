@@ -15,7 +15,10 @@ import { Badge } from '@/components/ui/badge'
 import { LoadingSpinner } from '@/lib/hooks'
 import { createSessionHref, sessionsListHref } from '@/lib/section-context'
 
+import { PaginationBar } from '@/components/ui/pagination-bar'
+
 const PAGE_SIZE = 10
+const SESSIONS_PAGE_SIZE = 6
 
 export default function SectionDetailPage() {
   const params = useParams()
@@ -27,6 +30,7 @@ export default function SectionDetailPage() {
   const [students, setStudents] = useState<(Student & { attendance: { present: number; late: number; absent: number } })[]>([])
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
+  const [sessionPage, setSessionPage] = useState(1)
   const [isEnrollOpen, setIsEnrollOpen] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [enrollSearch, setEnrollSearch] = useState('')
@@ -106,6 +110,17 @@ export default function SectionDetailPage() {
   const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   useEffect(() => { setPage(0) }, [search])
+
+  const sortedSessions = useMemo(
+    () => [...sessions].sort((a, b) => b.date.localeCompare(a.date)),
+    [sessions]
+  )
+  const totalSessionPages = Math.max(1, Math.ceil(sortedSessions.length / SESSIONS_PAGE_SIZE))
+  const safeSessionPage = Math.min(sessionPage, totalSessionPages)
+  const pagedSectionSessions = useMemo(
+    () => sortedSessions.slice((safeSessionPage - 1) * SESSIONS_PAGE_SIZE, safeSessionPage * SESSIONS_PAGE_SIZE),
+    [sortedSessions, safeSessionPage]
+  )
 
   const enrolledIds = useMemo(() => new Set(students.map((s) => s.id)), [students])
   const enrollCandidates = useMemo(() => {
@@ -514,7 +529,7 @@ export default function SectionDetailPage() {
                 <p className="py-6 text-center text-sm text-zinc-400">No sessions have been created for this section.</p>
               ) : (
                 <div className="divide-y divide-zinc-200 border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-                  {[...sessions].sort((a, b) => b.date.localeCompare(a.date)).map((session) => (
+                  {pagedSectionSessions.map((session) => (
                     <Link
                       key={session.id}
                       href={`/faculty/sessions/${session.id}`}

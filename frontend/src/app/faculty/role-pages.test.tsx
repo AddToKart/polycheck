@@ -88,6 +88,31 @@ describe('Super Admin monitoring pages', () => {
     )
   })
 
+  it('paginates sessions list when exceeding page size', async () => {
+    const mockSessions = Array.from({ length: 15 }, (_, i) => ({
+      id: `sess-${i + 1}`,
+      subjectName: 'Algorithms',
+      sectionId: 'sec-1',
+      date: `2026-07-${String(i + 1).padStart(2, '0')}`,
+      startTime: '08:00',
+      endTime: '11:00',
+      room: 'Room 101',
+      isActive: false,
+    }))
+    apiMock.getSessions.mockResolvedValue(mockSessions)
+    apiMock.getSections.mockResolvedValue([
+      { id: 'sec-1', subjectId: 'subj-1', section: 'A', room: 'Room 101' },
+    ])
+    apiMock.getSubjects.mockResolvedValue([{ id: 'subj-1', name: 'Algorithms', code: 'CS 101' }])
+
+    render(<SessionsPage />)
+
+    expect(await screen.findByText(/Showing/)).toBeInTheDocument()
+    expect(screen.getByText(/15 sessions/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /previous/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /next/i })).toBeEnabled()
+  })
+
   it('hydrates the reports page without changing hook order', async () => {
     render(<ReportsPage />)
 
@@ -168,5 +193,35 @@ describe('Super Admin monitoring pages', () => {
     expect(page.getByRole('columnheader', { name: 'Pending' })).toBeInTheDocument()
     expect(page.getByRole('columnheader', { name: 'Disputed' })).toBeInTheDocument()
   })
-})
 
+  it("paginates attendance summaries when exceeding 10 sections", async () => {
+    const mockSummaries = Array.from({ length: 15 }, (_, i) => ({
+      sectionId: "sec-" + (i + 1),
+      subjectName: "Subject " + (i + 1),
+      totalSessions: 10,
+      present: 8,
+      late: 1,
+      incomplete: 0,
+      absent: 1,
+      pending: 0,
+      disputed: 0,
+      excused: 0,
+    }))
+    apiMock.getAttendanceReport.mockResolvedValue({
+      range: { startDate: "2026-06-19", endDate: "2026-07-18" },
+      totals: { totalRecords: 150, totalSessions: 150, present: 120, late: 15, absent: 15, pending: 0, disputed: 0, excused: 0 },
+      summaries: mockSummaries,
+    })
+
+    const view = render(<AttendanceOverviewPage />)
+    const page = within(view.container)
+
+    expect(await page.findByText("Subject 1")).toBeInTheDocument()
+    expect(page.getByText(/Showing/)).toBeInTheDocument()
+    const paginationNav = page.getByLabelText('Pagination Navigation')
+    expect(within(paginationNav).getByText('15')).toBeInTheDocument()
+    expect(within(paginationNav).getByText(/sections/)).toBeInTheDocument()
+    expect(page.getByRole("button", { name: /previous/i })).toBeDisabled()
+    expect(page.getByRole("button", { name: /next/i })).toBeEnabled()
+  })
+})

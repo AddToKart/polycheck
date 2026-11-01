@@ -11,9 +11,12 @@ import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { FilterBar, FilterChipGroup, FilterDateRange, FilterSelect } from '@/components/FilterBar'
+import { PaginationBar } from '@/components/ui/pagination-bar'
 import { useUrlFilters } from '@/lib/hooks/use-url-filters'
 import { createSessionHref, sectionContextHref } from '@/lib/section-context'
 import { deriveSessionStatus, SESSION_STATUS_LABELS } from '@/lib/session-status'
+
+const SESSIONS_PER_PAGE = 10
 
 const FILTER_SCHEMA = {
   subjectId: { defaultValue: '' },
@@ -40,6 +43,11 @@ function SessionsContent() {
   const [allSubjects, setAllSubjects] = useState<Subject[]>([])
   const [allSections, setAllSections] = useState<Section[]>([])
   const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
+
+  useEffect(() => {
+    setPage(1)
+  }, [subjectId, sectionId, status, from, to])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -81,10 +89,18 @@ function SessionsContent() {
     [sessions, sectionMap, subjectId, sectionId, status, from, to],
   )
 
+  const totalPages = Math.max(1, Math.ceil(filteredSessions.length / SESSIONS_PER_PAGE))
+  const safePage = Math.min(page, totalPages)
+
+  const pagedSessions = useMemo(
+    () => filteredSessions.slice((safePage - 1) * SESSIONS_PER_PAGE, safePage * SESSIONS_PER_PAGE),
+    [filteredSessions, safePage],
+  )
+
   type GroupedSessions = Record<string, Session[]>
   const grouped = useMemo(
     () =>
-      filteredSessions.reduce<Record<string, { subjectId: string; sessions: GroupedSessions }>>((acc, s) => {
+      pagedSessions.reduce<Record<string, { subjectId: string; sessions: GroupedSessions }>>((acc, s) => {
         const section = sectionMap.get(s.sectionId)
         const subject = section ? allSubjects.find((sub) => sub.id === section.subjectId) : undefined
         const subjectName = subject?.name ?? s.subjectName
@@ -94,7 +110,7 @@ function SessionsContent() {
         acc[subjectName].sessions[s.sectionId].push(s)
         return acc
       }, {}),
-    [filteredSessions, allSubjects, sectionMap],
+    [pagedSessions, allSubjects, sectionMap],
   )
 
   const subjectOptions = useMemo(
@@ -360,6 +376,19 @@ function SessionsContent() {
                 </Card>
               )
             })}
+
+          {filteredSessions.length > 0 && (
+            <PaginationBar
+              page={safePage}
+              totalPages={totalPages}
+              totalItems={filteredSessions.length}
+              pageSize={SESSIONS_PER_PAGE}
+              itemName="sessions"
+              onPageChange={setPage}
+              showNumbers
+              className="mb-8 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
+            />
+          )}
 
           {sessions.length === 0 ? (
             <div className="text-center py-16 text-zinc-400 dark:text-zinc-500">
