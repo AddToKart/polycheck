@@ -1,8 +1,18 @@
 import { test, expect, type Page } from '@playwright/test'
-import { loginFaculty, loginStudent, ADMIN_EMAIL } from './helpers'
+import {
+  loginFaculty,
+  loginStudent,
+  ADMIN_EMAIL,
+  DEPARTMENT_HEAD_EMAIL,
+  IT_COORDINATOR_EMAIL,
+  REGISTRAR_EMAIL,
+} from './helpers'
 import {
   ANONYMOUS_ROUTES,
+  DEPARTMENT_HEAD_ROUTES,
   FACULTY_ROUTES,
+  IT_COORDINATOR_ROUTES,
+  REGISTRAR_ROUTES,
   SUPER_ADMIN_ROUTES,
   STUDENT_ROUTES,
   type RouteCase,
@@ -157,6 +167,24 @@ for (const viewport of VIEWPORTS) {
     test('student routes fit', async ({ page }) => {
       await loginStudent(page)
       const violations = await auditRoutes(page, STUDENT_ROUTES, viewport.label)
+      expect(violations, `Horizontal overflow detected:\n\n${describeViolations(violations)}`).toEqual([])
+    })
+
+    test('department head routes fit', async ({ page }) => {
+      await loginFaculty(page, DEPARTMENT_HEAD_EMAIL)
+      const violations = await auditRoutes(page, DEPARTMENT_HEAD_ROUTES, viewport.label)
+      expect(violations, `Horizontal overflow detected:\n\n${describeViolations(violations)}`).toEqual([])
+    })
+
+    test('IT coordinator routes fit', async ({ page }) => {
+      await loginFaculty(page, IT_COORDINATOR_EMAIL)
+      const violations = await auditRoutes(page, IT_COORDINATOR_ROUTES, viewport.label)
+      expect(violations, `Horizontal overflow detected:\n\n${describeViolations(violations)}`).toEqual([])
+    })
+
+    test('registrar routes fit', async ({ page }) => {
+      await loginFaculty(page, REGISTRAR_EMAIL)
+      const violations = await auditRoutes(page, REGISTRAR_ROUTES, viewport.label)
       expect(violations, `Horizontal overflow detected:\n\n${describeViolations(violations)}`).toEqual([])
     })
   })

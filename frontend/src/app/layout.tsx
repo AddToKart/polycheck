@@ -21,6 +21,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#7B1113",
+  viewportFit: "cover",
 };
 
 function ThemeScript({ nonce }: { nonce?: string }) {

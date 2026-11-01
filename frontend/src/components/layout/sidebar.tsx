@@ -149,7 +149,7 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
 
   const sidebarContent = (
     <>
-      <div className="p-6 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-maroon dark:bg-golden text-white dark:text-maroon-dark">
+      <div className="p-6 max-md:pt-[calc(1.5rem+env(safe-area-inset-top))] border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-maroon dark:bg-golden text-white dark:text-maroon-dark">
         <div>
           <Link href={homeHref} onClick={() => setIsOpen(false)}>
             <h1 className="text-2xl font-heading font-bold tracking-tight text-golden dark:text-maroon-dark">
@@ -174,7 +174,7 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
           <Image src="/pup-logo.png" width={32} height={32} alt="PUP Logo" className="w-8 h-8 shrink-0 object-contain" />
           <button
             onClick={() => setIsOpen(false)}
-            className="md:hidden p-1 rounded-none hover:bg-white/10 text-white dark:text-maroon-dark transition-colors"
+            className="md:hidden inline-flex min-h-11 min-w-11 items-center justify-center p-1 rounded-none hover:bg-white/10 text-white dark:text-maroon-dark transition-colors"
             aria-label="Close menu"
           >
             <X className="w-5 h-5" />
@@ -307,7 +307,7 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
   return (
     <>
       {/* Mobile Top Navigation Header */}
-      <div className="md:hidden sticky top-0 z-30 w-full h-16 bg-maroon dark:bg-zinc-950 text-white dark:text-golden border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between px-6 shrink-0 select-none">
+      <div className="md:hidden sticky top-0 z-30 w-full h-auto min-h-16 pt-[env(safe-area-inset-top)] bg-maroon dark:bg-zinc-950 text-white dark:text-golden border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between px-6 shrink-0 select-none">
         <div className="flex items-center gap-3">
           <Image src="/pup-logo.png" width={24} height={24} alt="PUP Logo" className="w-6 h-6 shrink-0 object-contain" />
           <span className="font-heading font-bold text-lg tracking-tight">Polycheck</span>
@@ -321,11 +321,11 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
             onOpen={() => void notificationCenter.refresh()}
             onMarkAll={() => void notificationCenter.markAllRead()}
             onMarkRead={(notification) => notificationCenter.markRead(notification)}
-            triggerClassName="text-white hover:bg-white/10 dark:text-golden dark:hover:bg-zinc-800"
+            triggerClassName="h-11 w-11 text-white hover:bg-white/10 dark:text-golden dark:hover:bg-zinc-800"
           />
           <button 
             onClick={() => setIsOpen(true)}
-            className="p-2 hover:bg-white/10 dark:hover:bg-zinc-800 transition-colors"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center p-2 hover:bg-white/10 dark:hover:bg-zinc-800 transition-colors"
             aria-label="Open navigation menu"
           >
             <Menu className="w-6 h-6 text-white dark:text-golden" />
@@ -342,7 +342,7 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
             onClick={() => setIsOpen(false)}
           />
           {/* Slide-out Menu Panel */}
-          <aside className="relative w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col h-full z-50 overflow-hidden animate-in slide-in-from-left duration-200">
+          <aside className="relative w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col h-full z-50 overflow-hidden pb-[env(safe-area-inset-bottom)] animate-in slide-in-from-left duration-200">
             {sidebarContent}
           </aside>
         </div>

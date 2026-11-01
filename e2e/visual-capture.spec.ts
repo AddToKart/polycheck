@@ -1,11 +1,73 @@
-import { test } from '@playwright/test'
-import { loginFaculty, loginStudent, shot } from './helpers'
+import { mkdir } from 'node:fs/promises'
+import path from 'node:path'
+import { test, type Page } from '@playwright/test'
+import {
+  ADMIN_EMAIL,
+  DEPARTMENT_HEAD_EMAIL,
+  IT_COORDINATOR_EMAIL,
+  REGISTRAR_EMAIL,
+  loginFaculty,
+  loginStudent,
+  shot,
+} from './helpers'
+import {
+  ANONYMOUS_ROUTES,
+  DEPARTMENT_HEAD_ROUTES,
+  FACULTY_ROUTES,
+  IT_COORDINATOR_ROUTES,
+  REGISTRAR_ROUTES,
+  SUPER_ADMIN_ROUTES,
+  STUDENT_ROUTES,
+  type RouteCase,
+} from './responsive-routes'
 
 /**
  * Visual capture spec — screenshots every key page at desktop + mobile
  * viewports for the vision agent to review. These are not assertions;
  * they exist purely to produce evidence of UI state.
  */
+
+const MOBILE_CAPTURE_DIR = path.join('e2e', 'captures', 'mobile')
+const MOBILE_VIEWPORT = { width: 375, height: 812 }
+
+interface MobileCaptureGroup {
+  role: string
+  routes: RouteCase[]
+  /** Authenticate the page as this role. Omitted for anonymous routes. */
+  login?: (page: Page) => Promise<void>
+}
+
+/**
+ * Every route enumerated for the responsive gate is captured once here at
+ * phone width. One login per role group keeps the evidence run bounded; the
+ * seeded designation accounts cover the role-scoped surfaces.
+ */
+const MOBILE_CAPTURE_GROUPS: MobileCaptureGroup[] = [
+  { role: 'anonymous', routes: ANONYMOUS_ROUTES },
+  { role: 'faculty', routes: FACULTY_ROUTES, login: (page) => loginFaculty(page) },
+  {
+    role: 'super-admin',
+    routes: SUPER_ADMIN_ROUTES,
+    login: (page) => loginFaculty(page, ADMIN_EMAIL),
+  },
+  { role: 'student', routes: STUDENT_ROUTES, login: (page) => loginStudent(page) },
+  {
+    role: 'department-head',
+    routes: DEPARTMENT_HEAD_ROUTES,
+    login: (page) => loginFaculty(page, DEPARTMENT_HEAD_EMAIL),
+  },
+  {
+    role: 'it-coordinator',
+    routes: IT_COORDINATOR_ROUTES,
+    login: (page) => loginFaculty(page, IT_COORDINATOR_EMAIL),
+  },
+  {
+    role: 'registrar',
+    routes: REGISTRAR_ROUTES,
+    login: (page) => loginFaculty(page, REGISTRAR_EMAIL),
+  },
+]
+
 test.describe('Visual Capture', () => {
   test.beforeEach(({ browserName }) => {
     test.skip(browserName !== 'chromium', 'Visual evidence is captured once in Chromium')
@@ -68,7 +130,7 @@ test.describe('Visual Capture', () => {
   })
 
   test('capture super admin pages', async ({ page }) => {
-    await loginFaculty(page, 'mcreyes@pup.edu.ph')
+    await loginFaculty(page, ADMIN_EMAIL)
     await page.waitForTimeout(1500)
     await shot(page, '15-admin-dashboard')
 
@@ -114,18 +176,33 @@ test.describe('Visual Capture', () => {
     await shot(page, '23-student-enroll')
   })
 
-  test('capture mobile viewport (375x812)', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 812 })
-    await page.goto('/')
-    await page.waitForTimeout(1000)
-    await shot(page, '24-mobile-landing')
+  test.describe('mobile (375x812)', () => {
+    test.use({ viewport: MOBILE_VIEWPORT })
 
-    await page.goto('/login/faculty')
-    await page.waitForTimeout(800)
-    await shot(page, '25-mobile-login')
+    test.beforeAll(async () => {
+      await mkdir(MOBILE_CAPTURE_DIR, { recursive: true })
+    })
 
-    await loginFaculty(page)
-    await page.waitForTimeout(1200)
-    await shot(page, '26-mobile-faculty-dashboard')
+    for (const group of MOBILE_CAPTURE_GROUPS) {
+      test(`capture ${group.role} routes`, async ({ page }) => {
+        // The larger role groups navigate + full-page screenshot every route,
+        // which can exceed the default 60s per-test budget.
+        test.setTimeout(180_000)
+
+        if (group.login) await group.login(page)
+
+        for (const route of group.routes) {
+          await test.step(`${route.name} (${route.path})`, async () => {
+            await page.goto(route.path, { waitUntil: 'domcontentloaded' })
+            await page.waitForLoadState('load').catch(() => {})
+            await page.waitForTimeout(route.settleMs ?? 1200)
+            await page.screenshot({
+              path: path.join(MOBILE_CAPTURE_DIR, `${group.role}-${route.name}.png`),
+              fullPage: true,
+            })
+          })
+        }
+      })
+    }
   })
 })

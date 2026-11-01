@@ -5,6 +5,12 @@
  * harness (`responsive.spec.ts`) and the mobile screenshot capture stay in
  * sync with the app surface. Redirect-only routes (`/student`) are excluded.
  * Add new pages here when they ship — the spec fails nothing silently.
+ *
+ * A few paths appear in more than one group on purpose: the same page renders
+ * different role-scoped data (e.g. `/faculty/reports` for a department head vs.
+ * a super admin, `/faculty/users` for a registrar vs. an institution admin), so
+ * each audience is audited separately. Designation groups cover surfaces that
+ * are not reachable from the default faculty/student seed accounts.
  */
 
 export interface RouteCase {
@@ -25,6 +31,7 @@ export const ANONYMOUS_ROUTES: RouteCase[] = [
 
 export const FACULTY_ROUTES: RouteCase[] = [
   { name: 'dashboard', path: '/faculty', settleMs: 1200 },
+  { name: 'profile', path: '/profile', settleMs: 1200 },
   { name: 'subjects', path: '/faculty/subjects' },
   { name: 'subject-create', path: '/faculty/subjects/create' },
   { name: 'subject-detail', path: '/faculty/subjects/subj-001' },
@@ -44,12 +51,38 @@ export const FACULTY_ROUTES: RouteCase[] = [
 
 export const SUPER_ADMIN_ROUTES: RouteCase[] = [
   { name: 'dashboard', path: '/faculty', settleMs: 1200 },
+  { name: 'profile', path: '/profile', settleMs: 1200 },
   { name: 'users', path: '/faculty/users', settleMs: 1200 },
   { name: 'reports', path: '/faculty/reports', settleMs: 1500 },
   { name: 'audit-logs', path: '/faculty/audit-logs', settleMs: 1200 },
   { name: 'server-status', path: '/faculty/server-status', settleMs: 1200 },
   { name: 'settings', path: '/faculty/settings' },
   { name: 'search', path: '/faculty/search' },
+]
+
+/**
+ * Department heads (`isDepartmentHead`) get the Academic Oversight suite:
+ * department-pinned reports and the at-risk students view.
+ */
+export const DEPARTMENT_HEAD_ROUTES: RouteCase[] = [
+  { name: 'reports', path: '/faculty/reports', settleMs: 1500 },
+  { name: 'at-risk', path: '/faculty/at-risk', settleMs: 1500 },
+]
+
+/**
+ * IT coordinators (`isItCoordinator`) get the IT Operations suite. The settings
+ * route is captured with the `system` tab because that is the only tab their
+ * per-key write policy allows.
+ */
+export const IT_COORDINATOR_ROUTES: RouteCase[] = [
+  { name: 'system-reports', path: '/faculty/system-reports', settleMs: 1800 },
+  { name: 'server-status', path: '/faculty/server-status', settleMs: 1500 },
+  { name: 'settings-system', path: '/faculty/settings?tab=system', settleMs: 1500 },
+]
+
+/** Registrars (`isUserRegistrar`) get department-pinned account administration. */
+export const REGISTRAR_ROUTES: RouteCase[] = [
+  { name: 'users', path: '/faculty/users', settleMs: 1500 },
 ]
 
 export const STUDENT_ROUTES: RouteCase[] = [
@@ -61,4 +94,5 @@ export const STUDENT_ROUTES: RouteCase[] = [
   { name: 'session-detail', path: '/student/subjects/sec-001/sessions/sess-001', settleMs: 1000 },
   { name: 'session-create', path: '/student/subjects/sec-001/create-session', settleMs: 1000 },
   { name: 'assistant', path: '/student/assistant' },
+  { name: 'profile', path: '/profile', settleMs: 1200 },
 ]
