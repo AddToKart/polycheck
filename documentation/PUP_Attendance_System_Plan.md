@@ -259,7 +259,7 @@ The implemented v1 controls are layered rather than dependent on one signal:
 | Risk | Current control |
 |---|---|
 | Shared or replayed QR | Short signed validity, separate grace period, session/token identity checks, geofence, enrollment check, one canonical record per session/student |
-| Credential sharing | Better Auth single-active-session generation; a new login replaces older sessions |
+| Credential sharing | Better Auth single-active-session generation for student accounts (`auth/session-policy.ts`); a new student login replaces older sessions — staff accounts may keep concurrent devices |
 | QR tampering | Ed25519 signature verified against the teacher's current server-side public key |
 | Device-clock manipulation | Pre-synced server-clock offset locally; authoritative server timing and bounded skew on sync |
 | GPS spoofing and tampered clients | Mock-location signal rejection when explicitly reported, root/hook/emulator heuristics, freshness/accuracy checks, geofence distance, uncertainty and suspicious-coordinate review |
