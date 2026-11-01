@@ -15,7 +15,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
       const responseData = exception.getResponse()
       const responseObject =
         typeof responseData === 'object' && responseData !== null
-          ? (responseData as { message?: unknown; code?: unknown; error?: unknown; remainingMinutes?: unknown })
+          ? (responseData as {
+              message?: unknown
+              code?: unknown
+              error?: unknown
+              remainingMinutes?: unknown
+              distanceMeters?: unknown
+              allowedDistanceMeters?: unknown
+              canRequestOverride?: unknown
+              estimatedEnd?: unknown
+              designation?: unknown
+            })
           : null
 
       const message = responseObject && 'message' in responseObject ? responseObject.message : responseData
@@ -31,6 +41,25 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ...(responseObject && typeof responseObject.code === 'string' ? { code: responseObject.code } : {}),
         ...(responseObject && typeof responseObject.remainingMinutes === 'number'
           ? { remainingMinutes: responseObject.remainingMinutes }
+          : {}),
+        // Teacher activation geofence rejections carry measured distances so
+        // the override dialog can state them without re-deriving the math.
+        ...(responseObject && typeof responseObject.distanceMeters === 'number'
+          ? { distanceMeters: responseObject.distanceMeters }
+          : {}),
+        ...(responseObject && typeof responseObject.allowedDistanceMeters === 'number'
+          ? { allowedDistanceMeters: responseObject.allowedDistanceMeters }
+          : {}),
+        ...(responseObject && typeof responseObject.canRequestOverride === 'boolean'
+          ? { canRequestOverride: responseObject.canRequestOverride }
+          : {}),
+        // Maintenance 503s carry the announced resumption estimate; suite 403s
+        // carry the missing designation so clients can explain the denial.
+        ...(responseObject && typeof responseObject.estimatedEnd === 'string'
+          ? { estimatedEnd: responseObject.estimatedEnd }
+          : {}),
+        ...(responseObject && typeof responseObject.designation === 'string'
+          ? { designation: responseObject.designation }
           : {}),
         path: request.originalUrl,
         timestamp: new Date().toISOString(),

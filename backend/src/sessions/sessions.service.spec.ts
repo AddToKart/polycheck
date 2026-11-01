@@ -9,11 +9,15 @@ import type { ActivateSessionDto, CreateBulkSessionsDto, CreateSessionDto } from
 
 jest.mock('@polycheck/shared', () => ({
   verifyQRToken: jest.fn(),
+  decodePinHashRecord: jest.fn(),
+  haversineDistance: jest.fn(),
 }))
 
-import { verifyQRToken } from '@polycheck/shared'
+import { verifyQRToken, decodePinHashRecord, haversineDistance } from '@polycheck/shared'
 
 const mockedVerifyQRToken = verifyQRToken as jest.MockedFunction<typeof verifyQRToken>
+const mockedDecodePinHash = decodePinHashRecord as jest.MockedFunction<typeof decodePinHashRecord>
+const mockedHaversineDistance = haversineDistance as jest.MockedFunction<typeof haversineDistance>
 
 const studentUser: RequestUser = { id: 'stu-1', role: 'student', studentId: 'S-1' }
 const teacherUser: RequestUser = { id: 'teacher-1', role: 'teacher' }
@@ -29,8 +33,22 @@ function makeSession(overrides: any = {}) {
     startTime: '10:00',
     endTime: '11:00',
     room: 'R-1',
+    mode: 'in_person',
     qrValidityMinutes: 10,
     gracePeriodMinutes: 5,
+    startQrValiditySeconds: null,
+    startGraceMinutes: null,
+    endQrValiditySeconds: null,
+    endGraceMinutes: 0,
+    startQrToken: null,
+    startTokenExpiresAt: null,
+    startQrGeneratedAt: null,
+    startPinHash: null,
+    endQrToken: null,
+    endTokenExpiresAt: null,
+    endQrGeneratedAt: null,
+    endPinHash: null,
+    autoEndAt: null,
     geofenceLatitude: 14.6,
     geofenceLongitude: 121.0,
     geofenceRadiusMeters: 50,
@@ -76,6 +94,7 @@ describe('SessionsService', () => {
       attendanceRecord: { createMany: jest.fn(), updateMany: jest.fn() },
       sectionRole: { findUnique: jest.fn() },
       sessionPermission: { findFirst: jest.fn() },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
       $executeRaw: jest.fn().mockResolvedValue(0),
       $transaction: jest.fn(),
     }
@@ -90,6 +109,7 @@ describe('SessionsService', () => {
       releaseLock: jest.fn().mockResolvedValue(true),
     }
     mockedVerifyQRToken.mockReset()
+    mockedHaversineDistance.mockReset().mockReturnValue(20)
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -170,7 +190,7 @@ describe('SessionsService', () => {
       prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
       const result = await service.findOne('sess-1', adminUser)
       expect(result.teacherPublicKey).toBe('pk')
-      expect(result.geofence.radiusMeters).toBe(50)
+      expect(result.geofence?.radiusMeters).toBe(50)
     })
 
     it('throws NotFoundException when session missing', async () => {
@@ -660,6 +680,414 @@ describe('SessionsService', () => {
     })
   })
 
+  describe('activate — online checkpoints', () => {
+    const PIN_HASH = 'p1$pbkdf2-sha256$10000$c2FsdA$aGFzaA'
+    const onlineSession = (overrides: any = {}) =>
+      makeSession({
+        mode: 'online',
+        qrToken: null,
+        qrTokenExpiresAt: null,
+        qrGeneratedAt: null,
+        startQrValiditySeconds: 90,
+        startGraceMinutes: 10,
+        endQrValiditySeconds: 90,
+        endGraceMinutes: 0,
+        geofenceLatitude: null,
+        geofenceLongitude: null,
+        geofenceRadiusMeters: null,
+        ...overrides,
+      })
+    const onlinePayload = (overrides: any = {}) => ({
+      version: 1,
+      sessionId: 'sess-1',
+      sectionId: 'sec-1',
+      teacherId: 'teacher-1',
+      teacherName: 'T',
+      issuedAt: Date.now() - 1_000,
+      validityMinutes: 2,
+      gracePeriodMinutes: 10,
+      mode: 'online',
+      checkpoint: 'start',
+      pinRequired: true,
+      pinHash: PIN_HASH,
+      validitySeconds: 90,
+      ...overrides,
+    })
+    const onlineDto: ActivateSessionDto = {
+      checkpoint: 'start',
+      validitySeconds: 90,
+      token: 'a'.repeat(80),
+    }
+
+    beforeEach(() => {
+      mockedDecodePinHash.mockReturnValue({ iterations: 10_000, salt: new Uint8Array(16), digest: new Uint8Array(32) })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+    })
+
+    it('arms the start checkpoint, seeds a zero-GPS roster, and stores the signed PIN hash', async () => {
+      const session = onlineSession()
+      prisma.session.findUnique.mockResolvedValue(session)
+      mockedVerifyQRToken.mockReturnValue(onlinePayload() as never)
+      const tx = {
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue({ ...session, isActive: true, startQrToken: 'token' }),
+        },
+        enrollment: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([{ studentId: 'stu-1', student: { fullName: 'Jane', program: 'BSIT' } }]),
+        },
+        attendanceRecord: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+
+      const result = await service.activate('sess-1', onlineDto, teacherUser)
+
+      expect(result.isActive).toBe(true)
+      const claim = tx.session.updateMany.mock.calls[0][0]
+      expect(claim.where).toEqual({
+        id: 'sess-1',
+        mode: 'online',
+        isActive: false,
+        endedAt: null,
+        startQrToken: null,
+      })
+      expect(claim.data.startPinHash).toBe(PIN_HASH)
+      expect(claim.data.startGraceMinutes).toBe(10)
+      expect(claim.data.autoEndAt).toBeInstanceOf(Date)
+      const seeded = tx.attendanceRecord.createMany.mock.calls[0][0].data[0]
+      expect(seeded.latitude).toBeNull()
+      expect(seeded.longitude).toBeNull()
+      expect(seeded.status).toBe('pending')
+    })
+
+    it('refuses an expired start-of-class window without ending the session', async () => {
+      const session = onlineSession()
+      prisma.session.findUnique.mockResolvedValue(session)
+      mockedVerifyQRToken.mockReturnValue(onlinePayload({ issuedAt: Date.now() - 10 * 60_000 }) as never)
+
+      await expect(service.activate('sess-1', onlineDto, teacherUser)).rejects.toThrow(BadRequestException)
+      expect(prisma.$transaction).not.toHaveBeenCalled()
+    })
+
+    it('refuses an end checkpoint before the start checkpoint is armed', async () => {
+      prisma.session.findUnique.mockResolvedValue(onlineSession({ isActive: false }))
+      mockedVerifyQRToken.mockReturnValue(
+        onlinePayload({ checkpoint: 'end', pinRequired: false, pinHash: undefined, gracePeriodMinutes: 0 }) as never,
+      )
+
+      await expect(
+        service.activate('sess-1', { checkpoint: 'end', validitySeconds: 90, token: 'a'.repeat(80) }, teacherUser),
+      ).rejects.toThrow(ConflictException)
+      expect(prisma.$transaction).not.toHaveBeenCalled()
+    })
+
+    it('arms the end checkpoint with zero grace and an expiry-based auto-end deadline', async () => {
+      const session = onlineSession({ isActive: true, startQrToken: 'start-token' })
+      prisma.session.findUnique.mockResolvedValue(session)
+      mockedVerifyQRToken.mockReturnValue(
+        onlinePayload({ checkpoint: 'end', pinRequired: false, pinHash: undefined, gracePeriodMinutes: 0 }) as never,
+      )
+      const tx = {
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue({ ...session, endQrToken: 'end-token' }),
+        },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+
+      await service.activate('sess-1', { checkpoint: 'end', validitySeconds: 90, token: 'a'.repeat(80) }, teacherUser)
+
+      const claim = tx.session.updateMany.mock.calls[0][0]
+      expect(claim.where).toEqual({
+        id: 'sess-1',
+        mode: 'online',
+        isActive: true,
+        endedAt: null,
+        endQrToken: null,
+      })
+      expect(claim.data.endGraceMinutes).toBe(0)
+      expect(claim.data.endPinHash).toBeNull()
+      expect(claim.data.autoEndAt).toEqual(claim.data.endTokenExpiresAt)
+    })
+
+    it('refuses regeneration once the checkpoint window is closed', async () => {
+      prisma.session.findUnique.mockResolvedValue(
+        onlineSession({
+          isActive: true,
+          startQrToken: 'old-token',
+          startTokenExpiresAt: new Date(Date.now() - 30 * 60_000),
+          startQrGeneratedAt: new Date(Date.now() - 40 * 60_000),
+        }),
+      )
+      mockedVerifyQRToken.mockReturnValue(onlinePayload() as never)
+
+      await expect(service.activate('sess-1', { ...onlineDto, regenerate: true }, teacherUser)).rejects.toThrow(
+        'regenerate is no longer possible',
+      )
+    })
+  })
+
+  describe('activate — teacher location gate (V4)', () => {
+    function inPersonTxHarness() {
+      const session = makeSession({ isActive: false })
+      // First read: the activate() pre-gate lookup. Second read: the
+      // post-activation cache publish re-check (must observe the active row).
+      prisma.session.findUnique
+        .mockResolvedValueOnce(session)
+        .mockResolvedValueOnce({ ...session, isActive: true, qrToken: 't-token' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      const tx = {
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue({ ...session, isActive: true }),
+        },
+        enrollment: { findMany: jest.fn().mockResolvedValue([]) },
+        attendanceRecord: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      }
+      prisma.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      mockedVerifyQRToken.mockReturnValue(validPayloadForSession())
+      return { session, tx }
+    }
+
+    // In-person token shape: legacy payload (validityMinutes path), issued now.
+    function validPayloadForSession(overrides: Record<string, unknown> = {}): any {
+      return {
+        sessionId: 'sess-1',
+        sectionId: 'sec-1',
+        teacherId: 'teacher-1',
+        issuedAt: Date.now(),
+        validityMinutes: 10,
+        gracePeriodMinutes: 5,
+        mode: undefined,
+        checkpoint: undefined,
+        pinRequired: false,
+        ...overrides,
+      }
+    }
+
+    it('plans the gate only for in-person activations: online arms never consult a location', async () => {
+      const session = makeSession({ isActive: false, mode: 'online' })
+      prisma.session.findUnique.mockResolvedValue(session)
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      const onlineTx: any = {
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue({ ...session, isActive: true, startQrToken: 't-online-arm' }),
+        },
+        enrollment: { findMany: jest.fn().mockResolvedValue([]) },
+        attendanceRecord: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      }
+      prisma.$transaction.mockImplementation(async (cb: any) => cb(onlineTx))
+      mockedDecodePinHash.mockReturnValue({ salt: 's', digest: 'd', iterations: 1, format: 'p1' } as never)
+      mockedVerifyQRToken.mockReturnValue(
+        validPayloadForSession({
+          mode: 'online',
+          checkpoint: 'start',
+          validitySeconds: 120,
+          gracePeriodMinutes: 5,
+          pinRequired: false,
+          pinHash: undefined,
+        }),
+      )
+
+      await service.activate(
+        'sess-1',
+        {
+          token: 't-online-arm',
+          checkpoint: 'start',
+          validitySeconds: 120,
+          gracePeriodMinutes: 5,
+          latitude: -50,
+          longitude: -100,
+        } as unknown as ActivateSessionDto,
+        teacherUser,
+      )
+
+      // The gate is mode-gated: an off-campus coordinate never rejected the
+      // online arm (RA 10173) and no audit row was ever written.
+      expect(prisma.auditLog.create).not.toHaveBeenCalled()
+    })
+
+    it('activates silently when the teacher fix is inside the tolerance floor', async () => {
+      inPersonTxHarness()
+      mockedHaversineDistance.mockReturnValue(20)
+
+      await service.activate(
+        'sess-1',
+        {
+          token: 't-in-person-inside',
+          validityMinutes: 10,
+          gracePeriodMinutes: 5,
+          latitude: 14.6,
+          longitude: 121,
+        } as unknown as ActivateSessionDto,
+        teacherUser,
+      )
+
+      expect(prisma.auditLog.create).not.toHaveBeenCalled()
+      expect(redis.setJson).toHaveBeenCalledWith(
+        'active-session:sess-1',
+        expect.objectContaining({ isActive: true }),
+        expect.anything(),
+      )
+    })
+
+    it('rejects an off-campus fix with a typed 409 before claiming the session', async () => {
+      inPersonTxHarness()
+      mockedHaversineDistance.mockReturnValue(50_000)
+
+      const promise = service.activate(
+        'sess-1',
+        {
+          token: 't-in-person-away',
+          validityMinutes: 10,
+          gracePeriodMinutes: 5,
+          latitude: 14.0,
+          longitude: 120.5,
+        } as unknown as ActivateSessionDto,
+        teacherUser,
+      )
+      await expect(promise).rejects.toThrow(ConflictException)
+      const error = (await promise.catch((caught: { getResponse?: () => unknown }) => caught)) as {
+        getResponse?: () => unknown
+      }
+      expect(error.getResponse?.()).toMatchObject({
+        code: 'teacher_location_outside_geofence',
+        distanceMeters: 50_000,
+        allowedDistanceMeters: 150,
+        canRequestOverride: true,
+      })
+      expect(prisma.session.updateMany).not.toHaveBeenCalled()
+      expect(prisma.attendanceRecord.createMany).not.toHaveBeenCalled()
+    })
+
+    it('honors a confirmed override, activates, and writes an audit row (fail-open)', async () => {
+      inPersonTxHarness()
+      mockedHaversineDistance.mockReturnValue(50_000)
+
+      await service.activate(
+        'sess-1',
+        {
+          token: 't-in-person-override',
+          validityMinutes: 10,
+          gracePeriodMinutes: 5,
+          latitude: 14.0,
+          longitude: 120.5,
+          overrideTeacherLocation: true,
+        } as unknown as ActivateSessionDto,
+        teacherUser,
+      )
+
+      expect(redis.setJson).toHaveBeenCalledWith(
+        'active-session:sess-1',
+        expect.objectContaining({ isActive: true }),
+        expect.anything(),
+      )
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          actorId: 'teacher-1',
+          action: 'session.activation_override',
+          entityType: 'session',
+          entityId: 'sess-1',
+          metadata: expect.objectContaining({
+            distanceMeters: 50_000,
+            allowedDistanceMeters: 150,
+            override: true,
+          }),
+        }),
+      })
+    })
+
+    it('still activates when the audit insert fails (fail-open audit policy)', async () => {
+      inPersonTxHarness()
+      mockedHaversineDistance.mockReturnValue(50_000)
+      prisma.auditLog.create.mockRejectedValueOnce(new Error('audit table unavailable'))
+
+      await service.activate(
+        'sess-1',
+        {
+          token: 't-in-person-audit-fail',
+          validityMinutes: 10,
+          gracePeriodMinutes: 5,
+          latitude: 14.0,
+          longitude: 120.5,
+          overrideTeacherLocation: true,
+        } as unknown as ActivateSessionDto,
+        teacherUser,
+      )
+
+      expect(redis.setJson).toHaveBeenCalledWith(
+        'active-session:sess-1',
+        expect.objectContaining({ isActive: true }),
+        expect.anything(),
+      )
+    })
+
+    it('uses max(geofence radius, tolerance) so large-radius rooms never false-flag', async () => {
+      // radius 300 ⇒ allowed 300; a 200 m fix is inside.
+      const session = makeSession({ isActive: false, geofenceRadiusMeters: 300 })
+      prisma.session.findUnique
+        .mockResolvedValueOnce(session)
+        .mockResolvedValueOnce({ ...session, isActive: true, qrToken: 't-token' })
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      const tx = {
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue({ ...session, isActive: true }),
+        },
+        enrollment: { findMany: jest.fn().mockResolvedValue([]) },
+        attendanceRecord: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      }
+      prisma.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      mockedVerifyQRToken.mockReturnValue(validPayloadForSession())
+      mockedHaversineDistance.mockReturnValue(200)
+
+      await service.activate(
+        'sess-1',
+        {
+          token: 't-in-person-large-room',
+          validityMinutes: 10,
+          gracePeriodMinutes: 5,
+          latitude: 14.6,
+          longitude: 121,
+        } as unknown as ActivateSessionDto,
+        teacherUser,
+      )
+
+      expect(redis.setJson).toHaveBeenCalled()
+      expect(prisma.auditLog.create).not.toHaveBeenCalled()
+    })
+
+    it('skips the gate entirely when the activation carries no coordinates', async () => {
+      inPersonTxHarness()
+      mockedHaversineDistance.mockReturnValue(50_000)
+
+      await service.activate(
+        'sess-1',
+        {
+          token: 't-in-person-nofix',
+          validityMinutes: 10,
+          gracePeriodMinutes: 5,
+        } as unknown as ActivateSessionDto,
+        teacherUser,
+      )
+
+      // Absent fix = unchanged behavior (offline activation path).
+      expect(redis.setJson).toHaveBeenCalledWith(
+        'active-session:sess-1',
+        expect.objectContaining({ isActive: true }),
+        expect.anything(),
+      )
+      expect(prisma.auditLog.create).not.toHaveBeenCalled()
+    })
+  })
+
   describe('end', () => {
     it('throws NotFoundException when session missing', async () => {
       prisma.session.findUnique.mockResolvedValue(null)
@@ -678,6 +1106,9 @@ describe('SessionsService', () => {
       prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       const tx = {
         attendanceRecord: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([{ studentId: 'stu-1' }, { studentId: 'stu-2' }, { studentId: 'stu-3' }]),
           updateMany: jest.fn().mockResolvedValue({ count: 3 }),
         },
         session: {
@@ -698,6 +1129,81 @@ describe('SessionsService', () => {
       expect(realtime.emitSessionState).toHaveBeenCalledWith(expect.anything(), 'ended')
       expect(redis.delete).toHaveBeenCalledWith('active-session:sess-1')
       expect(result.isActive).toBe(false)
+    })
+
+    it('resolves never-armed online ends to check-in credit instead of missed_checkout (V1)', async () => {
+      const session = makeSession({ mode: 'online', isActive: true, startQrToken: 's-tok' })
+      prisma.session.findUnique.mockResolvedValue(session)
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      const ended = { ...session, isActive: false, endedAt: new Date() }
+      const tx = {
+        attendanceRecord: {
+          findMany: jest.fn().mockResolvedValue([
+            { studentId: 'stu-1', checkInToken: 't1', checkOutToken: null, checkInStatus: 'present' },
+            { studentId: 'stu-2', checkInToken: null, checkOutToken: null, checkInStatus: null },
+          ]),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(ended),
+        },
+      }
+      prisma.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+
+      await service.end('sess-1', teacherUser)
+
+      const updates = tx.attendanceRecord.updateMany.mock.calls.map((call: any[]) => call[0])
+      expect(updates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            where: expect.objectContaining({ sessionId: 'sess-1', studentId: { in: ['stu-1'] } }),
+            data: expect.objectContaining({ status: 'present' }),
+          }),
+          expect.objectContaining({
+            where: expect.objectContaining({ sessionId: 'sess-1', studentId: { in: ['stu-2'] } }),
+            data: expect.objectContaining({ status: 'absent' }),
+          }),
+        ]),
+      )
+      // The derived endArmed flag must survive into the resolver: present rows
+      // keep the leg value even though the claim nulls the stored token.
+      const present = updates.find((update: any) => update.data.status === 'present')
+      expect(Object.keys(present.where)).not.toContain('checkOutToken')
+      expect(updates.some((update: any) => update.data.notes === 'missed_checkout')).toBe(false)
+    })
+
+    it('keeps the incomplete penalty when the teacher did arm the end checkpoint', async () => {
+      const session = makeSession({ mode: 'online', isActive: true, endQrToken: 'e-tok', startQrToken: 's-tok' })
+      prisma.session.findUnique.mockResolvedValue(session)
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      const ended = { ...session, isActive: false, endedAt: new Date() }
+      const tx = {
+        attendanceRecord: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([
+              { studentId: 'stu-1', checkInToken: 't1', checkOutToken: null, checkInStatus: 'present' },
+            ]),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(ended),
+        },
+      }
+      prisma.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+
+      await service.end('sess-1', teacherUser)
+
+      expect(tx.attendanceRecord.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ studentId: { in: ['stu-1'] }, checkOutToken: null }),
+          data: expect.objectContaining({ status: 'incomplete', notes: 'missed_checkout' }),
+        }),
+      )
     })
 
     it('throws ConflictException when session is not active (optimistic concurrency guard)', async () => {
@@ -721,7 +1227,10 @@ describe('SessionsService', () => {
       prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       const ended = { ...session, isActive: false, endedAt: new Date() }
       const tx = {
-        attendanceRecord: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        attendanceRecord: {
+          findMany: jest.fn().mockResolvedValue([]),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
         session: {
           updateMany: jest.fn().mockResolvedValue({ count: 1 }),
           findUniqueOrThrow: jest.fn().mockResolvedValue(ended),
@@ -746,7 +1255,10 @@ describe('SessionsService', () => {
       prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
       const ended = { ...session, isActive: false, endedAt: new Date() }
       const tx = {
-        attendanceRecord: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        attendanceRecord: {
+          findMany: jest.fn().mockResolvedValue([]),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
         session: {
           updateMany: jest.fn().mockResolvedValue({ count: 1 }),
           findUniqueOrThrow: jest.fn().mockResolvedValue(ended),
@@ -816,9 +1328,8 @@ describe('SessionsService', () => {
     })
 
     it('mutates attendance and emits side effects only after winning the observed session claim', async () => {
-      const qrGeneratedAt = new Date(Date.now() - 20 * 60_000)
-      const qrTokenExpiresAt = new Date(Date.now() - 10 * 60_000)
-      const session = makeSession({ isActive: true, qrGeneratedAt, qrTokenExpiresAt, gracePeriodMinutes: 5 })
+      const autoEndAt = new Date(Date.now() - 10 * 60_000)
+      const session = makeSession({ isActive: true, autoEndAt })
       prisma.session.findMany.mockResolvedValue([session])
       const ended = { ...session, isActive: false, endedAt: new Date() }
       const tx = {
@@ -826,7 +1337,10 @@ describe('SessionsService', () => {
           updateMany: jest.fn().mockResolvedValue({ count: 1 }),
           findUniqueOrThrow: jest.fn().mockResolvedValue(ended),
         },
-        attendanceRecord: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
+        attendanceRecord: {
+          findMany: jest.fn().mockResolvedValue([{ studentId: 'stu-1' }, { studentId: 'stu-2' }]),
+          updateMany: jest.fn().mockResolvedValue({ count: 2 }),
+        },
       }
       prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
 
@@ -835,8 +1349,7 @@ describe('SessionsService', () => {
       expect(tx.session.updateMany.mock.calls[0][0].where).toEqual({
         id: 'sess-1',
         isActive: true,
-        qrTokenExpiresAt,
-        qrGeneratedAt,
+        autoEndAt,
       })
       expect(tx.attendanceRecord.updateMany).toHaveBeenCalledTimes(1)
       expect(realtime.emitSessionState).toHaveBeenCalledWith(ended, 'ended')
@@ -845,14 +1358,14 @@ describe('SessionsService', () => {
     })
 
     it('does not mutate attendance or emit side effects when the observed session claim loses a race', async () => {
-      const qrGeneratedAt = new Date(Date.now() - 20 * 60_000)
-      const qrTokenExpiresAt = new Date(Date.now() - 10 * 60_000)
-      prisma.session.findMany.mockResolvedValue([
-        makeSession({ isActive: true, qrGeneratedAt, qrTokenExpiresAt, gracePeriodMinutes: 5 }),
-      ])
+      const autoEndAt = new Date(Date.now() - 10 * 60_000)
+      prisma.session.findMany.mockResolvedValue([makeSession({ isActive: true, autoEndAt })])
       const tx = {
         session: { updateMany: jest.fn().mockResolvedValue({ count: 0 }), findUniqueOrThrow: jest.fn() },
-        attendanceRecord: { updateMany: jest.fn() },
+        attendanceRecord: {
+          findMany: jest.fn().mockResolvedValue([]),
+          updateMany: jest.fn(),
+        },
       }
       prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
 
@@ -865,9 +1378,8 @@ describe('SessionsService', () => {
     })
 
     it('notifies students auto-marked absent without ever touching excused records', async () => {
-      const qrGeneratedAt = new Date(Date.now() - 20 * 60_000)
-      const qrTokenExpiresAt = new Date(Date.now() - 10 * 60_000)
-      const session = makeSession({ isActive: true, qrGeneratedAt, qrTokenExpiresAt, gracePeriodMinutes: 5 })
+      const autoEndAt = new Date(Date.now() - 10 * 60_000)
+      const session = makeSession({ isActive: true, autoEndAt })
       prisma.session.findMany.mockResolvedValue([session])
       const ended = { ...session, isActive: false, endedAt: new Date() }
       const tx = {
@@ -900,6 +1412,39 @@ describe('SessionsService', () => {
         subjectName: 'CS 101',
         date: '2026-07-14',
       })
+    })
+
+    it('auto-end resolves an online class without an armed end checkpoint by check-in status (V1)', async () => {
+      const autoEndAt = new Date(Date.now() - 10 * 60_000)
+      const session = makeSession({ mode: 'online', isActive: true, autoEndAt, startQrToken: 's-tok' })
+      prisma.session.findMany.mockResolvedValue([session])
+      const ended = { ...session, isActive: false, endedAt: new Date() }
+      const tx = {
+        session: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(ended),
+        },
+        attendanceRecord: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([
+              { studentId: 'stu-1', checkInToken: 't1', checkOutToken: null, checkInStatus: 'present' },
+            ]),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+
+      await service.autoEndExpiredSessions()
+
+      // The start-arm auto-end deadline fired with Checkpoint 2 never opened:
+      // the checked-in student keeps present (fixture endArmed=false path).
+      expect(tx.attendanceRecord.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ sessionId: 'sess-1', studentId: { in: ['stu-1'] } }),
+          data: expect.objectContaining({ status: 'present' }),
+        }),
+      )
     })
   })
 

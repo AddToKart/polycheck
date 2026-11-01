@@ -11,6 +11,7 @@ import { AttendanceGateway } from '../realtime/attendance.gateway'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { createHash } from 'crypto'
 import {
+  ISSUED_AT,
   LOCATION_CAPTURED_AT,
   VALID_TOKEN,
   makeCachedSession,
@@ -21,12 +22,14 @@ import {
 
 jest.mock('@polycheck/shared', () => ({
   verifyQRToken: jest.fn(),
+  verifyMeetingPin: jest.fn(),
   haversineDistance: jest.fn(),
 }))
 
-import { verifyQRToken, haversineDistance } from '@polycheck/shared'
+import { verifyQRToken, verifyMeetingPin, haversineDistance } from '@polycheck/shared'
 
 const mockedVerifyQRToken = verifyQRToken as jest.MockedFunction<typeof verifyQRToken>
+const mockedVerifyMeetingPin = verifyMeetingPin as jest.MockedFunction<typeof verifyMeetingPin>
 const mockedHaversineDistance = haversineDistance as jest.MockedFunction<typeof haversineDistance>
 
 const studentUser: RequestUser = { id: 'stu-1', role: 'student', studentId: 'S-1' }
@@ -55,6 +58,7 @@ describe('AttendanceService', () => {
         groupBy: jest.fn(),
         findUnique: jest.fn(),
         findUniqueOrThrow: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue(null),
         updateMany: jest.fn(),
         update: jest.fn(),
         upsert: jest.fn(),
@@ -89,6 +93,7 @@ describe('AttendanceService', () => {
       releaseLock: jest.fn().mockResolvedValue(undefined),
     } as any
     mockedVerifyQRToken.mockReset()
+    mockedVerifyMeetingPin.mockReset()
     mockedHaversineDistance.mockReset().mockReturnValue(0)
     prisma.session.findUnique.mockResolvedValue(makeCachedSession())
     prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
@@ -560,6 +565,164 @@ describe('AttendanceService', () => {
       expect(prisma.attendanceRecord.updateMany).not.toHaveBeenCalled()
     })
 
+    // ── V2: concurrent-session conflict ("impossible teleportation") ──
+
+    const conflictingRecord = (overrides: Record<string, unknown> = {}) => ({
+      status: 'present',
+      session: {
+        subjectName: 'Physical Ed',
+        date: '2026-07-14',
+        startTime: '10:00',
+        endTime: '11:00',
+        isActive: false,
+        ...overrides,
+      },
+    })
+
+    it('flags a second scan as disputed when another session just accepted the student', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(0)
+      prisma.attendanceRecord.findUnique.mockResolvedValue(makeRosterRecord())
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(
+        makeRosterRecord({ status: 'disputed', disputeReason: 'concurrent_session_conflict' }),
+      )
+      // Second processScanSubmission session lookup (switching session window)
+      prisma.session.findUnique.mockResolvedValue({
+        date: '2026-07-14',
+        startTime: '10:00',
+        endTime: '11:00',
+      })
+      prisma.attendanceRecord.findFirst.mockResolvedValue(conflictingRecord())
+
+      const result = (await service.submit(studentUser, { ...submitArgs, clientAttemptId: 'attempt-conflict' })) as any
+
+      expect(result.success).toBe(false)
+      expect(result.status).toBe('disputed')
+      expect(result.reason).toBe('concurrent_session_conflict')
+      expect(result.message).toContain('Physical Ed')
+      expect(prisma.scanAttempt.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          outcome: 'flagged',
+          reason: 'concurrent_session_conflict',
+          riskSignals: expect.arrayContaining(['concurrent_session_conflict']),
+        }),
+      })
+      expect(prisma.attendanceRecord.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: { in: ['pending', 'absent'] } }),
+          data: expect.objectContaining({
+            status: 'disputed',
+            disputeReason: 'concurrent_session_conflict',
+            disputeDescription: expect.stringContaining('Physical Ed'),
+          }),
+        }),
+      )
+    })
+
+    it('flags online mid-checkpoint rows through the accepted check-in leg', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(0)
+      prisma.attendanceRecord.findUnique.mockResolvedValue(makeRosterRecord())
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(
+        makeRosterRecord({ status: 'disputed', disputeReason: 'concurrent_session_conflict' }),
+      )
+      prisma.session.findUnique.mockResolvedValue({
+        date: '2026-07-14',
+        startTime: '10:00',
+        endTime: '11:00',
+      })
+      prisma.attendanceRecord.findFirst.mockResolvedValue(conflictingRecord({ status: 'pending' }))
+
+      const result = (await service.submit(studentUser, {
+        ...submitArgs,
+        clientAttemptId: 'attempt-online-conflict',
+      })) as any
+
+      expect(result.reason).toBe('concurrent_session_conflict')
+    })
+
+    it('does not flag back-to-back meetings whose windows only touch', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(0)
+      prisma.attendanceRecord.findUnique.mockResolvedValue(makeRosterRecord())
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(makeRosterRecord({ status: 'present' }))
+      prisma.session.findUnique.mockResolvedValue({
+        date: '2026-07-14',
+        startTime: '10:00',
+        endTime: '11:00',
+      })
+      // Staggered window: other class 11:00–12:00 (half-open semantics: a
+      // 10:00–11:00 session and an 11:00–12:00 session never overlap).
+      prisma.attendanceRecord.findFirst.mockResolvedValue(conflictingRecord({ startTime: '11:00', endTime: '12:00' }))
+
+      const result = (await service.submit(studentUser, {
+        ...submitArgs,
+        clientAttemptId: 'attempt-back-to-back',
+      })) as any
+
+      expect(result.success).toBe(true)
+      expect(result.status).toBe('present')
+    })
+
+    it('treats an active-but-old accepted check-in as a conflict regardless of recency', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(0)
+      prisma.attendanceRecord.findUnique.mockResolvedValue(makeRosterRecord())
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(
+        makeRosterRecord({ status: 'disputed', disputeReason: 'concurrent_session_conflict' }),
+      )
+      prisma.session.findUnique.mockResolvedValue({
+        date: '2026-07-14',
+        startTime: '10:00',
+        endTime: '11:00',
+      })
+      prisma.attendanceRecord.findFirst.mockResolvedValue(
+        conflictingRecord({ startTime: '08:00', endTime: '12:00', isActive: true }),
+      )
+
+      const result = (await service.submit(studentUser, {
+        ...submitArgs,
+        clientAttemptId: 'attempt-active-conflict',
+      })) as any
+
+      expect(result.reason).toBe('concurrent_session_conflict')
+    })
+
+    it('keeps the own first diagnosis when the scan already failed geofence validation', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(999)
+      prisma.attendanceRecord.findFirst.mockResolvedValue(conflictingRecord())
+
+      const result = await service.submit(studentUser, { ...submitArgs, clientAttemptId: 'attempt-outside' })
+
+      expect(result.reason).toBe('outside_geofence')
+      // The conflict hook never ran for a scan that failed its own validation.
+      expect(prisma.attendanceRecord.findFirst).not.toHaveBeenCalled()
+    })
+
     it.each([
       ['stale_location', { accuracyMeters: 5, locationCapturedAt: new Date(Date.now() - 3 * 60_000).toISOString() }],
       ['poor_location_accuracy', { accuracyMeters: 51, locationCapturedAt: new Date().toISOString() }],
@@ -898,6 +1061,130 @@ describe('AttendanceService', () => {
       expect(result).toBeDefined()
       expect('error' in result!).toBe(true)
       expect(prisma.session.updateMany).not.toHaveBeenCalled()
+    })
+
+    describe('online dual-checkpoint submissions', () => {
+      const PIN_HASH = 'p1$pbkdf2-sha256$10000$c2FsdA$aGFzaA'
+      const onlineSession = () =>
+        makeCachedSession({
+          mode: 'online',
+          isActive: true,
+          qrToken: null,
+          qrTokenExpiresAt: null,
+          qrGeneratedAt: null,
+          startQrToken: VALID_TOKEN,
+          startTokenExpiresAt: new Date(ISSUED_AT + 90_000),
+          startQrGeneratedAt: new Date(ISSUED_AT),
+          startQrValiditySeconds: 90,
+          startGraceMinutes: 10,
+          startPinHash: PIN_HASH,
+          endQrToken: null,
+          endTokenExpiresAt: null,
+          endQrGeneratedAt: null,
+          endQrValiditySeconds: 90,
+          endGraceMinutes: 0,
+          endPinHash: null,
+          autoEndAt: new Date(ISSUED_AT + 120 * 60_000),
+          geofenceLatitude: null,
+          geofenceLongitude: null,
+          geofenceRadiusMeters: null,
+        })
+      const onlinePayload = () =>
+        validPayload({
+          mode: 'online',
+          checkpoint: 'start',
+          pinRequired: true,
+          pinHash: PIN_HASH,
+          validitySeconds: 90,
+          gracePeriodMinutes: 10,
+          validityMinutes: 2,
+        })
+      const onlineArgs = {
+        sessionId: 'sess-1',
+        sectionId: 'sec-1',
+        deviceId: 'device-online',
+        qrToken: VALID_TOKEN,
+        clientAttemptId: 'online-attempt-1',
+        inputChannel: 'image' as const,
+        pin: '83',
+      }
+
+      beforeEach(() => {
+        prisma.session.findUnique.mockResolvedValue(onlineSession())
+        redis.getJson.mockResolvedValue(onlineSession())
+        prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+        prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+        mockedVerifyQRToken.mockReturnValue(onlinePayload())
+        mockedVerifyMeetingPin.mockResolvedValue(true)
+      })
+
+      it('records an online check-in with null coordinates and checkpoint fields (RA 10173)', async () => {
+        prisma.attendanceRecord.findUnique.mockResolvedValue(
+          makeRosterRecord({ status: 'pending', latitude: null, longitude: null }),
+        )
+        prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+        prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(
+          makeRosterRecord({
+            status: 'pending',
+            latitude: null,
+            longitude: null,
+            checkInStatus: 'present',
+            checkInToken: VALID_TOKEN,
+          }),
+        )
+
+        // A modified client may still send coordinates for an online token;
+        // they must never be persisted (RA 10173 data minimization).
+        const result = (await service.submit(studentUser, {
+          ...onlineArgs,
+          latitude: 14.6,
+          longitude: 121,
+        })) as any
+
+        expect(result.success).toBe(true)
+        const update = prisma.attendanceRecord.updateMany.mock.calls[0][0].data
+        expect(update.latitude).toBeNull()
+        expect(update.longitude).toBeNull()
+        expect(update.checkInToken).toBe(VALID_TOKEN)
+        expect(update.checkInStatus).toBe('present')
+        // The record stays pending until the session closes (dual resolution).
+        expect(update.status).toBeUndefined()
+        // Zero-GPS: no coordinate plausibility profiling for online scans.
+        expect(prisma.attendanceRecord.findMany).not.toHaveBeenCalled()
+        const attempt = prisma.scanAttempt.create.mock.calls[0][0].data
+        expect(attempt.checkpoint).toBe('start')
+        expect(attempt.pinVerified).toBe(true)
+        expect(attempt.latitude).toBeUndefined()
+        expect(attempt.longitude).toBeUndefined()
+        expect(attempt.accuracyMeters).toBeUndefined()
+        expect(attempt.mocked).toBeUndefined()
+        expect(mockedVerifyMeetingPin).toHaveBeenCalledWith('83', PIN_HASH)
+      })
+
+      it('denies an incorrect meeting PIN without touching attendance', async () => {
+        mockedVerifyMeetingPin.mockResolvedValue(false)
+
+        const result = await service.submit(studentUser, onlineArgs)
+
+        expect(result.success).toBe(false)
+        expect(result.reason).toBe('pin_incorrect')
+        expect(prisma.attendanceRecord.updateMany).not.toHaveBeenCalled()
+        expect(prisma.attendanceRecord.findUnique).not.toHaveBeenCalled()
+        expect(prisma.scanAttempt.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ outcome: 'denied', reason: 'pin_incorrect', pinVerified: false }),
+          }),
+        )
+      })
+
+      it('requires the meeting PIN when the checkpoint token demands it', async () => {
+        const result = await service.submit(studentUser, { ...onlineArgs, pin: undefined })
+
+        expect(result.success).toBe(false)
+        expect(result.reason).toBe('pin_required')
+        expect(mockedVerifyMeetingPin).not.toHaveBeenCalled()
+        expect(prisma.attendanceRecord.updateMany).not.toHaveBeenCalled()
+      })
     })
   })
 

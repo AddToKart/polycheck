@@ -14,6 +14,7 @@ import {
   Matches,
   Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator'
 
@@ -23,16 +24,27 @@ class GeofenceDto {
   @Type(() => Number) @IsInt() @Min(10) @Max(500) radiusMeters!: number
 }
 
+const SESSION_MODES = ['in_person', 'online'] as const
+
 export class CreateSessionDto {
   @IsString() @MaxLength(128) sectionId!: string
   @IsString() @MaxLength(200) subjectName!: string
+  @IsOptional() @IsIn(SESSION_MODES) mode?: 'in_person' | 'online'
   @Matches(/^\d{4}-\d{2}-\d{2}$/) date!: string
   @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) startTime!: string
   @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) endTime!: string
   @IsOptional() @IsString() @MaxLength(100) room?: string
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(15) qrValidityMinutes?: number
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(60) gracePeriodMinutes?: number
-  @ValidateNested() @Type(() => GeofenceDto) geofence!: GeofenceDto
+  @IsOptional() @Type(() => Number) @IsInt() @Min(60) @Max(300) startQrValiditySeconds?: number
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(60) startGraceMinutes?: number
+  @IsOptional() @Type(() => Number) @IsInt() @Min(60) @Max(300) endQrValiditySeconds?: number
+  // Required for in-person sessions; must be omitted for online (RA 10173
+  // zero-GPS). Validated again in the service for defense-in-depth.
+  @ValidateIf((dto: CreateSessionDto) => dto.mode !== 'online')
+  @ValidateNested()
+  @Type(() => GeofenceDto)
+  geofence?: GeofenceDto
   @IsOptional() @IsBoolean() isRescheduled?: boolean
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) rescheduledFromDate?: string
   @IsOptional() @IsString() @MaxLength(30) originalScheduleTime?: string
@@ -40,14 +52,23 @@ export class CreateSessionDto {
 }
 
 export class ActivateSessionDto {
-  @Type(() => Number) @IsInt() @Min(1) @Max(15) validityMinutes!: number
+  @IsOptional() @IsIn(['start', 'end']) checkpoint?: 'start' | 'end'
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(15) validityMinutes?: number
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(60) gracePeriodMinutes?: number
+  @IsOptional() @Type(() => Number) @IsInt() @Min(60) @Max(300) validitySeconds?: number
+  @IsOptional() @IsBoolean() regenerate?: boolean
   @IsString() @MinLength(80) @MaxLength(4096) token!: string
+  // V4 anti-ghost-professor evidence (optional; only consulted for in-person
+  // sessions). Absent coordinates keep today's behavior (offline activation).
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(-90) @Max(90) latitude?: number
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(-180) @Max(180) longitude?: number
+  @IsOptional() @IsBoolean() overrideTeacherLocation?: boolean
 }
 
 export class CreateBulkSessionsDto {
   @IsString() @MaxLength(128) sectionId!: string
   @IsString() @MaxLength(200) subjectName!: string
+  @IsOptional() @IsIn(SESSION_MODES) mode?: 'in_person' | 'online'
   @Matches(/^\d{4}-\d{2}-\d{2}$/) startDate!: string
   @Matches(/^\d{4}-\d{2}-\d{2}$/) endDate!: string
   @IsArray()
@@ -60,5 +81,11 @@ export class CreateBulkSessionsDto {
   @IsOptional() @IsString() @MaxLength(100) room?: string
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(15) qrValidityMinutes?: number
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(60) gracePeriodMinutes?: number
-  @ValidateNested() @Type(() => GeofenceDto) geofence!: GeofenceDto
+  @IsOptional() @Type(() => Number) @IsInt() @Min(60) @Max(300) startQrValiditySeconds?: number
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(60) startGraceMinutes?: number
+  @IsOptional() @Type(() => Number) @IsInt() @Min(60) @Max(300) endQrValiditySeconds?: number
+  @ValidateIf((dto: CreateBulkSessionsDto) => dto.mode !== 'online')
+  @ValidateNested()
+  @Type(() => GeofenceDto)
+  geofence?: GeofenceDto
 }

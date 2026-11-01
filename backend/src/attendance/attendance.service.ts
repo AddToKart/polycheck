@@ -31,6 +31,7 @@ import { AttendanceScopeService } from './attendance-scope.service'
 import { AttendanceReportService } from './attendance-report.service'
 import { GeofenceService } from './geofence.service'
 import { verifyQRToken } from '@polycheck/shared'
+import { academicOversightDepartment } from '../common/designations/department-pin'
 import { RAW_ATTENDANCE_LIMIT, type ScanEvidence, type ScanValidation } from './types'
 import { assertStudentInAdminScope, adminRecordWhere } from '../common/admin-scope'
 import { lockStudentSection } from '../common/student-section-lock'
@@ -49,10 +50,56 @@ const EXCUSE_REQUEST_RATE_LIMIT = 10
 const EXCUSE_REQUEST_RATE_WINDOW_SECONDS = 24 * 60 * 60
 const EXCUSE_LIST_LIMIT = 500
 
+// Env-tunable concurrency-conflict policy (see plan/vulnerability-hardening-plan.md V2).
+const CONCURRENT_SESSION_CONFLICT_DETECTION = envFlag(process.env.CONCURRENT_SESSION_CONFLICT_DETECTION, true)
+const CONCURRENT_SESSION_LOOKBACK_MINUTES = positiveInt(process.env.CONCURRENT_SESSION_LOOKBACK_MINUTES, 30)
+
+function positiveInt(raw: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(raw ?? '', 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function envFlag(raw: string | undefined, fallback: boolean): boolean {
+  if (raw === undefined || raw === '') return fallback
+  if (raw.toLowerCase() === 'true') return true
+  if (raw.toLowerCase() === 'false') return false
+  return fallback
+}
+
+function parseClockMinutes(value: string | undefined | null): number | null {
+  const match = typeof value === 'string' ? /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value) : null
+  if (!match) return null
+  return Number(match[1]) * 60 + Number(match[2])
+}
+
+/**
+ * Half-open HH:mm window overlap so back-to-back classes never trip the
+ * conflict flag. Malformed clocks skip the intersection test (the recency
+ * predicate decides).
+ */
+function scheduleWindowsIntersect(
+  current: { date: string; startTime: string; endTime: string },
+  other: { date: string; startTime: string; endTime: string },
+): boolean {
+  if (!current.date || !other.date || current.date !== other.date) return false
+  const currentStart = parseClockMinutes(current.startTime)
+  const currentEnd = parseClockMinutes(current.endTime)
+  const otherStart = parseClockMinutes(other.startTime)
+  const otherEnd = parseClockMinutes(other.endTime)
+  if (currentStart === null || currentEnd === null || otherStart === null || otherEnd === null) return true
+  return currentStart < otherEnd && otherStart < currentEnd
+}
+
 // These checks are client-reported heuristics, not cryptographic proof. They
 // are persisted as disputed attendance so teachers can review the event and
 // the server retains an auditable trail instead of silently dropping it.
-const PERSISTABLE_SECURITY_DISPUTE_REASONS = new Set(['rooted_device', 'hook_detected', 'emulator_detected'])
+const PERSISTABLE_SECURITY_DISPUTE_REASONS = new Set([
+  'rooted_device',
+  'hook_detected',
+  'emulator_detected',
+  'missing_location',
+  'concurrent_session_conflict',
+])
 
 @Injectable()
 export class AttendanceService {
@@ -195,6 +242,55 @@ export class AttendanceService {
     return result.record
   }
 
+  /**
+   * V2 anti-teleportation: an otherwise-valid scan for a session whose
+   * schedule overlaps an accepted check-in the student just landed elsewhere
+   * (credit-bearing status, or an accepted online check-in leg) is flagged as
+   * disputed for teacher review — never silently penalized. Runs only on
+   * scans that already passed their own token/PIN/geofence validation so a
+   * second diagnosis never replaces the first.
+   */
+  private async applyConcurrentSessionConflict(
+    studentId: string,
+    sessionId: string,
+    validation: ScanValidation,
+    receivedAt: Date,
+  ): Promise<void> {
+    if (!CONCURRENT_SESSION_CONFLICT_DETECTION) return
+    const lookback = new Date(receivedAt.getTime() - CONCURRENT_SESSION_LOOKBACK_MINUTES * 60_000)
+    const conflicting = await this.prisma.attendanceRecord.findFirst({
+      where: {
+        studentId,
+        sessionId: { not: sessionId },
+        timestamp: { gte: lookback },
+        OR: [{ status: { in: ['present', 'late'] } }, { status: 'pending', checkInToken: { not: null } }],
+      },
+      orderBy: { timestamp: 'desc' },
+      select: {
+        status: true,
+        session: { select: { subjectName: true, date: true, startTime: true, endTime: true, isActive: true } },
+      },
+    })
+    if (!conflicting) return
+
+    // Only adjudicate genuinely adjacent classes: matched calendar day with
+    // overlapping meeting windows. The windows decide even for still-active
+    // sessions (a stale zombie class never opened for today's slot must not
+    // veto an unrelated upcoming section); when clocks are unparseable, the
+    // recency predicate (already applied by the query) stands alone.
+    const currentSession = await this.prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { date: true, startTime: true, endTime: true },
+    })
+    if (!currentSession || scheduleWindowsIntersect(currentSession, conflicting.session)) {
+      validation.success = false
+      validation.status = 'disputed'
+      validation.reason = 'concurrent_session_conflict'
+      validation.message = `Student is already recorded as present in concurrent session ${conflicting.session.subjectName}.`
+      validation.riskSignals.push('concurrent_session_conflict')
+    }
+  }
+
   private async processScanSubmission(user: RequestUser, evidence: ScanEvidence, offline: boolean) {
     // Defensive device-cooldown gate: unregister revokes sessions, so a cooled
     // student normally cannot reach this path, but a session created just
@@ -236,6 +332,9 @@ export class AttendanceService {
     }
 
     const validation = await this.scanValidator.validateScan(user, evidence, offline, receivedAt)
+    if (validation.success) {
+      await this.applyConcurrentSessionConflict(user.id, evidence.sessionId, validation, receivedAt)
+    }
     const persistableSecurityDispute =
       !validation.success &&
       validation.status === 'disputed' &&
@@ -248,8 +347,13 @@ export class AttendanceService {
     const existing = await this.prisma.attendanceRecord.findUnique({
       where: { sessionId_studentId: { sessionId: evidence.sessionId, studentId: user.id } },
     })
+    // Online sessions are location-free (RA 10173): the plausibility heuristic
+    // runs only for in-person evidence that actually carries coordinates.
     const suspiciousCoordinates =
+      validation.mode === 'in_person' &&
       validation.status !== 'disputed' &&
+      evidence.latitude !== undefined &&
+      evidence.longitude !== undefined &&
       (await this.geofence.hasSuspiciousCoordinates(
         user.id,
         evidence.sessionId,
@@ -275,6 +379,7 @@ export class AttendanceService {
             select: {
               id: true,
               sectionId: true,
+              mode: true,
               geofenceLatitude: true,
               geofenceLongitude: true,
             },
@@ -297,8 +402,8 @@ export class AttendanceService {
               studentProgram: enrollment.student.program,
               timestamp: validation.scannedAt,
               status: 'pending',
-              latitude: session.geofenceLatitude,
-              longitude: session.geofenceLongitude,
+              latitude: session.mode === 'online' ? null : session.geofenceLatitude,
+              longitude: session.mode === 'online' ? null : session.geofenceLongitude,
               isSynced: true,
               syncedAt: receivedAt,
             },
@@ -318,34 +423,76 @@ export class AttendanceService {
         const attempt = await tx.scanAttempt.create({
           data: this.scanValidator.buildScanAttemptData(user.id, evidence, validation, outcome, offline),
         })
-        const updated = await tx.attendanceRecord.updateMany({
-          where: {
-            id: rosterRecord.id,
-            status: disputed ? { in: ['pending', 'absent'] } : 'pending',
-            manuallySet: false,
-            tokenSnapshot: null,
-            acceptedScanAttemptId: null,
-          },
-          data: {
-            status: finalStatus,
-            timestamp: validation.scannedAt,
-            latitude: evidence.latitude,
-            longitude: evidence.longitude,
-            deviceId: evidence.deviceId,
-            tokenSnapshot: evidence.qrToken,
-            isSynced: true,
-            syncedAt: receivedAt,
-            acceptedScanAttemptId: attempt.id,
-            ...(disputed
-              ? {
-                  disputeReason: suspiciousCoordinates ? 'suspicious_coordinates' : validation.reason,
-                  disputeDescription: suspiciousCoordinates
-                    ? 'Coordinates were implausibly identical across multiple sessions and require review.'
-                    : validation.message,
-                }
-              : {}),
-          },
-        })
+        const online = validation.mode === 'online'
+        const updated = online
+          ? await tx.attendanceRecord.updateMany({
+              where: {
+                id: rosterRecord.id,
+                status: disputed ? { in: ['pending', 'absent'] } : 'pending',
+                manuallySet: false,
+                ...(validation.checkpoint === 'start' ? { checkInToken: null } : { checkOutToken: null }),
+              },
+              data: {
+                ...(validation.checkpoint === 'start'
+                  ? {
+                      checkInTime: validation.scannedAt,
+                      checkInStatus: validation.status,
+                      checkInToken: evidence.qrToken,
+                      checkInAttemptId: attempt.id,
+                      timestamp: validation.scannedAt,
+                    }
+                  : {
+                      checkOutTime: validation.scannedAt,
+                      checkOutStatus: 'present' as const,
+                      checkOutToken: evidence.qrToken,
+                      checkOutAttemptId: attempt.id,
+                    }),
+                latitude: null,
+                longitude: null,
+                deviceId: evidence.deviceId,
+                isSynced: true,
+                syncedAt: receivedAt,
+                // Between checkpoints the row stays pending; the final
+                // present/late/incomplete/absent resolution runs at session end.
+                ...(disputed
+                  ? {
+                      status: 'disputed' as const,
+                      disputeReason: suspiciousCoordinates ? 'suspicious_coordinates' : validation.reason,
+                      disputeDescription: suspiciousCoordinates
+                        ? 'Coordinates were implausibly identical across multiple sessions and require review.'
+                        : validation.message,
+                    }
+                  : {}),
+              },
+            })
+          : await tx.attendanceRecord.updateMany({
+              where: {
+                id: rosterRecord.id,
+                status: disputed ? { in: ['pending', 'absent'] } : 'pending',
+                manuallySet: false,
+                tokenSnapshot: null,
+                acceptedScanAttemptId: null,
+              },
+              data: {
+                status: finalStatus,
+                timestamp: validation.scannedAt,
+                latitude: evidence.latitude,
+                longitude: evidence.longitude,
+                deviceId: evidence.deviceId,
+                tokenSnapshot: evidence.qrToken,
+                isSynced: true,
+                syncedAt: receivedAt,
+                acceptedScanAttemptId: attempt.id,
+                ...(disputed
+                  ? {
+                      disputeReason: suspiciousCoordinates ? 'suspicious_coordinates' : validation.reason,
+                      disputeDescription: suspiciousCoordinates
+                        ? 'Coordinates were implausibly identical across multiple sessions and require review.'
+                        : validation.message,
+                    }
+                  : {}),
+              },
+            })
         if (updated.count === 0) {
           await tx.scanAttempt.update({
             where: { id: attempt.id },
@@ -396,7 +543,11 @@ export class AttendanceService {
 
   // ── Manual status updates ──
 
-  async updateStatus(user: RequestUser, id: string, status: 'present' | 'late' | 'absent' | 'pending' | 'disputed') {
+  async updateStatus(
+    user: RequestUser,
+    id: string,
+    status: 'present' | 'late' | 'absent' | 'pending' | 'disputed' | 'incomplete',
+  ) {
     if (user.role !== 'teacher') {
       throw new ForbiddenException('Only teachers can update attendance statuses')
     }
@@ -475,8 +626,8 @@ export class AttendanceService {
     if (record.studentId !== user.id) {
       throw new ForbiddenException('You can only request an excuse for your own attendance')
     }
-    if (record.status !== 'absent' && record.status !== 'late') {
-      throw new BadRequestException('Only absent or late attendance can be excused')
+    if (record.status !== 'absent' && record.status !== 'late' && record.status !== 'incomplete') {
+      throw new BadRequestException('Only absent, late, or incomplete attendance can be excused')
     }
     if (record.excuseStatus === 'requested') {
       throw new ConflictException('This attendance record already has an open excuse request')
@@ -547,8 +698,13 @@ export class AttendanceService {
     if (query.startDate && query.endDate && query.endDate < query.startDate) {
       throw new BadRequestException('endDate must be on or after startDate')
     }
+    const oversight = academicOversightDepartment(user)
     const scope: Prisma.AttendanceRecordWhereInput =
-      user.role === 'teacher' ? { session: { teacherId: user.id } } : adminRecordWhere(user)
+      user.role === 'teacher'
+        ? oversight
+          ? { session: { section: { teacher: { department: { equals: oversight, mode: 'insensitive' } } } } }
+          : { session: { teacherId: user.id } }
+        : adminRecordWhere(user)
     const where: Prisma.AttendanceRecordWhereInput = {
       AND: [
         scope,
@@ -589,12 +745,26 @@ export class AttendanceService {
     const record = await this.prisma.attendanceRecord.findUnique({
       where: { id: recordId },
       include: {
-        session: { select: { teacherId: true, subjectName: true, date: true } },
+        session: {
+          select: {
+            teacherId: true,
+            subjectName: true,
+            date: true,
+            section: { select: { teacher: { select: { department: true } } } },
+          },
+        },
       },
     })
     if (!record) throw new NotFoundException('Attendance record not found')
-    if (record.session.teacherId !== user.id) {
-      throw new ForbiddenException('You can only decide excuses in your own sessions')
+    const oversight = academicOversightDepartment(user)
+    const departmentMatch =
+      oversight !== null && record.session.section.teacher.department?.toLowerCase() === oversight.toLowerCase()
+    if (record.session.teacherId !== user.id && !departmentMatch) {
+      throw new ForbiddenException(
+        oversight
+          ? 'You can only decide excuses in your own sessions or within your department'
+          : 'You can only decide excuses in your own sessions',
+      )
     }
     if (record.excuseStatus !== 'requested') {
       throw new ConflictException('This excuse request has already been decided')
@@ -693,7 +863,12 @@ export class AttendanceService {
 
   private async performOfflineActivation(sessionId: string, qrToken: string, receivedAt: Date, offline: boolean) {
     const session = await this.prisma.session.findUnique({ where: { id: sessionId } })
-    if (!session || session.qrToken || session.endedAt) return 'unchanged' as const
+    if (!session) return 'unchanged' as const
+    // Online checkpoints are armed by the teacher cockpit only; a student sync
+    // must never create checkpoint state (the teacher's signed token is the
+    // authority for the window and PIN hash).
+    if (session.mode === 'online') return 'unchanged' as const
+    if (session.qrToken || session.endedAt) return 'unchanged' as const
     const teacher = await this.prisma.user.findUnique({
       where: { id: session.teacherId },
       select: { teacherPublicKey: true },

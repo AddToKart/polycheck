@@ -95,6 +95,7 @@ function createFakePrisma(options: { teacherDepartment?: string | null; students
       }),
       deleteMany: jest.fn(async () => ({ count: 0 })),
     },
+    enrollmentTombstone: { deleteMany: jest.fn(async () => ({ count: 0 })) },
     $executeRaw: jest.fn(async () => 0),
     $transaction: jest.fn(async (callback: (tx: any) => unknown) => callback(db)),
   }

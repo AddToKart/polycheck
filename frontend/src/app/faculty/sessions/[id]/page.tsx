@@ -3,9 +3,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { ArrowLeft, QrCode, Timer, Play, StopCircle, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2, Copy, Download, Check } from 'lucide-react'
-import { api } from '@/lib/api-client'
-import { isNetworkFailure } from '@/lib/api-client'
+import { ArrowLeft, QrCode, Timer, Play, StopCircle, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2, Copy, Download, Check, School, Video, ShieldCheck, KeyRound } from 'lucide-react'
+import { api, isNetworkFailure, ApiHttpError } from '@/lib/api-client'
+import { randomMeetingPin } from '@polycheck/shared'
 import type { User, Session, AttendanceRecord, AttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
@@ -21,7 +21,7 @@ import { pupColors } from '@/lib/colors'
 import { SessionRequestCoordinator } from '@/lib/session-request-coordinator'
 import QRCode from 'qrcode'
 
-const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
+const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'incomplete', 'absent']
 
 const STATUS_STYLES: Record<string, string> = {
   present: 'bg-golden text-maroon-dark',
@@ -30,7 +30,11 @@ const STATUS_STYLES: Record<string, string> = {
   excused: 'bg-maroon text-golden border border-golden',
   pending: 'bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
   disputed: 'bg-maroon-dark text-golden border border-golden',
+  incomplete: 'bg-white text-maroon-dark border border-dashed border-maroon dark:bg-transparent dark:text-golden dark:border-golden',
 }
+
+const DEFAULT_CHECKPOINT_VALIDITY_SECONDS = '90'
+const DEFAULT_CHECKPOINT_GRACE_MINUTES = '10'
 
 const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'The request could not be completed.'
 
@@ -54,6 +58,16 @@ export default function SessionDetailPage() {
   const [copiedToken, setCopiedToken] = useState(false)
   const [showQrModal, setShowQrModal] = useState(false)
   const [showValidityPrompt, setShowValidityPrompt] = useState(false)
+  const [checkpointTab, setCheckpointTab] = useState<'start' | 'end'>('start')
+  const [showCheckpointPrompt, setShowCheckpointPrompt] = useState(false)
+  const [checkpointValiditySeconds, setCheckpointValiditySeconds] = useState(DEFAULT_CHECKPOINT_VALIDITY_SECONDS)
+  const [checkpointGraceMinutes, setCheckpointGraceMinutes] = useState(DEFAULT_CHECKPOINT_GRACE_MINUTES)
+  const [checkpointPinRequired, setCheckpointPinRequired] = useState(false)
+  const [checkpointPin, setCheckpointPin] = useState('')
+  const [checkpointPinError, setCheckpointPinError] = useState('')
+  const [regeneratingCheckpoint, setRegeneratingCheckpoint] = useState(false)
+  const [startPinPlain, setStartPinPlain] = useState<string | null>(null)
+  const [endPinPlain, setEndPinPlain] = useState<string | null>(null)
   const [validityMinutes, setValidityMinutes] = useState('15')
   const [graceMinutes, setGraceMinutes] = useState('15')
   const [countdown, setCountdown] = useState('')
@@ -63,6 +77,13 @@ export default function SessionDetailPage() {
   const [redirecting, setRedirecting] = useState(false)
   const [generatingQr, setGeneratingQr] = useState(false)
   const [endingSession, setEndingSession] = useState(false)
+  // V4 anti-ghost-professor: captured teacher fix + pending override dialog.
+  const teacherFixRef = useRef<{ latitude: number; longitude: number } | null>(null)
+  const teacherConflictEpochRef = useRef(0)
+  const [teacherLocationConflict, setTeacherLocationConflict] = useState<{
+    distanceMeters: number
+    allowedDistanceMeters: number
+  } | null>(null)
   const requestInFlightRef = useRef(false)
   const queuedRefreshRef = useRef(false)
   const requestCoordinatorRef = useRef(new SessionRequestCoordinator())
@@ -175,7 +196,12 @@ export default function SessionDetailPage() {
     void initialize()
   }, [initialize])
 
-  const qrToken = session?.qrToken ?? null
+  const onlineMode = session?.mode === 'online'
+  const qrToken = onlineMode
+    ? checkpointTab === 'start'
+      ? session?.startQrToken ?? null
+      : session?.endQrToken ?? null
+    : session?.qrToken ?? null
   useEffect(() => {
     let active = true
     setQrError(null)
@@ -227,8 +253,17 @@ export default function SessionDetailPage() {
   }, [lastUpdatedAt])
 
   const sessionIsActive = session?.isActive ?? false
-  const qrTokenExpiresAt = session?.qrTokenExpiresAt ?? null
-  const gracePeriodMinutes = session?.gracePeriodMinutes ?? 0
+  const qrTokenExpiresAt = onlineMode
+    ? checkpointTab === 'start'
+      ? session?.startTokenExpiresAt ?? null
+      : session?.endTokenExpiresAt ?? null
+    : session?.qrTokenExpiresAt ?? null
+  const gracePeriodMinutes =
+    (onlineMode
+      ? checkpointTab === 'start'
+        ? session?.startGraceMinutes
+        : session?.endGraceMinutes
+      : session?.gracePeriodMinutes) ?? 0
   useEffect(() => {
     if (!sessionIsActive || !qrTokenExpiresAt) {
       setCountdown('')
@@ -279,13 +314,15 @@ export default function SessionDetailPage() {
   const excusedCount = records.filter((r) => r.status === 'excused').length
   const pendingCount = records.filter((r) => r.status === 'pending').length
   const disputedCount = records.filter((r) => r.status === 'disputed').length
+  const incompleteCount = records.filter((r) => r.status === 'incomplete').length
   const studentMap = new Map(records.map((r) => [r.studentId, r]))
 
   const handleCopyToken = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
-    if (!session?.qrToken) return
+    const token = qrToken
+    if (!token) return
     try {
-      await navigator.clipboard.writeText(session.qrToken)
+      await navigator.clipboard.writeText(token)
       setCopiedToken(true)
       addNotification('success', 'Token Copied', 'QR token copied to clipboard for manual check-in')
       setTimeout(() => setCopiedToken(false), 2500)
@@ -306,7 +343,100 @@ export default function SessionDetailPage() {
     addNotification('success', 'QR Image Saved', 'Session QR code saved as PNG image')
   }
 
-  const handleGenerateQr = async () => {
+  const openCheckpointPrompt = (checkpoint: 'start' | 'end', options?: { regenerate?: boolean }) => {
+    if (!session) return
+    const remembered = checkpoint === 'start' ? startPinPlain : endPinPlain
+    setCheckpointTab(checkpoint)
+    setCheckpointValiditySeconds(
+      String(
+        (checkpoint === 'start' ? session.startQrValiditySeconds : session.endQrValiditySeconds) ??
+          Number(DEFAULT_CHECKPOINT_VALIDITY_SECONDS),
+      ),
+    )
+    setCheckpointGraceMinutes(
+      String(
+        checkpoint === 'start'
+          ? session.startGraceMinutes ?? Number(DEFAULT_CHECKPOINT_GRACE_MINUTES)
+          : 0,
+      ),
+    )
+    setCheckpointPinRequired(false)
+    setCheckpointPin(options?.regenerate && remembered ? remembered : '')
+    setCheckpointPinError('')
+    setRegeneratingCheckpoint(Boolean(options?.regenerate))
+    setShowCheckpointPrompt(true)
+  }
+
+  const handleGenerateCheckpointQr = async () => {
+    if (!session || generatingQr) return
+    const validitySeconds = parseInt(checkpointValiditySeconds, 10)
+    const grace = parseInt(checkpointGraceMinutes, 10)
+    if (!Number.isInteger(validitySeconds) || validitySeconds < 60 || validitySeconds > 300) {
+      setCheckpointPinError('Validity must be between 60 and 300 seconds.')
+      return
+    }
+    if (checkpointTab === 'start' && (!Number.isInteger(grace) || grace < 0 || grace > 60)) {
+      setCheckpointPinError('Grace must be between 0 and 60 minutes.')
+      return
+    }
+    const pin = checkpointPin.trim()
+    if (checkpointPinRequired && !/^\d{2,4}$/.test(pin)) {
+      setCheckpointPinError('The meeting PIN must be 2–4 digits.')
+      return
+    }
+    setCheckpointPinError('')
+    setGeneratingQr(true)
+    try {
+      const updated = await api.generateCheckpointQrCode({
+        sessionId: session.id,
+        checkpoint: checkpointTab,
+        validitySeconds,
+        graceMinutes: checkpointTab === 'start' ? grace : undefined,
+        pin: checkpointPinRequired ? pin : undefined,
+        regenerate: regeneratingCheckpoint || undefined,
+      })
+      setSession(updated)
+      if (checkpointTab === 'start') setStartPinPlain(checkpointPinRequired ? pin : null)
+      else setEndPinPlain(checkpointPinRequired ? pin : null)
+      setShowCheckpointPrompt(false)
+      addNotification(
+        'success',
+        regeneratingCheckpoint ? 'Checkpoint QR regenerated' : 'Checkpoint QR generated',
+        `${checkpointTab === 'start' ? 'Start-of-class' : 'End-of-class'} QR is live for ${validitySeconds}s${
+          checkpointPinRequired ? ' · announce the PIN aloud' : ''
+        }.`,
+      )
+      void refreshData()
+    } catch (error) {
+      setCheckpointPinError(getErrorMessage(error))
+    } finally {
+      setGeneratingQr(false)
+    }
+  }
+
+  // One-shot classroom fix for the V4 in-person activation gate. Failure is
+  // non-blocking: an absent fix keeps today's behavior (offline-first).
+  const captureTeacherFix = () =>
+    new Promise<{ latitude: number; longitude: number } | null>((resolve) => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        resolve(null)
+        return
+      }
+      const timer = window.setTimeout(() => resolve(null), 8000)
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          window.clearTimeout(timer)
+          resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude })
+        },
+        () => {
+          window.clearTimeout(timer)
+          resolve(null)
+        },
+        { timeout: 7500, maximumAge: 30_000, enableHighAccuracy: true },
+      )
+    })
+
+  const handleGenerateQr = async (overrideTeacherLocation = false) => {
     const mins = parseInt(validityMinutes, 10)
     const grace = parseInt(graceMinutes, 10)
     if (isNaN(mins) || mins < 1 || mins > 15 || isNaN(grace) || grace < 0 || grace > 60) return
@@ -314,13 +444,51 @@ export default function SessionDetailPage() {
     const mutationEpoch = requestCoordinatorRef.current.beginMutation()
     let mutationSettled = false
     try {
-      const activated = await api.generateQrCode(session.id, mins, grace)
+      let fix = teacherFixRef.current
+      if (!fix) {
+        fix = await captureTeacherFix()
+        teacherFixRef.current = fix
+        if (!fix) {
+          addNotification(
+            'info',
+            'No Location Fix',
+            'Activating without a location fix is allowed for offline use.',
+          )
+        }
+      }
+      const activated = await api.generateQrCode(
+        session.id,
+        mins,
+        grace,
+        fix
+          ? {
+              latitude: fix.latitude,
+              longitude: fix.longitude,
+              ...(overrideTeacherLocation ? { override: true } : {}),
+            }
+          : undefined,
+      )
       mutationSettled = true
       if (requestCoordinatorRef.current.commitMutation(mutationEpoch)) setSession(activated)
       setShowValidityPrompt(false)
+      setTeacherLocationConflict(null)
       void refreshData()
       addNotification('success', 'QR Code Generated', `Session activated with ${mins}min validity and ${grace}min grace`)
     } catch (error) {
+      if (
+        overrideTeacherLocation === false &&
+        error instanceof ApiHttpError &&
+        error.code === 'teacher_location_outside_geofence'
+      ) {
+        // Surface the override decision instead of failing outright; the
+        // pending mutation epoch is aborted on cancel/confirm.
+        teacherConflictEpochRef.current = mutationEpoch
+        setTeacherLocationConflict({
+          distanceMeters: Math.round(error.distanceMeters ?? 0),
+          allowedDistanceMeters: Math.round(error.allowedDistanceMeters ?? 150),
+        })
+        return
+      }
       if (!mutationSettled) requestCoordinatorRef.current.abortMutation(mutationEpoch)
       addNotification('error', 'QR Generation Failed', getErrorMessage(error))
       setShowValidityPrompt(false)
@@ -331,7 +499,10 @@ export default function SessionDetailPage() {
   }
 
   const handleEndSession = async () => {
-    if (!confirm('Mark all pending students as absent and end the session?')) return
+    const message = onlineMode
+      ? 'End the session and resolve the checkpoint matrix (present / late / incomplete; students with neither scan become absent)?'
+      : 'Mark all pending students as absent and end the session?'
+    if (!confirm(message)) return
     setEndingSession(true)
     const mutationEpoch = requestCoordinatorRef.current.beginMutation()
     let mutationSettled = false
@@ -369,7 +540,7 @@ export default function SessionDetailPage() {
         studentName: student?.fullName ?? 'Unknown',
         timestamp: now.toISOString(),
         status: nextStatus,
-        coordinates: { latitude: 0, longitude: 0 },
+        coordinates: onlineMode ? { latitude: null, longitude: null } : { latitude: 0, longitude: 0 },
         deviceId: 'manual',
         isSynced: true,
         syncedAt: now.toISOString(),
@@ -392,7 +563,22 @@ export default function SessionDetailPage() {
               <ArrowLeft className="w-5 h-5 text-maroon dark:text-golden" />
             </button>
             <div>
-              <h1 className="text-xl font-heading font-bold text-maroon-dark dark:text-golden">{session.subjectName}</h1>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl font-heading font-bold text-maroon-dark dark:text-golden">{session.subjectName}</h1>
+                <Badge
+                  className={
+                    onlineMode
+                      ? 'bg-maroon text-golden border border-golden dark:bg-golden dark:text-maroon-dark'
+                      : 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200'
+                  }
+                >
+                  {onlineMode ? (
+                    <span className="flex items-center gap-1"><Video className="w-3 h-3" /> Online · No GPS</span>
+                  ) : (
+                    <span className="flex items-center gap-1"><School className="w-3 h-3" /> In-Person</span>
+                  )}
+                </Badge>
+              </div>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
                 {new Date(session.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · {session.startTime}-{session.endTime}
               </p>
@@ -422,8 +608,8 @@ export default function SessionDetailPage() {
             </div>
           ) : null}
 
-          {/* QR Code Card */}
-          {isTeacher && <Card className="dark:border-golden/15 dark:bg-surface-dark">
+          {/* QR Code Card — in-person single check-in */}
+          {isTeacher && !onlineMode && <Card className="dark:border-golden/15 dark:bg-surface-dark">
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-4">
                 <QrCode className="w-5 h-5 text-maroon dark:text-golden" />
@@ -488,6 +674,141 @@ export default function SessionDetailPage() {
             </CardContent>
           </Card>}
 
+          {/* QR Code Card — online dual checkpoints */}
+          {isTeacher && onlineMode && (() => {
+            const startArmed = Boolean(session.startQrToken)
+            const endArmed = Boolean(session.endQrToken)
+            const activeArmed = checkpointTab === 'start' ? startArmed : endArmed
+            const announcedPin = checkpointTab === 'start' ? startPinPlain : endPinPlain
+            const activeExpiry = checkpointTab === 'start' ? session.startTokenExpiresAt : session.endTokenExpiresAt
+            // The countdown ticks once per second and reports when the whole
+            // window (validity + grace) is over; rendering stays pure.
+            const windowOpen = Boolean(activeExpiry) && countdown !== 'Grace ended'
+            return (
+              <Card className="dark:border-golden/15 dark:bg-surface-dark">
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <QrCode className="w-5 h-5 text-maroon dark:text-golden" />
+                    <h2 className="text-base font-bold dark:text-white">Checkpoint QR Codes</h2>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mb-4" role="tablist" aria-label="Attendance checkpoints">
+                    {([
+                      { key: 'start' as const, label: 'Step 1 · Start QR', armed: startArmed },
+                      { key: 'end' as const, label: 'Step 2 · End QR', armed: endArmed },
+                    ]).map((step) => (
+                      <button
+                        key={step.key}
+                        type="button"
+                        role="tab"
+                        aria-selected={checkpointTab === step.key}
+                        onClick={() => setCheckpointTab(step.key)}
+                        className={`border px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors ${
+                          checkpointTab === step.key
+                            ? 'border-maroon bg-maroon text-white dark:border-golden dark:bg-golden dark:text-maroon-dark'
+                            : 'border-zinc-300 bg-white text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
+                        }`}
+                      >
+                        {step.label}
+                        {step.armed ? <span className="ml-1 text-[10px] opacity-80">●</span> : null}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex flex-col items-center py-2">
+                    {qrError ? <p className="mb-4 text-sm text-red-600 dark:text-red-300" role="alert">QR image could not be rendered: {qrError}</p> : null}
+                    {activeArmed && qrDataUrl ? (
+                      <>
+                        <button
+                          type="button"
+                          className="cursor-pointer"
+                          onClick={() => setShowQrModal(true)}
+                          aria-label="Open checkpoint QR code in full screen"
+                        >
+                          <Image src={qrDataUrl} width={180} height={180} unoptimized alt="Scannable checkpoint QR code" />
+                        </button>
+                        {countdown && (
+                          <p className={`text-sm mt-2 font-mono ${countdown === 'Grace ended' ? 'text-red-500' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                            {countdown.includes('Grace') ? countdown : `Expires in: ${countdown}`}
+                          </p>
+                        )}
+                        {announcedPin ? (
+                          <div className="mt-3 flex items-center gap-2 border border-golden bg-maroon px-3 py-1.5">
+                            <KeyRound className="w-3.5 h-3.5 text-golden" />
+                            <span className="text-xs font-bold uppercase tracking-widest text-golden">
+                              PIN {announcedPin} · announce aloud
+                            </span>
+                          </div>
+                        ) : null}
+                        <div className="mt-4 flex items-center justify-center gap-2 flex-wrap">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider border-zinc-300 dark:border-zinc-700"
+                            onClick={() => setShowQrModal(true)}
+                          >
+                            <Maximize className="w-3.5 h-3.5" /> Full Screen
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-maroon dark:text-golden border-maroon/30 dark:border-golden/30 hover:bg-maroon/10 dark:hover:bg-golden/10"
+                            onClick={handleCopyToken}
+                          >
+                            {copiedToken ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                            {copiedToken ? 'Copied Token!' : 'Copy Token'}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider border-zinc-300 dark:border-zinc-700"
+                            onClick={handleDownloadQr}
+                          >
+                            <Download className="w-3.5 h-3.5 text-maroon dark:text-golden" /> Save PNG
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider border-zinc-300 dark:border-zinc-700"
+                            onClick={() => openCheckpointPrompt(checkpointTab, { regenerate: true })}
+                            disabled={!windowOpen}
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-1 text-center max-w-md">
+                          {checkpointTab === 'start'
+                            ? 'Generate the start-of-class QR. Students scan it once at the beginning of the lecture.'
+                            : 'Generate the end-of-class QR in the final 5–10 minutes. Zero grace: late check-outs are rejected.'}
+                        </p>
+                        <Button
+                          className="mt-3 bg-maroon hover:bg-maroon-dark dark:bg-golden dark:hover:bg-golden-dark dark:text-maroon-dark flex items-center gap-2"
+                          onClick={() => openCheckpointPrompt(checkpointTab)}
+                          disabled={checkpointTab === 'end' && !session.isActive}
+                        >
+                          <Play className="w-4 h-4" /> {checkpointTab === 'start' ? 'Generate Start QR' : 'Generate End QR'}
+                        </Button>
+                        {checkpointTab === 'end' && !session.isActive ? (
+                          <p className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                            Arm Step 1 before generating the end-of-class QR.
+                          </p>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                  <div className="mt-4 flex items-start gap-2 border border-dashed border-maroon/40 p-3 dark:border-golden/30">
+                    <ShieldCheck className="mt-0.5 h-4 w-4 text-maroon dark:text-golden" />
+                    <p className="text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">
+                      Online checkpoints collect no location (RA 10173). Students may scan from a second device or
+                      upload a screenshot — the meeting PIN blocks forwarded screenshots.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })()}
+
           {/* Session Info */}
           <Card className="dark:border-golden/15 dark:bg-surface-dark">
             <CardContent className="p-6">
@@ -502,16 +823,35 @@ export default function SessionDetailPage() {
                     {session.isActive ? 'Active' : 'Inactive'}
                   </Badge>
                 </div>
-                {session.isActive && session.qrValidityMinutes ? (
+                {session.isActive && !onlineMode && session.qrValidityMinutes ? (
                   <div>
                     <p className="text-[10px] uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-1">QR Validity</p>
                     <p className="text-sm font-semibold dark:text-white">{session.qrValidityMinutes} min</p>
                   </div>
                 ) : null}
-                <div>
-                  <p className="text-[10px] uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-1">Grace Period</p>
-                  <p className="text-sm font-semibold dark:text-white">{session.gracePeriodMinutes} min</p>
-                </div>
+                {onlineMode ? (
+                  <>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-1">Start checkpoint</p>
+                      <p className="text-sm font-semibold dark:text-white">
+                        {session.startQrValiditySeconds ?? 90}s + {session.startGraceMinutes ?? 0}m grace
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-1">End checkpoint</p>
+                      <p className="text-sm font-semibold dark:text-white">{session.endQrValiditySeconds ?? 90}s · no grace</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-1">Meeting PIN</p>
+                      <p className="text-sm font-semibold dark:text-white">{session.pinRequired ? 'Required on armed checkpoints' : 'Not used'}</p>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-1">Grace Period</p>
+                    <p className="text-sm font-semibold dark:text-white">{session.gracePeriodMinutes} min</p>
+                  </div>
+                )}
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-1">Room</p>
                   <p className="text-sm font-semibold dark:text-white">{session.room || '—'}</p>
@@ -582,6 +922,7 @@ export default function SessionDetailPage() {
                 {[
                   { label: 'Present', value: presentCount, color: 'text-golden' },
                   { label: 'Late', value: lateCount, color: 'text-maroon dark:text-red-300' },
+                  { label: 'Incomplete', value: incompleteCount, color: 'text-maroon-dark dark:text-golden' },
                   { label: 'Absent', value: absentCount, color: 'text-maroon-dark dark:text-red-400' },
                   { label: 'Excused', value: excusedCount, color: 'text-maroon dark:text-golden' },
                   { label: 'Pending', value: pendingCount, color: 'text-zinc-500 dark:text-zinc-400' },
@@ -596,7 +937,7 @@ export default function SessionDetailPage() {
 
               {/* Filters */}
               <div className="flex gap-2 mb-4 flex-wrap">
-                {(['all', 'present', 'late', 'absent', 'excused', 'pending', 'disputed'] as const).map((f) => (
+                {(['all', 'present', 'late', 'incomplete', 'absent', 'excused', 'pending', 'disputed'] as const).map((f) => (
                   <button
                     key={f}
                     className={`px-3 py-1 text-xs border ${filter === f ? 'bg-maroon dark:bg-golden border-maroon dark:border-golden text-white dark:text-maroon-dark' : 'bg-zinc-100 dark:bg-surface-dark border-zinc-300 dark:border-golden/15 text-zinc-500 dark:text-zinc-400'}`}
@@ -628,6 +969,32 @@ export default function SessionDetailPage() {
                           <p className="text-xs text-zinc-500 dark:text-zinc-400">{student.studentId}</p>
                         </div>
                         <div className="flex items-center gap-2">
+                          {onlineMode ? (
+                            <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider">
+                              <span
+                                className={`px-1.5 py-0.5 border ${
+                                  record?.checkInStatus
+                                    ? record.checkInStatus === 'late'
+                                      ? 'border-maroon bg-maroon text-white'
+                                      : 'border-golden bg-golden/20 text-maroon dark:text-golden'
+                                    : 'border-zinc-300 text-zinc-400 dark:border-zinc-700'
+                                }`}
+                                title={record?.checkInTime ? `Check-in: ${new Date(record.checkInTime).toLocaleTimeString()}` : 'No check-in'}
+                              >
+                                In{record?.checkInStatus === 'late' ? ' · late' : record?.checkInStatus ? ' ✓' : ' —'}
+                              </span>
+                              <span
+                                className={`px-1.5 py-0.5 border ${
+                                  record?.checkOutStatus
+                                    ? 'border-golden bg-golden text-maroon-dark'
+                                    : 'border-zinc-300 text-zinc-400 dark:border-zinc-700'
+                                }`}
+                                title={record?.checkOutTime ? `Check-out: ${new Date(record.checkOutTime).toLocaleTimeString()}` : 'No check-out'}
+                              >
+                                Out{record?.checkOutStatus ? ' ✓' : ' —'}
+                              </span>
+                            </span>
+                          ) : null}
                           {record?.manuallySet && <Edit3 className="w-3.5 h-3.5 text-maroon dark:text-golden" />}
                           <span className={`px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[status] || STATUS_STYLES.pending}`}>
                             {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -694,10 +1061,62 @@ export default function SessionDetailPage() {
             </div>
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setShowValidityPrompt(false)}>Cancel</Button>
-              <Button className="flex-1 bg-maroon hover:bg-maroon-dark dark:bg-golden dark:hover:bg-golden-dark dark:text-maroon-dark" onClick={handleGenerateQr} disabled={generatingQr}>
+              <Button className="flex-1 bg-maroon hover:bg-maroon-dark dark:bg-golden dark:hover:bg-golden-dark dark:text-maroon-dark" onClick={() => void handleGenerateQr(false)} disabled={generatingQr}>
                 {generatingQr ? 'Generating…' : 'Generate'}
               </Button>
             </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isTeacher && teacherLocationConflict !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            const epoch = teacherConflictEpochRef.current
+            if (epoch) requestCoordinatorRef.current.abortMutation(epoch)
+            teacherConflictEpochRef.current = 0
+            setTeacherLocationConflict(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm dark:bg-surface-dark dark:border-golden/15 p-8" role="alertdialog">
+          <DialogHeader className="items-center text-center">
+            <ShieldCheck className="w-10 h-10 text-maroon dark:text-golden mx-auto mb-3" />
+            <DialogTitle className="dark:text-white">Outside the classroom geofence</DialogTitle>
+            <DialogDescription className="text-center text-sm">
+              Your device is {teacherLocationConflict?.distanceMeters ?? 0} m from the classroom geofence (allowed:
+              {' '}
+              {teacherLocationConflict?.allowedDistanceMeters ?? 150} m). You can still activate in person — the
+              confirmation is recorded in the institutional audit log.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                const epoch = teacherConflictEpochRef.current
+                if (epoch) requestCoordinatorRef.current.abortMutation(epoch)
+                teacherConflictEpochRef.current = 0
+                setTeacherLocationConflict(null)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 bg-maroon hover:bg-maroon-dark dark:bg-golden dark:hover:bg-golden-dark dark:text-maroon-dark"
+              disabled={generatingQr}
+              onClick={() => {
+                const epoch = teacherConflictEpochRef.current
+                if (epoch) requestCoordinatorRef.current.abortMutation(epoch)
+                teacherConflictEpochRef.current = 0
+                setTeacherLocationConflict(null)
+                void handleGenerateQr(true)
+              }}
+            >
+              {generatingQr ? 'Activating…' : 'Activate anyway'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -706,7 +1125,11 @@ export default function SessionDetailPage() {
           {qrDataUrl && (
             <>
             <div className="text-center">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Class Session QR Code</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                {onlineMode
+                  ? `${checkpointTab === 'start' ? 'Start-of-class check-in' : 'End-of-class check-out'} QR`
+                  : 'Class Session QR Code'}
+              </p>
               <DialogTitle className="text-xl text-maroon dark:text-golden">{session.subjectName}</DialogTitle>
               <DialogDescription className="sr-only">
                 Full-screen QR code for students to scan for this attendance session.
@@ -716,6 +1139,15 @@ export default function SessionDetailPage() {
             <div className="p-4 bg-white border border-zinc-200 shadow-inner">
               <Image src={qrDataUrl} width={340} height={340} unoptimized alt="Scannable session QR code" />
             </div>
+
+            {onlineMode && (checkpointTab === 'start' ? startPinPlain : endPinPlain) ? (
+              <div className="flex items-center gap-2 border border-golden bg-maroon px-4 py-2">
+                <KeyRound className="w-4 h-4 text-golden" />
+                <span className="text-sm font-bold uppercase tracking-widest text-golden">
+                  PIN {checkpointTab === 'start' ? startPinPlain : endPinPlain} · announce aloud
+                </span>
+              </div>
+            ) : null}
 
             {countdown && (
               <p className={`text-sm font-mono font-bold tracking-widest uppercase ${countdown === 'Grace ended' ? 'text-red-500' : 'text-zinc-400'}`}>
@@ -741,6 +1173,119 @@ export default function SessionDetailPage() {
             </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isTeacher && showCheckpointPrompt} onOpenChange={setShowCheckpointPrompt}>
+        <DialogContent className="max-w-sm dark:bg-surface-dark dark:border-golden/15 p-8">
+          <DialogHeader className="items-center text-center">
+            <KeyRound className="w-10 h-10 text-maroon dark:text-golden mx-auto mb-3" />
+            <DialogTitle className="dark:text-white">
+              {regeneratingCheckpoint ? 'Regenerate' : 'Generate'} {checkpointTab === 'start' ? 'Start' : 'End'} QR
+            </DialogTitle>
+            <DialogDescription className="text-xs text-center">
+              {checkpointTab === 'start'
+                ? 'Students check in once at the start of the online lecture. The QR stays valid for 60–300 seconds.'
+                : 'Students check out at the end of the lecture. Zero grace: late check-outs are rejected.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mb-6">
+            <div>
+              <label htmlFor="checkpoint-validity" className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">
+                Validity (seconds)
+              </label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="checkpoint-validity"
+                  type="number"
+                  className="w-full text-center font-bold"
+                  value={checkpointValiditySeconds}
+                  onChange={(e) => setCheckpointValiditySeconds(e.target.value)}
+                  min={60}
+                  max={300}
+                />
+                <span className="text-sm text-zinc-500 dark:text-zinc-400">sec</span>
+              </div>
+            </div>
+            {checkpointTab === 'start' ? (
+              <div>
+                <label htmlFor="checkpoint-grace" className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">
+                  Grace period (minutes)
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="checkpoint-grace"
+                    type="number"
+                    className="w-full text-center font-bold"
+                    value={checkpointGraceMinutes}
+                    onChange={(e) => setCheckpointGraceMinutes(e.target.value)}
+                    min={0}
+                    max={60}
+                  />
+                  <span className="text-sm text-zinc-500 dark:text-zinc-400">min</span>
+                </div>
+              </div>
+            ) : null}
+            <div className="border border-zinc-200 p-3 dark:border-zinc-700">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={checkpointPinRequired}
+                  onChange={(e) => {
+                    setCheckpointPinRequired(e.target.checked)
+                    if (!e.target.checked) setCheckpointPin('')
+                  }}
+                  className="h-4 w-4 accent-maroon"
+                />
+                Require meeting PIN
+              </label>
+              {checkpointPinRequired ? (
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={4}
+                      value={checkpointPin}
+                      onChange={(e) => setCheckpointPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      placeholder="2–4 digits"
+                      className="w-full text-center font-bold tracking-[0.3em]"
+                      aria-label="Meeting PIN"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCheckpointPin(randomMeetingPin(3, (length) => crypto.getRandomValues(new Uint8Array(length))))}
+                      className="shrink-0"
+                    >
+                      Auto
+                    </Button>
+                  </div>
+                  <p className="text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">
+                    Announce this PIN verbally in the meeting. Screenshots cannot carry audio.
+                  </p>
+                </div>
+              ) : null}
+            </div>
+            {checkpointPinError ? (
+              <p className="text-xs font-semibold text-red-600 dark:text-red-300" role="alert">
+                {checkpointPinError}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setShowCheckpointPrompt(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 bg-maroon hover:bg-maroon-dark dark:bg-golden dark:hover:bg-golden-dark dark:text-maroon-dark"
+              onClick={() => void handleGenerateCheckpointQr()}
+              disabled={generatingQr}
+            >
+              {generatingQr ? 'Generating…' : regeneratingCheckpoint ? 'Regenerate' : 'Generate'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -18,7 +18,23 @@ const qrMock = vi.hoisted(() => vi.fn())
 const subscribeMock = vi.hoisted(() => vi.fn(() => vi.fn()))
 const addNotificationMock = vi.hoisted(() => vi.fn())
 
-vi.mock('@/lib/api-client', () => ({ api: apiMock }))
+vi.mock('@/lib/api-client', () => ({
+  api: apiMock,
+  // Match the real class shape used by the cockpit's override branch.
+  ApiHttpError: class HttpApiError extends Error {
+    constructor(
+      message: string,
+      readonly status = 0,
+      readonly code?: string,
+      readonly remainingMinutes?: number,
+      readonly distanceMeters?: number,
+      readonly allowedDistanceMeters?: number,
+      readonly canRequestOverride?: boolean,
+    ) {
+      super(message)
+    }
+  },
+}))
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: 'session-1' }),
   useRouter: () => routerMock,
@@ -44,6 +60,7 @@ const session: Session = {
   id: 'session-1',
   sectionId: 'section-1',
   subjectName: 'Software Engineering',
+  mode: 'in_person',
   date: '2026-08-06',
   startTime: '08:00',
   endTime: '10:00',

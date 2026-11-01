@@ -60,6 +60,7 @@ const DISPUTE_LABELS: Record<DisputeReason, string> = {
   rooted_device: 'Rooted / Jailbroken Device',
   hook_detected: 'Hooking Tool Detected',
   emulator_detected: 'Android Emulator Detected',
+  concurrent_session_conflict: 'Concurrent Session',
 }
 
 const DISPUTE_ICONS: Record<DisputeReason, React.ElementType> = {
@@ -80,6 +81,7 @@ const DISPUTE_ICONS: Record<DisputeReason, React.ElementType> = {
   rooted_device: ShieldAlert,
   hook_detected: Cpu,
   emulator_detected: Smartphone,
+  concurrent_session_conflict: Clock,
 }
 
 export default function DisputesPage() {

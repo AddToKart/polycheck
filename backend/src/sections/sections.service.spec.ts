@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException } from '@nestjs/common'
 import { SectionsService } from './sections.service'
 
 const settings = { getInteger: jest.fn().mockResolvedValue(14) }
@@ -110,6 +110,7 @@ describe('SectionsService', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'enrollment-2' }),
       },
+      enrollmentTombstone: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
       section: { update: jest.fn().mockResolvedValue({}) },
     }
     const prisma = {
@@ -122,6 +123,14 @@ describe('SectionsService', () => {
     await service.enrollStudent('section-1', 'teacher-1', 'student-2')
 
     expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.enrollment.findUnique.mock.invocationCallOrder[0],
+    )
+    // Explicit teacher enrollment lifts an enrollment tombstone inside the
+    // guarded transaction (V3 re-admission authority).
+    expect(tx.enrollmentTombstone.deleteMany).toHaveBeenCalledWith({
+      where: { sectionId: 'section-1', studentId: 'student-2' },
+    })
+    expect(tx.enrollmentTombstone.deleteMany.mock.invocationCallOrder[0]).toBeGreaterThan(
       tx.enrollment.findUnique.mock.invocationCallOrder[0],
     )
     expect(tx.section.update).toHaveBeenCalledWith({
@@ -139,6 +148,7 @@ describe('SectionsService', () => {
       },
       sectionRole: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
       sessionPermission: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      enrollmentTombstone: { upsert: jest.fn().mockResolvedValue({}) },
       section: { findUnique: jest.fn().mockResolvedValue(section), update: jest.fn().mockResolvedValue({}) },
     }
     const prisma = {
@@ -164,6 +174,15 @@ describe('SectionsService', () => {
     expect(tx.enrollment.delete).toHaveBeenCalledWith({
       where: { studentId_sectionId: { studentId: 'student-1', sectionId: 'section-1' } },
     })
+    // V3: the removal is recorded so an unexpired code cannot re-admit.
+    expect(tx.enrollmentTombstone.upsert).toHaveBeenCalledWith({
+      where: { sectionId_studentId: { sectionId: 'section-1', studentId: 'student-1' } },
+      create: { sectionId: 'section-1', studentId: 'student-1', removedById: 'teacher-1' },
+      update: { removedById: 'teacher-1', removedAt: expect.any(Date) },
+    })
+    expect(tx.enrollmentTombstone.upsert.mock.invocationCallOrder[0]).toBeGreaterThan(
+      tx.enrollment.delete.mock.invocationCallOrder[0],
+    )
     expect(tx.section.update).toHaveBeenCalledWith({
       where: { id: 'section-1' },
       data: { studentCount: { decrement: 1 } },
@@ -187,5 +206,111 @@ describe('SectionsService', () => {
     const days = (data.enrollmentCodeExpiry.getTime() - Date.now()) / 86_400_000
     expect(days).toBeGreaterThan(29.9)
     expect(days).toBeLessThan(30.1)
+  })
+
+  describe('enrollment tombstone (V3 anti-zombie)', () => {
+    async function blockedResponse(promise: Promise<unknown>) {
+      await expect(promise).rejects.toThrow(ForbiddenException)
+      const settled = promise.catch((error) => error)
+      const error = (await settled) as { getResponse?: () => unknown }
+      return error.getResponse?.() ?? error
+    }
+
+    it('rejects a removed student at BOTH student enroll-code routes with a typed 403', async () => {
+      const prisma = {
+        section: {
+          // enrollByCode looks up by code; enrollViaCode by id.
+          findUnique: jest.fn().mockImplementation(async () => ({
+            ...section,
+            enrollmentCodeExpiry: null,
+          })),
+        },
+        enrollmentTombstone: { findFirst: jest.fn().mockResolvedValue({ id: 'tombstone-1' }) },
+      }
+      const service = new SectionsService(prisma as never, settings as never)
+
+      const byCode = await blockedResponse(service.enrollByCode('student-1', 'ABC123'))
+      expect(byCode).toMatchObject({
+        code: 'student_blocked_from_section',
+        message: expect.stringContaining('removed from this section by the instructor'),
+      })
+
+      const viaCode = await blockedResponse(service.enrollViaCode('section-1', 'student-1', 'CODE123'))
+      expect(viaCode).toMatchObject({ code: 'student_blocked_from_section' })
+
+      // Enrollment must never be created for a blocked student.
+      expect((prisma as { $transaction?: unknown }).$transaction).toBeUndefined()
+      expect(prisma.enrollmentTombstone.findFirst).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not consult the gate when the code itself is invalid or expired', async () => {
+      const prisma = {
+        section: {
+          findUnique: jest.fn().mockResolvedValue({
+            ...section,
+            enrollmentCodeExpiry: new Date(Date.now() - 60_000),
+          }),
+        },
+        enrollmentTombstone: { findFirst: jest.fn() },
+      }
+      const service = new SectionsService(prisma as never, settings as never)
+
+      await expect(service.enrollByCode('student-1', 'ABC123')).rejects.toThrow(BadRequestException)
+      // Expired-code rejection wins: the gate only fires for otherwise-valid codes.
+      expect(prisma.enrollmentTombstone.findFirst).not.toHaveBeenCalled()
+    })
+
+    it('allows an unblocked student through the gate without writing tombstones', async () => {
+      const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
+        enrollment: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'enrollment-new' }),
+        },
+        enrollmentTombstone: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          deleteMany: jest.fn(),
+          upsert: jest.fn(),
+        },
+        section: { update: jest.fn().mockResolvedValue({}) },
+      }
+      const prisma = {
+        section: { findUnique: jest.fn().mockResolvedValue({ ...section, enrollmentCodeExpiry: null }) },
+        enrollmentTombstone: { findFirst: jest.fn().mockResolvedValue(null) },
+        $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
+      }
+      const service = new SectionsService(prisma as never, settings as never)
+
+      const enrollment = await service.enrollByCode('student-9', 'ABC123')
+
+      expect(enrollment).toMatchObject({ id: 'enrollment-new' })
+      // Student code enrollment must never clear or write tombstones.
+      expect(tx.enrollmentTombstone.deleteMany).not.toHaveBeenCalled()
+      expect(tx.enrollmentTombstone.upsert).not.toHaveBeenCalled()
+    })
+
+    it('teacher enrollment clears the tombstone before creating the enrollment', async () => {
+      const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
+        enrollment: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'enrollment-re' }),
+        },
+        enrollmentTombstone: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+        section: { update: jest.fn().mockResolvedValue({}) },
+      }
+      const prisma = {
+        section: { findUnique: jest.fn().mockResolvedValue(section) },
+        user: { findUnique: jest.fn().mockResolvedValue({ id: 'student-1', role: 'student' }) },
+        $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
+      }
+      const service = new SectionsService(prisma as never, settings as never)
+
+      await service.enrollStudent('section-1', 'teacher-1', 'student-1')
+
+      expect(tx.enrollmentTombstone.deleteMany).toHaveBeenCalledWith({
+        where: { sectionId: 'section-1', studentId: 'student-1' },
+      })
+    })
   })
 })

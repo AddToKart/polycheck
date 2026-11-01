@@ -41,6 +41,10 @@ export const envSchema = z
     AI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(30_000),
     AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(64).max(8_192).default(1_024),
     AI_MAX_MESSAGES_PER_DAY: z.coerce.number().int().min(1).max(10_000).default(100),
+    CONCURRENT_SESSION_CONFLICT_DETECTION: booleanValue.default(true),
+    CONCURRENT_SESSION_LOOKBACK_MINUTES: z.coerce.number().int().min(1).max(720).default(30),
+    TEACHER_ACTIVATION_LOCATION_ENFORCEMENT: booleanValue.default(true),
+    TEACHER_ACTIVATION_TOLERANCE_METERS: z.coerce.number().int().min(30).max(2_000).default(150),
     EXPO_ACCESS_TOKEN: z.string().optional().or(z.literal('')),
   })
   .superRefine((env, ctx) => {

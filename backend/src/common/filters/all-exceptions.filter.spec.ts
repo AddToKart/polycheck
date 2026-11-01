@@ -1,5 +1,5 @@
 import type { ArgumentsHost } from '@nestjs/common'
-import { BadRequestException, Logger } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Logger, ServiceUnavailableException } from '@nestjs/common'
 import type { Request, Response } from 'express'
 import { AllExceptionsFilter } from './all-exceptions.filter'
 
@@ -77,6 +77,47 @@ describe('AllExceptionsFilter', () => {
       code: 'device_cooldown_active',
       remainingMinutes: 42,
       path: '/auth/mobile/login/student',
+      timestamp: expect.any(String),
+    })
+  })
+
+  it('preserves the maintenance 503 surface with its estimated resumption', () => {
+    const exception = new ServiceUnavailableException({
+      code: 'system_maintenance',
+      message: 'Campus maintenance',
+      estimatedEnd: '2026-11-01T10:00:00.000Z',
+    })
+
+    filter.catch(exception, makeHost('/attendance/summaries'))
+
+    expect(response.status).toHaveBeenCalledWith(503)
+    expect(response.json).toHaveBeenCalledWith({
+      statusCode: 503,
+      error: 'ServiceUnavailableException',
+      message: 'Campus maintenance',
+      code: 'system_maintenance',
+      estimatedEnd: '2026-11-01T10:00:00.000Z',
+      path: '/attendance/summaries',
+      timestamp: expect.any(String),
+    })
+  })
+
+  it('preserves the missing designation on suite 403s', () => {
+    const exception = new ForbiddenException({
+      code: 'designation_required',
+      designation: 'user_admin',
+      message: 'This action requires the Registrar designation',
+    })
+
+    filter.catch(exception, makeHost('/users'))
+
+    expect(response.json).toHaveBeenCalledWith({
+      statusCode: 403,
+      error: 'ForbiddenException',
+      message: 'This action requires the Registrar designation',
+      code: 'designation_required',
+      designation: 'user_admin',
+      path: '/users',
       timestamp: expect.any(String),
     })
   })

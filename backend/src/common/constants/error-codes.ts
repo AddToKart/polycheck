@@ -25,6 +25,9 @@ export const ErrorCode = {
   DEVICE_COOLDOWN_ACTIVE: 'device_cooldown_active',
   TEACHER_POLICY_DISABLED: 'teacher_policy_disabled',
   TEACHER_PERMISSION_DISABLED: 'teacher_permission_disabled',
+  STUDENT_BLOCKED_FROM_SECTION: 'student_blocked_from_section',
+  CONCURRENT_SESSION_CONFLICT: 'concurrent_session_conflict',
+  TEACHER_LOCATION_OUTSIDE_GEOFENCE: 'teacher_location_outside_geofence',
   IMPORT_CHECKSUM_MISMATCH: 'import_checksum_mismatch',
   IMPORT_QUEUE_UNAVAILABLE: 'import_queue_unavailable',
 } as const

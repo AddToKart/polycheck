@@ -10,6 +10,7 @@ import type { RequestUser } from '../auth/authenticated-principal'
 import type { CreateSectionDto } from './dto/create-section.dto'
 import type { UpdateSectionDto } from './dto/update-section.dto'
 import { DayOfWeek, Prisma } from '../prisma/client'
+import { ErrorCode } from '../common/constants/error-codes'
 import { randomInt } from 'crypto'
 import { adminCanAccessSection, adminEnrollmentWhere, adminSectionWhere } from '../common/admin-scope'
 import { lockSection, lockStudentSection } from '../common/student-section-lock'
@@ -244,6 +245,8 @@ export class SectionsService {
       throw new BadRequestException('Enrollment code has expired')
     }
 
+    await this.assertNotTombstoned(sectionId, studentId)
+
     // Check if already enrolled
     const existing = await this.prisma.enrollment.findUnique({
       where: { studentId_sectionId: { studentId, sectionId } },
@@ -253,6 +256,24 @@ export class SectionsService {
     return this.createEnrollment(studentId, sectionId)
   }
 
+  /**
+   * V3 anti-zombie gate: a student the instructor removed cannot re-enter an
+   * unexpired enrollment code. Only an explicit teacher action (section
+   * enrollment of that student, bulk import) lifts the block.
+   */
+  private async assertNotTombstoned(sectionId: string, studentId: string) {
+    const tombstone = await this.prisma.enrollmentTombstone.findFirst({
+      where: { sectionId, studentId },
+      select: { id: true },
+    })
+    if (tombstone) {
+      throw new ForbiddenException({
+        message: 'You were removed from this section by the instructor and cannot re-enroll with this code',
+        code: ErrorCode.STUDENT_BLOCKED_FROM_SECTION,
+      })
+    }
+  }
+
   async enrollByCode(studentId: string, enrollmentCode: string) {
     const normalizedCode = enrollmentCode.trim().toUpperCase()
     const section = await this.prisma.section.findUnique({ where: { enrollmentCode: normalizedCode } })
@@ -260,6 +281,7 @@ export class SectionsService {
     if (section.enrollmentCodeExpiry && section.enrollmentCodeExpiry < new Date()) {
       throw new BadRequestException('Enrollment code has expired')
     }
+    await this.assertNotTombstoned(section.id, studentId)
     return this.createEnrollment(studentId, section.id)
   }
 
@@ -276,7 +298,8 @@ export class SectionsService {
       throw new BadRequestException('Invalid student')
     }
 
-    return this.createEnrollment(studentId, sectionId)
+    // Explicit teacher action re-admits a previously removed student.
+    return this.createEnrollment(studentId, sectionId, { clearTombstone: true })
   }
 
   async removeStudent(sectionId: string, teacherId: string, studentId: string) {
@@ -299,6 +322,13 @@ export class SectionsService {
         data: { isActive: false },
       })
       await tx.enrollment.delete({ where: { studentId_sectionId: { studentId, sectionId } } })
+      // V3 anti-zombie: record the removal so an unexpired enrollment code
+      // cannot re-admit the student. Teacher enrollment clears this row.
+      await tx.enrollmentTombstone.upsert({
+        where: { sectionId_studentId: { sectionId, studentId } },
+        create: { sectionId, studentId, removedById: teacherId },
+        update: { removedById: teacherId, removedAt: new Date() },
+      })
       await tx.section.update({
         where: { id: sectionId },
         data: { studentCount: { decrement: 1 } },
@@ -390,7 +420,7 @@ export class SectionsService {
     return new Date(Date.now() + days * MS_PER_DAY)
   }
 
-  private async createEnrollment(studentId: string, sectionId: string) {
+  private async createEnrollment(studentId: string, sectionId: string, options: { clearTombstone?: boolean } = {}) {
     try {
       return await this.prisma.$transaction(async (tx) => {
         await lockSection(tx, sectionId)
@@ -399,6 +429,12 @@ export class SectionsService {
           where: { studentId_sectionId: { studentId, sectionId } },
         })
         if (existing) throw new ConflictException('Already enrolled in this section')
+
+        if (options.clearTombstone) {
+          // The instructor explicitly re-admitted this student: lift the
+          // enrollment-code block inside the guarded transaction.
+          await tx.enrollmentTombstone.deleteMany({ where: { sectionId, studentId } })
+        }
 
         const enrollment = await tx.enrollment.create({ data: { studentId, sectionId } })
         await tx.section.update({

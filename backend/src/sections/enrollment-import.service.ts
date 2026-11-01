@@ -170,6 +170,14 @@ export class EnrollmentImportService {
           ? (await tx.enrollment.createMany({ data: enrollmentData, skipDuplicates: true })).count
           : 0
 
+        if (enrollmentData.length > 0) {
+          // Bulk import is an explicit teacher re-admission: lift the
+          // enrollment tombstones for every created enrollment (V3).
+          await tx.enrollmentTombstone.deleteMany({
+            where: { sectionId, studentId: { in: enrollmentData.map((row) => row.studentId) } },
+          })
+        }
+
         // Reconcile the cached counter with the authoritative row count in a
         // single write — also self-heals prior drift and idempotent re-runs.
         const studentCount = await tx.enrollment.count({ where: { sectionId } })
