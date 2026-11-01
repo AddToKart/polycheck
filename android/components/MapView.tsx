@@ -164,7 +164,7 @@ function html(
   });
 
   var statusColors = ${JSON.stringify(statusColors)};
-  var statusLabels = { present: 'Present', late: 'Late', absent: 'Absent', pending: 'Pending', disputed: 'Disputed', excused: 'Excused' };
+  var statusLabels = { present: 'Present', late: 'Late', incomplete: 'Incomplete', absent: 'Absent', pending: 'Pending', disputed: 'Disputed', excused: 'Excused' };
   var lateStatusTextColor = '${pupColors.maroonDark}';
 
   var pinMarkers = [];

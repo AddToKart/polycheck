@@ -12,6 +12,7 @@ import type {
   SystemReportStats,
 } from '@polycheck/shared'
 import { REPORT_CATEGORY_LABELS, REPORT_SEVERITY_LABELS, REPORT_STATUS_LABELS } from '@polycheck/shared'
+import { canAccessItOperations } from '@polycheck/shared'
 import { api, ApiHttpError } from '@/lib/api-client'
 import { API_BASE } from '@/lib/api-config'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -55,7 +56,7 @@ export default function SystemReportsPage() {
   useEffect(() => {
     const syncUser = () => {
       const current = api.getCurrentUser()
-      if (!current || current.role !== 'super_admin') {
+      if (!current || !canAccessItOperations(current)) {
         router.replace('/faculty')
         return
       }
@@ -77,7 +78,7 @@ export default function SystemReportsPage() {
   }, [searchInput])
 
   const load = useCallback(async (signal?: AbortSignal) => {
-    if (api.getCurrentUser()?.role !== 'super_admin') return
+    if (!canAccessItOperations(api.getCurrentUser())) return
     setLoading(true)
     setError('')
     try {

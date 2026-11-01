@@ -1,4 +1,4 @@
-import type { User, Student, Teacher, Subject, Section, Session, AttendanceRecord, AttendanceSummary, AttendanceStatus, StudentDisputeReason, Enrollment, SectionRole, SectionRoleType, SessionPermission, ProofOfClass } from './index'
+import type { User, Student, Teacher, Subject, Section, Session, SessionMode, AttendanceRecord, AttendanceSummary, AttendanceStatus, StudentDisputeReason, Enrollment, SectionRole, SectionRoleType, SessionPermission, ProofOfClass } from './index'
 import type {
   AdminOverview,
   AdminUserFilters,
@@ -20,6 +20,7 @@ import type { AiCapabilities, AiChatSendInput, AiChatSendResult, AiChatThread, A
 import type { AttendanceStanding } from './standing'
 import type { AppNotification, NotificationReadInput, PushTokenInput } from './notification'
 import type { StudentAtRisk } from './at-risk'
+import type { MaintenanceStatus } from './maintenance'
 import type { ExcuseDecision, ExcuseReason } from './attendance'
 import type {
   CreateSystemReportInput,
@@ -127,11 +128,16 @@ export interface CreateSessionInput {
   startTime: string
   endTime: string
   room?: string
+  mode?: SessionMode
   /** Optional - set at QR generation time. Defaults to 15 if omitted. */
   qrValidityMinutes?: number
   /** Optional - set at QR generation time. Defaults to 15 if omitted. */
   gracePeriodMinutes?: number
-  geofence: { latitude: number; longitude: number; radiusMeters: number }
+  /** Online checkpoint timing defaults (60-300 seconds). */
+  startQrValiditySeconds?: number
+  startGraceMinutes?: number
+  endQrValiditySeconds?: number
+  geofence?: { latitude: number; longitude: number; radiusMeters: number }
   teacherId: string
   isRescheduled?: boolean
   rescheduledFromDate?: string
@@ -157,10 +163,33 @@ export interface DeviceSecurityEvidence {
 export interface ScanEvidenceInput {
   clientAttemptId: string
   accuracyMeters?: number
-  locationCapturedAt: string
+  locationCapturedAt?: string
   mocked?: boolean
   inputChannel: ScanInputChannel
   deviceSecurity?: DeviceSecurityEvidence
+  /** Meeting PIN for online checkpoints; never persisted or logged server-side. */
+  pin?: string
+}
+
+/** Optional teacher activation evidence for in-person sessions (V4). Absent
+ * coordinates keep today's behavior (offline-first activation); an off-campus
+ * fix requires the explicit override flag. Online sessions must never send
+ * coordinates (RA 10173 zero-GPS). */
+export interface TeacherActivationLocation {
+  latitude?: number
+  longitude?: number
+  override?: boolean
+}
+
+export interface GenerateCheckpointQrInput {
+  sessionId: string
+  checkpoint: 'start' | 'end'
+  validitySeconds: number
+  graceMinutes?: number
+  regenerate?: boolean
+  /** Plaintext PIN, hashed locally; never transmitted. */
+  pin?: string
+  teacherLocation?: TeacherActivationLocation
 }
 
 export interface PrivacyNotice {
@@ -190,11 +219,15 @@ export interface BulkSessionInput {
   startTime: string
   endTime: string
   room?: string
+  mode?: SessionMode
   /** Optional - set at QR generation time. Defaults to 15 if omitted. */
   qrValidityMinutes?: number
   /** Optional - set at QR generation time. Defaults to 15 if omitted. */
   gracePeriodMinutes?: number
-  geofence: { latitude: number; longitude: number; radiusMeters: number }
+  startQrValiditySeconds?: number
+  startGraceMinutes?: number
+  endQrValiditySeconds?: number
+  geofence?: { latitude: number; longitude: number; radiusMeters: number }
   teacherId: string
 }
 
@@ -245,6 +278,7 @@ export interface AttendanceReport {
     pending: number
     disputed: number
     excused: number
+    incomplete: number
   }
   summaries: AttendanceReportSummary[]
 }
@@ -266,6 +300,7 @@ export interface DashboardOverview {
     absent: number
     disputed: number
     excused: number
+    incomplete: number
   }>
   recentAttendance: Array<{
     id: string
@@ -349,7 +384,13 @@ export interface ApiClient {
   getSessions(sectionId?: string): Promise<Session[]>
   getSession(id: string): Promise<Session>
   createSession(data: CreateSessionInput): Promise<Session>
-  generateQrCode(sessionId: string, validityMinutes: number, gracePeriodMinutes?: number): Promise<Session>
+  generateQrCode(
+    sessionId: string,
+    validityMinutes: number,
+    gracePeriodMinutes?: number,
+    teacherLocation?: TeacherActivationLocation,
+  ): Promise<Session>
+  generateCheckpointQrCode(input: GenerateCheckpointQrInput): Promise<Session>
   endSession(sessionId: string): Promise<Session>
 
   getAttendanceRecords(sessionId?: string): Promise<AttendanceRecord[]>
@@ -362,14 +403,26 @@ export interface ApiClient {
   getStudentAttendanceForSection(studentId: string, sectionId: string): Promise<AttendanceRecord[]>
   addAttendanceRecord(record: AttendanceRecord): Promise<AttendanceRecord>
   updateAttendanceStatus(recordId: string, status: AttendanceStatus): Promise<AttendanceRecord>
-  submitScan(sessionId: string, studentId: string, studentName: string, lat: number, lon: number, deviceId: string, qrToken: string, scannedAt?: string, evidence?: ScanEvidenceInput): Promise<AttendanceRecord | { error: string }>
+  submitScan(
+    sessionId: string,
+    studentId: string,
+    studentName: string,
+    lat: number | null,
+    lon: number | null,
+    deviceId: string,
+    qrToken: string,
+    scannedAt?: string,
+    evidence?: ScanEvidenceInput,
+    pin?: string,
+  ): Promise<AttendanceRecord | { error: string }>
   checkAttendance(
     sessionId: string,
     studentId: string,
-    lat: number,
-    lon: number,
+    lat: number | null,
+    lon: number | null,
     qrToken?: string,
     scannedAt?: string,
+    pin?: string,
   ): Promise<SubmitAttendanceResult>
 
   getDisputedRecords(sessionId?: string, filters?: { search?: string; status?: 'pending' | 'resolved' | 'all' }): Promise<AttendanceRecord[]>
@@ -437,6 +490,8 @@ export interface ApiClient {
   importSectionEnrollments(sectionId: string, data: EnrollImportRequest): Promise<EnrollImportResult>
   getSettings(): Promise<{ key: string; value: string; updatedAt: string }[]>
   setSetting(key: string, value: string): Promise<{ key: string; value: string; updatedAt: string }>
+  /** Public maintenance snapshot (no auth required; safe before login). */
+  getMaintenanceStatus(): Promise<MaintenanceStatus>
   getAuditLogs(filters?: AuditLogFilters): Promise<AuditLogPage>
   getMyAttendance(studentId: string): Promise<AttendanceRecord[]>
   getMySubjects(studentId: string): Promise<Subject[]>

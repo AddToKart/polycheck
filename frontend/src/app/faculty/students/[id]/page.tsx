@@ -20,6 +20,11 @@ const statusConfig: Record<AttendanceStatus, { label: string; bg: string; text: 
   excused: { label: 'Excused', bg: 'bg-maroon text-golden border border-golden', text: '' },
   pending: { label: 'Pending', bg: 'bg-white dark:bg-zinc-900', text: 'text-maroon' },
   disputed: { label: 'Disputed', bg: 'bg-zinc-900 dark:bg-black', text: 'text-amber-400' },
+  incomplete: {
+    label: 'Incomplete',
+    bg: 'bg-white dark:bg-transparent border border-dashed border-maroon dark:border-golden',
+    text: 'text-maroon-dark dark:text-golden',
+  },
 }
 
 const SESSION_PAGE_SIZE = 5

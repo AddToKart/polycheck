@@ -159,9 +159,36 @@ interface CampusMapProps {
 }
 
 export default function CampusMap({ session, records, isActive, refreshLabel }: CampusMapProps) {
-  const recordsWithCoords = records.filter(
-    (r) => r.coordinates && (r.coordinates.latitude !== 0 || r.coordinates.longitude !== 0)
-  )
+  const recordsWithCoords = records
+    .filter((r) => r.coordinates.latitude !== null && r.coordinates.longitude !== null)
+    .filter((r) => r.coordinates.latitude !== 0 || r.coordinates.longitude !== 0)
+
+  if (!session.geofence) {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <MapPin className="w-5 h-5 text-maroon dark:text-golden" />
+            <h2 className="text-base font-bold dark:text-white">Campus Map</h2>
+          </div>
+          {isActive && (
+            <span className="text-xs text-green-600 dark:text-green-400 font-medium">{refreshLabel}</span>
+          )}
+        </div>
+        <div className="flex flex-col items-start gap-2 border border-dashed border-maroon/40 bg-zinc-50 p-6 dark:border-golden/30 dark:bg-zinc-900">
+          <p className="text-xs font-bold uppercase tracking-widest text-maroon dark:text-golden">
+            Online session · No geofence
+          </p>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            Location is not collected for online sessions (RA 10173 data minimization). Attendance is
+            verified through start/end QR checkpoints{ session.pinRequired ? ' and the announced meeting PIN' : '' }.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const geofence = session.geofence
 
   return (
     <div className="space-y-3">
@@ -177,24 +204,26 @@ export default function CampusMap({ session, records, isActive, refreshLabel }: 
 
       <div className="h-[420px] rounded-lg overflow-hidden border border-gray-200 dark:border-golden/15">
         <Map
-          center={[session.geofence.longitude, session.geofence.latitude]}
+          center={[geofence.longitude, geofence.latitude]}
           zoom={17}
           className="w-full h-full"
         >
           <CampusBuildingsLayer campus={pupSantaMaria} />
           <GeofenceCircle
-            latitude={session.geofence.latitude}
-            longitude={session.geofence.longitude}
-            radiusMeters={session.geofence.radiusMeters}
+            latitude={geofence.latitude}
+            longitude={geofence.longitude}
+            radiusMeters={geofence.radiusMeters}
           />
 
           {recordsWithCoords.map((record) => {
             const color = getMarkerColor(record.status)
+            const latitude = record.coordinates.latitude as number
+            const longitude = record.coordinates.longitude as number
             return (
               <MapMarker
                 key={record.id}
-                latitude={record.coordinates.latitude}
-                longitude={record.coordinates.longitude}
+                latitude={latitude}
+                longitude={longitude}
               >
                 <MarkerContent>
                   <div

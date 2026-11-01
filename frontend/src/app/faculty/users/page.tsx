@@ -15,6 +15,7 @@ import {
   UserCog,
 } from 'lucide-react'
 import { api } from '@/lib/api-client'
+import { canAccessUserAdmin } from '@polycheck/shared'
 import type { AdminUserPage, User } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { BulkImportDialog } from '@/components/import/BulkImportDialog'
@@ -93,12 +94,14 @@ export default function UsersPage() {
   const departmentScoped = user
     ? isDepartmentScopedAdmin({ role: user.role, scope: (user as User & { scope?: string | null }).scope })
     : false
-  const effectiveDepartment = departmentScoped ? (user?.department ?? '') : filters.department
+  const registrar = Boolean(user?.role === 'teacher' && user.isUserRegistrar)
+  const effectiveDepartment =
+    departmentScoped || registrar ? (user?.department ?? '') : filters.department
 
   useEffect(() => {
     const syncUser = () => {
       const current = api.getCurrentUser()
-      if (!current || current.role !== 'super_admin') {
+      if (!current || !canAccessUserAdmin(current)) {
         router.replace('/faculty')
         return
       }
@@ -390,12 +393,13 @@ export default function UsersPage() {
             </div>
           </div>
 
-          {departmentScoped ? (
+          {departmentScoped || registrar ? (
             <div className="mb-4 flex items-start gap-3 border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
               <Info className="mt-0.5 h-4 w-4 shrink-0" />
               <p>
-                <span className="font-bold">Department scope</span> — this console only lists and manages
-                accounts in {user.department ?? 'your department'}. Institution-wide actions are hidden.
+                <span className="font-bold">{registrar ? 'Registrar scope' : 'Department scope'}</span> - this
+                console only lists and manages accounts in {user.department ?? 'your department'}.
+                Institution-wide actions are hidden.
               </p>
             </div>
           ) : null}
@@ -439,7 +443,7 @@ export default function UsersPage() {
                 </div>
               </div>
               <div>
-                {departmentScoped ? (
+                {departmentScoped || registrar ? (
                   <>
                     <p className="text-sm font-medium leading-none">Department</p>
                     <div className="mt-2 flex h-10 items-center border border-dashed border-zinc-300 px-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
@@ -562,7 +566,7 @@ export default function UsersPage() {
                                 <Button variant="outline" size="sm" onClick={() => setEditTarget(row)}>
                                   <Pencil className="h-3.5 w-3.5" /> Edit
                                 </Button>
-                                {assignableRoleFor(row) ? (
+                                {user.role === 'super_admin' && assignableRoleFor(row) ? (
                                   <Button variant="outline" size="sm" onClick={() => setRoleTarget(row)}>
                                     Change role
                                   </Button>
@@ -733,6 +737,7 @@ export default function UsersPage() {
         open={editTarget !== null}
         onOpenChange={(open) => { if (!open) setEditTarget(null) }}
         target={editTarget}
+        isSuperAdmin={user.role === 'super_admin'}
         onSaved={() => {
           setEditTarget(null)
           refresh()

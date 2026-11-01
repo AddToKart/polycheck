@@ -42,13 +42,50 @@ interface UserProfileDialogProps {
   onOpenChange: (open: boolean) => void
   target: User | null
   onSaved: (user: User) => void
+  /** Designations and email edits are super-admin-only (separation of duties). */
+  isSuperAdmin?: boolean
 }
 
-export function UserProfileDialog({ open, onOpenChange, target, onSaved }: UserProfileDialogProps) {
+interface DesignationValues {
+  isItCoordinator: boolean
+  isDepartmentHead: boolean
+  isUserRegistrar: boolean
+}
+
+const DESIGNATION_FIELDS = [
+  {
+    key: 'isItCoordinator' as const,
+    label: 'IT Coordinator',
+    description: 'Server status, issue triage, and maintenance controls.',
+  },
+  {
+    key: 'isDepartmentHead' as const,
+    label: 'Department Head',
+    description: 'Department-wide reports, excuse decisions, and at-risk oversight.',
+  },
+  {
+    key: 'isUserRegistrar' as const,
+    label: 'Registrar',
+    description: 'Department-scoped account creation, resets, and roster imports.',
+  },
+]
+
+export function UserProfileDialog({
+  open,
+  onOpenChange,
+  target,
+  onSaved,
+  isSuperAdmin = true,
+}: UserProfileDialogProps) {
   const { addNotification } = useNotifications()
   const [values, setValues] = useState(emptyValues)
   const [resetPermission, setResetPermission] = useState<PermissionChoice>('inherit')
   const [unbindPermission, setUnbindPermission] = useState<PermissionChoice>('inherit')
+  const [designations, setDesignations] = useState<DesignationValues>({
+    isItCoordinator: false,
+    isDepartmentHead: false,
+    isUserRegistrar: false,
+  })
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -57,6 +94,11 @@ export function UserProfileDialog({ open, onOpenChange, target, onSaved }: UserP
     setValues(editableValuesForUser(target))
     setResetPermission(choiceFor(target.canResetStudentPasswords))
     setUnbindPermission(choiceFor(target.canEmergencyUnbindDevices))
+    setDesignations({
+      isItCoordinator: target.isItCoordinator === true,
+      isDepartmentHead: target.isDepartmentHead === true,
+      isUserRegistrar: target.isUserRegistrar === true,
+    })
     setError('')
   }, [open, target])
 
@@ -81,6 +123,17 @@ export function UserProfileDialog({ open, onOpenChange, target, onSaved }: UserP
         input.canEmergencyUnbindDevices = nextUnbind
       }
     }
+    if (isSuperAdmin && target.role === 'teacher') {
+      if (designations.isItCoordinator !== (target.isItCoordinator === true)) {
+        input.isItCoordinator = designations.isItCoordinator
+      }
+      if (designations.isDepartmentHead !== (target.isDepartmentHead === true)) {
+        input.isDepartmentHead = designations.isDepartmentHead
+      }
+      if (designations.isUserRegistrar !== (target.isUserRegistrar === true)) {
+        input.isUserRegistrar = designations.isUserRegistrar
+      }
+    }
     if (!hasUserChanges(input)) {
       addNotification('info', 'No changes', 'Update at least one profile field before saving.')
       return
@@ -100,7 +153,7 @@ export function UserProfileDialog({ open, onOpenChange, target, onSaved }: UserP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit profile</DialogTitle>
           <DialogDescription>
@@ -131,7 +184,7 @@ export function UserProfileDialog({ open, onOpenChange, target, onSaved }: UserP
               />
             </div>
           ) : null}
-          {fields.has('email') ? (
+          {fields.has('email') && isSuperAdmin ? (
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="edit-user-email">PUP email</Label>
               <Input
@@ -168,6 +221,40 @@ export function UserProfileDialog({ open, onOpenChange, target, onSaved }: UserP
                 required
               />
             </div>
+          ) : null}
+          {isSuperAdmin && target.role === 'teacher' ? (
+            <fieldset className="space-y-4 rounded-xl border border-zinc-200 p-4 sm:col-span-2 dark:border-zinc-800">
+              <legend className="px-1 text-xs font-bold uppercase tracking-widest text-zinc-500">
+                Administrative designations
+              </legend>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Concurrent designations keep one teacher identity while granting a scoped administrative suite.
+                Department Head and Registrar require a department (set it above first).
+              </p>
+              {DESIGNATION_FIELDS.map((field) => (
+                <label
+                  key={field.key}
+                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800"
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 accent-maroon dark:accent-golden"
+                    checked={designations[field.key]}
+                    onChange={(event) =>
+                      setDesignations((current) => ({ ...current, [field.key]: event.target.checked }))
+                    }
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold text-zinc-800 dark:text-zinc-100">{field.label}</span>
+                    <span className="block text-xs text-zinc-500 dark:text-zinc-400">{field.description}</span>
+                  </span>
+                </label>
+              ))}
+              <p className="text-[11px] text-zinc-400">
+                Only super admins can change designations; every change is audited. Super admins already hold all
+                suites implicitly.
+              </p>
+            </fieldset>
           ) : null}
           {target.role === 'teacher' ? (
             <fieldset className="space-y-4 rounded-xl border border-zinc-200 p-4 sm:col-span-2 dark:border-zinc-800">

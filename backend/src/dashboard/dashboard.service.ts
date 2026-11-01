@@ -208,10 +208,11 @@ export class DashboardService {
       absent: number
       disputed: number
       excused: number
+      incomplete: number
     }
     const trends = new Map<string, TrendBucket>()
     for (const date of this.dateSequence(range.startDate, range.endDate)) {
-      trends.set(date, { date, present: 0, late: 0, absent: 0, disputed: 0, excused: 0 })
+      trends.set(date, { date, present: 0, late: 0, absent: 0, disputed: 0, excused: 0, incomplete: 0 })
     }
     for (const group of trendGroups) {
       const date = trendDates.get(group.sessionId)

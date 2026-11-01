@@ -1,5 +1,16 @@
 import { test, expect } from '@playwright/test'
-import { loginStudent, loginFaculty, trackErrors, assertNoErrors, FACULTY_EMAIL, SEED_PASSWORD } from './helpers'
+import {
+  ADMIN_EMAIL,
+  API_BASE,
+  FACULTY_EMAIL,
+  SEED_PASSWORD,
+  apiLoginFaculty,
+  assertNoErrors,
+  loginFaculty,
+  loginStudent,
+  trackErrors,
+  waitForPath,
+} from './helpers'
 
 test.describe('Student Flows', () => {
   test.beforeEach(async ({ page }) => {
@@ -144,21 +155,63 @@ test.describe('Student Flows', () => {
     assertNoErrors(errors)
   })
 
-  test('enrolls with a valid enrollment code and cleans up via API', async ({ page }) => {
+  test('enrolls with a valid enrollment code and cleans up via API', async ({ page, request }) => {
     const errors = trackErrors(page)
-    await page.goto('/student/dashboard')
+    const suffix = String(Date.now()).slice(-5)
+    const newStudentPassword = 'PolycheckE2e1!'
+
+    // Use a disposable student account: removing an enrollment stamps an
+    // instructor-removal tombstone (V3), so a reused seeded student would be
+    // permanently blocked from code enrollment after the first cleanup.
+    await apiLoginFaculty(request, ADMIN_EMAIL)
+    let createdStudent: { id: string } | null = null
+    let studentNumber = ''
+    for (let attempt = 0; attempt < 6 && !createdStudent; attempt++) {
+      studentNumber = `2026-${Math.floor(10000 + Math.random() * 89999)}-MN-0`
+      const created = await request.post(`${API_BASE}/users/students`, {
+        data: {
+          fullName: `E2E Enroll Student ${suffix}-${attempt}`,
+          studentId: studentNumber,
+          department: 'CCIS',
+          program: 'BS Computer Science',
+          yearLevel: 1,
+          password: newStudentPassword,
+        },
+      })
+      if (created.ok()) {
+        createdStudent = (await created.json()) as { id: string }
+      } else if (created.status() !== 409) {
+        throw new Error(`Could not create a disposable student: ${await created.text()}`)
+      }
+    }
+    expect(createdStudent).not.toBeNull()
+    const disposableStudent = createdStudent as { id: string }
+
+    await page.goto('/login/student')
+    await page.getByLabel('Student Number').fill(studentNumber)
+    await page.getByLabel('Password').fill(newStudentPassword)
+    await page.getByRole('button', { name: /Authenticate/i }).click()
+    await page.waitForURL((url) => url.pathname.startsWith('/student/'), { timeout: 20_000 })
+
+    // Newly created accounts must accept the privacy notice before the
+    // dashboard becomes interactive (seeded s-001 has already consented).
+    const consent = page.getByRole('button', { name: /I understand and consent/i })
+    if (await consent.isVisible().catch(() => false)) {
+      await consent.click()
+      await expect(consent).toHaveCount(0, { timeout: 15_000 })
+    }
+
     await page.getByRole('button', { name: /Enroll in Subject/i }).click()
     await page.getByPlaceholder(/Enter enrollment code/i).fill('SEB2026')
     await page.getByRole('button', { name: /^Enroll$/i }).click()
-    // First run shows the success box; interrupted repeat runs already enrolled
     await expect(
       page.getByText(/Successfully enrolled!|Already enrolled in this section/i),
     ).toBeVisible({ timeout: 15_000 })
     await page.keyboard.press('Escape')
 
-    // Cleanup: faculty removes the enrollment created by this test
+    // Cleanup: faculty removes the enrollment created by this test.
     await loginFaculty(page)
-    const res = await page.request.delete('http://localhost:4000/api/sections/sec-002/students/s-001')
+    const res = await page.request.delete(`${API_BASE}/sections/sec-002/students/${disposableStudent.id}`)
     expect(res.ok()).toBeTruthy()
     assertNoErrors(errors)
   })

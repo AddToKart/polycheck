@@ -5,11 +5,13 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { formatCooldownRemaining } from '@polycheck/shared/utils'
 import { api, ApiRequestError } from '../services/api-client'
+import { isMaintenanceError, maintenanceDetailFromError } from '../lib/maintenance'
 import { useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
 import { CampusIconButton } from './CampusPrimitives'
 import { CampusHeader } from './CampusHeader'
 import { useCampusToast } from './CampusToast'
+import { MaintenanceScreen } from './maintenance/MaintenanceScreen'
 
 type CampusLoginPortalProps = {
   portal: 'student' | 'faculty'
@@ -23,6 +25,7 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [loading, setLoading] = useState(false)
   const [cooldown, setCooldown] = useState<{ minutes: number; message: string } | null>(null)
+  const [maintenance, setMaintenance] = useState<{ message?: string; estimatedEnd?: string } | null>(null)
 
   const isStudent = portal === 'student'
   const identityLabel = isStudent ? 'Student Number' : 'PUP Email Address'
@@ -48,6 +51,10 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
       router.replace(isStudent ? '/(tabs)/dashboard' : '/(faculty)/dashboard')
     } catch (error) {
       setLoading(false)
+      if (isMaintenanceError(error)) {
+        setMaintenance(maintenanceDetailFromError(error))
+        return
+      }
       if (error instanceof ApiRequestError && error.code === 'device_cooldown_active') {
         setCooldown({ minutes: error.remainingMinutes ?? 0, message: error.message })
         return
@@ -58,6 +65,31 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
         error instanceof Error ? error.message : 'Check your details and try again.',
       )
     }
+  }
+
+  if (maintenance) {
+    return (
+      <SafeAreaView className="flex-1 bg-maroon dark:bg-surface-dark">
+        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+          <MaintenanceScreen
+            embedded
+            message={maintenance.message}
+            estimatedEnd={maintenance.estimatedEnd}
+            studentNotice={isStudent}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Try signing in again"
+            onPress={() => setMaintenance(null)}
+            className="mx-8 mb-6 min-h-12 items-center justify-center border border-golden"
+          >
+            <Text className="font-sans-bold text-[10px] uppercase tracking-widest text-golden">
+              Try again later
+            </Text>
+          </Pressable>
+        </ScrollView>
+      </SafeAreaView>
+    )
   }
 
   return (

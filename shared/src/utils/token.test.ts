@@ -22,6 +22,8 @@ function makePayload(overrides: Partial<QRTokenPayload> = {}): QRTokenPayload {
     gracePeriodMinutes: 15,
     teacherId: 'tch-789',
     teacherName: 'Dr. Ada Lovelace',
+    mode: 'in_person',
+    pinRequired: false,
     ...overrides,
   }
 }
@@ -193,11 +195,53 @@ describe('createQRTokenData', () => {
       gracePeriodMinutes: 10,
       teacherId: 'tch-ghi',
       teacherName: 'Prof. José Rizal',
+      mode: 'in_person',
+      pinRequired: false,
     }
     const first = createQRTokenData('ses-abc', 'sec-def', 'tch-ghi', 'Prof. José Rizal', 45, 10, issuedAtMs)
     const second = createQRTokenData('ses-abc', 'sec-def', 'tch-ghi', 'Prof. José Rizal', 45, 10, issuedAtMs)
     expect(first).toBe(second)
     expect(decodeTokenPayload(first)).toEqual(expected)
+  })
+
+  it('carries online checkpoint extras', () => {
+    const payload = createQRTokenData(
+      'ses-abc',
+      'sec-def',
+      'tch-ghi',
+      'Prof. José Rizal',
+      2,
+      0,
+      1_234_567_890_123,
+      { mode: 'online', checkpoint: 'end', pinRequired: true, pinHash: 'hash-here', validitySeconds: 90 },
+    )
+    expect(decodeTokenPayload(payload)).toMatchObject({
+      mode: 'online',
+      checkpoint: 'end',
+      pinRequired: true,
+      pinHash: 'hash-here',
+      validitySeconds: 90,
+    })
+  })
+})
+
+describe('legacy token normalization', () => {
+  it('defaults missing mode and pinRequired to in-person/false', () => {
+    const legacy = encodeBase64Url(
+      new TextEncoder().encode(
+        JSON.stringify({
+          version: 1,
+          sessionId: 'ses-legacy',
+          sectionId: 'sec-legacy',
+          issuedAt: 1_000,
+          validityMinutes: 5,
+          gracePeriodMinutes: 5,
+          teacherId: 'tch-legacy',
+          teacherName: 'Legacy Teacher',
+        }),
+      ),
+    )
+    expect(decodeTokenPayload(legacy)).toMatchObject({ mode: 'in_person', pinRequired: false })
   })
 })
 
@@ -235,5 +279,19 @@ describe('isTokenInValidityWindow', () => {
 
   it('is valid inside the validity window', () => {
     expect(isTokenInValidityWindow(payload, issuedAt + 60 * 1000)).toEqual({ valid: true, inGrace: false })
+  })
+
+  it('prefers validitySeconds for online checkpoints', () => {
+    const onlinePayload = makePayload({
+      issuedAt,
+      validityMinutes: 2,
+      validitySeconds: 90,
+      gracePeriodMinutes: 0,
+      mode: 'online',
+      checkpoint: 'end',
+    })
+    expect(isTokenInValidityWindow(onlinePayload, issuedAt + 89_000)).toEqual({ valid: true, inGrace: false })
+    expect(isTokenInValidityWindow(onlinePayload, issuedAt + 90_000)).toEqual({ valid: true, inGrace: false })
+    expect(isTokenInValidityWindow(onlinePayload, issuedAt + 90_001)).toEqual({ valid: false, inGrace: false })
   })
 })

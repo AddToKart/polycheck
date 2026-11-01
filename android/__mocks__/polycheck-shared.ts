@@ -60,3 +60,53 @@ export function verifyQRToken(token: string, _publicKey: string): unknown {
 export function createSigningKeyPair(_seed: Uint8Array) {
   return { publicKey: 'test-public-key', secretKey: 'test-secret-key' }
 }
+
+// Mirrors shared/src/utils/designations.ts (manual mock must stay in sync).
+export const DEFAULT_MAINTENANCE_MESSAGE =
+  'Polycheck is undergoing scheduled maintenance. Attendance taken during class still works offline — your records are safely stored on this device and will sync when servers reopen.'
+
+export const MAINTENANCE_STATUS_PATH = '/maintenance/status'
+
+export const MAINTENANCE_SETTINGS_CHANGED_EVENT = 'settings.maintenance-changed'
+
+const DESIGNATION_FLAGS: Record<string, string> = {
+  it_operations: 'isItCoordinator',
+  academic_oversight: 'isDepartmentHead',
+  user_admin: 'isUserRegistrar',
+}
+
+function teacherHasFlag(user: any, flag: string): boolean {
+  if (!user) return false
+  if (user.role === 'super_admin') return true
+  return user.role === 'teacher' && user[flag] === true
+}
+
+export function hasDesignation(user: any, designation: string): boolean {
+  return teacherHasFlag(user, DESIGNATION_FLAGS[designation])
+}
+
+export function canAccessItOperations(user: any): boolean {
+  return teacherHasFlag(user, 'isItCoordinator')
+}
+
+export function canAccessAcademicOversight(user: any): boolean {
+  return teacherHasFlag(user, 'isDepartmentHead')
+}
+
+export function canAccessUserAdmin(user: any): boolean {
+  return teacherHasFlag(user, 'isUserRegistrar')
+}
+
+export function isMaintenanceExempt(user: any): boolean {
+  return teacherHasFlag(user, 'isItCoordinator')
+}
+
+export function activeDesignations(user: any): string[] {
+  return Object.keys(DESIGNATION_FLAGS).filter((designation) => hasDesignation(user, designation))
+}
+
+export function oversightDepartment(user: any): string | null {
+  if (!user || user.role !== 'teacher' || user.isDepartmentHead !== true) return null
+  const department = user.department?.trim()
+  return department ? department : null
+}

@@ -40,6 +40,7 @@ const campusDate = (date = new Date()) => {
 const trendTextClasses: Record<TrendSegmentKey, string> = {
   present: 'text-emerald-700 dark:text-emerald-300',
   late: 'text-amber-700 dark:text-amber-300',
+  incomplete: 'text-maroon-dark dark:text-golden',
   absent: 'text-red-700 dark:text-red-300',
   excused: 'text-cyan-700 dark:text-cyan-300',
 }

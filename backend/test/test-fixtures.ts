@@ -105,6 +105,8 @@ export function validPayload(overrides: Record<string, unknown> = {}): QRTokenPa
     validityMinutes: 10,
     gracePeriodMinutes: 5,
     teacherName: 'T',
+    mode: 'in_person',
+    pinRequired: false,
     ...overrides,
   }
 }

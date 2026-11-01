@@ -55,7 +55,7 @@ export function excuseStatusLabel(status?: ExcuseStatus): string {
  */
 export function isExcuseEligible(record: AttendanceRecord | null | undefined): boolean {
   if (!record || !record.isSynced) return false
-  if (record.status !== 'absent' && record.status !== 'late') return false
+  if (record.status !== 'absent' && record.status !== 'late' && record.status !== 'incomplete') return false
   return !record.excuseStatus || record.excuseStatus === 'rejected'
 }
 

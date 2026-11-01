@@ -8,6 +8,7 @@ import { router } from 'expo-router'
 import type { AdminUserStatusFilter, SuperAdmin, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
+import { canAccessUserAdmin } from '@polycheck/shared'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
@@ -134,13 +135,14 @@ const FilterChip = ({ label, selected, onPress, testID }: { label: string; selec
 type UserCardProps = {
   account: User
   busy: boolean
+  canChangeRole: boolean
   onStatus: () => void
   onReset: () => void
   onEdit: () => void
   onRoleChange: () => void
 }
 
-const UserCard = ({ account, busy, onStatus, onReset, onEdit, onRoleChange }: UserCardProps) => {
+const UserCard = ({ account, busy, canChangeRole, onStatus, onReset, onEdit, onRoleChange }: UserCardProps) => {
   const { isDark } = useTheme()
   const protectedAccount = isProtectedAccount(account)
   const roleTarget = assignableRoleFor(account.role)
@@ -201,7 +203,7 @@ const UserCard = ({ account, busy, onStatus, onReset, onEdit, onRoleChange }: Us
               <MaterialIcons name="edit" size={16} color={isDark ? pupColors.golden : pupColors.maroon} />
               <Text className="font-sans-bold text-xs text-maroon dark:text-golden">Edit profile</Text>
             </Pressable>
-            {roleTarget ? (
+            {canChangeRole && roleTarget ? (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Change role for ${account.fullName}`}
@@ -230,7 +232,7 @@ const UserCard = ({ account, busy, onStatus, onReset, onEdit, onRoleChange }: Us
 }
 
 export default function FacultyUsersScreen() {
-  const currentUser = useAuthGate(['super_admin'])
+  const currentUser = useAuthGate(['teacher', 'super_admin'], canAccessUserAdmin)
   const { isDark, toggle } = useTheme()
   const { showToast } = useCampusToast()
   const isInstitutionAdmin = currentUser?.role === 'super_admin' && (currentUser as SuperAdmin).scope === 'institution'
@@ -785,6 +787,7 @@ export default function FacultyUsersScreen() {
           <UserCard
             account={account}
             busy={busyUserId === account.id}
+            canChangeRole={isInstitutionAdmin}
             onStatus={() => changeStatus(account)}
             onReset={() => { setResetTarget(account) }}
             onEdit={() => openEdit(account)}

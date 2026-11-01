@@ -17,6 +17,7 @@ import {
   WifiOff,
   type LucideIcon,
 } from 'lucide-react'
+import { canAccessItOperations } from '@polycheck/shared'
 import type { User } from '@polycheck/shared'
 import { api } from '@/lib/api-client'
 import { subscribeToServerStatus } from '@/lib/realtime'
@@ -166,7 +167,7 @@ export default function ServerStatusPage() {
 
   useEffect(() => {
     const current = api.getCurrentUser()
-    if (!current || current.role !== 'super_admin') {
+    if (!current || !canAccessItOperations(current)) {
       router.replace('/faculty')
       return
     }

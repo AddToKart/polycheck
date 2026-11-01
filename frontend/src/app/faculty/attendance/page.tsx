@@ -144,6 +144,7 @@ function AttendanceOverviewContent() {
     pending: 0,
     disputed: 0,
     excused: 0,
+    incomplete: 0,
   }
 
   const handleSubjectChange = (value: string) => {
@@ -190,6 +191,7 @@ function AttendanceOverviewContent() {
     { label: 'Total Sessions', value: totals.totalSessions, color: 'text-foreground' },
     { label: 'Present', value: totals.present, color: 'text-golden' },
     { label: 'Late', value: totals.late, color: 'text-maroon dark:text-red-300' },
+    { label: 'Incomplete', value: totals.incomplete ?? 0, color: 'text-maroon-dark dark:text-golden' },
     { label: 'Absent', value: totals.absent, color: 'text-maroon-dark dark:text-red-400' },
     { label: 'Excused', value: totals.excused ?? 0, color: 'text-maroon dark:text-golden' },
     { label: 'Pending', value: totals.pending, color: 'text-zinc-500 dark:text-zinc-400' },
@@ -321,6 +323,7 @@ function AttendanceOverviewContent() {
                     <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Sessions</th>
                     <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-golden">Present</th>
                     <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-red-300">Late</th>
+                    <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-maroon-dark dark:text-golden">Incomplete</th>
                     <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-maroon-dark dark:text-red-400">Absent</th>
                     <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">Excused</th>
                     <th className="text-center px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Pending</th>
@@ -360,6 +363,11 @@ function AttendanceOverviewContent() {
                         </td>
                         <td className="px-4 py-4 text-center">
                           <Badge variant="late">{s.late}</Badge>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          <span className="inline-flex items-center px-2 py-0.5 text-xs font-semibold border border-dashed border-maroon text-maroon-dark dark:border-golden dark:text-golden">
+                            {s.incomplete ?? 0}
+                          </span>
                         </td>
                         <td className="px-4 py-4 text-center">
                           <Badge variant="absent">{s.absent}</Badge>

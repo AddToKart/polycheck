@@ -53,6 +53,7 @@ describe('AttendanceReportService', () => {
       disputed: 0,
       pending: 0,
       excused: 1,
+      incomplete: 0,
     })
     expect(result.totals).toEqual({
       totalRecords: 4,
@@ -63,6 +64,7 @@ describe('AttendanceReportService', () => {
       pending: 0,
       disputed: 0,
       excused: 1,
+      incomplete: 0,
     })
   })
 

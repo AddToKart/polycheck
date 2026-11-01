@@ -20,4 +20,5 @@ export const pupColors = {
   // Chart-only neutrals that need a raw value in SVG/legend props.
   chartPending: '#A1A1AA',
   chartDisputed: '#D97706',
+  chartIncomplete: '#B45309',
 } as const

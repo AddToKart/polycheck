@@ -77,6 +77,7 @@ describe('summarizeDashboardTrends', () => {
     absent: 0,
     disputed: 0,
     excused: 0,
+    incomplete: 0,
     ...overrides,
   })
 
@@ -86,7 +87,7 @@ describe('summarizeDashboardTrends', () => {
       trend({ date: '2026-10-26', present: 1 }),
     ])
 
-    expect(summary.totals).toEqual({ present: 6, late: 2, absent: 1, disputed: 1, excused: 3 })
+    expect(summary.totals).toEqual({ present: 6, late: 2, incomplete: 0, absent: 1, disputed: 1, excused: 3 })
     expect(summary.counted).toBe(9)
     expect(summary.attended).toBe(8)
     expect(summary.attendanceRate).toBe(89)
@@ -94,7 +95,7 @@ describe('summarizeDashboardTrends', () => {
 
     const excused = summary.segments.find((segment) => segment.key === 'excused')
     expect(excused).toMatchObject({ label: 'Excused', value: 3, color: pupColors.excused })
-    expect(summary.segments.map((segment) => segment.key)).toEqual(['present', 'late', 'absent', 'excused'])
+    expect(summary.segments.map((segment) => segment.key)).toEqual(['present', 'late', 'incomplete', 'absent', 'excused'])
     expect(summary.segments.reduce((sum, segment) => sum + segment.percent, 0)).toBeCloseTo(100)
   })
 
@@ -102,9 +103,9 @@ describe('summarizeDashboardTrends', () => {
     const summary = summarizeDashboardTrends([])
     expect(summary.attendanceRate).toBe(0)
     expect(summary.total).toBe(0)
-    expect(summary.segments.map((segment) => segment.percent)).toEqual([0, 0, 0, 0])
+    expect(summary.segments.map((segment) => segment.percent)).toEqual([0, 0, 0, 0, 0])
 
-    expect(summarizeDashboardTrends(undefined).totals).toEqual({ present: 0, late: 0, absent: 0, disputed: 0, excused: 0 })
+    expect(summarizeDashboardTrends(undefined).totals).toEqual({ present: 0, late: 0, incomplete: 0, absent: 0, disputed: 0, excused: 0 })
   })
 
   it('keeps disputed out of the stack but in the totals', () => {

@@ -1,4 +1,5 @@
 import { ROLES_KEY } from './decorators/roles.decorator'
+import { REQUIRED_DESIGNATIONS_KEY } from './decorators/require-designation.decorator'
 import { AttendanceController } from '../attendance/attendance.controller'
 import { DisputesController } from '../disputes/disputes.controller'
 import { ProofsController } from '../proofs/proofs.controller'
@@ -8,10 +9,14 @@ import { SubjectsController } from '../subjects/subjects.controller'
 import { UsersController } from '../users/users.controller'
 import { AuditLogsController } from '../audit-logs/audit-logs.controller'
 import { DashboardController } from '../dashboard/dashboard.controller'
+import { SettingsController } from '../settings/settings.controller'
+import { ReportsController } from '../reports/reports.controller'
 
 type ControllerMethod = (...args: never[]) => unknown
 
 const rolesFor = (method: ControllerMethod): string[] => Reflect.getMetadata(ROLES_KEY, method) ?? []
+const designationsFor = (method: ControllerMethod): string[] =>
+  Reflect.getMetadata(REQUIRED_DESIGNATIONS_KEY, method) ?? []
 
 describe('role capability policy', () => {
   it.each([
@@ -39,22 +44,34 @@ describe('role capability policy', () => {
   })
 
   it.each([
-    UsersController.prototype.findAll,
-    UsersController.prototype.findTeachers,
-    UsersController.prototype.createTeacher,
-    UsersController.prototype.createStudent,
-    UsersController.prototype.importStudents,
-    UsersController.prototype.importJobStatus,
-    UsersController.prototype.resetPassword,
-    UsersController.prototype.setStatus,
-    UsersController.prototype.update,
+    [UsersController.prototype.findAll, 'user_admin'],
+    [UsersController.prototype.findTeachers, 'user_admin'],
+    [UsersController.prototype.createTeacher, 'user_admin'],
+    [UsersController.prototype.createStudent, 'user_admin'],
+    [UsersController.prototype.importStudents, 'user_admin'],
+    [UsersController.prototype.importJobStatus, 'user_admin'],
+    [UsersController.prototype.resetPassword, 'user_admin'],
+    [UsersController.prototype.setStatus, 'user_admin'],
+    [UsersController.prototype.update, 'user_admin'],
+    [DashboardController.prototype.serverStatusSnapshot, 'it_operations'],
+    [SettingsController.prototype.set, 'it_operations'],
+    [ReportsController.prototype.stats, 'it_operations'],
+    [ReportsController.prototype.list, 'it_operations'],
+    [ReportsController.prototype.findOne, 'it_operations'],
+    [ReportsController.prototype.updateStatus, 'it_operations'],
+  ])('opens %p to teachers only through the required designation', (method, designation) => {
+    expect(rolesFor(method as ControllerMethod).sort()).toEqual(['super_admin', 'teacher'])
+    expect(designationsFor(method as ControllerMethod)).toEqual([designation])
+  })
+
+  it.each([
     UsersController.prototype.changeRole,
     UsersController.prototype.createAdmin,
     AuditLogsController.prototype.list,
     DashboardController.prototype.adminOverview,
-    DashboardController.prototype.serverStatusSnapshot,
-  ])('keeps account administration restricted to super_admin', (method) => {
+  ])('keeps %p restricted to super_admin', (method) => {
     expect(rolesFor(method as ControllerMethod)).toEqual(['super_admin'])
+    expect(designationsFor(method as ControllerMethod)).toEqual([])
   })
 
   it('keeps bulk section enrollment with the owning teacher only', () => {
@@ -69,5 +86,10 @@ describe('role capability policy', () => {
       'teacher',
       'super_admin',
     ])
+  })
+
+  it('does not grant designations to student self-service routes', () => {
+    expect(rolesFor(UsersController.prototype.unregisterDevice as ControllerMethod)).toEqual(['student'])
+    expect(designationsFor(UsersController.prototype.unregisterDevice as ControllerMethod)).toEqual([])
   })
 })

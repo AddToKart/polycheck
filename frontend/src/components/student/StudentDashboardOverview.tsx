@@ -11,6 +11,7 @@ import { StudentDigitalId } from './StudentDigitalId'
 const statCards = [
   { key: 'present', label: 'Present', color: 'text-golden' },
   { key: 'late', label: 'Late', color: 'text-maroon dark:text-red-300' },
+  { key: 'incomplete', label: 'Incomplete', color: 'text-maroon-dark dark:text-golden' },
   { key: 'absent', label: 'Absent', color: 'text-maroon-dark dark:text-red-400' },
   { key: 'excused', label: 'Excused', color: 'text-maroon dark:text-golden' },
   { key: 'disputed', label: 'Disputed', color: 'text-amber-600 dark:text-amber-400' },
@@ -49,7 +50,7 @@ export function StudentDashboardOverview(props: StudentDashboardOverviewProps) {
       <StudentDigitalId user={user} isOpen={props.isIdOpen} isFlipped={props.isIdFlipped} onOpen={props.onOpenId} onClose={props.onCloseId} onFlip={props.onFlipId} />
 
       <div className="lg:col-span-2 flex flex-col gap-8">
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-0 border border-zinc-300 dark:border-zinc-800 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-0 border border-zinc-300 dark:border-zinc-800 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
           {statCards.map(({ key, label, color }, index) => (
             <div key={key} className={`p-6 border-zinc-300 dark:border-zinc-800 ${index !== 0 ? 'border-l' : ''} ${index > 1 ? 'border-t lg:border-t-0' : ''}`}>
               <div className="flex items-center gap-3 mb-4 text-zinc-400"><p className="text-[10px] font-bold uppercase tracking-widest">{label}</p></div>
@@ -121,7 +122,8 @@ export function AttendanceRow({
 }) {
   const excuseEligible =
     record.status === 'absent' ||
-    record.status === 'late'
+    record.status === 'late' ||
+    record.status === 'incomplete'
   const canRequestExcuse =
     Boolean(onRequestExcuse) &&
     excuseEligible &&

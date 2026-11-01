@@ -1,7 +1,7 @@
 import type { DashboardOverview } from '@polycheck/shared'
 import { pupColors } from '../theme/colors'
 
-export type TrendSegmentKey = 'present' | 'late' | 'absent' | 'excused'
+export type TrendSegmentKey = 'present' | 'late' | 'incomplete' | 'absent' | 'excused'
 
 export type TrendTotals = Record<TrendSegmentKey | 'disputed', number>
 
@@ -16,6 +16,7 @@ export type TrendSegment = {
 export const TREND_SEGMENT_ORDER: readonly TrendSegmentKey[] = [
   'present',
   'late',
+  'incomplete',
   'absent',
   'excused',
 ]
@@ -30,6 +31,7 @@ const TREND_BUCKETS: readonly (TrendSegmentKey | 'disputed')[] = [...TREND_SEGME
 export const TREND_SEGMENT_META: Record<TrendSegmentKey, { label: string; color: string }> = {
   present: { label: 'Present', color: pupColors.golden },
   late: { label: 'Late', color: pupColors.maroon },
+  incomplete: { label: 'Incomplete', color: pupColors.warning },
   absent: { label: 'Absent', color: pupColors.maroonDark },
   excused: { label: 'Excused', color: pupColors.excused },
 }
@@ -56,7 +58,7 @@ export type DashboardTrendSummary = {
 export function summarizeDashboardTrends(
   trends: DashboardOverview['trends'] | undefined | null,
 ): DashboardTrendSummary {
-  const totals: TrendTotals = { present: 0, late: 0, absent: 0, disputed: 0, excused: 0 }
+  const totals: TrendTotals = { present: 0, late: 0, incomplete: 0, absent: 0, disputed: 0, excused: 0 }
 
   for (const day of trends ?? []) {
     for (const key of TREND_BUCKETS) {
@@ -66,7 +68,7 @@ export function summarizeDashboardTrends(
   }
 
   const total = TREND_SEGMENT_ORDER.reduce((sum, key) => sum + totals[key], 0)
-  const counted = totals.present + totals.late + totals.absent
+  const counted = totals.present + totals.late + totals.incomplete + totals.absent
   const attended = totals.present + totals.late
   const attendanceRate = counted > 0 ? Math.round((attended / counted) * 100) : 0
 

@@ -7,6 +7,7 @@ import { api } from '@/lib/api-client'
 import { pupColors } from '@/lib/colors'
 import { isInstitutionAdmin } from '@/lib/admin-users'
 import {
+  canAccessAcademicOversight,
   formatCampusDate,
   getRecentCampusDateRange,
   type User,
@@ -38,16 +39,18 @@ export default function ReportsPage() {
 
   useEffect(() => {
     const cu = api.getCurrentUser()
-    if (!cu || cu.role !== 'super_admin') {
+    if (!cu || !canAccessAcademicOversight(cu)) {
       router.push('/faculty')
       return
     }
     setUser(cu)
     const fetchData = async () => {
-      const [subjectsData, teachersData, sectionsData] = await Promise.all([
+      // The teacher directory is registrar/super-admin only. Department heads
+      // rely on the server-side department pinning instead of a teacher filter.
+      const [subjectsData, sectionsData, teachersData] = await Promise.all([
         api.getSubjects(),
-        api.getTeachers(),
         api.getSections(),
+        cu.role === 'super_admin' ? api.getTeachers() : Promise.resolve([] as Teacher[]),
       ])
       setSubjects(subjectsData)
       setTeachers(teachersData)
@@ -119,6 +122,7 @@ export default function ReportsPage() {
     pending: report?.totals.pending ?? 0,
     disputed: report?.totals.disputed ?? 0,
     excused: report?.totals.excused ?? 0,
+    incomplete: report?.totals.incomplete ?? 0,
   }
 
   const presentPct = total.total > 0 ? Math.round((total.present / total.total) * 100) : 0
@@ -127,6 +131,7 @@ export default function ReportsPage() {
   const pendingPct = total.total > 0 ? Math.round((total.pending / total.total) * 100) : 0
   const disputedPct = total.total > 0 ? Math.round((total.disputed / total.total) * 100) : 0
   const excusedPct = total.total > 0 ? Math.round((total.excused / total.total) * 100) : 0
+  const incompletePct = total.total > 0 ? Math.round((total.incomplete / total.total) * 100) : 0
 
   const handleExport = async () => {
     const csv = await api.exportAttendanceCsv({
@@ -166,6 +171,21 @@ export default function ReportsPage() {
               Export
             </Button>
           </div>
+
+          {user.role === 'teacher' && user.isDepartmentHead ? (
+            <div
+              role="note"
+              className="mb-6 border-l-4 border-maroon bg-white px-4 py-3 text-sm text-zinc-700 shadow-sm dark:border-golden dark:bg-zinc-900 dark:text-zinc-300"
+            >
+              <span className="font-bold uppercase tracking-widest text-[10px] text-maroon dark:text-golden">
+                Department oversight
+              </span>
+              <p className="mt-1">
+                Showing attendance for {user.department ?? 'your department'} only. The server pins every filter to your
+                assigned department.
+              </p>
+            </div>
+          ) : null}
 
           <Card className="mb-8">
             <CardHeader>
@@ -325,21 +345,27 @@ export default function ReportsPage() {
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.chartIncomplete} strokeWidth="20"
+                          strokeDasharray={`${(total.incomplete / total.total) * 377} 377`}
+                          strokeDashoffset={-(((total.present + total.late + total.absent) / total.total) * 377)}
+                          transform="rotate(-90 70 70)"
+                          style={{ transition: 'stroke-dasharray 0.5s ease' }}
+                        />
                         <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.chartPending} strokeWidth="20"
                           strokeDasharray={`${(total.pending / total.total) * 377} 377`}
-                          strokeDashoffset={-(((total.present + total.late + total.absent) / total.total) * 377)}
+                          strokeDashoffset={-(((total.present + total.late + total.absent + total.incomplete) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
                         <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.chartDisputed} strokeWidth="20"
                           strokeDasharray={`${(total.disputed / total.total) * 377} 377`}
-                          strokeDashoffset={-(((total.present + total.late + total.absent + total.pending) / total.total) * 377)}
+                          strokeDashoffset={-(((total.present + total.late + total.absent + total.incomplete + total.pending) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
                         <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.goldenDark} strokeWidth="20"
                           strokeDasharray={`${(total.excused / total.total) * 377} 377`}
-                          strokeDashoffset={-(((total.present + total.late + total.absent + total.pending + total.disputed) / total.total) * 377)}
+                          strokeDashoffset={-(((total.present + total.late + total.absent + total.incomplete + total.pending + total.disputed) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
@@ -352,6 +378,7 @@ export default function ReportsPage() {
                     {[
                       { label: 'Present', count: total.present, pct: presentPct, color: pupColors.golden, textColor: 'text-golden' },
                       { label: 'Late', count: total.late, pct: latePct, color: pupColors.maroon, textColor: 'text-maroon dark:text-red-300' },
+                      { label: 'Incomplete', count: total.incomplete, pct: incompletePct, color: pupColors.chartIncomplete, textColor: 'text-maroon-dark dark:text-golden' },
                       { label: 'Absent', count: total.absent, pct: absentPct, color: pupColors.maroonDark, textColor: 'text-maroon-dark dark:text-red-400' },
                       { label: 'Pending', count: total.pending, pct: pendingPct, color: pupColors.chartPending, textColor: 'text-zinc-500 dark:text-zinc-400' },
                       { label: 'Disputed', count: total.disputed, pct: disputedPct, color: pupColors.chartDisputed, textColor: 'text-amber-600 dark:text-amber-400' },
@@ -401,6 +428,7 @@ export default function ReportsPage() {
                       <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Sessions</th>
                       <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Present</th>
                       <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Late</th>
+                      <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Incomplete</th>
                       <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Absent</th>
                       <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Pending</th>
                       <th className="text-center px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Disputed</th>
@@ -417,6 +445,9 @@ export default function ReportsPage() {
                         </td>
                         <td className="px-4 py-3 text-center">
                           <span className="inline-flex items-center px-2 py-0.5 rounded-none text-xs font-semibold bg-maroon text-white">{s.late}</span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-none text-xs font-semibold border border-dashed border-maroon text-maroon-dark dark:border-golden dark:text-golden">{s.incomplete ?? 0}</span>
                         </td>
                         <td className="px-4 py-3 text-center">
                           <span className="inline-flex items-center px-2 py-0.5 rounded-none text-xs font-semibold bg-maroon-dark text-golden border border-golden">{s.absent}</span>

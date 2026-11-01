@@ -59,6 +59,7 @@ export class AttendanceReportService {
           disputed: 0,
           pending: 0,
           excused: 0,
+          incomplete: 0,
         },
       ]),
     )
@@ -68,7 +69,14 @@ export class AttendanceReportService {
     const totals = rows.reduce(
       (total, row) => ({
         totalRecords:
-          total.totalRecords + row.present + row.late + row.absent + row.pending + row.disputed + row.excused,
+          total.totalRecords +
+          row.present +
+          row.late +
+          row.absent +
+          row.pending +
+          row.disputed +
+          row.excused +
+          row.incomplete,
         totalSessions: total.totalSessions + row.totalSessions,
         present: total.present + row.present,
         late: total.late + row.late,
@@ -76,8 +84,19 @@ export class AttendanceReportService {
         pending: total.pending + row.pending,
         disputed: total.disputed + row.disputed,
         excused: total.excused + row.excused,
+        incomplete: total.incomplete + row.incomplete,
       }),
-      { totalRecords: 0, totalSessions: 0, present: 0, late: 0, absent: 0, pending: 0, disputed: 0, excused: 0 },
+      {
+        totalRecords: 0,
+        totalSessions: 0,
+        present: 0,
+        late: 0,
+        absent: 0,
+        pending: 0,
+        disputed: 0,
+        excused: 0,
+        incomplete: 0,
+      },
     )
     return { range, totals, summaries: rows }
   }

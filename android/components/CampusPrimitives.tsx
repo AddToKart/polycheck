@@ -192,6 +192,7 @@ const statusClasses: Record<AttendanceStatus, string> = {
   pending: 'border-line bg-zinc-50 text-muted dark:border-line-dark dark:bg-white/5 dark:text-zinc-300',
   disputed: 'border-golden bg-golden/20 text-maroon-dark dark:text-golden',
   excused: 'border-cyan-300 bg-cyan-50 text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-300',
+  incomplete: 'border-amber-500 border-dashed bg-white text-maroon-dark dark:border-golden dark:bg-transparent dark:text-golden',
 }
 
 const statusTextClasses: Record<AttendanceStatus, string> = {
@@ -201,6 +202,7 @@ const statusTextClasses: Record<AttendanceStatus, string> = {
   pending: 'text-muted dark:text-zinc-300',
   disputed: 'text-maroon-dark dark:text-golden',
   excused: 'text-cyan-800 dark:text-cyan-300',
+  incomplete: 'text-maroon-dark dark:text-golden',
 }
 
 export const AttendanceStatusPill = ({ status }: { status: AttendanceStatus }) => (

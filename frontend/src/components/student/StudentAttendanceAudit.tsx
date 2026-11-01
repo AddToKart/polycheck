@@ -40,7 +40,7 @@ export function StudentAttendanceAudit(props: StudentAttendanceAuditProps) {
           Full Attendance Audit
         </CardTitle>
         <div className="flex flex-wrap gap-2 pt-4">
-          {(['all', 'present', 'late', 'absent', 'excused', 'pending', 'disputed'] as const).map((status) => (
+          {(['all', 'present', 'late', 'incomplete', 'absent', 'excused', 'pending', 'disputed'] as const).map((status) => (
             <Button
               key={status}
               type="button"

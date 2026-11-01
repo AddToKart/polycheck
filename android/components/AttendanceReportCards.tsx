@@ -73,6 +73,7 @@ export const AttendanceMetricGrid = ({ metrics }: { metrics: AttendanceMetric[] 
 const summaryStatus = [
   { key: 'present' as const, label: 'Present', color: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300' },
   { key: 'late' as const, label: 'Late', color: 'bg-amber-400', text: 'text-amber-700 dark:text-amber-300' },
+  { key: 'incomplete' as const, label: 'Incomplete', color: 'bg-amber-500', text: 'text-maroon-dark dark:text-golden' },
   { key: 'absent' as const, label: 'Absent', color: 'bg-red-500', text: 'text-red-700 dark:text-red-300' },
   { key: 'pending' as const, label: 'Pending', color: 'bg-zinc-400', text: 'text-muted dark:text-zinc-300' },
   { key: 'disputed' as const, label: 'Disputed', color: 'bg-orange-500', text: 'text-orange-700 dark:text-orange-300' },
@@ -81,7 +82,7 @@ const summaryStatus = [
 
 export const AttendanceSummaryCard = ({ summary, onPress }: { summary: AttendanceReportSummary; onPress?: () => void }) => {
   const { isDark } = useTheme()
-  const total = summary.present + summary.late + summary.absent + summary.pending + summary.disputed + summary.excused
+  const total = summary.present + summary.late + summary.incomplete + summary.absent + summary.pending + summary.disputed + summary.excused
   const attendanceRate = total ? Math.round((summary.present / total) * 100) : 0
   return (
     <CampusCard onPress={onPress} accessibilityLabel={onPress ? `Open ${summary.subjectName} attendance` : undefined} className="p-4">
@@ -108,6 +109,7 @@ const DONUT_CIRCUMFERENCE = 2 * Math.PI * DONUT_RADIUS
 const donutColors: Record<(typeof summaryStatus)[number]['key'], string> = {
   present: pupColors.golden,
   late: pupColors.maroon,
+  incomplete: pupColors.warning,
   absent: pupColors.maroonDark,
   pending: pupColors.mutedLight,
   disputed: pupColors.maroonDeep,

@@ -7,6 +7,7 @@ function session(overrides: Partial<Session> = {}): Session {
     id: 'session-1',
     sectionId: 'section-1',
     subjectName: 'Software Engineering',
+    mode: 'in_person',
     date: '2026-10-27',
     startTime: '08:00',
     endTime: '10:00',

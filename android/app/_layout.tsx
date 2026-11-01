@@ -4,17 +4,25 @@ import { StatusBar } from 'expo-status-bar'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as SplashScreen from 'expo-splash-screen'
 import { useFonts } from 'expo-font'
-import { ActivityIndicator, AppState, View } from 'react-native'
+import { ActivityIndicator, AppState, Text, View } from 'react-native'
 import { ThemeProvider, useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
-import { api, subscribeToAuthChanges } from '../services/api-client'
+import { api, isOwnLoginInFlight, subscribeToAuthChanges } from '../services/api-client'
 import { monitorAuthSession } from '../services/realtime'
+import { shouldTerminateForReplacedSession } from '../lib/session-replacement'
 import {
   configureForegroundNotifications,
   registerForPushNotifications,
   subscribeToNotificationOpens,
 } from '../services/push-notifications'
-import type { User } from '@polycheck/shared'
+import { isMaintenanceExempt, type User } from '@polycheck/shared'
+import {
+  getMaintenanceSnapshot,
+  setMaintenanceActive,
+  subscribeToMaintenance,
+  type ActiveMaintenance,
+} from '../lib/maintenance'
+import { MaintenanceScreen } from '../components/maintenance/MaintenanceScreen'
 import { PrivacyConsentGate } from '../components/PrivacyConsentGate'
 import { StudentScreenCaptureGuard } from '../components/StudentScreenCaptureGuard'
 import { CampusToastProvider, useCampusToast } from '../components/CampusToast'
@@ -55,6 +63,7 @@ function RootLayoutInner() {
 
   const [sessionReady, setSessionReady] = useState(false)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [maintenance, setMaintenance] = useState<ActiveMaintenance | null>(() => getMaintenanceSnapshot())
   const [fontsLoaded] = useFonts({
     DMSans_400Regular: require('@expo-google-fonts/dm-sans/400Regular/DMSans_400Regular.ttf'),
     DMSans_500Medium: require('@expo-google-fonts/dm-sans/500Medium/DMSans_500Medium.ttf'),
@@ -81,8 +90,17 @@ function RootLayoutInner() {
       stopAuthMonitor()
       stopAuthMonitor = user
         ? monitorAuthSession(() => {
-            toastRef.current('error', 'Session ended', 'Your session was replaced or revoked. Please sign in again.')
-            void api.logout()
+            // The broadcast also fires for this device's own fresh login (and
+            // can beat the login response on the wire); only terminate when
+            // the live session probe confirms the revocation.
+            void shouldTerminateForReplacedSession({
+              restoreSession: () => api.restoreSession(),
+              isOwnLoginInFlight,
+            }).then((terminate) => {
+              if (!terminate) return
+              toastRef.current('error', 'Session ended', 'Your session was replaced or revoked. Please sign in again.')
+              void api.logout()
+            })
           })
         : () => undefined
     })
@@ -112,6 +130,30 @@ function RootLayoutInner() {
     }
   }, []) // intentionally empty — runs once
 
+  // Maintenance mode: the API client publishes 503 system_maintenance bodies
+  // into the process store; this probe covers app boot and clears the banner
+  // as soon as an exempt operator reopens the system.
+  useEffect(() => {
+    const unsubscribe = subscribeToMaintenance(setMaintenance)
+    const probe = () => {
+      void api
+        .getMaintenanceStatus()
+        .then((status) => {
+          if (!status.enabled) setMaintenanceActive(null)
+        })
+        .catch(() => undefined)
+    }
+    probe()
+    const interval = setInterval(probe, 30_000)
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') probe()
+    })
+    return () => {
+      unsubscribe()
+      clearInterval(interval)
+      subscription.remove()
+    }
+  }, [])
   // ── Push notifications ─────────────────────────────────────────────────────
   // Permission + Expo token registration run only after authentication, and
   // tapped notifications route through the same deep-link mapper as the
@@ -183,6 +225,25 @@ function RootLayoutInner() {
       </Stack>
       {currentUser?.role === 'student' ? <StudentScreenCaptureGuard /> : null}
       <PrivacyConsentGate user={currentUser} />
+      {maintenance && currentUser && !isMaintenanceExempt(currentUser) ? (
+        <View className="absolute inset-0 z-50" testID="maintenance-overlay">
+          <MaintenanceScreen
+            message={maintenance.message}
+            estimatedEnd={maintenance.estimatedEnd}
+            studentNotice={currentUser.role === 'student'}
+          />
+        </View>
+      ) : null}
+      {maintenance && currentUser && isMaintenanceExempt(currentUser) ? (
+        <View
+          pointerEvents="none"
+          className="absolute bottom-24 left-4 right-4 z-40 items-center border border-golden bg-maroon px-3 py-2 dark:bg-surface-dark"
+        >
+          <Text className="font-sans-bold text-[9px] uppercase tracking-widest text-golden">
+            Maintenance mode is active — you are exempt
+          </Text>
+        </View>
+      ) : null}
     </View>
   )
 }

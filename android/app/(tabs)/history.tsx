@@ -23,6 +23,7 @@ const filterTabs: Array<{ key: FilterTab; label: string }> = [
   { key: 'all', label: 'All' },
   { key: 'present', label: 'Present' },
   { key: 'late', label: 'Late' },
+  { key: 'incomplete', label: 'Incomplete' },
   { key: 'absent', label: 'Absent' },
   { key: 'excused', label: 'Excused' },
   { key: 'disputed', label: 'Disputed' },
@@ -37,6 +38,7 @@ const datePresets: Array<{ value: HistoryDatePreset; label: string }> = [
 const statusIcons: Record<AttendanceStatus, keyof typeof MaterialIcons.glyphMap> = {
   present: 'check-circle',
   late: 'schedule',
+  incomplete: 'timelapse',
   absent: 'cancel',
   pending: 'hourglass-empty',
   disputed: 'gavel',
@@ -97,7 +99,7 @@ export default function HistoryScreen() {
   ), [activeFilter, allRecords, datePreset, sectionsMap, selectedSubjectId])
   const totals = useMemo(() => allRecords.reduce(
     (counts, record) => record.isSynced ? ({ ...counts, [record.status]: counts[record.status] + 1 }) : counts,
-    { present: 0, late: 0, absent: 0, pending: 0, disputed: 0, excused: 0 } as Record<AttendanceStatus, number>,
+    { present: 0, late: 0, incomplete: 0, absent: 0, pending: 0, disputed: 0, excused: 0 } as Record<AttendanceStatus, number>,
   ), [allRecords])
 
   const subjectOptions = Object.values(subjects).map((subject) => ({ id: subject.id, label: subject.name }))
@@ -166,6 +168,7 @@ export default function HistoryScreen() {
         {([
           ['Present', totals.present, 'text-emerald-700 dark:text-emerald-300'],
           ['Late', totals.late, 'text-amber-700 dark:text-amber-300'],
+          ['Incomplete', totals.incomplete, 'text-maroon-dark dark:text-golden'],
           ['Absent', totals.absent, 'text-red-700 dark:text-red-300'],
           ['Excused', totals.excused, 'text-cyan-700 dark:text-cyan-300'],
           ['Disputed', totals.disputed, 'text-maroon dark:text-golden'],

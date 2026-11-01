@@ -65,6 +65,22 @@ export function signQRToken(payload: QRTokenPayload, secretKey: string): string 
   return `${encodedPayload}.${encodeBase64Url(signature)}`
 }
 
+/**
+ * Tokens signed before hybrid attendance carry no `mode`/`pinRequired` fields.
+ * Normalizing here keeps every consumer branching on typed, defaulted values
+ * while preserving the `version: 1` wire format for older clients.
+ */
+export function normalizeQRTokenPayload(raw: unknown): QRTokenPayload | null {
+  if (!raw || typeof raw !== 'object') return null
+  const payload = raw as Partial<QRTokenPayload>
+  if (payload.version !== 1) return null
+  return {
+    ...payload,
+    mode: payload.mode ?? 'in_person',
+    pinRequired: payload.pinRequired ?? false,
+  } as QRTokenPayload
+}
+
 export function verifyQRToken(token: string, publicKey: string): QRTokenPayload | null {
   try {
     const [encodedPayload, encodedSignature, extra] = token.split('.')
@@ -75,8 +91,8 @@ export function verifyQRToken(token: string, publicKey: string): QRTokenPayload 
       decodeBase64Url(publicKey),
     )
     if (!valid) return null
-    const payload = JSON.parse(bytesToUtf8(decodeBase64Url(encodedPayload))) as QRTokenPayload
-    return payload.version === 1 ? payload : null
+    const payload = JSON.parse(bytesToUtf8(decodeBase64Url(encodedPayload))) as unknown
+    return normalizeQRTokenPayload(payload)
   } catch {
     return null
   }
@@ -87,7 +103,9 @@ export function isTokenInValidityWindow(
   _serverTimeMs?: number
 ): { valid: boolean; inGrace: boolean } {
   const issuedAt = payload.issuedAt
-  const validityEnd = issuedAt + payload.validityMinutes * 60 * 1000
+  const validityMs =
+    payload.validitySeconds !== undefined ? payload.validitySeconds * 1000 : payload.validityMinutes * 60 * 1000
+  const validityEnd = issuedAt + validityMs
   const graceEnd = validityEnd + payload.gracePeriodMinutes * 60 * 1000
   const now = _serverTimeMs ?? Date.now()
 
@@ -103,11 +121,19 @@ export function encodeTokenPayload(payload: QRTokenPayload): string {
 export function decodeTokenPayload(encoded: string): QRTokenPayload | null {
   try {
     const payloadPart = encoded.includes('.') ? encoded.split('.')[0] : encoded
-    const payload = JSON.parse(bytesToUtf8(decodeBase64Url(payloadPart))) as QRTokenPayload
-    return payload.version === 1 ? payload : null
+    const payload = JSON.parse(bytesToUtf8(decodeBase64Url(payloadPart))) as unknown
+    return normalizeQRTokenPayload(payload)
   } catch {
     return null
   }
+}
+
+export interface QRTokenExtras {
+  mode?: QRTokenPayload['mode']
+  checkpoint?: QRTokenPayload['checkpoint']
+  pinRequired?: boolean
+  pinHash?: string
+  validitySeconds?: number
 }
 
 export function createQRTokenData(
@@ -118,6 +144,7 @@ export function createQRTokenData(
   validityMinutes: number,
   gracePeriodMinutes: number,
   issuedAtMs?: number,
+  extras?: QRTokenExtras,
 ): string {
   const payload: QRTokenPayload = {
     version: 1,
@@ -128,6 +155,11 @@ export function createQRTokenData(
     gracePeriodMinutes,
     teacherId,
     teacherName,
+    mode: extras?.mode ?? 'in_person',
+    pinRequired: extras?.pinRequired ?? false,
+    ...(extras?.checkpoint !== undefined ? { checkpoint: extras.checkpoint } : {}),
+    ...(extras?.pinHash !== undefined ? { pinHash: extras.pinHash } : {}),
+    ...(extras?.validitySeconds !== undefined ? { validitySeconds: extras.validitySeconds } : {}),
   }
   return encodeTokenPayload(payload)
 }

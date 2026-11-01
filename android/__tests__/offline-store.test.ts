@@ -238,6 +238,7 @@ const mockSession: Session = {
   id: 'sess-test-1',
   sectionId: 'sec-test-1',
   subjectName: 'Data Structures',
+  mode: 'in_person',
   teacherId: 't-001',
   date: '2026-07-15',
   startTime: '08:00',

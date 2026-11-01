@@ -3,6 +3,7 @@ import { DashboardService } from './dashboard.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
 import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator'
 import { Roles } from '../common/decorators/roles.decorator'
+import { RequireDesignation } from '../common/decorators/require-designation.decorator'
 import { ServerStatusService } from '../realtime/server-status.service'
 
 class CalendarQueryDto {
@@ -61,7 +62,8 @@ export class DashboardController {
   }
 
   @Get('dashboard/server-status')
-  @Roles('super_admin')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('it_operations')
   serverStatusSnapshot() {
     return this.serverStatus.snapshot()
   }

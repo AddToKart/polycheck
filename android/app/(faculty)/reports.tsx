@@ -6,6 +6,7 @@ import { router } from 'expo-router'
 import { getRecentCampusDateRange, type AttendanceReport, type Section, type Subject, type Teacher } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
+import { canAccessAcademicOversight } from '@polycheck/shared'
 import { shareCsvFile } from '../../services/file-sharing'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
@@ -76,7 +77,7 @@ const ReportSelect = ({ label, value, placeholder, options, open, onToggle, onSe
 export default function FacultyReportsScreen() {
   const { isDark, toggle } = useTheme()
   const { showToast } = useCampusToast()
-  const currentUser = useAuthGate(['super_admin'])
+  const currentUser = useAuthGate(['teacher', 'super_admin'], canAccessAcademicOversight)
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [sections, setSections] = useState<Section[]>([])
@@ -98,12 +99,20 @@ export default function FacultyReportsScreen() {
 
   useEffect(() => {
     if (!currentUser) return
-    void Promise.all([api.getSubjects(), api.getTeachers(), api.getSections(), api.getAdminOverview()])
+    const isSuperAdmin = currentUser.role === 'super_admin'
+    // Department heads rely on server-side department pinning; the teacher
+    // directory and admin overview are super-admin-only endpoints.
+    void Promise.all([
+      api.getSubjects(),
+      isSuperAdmin ? api.getTeachers() : Promise.resolve([] as Teacher[]),
+      api.getSections(),
+      isSuperAdmin ? api.getAdminOverview() : Promise.resolve(null),
+    ])
       .then(([nextSubjects, nextTeachers, nextSections, overview]) => {
         setSubjects(nextSubjects)
         setTeachers(nextTeachers)
         setSections(nextSections)
-        setAdminScope(overview.scope)
+        if (overview) setAdminScope(overview.scope)
       })
       .catch(() => showToast('error', 'Unable to load filters', 'Subject, teacher, section, and department choices are temporarily unavailable.'))
   }, [currentUser, showToast])
@@ -143,7 +152,7 @@ export default function FacultyReportsScreen() {
 
   if (!currentUser) return null
 
-  const totals = report?.totals ?? { totalRecords: 0, totalSessions: 0, present: 0, late: 0, absent: 0, pending: 0, disputed: 0, excused: 0 }
+  const totals = report?.totals ?? { totalRecords: 0, totalSessions: 0, present: 0, late: 0, absent: 0, pending: 0, disputed: 0, excused: 0, incomplete: 0 }
   const presentRate = totals.totalRecords ? Math.round((totals.present / totals.totalRecords) * 100) : 0
   const isFiltered = selectedSubject !== '' || selectedTeacher !== '' || selectedSection !== '' || selectedDepartment !== '' || startDate !== defaultStartDate || endDate !== defaultEndDate
 
@@ -312,6 +321,7 @@ export default function FacultyReportsScreen() {
               { label: 'Total records', value: totals.totalRecords, tone: 'brand' },
               { label: 'Present rate', value: `${presentRate}%`, tone: 'success' },
               { label: 'Late', value: totals.late, tone: 'warning' },
+              { label: 'Incomplete', value: totals.incomplete, tone: 'warning' },
               { label: 'Absent', value: totals.absent, tone: 'danger' },
               { label: 'Excused', value: totals.excused, tone: 'excused' },
               { label: 'Pending', value: totals.pending, tone: 'neutral' },

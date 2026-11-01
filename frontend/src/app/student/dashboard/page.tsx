@@ -132,6 +132,7 @@ function StudentDashboardContent() {
   const stats = useMemo(() => ({
     present: records.filter((record) => record.status === 'present').length,
     late: records.filter((record) => record.status === 'late').length,
+    incomplete: records.filter((record) => record.status === 'incomplete').length,
     absent: records.filter((record) => record.status === 'absent').length,
     excused: records.filter((record) => record.status === 'excused').length,
     disputed: records.filter((record) => record.status === 'disputed').length,

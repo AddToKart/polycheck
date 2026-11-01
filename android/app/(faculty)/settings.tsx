@@ -3,6 +3,7 @@ import { ActivityIndicator, Keyboard, Pressable, ScrollView, Text, View } from '
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
+import { canAccessItOperations } from '@polycheck/shared'
 import type { AiCapabilities, SuperAdmin } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
@@ -35,6 +36,7 @@ const TAB_INTROS: Record<SettingsTabId, string> = {
   sessions: 'Defaults applied when faculty create new attendance sessions. Existing records are never altered.',
   accounts: 'Control what teachers can do when managing student accounts.',
   ai: 'Availability, provider configuration, and the encrypted API key for the assistant.',
+  system: 'Close the campus system for maintenance and announce the estimated resumption.',
 }
 
 const STATUS_TONE_CLASSES: Record<AssistantStatusTone, string> = {
@@ -56,7 +58,9 @@ const STATUS_ICONS: Record<AssistantStatusTone, keyof typeof MaterialIcons.glyph
 }
 
 export default function InstitutionSettingsScreen() {
-  const currentUser = useAuthGate(['super_admin'])
+  const currentUser = useAuthGate(['teacher', 'super_admin'], canAccessItOperations)
+  const isSuperAdmin = currentUser?.role === 'super_admin'
+  const visibleTabs = isSuperAdmin ? SETTINGS_TABS : SETTINGS_TABS.filter((tab) => tab.id === 'system')
   const { isDark, toggle } = useTheme()
   const { showToast } = useCampusToast()
   const [activeTab, setActiveTab] = useState<SettingsTabId>('institution')
@@ -100,7 +104,12 @@ export default function InstitutionSettingsScreen() {
 
   useEffect(() => {
     if (!currentUser) return
-    setCanEdit((currentUser as SuperAdmin).scope === 'institution')
+    setCanEdit(
+      currentUser.role === 'super_admin'
+        ? (currentUser as SuperAdmin).scope === 'institution'
+        : currentUser.isItCoordinator === true,
+    )
+    if (currentUser.role !== 'super_admin') setActiveTab('system')
     void loadSettings()
     void refreshCapabilities()
   }, [currentUser, loadSettings, refreshCapabilities])
@@ -232,9 +241,13 @@ export default function InstitutionSettingsScreen() {
   return (
     <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
       <CampusHeader
-        eyebrow="Super administrator"
+        eyebrow={isSuperAdmin ? 'Super administrator' : 'IT Operations Suite'}
         title="Institution settings"
-        subtitle="Campus-wide defaults, access policy, and the AI assistant."
+        subtitle={
+          isSuperAdmin
+            ? 'Campus-wide defaults, access policy, the AI assistant, and maintenance.'
+            : 'Maintenance controls and the campus announcement.'
+        }
         onBack={() => router.back()}
         actions={<CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />}
       />
@@ -259,7 +272,7 @@ export default function InstitutionSettingsScreen() {
       ) : (
         <>
           <View className="mx-4 mt-2 flex-row rounded-2xl bg-zinc-200/70 p-1 dark:bg-white/5" accessibilityRole="tablist">
-            {SETTINGS_TABS.map((tab) => {
+            {visibleTabs.map((tab) => {
               const active = activeTab === tab.id
               const dirty = isTabDirty(tab.id, values, savedValues)
               return (

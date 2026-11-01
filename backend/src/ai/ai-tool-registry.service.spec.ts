@@ -198,6 +198,7 @@ describe('AiToolRegistryService', () => {
       pending: 1,
       disputed: 1,
       excused: 0,
+      incomplete: 0,
       attendanceRate: 81.8,
       lastSessionDate: '2026-10-22',
     })
@@ -550,7 +551,7 @@ describe('AiToolRegistryService', () => {
       sessionId: 'sess-1',
       sectionId: 'sec-1',
       section: '1',
-      counts: { present: 3, late: 1, absent: 2, pending: 4, disputed: 5, excused: 0 },
+      counts: { present: 3, late: 1, absent: 2, pending: 4, disputed: 5, excused: 0, incomplete: 0 },
       csvDownloadPath: '/docs/session-attendance/sess-1?format=csv',
       attachment: execution.attachments[0],
     })

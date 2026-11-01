@@ -265,6 +265,7 @@ describe('DashboardService', () => {
       absent: 0,
       disputed: 0,
       excused: 2,
+      incomplete: 0,
     })
   })
 
@@ -298,9 +299,9 @@ describe('DashboardService', () => {
     const result = await service.overview(teacher, { startDate: '2026-07-14', endDate: '2026-07-16' })
 
     expect(result.trends).toEqual([
-      { date: '2026-07-14', present: 10, late: 0, absent: 0, disputed: 0, excused: 4 },
-      { date: '2026-07-15', present: 0, late: 0, absent: 0, disputed: 0, excused: 0 },
-      { date: '2026-07-16', present: 0, late: 0, absent: 0, disputed: 0, excused: 1 },
+      { date: '2026-07-14', present: 10, late: 0, absent: 0, disputed: 0, excused: 4, incomplete: 0 },
+      { date: '2026-07-15', present: 0, late: 0, absent: 0, disputed: 0, excused: 0, incomplete: 0 },
+      { date: '2026-07-16', present: 0, late: 0, absent: 0, disputed: 0, excused: 1, incomplete: 0 },
     ])
   })
 

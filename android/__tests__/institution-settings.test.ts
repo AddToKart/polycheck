@@ -23,19 +23,21 @@ const TAB_IDS = SETTINGS_TABS.map((tab) => tab.id)
 const allSettingKeys = [...SETTING_FIELDS, ...SETTING_SWITCHES].map((item) => item.key)
 
 describe('settings tab configuration', () => {
-  it('defines the four locked categories in order', () => {
-    expect(TAB_IDS).toEqual<SettingsTabId[]>(['institution', 'sessions', 'accounts', 'ai'])
+  it('defines the five categories in order (including system maintenance)', () => {
+    expect(TAB_IDS).toEqual<SettingsTabId[]>(['institution', 'sessions', 'accounts', 'ai', 'system'])
     expect(SETTINGS_TABS.map((tab) => tab.label)).toEqual([
       'Institution',
       'Sessions & attendance',
       'Accounts & access',
       'AI Assistant',
+      'System',
     ])
     expect(SETTINGS_TABS.map((tab) => tab.shortLabel)).toEqual([
       'Institution',
       'Sessions',
       'Accounts',
       'AI',
+      'System',
     ])
   })
 
@@ -68,9 +70,15 @@ describe('settings tab configuration', () => {
       'ai_base_url',
       'ai_model',
     ])
+    expect(TAB_SETTING_KEYS.system).toEqual([
+      'maintenance_mode_enabled',
+      'maintenance_message',
+      'maintenance_until',
+    ])
     expect(fieldsForTab('sessions')).toHaveLength(5)
     expect(switchesForTab('ai')).toHaveLength(3)
     expect(switchesForTab('accounts')).toHaveLength(3)
+    expect(switchesForTab('system')).toHaveLength(1)
   })
 
   it('documents runtime defaults (AI on, provisioning off)', () => {
@@ -84,6 +92,9 @@ describe('settings tab configuration', () => {
     expect(SETTING_DEFAULTS.ai_assistant_enabled).toBe('true')
     expect(SETTING_DEFAULTS.ai_assistant_teacher_enabled).toBe('true')
     expect(SETTING_DEFAULTS.ai_assistant_student_enabled).toBe('true')
+    expect(SETTING_DEFAULTS.maintenance_mode_enabled).toBe('false')
+    expect(SETTING_DEFAULTS.maintenance_message).toBe('')
+    expect(SETTING_DEFAULTS.maintenance_until).toBe('')
   })
 })
 

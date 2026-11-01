@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common'
+import { ForbiddenException, HttpStatus, NotFoundException } from '@nestjs/common'
 import { ReportsService } from './reports.service'
 
 const studentUser = { id: 'student-1', role: 'student' } as never

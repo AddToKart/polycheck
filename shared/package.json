@@ -34,6 +34,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@noble/hashes": "^1.8.0",
     "papaparse": "^5.7.0",
     "tweetnacl": "^1.0.3",
     "zod": "^4.4.3"

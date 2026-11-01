@@ -4,6 +4,7 @@ import { NotificationProvider } from "@/lib/notifications";
 import { AuthSessionMonitor } from "@/components/AuthSessionMonitor";
 import { RuntimeErrorGuard } from "@/components/RuntimeErrorGuard";
 import { PwaBoot } from "@/components/pwa/PwaBoot";
+import { MaintenanceProvider } from "@/components/maintenance/MaintenanceProvider";
 import { headers } from "next/headers";
 import { PrivacyConsentGate } from "@/components/PrivacyConsentGate";
 
@@ -62,7 +63,7 @@ export default async function RootLayout({
           <RuntimeErrorGuard />
           <AuthSessionMonitor />
           <PrivacyConsentGate />
-          {children}
+          <MaintenanceProvider>{children}</MaintenanceProvider>
         </NotificationProvider>
       </body>
     </html>

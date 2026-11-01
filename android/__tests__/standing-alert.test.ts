@@ -18,6 +18,7 @@ const standing = (overrides: Partial<AttendanceStanding> = {}): AttendanceStandi
   late: 1,
   absent: 2,
   disputed: 0,
+  incomplete: 0,
   countedSessions: 11,
   attendanceRate: 81.8,
   status: 'on_track',

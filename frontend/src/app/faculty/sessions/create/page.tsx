@@ -3,9 +3,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { CalendarCheck, MapPin } from 'lucide-react'
+import { CalendarCheck, MapPin, ShieldCheck, School, Video } from 'lucide-react'
 import { api } from '@/lib/api-client'
-import { formatCampusDate, type User, type Subject, type Section, type Session } from '@polycheck/shared'
+import {
+  formatCampusDate,
+  type User,
+  type Subject,
+  type Section,
+  type Session,
+  type SessionMode,
+} from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import MapPicker from '@/components/MapPicker'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -25,6 +32,7 @@ export default function CreateSessionPage() {
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')
   const [room, setRoom] = useState('')
+  const [mode, setMode] = useState<SessionMode>('in_person')
   const [latitude, setLatitude] = useState(14.8697)
   const [longitude, setLongitude] = useState(120.9991)
   const [radius, setRadius] = useState(40)
@@ -224,9 +232,10 @@ export default function CreateSessionPage() {
           startTime,
           endTime,
           room: room || undefined,
+          mode,
           qrValidityMinutes: defaultQrValidity,
           gracePeriodMinutes: defaultGracePeriod,
-          geofence: { latitude, longitude, radiusMeters: radius },
+          ...(mode === 'in_person' ? { geofence: { latitude, longitude, radiusMeters: radius } } : {}),
           teacherId: user.id,
         })
         alert(`Created ${count} sessions successfully!`)
@@ -242,13 +251,12 @@ export default function CreateSessionPage() {
           startTime,
           endTime,
           room: room || undefined,
+          mode,
           qrValidityMinutes: defaultQrValidity,
           gracePeriodMinutes: defaultGracePeriod,
-          geofence: {
-            latitude,
-            longitude,
-            radiusMeters: radius,
-          },
+          ...(mode === 'in_person'
+            ? { geofence: { latitude, longitude, radiusMeters: radius } }
+            : {}),
           teacherId: user.id,
           isRescheduled: isRescheduled || undefined,
           rescheduledFromDate: isRescheduled ? rescheduledFromDate : undefined,
@@ -301,6 +309,44 @@ export default function CreateSessionPage() {
                     </div>
                   </div>
                 )}
+                {/* Session mode */}
+                <div className="space-y-2">
+                  <Label>Session mode</Label>
+                  <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Session mode">
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={mode === 'in_person'}
+                      onClick={() => setMode('in_person')}
+                      className={`flex items-center justify-center gap-2 border px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors ${
+                        mode === 'in_person'
+                          ? 'border-maroon bg-maroon text-white dark:border-golden dark:bg-golden dark:text-maroon-dark'
+                          : 'border-zinc-300 bg-white text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
+                      }`}
+                    >
+                      <School className="h-4 w-4" /> In-Person
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={mode === 'online'}
+                      onClick={() => setMode('online')}
+                      className={`flex items-center justify-center gap-2 border px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors ${
+                        mode === 'online'
+                          ? 'border-maroon bg-maroon text-white dark:border-golden dark:bg-golden dark:text-maroon-dark'
+                          : 'border-zinc-300 bg-white text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
+                      }`}
+                    >
+                      <Video className="h-4 w-4" /> Online
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    {mode === 'online'
+                      ? 'Dual checkpoints: a start-of-class check-in and an end-of-class check-out.'
+                      : 'Single QR check-in verified inside a campus geofence.'}
+                  </p>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="subject">Subject</Label>
                   <select
@@ -472,29 +518,47 @@ export default function CreateSessionPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-maroon" />
-                  Geofence
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                  Drag the pin to set the attendance location. Radius controls how close students must be.
-                </p>
-                <MapPicker
-                  latitude={latitude}
-                  longitude={longitude}
-                  radius={radius}
-                  onChange={(lat, lng, rad) => {
-                    setLatitude(lat)
-                    setLongitude(lng)
-                    setRadius(rad)
-                  }}
-                />
-              </CardContent>
-            </Card>
+            {mode === 'in_person' ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-maroon" />
+                    Geofence
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                    Drag the pin to set the attendance location. Radius controls how close students must be.
+                  </p>
+                  <MapPicker
+                    latitude={latitude}
+                    longitude={longitude}
+                    radius={radius}
+                    onChange={(lat, lng, rad) => {
+                      setLatitude(lat)
+                      setLongitude(lng)
+                      setRadius(rad)
+                    }}
+                  />
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-maroon dark:text-golden" />
+                    Zero-GPS Privacy Notice
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                    Polycheck will not request, read, or store student location for online sessions
+                    (Data Privacy Act RA 10173, data-minimization principle). Attendance is verified by
+                    dual QR checkpoints and the announced meeting PIN.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             {formError && (
               <div className="p-4 border-l-4 border-red-500 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 text-sm">

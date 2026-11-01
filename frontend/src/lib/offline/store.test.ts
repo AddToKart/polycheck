@@ -53,6 +53,7 @@ const session: Session = {
   id: 'sess-1',
   sectionId: 'sec-1',
   subjectName: 'Software Engineering',
+  mode: 'in_person',
   date: '2026-10-26',
   startTime: '09:00',
   endTime: '10:00',

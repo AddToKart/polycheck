@@ -32,6 +32,10 @@ export const GeofenceConfigSchema = z.object({
   radiusMeters: z.number().int().min(10).max(500),
 })
 
+export const SessionModeSchema = z.enum(['in_person', 'online'])
+export const MeetingPinSchema = z.string().regex(/^\d{2,4}$/, 'Meeting PIN must be 2-4 digits')
+export const CheckpointTypeSchema = z.enum(['start', 'end'])
+
 export const SubjectCreateSchema = z.object({
   name: z.string().min(1, 'Subject name is required'),
   code: z.string().min(1, 'Subject code is required'),
@@ -57,9 +61,13 @@ export const SessionCreateSchema = z.object({
   startTime: TimeSchema,
   endTime: TimeSchema,
   room: z.string().optional(),
+  mode: SessionModeSchema.default('in_person'),
   qrValidityMinutes: z.number().min(1).max(15).default(15),
   gracePeriodMinutes: z.number().min(0).max(60).default(15),
-  geofence: GeofenceConfigSchema,
+  startQrValiditySeconds: z.number().int().min(60).max(300).optional(),
+  startGraceMinutes: z.number().int().min(0).max(60).optional(),
+  endQrValiditySeconds: z.number().int().min(60).max(300).optional(),
+  geofence: GeofenceConfigSchema.optional(),
   teacherId: z.string().min(1, 'Teacher is required'),
   isRescheduled: z.boolean().optional(),
   rescheduledFromDate: IsoDateSchema.optional(),
@@ -68,9 +76,72 @@ export const SessionCreateSchema = z.object({
 }).refine((value) => value.endTime > value.startTime, {
   message: 'End time must be after start time',
   path: ['endTime'],
+}).superRefine((value, ctx) => {
+  if (value.mode === 'in_person' && !value.geofence) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['geofence'],
+      message: 'Geofence is required for in-person sessions',
+    })
+  }
+  if (value.mode === 'online' && value.geofence) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['geofence'],
+      message: 'Online sessions must not include a geofence (RA 10173 zero-GPS)',
+    })
+  }
 })
 
-export const AttendanceStatusSchema = z.enum(['present', 'late', 'absent', 'pending', 'disputed', 'excused'])
+export const BulkSessionCreateSchema = z.object({
+  sectionId: z.string().min(1),
+  subjectName: z.string().min(1),
+  startDate: IsoDateSchema,
+  endDate: IsoDateSchema,
+  daysOfWeek: z.array(DayOfWeekEnum).min(1).max(7),
+  startTime: TimeSchema,
+  endTime: TimeSchema,
+  room: z.string().optional(),
+  mode: SessionModeSchema.default('in_person'),
+  qrValidityMinutes: z.number().min(1).max(15).default(15),
+  gracePeriodMinutes: z.number().min(0).max(60).default(15),
+  startQrValiditySeconds: z.number().int().min(60).max(300).optional(),
+  startGraceMinutes: z.number().int().min(0).max(60).optional(),
+  endQrValiditySeconds: z.number().int().min(60).max(300).optional(),
+  geofence: GeofenceConfigSchema.optional(),
+}).refine((value) => value.endTime > value.startTime, {
+  message: 'End time must be after start time',
+  path: ['endTime'],
+}).refine((value) => value.endDate >= value.startDate, {
+  message: 'End date must be on or after start date',
+  path: ['endDate'],
+}).superRefine((value, ctx) => {
+  if (value.mode === 'in_person' && !value.geofence) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['geofence'],
+      message: 'Geofence is required for in-person sessions',
+    })
+  }
+  if (value.mode === 'online' && value.geofence) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['geofence'],
+      message: 'Online sessions must not include a geofence (RA 10173 zero-GPS)',
+    })
+  }
+})
+
+export const ActivateCheckpointSchema = z.object({
+  checkpoint: CheckpointTypeSchema.default('start'),
+  validityMinutes: z.number().int().min(1).max(15).optional(),
+  gracePeriodMinutes: z.number().int().min(0).max(60).optional(),
+  validitySeconds: z.number().int().min(60).max(300).optional(),
+  regenerate: z.boolean().optional(),
+  token: z.string().min(80),
+})
+
+export const AttendanceStatusSchema = z.enum(['present', 'late', 'absent', 'pending', 'disputed', 'excused', 'incomplete'])
 
 export const AttendanceRecordSchema = z.object({
   sessionId: z.string().min(1),
@@ -200,3 +271,4 @@ export const UpdateSystemReportStatusSchema = z.object({
 export * from './bulk-import'
 export * from './ai'
 export * from './excuse'
+export * from './maintenance'

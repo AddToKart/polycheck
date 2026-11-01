@@ -1,4 +1,4 @@
-import { classifyAttendanceSyncError, getRecentCampusDateRange, haversineDistance, isWithinGeofence, signQRToken, verifyQRToken, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRequest, type EnrollImportResult, type EnrollImportRow, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput, type AiCapabilities, type AiChatSendInput, type AiChatSendResult, type AiChatThread, type AiThreadSummary, type AttendanceStanding, type AppNotification, type NotificationReadInput, type PushTokenInput, type StudentAtRisk, type ExcuseDecision, type ExcuseReason, type CreateTeacherResult, type CreateStudentResult, type TeacherResetStudentPasswordResult, type EmergencyDeviceReleaseInput, type EmergencyDeviceReleaseResult, type UnregisterDeviceResult, type UpdateContactsInput, type SystemReport, type SystemReportFilters, type SystemReportPage, type SystemReportStats, type CreateSystemReportInput, type UpdateSystemReportStatusInput } from '@polycheck/shared'
+import { classifyAttendanceSyncError, getRecentCampusDateRange, haversineDistance, isWithinGeofence, signQRToken, verifyQRToken, hashMeetingPin, type User, type Subject, type Section, type Session, type AttendanceRecord, type AttendanceSummary, type AttendanceStatus, type Student, type Teacher, type Enrollment, type StudentDisputeReason, type SectionRole, type SectionRoleType, type SessionPermission, type ProofOfClass, type CalendarEvent, type CreateSubjectInput, type CreateSectionInput, type CreateSessionInput, type SubmitAttendanceResult, type EnrollStudentInput, type BulkSessionInput, type CreateTeacherInput, type CreateStudentInput, type ResetUserPasswordResult, type ScanEvidenceInput, type AttendanceReport, type AttendanceReportFilters, type DashboardOverview, type ApiClient, type PrivacyNotice, type AuditLogFilters, type AuditLogPage, type StudentImportRequest, type StudentImportResult, type ImportJobStatus, type EnrollImportRequest, type EnrollImportResult, type EnrollImportRow, type AdminOverview, type AdminUserFilters, type AdminUserPage, type AssignableRole, type CreateAdminInput, type ServerStatusSnapshot, type UpdateUserInput, type AiCapabilities, type AiChatSendInput, type AiChatSendResult, type AiChatThread, type AiThreadSummary, type AttendanceStanding, type AppNotification, type NotificationReadInput, type PushTokenInput, type StudentAtRisk, type ExcuseDecision, type ExcuseReason, type CreateTeacherResult, type CreateStudentResult, type TeacherResetStudentPasswordResult, type EmergencyDeviceReleaseInput, type EmergencyDeviceReleaseResult, type UnregisterDeviceResult, type UpdateContactsInput, type SystemReport, type SystemReportFilters, type SystemReportPage, type SystemReportStats, type CreateSystemReportInput, type UpdateSystemReportStatusInput, type GenerateCheckpointQrInput, type TeacherActivationLocation, type MaintenanceStatus } from '@polycheck/shared'
 import { getOrCreateTeacherSigningKey, isSigningKeyProvisioned, markSigningKeyProvisioned } from './signing-key'
 import { API_BASE } from './api-config'
 import {
@@ -41,6 +41,10 @@ export class ApiHttpError extends Error {
     readonly status: number,
     readonly code?: string,
     readonly remainingMinutes?: number,
+    readonly distanceMeters?: number,
+    readonly allowedDistanceMeters?: number,
+    readonly canRequestOverride?: boolean,
+    readonly estimatedEnd?: string,
   ) {
     super(message)
     this.name = 'ApiHttpError'
@@ -75,6 +79,26 @@ function saveUser(user: User | null) {
 }
 
 let currentUser: User | null = loadUser()
+
+// `auth:session-replaced` is broadcast to the whole user room, including the
+// browser that just performed the replacement login — and the WebSocket event
+// can beat the login's own HTTP response on the wire (so a probe fired too
+// early would still carry the pre-login cookie). Only an in-flight login
+// mutes the monitor's destructive path; once the login response completed the
+// fresh cookie is applied and a probe is authoritative.
+let loginStartedAt = 0
+
+function noteLoginStarted() {
+  loginStartedAt = Date.now()
+}
+
+function clearLoginInFlight() {
+  loginStartedAt = 0
+}
+
+export function isOwnLoginInFlight(now = Date.now()): boolean {
+  return loginStartedAt > 0 && now - loginStartedAt < 30_000
+}
 
 function recentDateRange(days = 30) {
   return getRecentCampusDateRange(days)
@@ -123,7 +147,36 @@ async function handleResponse<T>(res: Response): Promise<T> {
     const message = Array.isArray(err.message) ? err.message.join('. ') : err.message
     const code = typeof err.code === 'string' ? err.code : undefined
     const remainingMinutes = typeof err.remainingMinutes === 'number' ? err.remainingMinutes : undefined
-    throw new ApiHttpError(message || 'Request failed', res.status, code, remainingMinutes)
+    const distanceMeters = typeof err.distanceMeters === 'number' ? err.distanceMeters : undefined
+    const allowedDistanceMeters =
+      typeof err.allowedDistanceMeters === 'number' ? err.allowedDistanceMeters : undefined
+    const canRequestOverride =
+      typeof err.canRequestOverride === 'boolean' ? err.canRequestOverride : undefined
+    const estimatedEnd = typeof err.estimatedEnd === 'string' ? err.estimatedEnd : undefined
+    // Maintenance is a cross-cutting state, not a page-local error: publish it
+    // before throwing so the global overlay can render even when the caller
+    // catches and ignores the failure.
+    if (res.status === 503 && code === 'system_maintenance' && typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(
+          new CustomEvent('polycheck-maintenance', {
+            detail: { message: message || '', estimatedEnd },
+          }),
+        )
+      } catch {
+        /* dispatchEvent may be unavailable in non-browser test shims */
+      }
+    }
+    throw new ApiHttpError(
+      message || 'Request failed',
+      res.status,
+      code,
+      remainingMinutes,
+      distanceMeters,
+      allowedDistanceMeters,
+      canRequestOverride,
+      estimatedEnd,
+    )
   }
   return res.json()
 }
@@ -190,8 +243,32 @@ export function isNetworkFailure(error: unknown): boolean {
 }
 
 async function trustedNow(): Promise<number> {
-  const offset = await getServerClockOffset()
+  const offset = await getServerClockOffset().catch(() => null)
   return Date.now() + (offset ?? 0)
+}
+
+/**
+ * The public key persists server-side and provisioning is rate limited, so
+ * upload it only once per browser/account. A key that already matches the
+ * cached session is known to the server, enabling fully offline QR use.
+ */
+async function ensureTeacherSigningKeyProvisioned(
+  user: User,
+  session: Session,
+  key: { publicKey: string },
+): Promise<void> {
+  if (await isSigningKeyProvisioned(user.id)) return
+  if (session.teacherPublicKey === key.publicKey) {
+    await markSigningKeyProvisioned(user.id)
+    return
+  }
+  try {
+    await post('/auth/provision-key', { publicKey: key.publicKey })
+    await markSigningKeyProvisioned(user.id)
+  } catch (error) {
+    if (!isNetworkFailure(error)) throw error
+    throw new Error('Connect to the internet once to register this device before generating offline QR codes.')
+  }
 }
 
 const RECEIPT_POLL_ATTEMPTS = 4
@@ -231,41 +308,58 @@ const apiBase = {
   },
 
   async loginStudent(studentId: string, password?: string): Promise<User | null> {
-    const res = await fetchWithTimeout(`${API_BASE}/auth/login/student`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ studentId, password: password ?? '' }),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: 'Login failed' }))
-      const msg = Array.isArray(err.message) ? err.message.join('. ') : (err.message || 'Login failed')
-      throw new Error(msg)
+    noteLoginStarted()
+    try {
+      const res = await fetchWithTimeout(`${API_BASE}/auth/login/student`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId, password: password ?? '' }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Login failed' }))
+        const msg = Array.isArray(err.message) ? err.message.join('. ') : (err.message || 'Login failed')
+        const code = typeof err.code === 'string' ? err.code : undefined
+        const estimatedEnd = typeof err.estimatedEnd === 'string' ? err.estimatedEnd : undefined
+        throw new ApiHttpError(msg, res.status, code, undefined, undefined, undefined, undefined, estimatedEnd)
+      }
+      const data = await res.json()
+      currentUser = data.user as User
+      saveUser(currentUser)
+      void initializeOfflineStore(currentUser.id).catch(() => undefined)
+      return currentUser
+    } finally {
+      // Covers success, rejected credentials, and network failures alike: the
+      // in-flight stamp only exists to shield the pre-cookie wire race while
+      // the login response is still travelling.
+      clearLoginInFlight()
     }
-    const data = await res.json()
-    currentUser = data.user as User
-    saveUser(currentUser)
-    void initializeOfflineStore(currentUser.id).catch(() => undefined)
-    return currentUser
   },
 
   async loginFaculty(email: string, password?: string): Promise<User | null> {
-    const res = await fetchWithTimeout(`${API_BASE}/auth/login/faculty`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password: password ?? '' }),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: 'Login failed' }))
-      const msg = Array.isArray(err.message) ? err.message.join('. ') : (err.message || 'Login failed')
-      throw new Error(msg)
+    noteLoginStarted()
+    try {
+      const res = await fetchWithTimeout(`${API_BASE}/auth/login/faculty`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: password ?? '' }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Login failed' }))
+        const msg = Array.isArray(err.message) ? err.message.join('. ') : (err.message || 'Login failed')
+        const code = typeof err.code === 'string' ? err.code : undefined
+        const estimatedEnd = typeof err.estimatedEnd === 'string' ? err.estimatedEnd : undefined
+        throw new ApiHttpError(msg, res.status, code, undefined, undefined, undefined, undefined, estimatedEnd)
+      }
+      const data = await res.json()
+      currentUser = data.user as User
+      saveUser(currentUser)
+      void initializeOfflineStore(currentUser.id).catch(() => undefined)
+      return currentUser
+    } finally {
+      clearLoginInFlight()
     }
-    const data = await res.json()
-    currentUser = data.user as User
-    saveUser(currentUser)
-    void initializeOfflineStore(currentUser.id).catch(() => undefined)
-    return currentUser
   },
 
   async logout() {
@@ -457,7 +551,12 @@ const apiBase = {
     void teacherId
     return post('/sessions', body)
   },
-  async generateQrCode(sessionId: string, validityMinutes: number, gracePeriodMinutes?: number): Promise<Session> {
+  async generateQrCode(
+    sessionId: string,
+    validityMinutes: number,
+    gracePeriodMinutes?: number,
+    teacherLocation?: TeacherActivationLocation,
+  ): Promise<Session> {
     if (validityMinutes < 1 || validityMinutes > 15 || (gracePeriodMinutes ?? 0) > 60) {
       throw new Error('QR validity must be 1-15 minutes and grace must be 0-60 minutes')
     }
@@ -479,30 +578,23 @@ const apiBase = {
       issuedAt,
       validityMinutes,
       gracePeriodMinutes: effectiveGrace,
+      mode: 'in_person',
+      pinRequired: false,
     }, key.secretKey)
     try {
-      // The public key persists server-side and provisioning is rate limited, so
-      // upload it only once per browser/account. A key that already matches the
-      // cached session is known to the server, enabling fully offline QR use.
-      if (!(await isSigningKeyProvisioned(user.id))) {
-        if (session.teacherPublicKey === key.publicKey) {
-          await markSigningKeyProvisioned(user.id)
-        } else {
-          try {
-            await post('/auth/provision-key', { publicKey: key.publicKey })
-            await markSigningKeyProvisioned(user.id)
-          } catch (error) {
-            if (!isNetworkFailure(error)) throw error
-            throw new Error(
-              'Connect to the internet once to register this device before generating offline QR codes.',
-            )
-          }
-        }
-      }
+      await ensureTeacherSigningKeyProvisioned(user, session, key)
       const activated = await post<Session>(`/sessions/${sessionId}/activate`, {
         validityMinutes,
         gracePeriodMinutes: effectiveGrace,
         token,
+        // V4 anti-ghost-professor evidence; absent fix keeps today's behavior.
+        ...(teacherLocation?.latitude !== undefined && teacherLocation?.longitude !== undefined
+          ? {
+              latitude: teacherLocation.latitude,
+              longitude: teacherLocation.longitude,
+              ...(teacherLocation.override ? { overrideTeacherLocation: true } : {}),
+            }
+          : {}),
       })
       await cacheSessions([activated]).catch(() => undefined)
       return activated
@@ -522,6 +614,93 @@ const apiBase = {
         sessionId,
         validityMinutes,
         gracePeriodMinutes: effectiveGrace,
+        token,
+      })
+      await cacheSessions([activated]).catch(() => undefined)
+      return activated
+    }
+  },
+  async generateCheckpointQrCode(input: GenerateCheckpointQrInput): Promise<Session> {
+    const { sessionId, checkpoint, validitySeconds, graceMinutes, pin, regenerate } = input
+    if (!Number.isInteger(validitySeconds) || validitySeconds < 60 || validitySeconds > 300) {
+      throw new Error('Checkpoint QR validity must be 60-300 seconds')
+    }
+    const effectiveGrace = checkpoint === 'start' ? (graceMinutes ?? 10) : 0
+    if (checkpoint === 'start' && (effectiveGrace < 0 || effectiveGrace > 60)) {
+      throw new Error('Check-in grace must be 0-60 minutes')
+    }
+    const user = this.getCurrentUser()
+    if (!user || user.role !== 'teacher') throw new Error('A teacher account is required to sign QR tokens')
+    const [session, key] = await Promise.all([
+      this.getSession(sessionId),
+      getOrCreateTeacherSigningKey(user.id),
+    ])
+    if (session.mode !== 'online') {
+      throw new Error('Start/end checkpoint QR codes are only available for online sessions')
+    }
+    const pinRequired = typeof pin === 'string' && pin.length > 0
+    const pinHash = pinRequired ? (await hashMeetingPin(pin)).serialized : undefined
+    const issuedAt = await trustedNow()
+    const token = signQRToken(
+      {
+        version: 1,
+        sessionId: session.id,
+        sectionId: session.sectionId,
+        teacherId: user.id,
+        teacherName: user.fullName,
+        issuedAt,
+        validityMinutes: Math.ceil(validitySeconds / 60),
+        gracePeriodMinutes: effectiveGrace,
+        mode: 'online',
+        checkpoint,
+        pinRequired,
+        ...(pinHash ? { pinHash } : {}),
+        validitySeconds,
+      },
+      key.secretKey,
+    )
+    const activatedAtIso = new Date(issuedAt).toISOString()
+    const expiresAtIso = new Date(issuedAt + validitySeconds * 1000).toISOString()
+    try {
+      await ensureTeacherSigningKeyProvisioned(user, session, key)
+      const activated = await post<Session>(`/sessions/${sessionId}/activate`, {
+        checkpoint,
+        validitySeconds,
+        ...(checkpoint === 'start' ? { gracePeriodMinutes: effectiveGrace } : {}),
+        ...(regenerate ? { regenerate: true } : {}),
+        token,
+      })
+      await cacheSessions([activated]).catch(() => undefined)
+      return activated
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      const activated: Session = {
+        ...session,
+        isActive: true,
+        teacherPublicKey: key.publicKey,
+        pinRequired: session.pinRequired || pinRequired,
+        ...(checkpoint === 'start'
+          ? {
+              startQrToken: token,
+              startQrGeneratedAt: activatedAtIso,
+              startTokenExpiresAt: expiresAtIso,
+              startQrValiditySeconds: validitySeconds,
+              startGraceMinutes: effectiveGrace,
+            }
+          : {
+              endQrToken: token,
+              endQrGeneratedAt: activatedAtIso,
+              endTokenExpiresAt: expiresAtIso,
+              endQrValiditySeconds: validitySeconds,
+              endGraceMinutes: 0,
+            }),
+      }
+      await enqueueOfflineOperation('session_activation', {
+        sessionId,
+        checkpoint,
+        validitySeconds,
+        gracePeriodMinutes: effectiveGrace,
+        regenerate: regenerate ?? false,
         token,
       })
       await cacheSessions([activated]).catch(() => undefined)
@@ -663,8 +842,17 @@ const apiBase = {
       return optimistic
     }
   },
-  async submitScan(sessionId: string, studentId: string, studentName: string, lat: number, lon: number, deviceId: string, qrToken: string, scannedAt?: string, evidence?: ScanEvidenceInput): Promise<AttendanceRecord | { error: string }> {
-    const payload = { sessionId, lat, lon, deviceId, qrToken, scannedAt: scannedAt ?? new Date().toISOString(), ...evidence }
+  async submitScan(sessionId: string, studentId: string, studentName: string, lat: number | null, lon: number | null, deviceId: string, qrToken: string, scannedAt?: string, evidence?: ScanEvidenceInput, pin?: string): Promise<AttendanceRecord | { error: string }> {
+    const payload = {
+      sessionId,
+      ...(lat !== null ? { lat } : {}),
+      ...(lon !== null ? { lon } : {}),
+      deviceId,
+      qrToken,
+      scannedAt: scannedAt ?? new Date().toISOString(),
+      ...evidence,
+      ...(pin ? { pin } : {}),
+    }
     try {
       const result = await post<AttendanceRecord | { error: string }>('/attendance/scan', payload)
       if (!('error' in result)) await cacheAttendanceRecords([result]).catch(() => undefined)
@@ -675,57 +863,95 @@ const apiBase = {
       const cachedSession = await getCachedSession(sessionId)
       const tokenPayload = verifyQRToken(qrToken, cachedSession?.teacherPublicKey ?? '')
       if (!tokenPayload) return { error: 'QR token signature is invalid' }
+      const online = tokenPayload.mode === 'online'
+      const checkpoint = tokenPayload.checkpoint
       const capturedAt = new Date(payload.scannedAt).getTime()
-      const validityEnd = tokenPayload.issuedAt + tokenPayload.validityMinutes * 60_000
-      const graceEnd = validityEnd + tokenPayload.gracePeriodMinutes * 60_000
-      if (evidence?.mocked === true) return { error: 'Mocked locations are not accepted' }
+      const validityMs =
+        tokenPayload.validitySeconds !== undefined
+          ? tokenPayload.validitySeconds * 1000
+          : tokenPayload.validityMinutes * 60_000
+      const validityEnd = tokenPayload.issuedAt + validityMs
+      const graceEnd =
+        validityEnd + (checkpoint === 'end' ? 0 : tokenPayload.gracePeriodMinutes * 60_000)
+      if (!online && evidence?.mocked === true) return { error: 'Mocked locations are not accepted' }
       if (!cachedSession) {
         return { error: 'Session data is not available offline. Sync before class.' }
       }
-      const distance = haversineDistance(
-        lat,
-        lon,
-        cachedSession.geofence.latitude,
-        cachedSession.geofence.longitude,
-      )
-      if (distance > cachedSession.geofence.radiusMeters) {
-        return {
-          error: `You are outside the session geofence (${Math.round(distance)} m away, allowed ${cachedSession.geofence.radiusMeters} m).`,
+      if (!online) {
+        if (lat === null || lon === null || !cachedSession.geofence) {
+          return { error: 'Location is required for in-person attendance.' }
         }
-      }
-      if ((evidence?.accuracyMeters ?? 0) > 50) return { error: 'Location accuracy is too poor to verify attendance' }
-      if (evidence?.locationCapturedAt && Math.abs(capturedAt - new Date(evidence.locationCapturedAt).getTime()) > 2 * 60_000) {
-        return { error: 'Location fix is stale. Acquire a fresh location and try again.' }
+        const distance = haversineDistance(
+          lat,
+          lon,
+          cachedSession.geofence.latitude,
+          cachedSession.geofence.longitude,
+        )
+        if (distance > cachedSession.geofence.radiusMeters) {
+          return {
+            error: `You are outside the session geofence (${Math.round(distance)} m away, allowed ${cachedSession.geofence.radiusMeters} m).`,
+          }
+        }
+        if ((evidence?.accuracyMeters ?? 0) > 50)
+          return { error: 'Location accuracy is too poor to verify attendance' }
+        if (
+          evidence?.locationCapturedAt &&
+          Math.abs(capturedAt - new Date(evidence.locationCapturedAt).getTime()) > 2 * 60_000
+        ) {
+          return { error: 'Location fix is stale. Acquire a fresh location and try again.' }
+        }
       }
       if (!Number.isFinite(capturedAt) || capturedAt < tokenPayload.issuedAt - 30_000 || capturedAt > graceEnd) {
         return { error: 'The QR attendance window has expired' }
       }
       const existing = await getCachedAttendanceForSession(sessionId)
-      if (existing.some((record) => record.studentId === studentId)) {
+      const alreadySaved = online
+        ? existing.some(
+            (record) =>
+              record.studentId === studentId &&
+              (checkpoint === 'end' ? Boolean(record.checkOutTime) : Boolean(record.checkInTime)),
+          )
+        : existing.some((record) => record.studentId === studentId)
+      if (alreadySaved) {
         return { error: 'Attendance for this session was already saved on this device.' }
       }
       await enqueueOfflineOperation('attendance_scan', payload)
+      const legStatus: AttendanceStatus = capturedAt <= validityEnd ? 'present' : 'late'
       const record: AttendanceRecord = {
-        id: `offline:${sessionId}:${studentId}`,
+        id: online ? `offline:${sessionId}:${studentId}:${checkpoint ?? 'start'}` : `offline:${sessionId}:${studentId}`,
         sessionId,
         sectionId: tokenPayload.sectionId,
         studentId,
         studentName,
         timestamp: payload.scannedAt,
-        status: capturedAt <= validityEnd ? 'present' : 'late',
-        coordinates: { latitude: lat, longitude: lon },
+        // Online rows stay pending between checkpoints until the session closes.
+        status: online ? 'pending' : legStatus,
+        coordinates: online ? { latitude: null, longitude: null } : { latitude: lat, longitude: lon },
         deviceId,
         tokenSnapshot: qrToken,
         isSynced: false,
+        ...(online
+          ? checkpoint === 'end'
+            ? { checkOutTime: payload.scannedAt, checkOutStatus: 'present' as const }
+            : { checkInTime: payload.scannedAt, checkInStatus: legStatus }
+          : {}),
       }
       await cacheAttendanceRecords([record]).catch(() => undefined)
       return record
     }
   },
-  async checkAttendance(sessionId: string, studentId: string, lat: number, lon: number, qrToken?: string, scannedAt?: string): Promise<SubmitAttendanceResult> {
+  async checkAttendance(sessionId: string, studentId: string, lat: number | null, lon: number | null, qrToken?: string, scannedAt?: string, pin?: string): Promise<SubmitAttendanceResult> {
     void studentId
+    const payload = {
+      sessionId,
+      ...(lat !== null ? { lat } : {}),
+      ...(lon !== null ? { lon } : {}),
+      qrToken,
+      scannedAt,
+      ...(pin ? { pin } : {}),
+    }
     try {
-      return await post('/attendance/check', { sessionId, lat, lon, qrToken, scannedAt })
+      return await post('/attendance/check', payload)
     } catch (error) {
       if (!isNetworkFailure(error)) throw error
       const session = await getCachedSession(sessionId)
@@ -737,19 +963,34 @@ const apiBase = {
       if (!tokenPayload || tokenPayload.sessionId !== session.id || tokenPayload.sectionId !== session.sectionId || tokenPayload.teacherId !== session.teacherId) {
         return { success: false, status: 'disputed', reason: 'invalid_signature', message: 'QR token signature is invalid' }
       }
-      if (!isWithinGeofence(lat, lon, session.geofence.latitude, session.geofence.longitude, session.geofence.radiusMeters)) {
+      const online = tokenPayload.mode === 'online'
+      if (!online && (lat === null || lon === null || !session.geofence || !isWithinGeofence(lat, lon, session.geofence.latitude, session.geofence.longitude, session.geofence.radiusMeters))) {
         return { success: false, status: 'absent', reason: 'outside_geofence', message: 'You are outside the session geofence' }
       }
       const capturedAt = new Date(scannedAt ?? Date.now()).getTime()
       if (session.endedAt && capturedAt > new Date(session.endedAt).getTime()) return { success: false, status: 'absent', reason: 'session_inactive', message: 'Session was not active at scan time' }
-      const validityEnd = tokenPayload.issuedAt + tokenPayload.validityMinutes * 60_000
-      const graceEnd = validityEnd + tokenPayload.gracePeriodMinutes * 60_000
+      const validityMs =
+        tokenPayload.validitySeconds !== undefined
+          ? tokenPayload.validitySeconds * 1000
+          : tokenPayload.validityMinutes * 60_000
+      const validityEnd = tokenPayload.issuedAt + validityMs
+      const graceEnd =
+        validityEnd + (tokenPayload.checkpoint === 'end' ? 0 : tokenPayload.gracePeriodMinutes * 60_000)
       if (!Number.isFinite(capturedAt) || capturedAt < tokenPayload.issuedAt - 30_000 || capturedAt > graceEnd) {
         return { success: false, status: 'absent', reason: 'qr_expired', message: 'The QR attendance window has expired' }
       }
-      await enqueueOfflineOperation('scan_attempt', { sessionId, lat, lon, qrToken, scannedAt })
+      await enqueueOfflineOperation('scan_attempt', payload)
       const status = capturedAt <= validityEnd ? 'present' : 'late'
-      return { success: true, status, message: status === 'present' ? 'Check-in saved offline and queued for sync.' : 'Late check-in saved offline and queued for sync.' }
+      return {
+        success: true,
+        status,
+        message:
+          online && tokenPayload.checkpoint === 'end'
+            ? 'Check-out saved offline and queued for sync.'
+            : status === 'present'
+              ? 'Check-in saved offline and queued for sync.'
+              : 'Late check-in saved offline and queued for sync.',
+      }
     }
   },
 
@@ -912,6 +1153,16 @@ const apiBase = {
   setSetting(key: string, value: string): Promise<{ key: string; value: string; updatedAt: string }> {
     return put(`/settings/${encodeURIComponent(key)}`, { value })
   },
+  async getMaintenanceStatus(): Promise<MaintenanceStatus> {
+    try {
+      return await get('/maintenance/status')
+    } catch {
+      // The public probe must never take a page down; treat any failure as
+      // "state unknown, assume not in maintenance" and let real 503s drive
+      // the overlay when they occur.
+      return { enabled: false }
+    }
+  },
   getAuditLogs(filters: AuditLogFilters = {}): Promise<AuditLogPage> {
     return get(queryPath('/audit-logs', { ...filters }))
   },
@@ -1023,13 +1274,22 @@ const apiBase = {
         }
         if (kind === 'session_activation') {
           const sessionId = String(payload.sessionId)
+          const checkpoint = payload.checkpoint === 'start' || payload.checkpoint === 'end' ? payload.checkpoint : undefined
           const activated = await post<Session>(
             `/sessions/${sessionId}/activate`,
-            {
-              validityMinutes: payload.validityMinutes,
-              gracePeriodMinutes: payload.gracePeriodMinutes,
-              token: payload.token,
-            },
+            checkpoint
+              ? {
+                  checkpoint,
+                  validitySeconds: payload.validitySeconds,
+                  ...(checkpoint === 'start' ? { gracePeriodMinutes: payload.gracePeriodMinutes } : {}),
+                  ...(payload.regenerate ? { regenerate: true } : {}),
+                  token: payload.token,
+                }
+              : {
+                  validityMinutes: payload.validityMinutes,
+                  gracePeriodMinutes: payload.gracePeriodMinutes,
+                  token: payload.token,
+                },
             operationId,
           )
           await cacheSessions([activated]).catch(() => undefined)
@@ -1075,15 +1335,28 @@ const apiBase = {
           // Read from the server: cached local state cannot prove a commit.
           try {
             const session = await get<Session>(`/sessions/${String(payload.sessionId)}`)
+            const checkpoint = payload.checkpoint === 'start' || payload.checkpoint === 'end' ? payload.checkpoint : undefined
             const committed =
               kind === 'session_activation'
-                ? Boolean(payload.token && session.qrToken === payload.token)
+                ? checkpoint === 'end'
+                  ? Boolean(payload.token && session.endQrToken === payload.token)
+                  : checkpoint === 'start'
+                    ? Boolean(payload.token && session.startQrToken === payload.token)
+                    : Boolean(payload.token && session.qrToken === payload.token)
                 : Boolean(session.endedAt)
             if (committed) {
               await cacheSessions([session]).catch(() => undefined)
               return { outcome: 'synced' }
             }
-            if (session.qrToken || session.endedAt) {
+            const changed =
+              kind === 'session_activation'
+                ? checkpoint === 'end'
+                  ? Boolean(session.endQrToken || session.endedAt)
+                  : checkpoint === 'start'
+                    ? Boolean(session.startQrToken || session.endedAt)
+                    : Boolean(session.qrToken || session.endedAt)
+                : Boolean(session.endedAt)
+            if (changed) {
               return {
                 outcome: 'terminal',
                 error: 'Session changed on the server. Review it with your instructor.',

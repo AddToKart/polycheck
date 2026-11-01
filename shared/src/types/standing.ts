@@ -13,7 +13,9 @@ export interface AttendanceStanding {
   late: number
   absent: number
   disputed: number
-  /** Sessions that count toward the rate (present + late + absent). */
+  /** Half-attended online sessions (one checkpoint only); counted as not attended. */
+  incomplete: number
+  /** Sessions that count toward the rate (present + late + absent + incomplete). */
   countedSessions: number
   /** (present + late) / countedSessions as a 0-100 percentage; null with no data. */
   attendanceRate: number | null

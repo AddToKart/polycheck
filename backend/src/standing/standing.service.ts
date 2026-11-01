@@ -29,6 +29,7 @@ interface StatusCounts {
   pending: number
   disputed: number
   excused: number
+  incomplete: number
 }
 
 @Injectable()
@@ -111,7 +112,15 @@ export class StandingService {
   }
 
   private evaluate(section: StandingSection, thresholdPercent: number): AttendanceStanding {
-    const counts: StatusCounts = { present: 0, late: 0, absent: 0, pending: 0, disputed: 0, excused: 0 }
+    const counts: StatusCounts = {
+      present: 0,
+      late: 0,
+      absent: 0,
+      pending: 0,
+      disputed: 0,
+      excused: 0,
+      incomplete: 0,
+    }
     let lastSessionDate: string | undefined
     for (const record of section.attendanceRecords) {
       switch (record.status) {
@@ -133,12 +142,18 @@ export class StandingService {
         case 'excused':
           counts.excused += 1
           break
+        case 'incomplete':
+          counts.incomplete += 1
+          break
       }
       const date = record.session?.date ?? record.timestamp.toISOString().slice(0, 10)
       if (!lastSessionDate || date > lastSessionDate) lastSessionDate = date
     }
 
-    const countedSessions = counts.present + counts.late + counts.absent
+    // Half-attended sessions (one checkpoint only) count toward the denominator
+    // but not the numerator: they cannot inflate the rate, yet stay visible and
+    // excusable. Confirmed with the registrar policy question (OQ1).
+    const countedSessions = counts.present + counts.late + counts.absent + counts.incomplete
     const attendedSessions = counts.present + counts.late
     const attendanceRate = countedSessions === 0 ? null : roundOneDecimal((attendedSessions / countedSessions) * 100)
     const absencesBeforeBelowThreshold =
@@ -164,6 +179,9 @@ export class StandingService {
     if (counts.excused > 0) {
       caveats.push(`${counts.excused} excused record(s) excluded from the rate.`)
     }
+    if (counts.incomplete > 0) {
+      caveats.push(`${counts.incomplete} incomplete record(s) (one checkpoint only) count as not attended.`)
+    }
 
     return {
       sectionId: section.id,
@@ -176,6 +194,7 @@ export class StandingService {
       late: counts.late,
       absent: counts.absent,
       disputed: counts.disputed,
+      incomplete: counts.incomplete,
       countedSessions,
       attendanceRate,
       status,

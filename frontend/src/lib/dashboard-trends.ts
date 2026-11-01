@@ -8,10 +8,11 @@ export interface TrendTotals {
   absent: number
   disputed: number
   excused: number
+  incomplete: number
 }
 
 export interface TrendSegment {
-  key: 'present' | 'late' | 'absent' | 'excused'
+  key: 'present' | 'late' | 'absent' | 'excused' | 'incomplete'
   label: string
   value: number
   percent: number
@@ -20,24 +21,26 @@ export interface TrendSegment {
 }
 
 /**
- * The stack shows attended outcomes plus excused. Pending and disputed stay out
- * of the stack (both are surfaced as separate totals) and disputed is excluded
- * from the attendance rate.
+ * The stack shows attended outcomes plus excused and incomplete (the two
+ * non-standard resolutions). Pending and disputed stay out of the stack (both
+ * are surfaced as separate totals).
  */
 const SEGMENT_STYLES: ReadonlyArray<Pick<TrendSegment, 'key' | 'label' | 'barClassName' | 'textClassName'>> = [
   { key: 'present', label: 'Present', barClassName: 'bg-golden', textClassName: 'text-golden' },
   { key: 'late', label: 'Late', barClassName: 'bg-maroon', textClassName: 'text-maroon dark:text-red-300' },
   { key: 'absent', label: 'Absent', barClassName: 'bg-maroon-dark', textClassName: 'text-maroon-dark dark:text-red-400' },
-  // Badge-system golden-outline/deep-maroon treatment, chart-safe as a fill.
-  { key: 'excused', label: 'Excused', barClassName: 'bg-golden-dark', textClassName: 'text-golden-dark' },
+  // Golden-outline treatment, chart-safe as a fill.
+  { key: 'excused', label: 'Excused', barClassName: 'bg-golden/40', textClassName: 'text-golden-dark' },
+  // Dashed-border badge in the UI; the chart approximates it with golden-dark.
+  { key: 'incomplete', label: 'Incomplete', barClassName: 'bg-golden-dark', textClassName: 'text-golden-dark' },
 ]
 
-const EMPTY_TOTALS: TrendTotals = { present: 0, late: 0, absent: 0, disputed: 0, excused: 0 }
+const EMPTY_TOTALS: TrendTotals = { present: 0, late: 0, absent: 0, disputed: 0, excused: 0, incomplete: 0 }
 
 /**
- * Folds daily trend rows into period totals. `excused` tolerates payloads from
- * a backend that has not yet shipped the field so charts degrade to zero rather
- * than rendering `NaN`.
+ * Folds daily trend rows into period totals. `excused`/`incomplete` tolerate
+ * payloads from a backend that has not yet shipped the fields so charts
+ * degrade to zero rather than rendering `NaN`.
  */
 export function summarizeTrends(
   rows: ReadonlyArray<DashboardTrendRow> | null | undefined,
@@ -49,13 +52,14 @@ export function summarizeTrends(
     totals.absent += row.absent
     totals.disputed += row.disputed
     totals.excused += row.excused ?? 0
+    totals.incomplete += row.incomplete ?? 0
   }
   return totals
 }
 
-/** Denominator for the stacked bar: attended outcomes plus excused. */
+/** Denominator for the stacked bar: attended outcomes plus excused/incomplete. */
 export function stackedTrendTotal(totals: TrendTotals): number {
-  return totals.present + totals.late + totals.absent + totals.excused
+  return totals.present + totals.late + totals.absent + totals.excused + totals.incomplete
 }
 
 /**

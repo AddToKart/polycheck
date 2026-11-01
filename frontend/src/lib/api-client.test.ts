@@ -424,4 +424,54 @@ describe('real API client', () => {
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ userId: 'teacher-1' }) }),
     )
   })
+
+  it('publishes the maintenance event and surfaces estimatedEnd on 503s', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse(
+        {
+          code: 'system_maintenance',
+          message: 'Campus maintenance',
+          estimatedEnd: '2026-11-01T10:00:00.000Z',
+        },
+        503,
+      ),
+    )
+    const events: Array<CustomEvent<{ message?: string; estimatedEnd?: string }>> = []
+    const listener = (event: Event) => events.push(event as CustomEvent)
+    window.addEventListener('polycheck-maintenance', listener)
+    try {
+      const { api, ApiHttpError } = await import('./api-client')
+      const error = (await api.getSettings().then(
+        () => null,
+        (caught: unknown) => caught,
+      )) as InstanceType<typeof ApiHttpError>
+      expect(error).toBeInstanceOf(ApiHttpError)
+      expect(error.status).toBe(503)
+      expect(error.code).toBe('system_maintenance')
+      expect(error.estimatedEnd).toBe('2026-11-01T10:00:00.000Z')
+      expect(events).toHaveLength(1)
+      expect(events[0].detail).toEqual({
+        message: 'Campus maintenance',
+        estimatedEnd: '2026-11-01T10:00:00.000Z',
+      })
+    } finally {
+      window.removeEventListener('polycheck-maintenance', listener)
+    }
+  })
+
+  it('reads the public maintenance status and degrades to open when unavailable', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ enabled: true, message: 'Back soon', estimatedEnd: '2026-11-01T10:00:00.000Z' }),
+    )
+    const { api } = await import('./api-client')
+    await expect(api.getMaintenanceStatus()).resolves.toEqual({
+      enabled: true,
+      message: 'Back soon',
+      estimatedEnd: '2026-11-01T10:00:00.000Z',
+    })
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('https://api.polycheck.test/api/maintenance/status')
+
+    vi.mocked(fetch).mockRejectedValueOnce(new Error('offline'))
+    await expect(api.getMaintenanceStatus()).resolves.toEqual({ enabled: false })
+  })
 })

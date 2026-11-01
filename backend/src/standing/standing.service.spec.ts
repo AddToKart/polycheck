@@ -75,6 +75,7 @@ describe('StandingService', () => {
       late: 0,
       absent: 0,
       disputed: 0,
+      incomplete: 0,
       countedSessions: 0,
       attendanceRate: null,
       status: 'insufficient_data',

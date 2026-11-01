@@ -1,4 +1,13 @@
-export type AttendanceStatus = 'present' | 'late' | 'absent' | 'pending' | 'disputed' | 'excused'
+import type { SessionMode } from './session'
+
+export type AttendanceStatus =
+  | 'present'
+  | 'late'
+  | 'absent'
+  | 'pending'
+  | 'disputed'
+  | 'excused'
+  | 'incomplete'
 
 export type ExcuseStatus = 'requested' | 'approved' | 'rejected'
 
@@ -32,6 +41,7 @@ export type SystemDisputeReason =
   | 'rooted_device'
   | 'hook_detected'
   | 'emulator_detected'
+  | 'concurrent_session_conflict'
 
 export type DisputeReason = StudentDisputeReason | SystemDisputeReason
 
@@ -45,9 +55,14 @@ export interface AttendanceRecord {
   timestamp: string
   status: AttendanceStatus
   coordinates: {
-    latitude: number
-    longitude: number
+    latitude: number | null
+    longitude: number | null
   }
+  mode?: SessionMode
+  checkInTime?: string | null
+  checkInStatus?: AttendanceStatus | null
+  checkOutTime?: string | null
+  checkOutStatus?: AttendanceStatus | null
   deviceId?: string
   tokenSnapshot?: string
   isSynced: boolean
@@ -75,4 +90,5 @@ export interface AttendanceSummary {
   absent: number
   disputed: number
   excused: number
+  incomplete: number
 }

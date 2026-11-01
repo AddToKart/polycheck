@@ -297,6 +297,7 @@ export class DocsService {
       pending: 0,
       disputed: 0,
       excused: 0,
+      incomplete: 0,
     }
     for (const row of rows) {
       counts[row.status] = (counts[row.status] ?? 0) + 1
@@ -314,6 +315,7 @@ export class DocsService {
         ['Present', counts.present],
         ['Late', counts.late],
         ['Absent', counts.absent],
+        ['Incomplete', counts.incomplete],
         ['Pending', counts.pending],
         ['Disputed', counts.disputed],
         ['Excused', counts.excused],
@@ -355,7 +357,7 @@ export class DocsService {
       columns: SESSION_ATTENDANCE_COLUMNS,
       rows: rows.map((row) => SESSION_ATTENDANCE_COLUMNS.map((column) => row[column.key])),
       summaryLines: [
-        `Present: ${counts.present}   Late: ${counts.late}   Absent: ${counts.absent}`,
+        `Present: ${counts.present}   Late: ${counts.late}   Absent: ${counts.absent}   Incomplete: ${counts.incomplete}`,
         `Pending: ${counts.pending}   Disputed: ${counts.disputed}   Excused: ${counts.excused}   Total: ${rows.length}`,
       ],
     })

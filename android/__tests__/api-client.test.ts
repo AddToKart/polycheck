@@ -105,6 +105,7 @@ const cachedSession: Session = {
   id: 'sess-1',
   sectionId: 'sec-1',
   subjectName: 'Data Structures',
+  mode: 'in_person',
   date: '2026-08-02',
   startTime: '09:30',
   endTime: '12:00',
@@ -424,7 +425,7 @@ describe('api-client offline sync engine', () => {
           'sess-1', 'student-1', 'Student One', 14.5995, 120.9842, 'dev-1',
           qrToken, '2026-08-02T10:00:00.000Z',
         )
-        expect(result).toEqual({ error: 'You are outside the session geofence' })
+        expect(result).toEqual({ error: 'Session data is not available offline. Sync before class.' })
       })
 
       it('rejects scans outside the QR validity window', async () => {

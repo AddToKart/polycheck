@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import * as Location from 'expo-location'
-import { formatCampusDate, type Section, type Session, type Subject } from '@polycheck/shared'
+import { formatCampusDate, type Section, type Session, type SessionMode, type Subject } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
 import { useAuthGate } from '../../../hooks/use-auth-gate'
 import { useTheme } from '../../../theme/ThemeContext'
@@ -41,6 +41,7 @@ export default function CreateSessionScreen() {
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:30')
   const [room, setRoom] = useState('')
+  const [mode, setMode] = useState<SessionMode>('in_person')
   const [latitude, setLatitude] = useState(14.8697)
   const [longitude, setLongitude] = useState(120.9991)
   const [radius, setRadius] = useState(40)
@@ -168,11 +169,11 @@ export default function CreateSessionScreen() {
     setSubmitting(true)
     try {
       if (bulkMode) {
-        await api.createBulkSessions({ sectionId, subjectName: selectedParentSubject?.name ?? '', startDate: bulkStartDate, endDate: bulkEndDate, daysOfWeek: bulkDays, startTime, endTime, room: room || undefined, qrValidityMinutes: defaultQrValidity, gracePeriodMinutes: defaultGracePeriod, geofence: { latitude, longitude, radiusMeters: radius }, teacherId: user.id })
+        await api.createBulkSessions({ sectionId, subjectName: selectedParentSubject?.name ?? '', startDate: bulkStartDate, endDate: bulkEndDate, daysOfWeek: bulkDays, startTime, endTime, room: room || undefined, mode, ...(mode === 'in_person' ? { geofence: { latitude, longitude, radiusMeters: radius } } : {}), qrValidityMinutes: defaultQrValidity, gracePeriodMinutes: defaultGracePeriod, teacherId: user.id })
         showToast('success', 'Sessions created', `${bulkCount} recurring sessions were created.`)
       } else {
         const replaced = replaceDates.find((item) => item.dateStr === rescheduledFromDate)
-        await api.createSession({ sectionId, subjectName: selectedParentSubject?.name ?? '', date, startTime, endTime, room: room || undefined, qrValidityMinutes: defaultQrValidity, gracePeriodMinutes: defaultGracePeriod, geofence: { latitude, longitude, radiusMeters: radius }, teacherId: user.id, isRescheduled: isRescheduled || undefined, rescheduledFromDate: isRescheduled ? rescheduledFromDate : undefined, originalScheduleTime: isRescheduled ? replaced?.scheduleTime : undefined, originalRoom: isRescheduled ? replaced?.room : undefined })
+        await api.createSession({ sectionId, subjectName: selectedParentSubject?.name ?? '', date, startTime, endTime, room: room || undefined, mode, ...(mode === 'in_person' ? { geofence: { latitude, longitude, radiusMeters: radius } } : {}), qrValidityMinutes: defaultQrValidity, gracePeriodMinutes: defaultGracePeriod, teacherId: user.id, isRescheduled: isRescheduled || undefined, rescheduledFromDate: isRescheduled ? rescheduledFromDate : undefined, originalScheduleTime: isRescheduled ? replaced?.scheduleTime : undefined, originalRoom: isRescheduled ? replaced?.room : undefined })
         showToast('success', 'Session created', 'The class session is ready for activation.')
       }
       router.back()
@@ -193,6 +194,34 @@ export default function CreateSessionScreen() {
 
       <SectionHeading eyebrow="Step two" title={bulkMode ? 'Set the recurrence' : 'Set the meeting'} />
       <CampusCard className="mb-7 gap-4">
+        <View>
+          <Text className="mb-2 font-sans-bold text-xs text-ink dark:text-zinc-200">Session mode</Text>
+          <View className="flex-row gap-2">
+            {([
+              { key: 'in_person' as const, label: 'In-Person', icon: 'school' as const },
+              { key: 'online' as const, label: 'Online', icon: 'videocam' as const },
+            ]).map((option) => {
+              const selected = mode === option.key
+              return (
+                <Pressable
+                  key={option.key}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  onPress={() => setMode(option.key)}
+                  className={`min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-2xl border ${selected ? 'border-maroon bg-maroon dark:border-golden dark:bg-golden' : 'border-line bg-zinc-50 dark:border-line-dark dark:bg-white/5'}`}
+                >
+                  <MaterialIcons name={option.icon} size={16} color={selected ? (isDark ? pupColors.maroonDark : pupColors.white) : isDark ? pupColors.golden : pupColors.maroon} />
+                  <Text className={`font-sans-bold text-xs uppercase tracking-[1px] ${selected ? 'text-white dark:text-maroon-dark' : 'text-muted dark:text-zinc-400'}`}>{option.label}</Text>
+                </Pressable>
+              )
+            })}
+          </View>
+          <Text className="mt-2 font-sans text-[10px] leading-4 text-muted dark:text-zinc-500">
+            {mode === 'online'
+              ? 'Dual checkpoints: start-of-class check-in and end-of-class check-out.'
+              : 'Single QR check-in verified inside a campus geofence.'}
+          </Text>
+        </View>
         {bulkMode ? <>
           <View className="flex-row gap-3"><View className="flex-1"><CampusFormField label="Start date" hint="YYYY-MM-DD" value={bulkStartDate} onChangeText={setBulkStartDate} /></View><View className="flex-1"><CampusFormField label="End date" hint="YYYY-MM-DD" value={bulkEndDate} onChangeText={setBulkEndDate} /></View></View>
           <View><Text className="mb-2 font-sans-bold text-xs text-ink dark:text-zinc-200">Meeting days</Text><View className="flex-row flex-wrap gap-2">{ALL_DAYS.map((day) => {
@@ -210,12 +239,31 @@ export default function CreateSessionScreen() {
         <CampusFormField label="Room" icon="meeting-room" placeholder="e.g. CCIS Lab 3" value={room} onChangeText={setRoom} />
       </CampusCard>
 
-      <SectionHeading eyebrow="Step three" title="Set the attendance area" />
-      <CampusCard className="mb-7 p-4">
-        <View className="mb-3 flex-row items-start justify-between gap-3"><View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">Geofence</Text><Text className="mt-1 font-sans text-xs leading-5 text-muted dark:text-zinc-400">Drag the pin or tap the map. Use the radius control to define the accepted scan area.</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Use my current location" disabled={locating} onPress={() => void useMyLocation()} className="min-h-11 flex-row items-center gap-2 rounded-2xl bg-maroon/5 px-3 dark:bg-golden/10">{locating ? <ActivityIndicator size="small" color={isDark ? pupColors.golden : pupColors.maroon} /> : <MaterialIcons name="my-location" size={17} color={isDark ? pupColors.golden : pupColors.maroon} />}<Text className="font-sans-bold text-[10px] text-maroon dark:text-golden">{locating ? 'Locating…' : 'Use mine'}</Text></Pressable></View>
-        <View className="overflow-hidden rounded-2xl" onTouchStart={() => setMapFocus(true)} onTouchEnd={() => setMapFocus(false)} onTouchCancel={() => setMapFocus(false)}><MapView latitude={latitude} longitude={longitude} radius={radius} interactive recenterSignal={recenterKey} onLocationChange={(nextLatitude, nextLongitude) => { setLatitude(nextLatitude); setLongitude(nextLongitude) }} onRadiusChange={setRadius} /></View>
-        <View className="mt-3 flex-row justify-between"><Text className="font-sans text-[10px] text-muted dark:text-zinc-500">{latitude.toFixed(5)}, {longitude.toFixed(5)}</Text><Text className="font-sans-bold text-[10px] text-maroon dark:text-golden">{radius} m radius</Text></View>
-      </CampusCard>
+      {mode === 'in_person' ? (
+        <>
+          <SectionHeading eyebrow="Step three" title="Set the attendance area" />
+          <CampusCard className="mb-7 p-4">
+            <View className="mb-3 flex-row items-start justify-between gap-3"><View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">Geofence</Text><Text className="mt-1 font-sans text-xs leading-5 text-muted dark:text-zinc-400">Drag the pin or tap the map. Use the radius control to define the accepted scan area.</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Use my current location" disabled={locating} onPress={() => void useMyLocation()} className="min-h-11 flex-row items-center gap-2 rounded-2xl bg-maroon/5 px-3 dark:bg-golden/10">{locating ? <ActivityIndicator size="small" color={isDark ? pupColors.golden : pupColors.maroon} /> : <MaterialIcons name="my-location" size={17} color={isDark ? pupColors.golden : pupColors.maroon} />}<Text className="font-sans-bold text-[10px] text-maroon dark:text-golden">{locating ? 'Locating…' : 'Use mine'}</Text></Pressable></View>
+            <View className="overflow-hidden rounded-2xl" onTouchStart={() => setMapFocus(true)} onTouchEnd={() => setMapFocus(false)} onTouchCancel={() => setMapFocus(false)}><MapView latitude={latitude} longitude={longitude} radius={radius} interactive recenterSignal={recenterKey} onLocationChange={(nextLatitude, nextLongitude) => { setLatitude(nextLatitude); setLongitude(nextLongitude) }} onRadiusChange={setRadius} /></View>
+            <View className="mt-3 flex-row justify-between"><Text className="font-sans text-[10px] text-muted dark:text-zinc-500">{latitude.toFixed(5)}, {longitude.toFixed(5)}</Text><Text className="font-sans-bold text-[10px] text-maroon dark:text-golden">{radius} m radius</Text></View>
+          </CampusCard>
+        </>
+      ) : (
+        <>
+          <SectionHeading eyebrow="Step three" title="Zero-GPS privacy" />
+          <CampusCard className="mb-7 p-4">
+            <View className="mb-3 flex-row items-center gap-2">
+              <MaterialIcons name="shield" size={18} color={isDark ? pupColors.golden : pupColors.maroon} />
+              <Text className="font-sans-bold text-sm text-ink dark:text-white">Online session</Text>
+            </View>
+            <Text className="font-sans text-xs leading-5 text-muted dark:text-zinc-400">
+              Polycheck will not request, read, or store student location for online sessions
+              (Data Privacy Act RA 10173, data-minimization principle). Attendance is verified by
+              dual QR checkpoints and the announced meeting PIN.
+            </Text>
+          </CampusCard>
+        </>
+      )}
 
       <CampusButton label={submitting ? 'Creating…' : bulkMode ? `Create ${bulkCount} sessions` : 'Create session'} icon="add" disabled={disabled} onPress={() => void create()} />
     </ScrollView>

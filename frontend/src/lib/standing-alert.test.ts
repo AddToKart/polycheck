@@ -14,6 +14,7 @@ function makeStanding(overrides: Partial<AttendanceStanding> = {}): AttendanceSt
     late: 0,
     absent: 2,
     disputed: 0,
+    incomplete: 0,
     countedSessions: 12,
     attendanceRate: 83.3,
     status: 'on_track',

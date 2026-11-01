@@ -77,6 +77,7 @@ const EMPTY_ATTENDANCE_COUNTS: Record<AttendanceStatus, number> = {
   pending: 0,
   disputed: 0,
   excused: 0,
+  incomplete: 0,
 }
 
 const findSectionsDefinition: AiProviderTool = {
@@ -663,7 +664,7 @@ export class AiToolRegistryService {
       if (!lastSessionDate || date > lastSessionDate) lastSessionDate = date
     }
 
-    const countedSessions = counts.present + counts.late + counts.absent
+    const countedSessions = counts.present + counts.late + counts.absent + counts.incomplete
     const attendanceRate =
       countedSessions === 0 ? null : Math.round(((counts.present + counts.late) / countedSessions) * 1000) / 10
 
@@ -679,6 +680,7 @@ export class AiToolRegistryService {
         pending: counts.pending,
         disputed: counts.disputed,
         excused: counts.excused,
+        incomplete: counts.incomplete,
         attendanceRate,
         lastSessionDate,
       },
