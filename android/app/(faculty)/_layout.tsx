@@ -3,9 +3,10 @@ import { AccessibilityInfo, Animated, AppState, Modal, Platform, Pressable, Text
 import { Tabs, router } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import type { AiCapabilities } from '@polycheck/shared'
+import type { AiCapabilities, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { shouldShowAssistantEntry } from '../../lib/assistant-visibility'
+import { buildFacultyMoreItems } from '../../lib/more-items'
 import { fonts } from '../../theme/typography'
 import { pupColors } from '../../theme/colors'
 import { useTheme } from '../../theme/ThemeContext'
@@ -15,7 +16,7 @@ function TabIcon({ name, color }: { name: keyof typeof MaterialIcons.glyphMap; f
 }
 
 // Bottom sheet for "More" — reveals Schedule + Attendance
-function MoreSheet({ visible, onClose, isDark, isSuper, showAssistant, pendingExcuses }: { visible: boolean; onClose: () => void; isDark: boolean; isSuper: boolean; showAssistant: boolean; pendingExcuses: number }) {
+function MoreSheet({ visible, onClose, isDark, isSuper, showAssistant, pendingExcuses, user }: { visible: boolean; onClose: () => void; isDark: boolean; isSuper: boolean; showAssistant: boolean; pendingExcuses: number; user: User | null }) {
   const insets = useSafeAreaInsets()
   const slideAnim = useRef(new Animated.Value(300)).current
   const [reduceMotion, setReduceMotion] = useState(false)
@@ -34,32 +35,12 @@ function MoreSheet({ visible, onClose, isDark, isSuper, showAssistant, pendingEx
   // SA1 supersedes MP2 Locked Decision 4: no proactive classroom entries for super admins (Option A keeps deep links).
   // Institution AI policy hides the Assistant entry per role (master → teachers;
   // super admins keep the unconfigured setup affordance while master is on).
-  type MoreItem = {
-    icon: keyof typeof MaterialIcons.glyphMap
-    label: string
-    sub: string
-    route: string
-    badge?: number
-  }
-  const baseItems: MoreItem[] = isSuper
-    ? [
-        { icon: 'search', label: 'Global Search', sub: 'Find users and sections', route: '/(faculty)/search' },
-        { icon: 'settings', label: 'Institution Settings', sub: 'Configure institution defaults', route: '/(faculty)/settings' },
-        { icon: 'history', label: 'Audit Log', sub: 'Review administrative changes', route: '/(faculty)/audit-logs' },
-        { icon: 'receipt-long', label: 'System Reports', sub: 'Triage campus issue reports', route: '/(faculty)/system-reports' },
-        { icon: 'manage-accounts', label: 'Profile & security', sub: 'Your account, password and devices', route: '/profile' },
-        { icon: 'smart-toy', label: 'Assistant', sub: 'Oversight, accounts & exports', route: '/(faculty)/assistant' },
-      ]
-    : [
-        { icon: 'calendar-today', label: 'Schedule', sub: 'Weekly class schedule', route: '/(faculty)/schedule' },
-        { icon: 'assignment', label: 'Attendance', sub: 'Overview & export', route: '/(faculty)/attendance' },
-        { icon: 'assignment-turned-in', label: 'Excuses', sub: pendingExcuses > 0 ? `${pendingExcuses} waiting · Review excuse requests` : 'Review student excuse requests', route: '/(faculty)/excuses', badge: pendingExcuses },
-        { icon: 'flag', label: 'Report an Issue', sub: 'Bugs, GPS quirks, or ideas', route: '/report-issue' },
-        { icon: 'search', label: 'Search', sub: 'Find students and sections', route: '/(faculty)/search' },
-        { icon: 'manage-accounts', label: 'Profile & security', sub: 'Your account, password and devices', route: '/profile' },
-        { icon: 'smart-toy', label: 'Assistant', sub: 'Ask about your sections and exports', route: '/(faculty)/assistant' },
-      ]
-  const items = baseItems.filter((item) => showAssistant || item.route !== '/(faculty)/assistant')
+  // Administrative designations append their suites (PUP Santa Maria dual-hat).
+  const items = buildFacultyMoreItems({
+    user,
+    showAssistant,
+    pendingExcuses,
+  })
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -87,7 +68,7 @@ function MoreSheet({ visible, onClose, isDark, isSuper, showAssistant, pendingEx
               className="mb-2 min-h-14 flex-row items-center gap-4 rounded-none border border-line border-l-4 border-l-maroon bg-zinc-50 px-3 py-3 dark:border-line-dark dark:border-l-golden dark:bg-white/5"
             >
               <View className="h-10 w-10 items-center justify-center rounded-none bg-maroon dark:bg-golden">
-                <MaterialIcons name={item.icon} size={20} color={isDark ? pupColors.maroonDark : '#FFFFFF'} />
+                <MaterialIcons name={item.icon as keyof typeof MaterialIcons.glyphMap} size={20} color={isDark ? pupColors.maroonDark : '#FFFFFF'} />
               </View>
               <View className="flex-1">
                 <Text className="font-sans-bold text-sm text-ink dark:text-white uppercase tracking-wider">{item.label}</Text>
@@ -245,6 +226,8 @@ export default function FacultyLayout() {
         <Tabs.Screen name="sections/[id]" options={{ href: null }} />
         <Tabs.Screen name="student/[id]" options={{ href: null }} />
         <Tabs.Screen name="search" options={{ href: null }} />
+        <Tabs.Screen name="server-status" options={{ href: null }} />
+        <Tabs.Screen name="at-risk" options={{ href: null }} />
         <Tabs.Screen name="settings" options={{ href: null }} />
         <Tabs.Screen name="audit-logs" options={{ href: null }} />
         <Tabs.Screen name="assistant" options={{ href: null }} />
@@ -255,7 +238,7 @@ export default function FacultyLayout() {
         <Tabs.Screen name="schedule" options={{ href: null }} />
       </Tabs>
 
-      <MoreSheet visible={moreVisible} onClose={() => setMoreVisible(false)} isDark={isDark} isSuper={isSuper} showAssistant={showAssistant} pendingExcuses={pendingExcuses} />
+      <MoreSheet visible={moreVisible} onClose={() => setMoreVisible(false)} isDark={isDark} isSuper={isSuper} showAssistant={showAssistant} pendingExcuses={pendingExcuses} user={currentUser} />
     </>
   )
 }

@@ -28,6 +28,13 @@ export interface User {
     canResetStudentPasswords: boolean
     canEmergencyUnbindDevices: boolean
   }
+  /**
+   * Concurrent administrative designations (PUP Santa Maria dual-hat model).
+   * Teacher accounts only; super admins hold all three suites implicitly.
+   */
+  isItCoordinator?: boolean
+  isDepartmentHead?: boolean
+  isUserRegistrar?: boolean
   /** Secondary contact channels owned by the user (never the login identity). */
   contactEmail?: string | null
   contactPhone?: string | null

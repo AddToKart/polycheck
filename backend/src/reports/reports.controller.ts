@@ -3,6 +3,7 @@ import type { Response } from 'express'
 import { ReportsService } from './reports.service'
 import { CreateSystemReportDto, SystemReportQueryDto, UpdateSystemReportStatusDto } from './dto/report.dto'
 import { Roles } from '../common/decorators/roles.decorator'
+import { RequireDesignation } from '../common/decorators/require-designation.decorator'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
 import { parsePagination } from '../common/utils/pagination'
 
@@ -23,19 +24,22 @@ export class ReportsController {
   }
 
   @Get('stats')
-  @Roles('super_admin')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('it_operations')
   stats(@Request() req: AuthenticatedRequest) {
     return this.reports.stats(req.user)
   }
 
   @Get()
-  @Roles('super_admin')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('it_operations')
   list(@Request() req: AuthenticatedRequest, @Query() query: SystemReportQueryDto) {
     return this.reports.list(req.user, query, parsePagination(query.limit, query.offset))
   }
 
   @Get(':id')
-  @Roles('super_admin')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('it_operations')
   findOne(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
     return this.reports.findOne(req.user, id)
   }
@@ -56,7 +60,8 @@ export class ReportsController {
   }
 
   @Patch(':id/status')
-  @Roles('super_admin')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('it_operations')
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateSystemReportStatusDto,

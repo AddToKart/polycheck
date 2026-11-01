@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common'
 import type { AttendanceStandingStatus, StudentAtRisk } from '@polycheck/shared'
+import { academicOversightDepartment } from '../common/designations/department-pin'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { Prisma } from '../prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
@@ -52,8 +53,13 @@ export class AttendanceAtRiskService {
       throw new ForbiddenException('At-risk oversight is only available to teachers and administrators')
     }
     const limit = Math.min(Math.max(1, Math.floor(query.limit ?? DEFAULT_LIMIT)), MAX_LIMIT)
+    const oversight = academicOversightDepartment(user)
     const sectionWhere: Prisma.SectionWhereInput = {
-      ...(user.role === 'teacher' ? { teacherId: user.id } : adminSectionWhere(user)),
+      ...(user.role === 'teacher'
+        ? oversight
+          ? { teacher: { department: { equals: oversight, mode: 'insensitive' as const } } }
+          : { teacherId: user.id }
+        : adminSectionWhere(user)),
       ...(query.sectionId ? { id: query.sectionId } : {}),
     }
     if (query.sectionId) {

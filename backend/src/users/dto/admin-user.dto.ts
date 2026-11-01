@@ -29,6 +29,14 @@ export class UpdateUserDto {
    */
   @IsOptional() @IsBoolean() canResetStudentPasswords?: boolean | null
   @IsOptional() @IsBoolean() canEmergencyUnbindDevices?: boolean | null
+  /**
+   * Concurrent administrative designations (teacher targets only). Only
+   * super admins may submit these; any other actor is rejected before the
+   * update is applied.
+   */
+  @IsOptional() @IsBoolean() isItCoordinator?: boolean
+  @IsOptional() @IsBoolean() isDepartmentHead?: boolean
+  @IsOptional() @IsBoolean() isUserRegistrar?: boolean
 }
 
 /** Only student <-> teacher transitions are assignable (Locked Decision 6). */

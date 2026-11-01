@@ -136,7 +136,7 @@ export class ReportsService {
   }
 
   async stats(actor: ReportAccessUser): Promise<SystemReportStats> {
-    this.assertSuperAdmin(actor)
+    this.assertTriageAccess(actor)
     const monthStart = new Date()
     monthStart.setUTCDate(1)
     monthStart.setUTCHours(0, 0, 0, 0)
@@ -162,7 +162,7 @@ export class ReportsService {
   }
 
   async list(actor: ReportAccessUser, query: SystemReportQueryDto, pagination?: PaginationParams) {
-    this.assertSuperAdmin(actor)
+    this.assertTriageAccess(actor)
     const params = pagination ?? parsePagination(query.limit, query.offset)
     const where = this.buildWhere(query)
     const [rows, total] = await Promise.all([
@@ -180,7 +180,7 @@ export class ReportsService {
   }
 
   async findOne(actor: ReportAccessUser, id: string): Promise<SystemReport> {
-    this.assertSuperAdmin(actor)
+    this.assertTriageAccess(actor)
     const row = await this.prisma.systemReport.findUnique({
       where: { id },
       include: { user: { select: REPORT_USER_SELECT } },
@@ -189,14 +189,14 @@ export class ReportsService {
     return this.present(row)
   }
 
-  /** Streams the stored screenshot. The submitter and super admins may read it. */
-  async screenshot(actor: RequestUser, id: string) {
+  /** Streams the stored screenshot. The submitter, IT coordinators, and super admins may read it. */
+  async screenshot(actor: ReportAccessUser, id: string) {
     const row = await this.prisma.systemReport.findUnique({
       where: { id },
       select: { userId: true, screenshotUrl: true },
     })
     if (!row || !row.screenshotUrl) throw new NotFoundException('Screenshot not found')
-    if (actor.role !== 'super_admin' && actor.id !== row.userId) {
+    if (!this.isTriageActor(actor) && actor.id !== row.userId) {
       throw new ForbiddenException('You can only access your own report attachments')
     }
     return this.storage.read(row.screenshotUrl)
@@ -208,10 +208,11 @@ export class ReportsService {
     dto: UpdateSystemReportStatusDto,
     ipAddress?: string,
   ): Promise<SystemReport> {
-    this.assertSuperAdmin(actor)
+    this.assertTriageAccess(actor)
     // Department chairs retain read-only oversight: triage belongs to
-    // institution-scope administrators.
-    if (actor.scope !== 'institution') {
+    // institution-scope administrators or the designated IT coordinator.
+    const institutionSuperAdmin = actor.role === 'super_admin' && actor.scope === 'institution'
+    if (!institutionSuperAdmin && !this.isItCoordinator(actor)) {
       throw new ForbiddenException({
         statusCode: 403,
         error: 'Forbidden',
@@ -338,6 +339,21 @@ export class ReportsService {
   private assertSuperAdmin(actor: ReportAccessUser) {
     if (actor.role !== 'super_admin') {
       throw new ForbiddenException('Only super admins can review system reports')
+    }
+  }
+
+  /** IT coordinators share triage read/write access with super admins. */
+  private isItCoordinator(actor: ReportAccessUser): boolean {
+    return actor.role === 'teacher' && actor.isItCoordinator === true
+  }
+
+  private isTriageActor(actor: ReportAccessUser): boolean {
+    return actor.role === 'super_admin' || this.isItCoordinator(actor)
+  }
+
+  private assertTriageAccess(actor: ReportAccessUser) {
+    if (!this.isTriageActor(actor)) {
+      throw new ForbiddenException('Only super admins and IT coordinators can review system reports')
     }
   }
 

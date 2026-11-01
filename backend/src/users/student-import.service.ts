@@ -11,7 +11,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { Prisma } from '../prisma/client'
-import { adminScope } from '../common/admin-scope'
+import { accountAdminScope } from '../common/designations/department-pin'
 import { ErrorCode } from '../common/constants/error-codes'
 import { generateTemporaryPassword, hashPasswords } from '../common/utils/password'
 import { MetricsService } from '../observability/metrics.service'
@@ -244,7 +244,7 @@ export class StudentImportService {
         .filter((owner): owner is { id: string; studentId: string | null; email: string } => Boolean(owner.email))
         .map((owner) => [owner.email!, owner]),
     )
-    const scope = adminScope(user)
+    const scope = accountAdminScope(user)
 
     const planned: PlannedStudentRow[] = rows.map((row) => {
       let blocked = row.blocked
@@ -327,7 +327,7 @@ export class StudentImportService {
   }
 
   private normalizeRows(rows: StudentImportRowDto[], user: RequestUser): NormalizedStudentRow[] {
-    const scope = adminScope(user)
+    const scope = accountAdminScope(user)
     if (scope.kind === 'none') {
       throw new ForbiddenException('Your administrator account has no department scope')
     }
@@ -513,7 +513,7 @@ export class StudentImportService {
   }
 
   private async recordImport(plan: StudentImportPlan, dto: StudentImportRequestDto, user: RequestUser) {
-    const scope = adminScope(user)
+    const scope = accountAdminScope(user)
     const issueCodes = [...new Set(plan.rows.flatMap((row) => row.row.issues.map((issue) => issue.code)))]
     const summaryJson = {
       mode: dto.mode,

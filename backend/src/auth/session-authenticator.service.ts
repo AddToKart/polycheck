@@ -35,6 +35,9 @@ export class SessionAuthenticator {
       mustChangePassword: user.mustChangePassword === true,
       privacyConsentVersion: user.privacyConsentVersion,
       privacyConsentedAt: user.privacyConsentedAt,
+      isItCoordinator: user.isItCoordinator === true,
+      isDepartmentHead: user.isDepartmentHead === true,
+      isUserRegistrar: user.isUserRegistrar === true,
     }
   }
 }

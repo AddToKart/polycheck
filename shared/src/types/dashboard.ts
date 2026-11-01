@@ -59,6 +59,14 @@ export interface UpdateUserInput {
   /** Teacher-only governance overrides; null clears the override and follows the institution setting. */
   canResetStudentPasswords?: boolean | null
   canEmergencyUnbindDevices?: boolean | null
+  /**
+   * Administrative designation assignment (teacher targets only).
+   * Super-admin-only: other actors submitting any of these fields are rejected
+   * before any part of the update is applied.
+   */
+  isItCoordinator?: boolean
+  isDepartmentHead?: boolean
+  isUserRegistrar?: boolean
 }
 
 /** Only student <-> teacher transitions are allowed (Locked Decision 6). */

@@ -67,7 +67,21 @@ describe('SessionAuthenticator', () => {
       scope: null,
       authSessionId: 'auth-sess-1',
       mustChangePassword: false,
+      isItCoordinator: false,
+      isDepartmentHead: false,
+      isUserRegistrar: false,
     })
+  })
+
+  it('maps administrative designations into the principal', async () => {
+    betterAuth.auth.api.getSession.mockResolvedValue({
+      ...resolved,
+      user: { ...resolved.user, isItCoordinator: true, isDepartmentHead: true, isUserRegistrar: false },
+    })
+    const user = await service.authenticate(makeHeaders())
+    expect(user.isItCoordinator).toBe(true)
+    expect(user.isDepartmentHead).toBe(true)
+    expect(user.isUserRegistrar).toBe(false)
   })
 
   it('passes headers to BetterAuth getSession', async () => {

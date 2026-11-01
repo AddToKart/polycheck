@@ -19,6 +19,14 @@ import { Prisma } from '../prisma/client'
 import { randomUUID } from 'crypto'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { adminCanAccessUser, adminScope, adminUserWhere } from '../common/admin-scope'
+import {
+  designationChanges,
+  isDesignationWriteRequest,
+  isRegistrar,
+  registrarCanAccessDepartment,
+  registrarDepartment,
+  registrarUserWhere,
+} from '../common/designations/department-pin'
 import { isStrongPassword, PASSWORD_HASH_COST } from '../auth/password-policy'
 import { paginate, type PaginationParams } from '../common/utils/pagination'
 import type { AdminUserFilters } from '@polycheck/shared'
@@ -42,6 +50,9 @@ const SAFE_USER_SELECT = {
   photoUrl: true,
   isActive: true,
   mustChangePassword: true,
+  isItCoordinator: true,
+  isDepartmentHead: true,
+  isUserRegistrar: true,
   createdAt: true,
   updatedAt: true,
 } as const satisfies Prisma.UserSelect
@@ -94,8 +105,8 @@ export class UsersService {
   ) {}
 
   async findAll(user: RequestUser, filters: AdminUserFilters = {}, pagination?: PaginationParams) {
-    if (user.role !== 'super_admin') {
-      throw new ForbiddenException('Only super admins can list all users')
+    if (user.role !== 'super_admin' && !isRegistrar(user)) {
+      throw new ForbiddenException('Only super admins and designated registrars can list all users')
     }
     const params =
       pagination ??
@@ -128,6 +139,8 @@ export class UsersService {
 
     const canAccessOwnProfile = user.id === id
     const canAccessAsSuperAdmin = adminCanAccessUser(user, target.department)
+    const canAccessAsRegistrar =
+      isRegistrar(user) && target.role !== 'super_admin' && registrarCanAccessDepartment(user, target.department)
     const canAccessStudentInOwnSection =
       user.role === 'teacher' && target.role === 'student'
         ? await this.prisma.enrollment.findFirst({
@@ -136,7 +149,7 @@ export class UsersService {
           })
         : null
 
-    if (!canAccessOwnProfile && !canAccessAsSuperAdmin && !canAccessStudentInOwnSection) {
+    if (!canAccessOwnProfile && !canAccessAsSuperAdmin && !canAccessAsRegistrar && !canAccessStudentInOwnSection) {
       throw new ForbiddenException('Cannot access this user profile')
     }
 
@@ -158,13 +171,13 @@ export class UsersService {
   }
 
   async findTeachers(user: RequestUser) {
-    if (user.role !== 'super_admin') {
-      throw new ForbiddenException('Only super admins can list teachers')
+    if (user.role !== 'super_admin' && !isRegistrar(user)) {
+      throw new ForbiddenException('Only super admins and designated registrars can list teachers')
     }
     return this.prisma.user.findMany({
       where: {
         role: 'teacher',
-        ...(adminUserWhere(user) ?? {}),
+        ...(isRegistrar(user) ? registrarUserWhere(user) : (adminUserWhere(user) ?? {})),
       },
       select: {
         id: true,
@@ -175,6 +188,9 @@ export class UsersService {
         photoUrl: true,
         isActive: true,
         mustChangePassword: true,
+        isItCoordinator: true,
+        isDepartmentHead: true,
+        isUserRegistrar: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -189,9 +205,11 @@ export class UsersService {
     const students = await this.prisma.user.findMany({
       where: {
         role: 'student',
-        ...(user.role === 'super_admin'
-          ? { ...(adminUserWhere(user) ?? {}) }
-          : { isActive: true, enrollments: { some: { section: { teacherId: user.id } } } }),
+        ...(isRegistrar(user)
+          ? registrarUserWhere(user)
+          : user.role === 'super_admin'
+            ? { ...(adminUserWhere(user) ?? {}) }
+            : { isActive: true, enrollments: { some: { section: { teacherId: user.id } } } }),
       },
       select: {
         id: true,
@@ -205,6 +223,9 @@ export class UsersService {
         photoUrl: true,
         isActive: true,
         mustChangePassword: true,
+        isItCoordinator: true,
+        isDepartmentHead: true,
+        isUserRegistrar: true,
         createdAt: true,
         updatedAt: true,
         enrollments: { select: { sectionId: true } },
@@ -219,6 +240,7 @@ export class UsersService {
 
   async createTeacher(dto: CreateTeacherDto, user: RequestUser) {
     this.assertDepartmentScope(user, dto.department)
+    const forcedDepartment = isRegistrar(user) ? registrarDepartment(user) : dto.department?.trim()
     const exists = await this.prisma.user.findUnique({
       where: { email: dto.email.toLowerCase() },
       select: { id: true },
@@ -237,7 +259,7 @@ export class UsersService {
           email: dto.email.toLowerCase(),
           authEmail: `u-${randomUUID()}@auth.polycheck.invalid`,
           password,
-          department: dto.department?.trim(),
+          department: forcedDepartment ?? undefined,
           role: 'teacher',
           ...(generated ? { mustChangePassword: true } : {}),
           authAccounts: {
@@ -260,6 +282,9 @@ export class UsersService {
           photoUrl: true,
           isActive: true,
           mustChangePassword: true,
+          isItCoordinator: true,
+          isDepartmentHead: true,
+          isUserRegistrar: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -267,6 +292,7 @@ export class UsersService {
       await this.recordAdminAudit(user, 'admin.user.created', created.id, {
         role: 'teacher',
         generatedPassword: generated,
+        ...(isRegistrar(user) ? { forcedDepartment: true } : {}),
       })
       return { ...created, ...(generated ? { temporaryPassword } : {}) }
     } catch (error) {
@@ -276,6 +302,7 @@ export class UsersService {
 
   async createStudent(dto: CreateStudentDto, user: RequestUser) {
     this.assertDepartmentScope(user, dto.department)
+    const forcedDepartment = isRegistrar(user) ? registrarDepartment(user) : (dto.department?.trim() ?? null)
     const normalizedStudentId = dto.studentId.toUpperCase()
     const normalizedEmail = dto.email?.toLowerCase()
     const exists = await this.prisma.user.findFirst({
@@ -302,7 +329,7 @@ export class UsersService {
           password,
           program: dto.program?.trim() ?? null,
           yearLevel: dto.yearLevel,
-          department: dto.department?.trim() ?? null,
+          department: forcedDepartment,
           role: 'student',
           ...(generated ? { mustChangePassword: true } : {}),
           authAccounts: {
@@ -328,6 +355,9 @@ export class UsersService {
           photoUrl: true,
           isActive: true,
           mustChangePassword: true,
+          isItCoordinator: true,
+          isDepartmentHead: true,
+          isUserRegistrar: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -335,6 +365,7 @@ export class UsersService {
       await this.recordAdminAudit(user, 'admin.user.created', student.id, {
         role: 'student',
         generatedPassword: generated,
+        ...(isRegistrar(user) ? { forcedDepartment: true } : {}),
       })
       return { ...student, enrolledSectionIds: [], ...(generated ? { temporaryPassword } : {}) }
     } catch (error) {
@@ -343,7 +374,7 @@ export class UsersService {
   }
 
   async resetPassword(id: string, password: string | undefined, user: RequestUser) {
-    this.assertSuperAdmin(user)
+    this.assertAccountAdministrator(user)
     const target = await this.prisma.user.findUnique({
       where: { id },
       select: { id: true, role: true, department: true },
@@ -656,14 +687,14 @@ export class UsersService {
   }
 
   async setStatus(id: string, isActive: boolean, user: RequestUser) {
-    this.assertSuperAdmin(user)
+    this.assertAccountAdministrator(user)
     const target = await this.prisma.user.findUnique({
       where: { id },
       select: { id: true, role: true, department: true },
     })
     if (!target) throw new NotFoundException('User not found')
     if (target.role === 'super_admin') throw new ForbiddenException('Super Admin accounts cannot be disabled here')
-    if (!adminCanAccessUser(user, target.department)) {
+    if (!this.canAdministrateAccount(user, target.department)) {
       throw new ForbiddenException('This account is outside your administrative scope')
     }
     const [updated] = await this.prisma.$transaction([
@@ -682,6 +713,9 @@ export class UsersService {
           photoUrl: true,
           isActive: true,
           mustChangePassword: true,
+          isItCoordinator: true,
+          isDepartmentHead: true,
+          isUserRegistrar: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -702,17 +736,37 @@ export class UsersService {
   }
 
   async updateUser(id: string, dto: UpdateUserDto, user: RequestUser) {
-    this.assertSuperAdmin(user)
+    this.assertAccountAdministrator(user)
+    const registrar = isRegistrar(user)
+    if (registrar && isDesignationWriteRequest(dto)) {
+      throw new ForbiddenException({
+        message: 'Only super admins can change administrative designations',
+        code: 'designations_admin_only',
+      })
+    }
     const target = await this.prisma.user.findUnique({
       where: { id },
-      select: { id: true, role: true, department: true },
+      select: {
+        id: true,
+        role: true,
+        department: true,
+        isItCoordinator: true,
+        isDepartmentHead: true,
+        isUserRegistrar: true,
+      },
     })
     if (!target) throw new NotFoundException('User not found')
     if (target.role === 'super_admin') {
       throw new ForbiddenException('Super Admin accounts cannot be edited here')
     }
-    if (!adminCanAccessUser(user, target.department)) {
+    if (!this.canAdministrateAccount(user, target.department)) {
       throw new ForbiddenException('This account is outside your administrative scope')
+    }
+    if (registrar && dto.email !== undefined) {
+      throw new ForbiddenException('Registrars cannot change account email addresses')
+    }
+    if (registrar && (dto.canResetStudentPasswords !== undefined || dto.canEmergencyUnbindDevices !== undefined)) {
+      throw new ForbiddenException('Registrars cannot change teacher capability overrides')
     }
     if (dto.email !== undefined && target.role !== 'teacher') {
       throw new BadRequestException('Email can only be edited for teacher accounts')
@@ -725,10 +779,22 @@ export class UsersService {
     if (permissionFieldsProvided && target.role !== 'teacher') {
       throw new BadRequestException('Delegated capabilities can only be edited for teacher accounts')
     }
+    if (isDesignationWriteRequest(dto) && target.role !== 'teacher') {
+      throw new BadRequestException('Administrative designations can only be assigned to teacher accounts')
+    }
+    if (registrar && dto.department !== undefined) {
+      const requested = dto.department.trim()
+      if (requested && !registrarCanAccessDepartment(user, requested)) {
+        throw new ForbiddenException('Registrars can only assign their own department')
+      }
+    }
 
     const data: Prisma.UserUpdateInput = {}
     if (dto.canResetStudentPasswords !== undefined) data.canResetStudentPasswords = dto.canResetStudentPasswords
     if (dto.canEmergencyUnbindDevices !== undefined) data.canEmergencyUnbindDevices = dto.canEmergencyUnbindDevices
+    if (dto.isItCoordinator !== undefined) data.isItCoordinator = dto.isItCoordinator
+    if (dto.isDepartmentHead !== undefined) data.isDepartmentHead = dto.isDepartmentHead
+    if (dto.isUserRegistrar !== undefined) data.isUserRegistrar = dto.isUserRegistrar
     if (dto.fullName !== undefined) {
       const fullName = dto.fullName.trim()
       if (fullName.length < 2) throw new BadRequestException('fullName must be at least 2 characters')
@@ -757,6 +823,25 @@ export class UsersService {
       // Domain constraint: every student account keeps a department.
       throw new BadRequestException('Student accounts require a department')
     }
+    if (dto.isDepartmentHead === true || dto.isUserRegistrar === true) {
+      const nextDepartment = (dto.department ?? target.department)?.trim()
+      if (!nextDepartment) {
+        throw new BadRequestException('A department is required before assigning this designation')
+      }
+    }
+
+    const designationDiff = designationChanges(
+      {
+        isItCoordinator: target.isItCoordinator,
+        isDepartmentHead: target.isDepartmentHead,
+        isUserRegistrar: target.isUserRegistrar,
+      },
+      {
+        isItCoordinator: dto.isItCoordinator,
+        isDepartmentHead: dto.isDepartmentHead,
+        isUserRegistrar: dto.isUserRegistrar,
+      },
+    )
 
     const changedFields = Object.keys(data)
     if (changedFields.length === 0) throw new BadRequestException('No editable fields were provided')
@@ -769,6 +854,12 @@ export class UsersService {
       throw error
     }
     await this.recordAdminAudit(user, 'admin.user.updated', id, { changedFields })
+    if (designationDiff.length > 0) {
+      await this.recordAdminAudit(user, 'admin.user.designations_changed', id, {
+        targetRole: target.role,
+        changes: designationDiff,
+      })
+    }
     return updated
   }
 
@@ -955,8 +1046,14 @@ export class UsersService {
 
   private userListWhere(user: RequestUser, filters: AdminUserFilters): Prisma.UserWhereInput {
     const and: Prisma.UserWhereInput[] = []
-    const scope = adminUserWhere(user)
-    if (scope) and.push(scope)
+    if (isRegistrar(user)) {
+      and.push(registrarUserWhere(user))
+      // Registrars never administer super-admin accounts.
+      and.push(filters.role === 'super_admin' ? { id: { in: [] as string[] } } : { role: { not: 'super_admin' } })
+    } else {
+      const scope = adminUserWhere(user)
+      if (scope) and.push(scope)
+    }
     if (filters.role) and.push({ role: filters.role })
 
     const query = filters.q?.trim()
@@ -1003,9 +1100,30 @@ export class UsersService {
   }
 
   private assertDepartmentScope(user: RequestUser, department?: string) {
-    this.assertSuperAdmin(user)
-    if (adminCanAccessUser(user, department)) return
-    throw new ForbiddenException('Department administrators can only manage accounts in their own department')
+    this.assertAccountAdministrator(user)
+    if (user.role === 'super_admin') {
+      if (adminCanAccessUser(user, department)) return
+      throw new ForbiddenException('Department administrators can only manage accounts in their own department')
+    }
+    // Registrar: a missing department is fine on create (it is forced to the
+    // actor's own department); an explicit department must match.
+    if (!department || registrarCanAccessDepartment(user, department)) return
+    throw new ForbiddenException('Registrars can only manage accounts in their own department')
+  }
+
+  private assertAccountAdministrator(user: RequestUser) {
+    if (user.role !== 'super_admin' && !isRegistrar(user)) {
+      throw new ForbiddenException('Only super admins and designated registrars can manage user accounts')
+    }
+  }
+
+  /** Scope check shared by status changes and profile edits. */
+  private canAdministrateAccount(user: RequestUser, targetDepartment: string | null | undefined): boolean {
+    if (user.role === 'super_admin') return adminCanAccessUser(user, targetDepartment)
+    if (isRegistrar(user)) {
+      return targetDepartment !== undefined && registrarCanAccessDepartment(user, targetDepartment)
+    }
+    return false
   }
 
   private assertSuperAdmin(user: RequestUser) {

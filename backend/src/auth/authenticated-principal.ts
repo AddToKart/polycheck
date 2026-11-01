@@ -11,4 +11,8 @@ export interface RequestUser {
   mustChangePassword?: boolean
   privacyConsentVersion?: string | null
   privacyConsentedAt?: Date | null
+  /** Concurrent administrative designations (PUP Santa Maria dual-hat model). */
+  isItCoordinator?: boolean
+  isDepartmentHead?: boolean
+  isUserRegistrar?: boolean
 }

@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Request } from '@nestjs/common'
 import { UsersService } from './users.service'
 import { Roles } from '../common/decorators/roles.decorator'
+import { RequireDesignation } from '../common/decorators/require-designation.decorator'
 import { CreateStudentDto, CreateTeacherDto, ResetPasswordDto, SetUserStatusDto } from './dto/manage-user.dto'
 import { AdminUserQueryDto, ChangeUserRoleDto, CreateAdminDto, UpdateUserDto } from './dto/admin-user.dto'
 import {
@@ -22,14 +23,16 @@ export class UsersController {
   ) {}
 
   @Get()
-  @Roles('super_admin')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('user_admin')
   findAll(@Request() req: AuthenticatedRequest, @Query() query: AdminUserQueryDto) {
     const { limit, offset, role, q, department, status } = query
     return this.users.findAll(req.user, { role, q, department, status }, parsePagination(limit, offset))
   }
 
   @Get('teachers')
-  @Roles('super_admin')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('user_admin')
   findTeachers(@Request() req: AuthenticatedRequest) {
     return this.users.findTeachers(req.user)
   }
@@ -41,7 +44,8 @@ export class UsersController {
   }
 
   @Post('students/import')
-  @Roles('super_admin')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('user_admin')
   importStudents(
     @Body() dto: StudentImportRequestDto,
     @Request() req: AuthenticatedRequest,
@@ -51,7 +55,8 @@ export class UsersController {
   }
 
   @Get('students/import/jobs/:id')
-  @Roles('super_admin')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('user_admin')
   importJobStatus(@Param('id') jobId: string, @Request() req: AuthenticatedRequest) {
     return this.importQueue.status(req.user, jobId)
   }
@@ -62,13 +67,15 @@ export class UsersController {
   }
 
   @Post('teachers')
-  @Roles('super_admin')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('user_admin')
   createTeacher(@Body() dto: CreateTeacherDto, @Request() req: AuthenticatedRequest) {
     return this.users.createTeacher(dto, req.user)
   }
 
   @Post('students')
-  @Roles('super_admin')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('user_admin')
   createStudent(@Body() dto: CreateStudentDto, @Request() req: AuthenticatedRequest) {
     return this.users.createStudent(dto, req.user)
   }
@@ -113,13 +120,15 @@ export class UsersController {
   }
 
   @Patch(':id/password')
-  @Roles('super_admin')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('user_admin')
   resetPassword(@Param('id') id: string, @Body() dto: ResetPasswordDto, @Request() req: AuthenticatedRequest) {
     return this.users.resetPassword(id, dto.password, req.user)
   }
 
   @Patch(':id/status')
-  @Roles('super_admin')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('user_admin')
   setStatus(@Param('id') id: string, @Body() dto: SetUserStatusDto, @Request() req: AuthenticatedRequest) {
     return this.users.setStatus(id, dto.isActive, req.user)
   }
@@ -131,7 +140,8 @@ export class UsersController {
   }
 
   @Patch(':id')
-  @Roles('super_admin')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('user_admin')
   update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Request() req: AuthenticatedRequest) {
     return this.users.updateUser(id, dto, req.user)
   }
