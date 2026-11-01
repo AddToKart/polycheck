@@ -75,7 +75,7 @@ function SearchPageInner() {
       <Sidebar user={user} onLogout={handleLogout} />
 
       <main className="flex-1 overflow-y-auto">
-        <div className="p-8 max-w-4xl mx-auto">
+        <div className="mx-auto max-w-4xl p-4 sm:p-8">
           <div className="mb-8 border-b border-zinc-200 dark:border-zinc-800 pb-6">
             <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Search</p>
             <h1 className="text-3xl font-heading font-bold text-foreground mb-6">Global Search</h1>
@@ -86,7 +86,7 @@ function SearchPageInner() {
                 value={query}
                 onChange={(e) => handleSearch(e.target.value)}
                 placeholder="Search students, subjects, sections, sessions…"
-                className="pl-12 pr-10 h-12 rounded-none text-sm border-zinc-300 dark:border-zinc-700 focus-visible:ring-maroon/30 focus-visible:border-maroon"
+                className="pl-12 pr-10 h-12 rounded-none border-zinc-300 dark:border-zinc-700 focus-visible:ring-maroon/30 focus-visible:border-maroon"
                 autoFocus
               />
               {query && (
@@ -138,7 +138,7 @@ function SearchPageInner() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors truncate">{s.fullName}</p>
-                      <p className="text-xs text-zinc-400">{s.studentId} · {s.program}</p>
+                      <p className="break-words text-xs text-zinc-400">{s.studentId} · {s.program}</p>
                     </div>
                   </Link>
                 ))}
@@ -169,7 +169,7 @@ function SearchPageInner() {
                         <p className="text-sm font-semibold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors truncate">
                           {subj?.name ?? 'Unknown Subject'}
                         </p>
-                        <p className="text-xs text-zinc-400">
+                        <p className="break-words text-xs text-zinc-400">
                           {subj?.code} · Section {sec.section}{sec.room ? ` · ${sec.room}` : ''}
                         </p>
                       </div>
@@ -201,7 +201,7 @@ function SearchPageInner() {
                       <p className="text-sm font-semibold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors truncate">
                         {sess.subjectName}
                       </p>
-                      <p className="text-xs text-zinc-400">
+                      <p className="break-words text-xs text-zinc-400">
                         {sess.date} · {sess.startTime}–{sess.endTime}{sess.room ? ` · ${sess.room}` : ''}
                         {sess.isActive && (
                           <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-widest">

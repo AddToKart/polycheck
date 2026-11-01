@@ -290,7 +290,7 @@ export default function ServerStatusPage() {
               <div
                 role="status"
                 aria-live="polite"
-                className={`flex items-center gap-2 border px-3 py-2 text-[10px] font-bold uppercase tracking-widest ${
+                className={`flex max-w-full flex-wrap items-center gap-2 border px-3 py-2 text-[10px] font-bold uppercase tracking-widest ${
                   connected
                     ? 'border-green-300 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300'
                     : 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300'
@@ -427,7 +427,7 @@ export default function ServerStatusPage() {
                   Readiness
                 </CardTitle>
               </CardHeader>
-              <CardContent className="grid gap-5 p-5 sm:grid-cols-3">
+              <CardContent className="grid grid-cols-1 gap-5 p-5 sm:grid-cols-2 md:grid-cols-3">
                 <ReadinessGauge label="Application" ready={latest ? latest.applicationReady : null} />
                 <ReadinessGauge label="Database" ready={latest ? latest.databaseReady : null} />
                 <ReadinessGauge label="Redis" ready={latest ? latest.redisReady : null} />
@@ -441,7 +441,7 @@ export default function ServerStatusPage() {
                   BullMQ queue
                 </CardTitle>
               </CardHeader>
-              <CardContent className="grid grid-cols-3 gap-3 p-5">
+              <CardContent className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 md:grid-cols-3">
                 {[
                   { label: 'Waiting', value: latest?.queue.wait ?? 0 },
                   { label: 'Active', value: latest?.queue.active ?? 0 },

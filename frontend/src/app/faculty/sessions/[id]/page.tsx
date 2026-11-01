@@ -557,14 +557,14 @@ export default function SessionDetailPage() {
     <div className="flex h-screen bg-zinc-100 dark:bg-pup-black">
       <Sidebar user={user} onLogout={handleLogout} backHref="/faculty/sessions" backLabel="Back to Sessions" />
       <div className="flex-1 overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-200 dark:border-zinc-800">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="p-1 hover:opacity-70">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-200 dark:border-zinc-800">
+          <div className="flex min-w-0 items-center gap-3">
+            <button onClick={() => router.back()} className="inline-flex min-h-11 min-w-11 items-center justify-center p-1 hover:opacity-70 md:min-h-0 md:min-w-0">
               <ArrowLeft className="w-5 h-5 text-maroon dark:text-golden" />
             </button>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-heading font-bold text-maroon-dark dark:text-golden">{session.subjectName}</h1>
+                <h1 className="break-words text-xl font-heading font-bold text-maroon-dark dark:text-golden">{session.subjectName}</h1>
                 <Badge
                   className={
                     onlineMode
@@ -588,7 +588,7 @@ export default function SessionDetailPage() {
             <button
               type="button"
               onClick={() => void refreshData()}
-              className="p-2 hover:opacity-70 disabled:cursor-wait disabled:opacity-50"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center p-2 hover:opacity-70 disabled:cursor-wait disabled:opacity-50 md:min-h-0 md:min-w-0"
               aria-label="Refresh session data"
               disabled={refreshing}
             >
@@ -918,7 +918,7 @@ export default function SessionDetailPage() {
               <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mb-3">{refreshLabel}</p>
 
               {/* Summary */}
-              <div className="flex justify-around mb-4">
+              <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 md:flex md:justify-around">
                 {[
                   { label: 'Present', value: presentCount, color: 'text-golden' },
                   { label: 'Late', value: lateCount, color: 'text-maroon dark:text-red-300' },
@@ -960,15 +960,15 @@ export default function SessionDetailPage() {
                     return (
                       <button
                         key={student.id}
-                        className={`w-full flex items-center justify-between px-3 py-2.5 border-b border-zinc-100 dark:border-zinc-800 text-left ${isTeacher ? 'hover:bg-zinc-50 dark:hover:bg-zinc-900' : 'cursor-default'}`}
+                        className={`w-full min-h-11 flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-b border-zinc-100 dark:border-zinc-800 text-left ${isTeacher ? 'hover:bg-zinc-50 dark:hover:bg-zinc-900' : 'cursor-default'}`}
                         onClick={() => { if (isTeacher) handleManualOverride(student.id, status) }}
                         disabled={!isTeacher}
                       >
-                        <div>
-                          <p className="text-sm font-medium dark:text-white">{student.fullName}</p>
+                        <div className="min-w-0">
+                          <p className="break-words text-sm font-medium dark:text-white">{student.fullName}</p>
                           <p className="text-xs text-zinc-500 dark:text-zinc-400">{student.studentId}</p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
                           {onlineMode ? (
                             <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider">
                               <span
@@ -1019,7 +1019,7 @@ export default function SessionDetailPage() {
       </div>
 
       <Dialog open={isTeacher && showValidityPrompt} onOpenChange={setShowValidityPrompt}>
-        <DialogContent className="max-w-sm dark:bg-surface-dark dark:border-golden/15 p-8">
+        <DialogContent className="w-[92vw] max-h-[92vh] overflow-y-auto max-w-sm dark:bg-surface-dark dark:border-golden/15 p-8">
           <DialogHeader className="items-center text-center">
             <Timer className="w-10 h-10 text-maroon dark:text-golden mx-auto mb-3" />
             <DialogTitle className="dark:text-white">QR Settings</DialogTitle>
@@ -1079,7 +1079,7 @@ export default function SessionDetailPage() {
           }
         }}
       >
-        <DialogContent className="max-w-sm dark:bg-surface-dark dark:border-golden/15 p-8" role="alertdialog">
+        <DialogContent className="w-[92vw] max-h-[92vh] overflow-y-auto max-w-sm dark:bg-surface-dark dark:border-golden/15 p-8" role="alertdialog">
           <DialogHeader className="items-center text-center">
             <ShieldCheck className="w-10 h-10 text-maroon dark:text-golden mx-auto mb-3" />
             <DialogTitle className="dark:text-white">Outside the classroom geofence</DialogTitle>
@@ -1121,7 +1121,7 @@ export default function SessionDetailPage() {
       </Dialog>
 
       <Dialog open={isTeacher && showQrModal && Boolean(qrDataUrl)} onOpenChange={setShowQrModal}>
-        <DialogContent className="max-w-lg border-2 border-zinc-300 dark:border-zinc-800 p-8 flex flex-col items-center gap-6 shadow-2xl">
+        <DialogContent className="w-[92vw] max-h-[92vh] overflow-y-auto max-w-lg border-2 border-zinc-300 dark:border-zinc-800 p-8 flex flex-col items-center gap-6 shadow-2xl">
           {qrDataUrl && (
             <>
             <div className="text-center">
@@ -1177,7 +1177,7 @@ export default function SessionDetailPage() {
       </Dialog>
 
       <Dialog open={isTeacher && showCheckpointPrompt} onOpenChange={setShowCheckpointPrompt}>
-        <DialogContent className="max-w-sm dark:bg-surface-dark dark:border-golden/15 p-8">
+        <DialogContent className="w-[92vw] max-h-[92vh] overflow-y-auto max-w-sm dark:bg-surface-dark dark:border-golden/15 p-8">
           <DialogHeader className="items-center text-center">
             <KeyRound className="w-10 h-10 text-maroon dark:text-golden mx-auto mb-3" />
             <DialogTitle className="dark:text-white">

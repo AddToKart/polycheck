@@ -39,7 +39,7 @@ export default function FacultyAssistantPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background selection:bg-golden selection:text-maroon md:h-screen md:flex-row md:overflow-hidden">
+    <div className="flex h-dvh flex-col overflow-hidden bg-background selection:bg-golden selection:text-maroon md:h-screen md:flex-row">
       <Sidebar
         user={user}
         onLogout={() => {
@@ -47,8 +47,8 @@ export default function FacultyAssistantPage() {
           router.push('/')
         }}
       />
-      <main className="flex-1 md:h-dvh md:overflow-hidden">
-        <div className="mx-auto flex h-[calc(100dvh-4rem)] max-w-6xl flex-col px-4 py-6 md:h-full md:px-8 md:py-8">
+      <main className="min-h-0 flex-1 overflow-hidden">
+        <div className="mx-auto flex h-full min-h-0 max-w-6xl flex-col px-4 py-6 md:px-8 md:py-8">
           <AssistantChat geometry="focus" className="min-h-0 flex-1" />
         </div>
       </main>

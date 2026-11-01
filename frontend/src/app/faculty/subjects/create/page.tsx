@@ -60,7 +60,7 @@ export default function CreateSubjectPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="grid sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Subject Name</Label>
                     <Input
@@ -95,7 +95,7 @@ export default function CreateSubjectPage() {
               </CardContent>
             </Card>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" variant="default">
                 Create Subject
               </Button>

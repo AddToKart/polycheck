@@ -164,7 +164,7 @@ export default function ReportsPage() {
 
       <main className="flex-1 overflow-y-auto">
         <div className="p-8 max-w-6xl mx-auto">
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
             <h1 className="text-3xl font-heading font-bold text-maroon dark:text-white">Reports</h1>
             <Button onClick={handleExport}>
               <Download className="w-4 h-4" />
@@ -195,7 +195,7 @@ export default function ReportsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <label htmlFor="report-subject" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Subject</label>
                   <select
@@ -271,7 +271,8 @@ export default function ReportsPage() {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4 mb-8">
+          {/* Phones get 3-up; the md reset keeps the existing tablet layout (3-up) unchanged. */}
+          <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-3 lg:grid-cols-7 gap-4 mb-8">
             <Card>
               <CardContent className="p-5">
                 <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Total Records</p>
@@ -322,7 +323,7 @@ export default function ReportsPage() {
             <Card>
               <CardContent className="p-6">
                 <p className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4">Attendance Distribution</p>
-                <div className="flex items-center justify-center gap-8">
+                <div className="flex flex-col items-center justify-center gap-6 md:flex-row md:gap-8">
                   <svg width="140" height="140" viewBox="0 0 140 140" className="shrink-0">
                     <circle cx="70" cy="70" r="60" fill="none" strokeWidth="20" className="stroke-zinc-200 dark:stroke-zinc-800" />
                     {total.total > 0 && (

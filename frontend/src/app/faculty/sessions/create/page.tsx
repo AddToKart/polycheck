@@ -387,7 +387,7 @@ export default function CreateSessionPage() {
                 </div>
 
                 {/* Bulk Create Toggle */}
-                <div className="flex items-center gap-3 py-3 border-t border-zinc-200 dark:border-zinc-700">
+                <div className="flex flex-wrap items-center gap-3 py-3 border-t border-zinc-200 dark:border-zinc-700">
                   <input
                     id="bulkMode"
                     type="checkbox"
@@ -401,7 +401,7 @@ export default function CreateSessionPage() {
                 {bulkMode ? (
                   <div className="space-y-4 p-4 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700">
                     <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Create sessions for all selected days between the start and end dates.</p>
-                    <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="bulkStartDate">Start Date</Label>
                         <Input id="bulkStartDate" type="date" value={bulkStartDate} onChange={(e) => setBulkStartDate(e.target.value)} required />
@@ -445,7 +445,7 @@ export default function CreateSessionPage() {
 
                     {selectedSection && selectedSection.schedule.length > 0 && (
                       <div className="space-y-4 pt-3 border-t border-zinc-200 dark:border-zinc-700">
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
                           <input
                             id="isRescheduled"
                             type="checkbox"
@@ -495,7 +495,7 @@ export default function CreateSessionPage() {
                   </>
                 )}
 
-                <div className="grid sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="startTime">Start Time</Label>
                     <Input id="startTime" type="time" value={startTime} onChange={(e) => handleStartTimeChange(e.target.value)} required />
@@ -567,7 +567,7 @@ export default function CreateSessionPage() {
               </div>
             )}
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" disabled={!selectedSection || !selectedSubject || (bulkMode && calculateBulkCount() === 0) || hasDuplicateConflict || endTime <= startTime || submitting}>
                 {submitting ? 'Creating...' : bulkMode ? `Create ${calculateBulkCount()} Sessions` : 'Create Session'}
               </Button>

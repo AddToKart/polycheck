@@ -359,7 +359,7 @@ function InstitutionSettingsPageInner() {
             role="tablist"
             aria-label="Institution settings categories"
             onKeyDown={handleTabKeyDown}
-            className="mb-6 flex flex-wrap gap-2"
+            className="mb-6 flex snap-x gap-2 overflow-x-auto py-1 md:flex-wrap md:overflow-visible md:py-0"
           >
             {visibleTabs.map((tab, index) => {
               const selected = tab.id === activeTab
@@ -378,7 +378,7 @@ function InstitutionSettingsPageInner() {
                   tabIndex={selected ? 0 : -1}
                   onClick={() => selectTab(tab.id)}
                   className={cn(
-                    'inline-flex items-center gap-2 border px-3 py-2 text-[10px] font-bold uppercase tracking-widest transition-colors',
+                    'inline-flex shrink-0 snap-start items-center gap-2 border px-3 py-2 text-[10px] font-bold uppercase tracking-widest transition-colors',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-golden focus-visible:ring-offset-2',
                     selected
                       ? 'border-maroon bg-maroon text-white shadow-sm dark:border-golden dark:bg-golden dark:text-maroon-dark'
@@ -419,7 +419,7 @@ function InstitutionSettingsPageInner() {
                 ) : null}
 
                 {activeTab === 'sessions' ? (
-                  <div className="grid gap-6 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                     {SETTING_FIELDS.filter((field) => field.tab === 'sessions').map((field) => (
                       <SettingFieldRow
                         key={field.key}
@@ -446,7 +446,7 @@ function InstitutionSettingsPageInner() {
                       />
                     ))}
                     {accountsFields.length > 0 ? (
-                      <div className="grid gap-6 sm:grid-cols-2">
+                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                         {accountsFields.map((field) => (
                           <SettingFieldRow
                             key={field.key}
@@ -668,7 +668,7 @@ function InstitutionSettingsPageInner() {
                         </p>
                       ) : null}
                     </section>
-                    <section className="grid gap-6 sm:grid-cols-2">
+                    <section className="grid grid-cols-1 gap-6 md:grid-cols-2">
                       {SETTING_FIELDS.filter((field) => field.tab === 'system').map((field) => (
                         <SettingFieldRow
                           key={field.key}

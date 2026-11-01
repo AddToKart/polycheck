@@ -27,7 +27,7 @@ export function FilterBar({ children, onClear, activeCount = 0, label = 'Filters
     <section
       aria-label={label}
       className={cn(
-        'flex flex-wrap items-end gap-3 border border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-900/30',
+        'flex flex-wrap items-end gap-3 max-sm:[&>*]:basis-full max-sm:[&>*]:min-w-0 border border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-900/30',
         className,
       )}
     >

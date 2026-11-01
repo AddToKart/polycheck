@@ -342,7 +342,7 @@ function TeacherDashboard({ user }: { user: User }) {
             Excused records are shown in the stack but excluded from the attendance rate.
           </p>
         ) : null}
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-5">
           {trendSegments.map((segment) => (
             <div key={segment.key}>
               <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">{segment.label}</p>
@@ -359,11 +359,17 @@ function TeacherDashboard({ user }: { user: User }) {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-0 border border-zinc-300 dark:border-zinc-800 mb-12 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 border border-zinc-300 dark:border-zinc-800 mb-12 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
         {statCards.map((stat, index) => {
           const Icon = stat.icon
           return (
-            <div key={stat.label} className={`p-6 border-zinc-300 dark:border-zinc-800 ${index !== 0 ? 'border-l' : ''} ${index > 1 ? 'border-t lg:border-t-0' : ''}`}>
+            <div key={stat.label} className={`p-6 border-zinc-300 dark:border-zinc-800 ${
+              index === 0
+                ? ''
+                : index === 1
+                  ? 'border-t sm:border-l sm:border-t-0'
+                  : 'border-t sm:border-l lg:border-t-0'
+            }`}>
               <div className="flex items-center gap-3 mb-4 text-zinc-400">
                 <Icon className="w-4 h-4" />
                 <p className="text-[10px] font-bold uppercase tracking-widest">{stat.label}</p>
@@ -471,7 +477,7 @@ function TeacherDashboard({ user }: { user: User }) {
       <div className="grid lg:grid-cols-2 gap-8">
         {/* My Subjects List */}
         <Card className="rounded-none border-zinc-300/80 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden">
-          <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-zinc-200 dark:border-zinc-800 p-6 bg-zinc-50 dark:bg-zinc-900/50">
+          <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0 border-b border-zinc-200 dark:border-zinc-800 p-6 bg-zinc-50 dark:bg-zinc-900/50">
             <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
               <BookOpen className="w-4 h-4 text-maroon dark:text-golden" />
               My Subjects
@@ -505,7 +511,7 @@ function TeacherDashboard({ user }: { user: User }) {
 
         {/* Recent Activity */}
         <Card className="rounded-none border-zinc-300/80 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden">
-          <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-zinc-200 dark:border-zinc-800 p-6 bg-zinc-50 dark:bg-zinc-900/50">
+          <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0 border-b border-zinc-200 dark:border-zinc-800 p-6 bg-zinc-50 dark:bg-zinc-900/50">
             <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
               <Clock className="w-4 h-4 text-maroon dark:text-golden" />
               Recent Class Activity
@@ -681,11 +687,17 @@ function SuperAdminDashboard({ user }: { user: User }) {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-0 border border-zinc-300 dark:border-zinc-800 mb-12 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 border border-zinc-300 dark:border-zinc-800 mb-12 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
         {statCards.map((stat, index) => {
           const Icon = stat.icon
           return (
-            <div key={stat.label} className={`p-6 border-zinc-300 dark:border-zinc-800 ${index !== 0 ? 'border-l' : ''} ${index > 1 ? 'border-t lg:border-t-0' : ''}`}>
+            <div key={stat.label} className={`p-6 border-zinc-300 dark:border-zinc-800 ${
+              index === 0
+                ? ''
+                : index === 1
+                  ? 'border-t sm:border-l sm:border-t-0'
+                  : 'border-t sm:border-l lg:border-t-0'
+            }`}>
               <div className="flex items-center gap-3 mb-4 text-zinc-400">
                 <Icon className="w-4 h-4" />
                 <p className="text-[10px] font-bold uppercase tracking-widest">{stat.label}</p>
@@ -700,7 +712,7 @@ function SuperAdminDashboard({ user }: { user: User }) {
       <div className="grid gap-8 mb-12 lg:grid-cols-5">
         {/* Accounts panel */}
         <Card className="rounded-none border-zinc-300/80 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden lg:col-span-2">
-          <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-zinc-200 dark:border-zinc-800 p-6 bg-zinc-50 dark:bg-zinc-900/50">
+          <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0 border-b border-zinc-200 dark:border-zinc-800 p-6 bg-zinc-50 dark:bg-zinc-900/50">
             <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
               <Users className="w-4 h-4 text-maroon dark:text-golden" />
               Accounts
@@ -715,7 +727,7 @@ function SuperAdminDashboard({ user }: { user: User }) {
           <CardContent className="p-6 space-y-6">
             {accountSplits.map((split) => (
               <div key={split.key}>
-                <div className="flex items-end justify-between gap-4">
+                <div className="flex flex-wrap items-end justify-between gap-4">
                   <div>
                     <p className="text-sm font-bold text-foreground">{split.label}</p>
                     <p className="text-[10px] uppercase tracking-widest text-zinc-400">
@@ -746,7 +758,7 @@ function SuperAdminDashboard({ user }: { user: User }) {
 
         {/* Recent administrative activity */}
         <Card className="rounded-none border-zinc-300/80 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden lg:col-span-3">
-          <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-zinc-200 dark:border-zinc-800 p-6 bg-zinc-50 dark:bg-zinc-900/50">
+          <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0 border-b border-zinc-200 dark:border-zinc-800 p-6 bg-zinc-50 dark:bg-zinc-900/50">
             <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
               <Clock className="w-4 h-4 text-maroon dark:text-golden" />
               Recent administrative activity

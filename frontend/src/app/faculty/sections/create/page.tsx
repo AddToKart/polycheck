@@ -152,7 +152,7 @@ function CreateSectionForm() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="grid sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="section">Section</Label>
                     <Input
@@ -204,7 +204,7 @@ function CreateSectionForm() {
               </CardHeader>
               <CardContent className="space-y-5">
                 {/* Schedule Entry Form */}
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 items-end">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
                   <div className="space-y-2">
                     <Label>Day</Label>
                     <select
@@ -225,7 +225,7 @@ function CreateSectionForm() {
                     <Label>End</Label>
                     <Input type="time" value={currentEndTime} onChange={(e) => setCurrentEndTime(e.target.value)} />
                   </div>
-                  <Button type="button" variant="default" size="sm" className="rounded-none h-10 w-full col-span-3 sm:col-span-1" onClick={handleAddSchedule}>
+                  <Button type="button" variant="default" size="sm" className="rounded-none h-10 w-full col-span-2 sm:col-span-1" onClick={handleAddSchedule}>
                     <Plus className="w-4 h-4 mr-1" /> Add
                   </Button>
                 </div>
@@ -245,9 +245,9 @@ function CreateSectionForm() {
                     {schedule.map((entry, i) => (
                       <div
                         key={i}
-                        className="flex items-center justify-between border border-zinc-200 dark:border-zinc-700 px-4 py-3 bg-white dark:bg-zinc-800/50"
+                        className="flex flex-wrap items-center justify-between gap-2 border border-zinc-200 dark:border-zinc-700 px-4 py-3 bg-white dark:bg-zinc-800/50"
                       >
-                        <div className="flex items-center gap-4 text-sm">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                           <span className="font-bold text-maroon dark:text-golden uppercase w-10">{entry.day}</span>
                           <span className="text-zinc-700 dark:text-zinc-300">
                             {entry.startTime} - {entry.endTime}
@@ -259,7 +259,7 @@ function CreateSectionForm() {
                         <button
                           type="button"
                           onClick={() => handleRemoveSchedule(i)}
-                          className="p-1 text-zinc-400 hover:text-red-500 transition-colors"
+                          className="inline-flex min-h-11 min-w-11 items-center justify-center p-1 text-zinc-400 hover:text-red-500 transition-colors md:min-h-0 md:min-w-0"
                         >
                           <X className="w-4 h-5" />
                         </button>
@@ -279,7 +279,7 @@ function CreateSectionForm() {
             </p>
 
             {/* Actions */}
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" disabled={!section || !room || schedule.length === 0}>
                 Create Section
               </Button>

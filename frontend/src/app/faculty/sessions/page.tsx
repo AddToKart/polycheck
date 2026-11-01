@@ -150,8 +150,8 @@ function SessionsContent() {
 
       <main className="flex-1 overflow-y-auto">
         <div className="p-8 max-w-5xl mx-auto">
-          <div className="flex items-center justify-between mb-8">
-            <div>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
+            <div className="min-w-0">
               <h1 className="text-3xl font-heading font-bold text-maroon dark:text-white">Sessions</h1>
               <p className="text-zinc-500 dark:text-zinc-400 mt-1">
                 {filteredSessions.length === sessions.length
@@ -226,7 +226,7 @@ function SessionsContent() {
               onChange={handleSubjectChange}
               options={subjectOptions}
               allLabel="All subjects"
-              className="min-w-[12rem] flex-1"
+              className="min-w-[12rem] flex-1 max-sm:basis-full"
             />
             <FilterSelect
               id="session-section"
@@ -235,7 +235,7 @@ function SessionsContent() {
               onChange={(value) => filters.setFilter('sectionId', value)}
               options={sectionOptions}
               allLabel="All sections"
-              className="min-w-[12rem] flex-1"
+              className="min-w-[12rem] flex-1 max-sm:basis-full"
             />
             <FilterChipGroup
               label="Status"
@@ -248,7 +248,7 @@ function SessionsContent() {
                 { value: 'completed', label: 'Completed' },
                 { value: 'rescheduled', label: 'Rescheduled' },
               ]}
-              className="min-w-[14rem] flex-1"
+              className="min-w-[14rem] flex-1 max-sm:basis-full"
             />
             <FilterDateRange
               idPrefix="session"
@@ -271,8 +271,8 @@ function SessionsContent() {
               const subject = allSubjects.find((s) => s.id === group.subjectId)
               return (
                 <Card key={subjectName} className="mb-8 border-t-4 border-t-maroon dark:border-t-golden">
-                  <CardHeader className="flex-row items-center justify-between pb-3">
-                    <CardTitle className="text-lg">{subjectName}</CardTitle>
+                  <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 pb-3">
+                    <CardTitle className="min-w-0 text-lg">{subjectName}</CardTitle>
                     {subject && (
                       <Link
                         href={sectionContextHref(`/faculty/subjects/${subject.id}/sessions`, '', sectionId)}
@@ -289,70 +289,72 @@ function SessionsContent() {
                           {getSectionLabel(targetSectionId)}
                         </span>
                       </div>
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
-                            <th className="text-left px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">Date</th>
-                            <th className="text-left px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">Time</th>
-                            <th className="text-left px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">Room</th>
-                            <th className="text-left px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">Status</th>
-                            <th className="text-right px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sectionSessions.map((session) => {
-                            const sessionStatus = deriveSessionStatus(session)
-                            return (
-                              <tr
-                                key={session.id}
-                                className="border-b border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon/40 dark:focus-visible:ring-golden/40"
-                                onClick={() => router.push(`/faculty/sessions/${session.id}`)}
-                                tabIndex={0}
-                                aria-label={`Open session on ${session.date}`}
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter' || event.key === ' ') {
-                                    event.preventDefault()
-                                    router.push(`/faculty/sessions/${session.id}`)
-                                  }
-                                }}
-                              >
-                                <td className="px-6 py-3 text-zinc-900 dark:text-zinc-100">
-                                  {new Date(session.date).toLocaleDateString('en-US', {
-                                    weekday: 'short',
-                                    year: 'numeric',
-                                    month: 'short',
-                                    day: 'numeric',
-                                  })}
-                                </td>
-                                <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400">
-                                  {session.startTime} - {session.endTime}
-                                </td>
-                                <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400 text-xs">
-                                  {session.room || '\u2014'}
-                                </td>
-                                <td className="px-6 py-3">
-                                  <Badge className={STATUS_BADGE_CLASSES[sessionStatus]}>
-                                    {SESSION_STATUS_LABELS[sessionStatus]}
-                                  </Badge>
-                                </td>
-                                <td className="px-6 py-3 text-right">
-                                  {user.role === 'teacher' && !session.isActive && (
-                                    <Button
-                                      size="sm"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        handleActivate(session.id)
-                                      }}
-                                    >
-                                      Activate
-                                    </Button>
-                                  )}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
+                              <th className="text-left px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">Date</th>
+                              <th className="text-left px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">Time</th>
+                              <th className="text-left px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">Room</th>
+                              <th className="text-left px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">Status</th>
+                              <th className="text-right px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sectionSessions.map((session) => {
+                              const sessionStatus = deriveSessionStatus(session)
+                              return (
+                                <tr
+                                  key={session.id}
+                                  className="border-b border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon/40 dark:focus-visible:ring-golden/40"
+                                  onClick={() => router.push(`/faculty/sessions/${session.id}`)}
+                                  tabIndex={0}
+                                  aria-label={`Open session on ${session.date}`}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                      event.preventDefault()
+                                      router.push(`/faculty/sessions/${session.id}`)
+                                    }
+                                  }}
+                                >
+                                  <td className="px-6 py-3 text-zinc-900 dark:text-zinc-100">
+                                    {new Date(session.date).toLocaleDateString('en-US', {
+                                      weekday: 'short',
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric',
+                                    })}
+                                  </td>
+                                  <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400">
+                                    {session.startTime} - {session.endTime}
+                                  </td>
+                                  <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400 text-xs">
+                                    {session.room || '\u2014'}
+                                  </td>
+                                  <td className="px-6 py-3">
+                                    <Badge className={STATUS_BADGE_CLASSES[sessionStatus]}>
+                                      {SESSION_STATUS_LABELS[sessionStatus]}
+                                    </Badge>
+                                  </td>
+                                  <td className="px-6 py-3 text-right">
+                                    {user.role === 'teacher' && !session.isActive && (
+                                      <Button
+                                        size="sm"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleActivate(session.id)
+                                        }}
+                                      >
+                                        Activate
+                                      </Button>
+                                    )}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   ))}
                 </Card>
