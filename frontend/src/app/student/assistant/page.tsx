@@ -48,7 +48,7 @@ export default function StudentAssistantPage() {
           router.push('/')
         }}
       />
-      <main className="flex-1 md:h-dvh md:overflow-hidden">
+      <main className="min-w-0 flex-1 md:h-dvh md:overflow-hidden">
         <div className="mx-auto flex h-[calc(100dvh-4rem)] max-w-6xl flex-col px-4 py-6 md:h-full md:px-8 md:py-8">
           <AssistantChat
             geometry="focus"

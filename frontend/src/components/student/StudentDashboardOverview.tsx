@@ -17,6 +17,17 @@ const statCards = [
   { key: 'disputed', label: 'Disputed', color: 'text-amber-600 dark:text-amber-400' },
 ] as const
 
+/**
+ * Divider borders for the 1 -> 2 -> 6 column stat strip. `sm+` keeps the
+ * original left/top rules so the 2-column tablet and 6-column desktop layouts
+ * are unchanged; only the single-column phone step drops the inner left border.
+ */
+const statCellBorders = (index: number) => {
+  if (index === 0) return ''
+  if (index === 1) return 'border-t sm:border-l sm:border-t-0'
+  return 'border-t sm:border-l lg:border-t-0'
+}
+
 interface StudentDashboardOverviewProps {
   user: Student
   stats: Record<(typeof statCards)[number]['key'], number>
@@ -50,9 +61,9 @@ export function StudentDashboardOverview(props: StudentDashboardOverviewProps) {
       <StudentDigitalId user={user} isOpen={props.isIdOpen} isFlipped={props.isIdFlipped} onOpen={props.onOpenId} onClose={props.onCloseId} onFlip={props.onFlipId} />
 
       <div className="lg:col-span-2 flex flex-col gap-8">
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-0 border border-zinc-300 dark:border-zinc-800 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-0 border border-zinc-300 dark:border-zinc-800 bg-background shadow-[0_4px_20px_rgba(123,17,19,0.035)] dark:shadow-none">
           {statCards.map(({ key, label, color }, index) => (
-            <div key={key} className={`p-6 border-zinc-300 dark:border-zinc-800 ${index !== 0 ? 'border-l' : ''} ${index > 1 ? 'border-t lg:border-t-0' : ''}`}>
+            <div key={key} className={`p-6 border-zinc-300 dark:border-zinc-800 ${statCellBorders(index)}`}>
               <div className="flex items-center gap-3 mb-4 text-zinc-400"><p className="text-[10px] font-bold uppercase tracking-widest">{label}</p></div>
               <p className={`text-4xl font-heading font-bold ${color}`}>{stats[key]}</p>
             </div>

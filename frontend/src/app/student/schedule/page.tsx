@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback, Suspense } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Calendar, BookOpen, Clock, CalendarDays, MapPin } from 'lucide-react'
@@ -44,6 +44,23 @@ function getStudentEventTextClass(event: CalendarEvent): string {
   if (event.studentStatus === 'late') return 'text-yellow-700 dark:text-yellow-300 font-semibold'
   if (event.studentStatus === 'absent') return 'text-red-700 dark:text-red-300 font-semibold'
   return 'text-zinc-500 dark:text-zinc-400'
+}
+
+function getStudentEventDotClass(event: CalendarEvent): string {
+  if (event.status === 'moved' || event.type === 'schedule') return 'bg-zinc-300 dark:bg-zinc-600'
+  if (event.studentStatus === 'present') return 'bg-green-500'
+  if (event.studentStatus === 'late') return 'bg-yellow-500'
+  if (event.studentStatus === 'absent') return 'bg-red-500'
+  return 'bg-zinc-400 dark:bg-zinc-500'
+}
+
+function WeekScrollHint() {
+  return (
+    <div className="mb-1.5 flex items-center justify-end gap-1 text-[9px] font-bold uppercase tracking-widest text-zinc-400 md:hidden">
+      <ChevronRight className="h-3 w-3" aria-hidden="true" />
+      Swipe to see the week
+    </div>
+  )
 }
 
 function EventPopoverContent({ event }: { event: CalendarEvent }) {
@@ -159,79 +176,141 @@ function MonthView({
 }) {
   const weeks = useMemo(() => getMonthDays(year, month), [year, month])
   const today = new Date()
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null)
+  const detailRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!selectedDay) return
+    if (typeof window === 'undefined' || !window.matchMedia('(max-width: 767px)').matches) return
+    detailRef.current?.scrollIntoView({
+      block: 'nearest',
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    })
+  }, [selectedDay])
+
+  const selectedEvents = useMemo(
+    () => (selectedDay ? getEventsForDate(events, selectedDay) : []),
+    [events, selectedDay],
+  )
 
   return (
-    <div className="overflow-auto border border-zinc-300 dark:border-zinc-700 md:flex-1">
-      <div className="grid grid-cols-7 border-b border-zinc-300 dark:border-zinc-700">
-        {Array.from({ length: 7 }).map((_, i) => (
-          <div key={i} className="px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500 text-center border-r last:border-r-0 border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/50">
-            {getDayName(i)}
-          </div>
-        ))}
-      </div>
-      <div>
-        {weeks.map((week, wi) => (
-          <div key={wi} className="grid grid-cols-7 border-b last:border-b-0 border-zinc-200 dark:border-zinc-700">
-            {week.map((day, di) => {
-              if (!day) {
-                return <div key={`e-${di}`} className="min-h-[100px] bg-zinc-50/50 dark:bg-zinc-900/20 border-r last:border-r-0 border-zinc-200 dark:border-zinc-700" />
-              }
-              const dayEvents = events.filter((e) => e.date === formatDate(day))
-              const isToday = isSameDay(day, today)
-              const isCurrentMonth = day.getMonth() === month
+    <>
+      <div className="overflow-auto border border-zinc-300 dark:border-zinc-700 md:flex-1">
+        <div className="grid grid-cols-7 border-b border-zinc-300 dark:border-zinc-700">
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} className="px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500 text-center border-r last:border-r-0 border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/50">
+              {getDayName(i)}
+            </div>
+          ))}
+        </div>
+        <div>
+          {weeks.map((week, wi) => (
+            <div key={wi} className="grid grid-cols-7 border-b last:border-b-0 border-zinc-200 dark:border-zinc-700">
+              {week.map((day, di) => {
+                if (!day) {
+                  return <div key={`e-${di}`} className="min-h-[100px] bg-zinc-50/50 dark:bg-zinc-900/20 border-r last:border-r-0 border-zinc-200 dark:border-zinc-700" />
+                }
+                const dayEvents = events.filter((e) => e.date === formatDate(day))
+                const isToday = isSameDay(day, today)
+                const isCurrentMonth = day.getMonth() === month
+                const isSelected = selectedDay ? isSameDay(selectedDay, day) : false
+                const dayLabel = day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 
-              return (
-                <div
-                  key={di}
-                  className={`min-h-[100px] p-1.5 border-r last:border-r-0 border-zinc-200 dark:border-zinc-700 transition-colors ${
-                    isCurrentMonth ? 'bg-white dark:bg-zinc-900' : 'bg-zinc-50/50 dark:bg-zinc-900/20'
-                  }`}
-                >
-                  <div className={`inline-flex items-center justify-center w-6 h-6 text-xs font-bold mb-1 ${
-                    isToday
-                      ? 'bg-maroon dark:bg-golden text-white dark:text-maroon-dark'
-                      : isCurrentMonth
-                        ? 'text-zinc-700 dark:text-zinc-300'
-                        : 'text-zinc-400 dark:text-zinc-600'
-                  }`}>
-                    {day.getDate()}
-                  </div>
-                  <div className="space-y-0.5">
-                    {dayEvents.slice(0, 3).map((ev) => (
-                      <Popover key={ev.id}>
-                        <PopoverTrigger asChild>
-                          <button className={`w-full text-left px-1.5 py-0.5 text-[10px] font-medium truncate border-l-2 transition-colors ${getStudentEventStyle(ev)}`}>
-                            <span className={getStudentEventTextClass(ev)}>
-                              {formatTime(ev.startTime)}
-                            </span>
-                            <span className={`ml-1 font-semibold ${ev.status === 'moved' ? 'text-zinc-400 dark:text-zinc-500 line-through' : ev.type === 'schedule' ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-700 dark:text-zinc-300'}`}>
-                              {ev.status === 'moved'
-                                ? `${ev.subjectCode || 'Class'} (MOVED)`
-                                : ev.type === 'schedule' ? 'No session' : ev.subjectCode || ev.subjectName}
-                            </span>
-                            {ev.isRescheduled && (
-                              <span className="ml-1 inline-flex px-1 text-[8px] font-extrabold uppercase bg-yellow-500 text-black leading-tight">
-                                Moved
+                return (
+                  <div
+                    key={di}
+                    className={`relative min-h-[100px] p-1.5 border-r last:border-r-0 border-zinc-200 dark:border-zinc-700 transition-colors ${
+                      isCurrentMonth ? 'bg-white dark:bg-zinc-900' : 'bg-zinc-50/50 dark:bg-zinc-900/20'
+                    } ${isSelected ? 'max-md:ring-2 max-md:ring-inset max-md:ring-maroon/40 max-md:dark:ring-golden/40' : ''}`}
+                  >
+                    <div className={`inline-flex items-center justify-center w-6 h-6 text-xs font-bold mb-1 ${
+                      isToday
+                        ? 'bg-maroon dark:bg-golden text-white dark:text-maroon-dark'
+                        : isCurrentMonth
+                          ? 'text-zinc-700 dark:text-zinc-300'
+                          : 'text-zinc-400 dark:text-zinc-600'
+                    }`}>
+                      {day.getDate()}
+                    </div>
+                    <div className="flex flex-wrap gap-1 md:hidden" aria-hidden="true">
+                      {dayEvents.slice(0, 3).map((ev) => (
+                        <span key={ev.id} className={`h-1.5 w-1.5 rounded-full ${getStudentEventDotClass(ev)}`} />
+                      ))}
+                    </div>
+                    <div className="hidden space-y-0.5 md:block">
+                      {dayEvents.slice(0, 3).map((ev) => (
+                        <Popover key={ev.id}>
+                          <PopoverTrigger asChild>
+                            <button className={`w-full text-left px-1.5 py-0.5 text-[10px] font-medium truncate border-l-2 transition-colors ${getStudentEventStyle(ev)}`}>
+                              <span className={getStudentEventTextClass(ev)}>
+                                {formatTime(ev.startTime)}
                               </span>
-                            )}
-                          </button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-72" align="start">
-                          <EventPopoverContent event={ev} />
-                        </PopoverContent>
-                      </Popover>
-                    ))}
-                    {dayEvents.length > 3 && (
-                      <p className="text-[9px] text-zinc-400 font-medium px-1.5">+{dayEvents.length - 3} more</p>
-                    )}
+                              <span className={`ml-1 font-semibold ${ev.status === 'moved' ? 'text-zinc-400 dark:text-zinc-500 line-through' : ev.type === 'schedule' ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-700 dark:text-zinc-300'}`}>
+                                {ev.status === 'moved'
+                                  ? `${ev.subjectCode || 'Class'} (MOVED)`
+                                  : ev.type === 'schedule' ? 'No session' : ev.subjectCode || ev.subjectName}
+                              </span>
+                              {ev.isRescheduled && (
+                                <span className="ml-1 inline-flex px-1 text-[8px] font-extrabold uppercase bg-yellow-500 text-black leading-tight">
+                                  Moved
+                                </span>
+                              )}
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-72" align="start">
+                            <EventPopoverContent event={ev} />
+                          </PopoverContent>
+                        </Popover>
+                      ))}
+                      {dayEvents.length > 3 && (
+                        <p className="text-[9px] text-zinc-400 font-medium px-1.5">+{dayEvents.length - 3} more</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="absolute inset-0 z-10 md:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-maroon dark:focus-visible:ring-golden"
+                      aria-label={`${dayLabel}, ${dayEvents.length} ${dayEvents.length === 1 ? 'event' : 'events'}`}
+                      aria-expanded={isSelected}
+                      onClick={() => setSelectedDay(isSelected ? null : day)}
+                    />
                   </div>
-                </div>
-              )
-            })}
-          </div>
-        ))}
+                )
+              })}
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+
+      {selectedDay && (
+        <div ref={detailRef} className="mt-4 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 md:hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-zinc-200 dark:border-zinc-700 px-3 py-2.5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+              {selectedDay.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </p>
+            <button
+              type="button"
+              onClick={() => setSelectedDay(null)}
+              className="text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden"
+            >
+              Close
+            </button>
+          </div>
+          {selectedEvents.length === 0 ? (
+            <p className="px-3 py-6 text-center text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+              No classes
+            </p>
+          ) : (
+            <div className="divide-y divide-zinc-200 dark:divide-zinc-700">
+              {selectedEvents.map((ev) => (
+                <div key={ev.id} className="p-3">
+                  <EventPopoverContent event={ev} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </>
   )
 }
 
@@ -240,6 +319,24 @@ function WeekView({ date, events }: { date: Date; events: CalendarEvent[] }) {
   const hours = useMemo(() => getHours(), [])
   const today = new Date()
   const startHour = 7
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const weekKey = useMemo(() => weekDays.map((day) => formatDate(day)).join('|'), [weekDays])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    if (typeof window === 'undefined' || !window.matchMedia('(max-width: 767px)').matches) return
+    if (el.scrollWidth <= el.clientWidth) return
+    const gutter = 60
+    const colWidth = (el.scrollWidth - gutter) / 7
+    const todayIndex = new Date().getDay()
+    const maxScroll = el.scrollWidth - el.clientWidth
+    const target = gutter + todayIndex * colWidth - (el.clientWidth - colWidth) / 2
+    const frame = window.requestAnimationFrame(() => {
+      el.scrollLeft = Math.max(0, Math.min(target, maxScroll))
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [weekKey])
 
   const weekDayEvents = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>()
@@ -249,9 +346,13 @@ function WeekView({ date, events }: { date: Date; events: CalendarEvent[] }) {
     return map
   }, [weekDays, events])
 
+  // md:contents drops the wrappers' boxes at md+ so the desktop flex sizing stays identical.
   return (
-    <div className="overflow-auto border border-zinc-300 dark:border-zinc-700 md:flex-1">
-      <div className="min-w-[700px]">
+    <div className="md:contents">
+      <WeekScrollHint />
+      <div className="relative md:contents">
+        <div ref={scrollRef} className="overflow-x-auto overflow-y-auto overscroll-x-contain border border-zinc-300 dark:border-zinc-700 md:flex-1">
+          <div className="min-w-[700px]">
         <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-zinc-300 dark:border-zinc-700 sticky top-0 z-20 bg-zinc-50 dark:bg-zinc-900">
           <div className="border-r border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900" />
           {weekDays.map((day, i) => {
@@ -398,6 +499,12 @@ function WeekView({ date, events }: { date: Date; events: CalendarEvent[] }) {
             )
           })}
         </div>
+          </div>
+        </div>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 right-0 z-20 w-10 bg-gradient-to-l from-background to-transparent md:hidden"
+        />
       </div>
     </div>
   )
@@ -577,7 +684,7 @@ function StudentScheduleContent() {
                 </p>
               </div>
             ) : view === 'month' ? (
-              <MonthView year={currentYear} month={currentMonth} events={events} />
+              <MonthView key={`${currentYear}-${currentMonth}`} year={currentYear} month={currentMonth} events={events} />
             ) : (
               <WeekView date={currentDate} events={events} />
             )}

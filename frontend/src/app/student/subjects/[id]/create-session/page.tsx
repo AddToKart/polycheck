@@ -162,7 +162,7 @@ export default function StudentCreateSessionPage() {
                   <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
                 </div>
 
-                <div className="grid sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="startTime">Start Time</Label>
                     <Input id="startTime" type="time" value={startTime} onChange={(e) => handleStartTimeChange(e.target.value)} required />
@@ -196,16 +196,23 @@ export default function StudentCreateSessionPage() {
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
                   Set the attendance location and radius.
                 </p>
-                <MapPicker
-                  latitude={latitude}
-                  longitude={longitude}
-                  radius={radius}
-                  onChange={(lat, lng, rad) => { setLatitude(lat); setLongitude(lng); setRadius(rad) }}
-                />
+                {/*
+                  MapPicker is a shared component with no height/controls props.
+                  Bound its map surface and let its control row wrap below md;
+                  md+ keeps the component's own 350px map and single-line row.
+                */}
+                <div className="[&>div>div:first-child:not(.fixed)]:h-[240px] sm:[&>div>div:first-child:not(.fixed)]:h-[320px] md:[&>div>div:first-child:not(.fixed)]:h-[350px] max-md:[&>div>div:nth-child(2)]:flex-wrap">
+                  <MapPicker
+                    latitude={latitude}
+                    longitude={longitude}
+                    radius={radius}
+                    onChange={(lat, lng, rad) => { setLatitude(lat); setLongitude(lng); setRadius(rad) }}
+                  />
+                </div>
               </CardContent>
             </Card>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" className="bg-maroon hover:bg-maroon-dark text-white">
                 Create Session
               </Button>

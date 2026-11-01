@@ -23,7 +23,7 @@ interface StudentDisputeDialogProps {
 export function StudentDisputeDialog(props: StudentDisputeDialogProps) {
   return (
     <Dialog open={Boolean(props.record)} onOpenChange={(open) => { if (!open) props.onClose() }}>
-      <DialogContent>
+      <DialogContent className="max-w-[92vw] sm:max-w-lg">
         <DialogHeader><DialogTitle>Dispute Attendance Record</DialogTitle><DialogDescription>Report an issue with this attendance record.</DialogDescription></DialogHeader>
         {props.record ? (
           <div className="space-y-4 mt-2">
@@ -36,7 +36,7 @@ export function StudentDisputeDialog(props: StudentDisputeDialogProps) {
             <div><label className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1.5">Reason</label><select value={props.reason} onChange={(event) => props.onReasonChange(event.target.value)} className="w-full h-10 rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors"><option value="">Select a reason</option><option value="outside_geofence">Wrong location</option><option value="expired_token">Wrong time</option><option value="duplicate_submission">I was present</option><option value="invalid_signature">Technical issue</option><option value="device_mismatch">Other</option></select></div>
             <div><label className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1.5">Description</label><textarea value={props.description} onChange={(event) => props.onDescriptionChange(event.target.value)} rows={3} className="w-full rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors resize-none" placeholder="Describe the issue..." /></div>
             {props.feedback ? <div className={`text-xs font-bold uppercase tracking-widest px-3 py-2 ${props.feedback.type === 'success' ? 'text-golden bg-maroon-dark' : 'text-white bg-red-600'}`}>{props.feedback.message}</div> : null}
-            <div className="flex justify-end gap-3 pt-2"><DialogClose asChild><Button variant="outline" className="rounded-none text-xs font-bold uppercase tracking-widest">Cancel</Button></DialogClose><Button onClick={props.onSubmit} disabled={!props.reason} className="rounded-none bg-maroon text-white hover:bg-maroon-dark text-xs font-bold uppercase tracking-widest"><Flag className="w-3 h-3 mr-2" />Submit Dispute</Button></div>
+            <div className="flex flex-wrap justify-end gap-3 pt-2"><DialogClose asChild><Button variant="outline" className="rounded-none text-xs font-bold uppercase tracking-widest">Cancel</Button></DialogClose><Button onClick={props.onSubmit} disabled={!props.reason} className="rounded-none bg-maroon text-white hover:bg-maroon-dark text-xs font-bold uppercase tracking-widest"><Flag className="w-3 h-3 mr-2" />Submit Dispute</Button></div>
           </div>
         ) : null}
       </DialogContent>
@@ -58,7 +58,7 @@ interface StudentEnrollmentDialogProps {
 export function StudentEnrollmentDialog(props: StudentEnrollmentDialogProps) {
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-[92vw] sm:max-w-lg">
         <DialogHeader><DialogTitle className="flex items-center gap-2 text-xl text-maroon dark:text-golden font-heading font-bold"><GraduationCap className="w-5 h-5 text-maroon dark:text-golden" />Enroll in a Subject</DialogTitle><DialogDescription>Enter the enrollment code provided by your instructor.</DialogDescription></DialogHeader>
         <div className="space-y-4 mt-2">
           {props.success ? (
@@ -67,7 +67,7 @@ export function StudentEnrollmentDialog(props: StudentEnrollmentDialogProps) {
             <form onSubmit={props.onSubmit} className="space-y-4">
               <Input value={props.code} onChange={(event) => props.onCodeChange(event.target.value)} placeholder="Enter enrollment code" className="text-lg text-center tracking-widest font-mono uppercase rounded-none h-12" autoFocus />
               {props.error ? <div className="border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800 p-3 flex items-start gap-2"><XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" /><p className="text-xs text-red-600 dark:text-red-400">{props.error}</p></div> : null}
-              <div className="flex justify-end gap-3 pt-2"><DialogClose asChild><Button type="button" variant="outline" className="rounded-none text-xs font-bold uppercase tracking-widest h-10">Cancel</Button></DialogClose><Button type="submit" disabled={props.loading} className="rounded-none bg-maroon text-white hover:bg-maroon-dark text-xs font-bold uppercase tracking-widest h-10 px-6">{props.loading ? 'Enrolling...' : 'Enroll'}</Button></div>
+              <div className="flex flex-wrap justify-end gap-3 pt-2"><DialogClose asChild><Button type="button" variant="outline" className="rounded-none text-xs font-bold uppercase tracking-widest h-10">Cancel</Button></DialogClose><Button type="submit" disabled={props.loading} className="rounded-none bg-maroon text-white hover:bg-maroon-dark text-xs font-bold uppercase tracking-widest h-10 px-6">{props.loading ? 'Enrolling...' : 'Enroll'}</Button></div>
             </form>
           )}
           {props.success ? <div className="flex justify-end pt-2"><Button onClick={() => props.onOpenChange(false)} className="rounded-none bg-maroon text-white hover:bg-maroon-dark text-xs font-bold uppercase tracking-widest h-10 px-6">Close</Button></div> : null}

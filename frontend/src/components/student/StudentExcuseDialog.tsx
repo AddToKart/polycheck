@@ -102,7 +102,7 @@ export function StudentExcuseDialog({ record, subjectName, onClose, onSubmitted 
 
   return (
     <Dialog open={Boolean(record)} onOpenChange={(open) => { if (!open && !submitting) onClose() }}>
-      <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto dark:border-golden/15 dark:bg-surface-dark">
+      <DialogContent className="max-h-[90vh] max-w-[92vw] overflow-y-auto sm:max-w-md dark:border-golden/15 dark:bg-surface-dark">
         <DialogHeader>
           <DialogTitle className="dark:text-white">Request an excuse</DialogTitle>
           <DialogDescription>
@@ -221,7 +221,7 @@ export function StudentExcuseDialog({ record, subjectName, onClose, onSubmitted 
               </div>
             ) : null}
 
-            <div className="flex justify-end gap-3 pt-2">
+            <div className="flex flex-wrap justify-end gap-3 pt-2">
               <DialogClose asChild>
                 <Button variant="outline" className="rounded-none text-xs font-bold uppercase tracking-widest" disabled={submitting}>
                   Cancel

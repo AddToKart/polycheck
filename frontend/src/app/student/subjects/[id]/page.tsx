@@ -104,9 +104,9 @@ export default function StudentSubjectDetailPage() {
             <Card className="rounded-none border-zinc-300 dark:border-zinc-800 shadow-none mb-6">
               <CardContent className="py-4">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Crown className="w-5 h-5 text-maroon dark:text-golden" />
-                    <div>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Crown className="w-5 h-5 shrink-0 text-maroon dark:text-golden" />
+                    <div className="min-w-0">
                       <p className="text-sm font-bold text-foreground">Section President</p>
                       <p className="text-xs text-zinc-500">
                         {hasPermission
@@ -189,8 +189,8 @@ export default function StudentSubjectDetailPage() {
                       href={`/student/subjects/${id}/sessions/${session.id}`}
                       className="block bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-maroon/30 dark:hover:border-golden/30 transition-colors p-4"
                     >
-                      <div className="flex items-center justify-between">
-                        <div>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="min-w-0">
                           <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
                             {new Date(session.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                           </p>

@@ -227,7 +227,7 @@ function StudentDashboardContent() {
         <div className="p-8 max-w-6xl mx-auto">
           <div className="flex flex-col md:flex-row items-start md:items-end justify-between mb-12 border-b border-zinc-300 dark:border-zinc-800 pb-8">
             <div><p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3">Student Portal</p><h1 className="text-4xl md:text-5xl font-heading font-bold text-foreground tracking-tight">{user.fullName}</h1></div>
-            <div className="mt-4 md:mt-0 flex gap-2">
+            <div className="mt-4 md:mt-0 flex max-md:flex-wrap gap-2">
               <Button onClick={() => { setIsEnrollModalOpen(true); setEnrollError(''); setEnrollSuccess(false); setEnrollCode('') }} className="rounded-none bg-maroon text-white hover:bg-maroon-dark uppercase tracking-widest font-bold text-xs h-10 px-6"><GraduationCap className="w-4 h-4 mr-2" />Enroll in Subject</Button>
               <Button onClick={() => openScanner()} className="rounded-none bg-maroon text-white hover:bg-maroon-dark uppercase tracking-widest font-bold text-xs h-10 px-6"><QrCode className="w-4 h-4 mr-2" />Scan Attendance QR</Button>
             </div>
