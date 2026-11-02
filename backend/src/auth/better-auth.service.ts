@@ -4,6 +4,7 @@ import { compare, hash } from 'bcryptjs'
 import type { BetterAuthOptions } from 'better-auth'
 import { PrismaService } from '../prisma/prisma.service'
 import { PASSWORD_HASH_COST } from './password-policy'
+import { resolveSessionCreateAfter, resolveSessionGeneration } from './session-policy'
 
 interface BetterAuthRuntime {
   api: {
@@ -26,9 +27,13 @@ interface BetterAuthRuntime {
         department: string | null
         studentId: string | null
         isActive: boolean
+        mustChangePassword: boolean
         authVersion: number
         privacyConsentVersion: string | null
         privacyConsentedAt: Date | null
+        isItCoordinator: boolean
+        isDepartmentHead: boolean
+        isUserRegistrar: boolean
       }
     } | null>
   }
@@ -103,9 +108,13 @@ export class BetterAuthService implements OnModuleInit {
           department: { type: 'string', input: false, returned: true },
           studentId: { type: 'string', input: false, returned: true },
           isActive: { type: 'boolean', input: false, returned: true },
+          mustChangePassword: { type: 'boolean', input: false, returned: true },
           authVersion: { type: 'number', input: false, returned: true },
           privacyConsentVersion: { type: 'string', input: false, returned: true },
           privacyConsentedAt: { type: 'date', input: false, returned: true },
+          isItCoordinator: { type: 'boolean', input: false, returned: true },
+          isDepartmentHead: { type: 'boolean', input: false, returned: true },
+          isUserRegistrar: { type: 'boolean', input: false, returned: true },
         },
       },
       account: { modelName: 'AuthAccount' },
@@ -145,29 +154,41 @@ export class BetterAuthService implements OnModuleInit {
             before: async (session) => {
               const account = await this.prisma.user.findUnique({
                 where: { id: session.userId },
-                select: { isActive: true },
+                select: { isActive: true, role: true, authVersion: true },
               })
-              if (!account?.isActive) return false
-              const updated = await this.prisma.user.update({
-                where: { id: session.userId },
-                data: { authVersion: { increment: 1 } },
-                select: { authVersion: true },
+              if (!account) return false
+              const decision = resolveSessionGeneration({
+                isActive: account.isActive,
+                role: account.role,
+                authVersion: account.authVersion,
               })
-              return { data: { ...session, generation: updated.authVersion } }
+              if (!decision.allowed) return false
+              if (decision.bumpedAuthVersion) {
+                await this.prisma.user.update({
+                  where: { id: session.userId },
+                  data: { authVersion: { increment: 1 } },
+                  select: { authVersion: true },
+                })
+              }
+              return { data: { ...session, generation: decision.generation } }
             },
             after: async (session) => {
-              const generation = Number(session.generation)
-              const account = await this.prisma.user.findUnique({
-                where: { id: session.userId },
-                select: { authVersion: true },
-              })
-              if (!account || account.authVersion !== generation) {
+              const action = resolveSessionCreateAfter(
+                { id: String(session.id), generation: Number(session.generation) },
+                await this.prisma.user.findUnique({
+                  where: { id: session.userId },
+                  select: { authVersion: true, role: true },
+                }),
+              )
+              if (action === 'delete-self') {
                 await this.prisma.authSession.deleteMany({ where: { id: session.id } })
                 return
               }
-              await this.prisma.authSession.deleteMany({
-                where: { userId: session.userId, id: { not: session.id } },
-              })
+              if (action === 'delete-others') {
+                await this.prisma.authSession.deleteMany({
+                  where: { userId: session.userId, id: { not: session.id } },
+                })
+              }
             },
           },
         },

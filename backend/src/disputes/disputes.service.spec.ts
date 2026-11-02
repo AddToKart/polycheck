@@ -3,6 +3,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { DisputesService } from './disputes.service'
 import type { RequestUser } from '../auth/authenticated-principal'
+import { NotificationsService } from '../notifications/notifications.service'
 
 interface MockPrisma {
   attendanceRecord: {
@@ -15,6 +16,7 @@ interface MockPrisma {
 describe('DisputesService', () => {
   let service: DisputesService
   let prisma: MockPrisma
+  let notifications: { notify: jest.Mock }
 
   const studentUser: RequestUser = { id: 'stu-1', role: 'student', studentId: 'S-1' }
   const teacherUser: RequestUser = { id: 'teacher-1', role: 'teacher' }
@@ -33,6 +35,7 @@ describe('DisputesService', () => {
     disputeDescription: 'some description',
     disputeResolved: false,
     updatedAt: new Date('2026-07-01'),
+    session: { teacherId: 'teacher-1', subjectName: 'CS 101', date: '2026-07-01' },
   }
 
   beforeEach(async () => {
@@ -45,10 +48,15 @@ describe('DisputesService', () => {
     }
 
     const moduleRef = await Test.createTestingModule({
-      providers: [DisputesService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        DisputesService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: NotificationsService, useValue: { notify: jest.fn() } },
+      ],
     }).compile()
 
     service = moduleRef.get(DisputesService)
+    notifications = moduleRef.get(NotificationsService)
   })
 
   describe('findAll', () => {
@@ -131,6 +139,10 @@ describe('DisputesService', () => {
       expect(updateArgs.data.status).toBe('disputed')
       expect(updateArgs.data.disputeResolved).toBe(false)
       expect(result.coordinates).toEqual({ latitude: 14.6, longitude: 121.0 })
+      expect(notifications.notify).toHaveBeenCalledWith(
+        'teacher-1',
+        expect.objectContaining({ type: 'dispute_filed', link: '/faculty/disputes' }),
+      )
     })
 
     it('throws ForbiddenException when student disputes another student record', async () => {
@@ -170,6 +182,10 @@ describe('DisputesService', () => {
       expect(args.data.disputeResolved).toBe(true)
       expect(args.data.manuallySet).toBe(false)
       expect(result.status).toBe('present')
+      expect(notifications.notify).toHaveBeenCalledWith(
+        'stu-1',
+        expect.objectContaining({ type: 'dispute_resolved', link: '/student/dashboard' }),
+      )
     })
 
     it('reject resolution sets status to absent and disputeResolved true', async () => {

@@ -196,6 +196,16 @@ describe('getMonthDays / getWeeksInMonth', () => {
     expect(getWeeksInMonth(2026, 7)).toBe(6)
     expect(getWeeksInMonth(2025, 1)).toBe(5)
   })
+
+  it('does not emit an all-null trailing week when a month ends on Saturday', () => {
+    // Jan 2026 starts Thursday and ends Saturday (5 rows).
+    expect(getMonthDays(2026, 0)).toHaveLength(5)
+    // Feb 2026 starts Sunday, 28 days (exactly 4 rows).
+    expect(getMonthDays(2026, 1)).toHaveLength(4)
+    expect(getWeeksInMonth(2026, 0)).toBe(5)
+    expect(getWeeksInMonth(2026, 1)).toBe(4)
+    expect(getMonthDays(2026, 1).flat().filter((day) => day !== null)).toHaveLength(28)
+  })
 })
 
 describe('getDateRangeForMonth / getDateRangeForWeek', () => {

@@ -110,10 +110,10 @@ export function getMonthDays(year: number, month: number): (Date | null)[][] {
     }
   }
 
-  while (week.length < 7) {
-    week.push(null)
-  }
   if (week.length > 0) {
+    while (week.length < 7) {
+      week.push(null)
+    }
     weeks.push(week)
   }
 

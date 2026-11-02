@@ -5,11 +5,16 @@ import { CreateSectionDto } from './dto/create-section.dto'
 import { UpdateSectionDto } from './dto/update-section.dto'
 import { EnrollViaCodeDto } from './dto/enroll-via-code.dto'
 import { EnrollStudentDto } from './dto/enroll-student.dto'
+import { EnrollImportRequestDto } from './dto/import-enrollments.dto'
+import { EnrollmentImportService } from './enrollment-import.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
 
 @Controller('sections')
 export class SectionsController {
-  constructor(private sections: SectionsService) {}
+  constructor(
+    private sections: SectionsService,
+    private readonly enrollmentImport: EnrollmentImportService,
+  ) {}
 
   @Get()
   findAll(@Request() req: AuthenticatedRequest, @Query('subjectId') subjectId?: string) {
@@ -62,6 +67,16 @@ export class SectionsController {
   @Roles('teacher')
   enrollStudent(@Param('id') id: string, @Body() dto: EnrollStudentDto, @Request() req: AuthenticatedRequest) {
     return this.sections.enrollStudent(id, req.user.id, dto.studentId, dto.studentName)
+  }
+
+  @Post(':id/enrollments/import')
+  @Roles('teacher')
+  importEnrollments(
+    @Param('id') id: string,
+    @Body() dto: EnrollImportRequestDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.enrollmentImport.importEnrollments(id, dto, req.user)
   }
 
   @Delete(':id/students/:studentId')

@@ -63,13 +63,22 @@ env:
 - tapOn:
     id: scan-manual-submit
 - extendedWaitUntil:
-    visible: Check-in saved offline and queued for sync.
+    visible: "Check-in saved offline and queued for sync.*"
     timeout: 30000
-- assertVisible: ATTENDANCE VERIFIED
+- assertVisible: SAVED ON DEVICE
 - tapOn:
     id: scan-close
 
 # Reopening online awaits the initial sync before the dashboard is displayed.
+# First kill the app without connectivity: SQLite must survive process death.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: student-dashboard-screen
+    timeout: 30000
+- assertVisible:
+    id: offline-sync-panel
 - setAirplaneMode: disabled
 - stopApp
 - launchApp

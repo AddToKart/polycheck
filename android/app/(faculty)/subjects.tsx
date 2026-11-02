@@ -1,32 +1,33 @@
 import { useEffect, useState } from 'react'
-import { Alert, ScrollView, Text, View } from 'react-native'
+import { ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import type { Section, Subject, User } from '@polycheck/shared'
+import type { Section, Subject } from '@polycheck/shared'
 import { api } from '../../services/api-client'
+import { useAuthGate } from '../../hooks/use-auth-gate'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
+import { useCampusToast } from '../../components/CampusToast'
 
 export default function FacultySubjectsScreen() {
   const { isDark, toggle } = useTheme()
-  const [user, setUser] = useState<User | null>(null)
+  const { showToast } = useCampusToast()
+  const user = useAuthGate(['teacher', 'super_admin'])
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [sections, setSections] = useState<Section[]>([])
 
   useEffect(() => {
-    const currentUser = api.getCurrentUser()
-    if (!currentUser) return
-    setUser(currentUser)
+    if (!user) return
     void Promise.all([api.getSubjects(), api.getSections()])
       .then(([nextSubjects, nextSections]) => {
         setSubjects(nextSubjects)
         setSections(nextSections)
       })
-      .catch(() => Alert.alert('Unable to load subjects', 'Check your connection and try again.'))
-  }, [])
+      .catch(() => showToast('error', 'Unable to load subjects', 'Check your connection and try again.'))
+  }, [showToast, user])
 
   if (!user) return null
   const isSuper = user.role === 'super_admin'

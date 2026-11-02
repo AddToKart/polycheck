@@ -13,15 +13,54 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       const status = exception.getStatus()
       const responseData = exception.getResponse()
+      const responseObject =
+        typeof responseData === 'object' && responseData !== null
+          ? (responseData as {
+              message?: unknown
+              code?: unknown
+              error?: unknown
+              remainingMinutes?: unknown
+              distanceMeters?: unknown
+              allowedDistanceMeters?: unknown
+              canRequestOverride?: unknown
+              estimatedEnd?: unknown
+              designation?: unknown
+            })
+          : null
 
-      const message =
-        typeof responseData === 'object' && responseData !== null && 'message' in responseData
-          ? (responseData as { message: unknown }).message
-          : responseData
+      const message = responseObject && 'message' in responseObject ? responseObject.message : responseData
       response.status(status).json({
         statusCode: status,
         error: exception.name,
         message,
+        // Preserve machine-readable markers (password_change_required,
+        // device_cooldown_active, import_checksum_mismatch, idempotency codes,
+        // ...) that clients branch on instead of matching human-readable
+        // messages. remainingMinutes travels with device cooldown rejections so
+        // clients can render an accurate countdown without re-deriving clocks.
+        ...(responseObject && typeof responseObject.code === 'string' ? { code: responseObject.code } : {}),
+        ...(responseObject && typeof responseObject.remainingMinutes === 'number'
+          ? { remainingMinutes: responseObject.remainingMinutes }
+          : {}),
+        // Teacher activation geofence rejections carry measured distances so
+        // the override dialog can state them without re-deriving the math.
+        ...(responseObject && typeof responseObject.distanceMeters === 'number'
+          ? { distanceMeters: responseObject.distanceMeters }
+          : {}),
+        ...(responseObject && typeof responseObject.allowedDistanceMeters === 'number'
+          ? { allowedDistanceMeters: responseObject.allowedDistanceMeters }
+          : {}),
+        ...(responseObject && typeof responseObject.canRequestOverride === 'boolean'
+          ? { canRequestOverride: responseObject.canRequestOverride }
+          : {}),
+        // Maintenance 503s carry the announced resumption estimate; suite 403s
+        // carry the missing designation so clients can explain the denial.
+        ...(responseObject && typeof responseObject.estimatedEnd === 'string'
+          ? { estimatedEnd: responseObject.estimatedEnd }
+          : {}),
+        ...(responseObject && typeof responseObject.designation === 'string'
+          ? { designation: responseObject.designation }
+          : {}),
         path: request.originalUrl,
         timestamp: new Date().toISOString(),
       })

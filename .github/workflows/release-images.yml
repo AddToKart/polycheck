@@ -130,7 +130,7 @@ jobs:
           build-args: |
             NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || '/api' }}
             NEXT_PUBLIC_ALLOW_QR_FALLBACKS=false
-            NEXT_PUBLIC_PRIVACY_NOTICE_VERSION=${{ vars.PRIVACY_NOTICE_VERSION || '2026-08-04' }}
+            NEXT_PUBLIC_PRIVACY_NOTICE_VERSION=${{ vars.PRIVACY_NOTICE_VERSION || '2026-09-05' }}
             NEXT_PUBLIC_SENTRY_DSN=${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT }}

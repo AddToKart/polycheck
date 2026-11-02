@@ -1,10 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useSearchParams } from 'next/navigation'
-import type { User } from '@polycheck/shared'
+import {
+  canAccessAcademicOversight,
+  canAccessItOperations,
+  canAccessUserAdmin,
+  type User,
+} from '@polycheck/shared'
 import {
   LayoutDashboard,
   BookOpen,
@@ -21,12 +26,21 @@ import {
   Clock,
   Search,
   Settings,
+  FileClock,
+  Server,
+  Sparkles,
+  ClipboardCheck,
+  UserRound,
+  Flag,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import ThemeToggle from '@/components/ThemeToggle'
+import { NotificationBell } from './NotificationBell'
+import { useNotificationCenter } from '@/lib/hooks/use-notification-center'
+import { ReportIssueDialog } from '@/components/reports/ReportIssueDialog'
 
-type NavItem = { label: string; href: string; icon: any }
+type NavItem = { label: string; href: string; icon: any; group?: string }
 
 // Navigation for students
 const studentNav: NavItem[] = [
@@ -34,6 +48,8 @@ const studentNav: NavItem[] = [
   { label: 'My Subjects', href: '/student/dashboard?tab=subjects', icon: BookOpen },
   { label: 'Schedule', href: '/student/schedule', icon: Calendar },
   { label: 'Attendance History', href: '/student/dashboard?tab=attendance', icon: Clock },
+  { label: 'Assistant', href: '/student/assistant', icon: Sparkles },
+  { label: 'Profile', href: '/profile', icon: UserRound },
 ]
 
 // Navigation for standard teachers
@@ -44,20 +60,62 @@ const teacherNav: NavItem[] = [
   { label: 'Attendance Log', href: '/faculty/attendance', icon: ClipboardList },
   { label: 'Schedule', href: '/faculty/schedule', icon: Calendar },
   { label: 'Disputes', href: '/faculty/disputes', icon: Gavel },
+  { label: 'Excuses', href: '/faculty/excuses', icon: ClipboardCheck },
+  { label: 'Assistant', href: '/faculty/assistant', icon: Sparkles },
+  { label: 'Profile', href: '/profile', icon: UserRound },
   { label: 'Search', href: '/faculty/search', icon: Search },
 ]
 
-// Navigation for super admins
+// Concurrent administrative designations append grouped suites below the
+// teaching workspace (PUP Santa Maria dual-hat model). Super admins use the
+// unchanged console list above instead.
+const itOperationsNav: NavItem[] = [
+  { label: 'Server Status', href: '/faculty/server-status', icon: Server, group: 'IT Operations Suite' },
+  { label: 'Issue Reports', href: '/faculty/system-reports', icon: Flag, group: 'IT Operations Suite' },
+  {
+    label: 'Maintenance Controls',
+    href: '/faculty/settings?tab=system',
+    icon: Settings,
+    group: 'IT Operations Suite',
+  },
+]
+
+const academicOversightNav: NavItem[] = [
+  { label: 'Excuses', href: '/faculty/excuses', icon: ClipboardCheck, group: 'Academic Department Oversight' },
+  { label: 'Department Reports', href: '/faculty/reports', icon: BarChart3, group: 'Academic Department Oversight' },
+  { label: 'At-Risk Students', href: '/faculty/at-risk', icon: ClipboardCheck, group: 'Academic Department Oversight' },
+]
+
+const registrarSuiteNav: NavItem[] = [
+  { label: 'User Management', href: '/faculty/users', icon: Users, group: 'Registrar Suite' },
+]
+
+function buildTeacherNavigation(user: User): NavItem[] {
+  const oversight = canAccessAcademicOversight(user)
+  // A department head sees the campus excuse queue under the oversight group,
+  // so remove the teaching-workspace duplicate before re-adding it.
+  const base = oversight ? teacherNav.filter((item) => item.href !== '/faculty/excuses') : [...teacherNav]
+  const items = [...base]
+  if (canAccessItOperations(user)) items.push(...itOperationsNav)
+  if (oversight) items.push(...academicOversightNav)
+  if (canAccessUserAdmin(user)) items.push(...registrarSuiteNav)
+  return items
+}
+
+// Navigation for super admins — administration console only (SA1).
+// Classroom feeds (subjects, sessions, attendance, disputes, schedule) are
+// intentionally absent. Option A keeps those routes reachable via Global
+// Search results or deep links; they are never proactive surfaces.
 const superAdminNav: NavItem[] = [
   { label: 'Dashboard', href: '/faculty', icon: LayoutDashboard },
-  { label: 'Subject Directory', href: '/faculty/subjects', icon: BookOpen },
-  { label: 'Session Monitoring', href: '/faculty/sessions', icon: CalendarCheck },
-  { label: 'Attendance Monitoring', href: '/faculty/attendance', icon: ClipboardList },
-  { label: 'Dispute Monitoring', href: '/faculty/disputes', icon: Gavel },
-  { label: 'Global Search', href: '/faculty/search', icon: Search },
   { label: 'User Management', href: '/faculty/users', icon: Users },
   { label: 'System Reports', href: '/faculty/reports', icon: BarChart3 },
+  { label: 'Audit Log', href: '/faculty/audit-logs', icon: FileClock },
+  { label: 'Server Status', href: '/faculty/server-status', icon: Server },
+  { label: 'Assistant', href: '/faculty/assistant', icon: Sparkles },
   { label: 'Institution Settings', href: '/faculty/settings', icon: Settings },
+  { label: 'Profile', href: '/profile', icon: UserRound },
+  { label: 'Global Search', href: '/faculty/search', icon: Search },
 ]
 
 interface SidebarProps {
@@ -74,6 +132,9 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [reportOpen, setReportOpen] = useState(false)
+  const canReport = user.role === 'student' || user.role === 'teacher'
+  const notificationCenter = useNotificationCenter(user.id)
   const isSuper = user.role === 'super_admin'
   const showSearch = !backHref && (user.role === 'teacher' || user.role === 'super_admin')
   
@@ -82,13 +143,13 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
       ? studentNav
       : isSuper
         ? superAdminNav
-        : teacherNav
+        : buildTeacherNavigation(user)
 
   const homeHref = user.role === 'student' ? '/student/dashboard' : '/faculty'
 
   const sidebarContent = (
     <>
-      <div className="p-6 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-maroon dark:bg-golden text-white dark:text-maroon-dark">
+      <div className="p-6 max-md:pt-[calc(1.5rem+env(safe-area-inset-top))] border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-maroon dark:bg-golden text-white dark:text-maroon-dark">
         <div>
           <Link href={homeHref} onClick={() => setIsOpen(false)}>
             <h1 className="text-2xl font-heading font-bold tracking-tight text-golden dark:text-maroon-dark">
@@ -100,10 +161,20 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <NotificationBell
+            notifications={notificationCenter.notifications}
+            unreadCount={notificationCenter.unreadCount}
+            loading={notificationCenter.status === 'loading'}
+            error={notificationCenter.error}
+            onOpen={() => void notificationCenter.refresh()}
+            onMarkAll={() => void notificationCenter.markAllRead()}
+            onMarkRead={(notification) => notificationCenter.markRead(notification)}
+            triggerClassName="text-golden hover:bg-white/10 dark:text-maroon-dark dark:hover:bg-maroon-dark/10"
+          />
           <Image src="/pup-logo.png" width={32} height={32} alt="PUP Logo" className="w-8 h-8 shrink-0 object-contain" />
           <button
             onClick={() => setIsOpen(false)}
-            className="md:hidden p-1 rounded-none hover:bg-white/10 text-white dark:text-maroon-dark transition-colors"
+            className="md:hidden inline-flex min-h-11 min-w-11 items-center justify-center p-1 rounded-none hover:bg-white/10 text-white dark:text-maroon-dark transition-colors"
             aria-label="Close menu"
           >
             <X className="w-5 h-5" />
@@ -147,12 +218,13 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
           </div>
         )}
         <div className="flex flex-col">
-          {items.map((item) => {
+          {items.map((item, index) => {
             const Icon = item.icon
+            const showGroup = Boolean(item.group) && items[index - 1]?.group !== item.group
             let isActive = false
             if (item.href.includes('?tab=')) {
-              const tabValue = item.href.split('?tab=')[1]
-              isActive = pathname === '/student/dashboard' && activeTabQuery === tabValue
+              const [basePath, tabValue] = item.href.split('?tab=')
+              isActive = pathname === basePath && activeTabQuery === tabValue
             } else if (item.href === '/student/dashboard') {
               isActive = pathname === '/student/dashboard' && !activeTabQuery
             } else if (item.href === '/faculty') {
@@ -162,19 +234,25 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
             }
 
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setIsOpen(false)}
-                className={`flex items-center gap-4 px-6 py-4 text-sm font-bold uppercase tracking-wider transition-all border-l-4 ${
-                  isActive
-                    ? 'border-maroon dark:border-golden bg-zinc-100 dark:bg-zinc-900 text-maroon dark:text-golden'
-                    : 'border-transparent text-zinc-500 hover:text-foreground hover:bg-zinc-50 dark:hover:bg-zinc-900'
-                }`}
-              >
-                <Icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-maroon dark:text-golden' : ''}`} strokeWidth={isActive ? 2.5 : 1.5} />
-                {item.label}
-              </Link>
+              <Fragment key={item.href}>
+                {showGroup ? (
+                  <p className="px-6 pb-2 pt-6 text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                    {item.group}
+                  </p>
+                ) : null}
+                <Link
+                  href={item.href}
+                  onClick={() => setIsOpen(false)}
+                  className={`flex items-center gap-4 px-6 py-4 text-sm font-bold uppercase tracking-wider transition-all border-l-4 ${
+                    isActive
+                      ? 'border-maroon dark:border-golden bg-zinc-100 dark:bg-zinc-900 text-maroon dark:text-golden'
+                      : 'border-transparent text-zinc-500 hover:text-foreground hover:bg-zinc-50 dark:hover:bg-zinc-900'
+                  }`}
+                >
+                  <Icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-maroon dark:text-golden' : ''}`} strokeWidth={isActive ? 2.5 : 1.5} />
+                  {item.label}
+                </Link>
+              </Fragment>
             )
           })}
         </div>
@@ -202,6 +280,18 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
             <p className="text-xs text-zinc-500 truncate">{user.email}</p>
           </div>
         </div>
+        {canReport ? (
+          <Button
+            variant="outline"
+            className="mb-3 w-full justify-center gap-2 text-xs font-bold uppercase tracking-widest text-maroon dark:text-golden hover:bg-maroon hover:text-white"
+            onClick={() => {
+              setReportOpen(true)
+            }}
+          >
+            <Flag className="w-4 h-4" />
+            Report an Issue
+          </Button>
+        ) : null}
         <Button
           variant="outline"
           className="w-full justify-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-600 dark:text-zinc-400 hover:text-white hover:bg-maroon hover:border-maroon transition-colors"
@@ -217,18 +307,30 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
   return (
     <>
       {/* Mobile Top Navigation Header */}
-      <div className="md:hidden sticky top-0 z-30 w-full h-16 bg-maroon dark:bg-zinc-950 text-white dark:text-golden border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between px-6 shrink-0 select-none">
+      <div className="md:hidden sticky top-0 z-30 w-full h-auto min-h-16 pt-[env(safe-area-inset-top)] bg-maroon dark:bg-zinc-950 text-white dark:text-golden border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between px-6 shrink-0 select-none">
         <div className="flex items-center gap-3">
           <Image src="/pup-logo.png" width={24} height={24} alt="PUP Logo" className="w-6 h-6 shrink-0 object-contain" />
           <span className="font-heading font-bold text-lg tracking-tight">Polycheck</span>
         </div>
-        <button 
-          onClick={() => setIsOpen(true)}
-          className="p-2 hover:bg-white/10 dark:hover:bg-zinc-800 transition-colors"
-          aria-label="Open navigation menu"
-        >
-          <Menu className="w-6 h-6 text-white dark:text-golden" />
-        </button>
+        <div className="flex items-center gap-1">
+          <NotificationBell
+            notifications={notificationCenter.notifications}
+            unreadCount={notificationCenter.unreadCount}
+            loading={notificationCenter.status === 'loading'}
+            error={notificationCenter.error}
+            onOpen={() => void notificationCenter.refresh()}
+            onMarkAll={() => void notificationCenter.markAllRead()}
+            onMarkRead={(notification) => notificationCenter.markRead(notification)}
+            triggerClassName="h-11 w-11 text-white hover:bg-white/10 dark:text-golden dark:hover:bg-zinc-800"
+          />
+          <button 
+            onClick={() => setIsOpen(true)}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center p-2 hover:bg-white/10 dark:hover:bg-zinc-800 transition-colors"
+            aria-label="Open navigation menu"
+          >
+            <Menu className="w-6 h-6 text-white dark:text-golden" />
+          </button>
+        </div>
       </div>
 
       {/* Mobile Slide-Out Drawer Overlay */}
@@ -240,16 +342,19 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
             onClick={() => setIsOpen(false)}
           />
           {/* Slide-out Menu Panel */}
-          <aside className="relative w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col h-full z-50 overflow-hidden animate-in slide-in-from-left duration-200">
+          <aside className="relative w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col h-full z-50 overflow-hidden pb-[env(safe-area-inset-bottom)] animate-in slide-in-from-left duration-200">
             {sidebarContent}
           </aside>
         </div>
       )}
 
       {/* Desktop Persistent Sidebar */}
-      <aside className="hidden md:flex w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex flex-col shrink-0 h-dvh sticky top-0 overflow-hidden">
+      <aside className="hidden md:flex w-64 bg-background border-r border-zinc-300 dark:border-zinc-800 flex-col shrink-0 h-dvh sticky top-0 overflow-hidden">
         {sidebarContent}
       </aside>
+
+      {canReport ? <ReportIssueDialog open={reportOpen} onOpenChange={setReportOpen} /> : null}
     </>
   )
 }
+

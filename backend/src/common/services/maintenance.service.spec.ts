@@ -95,6 +95,23 @@ describe('MaintenanceService', () => {
     await expect(service.pruneScanAttempts()).resolves.toBeUndefined()
   })
 
+  it('prunes notifications through the nightly retention job', async () => {
+    const redis = { acquireLock: jest.fn().mockResolvedValue('owner-token'), releaseLock: jest.fn() }
+    const notifications = { pruneExpired: jest.fn().mockResolvedValue(5) }
+    const service = new MaintenanceService(
+      {} as never,
+      { expireStale: jest.fn() } as never,
+      redis as never,
+      undefined,
+      notifications as never,
+    )
+
+    await service.pruneNotifications()
+
+    expect(notifications.pruneExpired).toHaveBeenCalledWith(30)
+    expect(redis.releaseLock).toHaveBeenCalledWith('maintenance:prune-notifications', 'owner-token')
+  })
+
   it('does no maintenance work when another replica owns the job lock', async () => {
     const prisma = { scanAttempt: { findMany: jest.fn(), deleteMany: jest.fn() } }
     const permissions = { expireStale: jest.fn() }

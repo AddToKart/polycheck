@@ -63,10 +63,24 @@ test.describe('Privacy Consent Gate', () => {
     }
 
     // The student logs in and is immediately blocked by the global consent gate.
-    await page.goto('/login/student')
-    await page.getByLabel('Student Number').fill(createdStudentNumber)
-    await page.getByLabel('Password').fill(password)
-    await page.getByRole('button', { name: /Authenticate/i }).click()
+    // Retry the submission until the login request is observed: a pre-hydration
+    // click can be swallowed on slower engines.
+    let loggedIn = false
+    for (let attempt = 0; attempt < 3 && !loggedIn; attempt++) {
+      await page.goto('/login/student')
+      await page.getByLabel('Student Number').fill(createdStudentNumber)
+      await page.getByLabel('Password').fill(password)
+      const loginResponse = page
+        .waitForResponse(
+          (response) => response.url().includes('/api/auth/login/student') && response.request().method() === 'POST',
+          { timeout: 20_000 },
+        )
+        .catch(() => null)
+      await page.getByRole('button', { name: /Authenticate/i }).click()
+      const response = await loginResponse
+      loggedIn = response?.ok() ?? false
+    }
+    expect(loggedIn).toBeTruthy()
 
     const gate = page.getByRole('dialog', { name: /Attendance uses location evidence/i })
     await expect(gate).toBeVisible({ timeout: 20_000 })

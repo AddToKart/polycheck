@@ -114,7 +114,7 @@ export default function StudentSessionDetailPage() {
           {/* Session Info */}
           <Card className="rounded-none border-zinc-300 dark:border-zinc-800 shadow-none mb-6">
             <CardContent className="p-6">
-              <div className="flex flex-wrap gap-6">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:flex md:flex-wrap md:gap-6">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Status</p>
                   <Badge className={session.isActive ? 'bg-green-500 text-white rounded-none' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-none'}>
@@ -181,7 +181,7 @@ export default function StudentSessionDetailPage() {
                         onChange={(e) => setPhotoDescription(e.target.value)}
                         className="mb-3 text-sm"
                       />
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button size="sm" onClick={handleUploadProof} disabled={!uploadedPhoto}>
                           <Upload className="w-3.5 h-3.5 mr-1" /> Submit
                         </Button>

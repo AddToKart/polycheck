@@ -5,6 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import type { Section, Session, Subject } from '@polycheck/shared'
 import { api } from '../../../../services/api-client'
+import { useAuthGate } from '../../../../hooks/use-auth-gate'
 import { useTheme } from '../../../../theme/ThemeContext'
 import { pupColors } from '../../../../theme/colors'
 import { CampusHeader } from '../../../../components/CampusHeader'
@@ -15,6 +16,7 @@ const weekDayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 export default function SubjectSessionsScreen() {
   const { isDark } = useTheme()
+  const currentUser = useAuthGate(['teacher', 'super_admin'])
   const { id, sectionId: paramSectionId } = useLocalSearchParams<{ id: string; sectionId?: string }>()
   const [subject, setSubject] = useState<Subject | null>(null)
   const [sections, setSections] = useState<Section[]>([])
@@ -22,10 +24,10 @@ export default function SubjectSessionsScreen() {
   const [selectedSectionId, setSelectedSectionId] = useState(paramSectionId ?? '')
   const [selectedDay, setSelectedDay] = useState('')
   const [sectionPickerVisible, setSectionPickerVisible] = useState(false)
-  const isTeacher = api.getCurrentUser()?.role === 'teacher'
+  const isTeacher = currentUser?.role === 'teacher'
 
   useEffect(() => {
-    if (!id) return
+    if (!id || !currentUser) return
     void Promise.all([api.getSubject(id), api.getSections(id)])
       .then(async ([nextSubject, subjectSections]) => {
         const sessionGroups = await Promise.all(subjectSections.map((section) => api.getSectionSessions(section.id)))
@@ -34,7 +36,7 @@ export default function SubjectSessionsScreen() {
         setSessions(sessionGroups.flat().sort((a, b) => b.date.localeCompare(a.date)))
       })
       .catch(() => router.back())
-  }, [id])
+  }, [currentUser, id])
 
   useEffect(() => { if (paramSectionId) setSelectedSectionId(paramSectionId) }, [paramSectionId])
 
@@ -49,7 +51,7 @@ export default function SubjectSessionsScreen() {
     sessions: filteredSessions.filter((session) => session.sectionId === section.id),
   })).filter((group) => group.sessions.length), [filteredSessions, sections])
 
-  if (!subject) return null
+  if (!currentUser || !subject) return null
   const selectedSection = sections.find((section) => section.id === selectedSectionId)
 
   return (

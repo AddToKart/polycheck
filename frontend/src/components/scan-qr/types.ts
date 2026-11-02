@@ -6,6 +6,7 @@ export type ScanPhase =
   | 'scanning'
   | 'decoding-image'
   | 'acquiring-location'
+  | 'entering-pin'
   | 'submitting'
   | 'success'
   | 'error'
@@ -13,6 +14,7 @@ export type ScanPhase =
 export type ScanOutcome = {
   status: 'present' | 'late' | 'disputed'
   message: string
+  queued?: boolean
 } | null
 
 declare global {

@@ -45,7 +45,10 @@ describe('SessionGuard storage failure handling', () => {
     render(<SessionGuard area="faculty"><div>Protected QR content</div></SessionGuard>)
     expect(await screen.findByText('Protected QR content')).toBeInTheDocument()
 
-    vi.mocked(fetch).mockResolvedValueOnce(response({ message: 'Session expired' }, 401))
+    // Every later request 401s (not just the next one): a re-entrant session
+    // verification racing this assertion must not flip the guard back to
+    // 'ready' with a stale 200 profile.
+    vi.mocked(fetch).mockImplementation(async () => response({ message: 'Session expired' }, 401))
 
     await expect(api.getSubjects()).rejects.toThrow('Session expired')
 
@@ -83,5 +86,27 @@ describe('SessionGuard storage failure handling', () => {
 
     expect(screen.getByText('Protected QR content')).toBeInTheDocument()
     expect(screen.queryByText('We couldn’t verify your session')).not.toBeInTheDocument()
+  })
+
+  it('renders the branded maintenance wall instead of protected content on a 503', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      response(
+        {
+          code: 'system_maintenance',
+          message: 'Campus maintenance',
+          estimatedEnd: new Date(Date.now() + 10 * 60_000).toISOString(),
+        },
+        503,
+      ),
+    )
+
+    render(<SessionGuard area="faculty"><div>Protected QR content</div></SessionGuard>)
+
+    expect(
+      await screen.findByRole('heading', { name: 'Polycheck is under scheduled maintenance' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Campus maintenance')).toBeInTheDocument()
+    expect(screen.queryByText('Protected QR content')).not.toBeInTheDocument()
+    expect(routerMock.replace).not.toHaveBeenCalledWith('/')
   })
 })

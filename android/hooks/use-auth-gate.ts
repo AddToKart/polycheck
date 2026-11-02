@@ -14,12 +14,15 @@ export type AllowedRole = User['role']
  * open). It returns the current user when allowed, otherwise redirects:
  *
  * - not logged in → '/' (login)
+ * - temporary password → '/change-password' (blocking gate)
  * - wrong role    → the user's own dashboard group
+ * - failed `allow` predicate (designation) → the user's own dashboard group
  *
  * Screens must call it unconditionally at the top and guard their data
- * loading with `if (!currentUser) return`.
+ * loading with `if (!currentUser) return`. Pass a stable (module-level)
+ * predicate — e.g. the shared `canAccessItOperations` helper.
  */
-export function useAuthGate(roles: AllowedRole[] = []): User | null {
+export function useAuthGate(roles: AllowedRole[] = [], allow?: (user: User) => boolean): User | null {
   const router = useRouter()
   const user = api.getCurrentUser()
   const rolesKey = roles.join(',')
@@ -28,10 +31,14 @@ export function useAuthGate(roles: AllowedRole[] = []): User | null {
     const allowedRoles = rolesKey ? rolesKey.split(',') : []
     if (!user) {
       router.replace('/')
+    } else if (user.mustChangePassword) {
+      router.replace('/change-password')
     } else if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
       router.replace(user.role === 'student' ? '/(tabs)/dashboard' : '/(faculty)/dashboard')
+    } else if (allow && !allow(user)) {
+      router.replace(user.role === 'student' ? '/(tabs)/dashboard' : '/(faculty)/dashboard')
     }
-  }, [user, rolesKey, router])
+  }, [user, rolesKey, router, allow])
 
   return user
 }

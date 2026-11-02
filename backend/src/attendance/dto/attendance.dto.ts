@@ -1,8 +1,9 @@
-import { Type } from 'class-transformer'
+import { Transform, Type } from 'class-transformer'
 import {
   IsBoolean,
   IsDateString,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -11,7 +12,15 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator'
+import type { ExcuseDecision, ExcuseReason, ExcuseStatus } from '@polycheck/shared'
+
+class DeviceSecurityEvidenceDto {
+  @IsOptional() @IsBoolean() rootDetected?: boolean
+  @IsOptional() @IsBoolean() hookDetected?: boolean
+  @IsOptional() @IsBoolean() emulatorDetected?: boolean
+}
 
 class ScanEvidenceDto {
   @IsOptional() @IsString() @MaxLength(128) clientAttemptId?: string
@@ -19,13 +28,15 @@ class ScanEvidenceDto {
   @IsOptional() @IsDateString() locationCapturedAt?: string
   @IsOptional() @IsBoolean() mocked?: boolean
   @IsOptional() @IsIn(['camera', 'image', 'manual']) inputChannel?: 'camera' | 'image' | 'manual'
+  @IsOptional() @Matches(/^\d{2,4}$/) pin?: string
+  @IsOptional() @ValidateNested() @Type(() => DeviceSecurityEvidenceDto) deviceSecurity?: DeviceSecurityEvidenceDto
 }
 
 export class SubmitAttendanceDto extends ScanEvidenceDto {
   @IsString() @MaxLength(128) sessionId!: string
   @IsString() @MaxLength(128) sectionId!: string
-  @Type(() => Number) @IsNumber() @Min(-90) @Max(90) latitude!: number
-  @Type(() => Number) @IsNumber() @Min(-180) @Max(180) longitude!: number
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(-90) @Max(90) latitude?: number
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(-180) @Max(180) longitude?: number
   @IsOptional() @IsString() @MaxLength(128) deviceId?: string
   @IsString() @MinLength(80) @MaxLength(4096) qrToken!: string
   @IsOptional() @IsDateString() scannedAt?: string
@@ -33,24 +44,24 @@ export class SubmitAttendanceDto extends ScanEvidenceDto {
 
 export class ScanAttendanceDto extends ScanEvidenceDto {
   @IsString() @MaxLength(128) sessionId!: string
-  @Type(() => Number) @IsNumber() @Min(-90) @Max(90) lat!: number
-  @Type(() => Number) @IsNumber() @Min(-180) @Max(180) lon!: number
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(-90) @Max(90) lat?: number
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(-180) @Max(180) lon?: number
   @IsOptional() @IsString() @MaxLength(128) deviceId?: string
   @IsString() @MinLength(80) @MaxLength(4096) qrToken!: string
   @IsOptional() @IsDateString() scannedAt?: string
 }
 
 export class UpdateAttendanceStatusDto {
-  @IsIn(['present', 'late', 'absent', 'pending', 'disputed']) status!:
-    'present' | 'late' | 'absent' | 'pending' | 'disputed'
+  @IsIn(['present', 'late', 'absent', 'pending', 'disputed', 'incomplete']) status!:
+    'present' | 'late' | 'absent' | 'pending' | 'disputed' | 'incomplete'
 }
 
 export class CreateManualAttendanceDto {
   @IsString() @MaxLength(128) sessionId!: string
   @IsString() @MaxLength(128) sectionId!: string
   @IsString() @MaxLength(128) studentId!: string
-  @IsIn(['present', 'late', 'absent', 'pending', 'disputed']) status!:
-    'present' | 'late' | 'absent' | 'pending' | 'disputed'
+  @IsIn(['present', 'late', 'absent', 'pending', 'disputed', 'incomplete']) status!:
+    'present' | 'late' | 'absent' | 'pending' | 'disputed' | 'incomplete'
 }
 
 export class AttendanceListQueryDto {
@@ -69,4 +80,43 @@ export class AttendanceReportQueryDto {
   @IsOptional() @IsString() @MaxLength(128) subjectId?: string
   @IsOptional() @IsString() @MaxLength(128) sectionId?: string
   @IsOptional() @IsString() @MaxLength(128) sessionId?: string
+  @IsOptional() @IsString() @MaxLength(100) department?: string
+}
+
+const EXCUSE_REASONS: ExcuseReason[] = [
+  'medical',
+  'family_emergency',
+  'school_activity',
+  'transportation',
+  'bereavement',
+  'other',
+]
+const EXCUSE_STATUSES: ExcuseStatus[] = ['requested', 'approved', 'rejected']
+const EXCUSE_DECISIONS: ExcuseDecision[] = ['approve', 'reject']
+
+export class RequestExcuseDto {
+  @IsIn(EXCUSE_REASONS) reason!: ExcuseReason
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(10)
+  @MaxLength(1_000)
+  description!: string
+  @IsOptional() @IsString() @MaxLength(7_000_000) evidenceData?: string
+}
+
+export class DecideExcuseDto {
+  @IsIn(EXCUSE_DECISIONS) decision!: ExcuseDecision
+  @IsOptional() @IsString() @MaxLength(500) note?: string
+}
+
+export class ListExcusesQueryDto {
+  @IsOptional() @IsIn(EXCUSE_STATUSES) status?: ExcuseStatus
+  @IsOptional() @IsString() @MaxLength(128) sectionId?: string
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) startDate?: string
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) endDate?: string
+}
+
+export class AtRiskQueryDto {
+  @IsOptional() @IsString() @MaxLength(128) sectionId?: string
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50) limit?: number
 }

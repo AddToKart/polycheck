@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
@@ -13,9 +13,11 @@ import MapView from '../../../../../components/MapView'
 import { CampusHeader } from '../../../../../components/CampusHeader'
 import { CampusButton, CampusCard, SectionHeading } from '../../../../../components/CampusPrimitives'
 import { CampusFormField } from '../../../../../components/CampusFormField'
+import { useCampusToast } from '../../../../../components/CampusToast'
 
 export default function StudentCreateSessionScreen() {
   const { isDark } = useTheme()
+  const { showToast } = useCampusToast()
   const { id: sectionId } = useLocalSearchParams<{ id: string }>()
   const currentUser = useAuthGate(['student'])
   const [user, setUser] = useState<Student | null>(null)
@@ -52,7 +54,7 @@ export default function StudentCreateSessionScreen() {
     try {
       const permission = await Location.requestForegroundPermissionsAsync()
       if (permission.status !== 'granted') {
-        Alert.alert('Location required', 'Allow location access to position the attendance geofence.')
+        showToast('warning', 'Location required', 'Allow location access to position the attendance geofence.')
         return
       }
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
@@ -60,7 +62,7 @@ export default function StudentCreateSessionScreen() {
       setLongitude(location.coords.longitude)
       setRecenterSignal((value) => value + 1)
     } catch {
-      Alert.alert('Location unavailable', 'Turn on GPS and try again.')
+      showToast('error', 'Location unavailable', 'Turn on GPS and try again.')
     } finally {
       setLocating(false)
     }
@@ -69,11 +71,11 @@ export default function StudentCreateSessionScreen() {
   const createSession = async () => {
     if (!section || !subject || !user) return
     if (!date.trim() || !startTime.trim() || !endTime.trim()) {
-      Alert.alert('Missing session details', 'Enter the date, start time, and end time.')
+      showToast('warning', 'Missing session details', 'Enter the date, start time, and end time.')
       return
     }
     if (!await api.checkSessionPermission(sectionId, user.id)) {
-      Alert.alert('Permission expired', 'Ask your instructor to renew your session creation permission.')
+      showToast('warning', 'Permission expired', 'Ask your instructor to renew your session creation permission.')
       return
     }
     setSubmitting(true)
@@ -88,9 +90,10 @@ export default function StudentCreateSessionScreen() {
         geofence: { latitude, longitude, radiusMeters: radius },
         teacherId: section.teacherId,
       })
-      Alert.alert('Session created', 'The class session is ready for activation.', [{ text: 'Done', onPress: () => router.back() }])
+      showToast('success', 'Session created', 'The class session is ready for activation.')
+      router.back()
     } catch (error) {
-      Alert.alert('Unable to create session', error instanceof Error ? error.message : 'Try again in a moment.')
+      showToast('error', 'Unable to create session', error instanceof Error ? error.message : 'Try again in a moment.')
     } finally {
       setSubmitting(false)
     }

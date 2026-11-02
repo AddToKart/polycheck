@@ -1,9 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, ArrowRight } from 'lucide-react'
+import { PaginationBar } from '@/components/ui/pagination-bar'
+
+const SUBJECTS_PAGE_SIZE = 9
 import { api } from '@/lib/api-client'
 import type { User, Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -34,6 +37,14 @@ export default function SubjectsPage() {
     }
     init()
   }, [router])
+
+  const [page, setPage] = useState(1)
+  const totalPages = Math.max(1, Math.ceil(subjects.length / SUBJECTS_PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const pagedSubjects = useMemo(
+    () => subjects.slice((safePage - 1) * SUBJECTS_PAGE_SIZE, safePage * SUBJECTS_PAGE_SIZE),
+    [subjects, safePage]
+  )
 
   if (!user) return null
 
@@ -76,8 +87,8 @@ export default function SubjectsPage() {
           </div>
 
           {/* Subjects Grid */}
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {subjects.map((subject) => {
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {pagedSubjects.map((subject) => {
               const sectionCount = sectionCounts[subject.id] ?? 0
               return (
               <div
@@ -87,7 +98,7 @@ export default function SubjectsPage() {
               >
                 <Card className="rounded-none border-zinc-300/80 dark:border-zinc-800 border-l-4 border-l-maroon dark:border-l-golden hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50 flex flex-col h-full">
                   <CardHeader className="pb-4 pt-6 px-6">
-                    <div className="flex justify-between items-start mb-2">
+                    <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
                       <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">
                         {subject.code}
                       </span>

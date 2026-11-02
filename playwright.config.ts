@@ -15,6 +15,11 @@ export default defineConfig({
   ],
   use: {
     baseURL: 'http://localhost:3000',
+    // The production service worker intercepts network traffic and breaks
+    // Playwright's route interception non-deterministically (notably Firefox and
+    // WebKit). UI journeys do not assert offline caching; the PWA/offline suite
+    // covers that separately.
+    serviceWorkers: 'block',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

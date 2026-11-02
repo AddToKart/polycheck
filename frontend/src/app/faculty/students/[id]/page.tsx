@@ -7,6 +7,7 @@ import { ArrowLeft, UserX, RefreshCw, School } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Student, Session, AttendanceRecord, AttendanceStatus } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
+import { StudentGovernanceActions } from '@/components/faculty/StudentGovernanceActions'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -16,8 +17,14 @@ const statusConfig: Record<AttendanceStatus, { label: string; bg: string; text: 
   present: { label: 'Present', bg: 'bg-amber-50 dark:bg-amber-950', text: 'text-amber-600' },
   late: { label: 'Late', bg: 'bg-red-50 dark:bg-red-950', text: 'text-red-700' },
   absent: { label: 'Absent', bg: 'bg-zinc-100 dark:bg-zinc-800', text: 'text-zinc-600' },
+  excused: { label: 'Excused', bg: 'bg-maroon text-golden border border-golden', text: '' },
   pending: { label: 'Pending', bg: 'bg-white dark:bg-zinc-900', text: 'text-maroon' },
   disputed: { label: 'Disputed', bg: 'bg-zinc-900 dark:bg-black', text: 'text-amber-400' },
+  incomplete: {
+    label: 'Incomplete',
+    bg: 'bg-white dark:bg-transparent border border-dashed border-maroon dark:border-golden',
+    text: 'text-maroon-dark dark:text-golden',
+  },
 }
 
 const SESSION_PAGE_SIZE = 5
@@ -78,6 +85,11 @@ export default function StudentDetailPage() {
     }
   }
 
+  const refreshStudent = async () => {
+    const refreshed = await api.getStudent(studentId)
+    setStudent(refreshed)
+  }
+
   const handleCycleStatus = async (record: AttendanceRecord) => {
     const currentIdx = STATUS_CYCLE.indexOf(record.status)
     const nextStatus = STATUS_CYCLE[(currentIdx + 1) % STATUS_CYCLE.length]
@@ -132,11 +144,11 @@ export default function StudentDetailPage() {
 
       <main className="flex-1 overflow-y-auto">
         <div className="p-8 max-w-4xl mx-auto">
-          <div className="flex items-center gap-4 mb-8">
+          <div className="flex flex-wrap items-center gap-4 mb-8">
             <Link href={`/faculty/sections/${sectionId}`} className="text-maroon dark:text-golden hover:underline text-sm flex items-center gap-1">
               <ArrowLeft className="w-4 h-4" /> Subject
             </Link>
-            <h1 className="text-2xl font-heading font-bold text-maroon-dark dark:text-white">{student.fullName}</h1>
+            <h1 className="min-w-0 break-words text-2xl font-heading font-bold text-maroon-dark dark:text-white">{student.fullName}</h1>
           </div>
 
           {/* Flippable Virtual ID Card */}
@@ -149,7 +161,7 @@ export default function StudentDetailPage() {
               <div className={`w-full h-full relative transition-transform duration-700 [transform-style:preserve-3d] ${flipped ? '[transform:rotateY(180deg)]' : ''}`}>
                 
                 {/* Front Face */}
-                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] bg-white border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
+                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] bg-white dark:bg-id-paper-dark border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
                   {/* PUP Header */}
                   <div className="bg-maroon px-5 py-3 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800">
                     <div>
@@ -162,15 +174,15 @@ export default function StudentDetailPage() {
                   </div>
 
                   {/* Body */}
-                  <div className="flex-1 flex p-5 items-center gap-6 relative bg-[#fdfbf7] dark:bg-[#1a1a1a]">
+                  <div className="flex-1 flex flex-wrap p-5 items-center gap-6 relative bg-id-paper dark:bg-id-paper-dark">
                     <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]" style={{ backgroundImage: 'url(/pup-logo.png)', backgroundPosition: 'center', backgroundSize: 'contain', backgroundRepeat: 'no-repeat' }}></div>
                     <div className="w-24 h-32 bg-maroon dark:bg-golden flex items-center justify-center shrink-0 border-2 border-zinc-300 dark:border-zinc-800 shadow-md relative z-10">
                       <span className="text-2xl font-heading font-bold text-white dark:text-maroon-dark">
                         {student.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                       </span>
                     </div>
-                    <div className="flex-1 flex flex-col justify-center relative z-10">
-                      <h2 className="text-lg font-heading font-bold text-zinc-900 dark:text-white leading-tight uppercase">{student.fullName}</h2>
+                    <div className="min-w-0 flex-1 flex flex-col justify-center relative z-10">
+                      <h2 className="break-words text-lg font-heading font-bold text-zinc-900 dark:text-white leading-tight uppercase">{student.fullName}</h2>
                       <p className="text-sm font-mono font-bold text-maroon dark:text-golden mt-1">{student.studentId}</p>
                       <hr className="my-3 border-zinc-200 dark:border-zinc-700" />
                       <div className="grid grid-cols-2 gap-4">
@@ -192,12 +204,12 @@ export default function StudentDetailPage() {
                 </div>
 
                 {/* Back Face */}
-                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] bg-white border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
+                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] bg-id-paper dark:bg-id-paper-dark border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
                   {/* Magnetic Stripe */}
                   <div className="bg-zinc-950 h-10 w-full mt-5"></div>
                   
                   {/* Content */}
-                  <div className="flex-1 p-5 flex text-zinc-950 dark:text-zinc-50 gap-4 bg-[#fdfbf7] dark:bg-[#1a1a1a]">
+                  <div className="flex-1 p-5 flex text-zinc-950 dark:text-zinc-50 gap-4 bg-id-paper dark:bg-id-paper-dark">
                     <div className="w-2/3 flex flex-col justify-between">
                       <div>
                         <p className="text-[10px] font-bold text-maroon dark:text-golden uppercase tracking-wider mb-1">Conditions of Use</p>
@@ -230,10 +242,22 @@ export default function StudentDetailPage() {
             <p className="text-center text-xs text-zinc-500 font-bold uppercase tracking-widest mt-4 animate-pulse">Click card to flip</p>
           </div>
 
+          {/* Delegated account governance */}
+          {isTeacher ? (
+            <div className="mb-6 flex flex-col items-center gap-3">
+              <StudentGovernanceActions
+                student={student}
+                sectionId={sectionId || null}
+                permissions={user.delegatedPermissions}
+                onChanged={() => void refreshStudent()}
+              />
+            </div>
+          ) : null}
+
           {/* Remove from Subject */}
           {isTeacher && (
             <div className="flex justify-center mb-8">
-              <Button variant="outline" className="text-red-500 border-red-500 hover:bg-red-50 dark:hover:bg-red-950" onClick={handleRemove}>
+              <Button variant="outline" className="h-11 text-red-500 border-red-500 hover:bg-red-50 dark:hover:bg-red-950 md:h-10" onClick={handleRemove}>
                 <UserX className="w-4 h-4 mr-2" /> Remove from Subject
               </Button>
             </div>
@@ -254,8 +278,8 @@ export default function StudentDetailPage() {
                 const config = record ? statusConfig[record.status] : statusConfig.absent
                 return (
                   <Card key={session.id} className="hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
-                    <CardContent className="py-4 px-5 flex items-center justify-between">
-                      <div>
+                    <CardContent className="py-4 px-5 flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
                         <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
                           {new Date(session.date).toLocaleDateString('en-PH', {
                             month: 'short', day: 'numeric', year: 'numeric',
@@ -271,7 +295,7 @@ export default function StudentDetailPage() {
                           <button
                             onClick={() => { if (isTeacher) handleCycleStatus(record) }}
                             disabled={!isTeacher}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none ${isTeacher ? 'cursor-pointer transition-opacity hover:opacity-80' : 'cursor-default'} ${config.bg} ${config.text}`}
+                            className={`inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none md:min-h-0 ${isTeacher ? 'cursor-pointer transition-opacity hover:opacity-80' : 'cursor-default'} ${config.bg} ${config.text}`}
                           >
                             {config.label}
                             {isTeacher && <RefreshCw className="w-3 h-3" />}
@@ -280,7 +304,7 @@ export default function StudentDetailPage() {
                           <button
                             onClick={() => { if (isTeacher) handleAddAbsent(session) }}
                             disabled={!isTeacher}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 ${isTeacher ? 'cursor-pointer hover:opacity-80 transition-opacity' : 'cursor-default'}`}
+                            className={`inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 md:min-h-0 ${isTeacher ? 'cursor-pointer hover:opacity-80 transition-opacity' : 'cursor-default'}`}
                           >
                             No Record {isTeacher && <span className="text-lg leading-none">+</span>}
                           </button>
@@ -295,7 +319,7 @@ export default function StudentDetailPage() {
 
           {/* Session Pagination */}
           {sessionPageCount > 1 && (
-            <div className="flex items-center justify-center gap-2 mt-6">
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-6">
               <Button
                 variant="outline"
                 size="sm"

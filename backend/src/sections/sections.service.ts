@@ -10,9 +10,14 @@ import type { RequestUser } from '../auth/authenticated-principal'
 import type { CreateSectionDto } from './dto/create-section.dto'
 import type { UpdateSectionDto } from './dto/update-section.dto'
 import { DayOfWeek, Prisma } from '../prisma/client'
+import { ErrorCode } from '../common/constants/error-codes'
 import { randomInt } from 'crypto'
 import { adminCanAccessSection, adminEnrollmentWhere, adminSectionWhere } from '../common/admin-scope'
-import { lockStudentSection } from '../common/student-section-lock'
+import { lockSection, lockStudentSection } from '../common/student-section-lock'
+import { SettingsService } from '../settings/settings.service'
+
+const DEFAULT_ENROLLMENT_CODE_EXPIRY_DAYS = 14
+const MS_PER_DAY = 24 * 60 * 60 * 1000
 
 const sectionInclude = {
   subject: { select: { id: true, name: true, code: true } },
@@ -24,7 +29,10 @@ type SectionWithIncludes = Prisma.SectionGetPayload<{ include: typeof sectionInc
 
 @Injectable()
 export class SectionsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly settings: SettingsService,
+  ) {}
 
   async findAll(user: RequestUser, subjectId?: string) {
     if (user.role === 'super_admin') {
@@ -96,6 +104,7 @@ export class SectionsService {
 
     const { schedule, subjectId, section, room, semester } = dto
     this.assertScheduleRanges(schedule)
+    const enrollmentCodeExpiry = await this.enrollmentCodeExpiry()
 
     const created = await this.prisma.section.create({
       data: {
@@ -105,7 +114,7 @@ export class SectionsService {
         semester,
         teacherId: user.id,
         enrollmentCode: this.generateEnrollmentCode(),
-        enrollmentCodeExpiry: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 2 weeks
+        enrollmentCodeExpiry,
         schedule: {
           create: schedule.map((s) => ({
             day: s.day as DayOfWeek,
@@ -236,6 +245,8 @@ export class SectionsService {
       throw new BadRequestException('Enrollment code has expired')
     }
 
+    await this.assertNotTombstoned(sectionId, studentId)
+
     // Check if already enrolled
     const existing = await this.prisma.enrollment.findUnique({
       where: { studentId_sectionId: { studentId, sectionId } },
@@ -245,6 +256,24 @@ export class SectionsService {
     return this.createEnrollment(studentId, sectionId)
   }
 
+  /**
+   * V3 anti-zombie gate: a student the instructor removed cannot re-enter an
+   * unexpired enrollment code. Only an explicit teacher action (section
+   * enrollment of that student, bulk import) lifts the block.
+   */
+  private async assertNotTombstoned(sectionId: string, studentId: string) {
+    const tombstone = await this.prisma.enrollmentTombstone.findFirst({
+      where: { sectionId, studentId },
+      select: { id: true },
+    })
+    if (tombstone) {
+      throw new ForbiddenException({
+        message: 'You were removed from this section by the instructor and cannot re-enroll with this code',
+        code: ErrorCode.STUDENT_BLOCKED_FROM_SECTION,
+      })
+    }
+  }
+
   async enrollByCode(studentId: string, enrollmentCode: string) {
     const normalizedCode = enrollmentCode.trim().toUpperCase()
     const section = await this.prisma.section.findUnique({ where: { enrollmentCode: normalizedCode } })
@@ -252,6 +281,7 @@ export class SectionsService {
     if (section.enrollmentCodeExpiry && section.enrollmentCodeExpiry < new Date()) {
       throw new BadRequestException('Enrollment code has expired')
     }
+    await this.assertNotTombstoned(section.id, studentId)
     return this.createEnrollment(studentId, section.id)
   }
 
@@ -268,11 +298,13 @@ export class SectionsService {
       throw new BadRequestException('Invalid student')
     }
 
-    return this.createEnrollment(studentId, sectionId)
+    // Explicit teacher action re-admits a previously removed student.
+    return this.createEnrollment(studentId, sectionId, { clearTombstone: true })
   }
 
   async removeStudent(sectionId: string, teacherId: string, studentId: string) {
     await this.prisma.$transaction(async (tx) => {
+      await lockSection(tx, sectionId)
       await lockStudentSection(tx, studentId, sectionId)
       const section = await tx.section.findUnique({ where: { id: sectionId } })
       if (!section) throw new NotFoundException('Section not found')
@@ -290,6 +322,13 @@ export class SectionsService {
         data: { isActive: false },
       })
       await tx.enrollment.delete({ where: { studentId_sectionId: { studentId, sectionId } } })
+      // V3 anti-zombie: record the removal so an unexpired enrollment code
+      // cannot re-admit the student. Teacher enrollment clears this row.
+      await tx.enrollmentTombstone.upsert({
+        where: { sectionId_studentId: { sectionId, studentId } },
+        create: { sectionId, studentId, removedById: teacherId },
+        update: { removedById: teacherId, removedAt: new Date() },
+      })
       await tx.section.update({
         where: { id: sectionId },
         data: { studentCount: { decrement: 1 } },
@@ -305,11 +344,12 @@ export class SectionsService {
     if (section.teacherId !== teacherId) throw new ForbiddenException()
 
     const newCode = this.generateEnrollmentCode()
+    const enrollmentCodeExpiry = await this.enrollmentCodeExpiry()
     await this.prisma.section.update({
       where: { id: sectionId },
       data: {
         enrollmentCode: newCode,
-        enrollmentCodeExpiry: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        enrollmentCodeExpiry,
       },
     })
 
@@ -374,14 +414,27 @@ export class SectionsService {
     return code
   }
 
-  private async createEnrollment(studentId: string, sectionId: string) {
+  /** Institution-configured code lifetime, falling back to two weeks. */
+  private async enrollmentCodeExpiry(): Promise<Date> {
+    const days = await this.settings.getInteger('enrollment_code_expiry_days', DEFAULT_ENROLLMENT_CODE_EXPIRY_DAYS)
+    return new Date(Date.now() + days * MS_PER_DAY)
+  }
+
+  private async createEnrollment(studentId: string, sectionId: string, options: { clearTombstone?: boolean } = {}) {
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockSection(tx, sectionId)
         await lockStudentSection(tx, studentId, sectionId)
         const existing = await tx.enrollment.findUnique({
           where: { studentId_sectionId: { studentId, sectionId } },
         })
         if (existing) throw new ConflictException('Already enrolled in this section')
+
+        if (options.clearTombstone) {
+          // The instructor explicitly re-admitted this student: lift the
+          // enrollment-code block inside the guarded transaction.
+          await tx.enrollmentTombstone.deleteMany({ where: { sectionId, studentId } })
+        }
 
         const enrollment = await tx.enrollment.create({ data: { studentId, sectionId } })
         await tx.section.update({

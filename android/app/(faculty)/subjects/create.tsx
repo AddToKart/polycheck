@@ -1,37 +1,31 @@
-import { useEffect, useState } from 'react'
-import { Alert, ScrollView, Text, View } from 'react-native'
+import { useState } from 'react'
+import { ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import type { User } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
+import { useAuthGate } from '../../../hooks/use-auth-gate'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard } from '../../../components/CampusPrimitives'
 import { CampusFormField } from '../../../components/CampusFormField'
+import { useCampusToast } from '../../../components/CampusToast'
 
 export default function CreateSubjectScreen() {
-  const [user, setUser] = useState<User | null>(null)
+  const { showToast } = useCampusToast()
+  const user = useAuthGate(['teacher'])
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
   const [description, setDescription] = useState('')
   const [creating, setCreating] = useState(false)
-
-  useEffect(() => {
-    const currentUser = api.getCurrentUser()
-    if (!currentUser || currentUser.role !== 'teacher') {
-      router.replace('/(faculty)/dashboard')
-      return
-    }
-    setUser(currentUser)
-  }, [])
 
   const createSubject = async () => {
     if (!user || !name.trim() || !code.trim()) return
     setCreating(true)
     try {
       await api.createSubject({ name: name.trim(), code: code.trim().toUpperCase(), description: description.trim() || undefined })
-      Alert.alert('Subject created', 'You can now add class sections to this subject.', [{ text: 'View subjects', onPress: () => router.replace('/(faculty)/subjects') }])
+      showToast('success', 'Subject created', 'You can now add class sections to this subject.')
+      router.replace('/(faculty)/subjects')
     } catch (error) {
-      Alert.alert('Unable to create subject', error instanceof Error ? error.message : 'Try again in a moment.')
+      showToast('error', 'Unable to create subject', error instanceof Error ? error.message : 'Try again in a moment.')
     } finally {
       setCreating(false)
     }

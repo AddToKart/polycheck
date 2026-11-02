@@ -1,7 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { NotificationProvider } from "@/lib/notifications";
 import { AuthSessionMonitor } from "@/components/AuthSessionMonitor";
+import { RuntimeErrorGuard } from "@/components/RuntimeErrorGuard";
+import { PwaBoot } from "@/components/pwa/PwaBoot";
+import { MaintenanceProvider } from "@/components/maintenance/MaintenanceProvider";
 import { headers } from "next/headers";
 import { PrivacyConsentGate } from "@/components/PrivacyConsentGate";
 
@@ -9,6 +12,16 @@ export const metadata: Metadata = {
   title: "Polycheck",
   description: "PUP Attendance Management System",
   icons: [{ rel: "icon", url: "/pup-logo.png" }],
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Polycheck",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#7B1113",
+  viewportFit: "cover",
 };
 
 function ThemeScript({ nonce }: { nonce?: string }) {
@@ -47,9 +60,11 @@ export default async function RootLayout({
       </head>
       <body className="min-h-full flex flex-col font-sans">
         <NotificationProvider>
+          <PwaBoot />
+          <RuntimeErrorGuard />
           <AuthSessionMonitor />
           <PrivacyConsentGate />
-          {children}
+          <MaintenanceProvider>{children}</MaintenanceProvider>
         </NotificationProvider>
       </body>
     </html>

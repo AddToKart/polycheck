@@ -4,6 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule'
 import { RedisService } from '../../infrastructure/redis.service'
 import { PrismaService } from '../../prisma/prisma.service'
 import { SessionPermissionsService } from '../../session-permissions/session-permissions.service'
+import { NotificationsService } from '../../notifications/notifications.service'
 
 const EXPIRE_PERMISSIONS_LOCK_TTL_SECONDS = 2 * 60 * 60
 const PRUNE_SCAN_ATTEMPTS_LOCK_TTL_SECONDS = 25 * 60 * 60
@@ -19,6 +20,7 @@ export class MaintenanceService {
     private readonly permissions: SessionPermissionsService,
     private readonly redis: RedisService,
     @Optional() private readonly config?: ConfigService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   @Cron(CronExpression.EVERY_HOUR, { waitForCompletion: true })
@@ -95,6 +97,19 @@ export class MaintenanceService {
         if (pruned > 0) this.logger.log(`Pruned ${pruned} audit logs older than ${retentionDays} days`)
       },
       'prune audit logs',
+    )
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_3AM, { waitForCompletion: true })
+  async pruneNotifications() {
+    await this.runLockedJob(
+      'maintenance:prune-notifications',
+      PRUNE_SCAN_ATTEMPTS_LOCK_TTL_SECONDS,
+      async () => {
+        const pruned = (await this.notifications?.pruneExpired(30)) ?? 0
+        if (pruned > 0) this.logger.log(`Pruned ${pruned} notifications older than 30 days`)
+      },
+      'prune notifications',
     )
   }
 

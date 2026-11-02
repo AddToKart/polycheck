@@ -12,6 +12,7 @@ const badgeVariants = cva(
         late: "bg-maroon text-white",
         absent: "bg-maroon-dark text-golden border border-golden",
         pending: "bg-white text-maroon border border-maroon",
+        excused: "bg-maroon text-golden border border-golden",
         active: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
         inactive: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
         outline: "border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400",

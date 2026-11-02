@@ -4,11 +4,13 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { AttendanceRecord, AttendanceStatus, Prisma } from '../prisma/client'
 import { adminRecordWhere } from '../common/admin-scope'
+import { NotificationsService } from '../notifications/notifications.service'
 
 interface SubmitDisputeInput {
   recordId: string
@@ -25,7 +27,10 @@ interface DisputeSummary {
 
 @Injectable()
 export class DisputesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly notifications?: NotificationsService,
+  ) {}
 
   async findAll(
     user: RequestUser,
@@ -57,14 +62,17 @@ export class DisputesService {
   }
 
   async submit(user: RequestUser, dto: SubmitDisputeInput) {
-    const record = await this.prisma.attendanceRecord.findUnique({ where: { id: dto.recordId } })
+    const record = await this.prisma.attendanceRecord.findUnique({
+      where: { id: dto.recordId },
+      include: { session: { select: { teacherId: true, subjectName: true, date: true } } },
+    })
     if (!record) throw new NotFoundException('Attendance record not found')
     if (record.studentId !== user.id) throw new ForbiddenException('You can only dispute your own attendance')
     if (record.status === 'pending') throw new BadRequestException('Pending attendance cannot be disputed')
     if (record.status === 'disputed' && !record.disputeResolved) {
       throw new ConflictException('This attendance record already has an unresolved dispute')
     }
-    return this.present(
+    const updated = this.present(
       await this.prisma.attendanceRecord.update({
         where: { id: dto.recordId },
         data: {
@@ -75,6 +83,13 @@ export class DisputesService {
         },
       }),
     )
+    await this.notifications?.notify(record.session.teacherId, {
+      type: 'dispute_filed',
+      title: 'New attendance dispute',
+      body: `${record.studentName} filed a dispute for ${record.session.subjectName} on ${record.session.date}.`,
+      link: '/faculty/disputes',
+    })
+    return updated
   }
 
   async resolve(
@@ -101,12 +116,17 @@ export class DisputesService {
     if (status === 'pending' || status === 'disputed') {
       throw new ForbiddenException('Cannot override status to pending or disputed')
     }
-    return this.present(
-      await this.prisma.attendanceRecord.update({
-        where: { id },
-        data: { status, disputeResolved: true, manuallySet: resolution === 'override' },
-      }),
-    )
+    const updated = await this.prisma.attendanceRecord.update({
+      where: { id },
+      data: { status, disputeResolved: true, manuallySet: resolution === 'override' },
+    })
+    await this.notifications?.notify(record.studentId, {
+      type: 'dispute_resolved',
+      title: 'Dispute resolved',
+      body: `Your attendance dispute has been resolved as ${status}.`,
+      link: '/student/dashboard',
+    })
+    return this.present(updated)
   }
 
   private present(record: AttendanceRecord) {

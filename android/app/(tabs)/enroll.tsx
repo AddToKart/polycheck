@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from 'react-native'
+import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -9,9 +9,11 @@ import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusButton, CampusCard } from '../../components/CampusPrimitives'
+import { useCampusToast } from '../../components/CampusToast'
 
 export default function EnrollScreen() {
   const { isDark } = useTheme()
+  const { showToast } = useCampusToast()
   useAuthGate(['student'])
   const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
@@ -19,7 +21,7 @@ export default function EnrollScreen() {
   const handleEnroll = async () => {
     const trimmed = code.trim()
     if (!trimmed) {
-      Alert.alert('Enrollment code required', 'Enter the code shared by your instructor.')
+      showToast('warning', 'Enrollment code required', 'Enter the code shared by your instructor.')
       return
     }
 
@@ -27,11 +29,9 @@ export default function EnrollScreen() {
     try {
       await api.enrollByCode(trimmed)
       setCode('')
-      Alert.alert('Class added', 'You are now enrolled. Subject data will be available for offline use after sync.', [
-        { text: 'View dashboard', onPress: () => router.replace('/(tabs)/dashboard') },
-      ])
+      showToast('success', 'Class added', 'You are now enrolled. Subject data will be available for offline use after sync.')
     } catch (error) {
-      Alert.alert('Unable to enroll', error instanceof Error ? error.message : 'Check the code and try again.')
+      showToast('error', 'Unable to enroll', error instanceof Error ? error.message : 'Check the code and try again.')
     } finally {
       setLoading(false)
     }

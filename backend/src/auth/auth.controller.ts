@@ -7,8 +7,10 @@ import { LoginFacultyDto } from './dto/login-faculty.dto'
 import { ProvisionKeyDto } from './dto/provision-key.dto'
 import { Roles } from '../common/decorators/roles.decorator'
 import { Public } from '../common/decorators/public.decorator'
+import { AllowPendingPasswordChange } from '../common/decorators/allow-pending-password-change.decorator'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator'
+import { ChangePasswordDto } from './dto/change-password.dto'
 
 class AcceptPrivacyConsentDto {
   @IsString() @IsNotEmpty() @MaxLength(64) version!: string
@@ -19,12 +21,14 @@ export class AuthController {
   constructor(private auth: AuthService) {}
 
   @Public()
+  @AllowPendingPasswordChange()
   @Get('privacy-notice')
   privacyNotice() {
     return this.auth.privacyNotice()
   }
 
   @Roles('student')
+  @AllowPendingPasswordChange()
   @Post('privacy-consent')
   acceptPrivacyConsent(@Request() req: AuthenticatedRequest, @Body() dto: AcceptPrivacyConsentDto) {
     return this.auth.acceptPrivacyConsent(req.user.id, dto.version)
@@ -57,7 +61,10 @@ export class AuthController {
   @Public()
   @Post('mobile/login/student')
   async loginStudentMobile(@Body() dto: LoginStudentDto, @Req() req: ExpressRequest) {
-    const result = await this.auth.loginStudent(dto.studentId, dto.password, req.ip, toWebHeaders(req.headers))
+    const result = await this.auth.loginStudent(dto.studentId, dto.password, req.ip, toWebHeaders(req.headers), {
+      channel: 'mobile',
+      deviceId: dto.deviceId,
+    })
     if (!result.token) throw new Error('Better Auth did not issue a mobile bearer token')
     return { user: result.user, token: result.token }
   }
@@ -65,14 +72,23 @@ export class AuthController {
   @Public()
   @Post('mobile/login/faculty')
   async loginFacultyMobile(@Body() dto: LoginFacultyDto, @Req() req: ExpressRequest) {
-    const result = await this.auth.loginFaculty(dto.email, dto.password, req.ip, toWebHeaders(req.headers))
+    const result = await this.auth.loginFaculty(dto.email, dto.password, req.ip, toWebHeaders(req.headers), {
+      channel: 'mobile',
+    })
     if (!result.token) throw new Error('Better Auth did not issue a mobile bearer token')
     return { user: result.user, token: result.token }
   }
 
+  @AllowPendingPasswordChange()
   @Get('me')
   getProfile(@Request() req: AuthenticatedRequest) {
     return this.auth.getProfile(req.user.id)
+  }
+
+  @AllowPendingPasswordChange()
+  @Post('change-password')
+  changePassword(@Request() req: AuthenticatedRequest, @Body() dto: ChangePasswordDto) {
+    return this.auth.changePassword(req.user.id, dto, req.user.authSessionId)
   }
 
   @Roles('teacher')
@@ -87,6 +103,7 @@ export class AuthController {
     return this.auth.revokeKey(req.user.id)
   }
 
+  @AllowPendingPasswordChange()
   @Post('logout')
   async logout(@Request() req: AuthenticatedRequest, @Res({ passthrough: true }) res: Response) {
     const result = await this.auth.logout(toWebHeaders(req.headers))

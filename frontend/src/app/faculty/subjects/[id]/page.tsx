@@ -63,11 +63,11 @@ export default function SubjectDetailPage() {
       <main className="flex-1 overflow-y-auto">
         <div className="p-8 max-w-6xl mx-auto">
           {/* Header */}
-          <div className="flex items-center gap-4 mb-8">
+          <div className="flex flex-wrap items-center gap-4 mb-8">
             <Link href="/faculty/subjects" className="text-maroon dark:text-golden hover:underline text-sm flex items-center gap-1">
               <ArrowLeft className="w-4 h-4" /> Subjects
             </Link>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-2xl font-heading font-bold text-maroon-dark dark:text-white">{subject.name}</h1>
               <p className="text-sm text-zinc-500 dark:text-zinc-400">{subject.code}</p>
             </div>
@@ -76,7 +76,7 @@ export default function SubjectDetailPage() {
           {/* Subject Info */}
           <Card className="mb-8 border-t-4 border-t-maroon dark:border-t-golden">
             <CardContent className="pt-6">
-              <div className="grid sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">Code</p>
                   <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">{subject.code}</p>
@@ -94,7 +94,7 @@ export default function SubjectDetailPage() {
           </Card>
 
           {/* Sections */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <h2 className="text-lg font-heading font-bold text-zinc-800 dark:text-zinc-100 flex items-center gap-2">
               <Users className="w-4 h-4 text-maroon dark:text-golden" />
               Sections
@@ -114,11 +114,11 @@ export default function SubjectDetailPage() {
               <p className="text-xs uppercase tracking-widest text-zinc-500">Create a section to get started.</p>
             </div>
           ) : (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {sections.map((section) => (
                 <Card key={section.id} className="rounded-none border-zinc-300/80 dark:border-zinc-800 border-l-4 border-l-maroon dark:border-l-golden hover:border-maroon dark:hover:border-golden transition-colors bg-zinc-50 dark:bg-zinc-900/50 flex flex-col h-full">
                   <CardHeader className="pb-4 pt-6 px-6">
-                    <div className="flex justify-between items-start mb-2">
+                    <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
                       <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">
                         Section {section.section}
                       </span>
@@ -142,13 +142,13 @@ export default function SubjectDetailPage() {
                           {section.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}${s.room ? ` (${s.room})` : ''}`).join(', ')}
                         </span>
                       </div>
-                      <div className="flex justify-between items-center pt-2">
+                      <div className="flex flex-wrap justify-between items-center gap-2 pt-2">
                         <span className="text-zinc-400">Join Code</span>
                         <div className="flex items-center gap-2">
                           <span className="font-mono bg-zinc-200 dark:bg-zinc-800 px-2 py-1 text-foreground">{section.enrollmentCode}</span>
                           <button
                             onClick={(e) => { e.stopPropagation(); handleCopy(section.enrollmentCode!, section.id) }}
-                            className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-500 transition-colors"
+                            className="inline-flex min-h-11 min-w-11 items-center justify-center p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-500 transition-colors md:min-h-0 md:min-w-0"
                             title="Copy Code"
                           >
                             {copiedId === section.id ? <span className="text-[10px] text-maroon dark:text-golden font-bold">COPIED</span> : <Copy className="w-3.5 h-3.5" />}

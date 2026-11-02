@@ -33,7 +33,7 @@ export const contentSecurityPolicy = (nonce: string, apiBase = API_BASE) => {
     "child-src 'self' blob:",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com",
-    `img-src 'self' data: blob: ${mapSources.join(' ')}`,
+    `img-src 'self' data: blob: ${[...apiSources(apiBase).filter((source) => source.startsWith('http')), ...mapSources].join(' ')}`,
     ["connect-src 'self'", ...apiSources(apiBase), ...mapSources, ...developmentSources.slice(1)].join(' '),
     "object-src 'none'",
     "base-uri 'self'",

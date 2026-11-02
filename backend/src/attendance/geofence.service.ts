@@ -21,6 +21,8 @@ export class GeofenceService {
         sessionId: { not: sessionId },
         status: { in: ['present', 'late', 'disputed'] },
         manuallySet: false,
+        latitude: { not: null },
+        longitude: { not: null },
       },
       select: {
         latitude: true,
@@ -32,10 +34,15 @@ export class GeofenceService {
     })
     const identical = previous.filter(
       (record) =>
-        Math.abs(record.latitude - latitude) < 0.0000001 && Math.abs(record.longitude - longitude) < 0.0000001,
+        record.latitude !== null &&
+        record.longitude !== null &&
+        Math.abs(record.latitude - latitude) < 0.0000001 &&
+        Math.abs(record.longitude - longitude) < 0.0000001,
     )
     const exactCenter = previous.some(
       (record) =>
+        record.session.geofenceLatitude !== null &&
+        record.session.geofenceLongitude !== null &&
         Math.abs(record.session.geofenceLatitude - latitude) < 0.0000001 &&
         Math.abs(record.session.geofenceLongitude - longitude) < 0.0000001,
     )

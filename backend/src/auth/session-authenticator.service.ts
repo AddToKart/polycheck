@@ -32,8 +32,12 @@ export class SessionAuthenticator {
       department: user.department,
       scope: user.scope,
       authSessionId: session.id,
+      mustChangePassword: user.mustChangePassword === true,
       privacyConsentVersion: user.privacyConsentVersion,
       privacyConsentedAt: user.privacyConsentedAt,
+      isItCoordinator: user.isItCoordinator === true,
+      isDepartmentHead: user.isDepartmentHead === true,
+      isUserRegistrar: user.isUserRegistrar === true,
     }
   }
 }

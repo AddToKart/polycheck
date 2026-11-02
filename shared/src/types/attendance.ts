@@ -1,4 +1,25 @@
-export type AttendanceStatus = 'present' | 'late' | 'absent' | 'pending' | 'disputed'
+import type { SessionMode } from './session'
+
+export type AttendanceStatus =
+  | 'present'
+  | 'late'
+  | 'absent'
+  | 'pending'
+  | 'disputed'
+  | 'excused'
+  | 'incomplete'
+
+export type ExcuseStatus = 'requested' | 'approved' | 'rejected'
+
+export type ExcuseReason =
+  | 'medical'
+  | 'family_emergency'
+  | 'school_activity'
+  | 'transportation'
+  | 'bereavement'
+  | 'other'
+
+export type ExcuseDecision = 'approve' | 'reject'
 
 export type StudentDisputeReason =
   | 'outside_geofence'
@@ -16,6 +37,11 @@ export type SystemDisputeReason =
   | 'not_enrolled'
   | 'qr_expired'
   | 'rate_limited'
+  | 'mocked_location'
+  | 'rooted_device'
+  | 'hook_detected'
+  | 'emulator_detected'
+  | 'concurrent_session_conflict'
 
 export type DisputeReason = StudentDisputeReason | SystemDisputeReason
 
@@ -29,9 +55,14 @@ export interface AttendanceRecord {
   timestamp: string
   status: AttendanceStatus
   coordinates: {
-    latitude: number
-    longitude: number
+    latitude: number | null
+    longitude: number | null
   }
+  mode?: SessionMode
+  checkInTime?: string | null
+  checkInStatus?: AttendanceStatus | null
+  checkOutTime?: string | null
+  checkOutStatus?: AttendanceStatus | null
   deviceId?: string
   tokenSnapshot?: string
   isSynced: boolean
@@ -41,6 +72,13 @@ export interface AttendanceRecord {
   disputeDescription?: string
   manuallySet?: boolean
   notes?: string
+  excuseStatus?: ExcuseStatus
+  excuseReason?: ExcuseReason
+  excuseDescription?: string
+  excuseEvidencePath?: string
+  excuseReviewedBy?: string
+  excuseReviewedAt?: string
+  excuseReviewNote?: string
 }
 
 export interface AttendanceSummary {
@@ -51,4 +89,6 @@ export interface AttendanceSummary {
   late: number
   absent: number
   disputed: number
+  excused: number
+  incomplete: number
 }

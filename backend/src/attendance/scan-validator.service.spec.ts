@@ -8,12 +8,14 @@ import { ISSUED_AT, makeCachedSession, makeEvidence, validPayload } from '../../
 
 jest.mock('@polycheck/shared', () => ({
   verifyQRToken: jest.fn(),
+  verifyMeetingPin: jest.fn(),
   haversineDistance: jest.fn(),
 }))
 
-import { verifyQRToken, haversineDistance } from '@polycheck/shared'
+import { verifyQRToken, verifyMeetingPin, haversineDistance } from '@polycheck/shared'
 
 const mockedVerify = verifyQRToken as jest.MockedFunction<typeof verifyQRToken>
+const mockedVerifyPin = verifyMeetingPin as jest.MockedFunction<typeof verifyMeetingPin>
 const mockedHaversine = haversineDistance as jest.MockedFunction<typeof haversineDistance>
 
 const studentUser: RequestUser = { id: 'stu-1', role: 'student', studentId: 'S-1' }
@@ -160,6 +162,14 @@ describe('ScanValidatorService', () => {
       expect(result.reason).toBe('outside_geofence')
     })
 
+    it('returns absent when outside geofence even with broad accuracy circle', async () => {
+      geofence.calculateDistance.mockReturnValue(100)
+      const result = await service.validateScan(studentUser, makeEvidence({ accuracyMeters: 80 }), false, new Date())
+      expect(result.success).toBe(false)
+      expect(result.status).toBe('absent')
+      expect(result.reason).toBe('outside_geofence')
+    })
+
     it('returns disputed when location uncertainty extends outside geofence', async () => {
       geofence.calculateDistance.mockReturnValue(45) // 45 + 10 accuracy = 55 > 50 radius
       const result = await service.validateScan(studentUser, makeEvidence({ accuracyMeters: 10 }), false, new Date())
@@ -195,6 +205,17 @@ describe('ScanValidatorService', () => {
       expect(result.distanceMeters).toBe(5)
     })
 
+    it('requires teacher review when an on-time offline scan arrives after expiry', async () => {
+      const result = await service.validateScan(studentUser, makeEvidence(), true, new Date(ISSUED_AT + 90 * 60_000))
+      expect(result).toMatchObject({ success: true, status: 'disputed', reason: 'delayed_offline_sync' })
+    })
+
+    it('rejects offline evidence when enrollment was removed before sync', async () => {
+      prisma.enrollment.findUnique.mockResolvedValue(null)
+      const result = await service.validateScan(studentUser, makeEvidence(), true, new Date(ISSUED_AT + 60_000))
+      expect(result).toMatchObject({ success: false, reason: 'not_enrolled' })
+    })
+
     it('returns late status when scanned after validity window but within grace', async () => {
       const lateTime = ISSUED_AT + 12 * 60_000 // 12 min after issued (validity=10)
       mockedVerify.mockReturnValue(validPayload({ validityMinutes: 10, gracePeriodMinutes: 5 }) as any)
@@ -209,6 +230,62 @@ describe('ScanValidatorService', () => {
       )
       expect(result.success).toBe(true)
       expect(result.status).toBe('late')
+    })
+
+    it('flags emulator as disputed with emulator_detected reason', async () => {
+      const result = await service.validateScan(
+        studentUser,
+        makeEvidence({ deviceSecurity: { emulatorDetected: true } }),
+        false,
+        new Date(ISSUED_AT + 60_000),
+      )
+      expect(result.success).toBe(false)
+      expect(result.status).toBe('disputed')
+      expect(result.reason).toBe('emulator_detected')
+      expect(result.riskSignals).toContain('emulator_detected')
+    })
+
+    it('flags rooted device as disputed with rooted_device reason', async () => {
+      const result = await service.validateScan(
+        studentUser,
+        makeEvidence({ deviceSecurity: { rootDetected: true } }),
+        false,
+        new Date(ISSUED_AT + 60_000),
+      )
+      expect(result.success).toBe(false)
+      expect(result.status).toBe('disputed')
+      expect(result.reason).toBe('rooted_device')
+      expect(result.riskSignals).toContain('rooted_device')
+      expect(result.riskSignals?.filter((signal) => signal === 'rooted_device')).toHaveLength(1)
+    })
+
+    it('enforces the geofence before retaining rooted-device evidence for review', async () => {
+      geofence.calculateDistance.mockReturnValue(100)
+
+      const result = await service.validateScan(
+        studentUser,
+        makeEvidence({ deviceSecurity: { rootDetected: true } }),
+        false,
+        new Date(ISSUED_AT + 60_000),
+      )
+
+      expect(result.success).toBe(false)
+      expect(result.status).toBe('absent')
+      expect(result.reason).toBe('outside_geofence')
+      expect(result.riskSignals).toContain('rooted_device')
+    })
+
+    it('flags hooking framework as disputed with hook_detected reason', async () => {
+      const result = await service.validateScan(
+        studentUser,
+        makeEvidence({ deviceSecurity: { hookDetected: true } }),
+        false,
+        new Date(ISSUED_AT + 60_000),
+      )
+      expect(result.success).toBe(false)
+      expect(result.status).toBe('disputed')
+      expect(result.reason).toBe('hook_detected')
+      expect(result.riskSignals).toContain('hook_detected')
     })
   })
 
@@ -267,6 +344,171 @@ describe('ScanValidatorService', () => {
       expect(result).not.toBeNull()
       expect(result!.success).toBe(true)
       expect(result!.record).toBe(record)
+    })
+
+    it('treats changed device-security evidence as a conflicting replay', async () => {
+      prisma.scanAttempt.findUnique.mockResolvedValue({
+        sessionId: 'sess-1',
+        tokenHash: 'hash',
+        latitude: 14.5863,
+        longitude: 121.0,
+        deviceId: 'device-1',
+        inputChannel: 'camera',
+        accuracyMeters: 10,
+        mocked: false,
+        clientScannedAt: new Date(ISSUED_AT),
+        locationCapturedAt: new Date(ISSUED_AT + 2_000),
+        riskSignals: [],
+        acceptedAttendanceRecord: { id: 'rec-1', status: 'present' },
+        reason: null,
+        message: null,
+      })
+
+      const result = await service.findReplay('stu-1', makeEvidence({ deviceSecurity: { rootDetected: true } }), 'hash')
+
+      expect(result).toEqual(expect.objectContaining({ success: false, reason: 'client_attempt_conflict' }))
+    })
+  })
+
+  describe('validateScan — online checkpoints (hybrid)', () => {
+    const PIN_HASH = 'pin-hash-abc'
+    const onlineSession = (overrides: Record<string, unknown> = {}) =>
+      makeCachedSession({
+        mode: 'online',
+        qrToken: null,
+        qrTokenExpiresAt: null,
+        startQrToken: 'start-token',
+        startTokenExpiresAt: new Date(ISSUED_AT + 90_000),
+        startQrGeneratedAt: new Date(ISSUED_AT),
+        startQrValiditySeconds: 90,
+        startGraceMinutes: 10,
+        startPinHash: PIN_HASH,
+        endQrToken: null,
+        endTokenExpiresAt: null,
+        endQrGeneratedAt: null,
+        endQrValiditySeconds: 90,
+        endGraceMinutes: 0,
+        endPinHash: null,
+        geofenceLatitude: null,
+        geofenceLongitude: null,
+        geofenceRadiusMeters: null,
+        ...overrides,
+      })
+    const onlinePayload = (overrides: Record<string, unknown> = {}) =>
+      validPayload({
+        mode: 'online',
+        checkpoint: 'start',
+        pinRequired: true,
+        pinHash: PIN_HASH,
+        validitySeconds: 90,
+        gracePeriodMinutes: 10,
+        validityMinutes: 2,
+        ...overrides,
+      })
+    const onlineEvidence = (overrides: Record<string, unknown> = {}) =>
+      makeEvidence({
+        qrToken: 'start-token',
+        latitude: undefined,
+        longitude: undefined,
+        accuracyMeters: undefined,
+        locationCapturedAt: undefined,
+        mocked: false,
+        inputChannel: 'image',
+        ...overrides,
+      } as any)
+
+    beforeEach(() => {
+      redis.getJson.mockResolvedValue(onlineSession())
+      prisma.session.findUnique.mockResolvedValue(onlineSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ studentId: 'stu-1', sectionId: 'sec-1' })
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk-test' })
+      redis.consumeRateLimit = jest.fn().mockResolvedValue(true)
+      mockedVerify.mockReturnValue(onlinePayload() as any)
+      mockedVerifyPin.mockResolvedValue(true)
+    })
+
+    it('accepts a location-free check-in and never touches geofence math', async () => {
+      mockedVerify.mockReturnValue(onlinePayload({ pinRequired: false, pinHash: undefined }) as any)
+
+      const result = await service.validateScan(studentUser, onlineEvidence(), false, new Date())
+
+      expect(result.success).toBe(true)
+      expect(result.status).toBe('present')
+      expect(result.mode).toBe('online')
+      expect(result.checkpoint).toBe('start')
+      expect(result.distanceMeters).toBeUndefined()
+      expect(result.riskSignals).toEqual(expect.arrayContaining(['mode_online_no_gps', 'fallback_image']))
+      expect(geofence.calculateDistance).not.toHaveBeenCalled()
+    })
+
+    it('verifies a correct meeting PIN and records the flag only', async () => {
+      const result = await service.validateScan(studentUser, onlineEvidence({ pin: '83' }), false, new Date())
+
+      expect(result.success).toBe(true)
+      expect(result.pinVerified).toBe(true)
+      expect(mockedVerifyPin).toHaveBeenCalledWith('83', PIN_HASH)
+      expect(result.riskSignals).toContain('pin_verified')
+    })
+
+    it('rejects a wrong meeting PIN', async () => {
+      mockedVerifyPin.mockResolvedValue(false)
+
+      const result = await service.validateScan(studentUser, onlineEvidence({ pin: '84' }), false, new Date())
+
+      expect(result.success).toBe(false)
+      expect(result.reason).toBe('pin_incorrect')
+      expect(result.pinVerified).toBe(false)
+    })
+
+    it('locks PIN attempts after the per-student limit', async () => {
+      ;(redis.consumeRateLimit as jest.Mock).mockResolvedValue(false)
+
+      const result = await service.validateScan(studentUser, onlineEvidence({ pin: '83' }), false, new Date())
+
+      expect(result.success).toBe(false)
+      expect(result.reason).toBe('pin_locked')
+      expect(mockedVerifyPin).not.toHaveBeenCalled()
+    })
+
+    it('skips PIN verification entirely when the token does not require one', async () => {
+      mockedVerify.mockReturnValue(onlinePayload({ pinRequired: false, pinHash: undefined }) as any)
+
+      const result = await service.validateScan(studentUser, onlineEvidence({ pin: '83' }), false, new Date())
+
+      expect(result.success).toBe(true)
+      expect(mockedVerifyPin).not.toHaveBeenCalled()
+      expect(result.riskSignals).toContain('pin_supplied_but_disabled')
+      expect(result.pinVerified).toBeUndefined()
+    })
+
+    it('rejects an un-armed checkpoint', async () => {
+      prisma.session.findUnique.mockResolvedValue(onlineSession({ startQrToken: null }))
+
+      const result = await service.validateScan(studentUser, onlineEvidence(), false, new Date())
+
+      expect(result.success).toBe(false)
+      expect(result.reason).toBe('checkpoint_not_armed')
+    })
+
+    it('rejects an in-person token presented to an online session', async () => {
+      mockedVerify.mockReturnValue(validPayload() as any)
+
+      const result = await service.validateScan(studentUser, onlineEvidence(), false, new Date())
+
+      expect(result.success).toBe(false)
+      expect(result.reason).toBe('token_mismatch')
+    })
+
+    it('rejects end-of-class tokens carrying a grace period', async () => {
+      mockedVerify.mockReturnValue(onlinePayload({ checkpoint: 'end', gracePeriodMinutes: 5 }) as any)
+      prisma.session.findUnique.mockResolvedValue(
+        onlineSession({ endQrToken: 'start-token', endTokenExpiresAt: new Date(ISSUED_AT + 90_000) }),
+      )
+
+      const result = await service.validateScan(studentUser, onlineEvidence(), false, new Date())
+
+      expect(result.success).toBe(false)
+      expect(result.reason).toBe('token_mismatch')
     })
   })
 })

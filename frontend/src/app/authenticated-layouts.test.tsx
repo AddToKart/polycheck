@@ -4,11 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const apiMock = vi.hoisted(() => ({
   restoreSession: vi.fn(),
   getCurrentUser: vi.fn(),
+  getAiCapabilities: vi.fn(),
 }))
 const routerMock = vi.hoisted(() => ({ replace: vi.fn() }))
 
 vi.mock('@/lib/api-client', () => ({ api: apiMock }))
-vi.mock('next/navigation', () => ({ useRouter: () => routerMock }))
+vi.mock('next/navigation', () => ({ useRouter: () => routerMock, usePathname: () => '/' }))
 
 import FacultyLayout from './faculty/layout'
 import StudentLayout from './student/layout'

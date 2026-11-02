@@ -3,6 +3,8 @@ import { DashboardService } from './dashboard.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
 import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator'
 import { Roles } from '../common/decorators/roles.decorator'
+import { RequireDesignation } from '../common/decorators/require-designation.decorator'
+import { ServerStatusService } from '../realtime/server-status.service'
 
 class CalendarQueryDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/) startDate!: string
@@ -29,7 +31,10 @@ class SearchQueryDto {
 
 @Controller()
 export class DashboardController {
-  constructor(private readonly dashboard: DashboardService) {}
+  constructor(
+    private readonly dashboard: DashboardService,
+    private readonly serverStatus: ServerStatusService,
+  ) {}
 
   @Get('calendar/events')
   events(@Request() req: AuthenticatedRequest, @Query() query: CalendarQueryDto) {
@@ -48,6 +53,19 @@ export class DashboardController {
   @Roles('teacher', 'super_admin')
   overview(@Request() req: AuthenticatedRequest, @Query() query: OverviewQueryDto) {
     return this.dashboard.overview(req.user, query)
+  }
+
+  @Get('dashboard/admin-overview')
+  @Roles('super_admin')
+  adminOverview(@Request() req: AuthenticatedRequest) {
+    return this.dashboard.adminOverview(req.user)
+  }
+
+  @Get('dashboard/server-status')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('it_operations')
+  serverStatusSnapshot() {
+    return this.serverStatus.snapshot()
   }
 
   @Get('search')

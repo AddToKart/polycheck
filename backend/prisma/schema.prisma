@@ -30,11 +30,41 @@ enum AttendanceStatus {
   absent
   pending
   disputed
+  excused
+  incomplete
+}
+
+enum SessionMode {
+  in_person
+  online
 }
 
 enum SectionRoleType {
   president
   qac
+}
+
+enum ReportCategory {
+  scanner_camera
+  geofence_gps
+  ui_display
+  enrollment_roster
+  account_login
+  feedback_suggestion
+}
+
+enum ReportSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum ReportStatus {
+  open
+  in_review
+  resolved
+  dismissed
 }
 
 model User {
@@ -53,7 +83,20 @@ model User {
   scope             String?
   teacherPublicKey  String?
   isActive          Boolean  @default(true)
+  mustChangePassword Boolean @default(false)
   authVersion       Int      @default(0)
+  // Account governance: delegated teacher capabilities and mobile device binding.
+  boundDeviceId             String?
+  deviceBoundAt             DateTime?
+  deviceCooldownUntil       DateTime?
+  canResetStudentPasswords  Boolean?
+  canEmergencyUnbindDevices Boolean?
+  // PUP Santa Maria concurrent administrative designations (teacher accounts only).
+  isItCoordinator  Boolean @default(false)
+  isDepartmentHead Boolean @default(false)
+  isUserRegistrar  Boolean @default(false)
+  contactEmail              String?
+  contactPhone              String?
   privacyConsentVersion String?
   privacyConsentedAt     DateTime?
   createdAt         DateTime @default(now())
@@ -69,6 +112,13 @@ model User {
   scanAttempts       ScanAttempt[]
   authAccounts       AuthAccount[]
   authSessions       AuthSession[]
+  importBatches      ImportBatch[]
+  notifications      Notification[]
+  pushSubscriptions  PushSubscription[]
+  systemReports      SystemReport[]
+
+  sectionRemovals         EnrollmentTombstone[] @relation("SectionRemovals")
+  removedSectionEnrollments EnrollmentTombstone[] @relation("SectionBlockedStudent")
 
   @@index([role])
   @@index([studentId])
@@ -170,11 +220,30 @@ model Section {
   sessionPermissions SessionPermission[]
   proofsOfClass      ProofOfClass[]
   attendanceRecords  AttendanceRecord[]
+  enrollmentTombstones EnrollmentTombstone[]
 
   @@unique([subjectId, section, semester, teacherId])
   @@index([teacherId])
   @@index([subjectId])
   @@index([enrollmentCode])
+}
+
+// V3 anti-zombie: students removed by the instructor can only be re-admitted
+// explicitly (teacher enrollment / bulk import), never by re-entering an
+// enrollment code that has not expired yet.
+model EnrollmentTombstone {
+  id          String   @id @default(cuid())
+  sectionId   String
+  section     Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     User     @relation("SectionBlockedStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  removedById String
+  removedBy   User     @relation("SectionRemovals", fields: [removedById], references: [id], onDelete: Restrict)
+  removedAt   DateTime @default(now())
+  reason      String?
+
+  @@unique([sectionId, studentId])
+  @@index([studentId])
 }
 
 model ScheduleDay {
@@ -212,11 +281,27 @@ model Session {
   startTime            String
   endTime              String
   room                 String?
+  mode                 SessionMode @default(in_person)
   qrValidityMinutes    Int
   gracePeriodMinutes   Int
-  geofenceLatitude     Float
-  geofenceLongitude    Float
-  geofenceRadiusMeters Int
+  // Hybrid online checkpoints (in_person sessions leave these null and keep
+  // using the legacy single-QR columns below).
+  startQrValiditySeconds Int?
+  startGraceMinutes      Int?
+  endQrValiditySeconds   Int?
+  endGraceMinutes        Int       @default(0)
+  startQrToken           String?
+  startTokenExpiresAt    DateTime?
+  startQrGeneratedAt     DateTime?
+  startPinHash           String?
+  endQrToken             String?
+  endTokenExpiresAt      DateTime?
+  endQrGeneratedAt       DateTime?
+  endPinHash             String?
+  autoEndAt              DateTime?
+  geofenceLatitude     Float?
+  geofenceLongitude    Float?
+  geofenceRadiusMeters Int?
   isActive             Boolean   @default(false)
   endedAt              DateTime?
   qrToken              String?
@@ -236,6 +321,7 @@ model Session {
   @@index([teacherId])
   @@index([date])
   @@index([isActive])
+  @@index([autoEndAt])
   @@index([teacherId, date])
   @@index([sectionId, date])
   @@unique([sectionId, date, startTime, endTime])
@@ -252,11 +338,13 @@ model ScanAttempt {
   clientScannedAt          DateTime?
   receivedAt               DateTime          @default(now())
   locationCapturedAt       DateTime?
-  latitude                 Float
-  longitude                Float
+  latitude                 Float?
+  longitude                Float?
   accuracyMeters           Float?
   mocked                   Boolean?
   inputChannel             String?
+  checkpoint               String?
+  pinVerified              Boolean?
   deviceId                 String?
   offline                  Boolean?          @default(false)
   distanceMeters           Float?
@@ -268,6 +356,8 @@ model ScanAttempt {
   tokenHash                String?
   createdAt                DateTime          @default(now())
   acceptedAttendanceRecord AttendanceRecord? @relation("AcceptedScanAttempt")
+  acceptedCheckInRecord    AttendanceRecord? @relation("AcceptedCheckInAttempt")
+  acceptedCheckOutRecord   AttendanceRecord? @relation("AcceptedCheckOutAttempt")
 
   @@unique([studentId, clientAttemptId])
   @@index([sessionId, timestamp])
@@ -290,8 +380,14 @@ model AttendanceRecord {
   studentProgram        String?
   timestamp             DateTime
   status                AttendanceStatus
-  latitude              Float
-  longitude             Float
+  latitude              Float?
+  longitude             Float?
+  checkInTime           DateTime?
+  checkInStatus         AttendanceStatus?
+  checkOutTime          DateTime?
+  checkOutStatus        AttendanceStatus?
+  checkInToken          String?
+  checkOutToken         String?
   deviceId              String?
   tokenSnapshot         String?
   isSynced              Boolean          @default(false)
@@ -301,8 +397,19 @@ model AttendanceRecord {
   disputeResolved       Boolean          @default(false)
   manuallySet           Boolean          @default(false)
   notes                 String?
+  excuseStatus          String?
+  excuseReason          String?
+  excuseDescription     String?
+  excuseEvidencePath    String?
+  excuseReviewedBy      String?
+  excuseReviewedAt      DateTime?
+  excuseReviewNote      String?
   acceptedScanAttemptId String?          @unique
   acceptedScanAttempt   ScanAttempt?     @relation("AcceptedScanAttempt", fields: [acceptedScanAttemptId], references: [id], onDelete: Restrict)
+  checkInAttemptId      String?          @unique
+  checkInAttempt        ScanAttempt?     @relation("AcceptedCheckInAttempt", fields: [checkInAttemptId], references: [id], onDelete: Restrict)
+  checkOutAttemptId     String?          @unique
+  checkOutAttempt       ScanAttempt?     @relation("AcceptedCheckOutAttempt", fields: [checkOutAttemptId], references: [id], onDelete: Restrict)
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
 
@@ -315,6 +422,7 @@ model AttendanceRecord {
   @@index([sessionId, status])
   @@index([sectionId, status])
   @@index([studentId, sectionId, timestamp])
+  @@index([excuseStatus])
 }
 
 model SectionRole {
@@ -380,4 +488,78 @@ model AuditLog {
   @@index([actorId, createdAt])
   @@index([entityType, entityId, createdAt])
   @@index([action, createdAt])
+}
+
+model ImportBatch {
+  id          String   @id @default(cuid())
+  kind        String
+  actorId     String
+  actor       User     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  department  String?
+  total       Int
+  created     Int
+  updated     Int
+  skipped     Int
+  failed      Int
+  summary     Json?
+  rowChecksum String
+  createdAt   DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@index([createdAt])
+}
+
+model SystemReport {
+  id            String         @id @default(cuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userRole      UserRole
+  category      ReportCategory
+  severity      ReportSeverity @default(medium)
+  title         String
+  description   String
+  status        ReportStatus   @default(open)
+  deviceInfo    String?
+  appVersion    String?
+  route         String?
+  networkType   String?
+  screenshotUrl String?
+  adminNotes    String?
+  resolvedAt    DateTime?
+  resolvedBy    String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([category])
+  @@index([severity])
+}
+
+model PushSubscription {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform   String
+  token      String   @unique
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
 }

@@ -17,6 +17,10 @@
     "production": {
       "autoIncrement": true,
       "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_ALLOW_QR_FALLBACKS": "false",
+        "EXPO_PUBLIC_E2E_MODE": "false"
+      },
       "android": {
         "buildType": "app-bundle"
       }
