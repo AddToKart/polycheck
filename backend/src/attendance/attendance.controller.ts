@@ -2,18 +2,23 @@ import { Body, Controller, Get, Param, Patch, Post, Query, Request } from '@nest
 import { Roles } from '../common/decorators/roles.decorator'
 import {
   AtRiskQueryDto,
+  AtRiskReferralQueryDto,
   AttendanceListQueryDto,
   AttendanceReportQueryDto,
   CreateManualAttendanceDto,
   DecideExcuseDto,
+  GenerateAtRiskReferralDto,
   ListExcusesQueryDto,
   RequestExcuseDto,
   ScanAttendanceDto,
   SubmitAttendanceDto,
+  UpdateAtRiskReferralDto,
   UpdateAttendanceStatusDto,
 } from './dto/attendance.dto'
 import { AttendanceService } from './attendance.service'
 import { AttendanceAtRiskService } from './attendance-at-risk.service'
+import { AttendanceForensicsService } from './attendance-forensics.service'
+import { AttendanceReferralService } from './attendance-referral.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
 import { RequiresPrivacyConsent } from '../common/decorators/privacy-consent.decorator'
 
@@ -22,6 +27,8 @@ export class AttendanceController {
   constructor(
     private readonly attendance: AttendanceService,
     private readonly atRisk: AttendanceAtRiskService,
+    private readonly forensics: AttendanceForensicsService,
+    private readonly referrals: AttendanceReferralService,
   ) {}
 
   @Get()
@@ -55,10 +62,44 @@ export class AttendanceController {
     return this.attendance.findAttempts(req.user, sessionId)
   }
 
+  @Get('records/:id/timeline')
+  @Roles('teacher', 'super_admin')
+  recordTimeline(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.forensics.buildTimeline(req.user, id)
+  }
+
   @Get('at-risk')
   @Roles('teacher', 'super_admin')
   atRiskStudents(@Request() req: AuthenticatedRequest, @Query() query: AtRiskQueryDto) {
     return this.atRisk.list(req.user, query)
+  }
+
+  /**
+   * F5 (WF-LD7): CHED CMO No. 40 notice-of-impending-drop referrals.
+   * Teachers generate/read for their own sections; the queue is department-wide
+   * for heads and scoped for super admins. PATCH transitions stay head/admin
+   * in the service (the generating teacher is read-only).
+   */
+  @Post('at-risk/referrals')
+  @Roles('teacher', 'super_admin')
+  generateAtRiskReferral(@Request() req: AuthenticatedRequest, @Body() dto: GenerateAtRiskReferralDto) {
+    return this.referrals.generateReferral(req.user, dto)
+  }
+
+  @Get('at-risk/referrals')
+  @Roles('teacher', 'super_admin')
+  listAtRiskReferrals(@Request() req: AuthenticatedRequest, @Query() query: AtRiskReferralQueryDto) {
+    return this.referrals.listReferrals(req.user, query)
+  }
+
+  @Patch('at-risk/referrals/:id')
+  @Roles('teacher', 'super_admin')
+  updateAtRiskReferral(
+    @Request() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: UpdateAtRiskReferralDto,
+  ) {
+    return this.referrals.updateReferralStatus(req.user, id, dto)
   }
 
   @Get('excuses')

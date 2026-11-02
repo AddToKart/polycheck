@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/input'
 import { Sidebar } from '@/components/layout/sidebar'
 import StatusBadge from '@/components/StatusBadge'
 import { OfflineSyncPanel } from '@/components/OfflineSyncPanel'
+import { OutageSimulator } from '@/components/dev/OutageSimulator'
 import { StudentsAtRiskCard } from '@/components/faculty/StudentsAtRiskCard'
 import { LoadingSpinner } from '@/lib/hooks'
 
@@ -934,6 +935,8 @@ export default function FacultyPortalPage() {
             <>
               <OfflineSyncPanel className="mb-6" />
               <TeacherDashboard user={user} />
+              {/* F7 demo surface — flag-gated; env defaults off in production builds. */}
+              {process.env.NEXT_PUBLIC_ENABLE_OUTAGE_SIMULATOR === 'true' ? <OutageSimulator /> : null}
             </>
           )}
         </div>

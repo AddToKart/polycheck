@@ -17,6 +17,7 @@ import {
   SectionHeading,
 } from '../components/CampusPrimitives'
 import { CampusFormField } from '../components/CampusFormField'
+import { HologramOverlay } from '../components/HologramOverlay'
 import { useCampusToast } from '../components/CampusToast'
 
 const MIN_PASSWORD_LENGTH = 12
@@ -216,6 +217,7 @@ export default function ProfileScreen() {
           <Text className="mt-4 font-sans text-[10px] leading-4 text-muted dark:text-zinc-500">
             Institutional identity fields are read-only. Contact the registrar or an administrator to correct them.
           </Text>
+          <HologramOverlay isDark={isDark} deviceId={current.boundDeviceId} />
         </CampusCard>
 
         <SectionHeading title="Password & security" eyebrow="Credentials" />

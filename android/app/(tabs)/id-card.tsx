@@ -8,6 +8,7 @@ import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusIconButton } from '../../components/CampusPrimitives'
+import { HologramOverlay } from '../../components/HologramOverlay'
 
 type StudentCredential = {
   fullName: string
@@ -16,7 +17,15 @@ type StudentCredential = {
   yearLevel: number
 }
 
-const IdCardFront = ({ student, isDark }: { student: StudentCredential; isDark: boolean }) => (
+const IdCardFront = ({
+  student,
+  isDark,
+  deviceId,
+}: {
+  student: StudentCredential
+  isDark: boolean
+  deviceId?: string | null
+}) => (
   <View className="flex-1 overflow-hidden rounded-none border-2 border-zinc-300 bg-white dark:border-zinc-700 dark:bg-surface-dark shadow-md">
     <View className="flex-row items-center gap-3 bg-maroon p-3 border-b-2 border-golden">
       <View className="h-9 w-9 items-center justify-center rounded-none bg-white">
@@ -58,10 +67,12 @@ const IdCardFront = ({ student, isDark }: { student: StudentCredential; isDark: 
         </View>
       </View>
     </View>
+
+    <HologramOverlay isDark={isDark} deviceId={deviceId} />
   </View>
 )
 
-const IdCardBack = ({ isDark }: { isDark: boolean }) => (
+const IdCardBack = ({ isDark, deviceId }: { isDark: boolean; deviceId?: string | null }) => (
   <View className="flex-1 overflow-hidden rounded-none border-2 border-zinc-300 bg-white dark:border-zinc-700 dark:bg-surface-dark shadow-md">
     <View className="mt-4 h-11 w-full bg-zinc-900" />
     <View className="flex-1 flex-row gap-4 p-4">
@@ -85,12 +96,15 @@ const IdCardBack = ({ isDark }: { isDark: boolean }) => (
         <Text className="mt-2 text-center font-mono text-[7px] font-bold uppercase tracking-widest text-zinc-500">SCAN TO VERIFY</Text>
       </View>
     </View>
+
+    <HologramOverlay isDark={isDark} deviceId={deviceId} />
   </View>
 )
 
 export default function IdCardScreen() {
   const { isDark, toggle } = useTheme()
   const user = api.getCurrentUser()
+  const deviceId = user?.boundDeviceId ?? null
   const student = useMemo(() => {
     if (!user) return null
     return {
@@ -159,13 +173,13 @@ export default function IdCardScreen() {
             className="absolute inset-0 shadow-lg"
             style={{ transform: [{ perspective: 1000 }, { rotateY: frontRotation }], backfaceVisibility: 'hidden' }}
           >
-            <IdCardFront student={student} isDark={isDark} />
+            <IdCardFront student={student} isDark={isDark} deviceId={deviceId} />
           </Animated.View>
           <Animated.View
             className="absolute inset-0 shadow-lg"
             style={{ transform: [{ perspective: 1000 }, { rotateY: backRotation }], backfaceVisibility: 'hidden' }}
           >
-            <IdCardBack isDark={isDark} />
+            <IdCardBack isDark={isDark} deviceId={deviceId} />
           </Animated.View>
         </Pressable>
 

@@ -220,4 +220,63 @@ body {
   }
 }
 
+/* Hologram sweep (F3): a diagonal verify band gliding across the digital ID.
+   The band (~34% card width, rotated 22deg) crosses fully off-card at both
+   keyframe ends so the linear infinite loop wraps without a visible pop. */
+@keyframes hologram-sweep {
+  0% {
+    transform: translateX(-160%);
+  }
+  100% {
+    transform: translateX(480%);
+  }
+}
+
+/* Geofence radar (F2): denied-attempt markers blink — an opacity loop only,
+   so the pin keeps its position and size while drawing the eye. Apply with
+   `motion-reduce:animate-none` (the pin stays at full opacity, reduced). */
+@keyframes radar-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Kiosk projector view (F1): check-in chips spring in from the right with a
+   slight overshoot so the ticker reads as a live feed, not a table append. */
+@keyframes kiosk-ticker-in {
+  0% {
+    opacity: 0;
+    transform: translateX(48%) scale(0.96);
+  }
+  60% {
+    opacity: 1;
+    transform: translateX(-3%) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+/* Kiosk finale (F1): gold/maroon confetti rectangles raining past the stage.
+   Pieces are absolutely positioned at a static scatter; the animation only
+   supplies the fall, so reduced-motion still shows a static breakdown. */
+@keyframes kiosk-confetti-fall {
+  0% {
+    transform: translate(0, -12vh) rotate(0deg);
+    opacity: 1;
+  }
+  85% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(4vw, 112vh) rotate(340deg);
+    opacity: 0;
+  }
+}
+
 

@@ -19,7 +19,8 @@
       "environment": "production",
       "env": {
         "EXPO_PUBLIC_ALLOW_QR_FALLBACKS": "false",
-        "EXPO_PUBLIC_E2E_MODE": "false"
+        "EXPO_PUBLIC_E2E_MODE": "false",
+        "EXPO_PUBLIC_ENABLE_OUTAGE_SIMULATOR": "false"
       },
       "android": {
         "buildType": "app-bundle"

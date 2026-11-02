@@ -16,6 +16,11 @@
       "import": "./dist/utils/index.mjs",
       "require": "./dist/utils/index.js"
     },
+    "./ledger": {
+      "types": "./dist/utils/ledger.d.ts",
+      "import": "./dist/utils/ledger.mjs",
+      "require": "./dist/utils/ledger.js"
+    },
     "./map": {
       "types": "./dist/map/index.d.ts",
       "import": "./dist/map/index.mjs",

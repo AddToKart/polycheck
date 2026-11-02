@@ -165,4 +165,48 @@ describe('AttendanceAtRiskService', () => {
     expect(prisma.enrollment.findMany).not.toHaveBeenCalled()
     expect(prisma.attendanceRecord.groupBy).not.toHaveBeenCalled()
   })
+
+  // ── F5: single-student classification reused by the referral gate + notice ──
+
+  it('classifies one (section, student) pair with the same engine math', async () => {
+    const { service, prisma, standing } = makeService()
+    prisma.attendanceRecord.groupBy.mockResolvedValue([
+      { status: 'present', _count: { _all: 10 } },
+      { status: 'absent', _count: { _all: 10 } },
+    ])
+
+    const row = await service.classifyStudent('sec-1', 'stu-1')
+
+    expect(row).toMatchObject({
+      thresholdPercent: 75,
+      present: 10,
+      absent: 10,
+      countedSessions: 20,
+      attendanceRate: 50,
+      status: 'below_threshold',
+    })
+    expect(prisma.attendanceRecord.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ by: ['status'], where: { sectionId: 'sec-1', studentId: 'stu-1' } }),
+    )
+    expect(standing.thresholdPercent).toHaveBeenCalledTimes(1)
+  })
+
+  it('resolves at_risk at the zero-absence margin and on_track with room to spare', async () => {
+    const { service, prisma } = makeService()
+    prisma.attendanceRecord.groupBy.mockResolvedValue([
+      { status: 'present', _count: { _all: 15 } },
+      { status: 'absent', _count: { _all: 5 } },
+    ])
+
+    expect((await service.classifyStudent('sec-1', 'stu-1'))?.status).toBe('at_risk')
+
+    prisma.attendanceRecord.groupBy.mockResolvedValue([{ status: 'present', _count: { _all: 19 } }])
+    expect((await service.classifyStudent('sec-1', 'stu-2'))?.status).toBe('on_track')
+  })
+
+  it('resolves null before any classification when the student has no records in the section', async () => {
+    const { service, prisma } = makeService()
+    prisma.attendanceRecord.groupBy.mockResolvedValue([])
+    expect(await service.classifyStudent('sec-1', 'stu-unknown')).toBeNull()
+  })
 })

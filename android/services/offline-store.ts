@@ -437,6 +437,32 @@ export const getPendingSyncCount = async () => {
   return row?.count ?? 0
 }
 
+export type OfflineQueueSequence = { count: number; lastId: string | null }
+
+// Read-only receipt helper for the outage simulator (F7): the pending count is
+// the local receipt sequence and the newest queued operation id feeds the
+// `Receipt #<n> · <id8>` chip. Same retryable filter as the drain path so
+// terminal rows never inflate the receipt number; the queue schema is untouched.
+export const getOfflineQueueSequence = async (): Promise<OfflineQueueSequence> => {
+  const db = await database()
+  const ownerId = owner()
+  if (!db || !ownerId) return { count: 0, lastId: null }
+  const countRow = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM sync_queue_v2
+     WHERE owner_id = ?
+       AND (last_error IS NULL OR last_error NOT LIKE 'terminal:%')`,
+    ownerId,
+  )
+  const lastRow = await db.getFirstAsync<{ id: string }>(
+    `SELECT id FROM sync_queue_v2
+     WHERE owner_id = ?
+       AND (last_error IS NULL OR last_error NOT LIKE 'terminal:%')
+     ORDER BY created_at DESC LIMIT 1`,
+    ownerId,
+  )
+  return { count: countRow?.count ?? 0, lastId: lastRow?.id ?? null }
+}
+
 export type OfflineQueueIssue = { id: string; kind: OfflineOperationKind; sessionId: string; error: string; failed: boolean }
 
 export const getOfflineQueueIssues = async (): Promise<OfflineQueueIssue[]> => {

@@ -1,13 +1,22 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SuperAdmin, User } from '@polycheck/shared'
 import { TAB_SETTING_KEYS } from './settings-config'
+import { NotificationProvider } from '@/lib/notifications'
+
+beforeAll(() => {
+  URL.createObjectURL = vi.fn(() => 'blob:mock-url')
+  URL.revokeObjectURL = vi.fn()
+  HTMLAnchorElement.prototype.click = () => {}
+})
 
 const apiMock = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
   getSettings: vi.fn(),
   setSetting: vi.fn(),
   getAiCapabilities: vi.fn(),
+  getPrivacyCenter: vi.fn(),
+  downloadAssistantFile: vi.fn(),
   logout: vi.fn(),
 }))
 
@@ -122,7 +131,7 @@ describe('Institution Settings tabs', () => {
 
   afterEach(cleanup)
 
-  it('renders the five categories with Institution selected by default', async () => {
+  it('renders the six categories with Institution selected by default', async () => {
     await renderLoaded()
 
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
@@ -131,6 +140,7 @@ describe('Institution Settings tabs', () => {
       'Accounts & access',
       'AI Assistant',
       'System',
+      'Privacy (RA 10173)',
     ])
     expect(screen.getByRole('tab', { name: 'Institution' })).toHaveAttribute(
       'aria-selected',
@@ -345,7 +355,7 @@ describe('Institution Settings tabs', () => {
     expect(await screen.findByText('System maintenance settings saved.')).toBeInTheDocument()
   })
 
-  it('gives IT coordinators the System tab only and keeps it editable', async () => {
+  it('gives IT coordinators the System and Privacy tabs and keeps System editable', async () => {
     apiMock.getCurrentUser.mockReturnValue(itCoordinator)
     navMock.tab = 'system'
 
@@ -353,12 +363,15 @@ describe('Institution Settings tabs', () => {
 
     const systemTab = await screen.findByRole('tab', { name: 'System' })
     expect(systemTab).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getAllByRole('tab')).toHaveLength(1)
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'System',
+      'Privacy (RA 10173)',
+    ])
     expect(screen.getByRole('switch', { name: 'Maintenance mode' })).toBeEnabled()
     expect(screen.getByLabelText('Maintenance announcement (optional)')).toBeEnabled()
   })
 
-  it('redirects IT coordinators from non-System deep links to the System tab', async () => {
+  it('redirects IT coordinators from non-System/Privacy deep links to the System tab', async () => {
     apiMock.getCurrentUser.mockReturnValue(itCoordinator)
     navMock.tab = 'accounts'
 
@@ -377,5 +390,123 @@ describe('Institution Settings tabs', () => {
     render(<InstitutionSettingsPage />)
 
     await waitFor(() => expect(navMock.replace).toHaveBeenCalledWith('/faculty'))
+  })
+
+  describe('Privacy (RA 10173) tab', () => {
+    const privacySnapshot = {
+      retentionDays: 30,
+      consent: { covered: 42, totalActive: 50, version: 'v2' },
+      ephemeral: {
+        lastRunAt: '2026-11-01T22:35:12.000Z',
+        recordsShredded: 7,
+        attemptsShredded: 3,
+      },
+      dataInventory: [],
+      breaches: [],
+    }
+
+    it('deep-links for super admins and renders the live attestation values', async () => {
+      navMock.tab = 'privacy'
+      apiMock.getPrivacyCenter.mockResolvedValue(privacySnapshot)
+
+      render(
+        <NotificationProvider>
+          <InstitutionSettingsPage />
+        </NotificationProvider>,
+      )
+
+      expect(await screen.findByTestId('privacy-attestation')).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: 'Privacy (RA 10173)' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
+      expect(navMock.replace).not.toHaveBeenCalled()
+
+      const attestation = screen.getByTestId('privacy-attestation')
+      expect(attestation).toHaveTextContent('0')
+      expect(attestation).toHaveTextContent('rows live beyond retention')
+      expect(attestation).toHaveTextContent('Verified by the nightly shred')
+
+      expect(screen.getByText('Retention window').nextElementSibling).toHaveTextContent('30 days')
+      expect(screen.getByText('Records shredded (last run)').nextElementSibling).toHaveTextContent('7')
+      expect(screen.getByText('Attempts shredded (last run)').nextElementSibling).toHaveTextContent('3')
+      expect(screen.getByText(/Retention is enforced nightly/)).toHaveTextContent(
+        'coordinates past 30 days are shredded.',
+      )
+
+      expect(screen.getByRole('img', { name: 'Consent coverage 84 percent' })).toBeInTheDocument()
+      expect(screen.getByText(/42 of 50 active accounts?/)).toBeInTheDocument()
+      expect(screen.getByText(/Notice version/)).toHaveTextContent('v2')
+
+      // The documented inventory, straight from the shared constant.
+      expect(
+        screen.getByText('Check-in GPS coordinates and accuracy (in-person sessions only)'),
+      ).toBeInTheDocument()
+
+      // Read-only: the privacy tab has no save row.
+      expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'DPO summary (PDF)' })).toBeEnabled()
+    })
+
+    it('does not bounce IT coordinators from a privacy deep link', async () => {
+      apiMock.getCurrentUser.mockReturnValue(itCoordinator)
+      navMock.tab = 'privacy'
+      apiMock.getPrivacyCenter.mockResolvedValue(privacySnapshot)
+
+      render(<InstitutionSettingsPage />)
+
+      expect(await screen.findByTestId('privacy-attestation')).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: 'Privacy (RA 10173)' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
+      expect(navMock.replace).not.toHaveBeenCalled()
+    })
+
+    it('downloads the DPO one-pager through the documented docs path', async () => {
+      navMock.tab = 'privacy'
+      apiMock.getPrivacyCenter.mockResolvedValue(privacySnapshot)
+      apiMock.downloadAssistantFile.mockResolvedValue(new Blob(['%PDF-fake']))
+
+      render(
+        <NotificationProvider>
+          <InstitutionSettingsPage />
+        </NotificationProvider>,
+      )
+
+      fireEvent.click(await screen.findByRole('button', { name: 'DPO summary (PDF)' }))
+
+      await waitFor(() =>
+        expect(apiMock.downloadAssistantFile).toHaveBeenCalledWith('/docs/dpo-summary?format=pdf'),
+      )
+      expect(await screen.findByText('DPO summary downloaded')).toBeInTheDocument()
+    })
+
+    it('renders unknown shred counts when no run is visible and offers retry after failures', async () => {
+      navMock.tab = 'privacy'
+      apiMock.getPrivacyCenter
+        .mockRejectedValueOnce(new Error('Snapshot unavailable'))
+        .mockResolvedValueOnce({
+          ...privacySnapshot,
+          ephemeral: { lastRunAt: null, recordsShredded: null, attemptsShredded: null },
+        })
+
+      render(
+        <NotificationProvider>
+          <InstitutionSettingsPage />
+        </NotificationProvider>,
+      )
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Snapshot unavailable')
+
+      fireEvent.click(screen.getByRole('button', { name: /retry/i }))
+
+      expect(await screen.findByTestId('privacy-attestation')).toHaveTextContent(
+        'Verification pending — no shred run recorded on this instance yet.',
+      )
+      expect(screen.getByText('Records shredded (last run)').nextElementSibling).toHaveTextContent(
+        'Unknown',
+      )
+    })
   })
 })

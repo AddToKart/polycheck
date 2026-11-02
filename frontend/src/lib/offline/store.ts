@@ -480,6 +480,38 @@ export async function getPendingSyncCount(): Promise<number> {
   ).length
 }
 
+export interface OfflineQueueSequence {
+  /** Pending operations currently waiting in the queue. */
+  count: number
+  /** Operation id (`clientAttemptId`) of the most recently queued row. */
+  lastId: string | null
+}
+
+/**
+ * Read-only sequence snapshot for the F7 outage-simulator receipt chip:
+ * how many operations are waiting (`count`, pending rows only) and the
+ * operation id (`clientAttemptId`) of the most recently queued row, so the
+ * demo surface can show `Receipt #<count> · <first 8 of lastId>`. Mirrors
+ * `getPendingSyncCount` scoping without touching the queue schema.
+ */
+export async function queueSequence(): Promise<OfflineQueueSequence> {
+  const ownerId = activeOwnerId
+  if (!ownerId) return { count: 0, lastId: null }
+  try {
+    const db = await getOfflineDatabase()
+    const rows = (await db.getAll('queue_v2'))
+      .filter(
+        (row) => row.ownerId === ownerId && !(row.lastError ?? '').startsWith('terminal:'),
+      )
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+    if (rows.length === 0) return { count: 0, lastId: null }
+    return { count: rows.length, lastId: rows[rows.length - 1].clientAttemptId }
+  } catch {
+    // The encrypted store is unavailable; treat as empty.
+    return { count: 0, lastId: null }
+  }
+}
+
 export interface OfflineQueueIssue {
   id: string
   kind: OfflineOperationKind

@@ -14,7 +14,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator'
-import type { ExcuseDecision, ExcuseReason, ExcuseStatus } from '@polycheck/shared'
+import type { ExcuseDecision, ExcuseReason, ExcuseStatus, ReferralStatus } from '@polycheck/shared'
 
 class DeviceSecurityEvidenceDto {
   @IsOptional() @IsBoolean() rootDetected?: boolean
@@ -119,4 +119,30 @@ export class ListExcusesQueryDto {
 export class AtRiskQueryDto {
   @IsOptional() @IsString() @MaxLength(128) sectionId?: string
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50) limit?: number
+}
+
+const REFERRAL_STATUSES: ReferralStatus[] = ['generated', 'acknowledged', 'counseling_scheduled', 'resolved']
+
+export class GenerateAtRiskReferralDto {
+  @IsString() @MaxLength(128) studentId!: string
+  @IsString() @MaxLength(128) sectionId!: string
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(500)
+  note?: string
+}
+
+export class AtRiskReferralQueryDto {
+  @IsOptional() @IsIn(REFERRAL_STATUSES) status?: ReferralStatus
+  @IsOptional() @IsString() @MaxLength(128) sectionId?: string
+}
+
+export class UpdateAtRiskReferralDto {
+  @IsIn(REFERRAL_STATUSES) status!: ReferralStatus
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(500)
+  note?: string
 }

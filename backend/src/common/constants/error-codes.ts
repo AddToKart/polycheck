@@ -30,6 +30,8 @@ export const ErrorCode = {
   TEACHER_LOCATION_OUTSIDE_GEOFENCE: 'teacher_location_outside_geofence',
   IMPORT_CHECKSUM_MISMATCH: 'import_checksum_mismatch',
   IMPORT_QUEUE_UNAVAILABLE: 'import_queue_unavailable',
+  REFERRAL_ACTIVE: 'referral_active',
+  STUDENT_NOT_AT_RISK: 'student_not_at_risk',
 } as const
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode]

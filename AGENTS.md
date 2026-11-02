@@ -546,6 +546,20 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - **RW-4 schedules**: month cells collapse to day number + three event dots below md with a phone-only day-detail panel reusing `EventPopoverContent`; week timetables stay `min-w-[700px]` inside an overscroll-contained snap region with a phone-only fade/hint and auto-scroll to today's column; `StudentWeeklySchedule` uses the same contained 7-column week on phones.
   - **Verification**: responsive gate **28/28**; full Chromium E2E **122 passed / 3 skipped / 0 failed**; web **304 / 48 files**, shared **122**, backend **845 / 75**, Android **335 / 27**; frontend `eslint`, `tsc --noEmit`, `next build` clean; Docker frontend image rebuilt and harness run live. Impeccable detector reported only the incumbent `border-l-4` side-tab house-style warnings (no errors). Firefox/WebKit were not rerun this wave.
 
+### Done (cont.)
+- **Defense-Winning "Wow Factor" Suite (`plan/wow-factor-suite-plan.md`, F1–F9 / W1–W10)**:
+  - **F9 Hash-chain ledger**: `AttendanceRecord.prevHash/recordHash/salt` (migration + idempotent `dist-seed` backfill script — 189 sessions / 3,145 rows chained live); `recordHash = SHA-256(prev|studentId|timestampISO|sessionId|salt)` appended fail-closed inside every commit transaction (scan, manual, offline batch) under a per-session `pg_advisory_xact_lock`; daily `ledger.anchored` audit anchor (2AM cron); `POST /audit-logs/ledger/verify` (super admin) → `LedgerVerifyResult` + `ledger.verified` audit; Verify button + result banner on web + Android audit-logs.
+  - **F8 Blackbox timeline**: `GET /attendance/records/:id/timeline` assembles activation → scan → ED25519 signature → queue → sync → dispute events from existing truth (`ScanAttempt` telemetry, `tokenSnapshot` issuedAt, record stamps) — nothing stored; deterministic recommendation chip (accept/review/reject matrix incl. mocked/duplicate/accuracy/staleness cases) rendered in the web dispute drawer + Android review sheet.
+  - **F6 RA 10173 center**: `geolocation_retention_days` setting (7–90, default 30) editable in the System tab (both platforms); nightly shredder nulls coordinates/accuracy/riskSignals past retention (decisional metadata + dispute evidence kept; denied-attempt deletion stays with the existing prune); `GET /settings/privacy-center` (IT-suite gated) returns the live attestation (0 rows beyond retention), consent coverage, data inventory; one-click DPO Summary PDF. Read-only Privacy (RA 10173) tab on web + Android.
+  - **F4 Class record**: `GET /docs/class-record/:sectionId?format=pdf|docx&from=` — A4 landscape PUP grading sheet (Republic header/seal/campus, alphabetical roster, 18-week P/L/A/E/I grid with multi-session join `P/A`, totals + standing-consistent rate, Instructor/Chair/Dean sign-off boxes); owner/head-pinned/admin scope; one-click download (web) + share (Android).
+  - **F5 CHED CMO No. 40 slip**: `AtRiskReferral` model + state machine (`generated → acknowledged → counseling_scheduled → resolved`); creation gated by the deterministic engine (`409 student_not_at_risk` otherwise) + idempotent active-referral lock (`409 referral_active`); notice PDF cites CHED CMO No. 40 / Article V §21 / PUP Handbook with the absence ledger; Referrals tab (web) + sheet (Android) with head/admin transitions, notifications (`at_risk_referral`), audits; `/faculty/at-risk` widened to all faculty (teachers file for own sections).
+  - **F2 Geofence radar**: web MapLibre modal (campus polygons + geofence circle, pulsing green pins, blinking red denied pins with `124m away · 74m outside geofence` copy, `Inside/Denied` counters, no-GPS legend) + Android map overlay/denied log; live via additive `attendance:anomaly` (denied in-person scans with coordinates only — never PIN/online) + `attendance:updated` refetches; `ApiClient.getScanAttempts` binding added (was backend-only).
+  - **F1 Kiosk**: `/faculty/sessions/[id]/kiosk` — chrome-free maroon stage, QR + SVG countdown ring, capacity ring, `attendance:updated` ticker (student names), `kiosk:join` presence, `session:finale` broadcast (from `end()` + the auto-end cron with authoritative counts) driving the confetti/lock finale + final breakdown. Web-only by parity justification (projector surface; mobile keeps the live cockpit).
+  - **F3 Hologram**: `HologramOverlay` on all ID surfaces (web + Android) — 22° gold/maroon sweep (`prefers-reduced-motion` → static sheen), 1 Hz trusted-clock UTC watermark (`PUP-ID-VERIFIED • LIVE UTC: … • DEVICE-BOUND •·•·<last4>`), optional accelerometer parallax dormant until `expo-sensors` ships.
+  - **F7 Outage simulator**: `armOutage/disarmOutage` flag store; one guarded throw at the top of both clients' fetch wrappers drives the REAL encrypted queues (zero engine changes); floating pill + More-sheet item (strict `EXPO_PUBLIC_/NEXT_PUBLIC_ENABLE_OUTAGE_SIMULATOR === 'true'`, EAS production pinned false, local compose on); `Receipt #n · <id8>` chip; RESTORE & REPLAY drains, refreshes the clock offset, and the teacher reconciles via existing realtime toasts.
+  - **Bug fixed en route**: the "Connect to the internet once…" provisioning guard was dead code on both clients (plain `Error` classified as a network failure → silent offline activation with scans destined to fail server verification). Both sites now throw a typed 4xx that fails closed, with regression tests.
+  - **Verification**: shared **176 / 14**, backend **993 / 82** (lint/format/coverage clean), web **397 / 59** (lint/tsc/build clean), Android **654 / 35** (tsc clean; coverage **92.1/79.7/96.9/97.6 — all CI thresholds pass**); Chromium E2E **130 passed / 3 skipped / 0 failed** including 8 new wow-suite journeys run live against the rebuilt Docker stack (migrations applied, ledger backfilled).
+
 ### In Progress
 - (none)
 
@@ -647,7 +661,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - Mobile scanner (`android/app/(tabs)/scan.tsx`) exposes `Upload QR Image` and `Enter Code` fallbacks alongside live camera.
 - **Database Migration Self-Healing**: Added idempotent pre-checks and backfills in `20260907090000_domain_constraints/migration.sql` to gracefully handle dirty development databases or re-runs without crashing the migration service container.
 - **Docker Compose Local Developer Experience**: Added automated 1-click startup scripts (`start-local.bat`, `start-local.sh`, `stop-local.bat`, `stop-local.sh`) and passed `NEXT_PUBLIC_ALLOW_QR_FALLBACKS: "true"` to local container builds.
-- **Comprehensive Automated Test Coverage**: 1,606 total passing automated tests across 159 suites/files monorepo-wide (shared 122, backend 845 / 75 suites, web 304 / 48 files, Android 335 / 27 suites). Chromium E2E: **122 passed / 3 skipped / 0 failed**, including 28 responsive-gate tests (7 role groups × 4 viewports) and 11 visual-capture tests. Firefox/WebKit were not rerun for this wave (previous baseline 64 / 10 / 0).
+- **Comprehensive Automated Test Coverage**: 2,220 total passing automated tests across 190 suites/files monorepo-wide (shared 176 / 14, backend 993 / 82 suites, web 397 / 59 files, Android 654 / 35 suites). Chromium E2E: **130 passed / 3 skipped / 0 failed**, including the 8 wow-suite journeys (ledger verify, dispute timeline, radar, class-record/CHED/DPO downloads, outage replay, kiosk finale) and the 28 responsive-gate tests. Firefox/WebKit were not rerun for this wave (previous baseline 64 / 10 / 0).
 
 ## Next Steps
 - Connect sessions page to section context when navigated from section detail.
@@ -666,6 +680,9 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - Device-smoke the Android maintenance overlay, the exemption pill, and the offline preservation notice during a real maintenance window.
 - Confirm the campus registrar policy (department-pinned today) with the Branch Director before onboarding the Registrar's Office beyond CCIS.
 - Run `e2e/responsive.spec.ts` + `e2e/visual-capture.spec.ts` on Firefox/WebKit and device-smoke the installed PWA (safe-area insets, month-day tap target, week autoscroll) before the next release.
+- Run `e2e/wow-suite.spec.ts` on Firefox/WebKit (MapLibre WebGL + blob downloads) and device-smoke the demo arc: kiosk on a projector, radar with a real denied scan, hologram screenshot legibility, outage arm→scan→receipt→restore→reconcile.
+- Add `expo-sensors` in a dev-client/EAS build to activate the dormant accelerometer parallax on the ID hologram.
+- Kiosk/finale and radar journeys are Chromium-verified; add Maestro coverage for the Android denied-attempt log + finale banner when device runs resume.
 
 ## Critical Context
 - Android package: `edu.pup.polycheck`; iOS bundle: `edu.pup.polycheck`.
@@ -841,4 +858,31 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - `frontend/src/components/student/StudentWeeklySchedule.tsx` - contained 7-column week on phones
 - `frontend/src/app/globals.css` / `frontend/src/components/ui/input.tsx` - shared touch sizing primitives
 - `plan/responsive-web-plan.md` - executed plan + addendum (harness matrix, deviations)
+- `shared/src/utils/ledger.ts` - canonical chain hash math + `LedgerVerifyResult`
+- `shared/src/utils/outage-simulator.ts` - flag store both clients' fetch guards consult
+- `shared/src/utils/id-hologram.ts` - live-UTC stamp, device-chip masking, watermark line
+- `shared/src/types/privacy.ts` - RA 10173 snapshot contract + data inventory constants
+- `backend/src/attendance/ledger.service.ts` - fail-closed chain append (advisory lock) + verify
+- `backend/src/attendance/attendance-forensics.service.ts` - timeline assembly + recommendation matrix
+- `backend/src/attendance/attendance-referral.service.ts` - CHED referral state machine + scope
+- `backend/src/docs/docs.service.ts` - class-record / CHED-notice / DPO-summary builders
+- `backend/src/common/services/maintenance.service.ts` - nightly anchor (2AM) + telemetry shredder (3AM)
+- `backend/src/settings/settings.service.ts` - `geolocation_retention_days` + privacy-center snapshot
+- `backend/src/realtime/attendance.gateway.ts` - kiosk presence, `session:finale`, `attendance:anomaly`
+- `backend/prisma/migrations/20261103120000_wow_attendance_hash_chain/` - chain columns + backfill script
+- `backend/prisma/migrations/20261103130000_wow_privacy_center/` - retention setting seed
+- `backend/prisma/migrations/20261103140000_wow_at_risk_referrals/` - `AtRiskReferral` model
+- `frontend/src/app/faculty/sessions/[id]/kiosk/page.tsx` - projector stage, rings, ticker, finale
+- `frontend/src/components/radar/GeofenceRadarModal.tsx` - live geofence radar (pins/counters/legend)
+- `frontend/src/components/dev/OutageSimulator.tsx` - flag-gated arm/restore + receipt chip
+- `frontend/src/components/disputes/DisputeTimeline.tsx` - forensic rail + recommendation chip
+- `frontend/src/components/student/HologramOverlay.tsx` - sweep + live UTC watermark (both ID faces)
+- `frontend/src/app/faculty/settings/` - privacy (RA 10173) read-only tab + retention field in System
+- `frontend/src/app/faculty/audit-logs/page.tsx` - Verify Ledger Integrity button + result banner
+- `frontend/src/app/faculty/at-risk/page.tsx` - CHED notice action + Referrals queue (all faculty)
+- `android/components/HologramOverlay.tsx` / `DisputeTimeline.tsx` / `OutageSimulatorSheet.tsx` - mobile parity
+- `android/lib/radar-overlay.ts` - attempt shaping + denied log + finale banner mapping
+- `android/app/(faculty)/sessions/[id].tsx` - radar overlay + finale banner on the session map
+- `android/app/(faculty)/audit-logs.tsx` - mobile ledger verify + banner
+- `e2e/wow-suite.spec.ts` - the 8 defense journeys (ledger/timeline/radar/downloads/referral/privacy/outage/kiosk)
 - `frontend/src/components/ui/pagination-bar.tsx` - reusable, accessible PUP-styled `PaginationBar` component with summary counts, responsive Prev/Next navigation, and page buttons. Integrated pagination across all faculty and department management views: Sessions directory (`faculty/sessions`), Excuses queue (`faculty/excuses`), Disputes console (`faculty/disputes`), At-Risk oversight (`faculty/at-risk`), Attendance overview (`faculty/attendance`), Reports (`faculty/reports`), Subjects grid (`faculty/subjects`), Section Sessions card (`faculty/sections/[id]`), and Subject Sessions list (`faculty/subjects/[id]/sessions`) with full test coverage.

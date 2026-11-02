@@ -66,7 +66,11 @@ function makeSession(overrides: any = {}) {
 describe('SessionsService', () => {
   let service: SessionsService
   let prisma: any
-  let realtime: { emitAttendanceUpdated: jest.Mock; emitSessionState: jest.Mock }
+  let realtime: {
+    emitAttendanceUpdated: jest.Mock
+    emitSessionState: jest.Mock
+    emitSessionFinale: jest.Mock
+  }
   let redis: {
     consumeRateLimit: jest.Mock
     getJson: jest.Mock
@@ -90,15 +94,19 @@ describe('SessionsService', () => {
       },
       user: { findMany: jest.fn(), findUnique: jest.fn() },
       section: { findUnique: jest.fn(), findFirst: jest.fn() },
-      enrollment: { findMany: jest.fn(), findUnique: jest.fn() },
-      attendanceRecord: { createMany: jest.fn(), updateMany: jest.fn() },
+      enrollment: { findMany: jest.fn(), findUnique: jest.fn(), count: jest.fn().mockResolvedValue(4) },
+      attendanceRecord: { createMany: jest.fn(), updateMany: jest.fn(), groupBy: jest.fn().mockResolvedValue([]) },
       sectionRole: { findUnique: jest.fn() },
       sessionPermission: { findFirst: jest.fn() },
       auditLog: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
       $executeRaw: jest.fn().mockResolvedValue(0),
       $transaction: jest.fn(),
     }
-    realtime = { emitAttendanceUpdated: jest.fn(), emitSessionState: jest.fn() }
+    realtime = {
+      emitAttendanceUpdated: jest.fn(),
+      emitSessionState: jest.fn(),
+      emitSessionFinale: jest.fn(),
+    }
     redis = {
       consumeRateLimit: jest.fn().mockResolvedValue(true),
       getJson: jest.fn().mockResolvedValue(null),
@@ -1445,6 +1453,103 @@ describe('SessionsService', () => {
           data: expect.objectContaining({ status: 'present' }),
         }),
       )
+    })
+  })
+
+  describe('F1 session:finale broadcast', () => {
+    const finaleTx = (ended: unknown, students = 2) => ({
+      session: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(ended),
+      },
+      attendanceRecord: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue(Array.from({ length: students }, (_, index) => ({ studentId: `stu-${index + 1}` }))),
+        updateMany: jest.fn().mockResolvedValue({ count: students }),
+      },
+    })
+
+    const makeEndMocks = (session: unknown, ended: unknown) => {
+      prisma.session.findUnique.mockResolvedValue(session)
+      prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(finaleTx(ended)))
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+    }
+
+    it('emits session:finale from end() with resolved counts and roster capacity', async () => {
+      const session = makeSession({ isActive: true })
+      const ended = { ...session, isActive: false, endedAt: new Date('2026-11-02T03:30:00.000Z') }
+      makeEndMocks(session, ended)
+      prisma.attendanceRecord.groupBy.mockResolvedValue([
+        { status: 'present', _count: { _all: 2 } },
+        { status: 'late', _count: { _all: 1 } },
+        { status: 'absent', _count: { _all: 1 } },
+        { status: 'excused', _count: { _all: 0 } },
+        { status: 'incomplete', _count: { _all: 0 } },
+      ])
+
+      await service.end('sess-1', teacherUser)
+
+      expect(realtime.emitSessionFinale).toHaveBeenCalledWith(
+        { id: 'sess-1' },
+        {
+          sessionId: 'sess-1',
+          endedAt: ended.endedAt.toISOString(),
+          counts: { present: 2, late: 1, absent: 1, excused: 0, incomplete: 0, disputed: 0, pending: 0 },
+          capacity: 4,
+        },
+      )
+      expect(prisma.attendanceRecord.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({ by: ['status'], where: { sessionId: 'sess-1' } }),
+      )
+      expect(prisma.enrollment.count).toHaveBeenCalledWith({ where: { sectionId: 'sec-1' } })
+    })
+
+    it('emits session:finale from the auto-end cron only when the claim wins', async () => {
+      const autoEndAt = new Date(Date.now() - 10 * 60_000)
+      const session = makeSession({ isActive: true, autoEndAt })
+      const ended = { ...session, isActive: false, endedAt: new Date() }
+      prisma.session.findMany.mockResolvedValue([session])
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(finaleTx(ended)))
+      prisma.attendanceRecord.groupBy.mockResolvedValue([{ status: 'absent', _count: { _all: 2 } }])
+
+      await service.autoEndExpiredSessions()
+
+      expect(realtime.emitSessionFinale).toHaveBeenCalledWith(
+        { id: 'sess-1' },
+        expect.objectContaining({
+          sessionId: 'sess-1',
+          counts: { present: 0, late: 0, absent: 2, excused: 0, incomplete: 0, disputed: 0, pending: 0 },
+          capacity: 4,
+        }),
+      )
+
+      // A lost claim never broadcasts.
+      realtime.emitSessionFinale.mockClear()
+      prisma.attendanceRecord.groupBy.mockClear()
+      const lostTx = {
+        session: { updateMany: jest.fn().mockResolvedValue({ count: 0 }), findUniqueOrThrow: jest.fn() },
+        attendanceRecord: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(lostTx))
+
+      await service.autoEndExpiredSessions()
+
+      expect(realtime.emitSessionFinale).not.toHaveBeenCalled()
+    })
+
+    it('does not fail the end() flow when the finale metrics read is unavailable', async () => {
+      const session = makeSession({ isActive: true })
+      const ended = { ...session, isActive: false, endedAt: new Date() }
+      makeEndMocks(session, ended)
+      prisma.attendanceRecord.groupBy.mockRejectedValue(new Error('db busy'))
+
+      const result = await service.end('sess-1', teacherUser)
+
+      expect(result.isActive).toBe(false)
+      expect(realtime.emitSessionState).toHaveBeenCalledWith(ended, 'ended')
+      expect(realtime.emitSessionFinale).not.toHaveBeenCalled()
     })
   })
 

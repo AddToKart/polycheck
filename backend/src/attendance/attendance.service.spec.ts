@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing'
+import type { TestingModule } from '@nestjs/testing'
 import { ForbiddenException, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
@@ -7,6 +8,7 @@ import { AttendanceScopeService } from './attendance-scope.service'
 import { AttendanceReportService } from './attendance-report.service'
 import { GeofenceService } from './geofence.service'
 import { ScanValidatorService } from './scan-validator.service'
+import { LedgerService } from './ledger.service'
 import { AttendanceGateway } from '../realtime/attendance.gateway'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { createHash } from 'crypto'
@@ -38,8 +40,13 @@ const adminUser: RequestUser = { id: 'admin-1', role: 'super_admin', scope: 'ins
 
 describe('AttendanceService', () => {
   let service: AttendanceService
+  let moduleRef: TestingModule
   let prisma: any
-  let realtime: { emitAttendanceUpdated: jest.Mock; emitSessionState: jest.Mock }
+  let realtime: {
+    emitAttendanceUpdated: jest.Mock
+    emitSessionState: jest.Mock
+    emitAttendanceAnomaly: jest.Mock
+  }
   let redis: {
     consumeRateLimit: jest.Mock
     getJson: jest.Mock
@@ -82,7 +89,7 @@ describe('AttendanceService', () => {
       $executeRaw: jest.fn().mockResolvedValue(0),
       $transaction: jest.fn(),
     }
-    realtime = { emitAttendanceUpdated: jest.fn(), emitSessionState: jest.fn() }
+    realtime = { emitAttendanceUpdated: jest.fn(), emitSessionState: jest.fn(), emitAttendanceAnomaly: jest.fn() }
     redis = {
       consumeRateLimit: jest.fn().mockResolvedValue(true),
       getJson: jest.fn().mockResolvedValue(null),
@@ -99,19 +106,21 @@ describe('AttendanceService', () => {
     prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
     prisma.$transaction.mockImplementation(async (callback: any) => callback(prisma))
 
-    const moduleRef = await Test.createTestingModule({
+    const builtModule = await Test.createTestingModule({
       providers: [
         AttendanceService,
         AttendanceScopeService,
         AttendanceReportService,
         GeofenceService,
         ScanValidatorService,
+        LedgerService,
         { provide: PrismaService, useValue: prisma },
         { provide: AttendanceGateway, useValue: realtime },
         { provide: RedisService, useValue: redis },
       ],
     }).compile()
 
+    moduleRef = builtModule
     service = moduleRef.get(AttendanceService)
   })
 
@@ -844,7 +853,11 @@ describe('AttendanceService', () => {
       })
       mockedVerifyQRToken.mockReturnValue(validPayload())
       mockedHaversineDistance.mockReturnValue(0)
-      prisma.attendanceRecord.findUnique.mockResolvedValue(null)
+      // The ledger probes chain state with a `recordHash` select inside the
+      // transaction; the submit pre-check probes by session+student.
+      prisma.attendanceRecord.findUnique.mockImplementation(async (args: { select?: { recordHash?: unknown } }) =>
+        args?.select?.recordHash !== undefined ? { recordHash: null } : null,
+      )
       prisma.attendanceRecord.findMany.mockResolvedValue([])
       prisma.attendanceRecord.upsert.mockResolvedValue(makeRosterRecord())
       prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
@@ -867,7 +880,7 @@ describe('AttendanceService', () => {
       expect(prisma.attendanceRecord.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ id: 'rec-1', status: 'pending' }) }),
       )
-      expect(prisma.$executeRaw).toHaveBeenCalledTimes(1)
+      expect(prisma.$executeRaw).toHaveBeenCalledTimes(2)
       expect(prisma.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
         prisma.attendanceRecord.upsert.mock.invocationCallOrder[0],
       )
@@ -1278,6 +1291,9 @@ describe('AttendanceService', () => {
       })
       const upserted = makeRosterRecord({ studentId: 'stu-2', status: 'present', manuallySet: true })
       prisma.attendanceRecord.upsert.mockResolvedValue(upserted)
+      prisma.attendanceRecord.findUnique.mockImplementation(async (args: { select?: { recordHash?: unknown } }) =>
+        args?.select?.recordHash !== undefined ? { recordHash: null } : undefined,
+      )
       const result = await service.createManual(teacherUser, dto)
       const args = prisma.attendanceRecord.upsert.mock.calls[0][0]
       expect(args.where.sessionId_studentId).toEqual({ sessionId: 'sess-1', studentId: 'stu-2' })
@@ -1326,6 +1342,517 @@ describe('AttendanceService', () => {
       prisma.attendanceRecord.findMany.mockResolvedValue([makeRosterRecord()])
       const result = await service.forStudent(adminUser, 'stu-2', 'sec-1')
       expect(result.length).toBe(1)
+    })
+  })
+
+  describe('attendance hash-chain wiring (F9)', () => {
+    const ledgerSubmitArgs = {
+      sessionId: 'sess-1',
+      sectionId: 'sec-1',
+      latitude: 14.6,
+      longitude: 121.0,
+      deviceId: 'device-A',
+      qrToken: VALID_TOKEN,
+      clientAttemptId: 'ledger-attempt-1',
+      accuracyMeters: 5,
+      locationCapturedAt: LOCATION_CAPTURED_AT,
+      inputChannel: 'camera' as const,
+    }
+    let ledger: { appendLedger: jest.Mock }
+
+    beforeEach(() => {
+      ledger = moduleRef.get(LedgerService, { strict: false }) as unknown as { appendLedger: jest.Mock }
+      jest.spyOn(ledger, 'appendLedger').mockResolvedValue('chain-hash')
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(0)
+    })
+
+    it('appends the chain inside the same transaction as an accepted scan commit', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({
+        id: 'enr-1',
+        student: { fullName: 'Jane Doe', program: 'BSIT' },
+      })
+      prisma.attendanceRecord.findUnique.mockImplementation(async (args: { select?: { recordHash?: unknown } }) =>
+        args?.select?.recordHash !== undefined ? { recordHash: null } : makeRosterRecord(),
+      )
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(
+        makeRosterRecord({ status: 'present', timestamp: new Date(ISSUED_AT) }),
+      )
+
+      const result = await service.submit(studentUser, ledgerSubmitArgs)
+
+      expect(result).toEqual(expect.objectContaining({ success: true, status: 'present' }))
+      expect(ledger.appendLedger).toHaveBeenCalledTimes(1)
+      const [tx, record] = ledger.appendLedger.mock.calls[0] as unknown as [
+        unknown,
+        { id: string; sessionId: string; studentId: string; timestamp: Date },
+      ]
+      expect(record).toEqual({ id: 'rec-1', sessionId: 'sess-1', studentId: 'stu-1', timestamp: new Date(ISSUED_AT) })
+      // The advisory lock plus row update run through the transaction handle.
+      expect(tx).toBe(prisma)
+      expect(ledger.appendLedger.mock.invocationCallOrder[0]).toBeGreaterThan(
+        prisma.attendanceRecord.updateMany.mock.invocationCallOrder[0],
+      )
+      expect(ledger.appendLedger.mock.invocationCallOrder[0]).toBeLessThan(
+        realtime.emitAttendanceUpdated.mock.invocationCallOrder[0],
+      )
+    })
+
+    it('rolls the whole attendance commit back when the ledger append fails (fail closed)', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({
+        id: 'enr-1',
+        student: { fullName: 'Jane Doe', program: 'BSIT' },
+      })
+      prisma.attendanceRecord.findUnique.mockImplementation(async (args: { select?: { recordHash?: unknown } }) =>
+        args?.select?.recordHash !== undefined ? { recordHash: null } : makeRosterRecord(),
+      )
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(makeRosterRecord({ status: 'present' }))
+      const thrown = new Error('ledger storage refusing writes')
+      ledger.appendLedger.mockRejectedValue(thrown)
+
+      await expect(service.submit(studentUser, ledgerSubmitArgs)).rejects.toThrow('ledger storage refusing writes')
+      expect(realtime.emitAttendanceUpdated).not.toHaveBeenCalled()
+      expect(prisma.scanAttempt.update).not.toHaveBeenCalled()
+    })
+
+    it('does not append when the record commit loses the claim (duplicate scan)', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({
+        id: 'enr-1',
+        student: { fullName: 'Jane Doe', program: 'BSIT' },
+      })
+      prisma.attendanceRecord.findUnique.mockImplementation(async (args: { select?: { recordHash?: unknown } }) =>
+        args?.select?.recordHash !== undefined
+          ? { recordHash: 'already-chained' }
+          : makeRosterRecord({ status: 'present', tokenSnapshot: VALID_TOKEN }),
+      )
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 0 })
+
+      const result = await service.submit(studentUser, ledgerSubmitArgs)
+
+      expect(result).toEqual(expect.objectContaining({ success: false, reason: 'duplicate' }))
+      expect(ledger.appendLedger).not.toHaveBeenCalled()
+    })
+
+    it('chains only once for the online check-in leg, skipping the check-out commit', async () => {
+      const enrolled = makeRosterRecord({ status: 'pending', latitude: null, longitude: null })
+      prisma.attendanceRecord.findUnique.mockImplementation(async (args: { select?: { recordHash?: unknown } }) =>
+        args?.select?.recordHash !== undefined ? { recordHash: 'chain-from-check-in' } : enrolled,
+      )
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(
+        makeRosterRecord({ status: 'pending', latitude: null, longitude: null }),
+      )
+      const onlineSession = makeCachedSession({
+        mode: 'online',
+        isActive: true,
+        qrToken: null,
+        qrGeneratedAt: null,
+        startQrToken: VALID_TOKEN,
+        startQrGeneratedAt: new Date(ISSUED_AT),
+        startQrValiditySeconds: 90,
+        startGraceMinutes: 10,
+        startPinHash: 'p1$pbkdf2-sha256$10000$c2FsdA$aGFzaA',
+        geofenceLatitude: null,
+        geofenceLongitude: null,
+        geofenceRadiusMeters: null,
+      })
+      prisma.session.findUnique.mockResolvedValue(onlineSession)
+      redis.getJson.mockResolvedValue(onlineSession)
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(
+        validPayload({
+          mode: 'online',
+          checkpoint: 'start',
+          pinRequired: true,
+          pinHash: 'p1$pbkdf2-sha256$10000$c2FsdA$aGFzaA',
+          validitySeconds: 90,
+          gracePeriodMinutes: 10,
+          validityMinutes: 2,
+        }),
+      )
+      mockedVerifyMeetingPin.mockResolvedValue(true)
+      redis.consumeRateLimit.mockResolvedValue(true)
+
+      const result = await service.scan(studentUser, {
+        sessionId: 'sess-1',
+        lat: 14.6,
+        lon: 121.0,
+        deviceId: 'device-online',
+        qrToken: VALID_TOKEN,
+        clientAttemptId: 'online-attempt-2',
+        inputChannel: 'image' as const,
+        pin: '83',
+      })
+
+      expect(ledger.appendLedger).toHaveBeenCalledTimes(1)
+      expect(result).toMatchObject({ status: 'pending', coordinates: { latitude: null, longitude: null } })
+    })
+
+    it('chains manual attendance commits inside their own transaction', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeSession({ sectionId: 'sec-1', teacherId: 'teacher-1' }))
+      prisma.enrollment.findUnique.mockResolvedValue({
+        id: 'enr-1',
+        student: { fullName: 'Bob Doe', program: 'BSIT' },
+      })
+      const upserted = makeRosterRecord({ studentId: 'stu-2', status: 'absent', manuallySet: true })
+      prisma.attendanceRecord.upsert.mockResolvedValue(upserted)
+      prisma.attendanceRecord.findUnique.mockImplementation(async (args: { select?: { recordHash?: unknown } }) =>
+        args?.select?.recordHash !== undefined ? { recordHash: null } : undefined,
+      )
+
+      await service.createManual(teacherUser, {
+        sessionId: 'sess-1',
+        sectionId: 'sec-1',
+        studentId: 'stu-2',
+        status: 'absent' as const,
+      })
+
+      expect(prisma.attendanceRecord.upsert).toHaveBeenCalledTimes(1)
+      expect(ledger.appendLedger).toHaveBeenCalledTimes(1)
+      const [tx, record] = ledger.appendLedger.mock.calls[0] as unknown as [unknown, { id: string; studentId: string }]
+      expect(tx).toBe(prisma)
+      expect(record.studentId).toBe('stu-2')
+    })
+
+    it('never modifies an already-committed timestamp on manual re-mark', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeSession({ sectionId: 'sec-1', teacherId: 'teacher-1' }))
+      prisma.enrollment.findUnique.mockResolvedValue({
+        id: 'enr-1',
+        student: { fullName: 'Bob Doe', program: 'BSIT' },
+      })
+      const upserted = makeRosterRecord({ studentId: 'stu-2', status: 'present', manuallySet: true })
+      prisma.attendanceRecord.upsert.mockResolvedValue(upserted)
+      prisma.attendanceRecord.findUnique.mockImplementation(async (args: { select?: { recordHash?: unknown } }) =>
+        args?.select?.recordHash !== undefined ? { recordHash: 'chain-hash-committed' } : undefined,
+      )
+
+      const result = await service.createManual(teacherUser, {
+        sessionId: 'sess-1',
+        sectionId: 'sec-1',
+        studentId: 'stu-2',
+        status: 'present' as const,
+      })
+
+      const args = prisma.attendanceRecord.upsert.mock.calls[0][0]
+      expect(args.update).toEqual({ status: 'present', manuallySet: true })
+      expect(result.status).toBe('present')
+      // Idempotent ledger append sees the committed row and stays a no-op.
+      expect(ledger.appendLedger).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps roster seed rows off the chain during offline activation', async () => {
+      const onlineSessionInactive = makeCachedSession({ isActive: false, qrToken: null, endedAt: null })
+      prisma.session.findUnique.mockResolvedValueOnce(onlineSessionInactive).mockResolvedValue(makeCachedSession())
+      prisma.session.updateMany.mockResolvedValue({ count: 1 })
+      redis.getJson.mockResolvedValue(null)
+      redis.acquireLock.mockResolvedValue('lock-1')
+      redis.releaseLock.mockResolvedValue(undefined)
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      prisma.enrollment.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.findUnique.mockImplementation(async (args: { select?: { recordHash?: unknown } }) =>
+        args?.select?.recordHash !== undefined ? { recordHash: null } : makeRosterRecord(),
+      )
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(makeRosterRecord({ status: 'present' }))
+
+      const result = await service.syncScan(studentUser, {
+        ...ledgerSubmitArgs,
+        scannedAt: new Date(ISSUED_AT).toISOString(),
+        locationCapturedAt: new Date(ISSUED_AT).toISOString(),
+      })
+
+      expect(prisma.attendanceRecord.createMany).toHaveBeenCalledTimes(1)
+      expect(result).toMatchObject({ status: 'present' })
+      // Only the scan commit chains; the seeded placeholder rows were never hashed.
+      expect(ledger.appendLedger).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('F2 attendance:anomaly emission (denied scans)', () => {
+    const denialArgs = {
+      sessionId: 'sess-1',
+      sectionId: 'sec-1',
+      latitude: 14.7,
+      longitude: 121.2,
+      deviceId: 'device-A',
+      qrToken: VALID_TOKEN,
+      clientAttemptId: 'anomaly-attempt-1',
+      accuracyMeters: 5,
+      locationCapturedAt: LOCATION_CAPTURED_AT,
+      scannedAt: new Date(ISSUED_AT).toISOString(),
+      inputChannel: 'camera' as const,
+    }
+
+    const PIN_HASH = 'p1$pbkdf2-sha256$10000$c2FsdA$aGFzaA'
+    const onlineSession = () =>
+      makeCachedSession({
+        mode: 'online',
+        isActive: true,
+        qrToken: null,
+        qrTokenExpiresAt: null,
+        qrGeneratedAt: null,
+        startQrToken: VALID_TOKEN,
+        startTokenExpiresAt: new Date(Date.now() + 120_000),
+        startQrGeneratedAt: new Date(),
+        startQrValiditySeconds: 90,
+        startGraceMinutes: 10,
+        startPinHash: PIN_HASH,
+        geofenceLatitude: null,
+        geofenceLongitude: null,
+        geofenceRadiusMeters: null,
+      })
+    const onlinePayload = () =>
+      validPayload({
+        mode: 'online',
+        checkpoint: 'start',
+        pinRequired: true,
+        pinHash: PIN_HASH,
+        validitySeconds: 90,
+        gracePeriodMinutes: 10,
+        validityMinutes: 2,
+      })
+    const onlineArgs = {
+      sessionId: 'sess-1',
+      sectionId: 'sec-1',
+      deviceId: 'device-online',
+      qrToken: VALID_TOKEN,
+      clientAttemptId: 'online-attempt-9',
+      inputChannel: 'image' as const,
+      pin: '83',
+    }
+
+    beforeEach(() => {
+      prisma.user.findUnique.mockResolvedValue({
+        teacherPublicKey: 'pk',
+        fullName: 'Juan Dela Cruz',
+        studentId: '2023-0001',
+      })
+    })
+
+    it('emits an anomaly for a denied in-person attempt with coordinates', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(120)
+
+      await service.submit(studentUser, denialArgs)
+
+      expect(realtime.emitAttendanceAnomaly).toHaveBeenCalledWith(
+        { id: 'sess-1' },
+        expect.objectContaining({
+          sessionId: 'sess-1',
+          studentId: 'stu-1',
+          studentName: 'Juan Dela Cruz',
+          studentNumber: '2023-0001',
+          latitude: 14.7,
+          longitude: 121.2,
+          distanceMeters: 120,
+          geofenceRadiusMeters: 50,
+          reason: 'outside_geofence',
+          timestamp: expect.any(String),
+        }),
+      )
+    })
+
+    it('emits anomalies for mocked-location denials with coordinates', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(0)
+
+      await service.submit(studentUser, { ...denialArgs, clientAttemptId: 'mocked-attempt-1', mocked: true })
+
+      expect(realtime.emitAttendanceAnomaly).toHaveBeenCalledWith(
+        { id: 'sess-1' },
+        expect.objectContaining({ reason: 'mocked_location', latitude: 14.7 }),
+      )
+    })
+
+    it('never emits for PIN failures (authenticated students mistyping a secret, not geolocation anomalies)', async () => {
+      prisma.session.findUnique.mockResolvedValue(onlineSession())
+      redis.getJson.mockResolvedValue(onlineSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(onlinePayload())
+      mockedVerifyMeetingPin.mockResolvedValue(false)
+
+      const result = await service.submit(studentUser, onlineArgs)
+
+      expect(result.reason).toBe('pin_incorrect')
+      expect(realtime.emitAttendanceAnomaly).not.toHaveBeenCalled()
+    })
+
+    it('never emits for online-mode denials (RA 10173: no coordinates are plotted)', async () => {
+      // Online + wrong PIN even when a modified client sends coordinates:
+      // still an online-mode failure, no geolocation anomaly event.
+      prisma.session.findUnique.mockResolvedValue(onlineSession())
+      redis.getJson.mockResolvedValue(onlineSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(onlinePayload())
+      mockedVerifyMeetingPin.mockResolvedValue(false)
+
+      await service.submit(studentUser, { ...onlineArgs, pin: '00', latitude: 14.6, longitude: 121 })
+
+      expect(realtime.emitAttendanceAnomaly).not.toHaveBeenCalled()
+    })
+
+    it('never emits a denial that carries no coordinates', async () => {
+      // Replay of a previously denied attempt whose original evidence had no fix.
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession({ qrToken: null, isActive: false }))
+      prisma.scanAttempt.findUnique.mockResolvedValue({
+        sessionId: 'sess-1',
+        tokenHash: createHash('sha256').update(VALID_TOKEN).digest('hex'),
+        latitude: null,
+        longitude: null,
+        deviceId: 'device-A',
+        inputChannel: 'camera',
+        accuracyMeters: undefined,
+        mocked: undefined,
+        riskSignals: null,
+        clientScannedAt: new Date(ISSUED_AT),
+        locationCapturedAt: new Date(LOCATION_CAPTURED_AT),
+        reason: 'outside_geofence',
+        message: '',
+        acceptedAttendanceRecord: null,
+        acceptedCheckInRecord: null,
+        acceptedCheckOutRecord: null,
+      })
+
+      const result = await service.submit(studentUser, { ...denialArgs, latitude: undefined, longitude: undefined })
+
+      expect(result.success).toBe(false)
+      expect(realtime.emitAttendanceAnomaly).not.toHaveBeenCalled()
+    })
+
+    it('emits replayed rejections through the replay funnel', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      prisma.scanAttempt.findUnique.mockResolvedValue({
+        sessionId: 'sess-1',
+        tokenHash: createHash('sha256').update(VALID_TOKEN).digest('hex'),
+        latitude: 14.7,
+        longitude: 121.2,
+        deviceId: 'device-A',
+        inputChannel: 'camera',
+        accuracyMeters: 5,
+        mocked: undefined,
+        riskSignals: null,
+        clientScannedAt: new Date(ISSUED_AT),
+        locationCapturedAt: new Date(LOCATION_CAPTURED_AT),
+        reason: 'outside_geofence',
+        message: '',
+        acceptedAttendanceRecord: null,
+        acceptedCheckInRecord: null,
+        acceptedCheckOutRecord: null,
+      })
+
+      await service.submit(studentUser, denialArgs)
+
+      expect(prisma.scanAttempt.create).not.toHaveBeenCalled()
+      expect(realtime.emitAttendanceAnomaly).toHaveBeenCalledWith(
+        { id: 'sess-1' },
+        expect.objectContaining({
+          reason: 'outside_geofence',
+          studentId: 'stu-1',
+          studentName: 'Juan Dela Cruz',
+          distanceMeters: expect.any(Number),
+          geofenceRadiusMeters: 50,
+        }),
+      )
+    })
+
+    it('emits duplicate-submission denials as replay anomalies', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(0)
+      prisma.attendanceRecord.findUnique.mockResolvedValue(
+        makeRosterRecord({ status: 'present', tokenSnapshot: VALID_TOKEN }),
+      )
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 0 })
+
+      const result = await service.submit(studentUser, denialArgs)
+
+      expect(result.reason).toBe('duplicate')
+      expect(realtime.emitAttendanceAnomaly).toHaveBeenCalledWith(
+        { id: 'sess-1' },
+        expect.objectContaining({ reason: 'duplicate', sessionId: 'sess-1', studentId: 'stu-1' }),
+      )
+    })
+
+    it('never emits for rate-limited attempts or accepted scans', async () => {
+      redis.consumeRateLimit.mockResolvedValue(false)
+
+      await service.submit(studentUser, denialArgs)
+
+      expect(realtime.emitAttendanceAnomaly).not.toHaveBeenCalled()
+
+      redis.consumeRateLimit.mockResolvedValue(true)
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(0)
+      prisma.attendanceRecord.findUnique.mockResolvedValue(makeRosterRecord())
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(makeRosterRecord({ status: 'present' }))
+
+      await service.submit(studentUser, denialArgs)
+
+      expect(realtime.emitAttendanceUpdated).toHaveBeenCalled()
+      expect(realtime.emitAttendanceAnomaly).not.toHaveBeenCalled()
+    })
+
+    it('keeps the scan response intact when the anomaly broadcast fails', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(120)
+      realtime.emitAttendanceAnomaly.mockImplementation(() => {
+        throw new Error('socket.io room gone')
+      })
+
+      const result = await service.submit(studentUser, denialArgs)
+
+      expect(result.success).toBe(false)
+      expect(result.reason).toBe('outside_geofence')
+    })
+
+    it('sends attendance:updated with the enrolled student name for the kiosk ticker', async () => {
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(0)
+      prisma.attendanceRecord.findUnique.mockResolvedValue(makeRosterRecord())
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(makeRosterRecord({ status: 'present' }))
+
+      await service.submit(studentUser, denialArgs)
+
+      expect(realtime.emitAttendanceUpdated).toHaveBeenCalledWith(
+        expect.objectContaining({ studentName: 'Jane Doe', studentId: 'stu-1', status: 'present' }),
+      )
     })
   })
 })

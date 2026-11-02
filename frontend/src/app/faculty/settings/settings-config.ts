@@ -8,6 +8,7 @@ export const SETTINGS_TABS = [
   { id: 'accounts', label: 'Accounts & access' },
   { id: 'ai', label: 'AI Assistant' },
   { id: 'system', label: 'System' },
+  { id: 'privacy', label: 'Privacy (RA 10173)' },
 ] as const
 
 export type SettingsTabId = (typeof SETTINGS_TABS)[number]['id']
@@ -144,6 +145,17 @@ export const SETTING_FIELDS: readonly SettingFieldDefinition[] = [
     caption:
       'Display-only estimate. Maintenance never turns off automatically at this time — an exempt administrator must switch it off.',
   },
+  {
+    key: 'geolocation_retention_days',
+    tab: 'system',
+    label: 'Geolocation retention (days)',
+    type: 'number',
+    defaultValue: '30',
+    min: 7,
+    max: 90,
+    caption:
+      'RA 10173 ephemeral-telemetry window — the nightly shredder strips stored coordinates older than this. Dispute outcomes and distances are kept.',
+  },
 ]
 
 export interface SettingSwitchDefinition {
@@ -226,6 +238,9 @@ export const TAB_SETTING_KEYS: Record<SettingsTabId, readonly string[]> = {
     ...SETTING_SWITCHES.filter((item) => item.tab === 'system').map((item) => item.key),
     ...SETTING_FIELDS.filter((field) => field.tab === 'system').map((field) => field.key),
   ],
+  // F6: the privacy tab is a read-only transparency dashboard — no saveable keys,
+  // so the Save row is hidden while `isTabDirty`/`isTabSaveable` stay safe (empty `.some`/`.every`).
+  privacy: [],
 }
 
 export const SETTING_DEFAULTS: Record<string, string> = Object.fromEntries([

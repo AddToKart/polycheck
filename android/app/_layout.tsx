@@ -4,7 +4,8 @@ import { StatusBar } from 'expo-status-bar'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as SplashScreen from 'expo-splash-screen'
 import { useFonts } from 'expo-font'
-import { ActivityIndicator, AppState, Text, View } from 'react-native'
+import { ActivityIndicator, AppState, Pressable, Text, View } from 'react-native'
+import { MaterialIcons } from '@expo/vector-icons'
 import { ThemeProvider, useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
 import { api, isOwnLoginInFlight, subscribeToAuthChanges } from '../services/api-client'
@@ -23,12 +24,16 @@ import {
   type ActiveMaintenance,
 } from '../lib/maintenance'
 import { MaintenanceScreen } from '../components/maintenance/MaintenanceScreen'
+import { OutageSimulatorSheet } from '../components/OutageSimulatorSheet'
+import { isOutageSimulatorEnabled } from '../lib/more-items'
 import { PrivacyConsentGate } from '../components/PrivacyConsentGate'
 import { StudentScreenCaptureGuard } from '../components/StudentScreenCaptureGuard'
 import { CampusToastProvider, useCampusToast } from '../components/CampusToast'
 import * as Sentry from '@sentry/react-native'
 
 const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN
+// F7 demo killswitch — env-gated (default off; production pins "false").
+const outageSimulatorEnabled = isOutageSimulatorEnabled(process.env.EXPO_PUBLIC_ENABLE_OUTAGE_SIMULATOR)
 Sentry.init({
   dsn: sentryDsn,
   enabled: Boolean(sentryDsn) && process.env.EXPO_PUBLIC_E2E_MODE !== 'true',
@@ -64,6 +69,7 @@ function RootLayoutInner() {
   const [sessionReady, setSessionReady] = useState(false)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [maintenance, setMaintenance] = useState<ActiveMaintenance | null>(() => getMaintenanceSnapshot())
+  const [simulatorVisible, setSimulatorVisible] = useState(false)
   const [fontsLoaded] = useFonts({
     DMSans_400Regular: require('@expo-google-fonts/dm-sans/400Regular/DMSans_400Regular.ttf'),
     DMSans_500Medium: require('@expo-google-fonts/dm-sans/500Medium/DMSans_500Medium.ttf'),
@@ -243,6 +249,22 @@ function RootLayoutInner() {
             Maintenance mode is active — you are exempt
           </Text>
         </View>
+      ) : null}
+      {/* F7 floating simulator trigger: above content, below dialogs (z-50). */}
+      {outageSimulatorEnabled ? (
+        <>
+          <Pressable
+            testID="outage-simulator-pill"
+            accessibilityRole="button"
+            accessibilityLabel="Open the outage simulator"
+            onPress={() => setSimulatorVisible(true)}
+            className="absolute bottom-40 right-4 z-40 min-h-11 flex-row items-center gap-1.5 rounded-full border border-golden bg-maroon px-4 dark:bg-maroon-deep"
+          >
+            <MaterialIcons name="bolt" size={17} color={pupColors.golden} />
+            <Text className="font-sans-bold text-[10px] uppercase tracking-widest text-golden">Outage</Text>
+          </Pressable>
+          <OutageSimulatorSheet visible={simulatorVisible} onClose={() => setSimulatorVisible(false)} />
+        </>
       ) : null}
     </View>
   )

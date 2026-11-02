@@ -11,6 +11,7 @@ export type NotificationType =
   | 'key_provisioned'
   | 'device_released'
   | 'system_report_resolved'
+  | 'at_risk_referral'
 
 export interface AppNotification {
   id: string

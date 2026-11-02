@@ -471,7 +471,63 @@ describe('real API client', () => {
     })
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('https://api.polycheck.test/api/maintenance/status')
 
-    vi.mocked(fetch).mockRejectedValueOnce(new Error('offline'))
+    vi.mocked(fetch)
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(jsonResponse({ enabled: false }))
     await expect(api.getMaintenanceStatus()).resolves.toEqual({ enabled: false })
+    expect(vi.mocked(fetch).mock.calls[1]?.[0]).toBe('https://api.polycheck.test/api/maintenance/status')
+  })
+
+  it('rejects every request with the simulated outage TypeError while armed, and restores after disarming', async () => {
+    const { armOutage, disarmOutage, isOutageArmed, SIMULATED_NETWORK_OUTAGE_MESSAGE } =
+      await import('@polycheck/shared')
+    const { initializeOfflineStore } = await import('./offline/store')
+    const { api } = await import('./api-client')
+
+    // The demo surface is an authenticated teacher/student: bind the
+    // encrypted queue owner so optimistic writes can actually enqueue.
+    await initializeOfflineStore(student.id)
+
+    try {
+      expect(isOutageArmed()).toBe(false)
+      armOutage()
+
+      // Every call must die in the guard — not a single transport request may
+      // escape while the killswitch is on. `getSubjects` still RESOLVES with
+      // the empty encrypted cache (offline-first reads), so the TypeError is
+      // asserted directly on a catch-free surface plus transport-zero.
+      await expect(api.getUnreadNotificationCount()).rejects.toBeInstanceOf(TypeError)
+      await expect(api.getUnreadNotificationCount()).rejects.toThrow(SIMULATED_NETWORK_OUTAGE_MESSAGE)
+      await expect(api.getSubjects()).resolves.toEqual([])
+      expect(fetch).not.toHaveBeenCalled()
+
+      // Writes flow straight into the existing offline queue paths: the
+      // status update resolves with the optimistic record and never touches
+      // the network.
+      const optimistic = await api.updateAttendanceStatus('rec-1', 'present')
+      expect(optimistic.status).toBe('present')
+      expect(optimistic.isSynced).toBe(false)
+      expect(optimistic.manuallySet).toBe(true)
+      expect(fetch).not.toHaveBeenCalled()
+
+      disarmOutage()
+      vi.mocked(fetch).mockResolvedValue(jsonResponse([{ id: 'subj-1' }]))
+      await expect(api.getSubjects()).resolves.toEqual([{ id: 'subj-1' }])
+      expect(fetch).toHaveBeenCalledTimes(1)
+    } finally {
+      disarmOutage()
+    }
+
+    // The failure path is identical to a dropped connection: raw TypeError,
+    // not an ApiHttpError, so offline fallbacks keep classifying it as
+    // network loss rather than an authoritative server answer.
+    armOutage()
+    const failure = await api.getUnreadNotificationCount().then(
+      (value) => value,
+      (caught: unknown) => caught,
+    )
+    expect(failure).toBeInstanceOf(TypeError)
+    expect((failure as Error).name).toBe('TypeError')
+    disarmOutage()
   })
 })

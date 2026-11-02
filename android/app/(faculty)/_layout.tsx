@@ -6,7 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { AiCapabilities, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { shouldShowAssistantEntry } from '../../lib/assistant-visibility'
-import { buildFacultyMoreItems } from '../../lib/more-items'
+import { buildFacultyMoreItems, isOutageSimulatorEnabled, OUTAGE_SIMULATOR_ROUTE } from '../../lib/more-items'
+import { OutageSimulatorSheet } from '../../components/OutageSimulatorSheet'
 import { fonts } from '../../theme/typography'
 import { pupColors } from '../../theme/colors'
 import { useTheme } from '../../theme/ThemeContext'
@@ -15,8 +16,11 @@ function TabIcon({ name, color }: { name: keyof typeof MaterialIcons.glyphMap; f
   return <MaterialIcons name={name} size={22} color={color} />
 }
 
+// F7 demo killswitch — env-gated (default off; production pins "false").
+const OUTAGE_SIMULATOR_ENABLED = isOutageSimulatorEnabled(process.env.EXPO_PUBLIC_ENABLE_OUTAGE_SIMULATOR)
+
 // Bottom sheet for "More" — reveals Schedule + Attendance
-function MoreSheet({ visible, onClose, isDark, isSuper, showAssistant, pendingExcuses, user }: { visible: boolean; onClose: () => void; isDark: boolean; isSuper: boolean; showAssistant: boolean; pendingExcuses: number; user: User | null }) {
+function MoreSheet({ visible, onClose, isDark, isSuper, showAssistant, pendingExcuses, user, onOpenSimulator }: { visible: boolean; onClose: () => void; isDark: boolean; isSuper: boolean; showAssistant: boolean; pendingExcuses: number; user: User | null; onOpenSimulator: () => void }) {
   const insets = useSafeAreaInsets()
   const slideAnim = useRef(new Animated.Value(300)).current
   const [reduceMotion, setReduceMotion] = useState(false)
@@ -40,6 +44,7 @@ function MoreSheet({ visible, onClose, isDark, isSuper, showAssistant, pendingEx
     user,
     showAssistant,
     pendingExcuses,
+    outageSimulatorEnabled: OUTAGE_SIMULATOR_ENABLED,
   })
 
   return (
@@ -64,7 +69,11 @@ function MoreSheet({ visible, onClose, isDark, isSuper, showAssistant, pendingEx
               accessibilityRole="button"
               accessibilityLabel={item.label}
               accessibilityHint={item.sub}
-              onPress={() => { onClose(); router.push(item.route as any) }}
+              onPress={() => {
+                // The simulator is a sheet, not a route — open it instead of pushing.
+                if (item.route === OUTAGE_SIMULATOR_ROUTE) { onClose(); onOpenSimulator(); return }
+                onClose(); router.push(item.route as any)
+              }}
               className="mb-2 min-h-14 flex-row items-center gap-4 rounded-none border border-line border-l-4 border-l-maroon bg-zinc-50 px-3 py-3 dark:border-line-dark dark:border-l-golden dark:bg-white/5"
             >
               <View className="h-10 w-10 items-center justify-center rounded-none bg-maroon dark:bg-golden">
@@ -94,6 +103,7 @@ export default function FacultyLayout() {
   const currentUser = api.getCurrentUser()
   const isSuper = currentUser?.role === 'super_admin'
   const [moreVisible, setMoreVisible] = useState(false)
+  const [simulatorVisible, setSimulatorVisible] = useState(false)
   const [capabilities, setCapabilities] = useState<AiCapabilities | null>(null)
   const [pendingExcuses, setPendingExcuses] = useState(0)
 
@@ -238,7 +248,8 @@ export default function FacultyLayout() {
         <Tabs.Screen name="schedule" options={{ href: null }} />
       </Tabs>
 
-      <MoreSheet visible={moreVisible} onClose={() => setMoreVisible(false)} isDark={isDark} isSuper={isSuper} showAssistant={showAssistant} pendingExcuses={pendingExcuses} user={currentUser} />
+      <MoreSheet visible={moreVisible} onClose={() => setMoreVisible(false)} isDark={isDark} isSuper={isSuper} showAssistant={showAssistant} pendingExcuses={pendingExcuses} user={currentUser} onOpenSimulator={() => setSimulatorVisible(true)} />
+      {OUTAGE_SIMULATOR_ENABLED ? <OutageSimulatorSheet visible={simulatorVisible} onClose={() => setSimulatorVisible(false)} /> : null}
     </>
   )
 }

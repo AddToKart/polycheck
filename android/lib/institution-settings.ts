@@ -1,4 +1,12 @@
-import type { AiCapabilities } from '@polycheck/shared'
+import { hasDesignation } from '@polycheck/shared'
+import type {
+  AiCapabilities,
+  AtRiskReferral,
+  DesignationCarrier,
+  PrivacyCenterSnapshot,
+  ReferralStatus,
+  StudentAtRisk,
+} from '@polycheck/shared'
 
 /** Pure settings-tab configuration and derivations (no React). */
 
@@ -32,6 +40,12 @@ export const SETTINGS_TABS = [
     label: 'System',
     shortLabel: 'System',
     accessibilityLabel: 'System maintenance settings',
+  },
+  {
+    id: 'privacy',
+    label: 'Privacy (RA 10173)',
+    shortLabel: 'Privacy',
+    accessibilityLabel: 'Privacy RA 10173 settings',
   },
 ] as const
 
@@ -172,6 +186,16 @@ export const SETTING_FIELDS: readonly SettingFieldDefinition[] = [
     caption:
       'Display-only estimate (ISO datetime). Maintenance never switches off automatically — an exempt administrator must turn it off.',
   },
+  {
+    key: 'geolocation_retention_days',
+    tab: 'system',
+    label: 'Geolocation retention (days)',
+    defaultValue: '30',
+    keyboardType: 'number-pad',
+    icon: 'my-location',
+    caption:
+      'RA 10173 ephemeral-telemetry window - the nightly shredder strips stored coordinates older than this (7-90). Dispute outcomes and distances are kept.',
+  },
 ]
 
 export interface SettingSwitchDefinition {
@@ -261,6 +285,26 @@ export const TAB_SETTING_KEYS: Record<SettingsTabId, readonly string[]> = {
     ...switchesForTab('system').map((item) => item.key),
     ...fieldsForTab('system').map((field) => field.key),
   ],
+  // F6 (WF-LD8): the privacy tab is a read-only transparency dashboard — it owns
+  // no setting keys, so it is never dirty and never shows a save row.
+  privacy: [],
+}
+
+/**
+ * Tab visibility for the settings screen gate (super admins + IT coordinators
+ * only). Super admins keep the full console; IT coordinators see the System
+ * suite plus the read-only privacy center. Plain teachers never reach the
+ * screen, but the derivation still answers defensively with System + Privacy.
+ */
+export type SettingsTabDefinition = (typeof SETTINGS_TABS)[number]
+
+export function visibleSettingsTabs(
+  user: { role: string; isItCoordinator?: boolean; isDepartmentHead?: boolean } | null | undefined,
+): readonly SettingsTabDefinition[] {
+  if (!user || user.role !== 'super_admin') {
+    return SETTINGS_TABS.filter((tab) => tab.id === 'system' || tab.id === 'privacy')
+  }
+  return SETTINGS_TABS
 }
 
 export const SETTING_DEFAULTS: Record<string, string> = Object.fromEntries([
@@ -389,4 +433,191 @@ export function describeAssistantStatus({
     }
   }
   return { tone: 'warning', message: 'Not configured yet — add an endpoint, model, and API key.' }
+}
+
+// ── F5 (WF-LD7): CHED CMO No. 40 referral queue helpers (at-risk screen) ──
+//
+// Pure derivations for the referral sheet/queue; the screen keeps only React
+// state. Mirrors the web `ReferralQueue` decisions (status order, pill tones,
+// transition targets, typed error copy) so both platforms behave identically.
+
+export const CHED_NOTICE_FILENAME = 'PUP-CHED-Drop-Notice.pdf'
+
+/** Server-rendered CHED "Notice of Impending Drop" slip (authenticated GET). */
+export function chedNoticeDownloadPath(referralId: string): string {
+  return `/docs/at-risk-notice/${encodeURIComponent(referralId)}?format=pdf`
+}
+
+/** Lifecycle order used for the grouped queue (matches the shared status union). */
+export const REFERRAL_STATUS_ORDER: readonly ReferralStatus[] = [
+  'generated',
+  'acknowledged',
+  'counseling_scheduled',
+  'resolved',
+]
+
+/** NativeWind pill tones per referral status (PUP tokens only). */
+export const REFERRAL_STATUS_PILL_CLASSES: Record<ReferralStatus, string> = {
+  generated: 'border-golden bg-golden',
+  acknowledged: 'border-maroon bg-maroon dark:border-golden dark:bg-golden',
+  counseling_scheduled: 'border-golden bg-maroon-dark dark:bg-maroon-deep',
+  resolved: 'border-emerald-600 bg-emerald-600',
+}
+
+/** Pill text tones, kept separate so dark/light variants stay readable. */
+export const REFERRAL_STATUS_TEXT_CLASSES: Record<ReferralStatus, string> = {
+  generated: 'text-maroon-dark',
+  acknowledged: 'text-white dark:text-maroon-dark',
+  counseling_scheduled: 'text-golden',
+  resolved: 'text-white',
+}
+
+/** Triage transitions offered to department heads and super admins. */
+export const REFERRAL_TRANSITION_TARGETS: readonly ReferralStatus[] = [
+  'acknowledged',
+  'counseling_scheduled',
+  'resolved',
+]
+
+export const REFERRAL_TRANSITION_LABELS: Partial<Record<ReferralStatus, string>> = {
+  acknowledged: 'Acknowledge',
+  counseling_scheduled: 'Schedule counseling',
+  resolved: 'Mark resolved',
+}
+
+/**
+ * Heads and super admins move referrals through the queue (triage
+ * flexibility — the server allows any→any); plain oversight viewers are
+ * read-only. Mirrors the web queue's `hasDesignation(user, 'academic_oversight')`.
+ */
+export function canManageReferrals(user: DesignationCarrier | null | undefined): boolean {
+  return hasDesignation(user, 'academic_oversight')
+}
+
+/** Rows whose standing crossed into CHED CMO No. 40 territory (WF-LD7). */
+export function isReferralNoticeEligible(row: Pick<StudentAtRisk, 'status'>): boolean {
+  return row.status === 'below_threshold' || row.status === 'at_risk'
+}
+
+/** Transition buttons for a row: every triage target except the current status. */
+export function referralTransitionOptions(current: ReferralStatus): ReferralStatus[] {
+  return REFERRAL_TRANSITION_TARGETS.filter((status) => status !== current)
+}
+
+const REFERRAL_ERROR_MESSAGES: Record<string, string> = {
+  referral_active: 'An active CHED referral already exists for this student in this section.',
+  student_not_at_risk:
+    'This student is no longer flagged as at risk — refresh the list before issuing another notice.',
+}
+
+/**
+ * Typed referral errors (`referral_active`, `student_not_at_risk`) surface as
+ * friendly sheet copy; anything else falls back to the server message so the
+ * confirm sheet never crashes on an unexpected failure shape.
+ */
+export function describeReferralError(error: unknown): string {
+  const code = (error as { code?: string } | null)?.code
+  if (code && REFERRAL_ERROR_MESSAGES[code]) return REFERRAL_ERROR_MESSAGES[code]
+  return error instanceof Error ? error.message : 'Unable to issue the CHED notice.'
+}
+
+/**
+ * Mirrors the shared `GenerateAtRiskReferralSchema` note rule (trim, ≤500)
+ * without importing zod: the jest manual mock for `@polycheck/shared` carries
+ * no validation runtime, and this lib must stay importable from tests.
+ */
+export function validateReferralNote(
+  note: string,
+): { ok: true; note?: string } | { ok: false; message: string } {
+  const trimmed = note.trim()
+  if (trimmed.length > 500) {
+    return { ok: false, message: 'Note must be 500 characters or fewer' }
+  }
+  return trimmed ? { ok: true, note: trimmed } : { ok: true }
+}
+
+/** Group referrals by status in lifecycle order, dropping empty groups. */
+export function groupReferralsByStatus(
+  referrals: readonly AtRiskReferral[],
+): Array<{ status: ReferralStatus; rows: AtRiskReferral[] }> {
+  return REFERRAL_STATUS_ORDER.map((status) => ({
+    status,
+    rows: referrals.filter((row) => row.status === status),
+  })).filter((group) => group.rows.length > 0)
+}
+
+// ── F6 (WF-LD8): RA 10173 privacy-center mirror (settings screen) ──
+
+export const DPO_SUMMARY_DOWNLOAD_PATH = '/docs/dpo-summary?format=pdf'
+export const DPO_SUMMARY_FILENAME = 'PUP-DPO-Summary.pdf'
+
+/**
+ * Consent coverage percentage — mirrors shared `consentCoveragePercent`
+ * (null when the denominator is zero or non-numeric). Duplicated locally
+ * because the jest manual mock for `@polycheck/shared` carries no privacy
+ * runtime and this lib must stay importable from tests.
+ */
+export function privacyCoveragePercent(covered: number, totalActive: number): number | null {
+  if (!Number.isFinite(covered) || !Number.isFinite(totalActive) || totalActive <= 0) return null
+  return Math.min(100, Math.max(0, Math.round((covered / totalActive) * 100)))
+}
+
+export interface PrivacyViewModel {
+  inventoryRows: readonly {
+    data: string
+    purpose: string
+    lawfulBasis: string
+    lifetime: string
+  }[]
+  retentionDays: number
+  /** The nightly shredder's live attestation: rows beyond retention. */
+  attestationValue: string
+  /** Raw ISO stamp of the last shred run (null → "verification pending"). */
+  lastRunAt: string | null
+  /** True once any shred run is visible to this instance. */
+  shredVerified: boolean
+  /** Display-ready shred counts — `null` renders as "Unknown", never "0". */
+  recordsShredded: string
+  attemptsShredded: string
+  coveragePercent: number | null
+  consentCovered: number
+  consentTotal: number
+  consentVersion: string
+}
+
+/**
+ * Maps `GET /settings/privacy-center` onto the condensed Android mirror of the
+ * web privacy tab. Every number is display-ready; the screen renders it
+ * read-only (no save row, no editable keys).
+ */
+export function buildPrivacyView(snapshot: PrivacyCenterSnapshot): PrivacyViewModel {
+  return {
+    inventoryRows: snapshot.dataInventory.map((row) => ({ ...row })),
+    retentionDays: snapshot.retentionDays,
+    attestationValue: '0',
+    lastRunAt: snapshot.ephemeral.lastRunAt,
+    shredVerified: snapshot.ephemeral.lastRunAt !== null,
+    recordsShredded: snapshot.ephemeral.recordsShredded === null ? 'Unknown' : String(snapshot.ephemeral.recordsShredded),
+    attemptsShredded: snapshot.ephemeral.attemptsShredded === null ? 'Unknown' : String(snapshot.ephemeral.attemptsShredded),
+    coveragePercent: privacyCoveragePercent(snapshot.consent.covered, snapshot.consent.totalActive),
+    consentCovered: snapshot.consent.covered,
+    consentTotal: snapshot.consent.totalActive,
+    consentVersion: snapshot.consent.version,
+  }
+}
+
+// ── F4 (WF-LD6): official PUP class record export (section detail screen) ──
+
+/** Server-rendered PUP class record (authenticated GET, pdfkit pipeline). */
+export function classRecordDownloadPath(sectionId: string): string {
+  return `/docs/class-record/${encodeURIComponent(sectionId)}?format=pdf`
+}
+
+const safeFileSegment = (value: string) =>
+  value.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')
+
+/** `PUP-Class-Record-<code>-<section>.pdf`, falling back when both are blank. */
+export function classRecordFileName(subjectCode: string, sectionName: string): string {
+  const segments = [subjectCode, sectionName].map(safeFileSegment).filter(Boolean)
+  return segments.length > 0 ? `PUP-Class-Record-${segments.join('-')}.pdf` : 'PUP-Class-Record.pdf'
 }

@@ -35,6 +35,7 @@ const TYPE_ICONS: Record<NotificationType, keyof typeof MaterialIcons.glyphMap> 
   device_released: 'smartphone',
   system_report_resolved: 'task-alt',
   key_provisioned: 'vpn-key',
+  at_risk_referral: 'assignment-late',
 }
 
 function relativeTimeLabel(createdAt: string, now: number): string {

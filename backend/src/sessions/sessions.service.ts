@@ -17,6 +17,7 @@ import { RedisService } from '../infrastructure/redis.service'
 import { Prisma, type Session, type SessionMode } from '../prisma/client'
 import { ErrorCode } from '../common/constants/error-codes'
 import { haversineDistance } from '@polycheck/shared'
+import type { FinaleCountStatus } from '@polycheck/shared'
 import { parseIsoDate } from '../common/utils/iso-date'
 import { sessionDurationMinutes } from '../common/utils/session-time'
 import { adminSessionWhere, assertSectionInAdminScope } from '../common/admin-scope'
@@ -642,6 +643,7 @@ export class SessionsService {
     this.realtime.emitSessionState(ended, 'ended')
     await this.invalidateActiveSessionCache(ended)
     await this.notifyAbsentStudents(ended, absentStudentIds)
+    await this.emitSessionFinale(ended)
     return this.present(ended, await this.teacherPublicKey(session.teacherId), true)
   }
 
@@ -695,6 +697,7 @@ export class SessionsService {
           this.realtime.emitSessionState(ended, 'ended')
           await this.invalidateActiveSessionCache(ended)
           await this.notifyAbsentStudents(ended, absentStudentIds)
+          await this.emitSessionFinale(ended)
           Logger.log(`Automatically ended expired session ${session.id} (${session.subjectName})`, 'SessionsService')
         } catch (error) {
           Logger.error(
@@ -719,6 +722,52 @@ export class SessionsService {
           )
         }
       }
+    }
+  }
+
+  /**
+   * F1: the session:finale broadcast following the claim+resolution commit.
+   * Counts come from the resolved records and capacity from the section's
+   * roster, so the projector recap can never disagree with the report the
+   * registrar will read. Best-effort: a slow/unavailable metrics read only
+   * skips the broadcast.
+   */
+  private async emitSessionFinale(ended: Pick<Session, 'id' | 'sectionId' | 'endedAt'>) {
+    try {
+      const [grouped, capacity] = await Promise.all([
+        this.prisma.attendanceRecord.groupBy({
+          by: ['status'],
+          where: { sessionId: ended.id },
+          _count: { _all: true },
+        }),
+        this.prisma.enrollment.count({ where: { sectionId: ended.sectionId } }),
+      ])
+      const counts: Record<FinaleCountStatus, number> = {
+        present: 0,
+        late: 0,
+        absent: 0,
+        excused: 0,
+        incomplete: 0,
+        disputed: 0,
+        pending: 0,
+      }
+      for (const group of grouped) {
+        if (group.status in counts) counts[group.status] = group._count._all
+      }
+      this.realtime.emitSessionFinale(
+        { id: ended.id },
+        {
+          sessionId: ended.id,
+          endedAt: ended.endedAt?.toISOString() ?? new Date().toISOString(),
+          counts,
+          capacity,
+        },
+      )
+    } catch (error) {
+      Logger.error(
+        `Failed to emit session finale for ${ended.id}: ${error instanceof Error ? error.message : 'unknown'}`,
+        'SessionsService',
+      )
     }
   }
 

@@ -23,14 +23,22 @@ const TAB_IDS = SETTINGS_TABS.map((tab) => tab.id)
 const allSettingKeys = [...SETTING_FIELDS, ...SETTING_SWITCHES].map((item) => item.key)
 
 describe('settings tab configuration', () => {
-  it('defines the five categories in order (including system maintenance)', () => {
-    expect(TAB_IDS).toEqual<SettingsTabId[]>(['institution', 'sessions', 'accounts', 'ai', 'system'])
+  it('defines the six categories in order (system maintenance, then the privacy center)', () => {
+    expect(TAB_IDS).toEqual<SettingsTabId[]>([
+      'institution',
+      'sessions',
+      'accounts',
+      'ai',
+      'system',
+      'privacy',
+    ])
     expect(SETTINGS_TABS.map((tab) => tab.label)).toEqual([
       'Institution',
       'Sessions & attendance',
       'Accounts & access',
       'AI Assistant',
       'System',
+      'Privacy (RA 10173)',
     ])
     expect(SETTINGS_TABS.map((tab) => tab.shortLabel)).toEqual([
       'Institution',
@@ -38,7 +46,9 @@ describe('settings tab configuration', () => {
       'Accounts',
       'AI',
       'System',
+      'Privacy',
     ])
+    expect(SETTINGS_TABS[5].accessibilityLabel).toBe('Privacy RA 10173 settings')
   })
 
   it('assigns every setting key to exactly one tab', () => {
@@ -74,11 +84,17 @@ describe('settings tab configuration', () => {
       'maintenance_mode_enabled',
       'maintenance_message',
       'maintenance_until',
+      'geolocation_retention_days',
     ])
+    // F6: the privacy tab is a read-only transparency dashboard — no keys.
+    expect(TAB_SETTING_KEYS.privacy).toEqual([])
     expect(fieldsForTab('sessions')).toHaveLength(5)
     expect(switchesForTab('ai')).toHaveLength(3)
     expect(switchesForTab('accounts')).toHaveLength(3)
     expect(switchesForTab('system')).toHaveLength(1)
+    expect(fieldsForTab('system')).toHaveLength(3)
+    expect(fieldsForTab('privacy')).toHaveLength(0)
+    expect(switchesForTab('privacy')).toHaveLength(0)
   })
 
   it('documents runtime defaults (AI on, provisioning off)', () => {

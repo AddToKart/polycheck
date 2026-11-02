@@ -1,8 +1,10 @@
-import { Controller, Get, Query, Request } from '@nestjs/common'
+import { Controller, Get, Logger, Post, Query, Request } from '@nestjs/common'
 import { Type } from 'class-transformer'
 import { IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
 import { Roles } from '../common/decorators/roles.decorator'
+import { LedgerService } from '../attendance/ledger.service'
+import { PrismaService } from '../prisma/prisma.service'
 import { AuditLogsService } from './audit-logs.service'
 
 export class AuditLogQueryDto {
@@ -18,11 +20,50 @@ export class AuditLogQueryDto {
 @Controller('audit-logs')
 @Roles('super_admin')
 export class AuditLogsController {
-  constructor(private readonly auditLogs: AuditLogsService) {}
+  private readonly logger = new Logger(AuditLogsController.name)
+
+  constructor(
+    private readonly auditLogs: AuditLogsService,
+    private readonly ledger: LedgerService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Get()
   @Roles('super_admin')
   list(@Request() req: AuthenticatedRequest, @Query() query: AuditLogQueryDto) {
     return this.auditLogs.list(req.user, query)
+  }
+
+  /**
+   * Read-only, idempotent chain verification (F9/WF-LD11). The outcome is
+   * audited fail-open per repo convention; the verify run itself never
+   * mutates attendance rows.
+   */
+  @Post('ledger/verify')
+  @Roles('super_admin')
+  async verifyLedger(@Request() req: AuthenticatedRequest) {
+    const result = await this.ledger.verifyLedger(this.prisma)
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          actorId: req.user.id,
+          actorRole: req.user.role,
+          action: 'ledger.verified',
+          entityType: 'audit',
+          metadata: {
+            verified: result.verified,
+            recordsChecked: result.recordsChecked,
+            sessionsChecked: result.sessionsChecked,
+          },
+        },
+      })
+    } catch (error) {
+      this.logger.warn(
+        `Could not write ledger.verified audit row for ${req.user.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    }
+    return result
   }
 }

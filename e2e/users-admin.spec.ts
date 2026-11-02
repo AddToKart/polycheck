@@ -91,7 +91,7 @@ test.describe('Super Admin user management', () => {
     await expect(row).toBeVisible()
 
     await row.getByRole('button', { name: /Edit/ }).click()
-    await expect(page.getByRole('heading', { name: 'Edit profile' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Edit Account Profile' })).toBeVisible()
     await page.getByLabel('Full name').fill(updatedName)
     await page.getByRole('button', { name: 'Save changes' }).click()
 
