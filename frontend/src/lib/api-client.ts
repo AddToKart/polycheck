@@ -388,11 +388,14 @@ async function ensureTeacherSigningKeyProvisioned(
   user: User,
   session: Session,
   key: { publicKey: string },
+  force = false,
 ): Promise<void> {
-  if (await isSigningKeyProvisioned(user.id)) return;
-  if (session.teacherPublicKey === key.publicKey) {
-    await markSigningKeyProvisioned(user.id);
-    return;
+  if (!force) {
+    if (session.teacherPublicKey && session.teacherPublicKey === key.publicKey) {
+      await markSigningKeyProvisioned(user.id);
+      return;
+    }
+    if (await isSigningKeyProvisioned(user.id)) return;
   }
   try {
     await post("/auth/provision-key", { publicKey: key.publicKey });
@@ -839,6 +842,30 @@ const apiBase = {
       await cacheSessions([activated]).catch(() => undefined);
       return activated;
     } catch (error) {
+      if (
+        error instanceof ApiHttpError &&
+        (error.message.includes("signature is invalid") ||
+          error.message.includes("signing key"))
+      ) {
+        await ensureTeacherSigningKeyProvisioned(user, session, key, true);
+        const retried = await post<Session>(`/sessions/${sessionId}/activate`, {
+          validityMinutes,
+          gracePeriodMinutes: effectiveGrace,
+          token,
+          ...(teacherLocation?.latitude !== undefined &&
+          teacherLocation?.longitude !== undefined
+            ? {
+                latitude: teacherLocation.latitude,
+                longitude: teacherLocation.longitude,
+                ...(teacherLocation.override
+                  ? { overrideTeacherLocation: true }
+                  : {}),
+              }
+            : {}),
+        });
+        await cacheSessions([retried]).catch(() => undefined);
+        return retried;
+      }
       if (!isNetworkFailure(error)) throw error;
       const activated: Session = {
         ...session,
@@ -937,6 +964,24 @@ const apiBase = {
       await cacheSessions([activated]).catch(() => undefined);
       return activated;
     } catch (error) {
+      if (
+        error instanceof ApiHttpError &&
+        (error.message.includes("signature is invalid") ||
+          error.message.includes("signing key"))
+      ) {
+        await ensureTeacherSigningKeyProvisioned(user, session, key, true);
+        const retried = await post<Session>(`/sessions/${sessionId}/activate`, {
+          checkpoint,
+          validitySeconds,
+          ...(checkpoint === "start"
+            ? { gracePeriodMinutes: effectiveGrace }
+            : {}),
+          ...(regenerate ? { regenerate: true } : {}),
+          token,
+        });
+        await cacheSessions([retried]).catch(() => undefined);
+        return retried;
+      }
       if (!isNetworkFailure(error)) throw error;
       const activated: Session = {
         ...session,

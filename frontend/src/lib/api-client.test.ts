@@ -287,6 +287,42 @@ describe('real API client', () => {
     expect(provisionCalls).toHaveLength(0)
   })
 
+  it('generateQrCode recovers and re-provisions when the server rejects an invalid signature', async () => {
+    const { api } = await import('./api-client')
+    vi.mocked(fetch).mockImplementation(async () => jsonResponse(teacher))
+    await api.restoreSession()
+    const { getOrCreateTeacherSigningKey, isSigningKeyProvisioned, markSigningKeyProvisioned } = await import('./signing-key')
+    const { createSigningKeyPair } = await import('@polycheck/shared')
+    const pair = createSigningKeyPair(crypto.getRandomValues(new Uint8Array(32)))
+    vi.mocked(getOrCreateTeacherSigningKey).mockResolvedValue(pair)
+    vi.mocked(isSigningKeyProvisioned).mockResolvedValue(true)
+    vi.mocked(fetch).mockClear()
+
+    let activateAttempts = 0
+    vi.mocked(fetch).mockImplementation(async (url) => {
+      const u = String(url)
+      if (u.includes('/sessions/sess-1') && !u.includes('activate')) {
+        return jsonResponse({ id: 'sess-1', sectionId: 'sec-1', teacherId: 'teacher-1' })
+      }
+      if (u.includes('/sessions/sess-1/activate')) {
+        activateAttempts += 1
+        if (activateAttempts === 1) {
+          return new Response(JSON.stringify({ message: 'QR token signature is invalid' }), { status: 400 })
+        }
+        return jsonResponse({ id: 'sess-1', isActive: true })
+      }
+      if (u.includes('/auth/provision-key')) {
+        return jsonResponse({ success: true })
+      }
+      return jsonResponse({})
+    })
+
+    const activated = await api.generateQrCode('sess-1', 5, 10)
+    expect(activated.isActive).toBe(true)
+    expect(activateAttempts).toBe(2)
+    expect(markSigningKeyProvisioned).toHaveBeenCalledWith('teacher-1')
+  })
+
   it('search queries the search endpoint', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ students: [], sections: [], sessions: [] }))
     const { api } = await import('./api-client')
