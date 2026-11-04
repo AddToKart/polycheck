@@ -288,7 +288,9 @@ function PrivacyTabPanel() {
               Ephemeral telemetry
             </h3>
             <div data-testid="privacy-attestation" className="flex flex-wrap items-end gap-4">
-              <p className="text-4xl font-heading font-bold leading-none text-golden">0</p>
+              <p className="text-4xl font-heading font-bold leading-none text-golden">
+                {snapshot.ephemeral.coordinatesBeyondRetention ?? 'Unknown'}
+              </p>
               <div>
                 <p className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
                   rows live beyond retention

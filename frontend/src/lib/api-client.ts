@@ -388,15 +388,21 @@ async function ensureTeacherSigningKeyProvisioned(
   user: User,
   session: Session,
   key: { publicKey: string },
-  force = false,
 ): Promise<void> {
-  if (!force) {
-    if (session.teacherPublicKey && session.teacherPublicKey === key.publicKey) {
-      await markSigningKeyProvisioned(user.id);
-      return;
-    }
-    if (await isSigningKeyProvisioned(user.id)) return;
+  if (session.teacherPublicKey === key.publicKey) {
+    await markSigningKeyProvisioned(user.id);
+    return
   }
+  if (session.teacherPublicKey && session.teacherPublicKey !== key.publicKey) {
+    throw new ApiHttpError(
+      'This browser signing key does not match the registered teacher key. Restore the original key or explicitly revoke it after queued scans sync.',
+      409,
+    )
+  }
+  // A per-account marker means this key was already provisioned. Cached
+  // session responses can omit teacherPublicKey, so let server verification
+  // detect a genuine key mismatch instead of attempting an automatic rotation.
+  if (await isSigningKeyProvisioned(user.id)) return
   try {
     await post("/auth/provision-key", { publicKey: key.publicKey });
     await markSigningKeyProvisioned(user.id);
@@ -844,27 +850,12 @@ const apiBase = {
     } catch (error) {
       if (
         error instanceof ApiHttpError &&
-        (error.message.includes("signature is invalid") ||
-          error.message.includes("signing key"))
+        (error.message.includes("signature is invalid") || error.message.includes("signing key"))
       ) {
-        await ensureTeacherSigningKeyProvisioned(user, session, key, true);
-        const retried = await post<Session>(`/sessions/${sessionId}/activate`, {
-          validityMinutes,
-          gracePeriodMinutes: effectiveGrace,
-          token,
-          ...(teacherLocation?.latitude !== undefined &&
-          teacherLocation?.longitude !== undefined
-            ? {
-                latitude: teacherLocation.latitude,
-                longitude: teacherLocation.longitude,
-                ...(teacherLocation.override
-                  ? { overrideTeacherLocation: true }
-                  : {}),
-              }
-            : {}),
-        });
-        await cacheSessions([retried]).catch(() => undefined);
-        return retried;
+        throw new ApiHttpError(
+          'The registered teacher signing key rejected this QR. No key was rotated; restore the original key or explicitly revoke it only after queued scans sync.',
+          409,
+        )
       }
       if (!isNetworkFailure(error)) throw error;
       const activated: Session = {
@@ -966,21 +957,12 @@ const apiBase = {
     } catch (error) {
       if (
         error instanceof ApiHttpError &&
-        (error.message.includes("signature is invalid") ||
-          error.message.includes("signing key"))
+        (error.message.includes("signature is invalid") || error.message.includes("signing key"))
       ) {
-        await ensureTeacherSigningKeyProvisioned(user, session, key, true);
-        const retried = await post<Session>(`/sessions/${sessionId}/activate`, {
-          checkpoint,
-          validitySeconds,
-          ...(checkpoint === "start"
-            ? { gracePeriodMinutes: effectiveGrace }
-            : {}),
-          ...(regenerate ? { regenerate: true } : {}),
-          token,
-        });
-        await cacheSessions([retried]).catch(() => undefined);
-        return retried;
+        throw new ApiHttpError(
+          'The registered teacher signing key rejected this QR. No key was rotated; restore the original key or explicitly revoke it only after queued scans sync.',
+          409,
+        )
       }
       if (!isNetworkFailure(error)) throw error;
       const activated: Session = {

@@ -110,16 +110,27 @@ export class DisputesService {
     if (!record) throw new NotFoundException('Attendance record not found')
     if (user.role === 'teacher' && record.session.teacherId !== user.id)
       throw new ForbiddenException('You can only resolve your own session disputes')
+    if (record.status !== 'disputed' || record.disputeResolved) {
+      throw new ConflictException('This attendance record has no unresolved dispute')
+    }
     const status: AttendanceStatus | undefined =
       resolution === 'accept' ? 'present' : resolution === 'reject' ? 'absent' : newStatus
     if (!status) throw new ForbiddenException('An override status is required')
     if (status === 'pending' || status === 'disputed') {
       throw new ForbiddenException('Cannot override status to pending or disputed')
     }
-    const updated = await this.prisma.attendanceRecord.update({
-      where: { id },
-      data: { status, disputeResolved: true, manuallySet: resolution === 'override' },
-    })
+    let updated: AttendanceRecord
+    try {
+      updated = await this.prisma.attendanceRecord.update({
+        where: { id, status: 'disputed', disputeResolved: false },
+        data: { status, disputeResolved: true, manuallySet: resolution === 'override' },
+      })
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025') {
+        throw new ConflictException('This attendance dispute was already resolved')
+      }
+      throw error
+    }
     await this.notifications?.notify(record.studentId, {
       type: 'dispute_resolved',
       title: 'Dispute resolved',

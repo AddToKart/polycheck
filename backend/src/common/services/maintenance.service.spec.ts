@@ -1,4 +1,22 @@
-import { MaintenanceService } from './maintenance.service'
+import { MaintenanceService, completedUtcDayWindow } from './maintenance.service'
+
+describe('completedUtcDayWindow', () => {
+  it('selects the completed UTC calendar day at the scheduled 02:00 run', () => {
+    expect(completedUtcDayWindow(new Date('2026-11-04T02:00:00.000Z'))).toEqual({
+      date: '2026-11-03',
+      windowStart: new Date('2026-11-03T00:00:00.000Z'),
+      windowEnd: new Date('2026-11-04T00:00:00.000Z'),
+    })
+  })
+
+  it('handles month and year boundaries', () => {
+    expect(completedUtcDayWindow(new Date('2027-01-01T02:00:00.000Z'))).toEqual({
+      date: '2026-12-31',
+      windowStart: new Date('2026-12-31T00:00:00.000Z'),
+      windowEnd: new Date('2027-01-01T00:00:00.000Z'),
+    })
+  })
+})
 
 describe('MaintenanceService', () => {
   it('expires permissions and prunes only unlinked denied scan attempts older than 90 days', async () => {

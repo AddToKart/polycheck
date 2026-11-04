@@ -35,6 +35,7 @@ const LEDGER_BREAK_LABELS: Record<NonNullable<LedgerVerifyResult['brokenAt']>['r
   hash_mismatch: 'the stored hash no longer matches the recomputed chain',
   link_mismatch: 'a chain link points at the wrong predecessor record',
   anchor_mismatch: 'the published daily anchor does not match the chain head',
+  coverage_incomplete: 'a finalized attendance row has no ledger hash',
 }
 
 const formatLedgerCount = (value: number): string => value.toLocaleString('en-US')

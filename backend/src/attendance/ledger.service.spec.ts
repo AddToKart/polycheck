@@ -28,12 +28,12 @@ function makeTx() {
     $executeRaw: jest.fn().mockResolvedValue(0),
     attendanceRecord: {
       findUnique: jest.fn(),
-      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockResolvedValue({}),
     },
   } as unknown as {
     $executeRaw: jest.Mock
-    attendanceRecord: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock }
+    attendanceRecord: { findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock }
   }
 }
 
@@ -55,6 +55,12 @@ function makeDb(options: {
       ),
     },
     attendanceRecord: {
+      findFirst: jest.fn().mockImplementation(async (args: { where: { sessionId: string } }) =>
+        (rowsBySession[args.where.sessionId] ?? []).find(
+          (row: { recordHash: string | null; status?: string }) =>
+            row.recordHash === null && row.status !== 'pending',
+        ) ?? null,
+      ),
       findMany: jest
         .fn()
         .mockImplementation(async (args: { where: { sessionId: string } }) =>
@@ -104,10 +110,13 @@ describe('LedgerService.appendLedger', () => {
     )
   })
 
-  it('links to the current session head based on (timestamp, id) order', async () => {
+  it('links to the unique chain tail regardless of scan timestamp order', async () => {
     const tx = makeTx()
     tx.attendanceRecord.findUnique.mockResolvedValue({ recordHash: null })
-    tx.attendanceRecord.findFirst.mockResolvedValue({ recordHash: 'head-hash' })
+    tx.attendanceRecord.findMany.mockResolvedValue([
+      { id: 'rec-head', recordHash: 'head-hash', prevHash: 'root-hash' },
+      { id: 'rec-root', recordHash: 'root-hash', prevHash: null },
+    ])
 
     const hash = await service.appendLedger(tx as never, {
       ...record,
@@ -116,10 +125,10 @@ describe('LedgerService.appendLedger', () => {
       timestamp: new Date('2026-07-14T02:00:00.000Z'),
     })
 
-    expect(tx.attendanceRecord.findFirst).toHaveBeenCalledWith(
+    expect(tx.attendanceRecord.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { sessionId: 'sess-1', id: { not: 'rec-2' }, recordHash: { not: null } },
-        orderBy: [{ timestamp: 'desc' }, { id: 'desc' }],
+        select: { id: true, recordHash: true, prevHash: true },
       }),
     )
     const data = tx.attendanceRecord.update.mock.calls[0][0].data
@@ -134,7 +143,7 @@ describe('LedgerService.appendLedger', () => {
     const result = await service.appendLedger(tx as never, record)
 
     expect(result).toBe('committed-hash')
-    expect(tx.attendanceRecord.findFirst).not.toHaveBeenCalled()
+    expect(tx.attendanceRecord.findMany).not.toHaveBeenCalled()
     expect(tx.attendanceRecord.update).not.toHaveBeenCalled()
   })
 
@@ -144,7 +153,7 @@ describe('LedgerService.appendLedger', () => {
 
     await service.appendLedger(tx as never, record, 'explicit-prev')
 
-    expect(tx.attendanceRecord.findFirst).not.toHaveBeenCalled()
+    expect(tx.attendanceRecord.findMany).not.toHaveBeenCalled()
     expect(tx.attendanceRecord.update.mock.calls[0][0].data.prevHash).toBe('explicit-prev')
   })
 
@@ -275,10 +284,38 @@ describe('LedgerService.verifyLedger', () => {
     expect(result.recordsChecked).toBe(2)
   })
 
-  it('ignores rows that were never chained', async () => {
-    const unchained = makeRow({ id: 'seed' })
+  it('rejects two ledger rows that branch from the same predecessor', async () => {
+    const root = chained('root', 1, null, 'sess-a', 'stu-root')
+    const firstChild = chained('child-a', 2, root.recordHash, 'sess-a', 'stu-a')
+    const secondChild = chained('child-b', 3, root.recordHash, 'sess-a', 'stu-b')
+    const db = makeDb({
+      sessions: ['sess-a'],
+      rowsBySession: { 'sess-a': [root, firstChild, secondChild] },
+    })
+
+    const result = await service.verifyLedger(db as never)
+
+    expect(result.verified).toBe(false)
+    expect(result.brokenAt).toMatchObject({ sessionId: 'sess-a', reason: 'link_mismatch' })
+  })
+
+  it('reports incomplete coverage when a finalized row has no hash', async () => {
+    const unchained = makeRow({ id: 'seed', status: 'absent' })
     const a1 = chained('a1', 1, null, 'sess-a', 'stu-1')
     const db = makeDb({ sessions: ['sess-a'], rowsBySession: { 'sess-a': [unchained, a1] } })
+
+    const result = await service.verifyLedger(db as never)
+
+    expect(result).toMatchObject({
+      verified: false,
+      brokenAt: { sessionId: 'sess-a', recordId: 'seed', reason: 'coverage_incomplete' },
+    })
+  })
+
+  it('allows pending roster rows while a session is unresolved', async () => {
+    const pending = makeRow({ id: 'pending', status: 'pending' })
+    const a1 = chained('a1', 1, null, 'sess-a', 'stu-1')
+    const db = makeDb({ sessions: ['sess-a'], rowsBySession: { 'sess-a': [pending, a1] } })
 
     const result = await service.verifyLedger(db as never)
 

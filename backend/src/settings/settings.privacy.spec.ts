@@ -16,6 +16,7 @@ describe('SettingsService privacy center (F6)', () => {
       users?: { covered: number; totalActive: number }
       shredRecord?: unknown
       version?: string
+      staleCoordinates?: { attendanceRecords: number; scanAttempts: number }
     } = {},
   ) {
     const rows = options.rows ?? new Map<string, string>()
@@ -36,6 +37,12 @@ describe('SettingsService privacy center (F6)', () => {
           .mockResolvedValueOnce(options.users?.covered ?? 0)
           .mockResolvedValueOnce(options.users?.totalActive ?? 0),
       },
+      attendanceRecord: {
+        count: jest.fn().mockResolvedValue(options.staleCoordinates?.attendanceRecords ?? 0),
+      },
+      scanAttempt: {
+        count: jest.fn().mockResolvedValue(options.staleCoordinates?.scanAttempts ?? 0),
+      },
     }
     const redis = {
       setJson: jest.fn(async () => true),
@@ -50,6 +57,7 @@ describe('SettingsService privacy center (F6)', () => {
   }
 
   afterEach(() => {
+    jest.useRealTimers()
     // The module-level in-memory fallback would otherwise leak between cases.
     ;(SettingsService as unknown as { lastShredRun: PrivacyShredRecord | null }).lastShredRun = null
   })
@@ -60,7 +68,12 @@ describe('SettingsService privacy center (F6)', () => {
     await expect(service.getPrivacyCenterSnapshot()).resolves.toEqual({
       retentionDays: 30,
       consent: { covered: 0, totalActive: 0, version: '2026-09-05' },
-      ephemeral: { lastRunAt: null, recordsShredded: null, attemptsShredded: null },
+      ephemeral: {
+        coordinatesBeyondRetention: 0,
+        lastRunAt: null,
+        recordsShredded: null,
+        attemptsShredded: null,
+      },
       dataInventory: PRIVACY_DATA_INVENTORY,
       breaches: [],
     })
@@ -76,6 +89,25 @@ describe('SettingsService privacy center (F6)', () => {
       where: { isActive: true, privacyConsentVersion: '2026-09-05' },
     })
     expect(prisma.user.count).toHaveBeenNthCalledWith(2, { where: { isActive: true } })
+  })
+
+  it('counts live coordinates older than the configured retention cutoff', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-11-04T00:00:00.000Z'))
+    const { prisma, service } = build({
+      users: { covered: 0, totalActive: 0 },
+      staleCoordinates: { attendanceRecords: 2, scanAttempts: 3 },
+    })
+
+    const snapshot = await service.getPrivacyCenterSnapshot()
+
+    expect(snapshot.ephemeral.coordinatesBeyondRetention).toBe(5)
+    const expectedCutoff = new Date('2026-10-05T00:00:00.000Z')
+    const where = {
+      timestamp: { lt: expectedCutoff },
+      OR: [{ latitude: { not: null } }, { longitude: { not: null } }],
+    }
+    expect(prisma.attendanceRecord.count).toHaveBeenCalledWith({ where })
+    expect(prisma.scanAttempt.count).toHaveBeenCalledWith({ where })
   })
 
   it('clamps hand-edited retention rows into the documented 7–90 window', async () => {

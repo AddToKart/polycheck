@@ -30,6 +30,7 @@ const LEDGER_BREAK_REASONS: Record<
   hash_mismatch: 'stored hash no longer recomputes (row altered or removed)',
   link_mismatch: 'chain linkage broken (a predecessor hash is missing)',
   anchor_mismatch: 'published daily anchor no longer matches the chain',
+  coverage_incomplete: 'a finalized attendance row has no ledger hash',
 }
 
 export default function AuditLogsPage() {

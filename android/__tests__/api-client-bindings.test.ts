@@ -454,7 +454,12 @@ describe('read bindings', () => {
     const snapshot = {
       retentionDays: 30,
       consent: { covered: 1, totalActive: 2, version: '2' },
-      ephemeral: { lastRunAt: null, recordsShredded: null, attemptsShredded: null },
+      ephemeral: {
+        coordinatesBeyondRetention: null,
+        lastRunAt: null,
+        recordsShredded: null,
+        attemptsShredded: null,
+      },
       dataInventory: [],
       breaches: [],
     }

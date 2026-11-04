@@ -51,6 +51,7 @@ function makeSession(overrides: Partial<Session>): Session {
     startTime: '08:00',
     endTime: '09:30',
     room: 'R301',
+    mode: 'in_person',
     qrValidityMinutes: 30,
     gracePeriodMinutes: 15,
     geofence: { latitude: 14.5995, longitude: 120.9842, radiusMeters: 50 },

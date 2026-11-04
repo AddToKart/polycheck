@@ -594,7 +594,10 @@ export function buildPrivacyView(snapshot: PrivacyCenterSnapshot): PrivacyViewMo
   return {
     inventoryRows: snapshot.dataInventory.map((row) => ({ ...row })),
     retentionDays: snapshot.retentionDays,
-    attestationValue: '0',
+    attestationValue:
+      snapshot.ephemeral.coordinatesBeyondRetention === null
+        ? 'Unknown'
+        : String(snapshot.ephemeral.coordinatesBeyondRetention),
     lastRunAt: snapshot.ephemeral.lastRunAt,
     shredVerified: snapshot.ephemeral.lastRunAt !== null,
     recordsShredded: snapshot.ephemeral.recordsShredded === null ? 'Unknown' : String(snapshot.ephemeral.recordsShredded),

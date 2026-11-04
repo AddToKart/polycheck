@@ -28,6 +28,8 @@ export interface PrivacyConsentSnapshot {
  * represented as "unknown", never as "zero".
  */
 export interface PrivacyEphemeralSnapshot {
+  /** Live count of attendance and scan-attempt rows retaining coordinates past the cutoff. */
+  coordinatesBeyondRetention: number | null
   lastRunAt: string | null
   recordsShredded: number | null
   attemptsShredded: number | null

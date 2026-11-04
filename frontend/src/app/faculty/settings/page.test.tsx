@@ -397,6 +397,7 @@ describe('Institution Settings tabs', () => {
       retentionDays: 30,
       consent: { covered: 42, totalActive: 50, version: 'v2' },
       ephemeral: {
+        coordinatesBeyondRetention: 0,
         lastRunAt: '2026-11-01T22:35:12.000Z',
         recordsShredded: 7,
         attemptsShredded: 3,
@@ -488,7 +489,12 @@ describe('Institution Settings tabs', () => {
         .mockRejectedValueOnce(new Error('Snapshot unavailable'))
         .mockResolvedValueOnce({
           ...privacySnapshot,
-          ephemeral: { lastRunAt: null, recordsShredded: null, attemptsShredded: null },
+          ephemeral: {
+            coordinatesBeyondRetention: null,
+            lastRunAt: null,
+            recordsShredded: null,
+            attemptsShredded: null,
+          },
         })
 
       render(

@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing'
-import { ForbiddenException, NotFoundException } from '@nestjs/common'
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { DisputesService } from './disputes.service'
 import type { RequestUser } from '../auth/authenticated-principal'
@@ -178,6 +178,7 @@ describe('DisputesService', () => {
       prisma.attendanceRecord.update.mockResolvedValue({ ...baseRecord, status: 'present', disputeResolved: true })
       const result = await service.resolve(teacherUser, 'rec-1', 'accept')
       const args = prisma.attendanceRecord.update.mock.calls[0][0]
+      expect(args.where).toEqual({ id: 'rec-1', status: 'disputed', disputeResolved: false })
       expect(args.data.status).toBe('present')
       expect(args.data.disputeResolved).toBe(true)
       expect(args.data.manuallySet).toBe(false)
@@ -240,6 +241,28 @@ describe('DisputesService', () => {
     it('throws NotFoundException when record does not exist', async () => {
       prisma.attendanceRecord.findUnique.mockResolvedValue(null)
       await expect(service.resolve(teacherUser, 'missing', 'accept')).rejects.toThrow(NotFoundException)
+    })
+
+    it('rejects resolution when the record has no unresolved dispute', async () => {
+      prisma.attendanceRecord.findUnique.mockResolvedValue({
+        ...baseRecord,
+        status: 'present',
+        disputeResolved: true,
+        session: { teacherId: 'teacher-1' },
+      })
+
+      await expect(service.resolve(teacherUser, 'rec-1', 'reject')).rejects.toThrow(ConflictException)
+      expect(prisma.attendanceRecord.update).not.toHaveBeenCalled()
+    })
+
+    it('maps a concurrent resolution to a conflict', async () => {
+      prisma.attendanceRecord.findUnique.mockResolvedValue({
+        ...baseRecord,
+        session: { teacherId: 'teacher-1' },
+      })
+      prisma.attendanceRecord.update.mockRejectedValue({ code: 'P2025' })
+
+      await expect(service.resolve(teacherUser, 'rec-1', 'accept')).rejects.toThrow(ConflictException)
     })
   })
 })

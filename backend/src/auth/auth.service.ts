@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
   HttpException,
   HttpStatus,
   Logger,
@@ -250,6 +251,11 @@ export class AuthService {
       const user = await this.prisma.user.findUnique({ where: { id: userId } })
       if (!user) throw new NotFoundException('User not found')
       previousKey = user.teacherPublicKey
+      if (previousKey && previousKey !== publicKey) {
+        throw new ConflictException(
+          'A teacher signing key is already registered. Revoke it explicitly before registering a replacement; outstanding offline QR scans may depend on the current key.',
+        )
+      }
       await this.prisma.user.update({
         where: { id: userId },
         data: { teacherPublicKey: publicKey },

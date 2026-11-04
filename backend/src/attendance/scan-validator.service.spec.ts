@@ -198,6 +198,29 @@ describe('ScanValidatorService', () => {
       expect(result.reason).toBe('poor_location_accuracy')
     })
 
+    it('does not let a client-selected image channel relax the accuracy threshold', async () => {
+      const result = await service.validateScan(
+        studentUser,
+        makeEvidence({ accuracyMeters: 100, inputChannel: 'image', deviceId: 'web-untrusted' }),
+        false,
+        new Date(),
+      )
+
+      expect(result).toMatchObject({ success: false, status: 'disputed', reason: 'poor_location_accuracy' })
+    })
+
+    it('applies geofence uncertainty checks to image scans', async () => {
+      geofence.calculateDistance.mockReturnValue(45)
+      const result = await service.validateScan(
+        studentUser,
+        makeEvidence({ accuracyMeters: 10, inputChannel: 'image', deviceId: 'web-untrusted' }),
+        false,
+        new Date(),
+      )
+
+      expect(result).toMatchObject({ success: false, status: 'disputed', reason: 'geofence_uncertain' })
+    })
+
     it('returns success with present status for valid scan within validity window', async () => {
       const result = await service.validateScan(studentUser, makeEvidence(), false, new Date())
       expect(result.success).toBe(true)

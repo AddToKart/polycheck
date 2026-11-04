@@ -1,7 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common'
 import type { Prisma } from '../prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
-import { computeRecordHash, generateLedgerSalt, ledgerDateOf, type LedgerVerifyResult } from '@polycheck/shared/ledger'
+import {
+  computeRecordHash,
+  generateLedgerSalt,
+  ledgerDateOf,
+  type LedgerBreakReason,
+  type LedgerVerifyResult,
+} from '@polycheck/shared/ledger'
 
 export interface LedgerAppendRecord {
   id: string
@@ -68,12 +74,17 @@ export class LedgerService {
       if (arguments.length >= 3) {
         prevHash = prev ?? null
       } else {
-        const head = await tx.attendanceRecord.findFirst({
+        const rows = await tx.attendanceRecord.findMany({
           where: { sessionId: record.sessionId, id: { not: record.id }, recordHash: { not: null } },
-          orderBy: [{ timestamp: 'desc' }, { id: 'desc' }],
-          select: { recordHash: true },
+          select: { id: true, recordHash: true, prevHash: true },
         })
-        prevHash = head?.recordHash ?? null
+        const topology = this.analyzeChain(rows)
+        if (topology.brokenRecordId) {
+          throw new Error(
+            `attendance ledger for session ${record.sessionId} is not a single chain; repair it before appending`,
+          )
+        }
+        prevHash = topology.headHash ?? null
       }
       const salt = generateLedgerSalt()
       const recordHash = computeRecordHash({
@@ -124,6 +135,20 @@ export class LedgerService {
       if (sessions.length === 0) break
       cursor = sessions[sessions.length - 1].id
       for (const session of sessions) {
+        const unchainedDecision = await db.attendanceRecord.findFirst({
+          where: { sessionId: session.id, recordHash: null, status: { not: 'pending' } },
+          orderBy: [{ timestamp: 'asc' }, { id: 'asc' }],
+          select: { id: true },
+        })
+        if (unchainedDecision) {
+          return this.broken(
+            session.id,
+            unchainedDecision.id,
+            'coverage_incomplete',
+            recordsChecked,
+            sessionsChecked,
+          )
+        }
         const rows = await db.attendanceRecord.findMany({
           where: { sessionId: session.id, recordHash: { not: null } },
           orderBy: [{ timestamp: 'asc' }, { id: 'asc' }],
@@ -149,6 +174,16 @@ export class LedgerService {
           }
           recordsChecked += 1
           this.collectBucket(buckets, session.id, row)
+        }
+        const topology = this.analyzeChain(rows)
+        if (topology.brokenRecordId) {
+          return this.broken(
+            session.id,
+            topology.brokenRecordId,
+            'link_mismatch',
+            recordsChecked,
+            sessionsChecked,
+          )
         }
       }
     }
@@ -182,6 +217,44 @@ export class LedgerService {
       bucket.sessionId = sessionId
     }
     buckets.set(date, bucket)
+  }
+
+  private analyzeChain(rows: { id: string; recordHash: string | null; prevHash: string | null }[]): {
+    headHash?: string | null
+    brokenRecordId?: string
+  } {
+    if (rows.length === 0) return { headHash: null as string | null }
+    const byHash = new Map<string, (typeof rows)[number]>()
+    for (const row of rows) {
+      if (!row.recordHash || byHash.has(row.recordHash)) return { brokenRecordId: row.id }
+      byHash.set(row.recordHash, row)
+    }
+
+    const roots = rows.filter((row) => row.prevHash === null)
+    if (roots.length !== 1) return { brokenRecordId: roots[1]?.id ?? rows[0].id }
+
+    const children = new Map<string, (typeof rows)[number]>()
+    for (const row of rows) {
+      if (row.prevHash === null) continue
+      if (!byHash.has(row.prevHash)) return { brokenRecordId: row.id }
+      if (children.has(row.prevHash)) return { brokenRecordId: row.id }
+      children.set(row.prevHash, row)
+    }
+
+    const visited = new Set<string>()
+    let current = roots[0]
+    while (current.recordHash) {
+      if (visited.has(current.recordHash)) return { brokenRecordId: current.id }
+      visited.add(current.recordHash)
+      const child = children.get(current.recordHash)
+      if (!child) break
+      current = child
+    }
+    if (visited.size !== rows.length) {
+      const disconnected = rows.find((row) => !row.recordHash || !visited.has(row.recordHash))
+      return { brokenRecordId: disconnected?.id ?? rows[0].id }
+    }
+    return { headHash: current.recordHash }
   }
 
   private checkAnchors(
@@ -227,7 +300,7 @@ export class LedgerService {
   private broken(
     sessionId: string,
     recordId: string,
-    reason: 'hash_mismatch' | 'link_mismatch' | 'anchor_mismatch',
+    reason: LedgerBreakReason,
     recordsChecked: number,
     sessionsChecked: number,
   ): LedgerVerifyResult {

@@ -66,6 +66,7 @@ interface TokenEvidence {
   payload: QRTokenPayload
   signatureVerified: boolean | null
   sessionMatch: boolean
+  checkpoint: 'start' | 'end' | null
 }
 
 function maskDeviceId(deviceId: string | null | undefined) {
@@ -215,14 +216,18 @@ export class AttendanceForensicsService {
     record: ForensicsRecord,
     events: RecordTimelineEvent[],
     teacherKey: string | null,
-  ): TokenEvidence | null {
+  ): TokenEvidence[] {
     const candidates: { token: string | null; checkpoint: string | null }[] = [
       { token: record.tokenSnapshot, checkpoint: null },
       { token: record.checkInToken, checkpoint: 'start' },
       { token: record.checkOutToken, checkpoint: 'end' },
     ]
+    const seen = new Set<string>()
+    const evidence: TokenEvidence[] = []
     for (const candidate of candidates) {
       if (!candidate.token) continue
+      if (seen.has(candidate.token)) continue
+      seen.add(candidate.token)
       const payload = decodeTokenPayload(candidate.token)
       if (!payload || !Number.isFinite(payload.issuedAt)) continue
       events.push({
@@ -231,14 +236,15 @@ export class AttendanceForensicsService {
         label: 'Local ED25519 signature generated',
         source: 'token',
       })
-      return {
+      evidence.push({
         token: candidate.token,
         payload,
         signatureVerified: teacherKey ? verifyQRToken(candidate.token, teacherKey) !== null : null,
         sessionMatch: payload.sessionId === record.sessionId,
-      }
+        checkpoint: payload.checkpoint ?? candidate.checkpoint as 'start' | 'end' | null,
+      })
     }
-    return null
+    return evidence
   }
 
   private collectRecordEvents(record: ForensicsRecord, events: RecordTimelineEvent[]) {
@@ -292,9 +298,12 @@ export class AttendanceForensicsService {
   }
 
   /** Deterministic recommendation matrix (WF-LD10 / F8.A). */
-  private recommend(record: ForensicsRecord, evidence: TokenEvidence | null): DisputeRecommendation {
+  private recommend(record: ForensicsRecord, evidence: TokenEvidence[]): DisputeRecommendation {
     const online = record.session.mode === 'online'
     const primary = primaryAttempt(record)
+    const primaryEvidence = online
+      ? (evidence.find((item) => item.checkpoint === 'start') ?? evidence.find((item) => item.checkpoint === null))
+      : (evidence.find((item) => item.checkpoint === null) ?? evidence[0])
     const disputeReason = record.disputeReason ?? undefined
     if (primary?.mocked === true) {
       return {
@@ -343,25 +352,44 @@ export class AttendanceForensicsService {
         signals.push('Meeting PIN verification is not recorded on the attempt')
       }
     }
-    if (!evidence) {
+    if (!primaryEvidence) {
       signals.push('No signed QR token is attached to this record')
-    } else if (!evidence.sessionMatch) {
+    } else if (!primaryEvidence.sessionMatch) {
       signals.push('Signed token does not belong to this session')
-    } else if (evidence.signatureVerified === false) {
+    } else if (primaryEvidence.signatureVerified === false) {
       signals.push('QR signature failed verification against the teacher signing key')
-    } else if (evidence.signatureVerified === null) {
+    } else if (primaryEvidence.signatureVerified === null) {
       signals.push('Teacher signing key is unavailable, so the signature cannot be checked')
-    } else if (primary && !this.insideWindow(evidence, primary)) {
+    } else if (primary && !this.insideWindow(primaryEvidence, primary)) {
       signals.push('Scan fell outside the signed token validity window')
+    }
+    if (online && record.session.endQrGeneratedAt) {
+      const checkOut = record.checkOutAttempt
+      const checkOutEvidence = evidence.find((item) => item.checkpoint === 'end')
+      if (!checkOut || !isAcceptedAttempt(checkOut)) {
+        signals.push('No accepted check-out scan is linked to the end checkpoint')
+      } else if (checkOut.mocked === true) {
+        return { verdict: 'reject', rationale: 'Mocked evidence is recorded against the check-out scan.' }
+      } else if (!checkOutEvidence) {
+        signals.push('No signed end-checkpoint token is attached to the check-out scan')
+      } else if (!checkOutEvidence.sessionMatch) {
+        signals.push('Signed end-checkpoint token does not belong to this session')
+      } else if (checkOutEvidence.signatureVerified === false) {
+        signals.push('Check-out QR signature failed verification against the teacher signing key')
+      } else if (checkOutEvidence.signatureVerified === null) {
+        signals.push('Teacher signing key is unavailable for check-out signature verification')
+      } else if (!this.insideWindow(checkOutEvidence, checkOut)) {
+        signals.push('Check-out scan fell outside its signed token validity window')
+      }
     }
     if (disputeReason) signals.push(`Record carries the dispute reason: ${disputeReason}`)
 
     if (
       primary &&
-      evidence &&
-      evidence.signatureVerified === true &&
-      evidence.sessionMatch &&
-      this.insideWindow(evidence, primary) &&
+      primaryEvidence &&
+      primaryEvidence.signatureVerified === true &&
+      primaryEvidence.sessionMatch &&
+      this.insideWindow(primaryEvidence, primary) &&
       signals.length === 0
     ) {
       return {

@@ -10,7 +10,6 @@ import {
   MAX_LOCATION_ACCURACY_METERS,
   MAX_LOCATION_AGE_MS,
   MAX_ONLINE_CHECKPOINT_VALIDITY_SECONDS,
-  MAX_WEB_LOCATION_ACCURACY_METERS,
   MIN_ONLINE_CHECKPOINT_VALIDITY_SECONDS,
   PIN_ATTEMPT_LIMIT,
   PIN_ATTEMPT_WINDOW_SECONDS,
@@ -257,16 +256,16 @@ export class ScanValidatorService {
         return withLocation(
           failed('absent', 'outside_geofence', 'You are outside the session geofence', ['outside_geofence']),
         )
-      const isWeb = Boolean(evidence.deviceId?.startsWith('web-') || evidence.inputChannel === 'image')
-      const maxAccuracy = isWeb ? MAX_WEB_LOCATION_ACCURACY_METERS : MAX_LOCATION_ACCURACY_METERS
-      if (evidence.accuracyMeters !== undefined && evidence.accuracyMeters > maxAccuracy)
+      if (
+        evidence.accuracyMeters !== undefined &&
+        evidence.accuracyMeters > MAX_LOCATION_ACCURACY_METERS
+      )
         return withLocation(
           failed('disputed', 'poor_location_accuracy', 'Location accuracy is too poor to verify attendance', [
             'poor_accuracy',
           ]),
         )
       if (
-        !isWeb &&
         evidence.accuracyMeters !== undefined &&
         evidence.accuracyMeters <= radiusMeters &&
         distanceMeters + evidence.accuracyMeters > radiusMeters

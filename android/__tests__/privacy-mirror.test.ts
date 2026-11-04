@@ -22,7 +22,12 @@ import {
 const snapshot = (overrides: Partial<PrivacyCenterSnapshot> = {}): PrivacyCenterSnapshot => ({
   retentionDays: 30,
   consent: { covered: 340, totalActive: 400, version: '2026-08-01' },
-  ephemeral: { lastRunAt: '2026-11-01T03:00:00.000Z', recordsShredded: 12, attemptsShredded: 3 },
+  ephemeral: {
+    coordinatesBeyondRetention: 2,
+    lastRunAt: '2026-11-01T03:00:00.000Z',
+    recordsShredded: 12,
+    attemptsShredded: 3,
+  },
   dataInventory: [
     {
       data: 'Attendance record',
@@ -117,7 +122,7 @@ describe('privacyCoveragePercent', () => {
 describe('buildPrivacyView', () => {
   it('maps a live snapshot onto the condensed mirror', () => {
     const view = buildPrivacyView(snapshot())
-    expect(view.attestationValue).toBe('0')
+    expect(view.attestationValue).toBe('2')
     expect(view.retentionDays).toBe(30)
     expect(view.lastRunAt).toBe('2026-11-01T03:00:00.000Z')
     expect(view.shredVerified).toBe(true)
@@ -133,7 +138,14 @@ describe('buildPrivacyView', () => {
 
   it('renders missing shred counts as Unknown, never zero', () => {
     const view = buildPrivacyView(
-      snapshot({ ephemeral: { lastRunAt: null, recordsShredded: null, attemptsShredded: null } }),
+      snapshot({
+        ephemeral: {
+          coordinatesBeyondRetention: null,
+          lastRunAt: null,
+          recordsShredded: null,
+          attemptsShredded: null,
+        },
+      }),
     )
     expect(view.recordsShredded).toBe('Unknown')
     expect(view.attemptsShredded).toBe('Unknown')
@@ -143,7 +155,14 @@ describe('buildPrivacyView', () => {
 
   it('keeps zero shred counts visible as zero', () => {
     const view = buildPrivacyView(
-      snapshot({ ephemeral: { lastRunAt: '2026-11-01T03:00:00.000Z', recordsShredded: 0, attemptsShredded: 0 } }),
+      snapshot({
+        ephemeral: {
+          coordinatesBeyondRetention: 0,
+          lastRunAt: '2026-11-01T03:00:00.000Z',
+          recordsShredded: 0,
+          attemptsShredded: 0,
+        },
+      }),
     )
     expect(view.recordsShredded).toBe('0')
     expect(view.attemptsShredded).toBe('0')

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Keyboard, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -61,6 +61,13 @@ const STATUS_ICONS: Record<AssistantStatusTone, keyof typeof MaterialIcons.glyph
   warning: 'error-outline',
   neutral: 'info-outline',
 }
+
+const styles = StyleSheet.create({
+  coverageFill: {
+    height: '100%',
+    backgroundColor: pupColors.golden,
+  },
+})
 
 export default function InstitutionSettingsScreen() {
   const currentUser = useAuthGate(['teacher', 'super_admin'], canAccessItOperations)
@@ -640,7 +647,7 @@ function PrivacyTabPanel() {
                   className="mt-2 h-2.5 w-full overflow-hidden bg-zinc-200 dark:bg-white/10"
                   accessibilityLabel={`Consent coverage ${view.coveragePercent} percent`}
                 >
-                  <View style={{ width: `${view.coveragePercent}%` }} className="h-full bg-golden" />
+                  <View style={[styles.coverageFill, { width: `${view.coveragePercent}%` }]} />
                 </View>
                 <Text className="mt-2 font-sans text-[11px] leading-4 text-muted dark:text-zinc-400">
                   {view.consentCovered} of {view.consentTotal} active accounts on the current notice

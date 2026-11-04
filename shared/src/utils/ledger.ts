@@ -46,7 +46,7 @@ export function ledgerDateOf(timestamp: Date | string): string {
 }
 
 export type LedgerBreakReason =
-  "hash_mismatch" | "link_mismatch" | "anchor_mismatch";
+  "hash_mismatch" | "link_mismatch" | "anchor_mismatch" | "coverage_incomplete";
 
 export interface LedgerVerifyResult {
   verified: boolean;

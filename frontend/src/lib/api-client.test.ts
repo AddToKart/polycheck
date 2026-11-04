@@ -287,7 +287,7 @@ describe('real API client', () => {
     expect(provisionCalls).toHaveLength(0)
   })
 
-  it('generateQrCode recovers and re-provisions when the server rejects an invalid signature', async () => {
+  it('does not rotate the registered key when the server rejects an invalid signature', async () => {
     const { api } = await import('./api-client')
     vi.mocked(fetch).mockImplementation(async () => jsonResponse(teacher))
     await api.restoreSession()
@@ -302,7 +302,12 @@ describe('real API client', () => {
     vi.mocked(fetch).mockImplementation(async (url) => {
       const u = String(url)
       if (u.includes('/sessions/sess-1') && !u.includes('activate')) {
-        return jsonResponse({ id: 'sess-1', sectionId: 'sec-1', teacherId: 'teacher-1' })
+        return jsonResponse({
+          id: 'sess-1',
+          sectionId: 'sec-1',
+          teacherId: 'teacher-1',
+          teacherPublicKey: pair.publicKey,
+        })
       }
       if (u.includes('/sessions/sess-1/activate')) {
         activateAttempts += 1
@@ -317,9 +322,11 @@ describe('real API client', () => {
       return jsonResponse({})
     })
 
-    const activated = await api.generateQrCode('sess-1', 5, 10)
-    expect(activated.isActive).toBe(true)
-    expect(activateAttempts).toBe(2)
+    await expect(api.generateQrCode('sess-1', 5, 10)).rejects.toThrow('No key was rotated')
+    expect(activateAttempts).toBe(1)
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/auth/provision-key')),
+    ).toHaveLength(0)
     expect(markSigningKeyProvisioned).toHaveBeenCalledWith('teacher-1')
   })
 

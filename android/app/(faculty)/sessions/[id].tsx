@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AccessibilityInfo, Alert, Animated, Image, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native'
+import { AccessibilityInfo, Alert, Animated, Image, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
@@ -51,6 +51,15 @@ const FILTERS: Array<AttendanceStatus | 'all'> = ['all', 'present', 'late', 'inc
 const ROSTER_PAGE_SIZE = 20
 const E2E_MODE = process.env.EXPO_PUBLIC_E2E_MODE === 'true'
 type QrSvgHandle = { toDataURL: (callback: (base64: string) => void) => void }
+const radarStyles = StyleSheet.create({
+  deniedDot: {
+    width: 10,
+    height: 10,
+    marginTop: 4,
+    borderRadius: 5,
+    backgroundColor: pupColors.danger,
+  },
+})
 
 const CardTitle = ({ icon, title, detail }: { icon: keyof typeof MaterialIcons.glyphMap; title: string; detail?: string }) => {
   const { isDark } = useTheme()
@@ -127,7 +136,7 @@ const RadarDeniedRow = ({ entry }: { entry: RadarDeniedEntry }) => {
 
   return (
     <View testID={`radar-denied-${entry.key}`} className="flex-row items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2.5 dark:border-red-900/60 dark:bg-red-950/30">
-      <Animated.View style={{ opacity: pulse }} className="mt-1 h-2.5 w-2.5 rounded-full bg-red-600" />
+      <Animated.View style={[radarStyles.deniedDot, { opacity: pulse }]} />
       <View className="flex-1">
         <Text className="font-sans-bold text-xs text-ink dark:text-white" numberOfLines={2}>{entry.copy}</Text>
         <Text className="mt-0.5 font-sans text-[10px] text-muted dark:text-zinc-400" numberOfLines={1}>

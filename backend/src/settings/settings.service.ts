@@ -199,10 +199,20 @@ export class SettingsService {
       this.prisma.user.count({ where: { isActive: true } }),
       this.readLastShredRun(),
     ])
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)
+    const beyondRetentionWhere = {
+      timestamp: { lt: cutoff },
+      OR: [{ latitude: { not: null } }, { longitude: { not: null } }],
+    }
+    const [attendanceRowsBeyondRetention, scanAttemptsBeyondRetention] = await Promise.all([
+      this.prisma.attendanceRecord.count({ where: beyondRetentionWhere }),
+      this.prisma.scanAttempt.count({ where: beyondRetentionWhere }),
+    ])
     return {
       retentionDays,
       consent: { covered, totalActive, version },
       ephemeral: {
+        coordinatesBeyondRetention: attendanceRowsBeyondRetention + scanAttemptsBeyondRetention,
         lastRunAt: storedRun?.lastRunAt ?? null,
         recordsShredded: storedRun?.recordsShredded ?? null,
         attemptsShredded: storedRun?.attemptsShredded ?? null,

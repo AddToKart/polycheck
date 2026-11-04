@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing'
 import {
+  ConflictException,
   ForbiddenException,
   HttpException,
   HttpStatus,
@@ -482,20 +483,15 @@ describe('AuthService', () => {
       await expect(service.provisionKey('missing', 'pubkey')).rejects.toThrow(NotFoundException)
     })
 
-    it('invalidates active-session caches when replacing an existing signing key', async () => {
+    it('refuses to replace an existing signing key without explicit revocation', async () => {
       prisma.user.findUnique.mockResolvedValue(buildUser({ teacherPublicKey: 'old-pubkey' }))
       prisma.user.update.mockResolvedValue(buildUser({ teacherPublicKey: 'new-pubkey' }))
-      prisma.session.findMany.mockResolvedValue([{ id: 'sess-1' }, { id: 'sess-2' }])
 
-      await service.provisionKey('user-1', 'new-pubkey')
+      await expect(service.provisionKey('user-1', 'new-pubkey')).rejects.toThrow(ConflictException)
 
       expect(redis.acquireLock).toHaveBeenCalledWith('key-rotation:user-1', expect.any(Number))
-      expect(prisma.session.findMany).toHaveBeenCalledWith({
-        where: { teacherId: 'user-1', isActive: true },
-        select: { id: true },
-      })
-      expect(redis.delete).toHaveBeenCalledWith('active-session:sess-1')
-      expect(redis.delete).toHaveBeenCalledWith('active-session:sess-2')
+      expect(prisma.user.update).not.toHaveBeenCalled()
+      expect(prisma.session.findMany).not.toHaveBeenCalled()
       expect(redis.releaseLock).toHaveBeenCalledWith('key-rotation:user-1', 'lock-token')
     })
 
@@ -508,7 +504,7 @@ describe('AuthService', () => {
     })
 
     it('commits the DB-authoritative key when cache invalidation cannot be confirmed', async () => {
-      prisma.user.findUnique.mockResolvedValue(buildUser({ teacherPublicKey: 'old-pubkey' }))
+      prisma.user.findUnique.mockResolvedValue(buildUser())
       prisma.session.findMany.mockResolvedValue([{ id: 'sess-1' }])
       redis.delete.mockResolvedValue(false)
 
@@ -521,20 +517,16 @@ describe('AuthService', () => {
       })
     })
 
-    it('re-reads the previous key after acquiring the rotation lock and invalidates first-provision races', async () => {
+    it('re-reads the current key under lock and rejects a conflicting first-provision race', async () => {
       prisma.user.findUnique.mockResolvedValue(buildUser({ teacherPublicKey: 'concurrently-installed-key' }))
-      prisma.session.findMany.mockResolvedValue([{ id: 'sess-1' }])
 
-      await service.provisionKey('user-1', 'new-pubkey')
+      await expect(service.provisionKey('user-1', 'new-pubkey')).rejects.toThrow(ConflictException)
 
       expect(redis.acquireLock.mock.invocationCallOrder[0]).toBeLessThan(
         prisma.user.findUnique.mock.invocationCallOrder[0],
       )
-      expect(redis.delete).toHaveBeenCalledWith('active-session:sess-1')
-      expect(events.emit).toHaveBeenCalledWith('auth.key-provisioned', {
-        userId: 'user-1',
-        hadPreviousKey: true,
-      })
+      expect(prisma.user.update).not.toHaveBeenCalled()
+      expect(redis.releaseLock).toHaveBeenCalledWith('key-rotation:user-1', 'lock-token')
     })
 
     it('does not report a committed key provision as failed when lock cleanup rejects', async () => {

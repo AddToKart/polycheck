@@ -95,6 +95,12 @@ describe('ledgerBannerFor', () => {
       result: { verified: false, recordsChecked: 1, sessionsChecked: 1, brokenAt: { sessionId: 's', recordId: 'r', reason: 'anchor_mismatch' } },
     })
     expect(anchor?.detail).toContain('published daily anchor')
+
+    const coverage = ledgerBannerFor({
+      phase: 'done',
+      result: { verified: false, recordsChecked: 1, sessionsChecked: 1, brokenAt: { sessionId: 's', recordId: 'r', reason: 'coverage_incomplete' } },
+    })
+    expect(coverage?.detail).toContain('finalized attendance row has no ledger hash')
   })
 
   it('keeps a usable message when the scanner cannot name the break', () => {

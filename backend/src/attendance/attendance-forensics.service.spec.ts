@@ -311,6 +311,88 @@ describe('AttendanceForensicsService recommendation matrix', () => {
     })
   })
 
+  it('reviews an online attendance when the armed check-out has no accepted scan', async () => {
+    mockedDecode.mockReturnValue({
+      ...BASE_PAYLOAD,
+      mode: 'online',
+      checkpoint: 'start',
+      validitySeconds: 120,
+      gracePeriodMinutes: 0,
+    } as never)
+    const checkIn = makeAttempt({ checkpoint: 'start', pinVerified: true, distanceMeters: null })
+    const { service } = makeHarness({
+      attempts: [checkIn],
+      record: makeRecord({
+        status: 'pending',
+        checkInToken: 'start-token',
+        tokenSnapshot: null,
+        checkInAttempt: checkIn,
+        acceptedScanAttempt: null,
+        session: {
+          ...makeRecord().session,
+          mode: 'online',
+          geofenceRadiusMeters: null,
+          endQrGeneratedAt: new Date(T0 + 10 * 60_000),
+        },
+      }),
+    })
+
+    const timeline = await service.buildTimeline(teacherUser, 'rec-1')
+
+    expect(timeline.recommendation.verdict).toBe('review')
+    expect(timeline.recommendation.rationale).toContain('No accepted check-out scan')
+  })
+
+  it('validates an online check-out against its own signed token window', async () => {
+    const startPayload = {
+      ...BASE_PAYLOAD,
+      mode: 'online',
+      checkpoint: 'start',
+      validitySeconds: 120,
+      gracePeriodMinutes: 0,
+    }
+    const endPayload = {
+      ...BASE_PAYLOAD,
+      mode: 'online',
+      checkpoint: 'end',
+      issuedAt: T0 + 10 * 60_000,
+      validitySeconds: 120,
+      gracePeriodMinutes: 0,
+    }
+    mockedDecode.mockImplementation((token) => (token === 'end-token' ? endPayload : startPayload) as never)
+    const checkIn = makeAttempt({ checkpoint: 'start', pinVerified: true, distanceMeters: null })
+    const checkOut = makeAttempt({
+      id: 'attempt-end',
+      checkpoint: 'end',
+      timestamp: new Date(T0 + 16 * 60_000),
+      outcome: 'present',
+      distanceMeters: null,
+    })
+    const { service } = makeHarness({
+      attempts: [checkIn, checkOut],
+      record: makeRecord({
+        status: 'pending',
+        checkInToken: 'start-token',
+        checkOutToken: 'end-token',
+        tokenSnapshot: null,
+        checkInAttempt: checkIn,
+        checkOutAttempt: checkOut,
+        acceptedScanAttempt: null,
+        session: {
+          ...makeRecord().session,
+          mode: 'online',
+          geofenceRadiusMeters: null,
+          endQrGeneratedAt: new Date(T0 + 10 * 60_000),
+        },
+      }),
+    })
+
+    const timeline = await service.buildTimeline(teacherUser, 'rec-1')
+
+    expect(timeline.recommendation.verdict).toBe('review')
+    expect(timeline.recommendation.rationale).toContain('Check-out scan fell outside')
+  })
+
   it('rejects on mocked GPS evidence', async () => {
     const { service } = makeHarness({
       attempts: [makeAttempt({ mocked: true, outcome: 'flagged' })],

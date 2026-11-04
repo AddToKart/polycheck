@@ -20,6 +20,12 @@ const AUDIT_LOG_PRUNE_BATCH_SIZE = 1_000
 const SHRED_TELEMETRY_BATCH_SIZE = 1_000
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
+export function completedUtcDayWindow(now: Date) {
+  const windowEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+  const windowStart = new Date(windowEnd.getTime() - MS_PER_DAY)
+  return { date: ledgerDateOf(windowStart), windowStart, windowEnd }
+}
+
 @Injectable()
 export class MaintenanceService {
   private readonly logger = new Logger(MaintenanceService.name)
@@ -125,18 +131,14 @@ export class MaintenanceService {
     )
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_2AM, { waitForCompletion: true })
+  @Cron(CronExpression.EVERY_DAY_AT_2AM, { timeZone: 'UTC', waitForCompletion: true })
   async anchorAttendanceLedger() {
     await this.runLockedJob(
       'maintenance:anchor-attendance-ledger',
       LEDGER_ANCHOR_LOCK_TTL_SECONDS,
       async () => {
-        // 2AM UTC always looks back at the completed UTC day, matching the
-        // ledgerDateOf bucketing used by verification.
-        const date = ledgerDateOf(new Date(Date.now() - 2 * 60 * 60 * 1000))
-        const windowStart = new Date(`${date}T00:00:00.000Z`)
-        const windowEnd = new Date(`${date}T00:00:00.000Z`)
-        windowEnd.setUTCDate(windowEnd.getUTCDate() + 1)
+        // Anchor the completed UTC day, independent of the host timezone.
+        const { date, windowStart, windowEnd } = completedUtcDayWindow(new Date())
         const head = await this.prisma.attendanceRecord.findFirst({
           where: { recordHash: { not: null }, timestamp: { gte: windowStart, lt: windowEnd } },
           orderBy: [{ timestamp: 'desc' }, { id: 'desc' }],

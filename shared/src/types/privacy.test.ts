@@ -64,7 +64,12 @@ describe('PrivacyCenterSnapshot shape', () => {
     const snapshot: PrivacyCenterSnapshot = {
       retentionDays: GEOLOCATION_RETENTION_DEFAULT_DAYS,
       consent: { covered: 0, totalActive: 0, version: '' },
-      ephemeral: { lastRunAt: null, recordsShredded: null, attemptsShredded: null },
+      ephemeral: {
+        coordinatesBeyondRetention: null,
+        lastRunAt: null,
+        recordsShredded: null,
+        attemptsShredded: null,
+      },
       dataInventory: PRIVACY_DATA_INVENTORY,
       breaches: [],
     }
