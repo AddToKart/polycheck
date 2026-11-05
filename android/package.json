@@ -46,6 +46,7 @@
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
+    "@expo/config-plugins": "~57.0.6",
     "@sentry/cli": "^3.8.2",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/jest": "29.5.14",

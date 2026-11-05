@@ -179,6 +179,9 @@ importers:
         specifier: ^1.0.3
         version: 1.0.3
     devDependencies:
+      '@expo/config-plugins':
+        specifier: ~57.0.6
+        version: 57.0.6(supports-color@8.1.1)(typescript@6.0.3)
       '@sentry/cli':
         specifier: ^3.8.2
         version: 3.8.2
@@ -11541,7 +11544,7 @@ snapshots:
       '@expo/config-types': 57.0.2
       '@expo/json-file': 11.0.1
       '@expo/plist': 0.8.1
-      '@expo/require-utils': 57.0.4(supports-color@8.1.1)(typescript@6.0.3)
+      '@expo/require-utils': 57.0.6(supports-color@8.1.1)(typescript@6.0.3)
       '@expo/sdk-runtime-versions': 1.0.0
       chalk: 4.1.2
       debug: 4.4.3(supports-color@8.1.1)
