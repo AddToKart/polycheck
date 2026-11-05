@@ -10,7 +10,11 @@ export default function LandingScreen() {
   const { isDark, toggle } = useTheme()
 
   return (
-    <SafeAreaView className="flex-1 bg-maroon dark:bg-surface-dark" testID="landing-screen">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.surfaceDark : pupColors.maroon }}
+      className="flex-1 bg-maroon dark:bg-surface-dark"
+      testID="landing-screen"
+    >
       <View style={{ flex: 1, paddingHorizontal: 24, paddingVertical: 16 }}>
         {/* Top bar */}
         <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>

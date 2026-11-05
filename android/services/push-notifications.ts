@@ -1,9 +1,21 @@
 import Constants from 'expo-constants'
-import * as Notifications from 'expo-notifications'
 import { Platform } from 'react-native'
 import type { User } from '@polycheck/shared'
 import { api } from './api-client'
 import { resolveNotificationRoute } from '../lib/notifications'
+
+type NotificationsModule = typeof import('expo-notifications')
+let Notifications: NotificationsModule | null = null
+
+if (Platform.OS !== 'web') {
+  try {
+    Notifications = require('expo-notifications')
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[polycheck:push] expo-notifications native module unavailable in this environment:', error)
+    }
+  }
+}
 
 const CHANNEL_ID = 'default'
 const E2E_MODE = process.env.EXPO_PUBLIC_E2E_MODE === 'true'
@@ -18,15 +30,19 @@ function debug(message: string, error?: unknown) {
  * truth and the realtime socket updates the badge while the app is open.
  */
 export function configureForegroundNotifications() {
-  if (Platform.OS === 'web') return
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: false,
-      shouldShowList: false,
-      shouldPlaySound: false,
-      shouldSetBadge: false,
-    }),
-  })
+  if (Platform.OS === 'web' || !Notifications) return
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: false,
+        shouldShowList: false,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+      }),
+    })
+  } catch (error) {
+    debug('Notification handler setup skipped', error)
+  }
 }
 
 function expoProjectId(): string | null {
@@ -40,7 +56,7 @@ function expoProjectId(): string | null {
  * touching the UI so the app never crashes when push is not configured.
  */
 export async function registerForPushNotifications(user: User): Promise<boolean> {
-  if (Platform.OS === 'web' || E2E_MODE) return false
+  if (Platform.OS === 'web' || E2E_MODE || !Notifications) return false
   if (lastAttemptedUserId === user.id) return false
   lastAttemptedUserId = user.id
 
@@ -88,16 +104,17 @@ export function subscribeToNotificationOpens(
   user: User,
   onRoute: (route: string) => void,
 ): () => void {
-  if (Platform.OS === 'web') return () => undefined
+  if (Platform.OS === 'web' || !Notifications) return () => undefined
 
+  const notificationsClient = Notifications
   const handled = new Set<string>()
-  const handle = (response: Notifications.NotificationResponse | null) => {
+  const handle = (response: any) => {
     if (!response) return
-    const identifier = response.notification.request.identifier
+    const identifier = response.notification?.request?.identifier
     if (identifier && handled.has(identifier)) return
     if (identifier) handled.add(identifier)
 
-    const data = (response.notification.request.content.data ?? {}) as {
+    const data = (response.notification?.request?.content?.data ?? {}) as {
       link?: unknown
       type?: unknown
       notificationId?: unknown
@@ -112,10 +129,10 @@ export function subscribeToNotificationOpens(
     if (route) onRoute(route)
   }
 
-  const subscription = Notifications.addNotificationResponseReceivedListener(handle)
+  const subscription = notificationsClient.addNotificationResponseReceivedListener(handle)
   try {
-    handle(Notifications.getLastNotificationResponse())
-    Notifications.clearLastNotificationResponse()
+    handle(notificationsClient.getLastNotificationResponse())
+    notificationsClient.clearLastNotificationResponse()
   } catch (error) {
     debug('Unable to read the last notification response', error)
   }

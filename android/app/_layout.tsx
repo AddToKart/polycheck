@@ -34,24 +34,34 @@ import * as Sentry from '@sentry/react-native'
 const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN
 // F7 demo killswitch — env-gated (default off; production pins "false").
 const outageSimulatorEnabled = isOutageSimulatorEnabled(process.env.EXPO_PUBLIC_ENABLE_OUTAGE_SIMULATOR)
-Sentry.init({
-  dsn: sentryDsn,
-  enabled: Boolean(sentryDsn) && process.env.EXPO_PUBLIC_E2E_MODE !== 'true',
-  sendDefaultPii: false,
-  tracesSampleRate: 0.05,
-  beforeSend(event) {
-    if (event.request) {
-      delete event.request.cookies
-      delete event.request.headers
-      delete event.request.data
-      delete event.request.query_string
-    }
-    if (event.user) event.user = event.user.id ? { id: event.user.id } : undefined
-    return event
-  },
-})
 
-SplashScreen.preventAutoHideAsync()
+if (sentryDsn && process.env.EXPO_PUBLIC_E2E_MODE !== 'true') {
+  try {
+    Sentry.init({
+      dsn: sentryDsn,
+      sendDefaultPii: false,
+      tracesSampleRate: 0.05,
+      beforeSend(event) {
+        if (event.request) {
+          delete event.request.cookies
+          delete event.request.headers
+          delete event.request.data
+          delete event.request.query_string
+        }
+        if (event.user) event.user = event.user.id ? { id: event.user.id } : undefined
+        return event
+      },
+    })
+  } catch {
+    // Sentry init gracefully bypassed if unavailable
+  }
+}
+
+try {
+  SplashScreen.preventAutoHideAsync()
+} catch {
+  // safe fallback
+}
 configureForegroundNotifications()
 
 function RootLayoutInner() {
@@ -209,9 +219,15 @@ function RootLayoutInner() {
   // wrong group (e.g. manually navigated to wrong route)
   }, [sessionReady, fontsLoaded, currentUser, segments])
 
+  useEffect(() => {
+    if (fontsLoaded && sessionReady) {
+      SplashScreen.hideAsync().catch(() => undefined)
+    }
+  }, [fontsLoaded, sessionReady])
+
   const onLayoutRootView = useCallback(async () => {
     if (fontsLoaded && sessionReady) {
-      await SplashScreen.hideAsync()
+      await SplashScreen.hideAsync().catch(() => undefined)
     }
   }, [fontsLoaded, sessionReady])
 
@@ -224,7 +240,11 @@ function RootLayoutInner() {
   }
 
   return (
-    <View className={`flex-1 will-change-variable will-change-container ${isDark ? 'dark' : ''}`} onLayout={onLayoutRootView}>
+    <View
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.maroon }}
+      className={`flex-1 will-change-variable will-change-container ${isDark ? 'dark' : ''}`}
+      onLayout={onLayoutRootView}
+    >
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="change-password" options={{ headerShown: false, gestureEnabled: false }} />
@@ -280,4 +300,13 @@ function RootLayout() {
   )
 }
 
-export default Sentry.wrap(RootLayout)
+let ExportedRoot = RootLayout
+if (sentryDsn && typeof Sentry?.wrap === 'function') {
+  try {
+    ExportedRoot = Sentry.wrap(RootLayout)
+  } catch {
+    ExportedRoot = RootLayout
+  }
+}
+
+export default ExportedRoot
