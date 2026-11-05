@@ -12,7 +12,8 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://polycheck-api.addtokart.tech/api",
-        "EXPO_PUBLIC_ALLOW_QR_FALLBACKS": "true"
+        "EXPO_PUBLIC_ALLOW_QR_FALLBACKS": "true",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
       "android": {
         "buildType": "apk"
