@@ -5,6 +5,7 @@ import { usePreventScreenCapture } from 'expo-screen-capture'
  * screen recordings, and Android recent-app previews while signed in.
  */
 export function StudentScreenCaptureGuard() {
+  if (__DEV__) return null
   usePreventScreenCapture('polycheck-student-privacy')
   return null
 }
