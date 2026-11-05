@@ -66,3 +66,5 @@ overrides:
   undici: 8.10.2
   vitest: 4.1.11
   "xcode>uuid": 11.1.1
+patchedDependencies:
+  metro@0.84.4: patches/metro@0.84.4.patch

@@ -56,6 +56,7 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
+    "eas-build-post-install": "pnpm --filter @polycheck/shared build",
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:coverage": "jest --runInBand --coverage",

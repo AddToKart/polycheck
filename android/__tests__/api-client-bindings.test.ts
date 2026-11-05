@@ -1673,6 +1673,66 @@ describe('QR generation', () => {
     })
   })
 
+  it('recovers and re-provisions when the server rejects an invalid signature', async () => {
+    const teacherId = 'teacher-recover'
+    await loginAsTeacherId(teacherId)
+    handlers.set(`/sessions/sess-recover`, () =>
+      jsonResponse({
+        ...teacherSession,
+        id: 'sess-recover',
+        teacherId,
+        teacherPublicKey: 'mocked-public-key',
+      }),
+    )
+    let activateAttempts = 0
+    handlers.set('/sessions/sess-recover/activate', () => {
+      activateAttempts += 1
+      if (activateAttempts === 1) {
+        return jsonResponse({ message: 'QR token signature is invalid' }, 400)
+      }
+      return jsonResponse({ ...teacherSession, id: 'sess-recover', teacherId, isActive: true })
+    })
+    const provisionsBefore = provisionCalls()
+
+    const activated = await api.generateQrCode('sess-recover', 10, 5)
+
+    expect(activated).toMatchObject({ id: 'sess-recover', isActive: true })
+    expect(activateAttempts).toBe(2)
+    expect(provisionCalls()).toBe(provisionsBefore + 1)
+  })
+
+  it('recovers checkpoint activation after an invalid signature', async () => {
+    const teacherId = 'teacher-recover-online'
+    await loginAsTeacherId(teacherId)
+    handlers.set('/sessions/sess-recover-online', () =>
+      jsonResponse({
+        ...onlineSessionBase,
+        id: 'sess-recover-online',
+        teacherId,
+        teacherPublicKey: 'mocked-public-key',
+      }),
+    )
+    let activateAttempts = 0
+    handlers.set('/sessions/sess-recover-online/activate', () => {
+      activateAttempts += 1
+      if (activateAttempts === 1) {
+        return jsonResponse({ message: 'Teacher signing key is not provisioned' }, 400)
+      }
+      return jsonResponse({ ...onlineSessionBase, id: 'sess-recover-online', teacherId, isActive: true })
+    })
+    const provisionsBefore = provisionCalls()
+
+    const activated = await api.generateCheckpointQrCode({
+      sessionId: 'sess-recover-online',
+      checkpoint: 'start',
+      validitySeconds: 120,
+    })
+
+    expect(activated).toMatchObject({ id: 'sess-recover-online', isActive: true })
+    expect(activateAttempts).toBe(2)
+    expect(provisionCalls()).toBe(provisionsBefore + 1)
+  })
+
   it('ends the session online and caches the result', async () => {
     handlers.set('/sessions/sess-1/end', () =>
       jsonResponse({ ...cachedSession, isActive: false, endedAt: '2026-08-02T12:00:00.000Z' }),

@@ -1,80 +1,117 @@
 # Polycheck System Audit
 
-**Audit date:** 2026-11-02  
-**Repository:** `fix/cross-browser-runtime-compat` at `2706005`  
-**Scope:** Current backend, shared package, web and Android API contracts, with attention to the in-progress attendance forensics and hash-ledger changes. The working tree already contained uncommitted changes; those were inspected and left untouched.
+**Audit date:** 2026-11-04
+
+**Snapshot:** `ddeda57177b9d6a877057bf6aa379282611ba462`
+**Scope:** Current backend, shared package, web and Android clients, with focus on the completed wow-factor suite, attendance evidence integrity, privacy claims, and deployment configuration. Source files were inspected without modification.
 
 ## Summary
 
-The audit found seven actionable issues. The most urgent is a working-tree regression: `AttendanceService` now requires `LedgerService`, but Nest does not provide that dependency, so backend startup will fail. The other findings cover incomplete forensics APIs, ledger coverage and validation gaps, dispute integrity, and scan validation.
+The finished system has a coherent architecture and a broad, presentation-ready feature set. The previous audit's Nest provider and missing client/API contract blockers are resolved. Several remaining issues affect the trustworthiness of attendance decisions and the evidence presented to administrators, so the system still needs a focused hardening pass before it can be rated deployment-ready without qualification.
 
-| Severity | Count |
-|---|---:|
-| Critical | 1 |
-| High | 4 |
-| Medium | 2 |
+| Category | Rating | Assessment |
+|---|---:|---|
+| Architecture | 8/10 | Strong shared contracts, clear service boundaries, and a substantial offline-first design. |
+| Feature completeness and capstone impact | 8/10 | Distinctive governance, privacy, forensics, and outage-demo features; some evidence claims need correction. |
+| Code quality | 7/10 | Generally organized, with remaining authorization/integrity edge cases and one shared TypeScript error. |
+| Security and privacy | 6/10 | Client-selected GPS policy and incomplete ledger coverage weaken key trust claims. |
+| Test confidence | 6.5/10 | Project documentation reports broad green suites; this audit did not rerun them, and the shared TypeScript check fails. |
+| Deployment readiness | 7.5/10 | Production Compose, validation, backup, and recovery tooling are present; live deployment and recovery were not exercised in this audit. |
+| **Overall current state** | **7/10** | Promising and close to capstone-ready, with material integrity and security fixes still outstanding. |
+
+Ratings are an engineering judgment from this source snapshot, not a measured benchmark. They rate the current implementation and evidence available in the repository.
 
 ## Findings
 
-### C1. Nest cannot resolve the new `LedgerService` dependency
+### H1. Client-controlled scan fields select a relaxed geofence policy
 
-**Evidence:** The current working tree injects `LedgerService` into `AttendanceService` (`backend/src/attendance/attendance.service.ts:42, 122`). `AttendanceModule` does not import or list `LedgerService` in its providers (`backend/src/attendance/attendance.module.ts:1-25`), and no other module provides it.
+**Evidence:** `backend/src/attendance/scan-validator.service.ts:260-278` selects the web policy when the request's `deviceId` starts with `web-` or `inputChannel` equals `image`. That policy permits location accuracy up to 500 m and skips the geofence uncertainty check; the DTO accepts `inputChannel` from the client.
 
-**Impact:** Nest cannot construct `AttendanceService` while bootstrapping `AttendanceModule`; backend startup fails before requests can be served.
+**Impact:** A client can request weaker location validation by changing scan fields. This weakens server-side geofence evidence for any caller able to submit a scan.
 
-**Recommended fix:** Register `LedgerService` in `AttendanceModule.providers` (or export/import it through a dedicated module), then verify Nest application bootstrap.
+**Recommended fix:** Do not choose validation strength from request-controlled fields. Apply one policy to all scans or derive any exception from a server-verified client capability, while retaining boundary uncertainty checks.
 
-### H1. Forensics API additions leave both client contracts incomplete
+### H2. Ledger verification does not detect changes to attendance outcomes
 
-**Evidence:** `shared/src/types/api.ts:435-437` adds `getScanAttempts`, `getRecordTimeline`, and `verifyLedger` to `ApiClient`. The web and Android clients end with `api satisfies ApiClient` at `frontend/src/lib/api-client.ts:1444` and `android/services/api-client.ts:1475`, but neither defines those methods. The backend currently exposes only the existing `/attendance/attempts` endpoint (`backend/src/attendance/attendance.controller.ts:50-55`); there are no timeline or ledger-verification routes.
+**Evidence:** `shared/src/utils/ledger.ts:33-35` hashes only the predecessor, student ID, timestamp, session ID, and salt. Attendance status and evidence fields are not included. Status can change through manual updates (`backend/src/attendance/attendance.service.ts:611`) and dispute resolution (`backend/src/disputes/disputes.service.ts:119-121`) without creating a new ledger event.
 
-**Impact:** The `satisfies` checks are expected to fail TypeScript compilation because both client objects omit required interface members. Even after that is addressed, the timeline call has no backend implementation, and ledger verification has no controller route.
+**Impact:** An attendance result can change while its stored hash still recomputes successfully. A green verification result therefore does not establish that the current attendance outcome matches the outcome that was originally recorded.
 
-**Recommended fix:** Implement the three methods and matching backend routes/services in the same change, or defer adding them as required `ApiClient` methods until the feature is implemented. Run frontend, Android, shared, and backend typechecks after the contract is complete.
+**Recommended fix:** Record immutable decision events that include the outcome and relevant evidence, and have verification cover those events. Define explicitly which fields and transitions the ledger attests to.
 
-### H2. Ledger coverage is incomplete, and verification can succeed with unhashed rows
+### H3. Ledger appends can branch, and verification accepts branches
 
-**Evidence:** `appendLedger` is called for accepted scans and manual attendance (`backend/src/attendance/attendance.service.ts:507-521, 598-622`), but the `AttendanceService` resolution/update paths and dispute resolution also change attendance records without appending a new ledger event. `verifyLedger` filters its read to rows where `recordHash` is non-null (`backend/src/attendance/ledger.service.ts:126-129`) and skips sessions with no hashed rows (`:130-132`), then can return `{ verified: true }` when there are no anchors (`:219`). The service only reads `ledger.anchored` audit rows; no writer for those anchors exists in backend source.
+**Evidence:** `backend/src/attendance/attendance.service.ts:539-542` documents server arrival order as linkage order, but `backend/src/attendance/ledger.service.ts:71-74` chooses the predecessor by greatest scan timestamp. Delayed offline records can therefore make multiple nodes point to the same predecessor. Verification at `ledger.service.ts:134-148` checks only that a predecessor hash exists somewhere in the session; it does not enforce a single genesis, linear order, or one head.
 
-**Impact:** Records and later decisions can be absent from the ledger while verification still reports success. There is also no public backend route for a verifier to be called.
+**Impact:** The ledger can represent a fork while returning `verified: true`, weakening the ordering guarantee used to explain offline attendance evidence.
 
-**Recommended fix:** Define which attendance states must be covered, append immutable events for every accepted decision and later override, and make verification fail or report incomplete coverage when expected rows are unhashed. Add an anchor writer and a route for authorized callers.
+**Recommended fix:** Persist a monotonic append sequence or session head under the existing lock, link from that exact head, and verify the unique linear chain in append order.
 
-### H3. The ledger hash does not cover attendance outcome or evidence
+### H4. Dispute resolution can change a record with no open dispute
 
-**Evidence:** `shared/src/utils/ledger.ts:25-34` hashes only `prevHash`, `studentId`, `timestampIso`, `sessionId`, and `salt`. It does not include fields such as `status`, `latitude`, `longitude`, `manuallySet`, scan token/evidence, or dispute resolution state.
+**Evidence:** `backend/src/disputes/disputes.service.ts:104-121` checks session ownership but does not require `status === 'disputed'` and `disputeResolved === false` before updating the record. The update is not conditional on the state checked earlier.
 
-**Impact:** Once chain writing is added, changing an attendance result or its supporting evidence would not change the stored hash. A verifier could report a valid chain even though the consequential attendance fields had been altered.
+**Impact:** A teacher can call the dispute-resolution endpoint on an ordinary attendance record in their session and change its status while marking it as a resolved dispute. Concurrent resolutions can overwrite one another.
 
-**Recommended fix:** Hash a canonical representation of every security-relevant field, with explicit versioning and stable serialization. Make later decisions append immutable events or re-chain the record in a way that preserves an auditable history.
+**Recommended fix:** Require an unresolved dispute and use a conditional update or transaction so only one resolution can succeed.
 
-### H4. Offline scan arrival can create ledger forks that the verifier accepts
+### H5. Daily ledger anchors target the wrong UTC date
 
-**Evidence:** When `appendLedger` is called without an explicit predecessor, it chooses the session head by greatest attendance `timestamp` (`backend/src/attendance/ledger.service.ts:71-76`). Offline submissions can arrive after newer scans while carrying an earlier scan timestamp. The verifier then only checks that `prevHash` matches any hash in the session (`:134-148`); it does not require a single predecessor chain in append order.
+**Evidence:** `backend/src/common/services/maintenance.service.ts:128-142` runs at 2 AM and computes the anchor date by subtracting two hours. On the UTC schedule described by the code comment, this selects the current UTC date at 00:00 rather than the completed previous day.
 
-**Impact:** Delayed offline records can branch from an old head instead of extending the latest committed node. The verifier can accept multiple branches as a valid chain, so the ordering and completeness guarantee is weaker than the service comment claims.
+**Impact:** The anchor can cover only the first hours of the current day, leaving the prior day's completed records without the intended daily anchor.
 
-**Recommended fix:** Persist or derive a monotonic per-session chain position/append sequence under the same lock, append from that exact head, and verify each row against the immediately preceding node (including a single genesis and one head).
+**Recommended fix:** Select the previous UTC calendar day explicitly and configure the cron timezone to UTC.
 
-### M1. Teachers can resolve attendance records that have no open dispute
+### M1. Privacy Center displays a hard-coded zero as a live attestation
 
-**Evidence:** `backend/src/disputes/disputes.service.ts:95-123` checks that the caller is the session's teacher, then updates the record's status and sets `disputeResolved: true`. It does not require `status === 'disputed'` or `disputeResolved === false`, and the update is not conditional on the state read earlier.
+**Evidence:** `frontend/src/app/faculty/settings/page.tsx:290-295` renders the literal `0` for “rows live beyond retention.” The response built by `backend/src/settings/settings.service.ts:194-215` includes the retention window and last shred summary, but does not calculate the current count of stale coordinates.
 
-**Impact:** A teacher can call the dispute-resolution endpoint for any record in their session and change its attendance status, while marking it as a resolved dispute. Concurrent resolution requests can also overwrite each other's decisions.
+**Impact:** The page can claim zero rows beyond retention even when stale coordinates exist or shredding has not run. The DPO PDF's live query does not make the on-screen claim accurate.
 
-**Recommended fix:** Reject records without an unresolved dispute and perform a conditional update or transaction that only succeeds while the record remains disputed and unresolved.
+**Recommended fix:** Compute the count from stored coordinates and the configured retention cutoff; show unknown or unavailable when that query fails.
 
-### M2. Client-controlled scan fields select the relaxed GPS policy
+### M2. Forensics recommendation ignores check-out evidence
 
-**Evidence:** The scan DTO accepts `inputChannel` from the request (`backend/src/attendance/dto/attendance.dto.ts:30`). `ScanValidatorService` treats any `deviceId` starting with `web-` or any `inputChannel === 'image'` as web at `backend/src/attendance/scan-validator.service.ts:260-278`. That path allows accuracy up to 500 m rather than 50 m and skips the geofence-uncertainty check; the thresholds are in `backend/src/attendance/types.ts:7-8`.
+**Evidence:** `backend/src/attendance/attendance-forensics.service.ts:214-239` returns the first available token candidate, while `:295-365` evaluates only `primaryAttempt` (the online check-in attempt). The check-out attempt/token is not included in recommendation evaluation.
 
-**Impact:** A client can claim the image/web channel to receive the looser GPS policy. This weakens the server-side geofence check for mobile requests as well as legitimate web requests.
+**Impact:** For online sessions with start and end checkpoints, the recommendation can report acceptance without accounting for contradictory or missing check-out evidence.
 
-**Recommended fix:** Do not use request-controlled channel or device ID as authority for a more permissive policy. Apply the strict policy uniformly, or establish the policy from a server-controlled, authenticated client capability and retain the stricter geofence uncertainty check.
+**Recommended fix:** Evaluate both checkpoint attempts and their matching tokens, and make the recommendation rationale state which checkpoint evidence was considered.
+
+### M3. Shared TypeScript check fails on a test fixture
+
+**Evidence:** `shared/src/types/session.ts:19` requires `Session.mode`, but `shared/src/utils/calendar.test.ts:45-63` creates a `Session` without it. The direct `tsc --noEmit -p shared/tsconfig.json` check fails with TS2322 at that fixture.
+
+**Impact:** The shared package's TypeScript check is not clean, and this fixture can hide future contract drift if test files are expected to typecheck with source.
+
+**Recommended fix:** Add a valid `mode` to the fixture or separate test compilation from the production typecheck with its own explicit test configuration.
+
+### M4. Automatic signing-key recovery can invalidate queued offline scans
+
+**Evidence:** `frontend/src/lib/api-client.ts:844-861` retries activation after an error message mentions an invalid signature or signing key by force-provisioning the browser's public key. `backend/src/auth/auth.service.ts:230-263` replaces the account's single stored public key; no key history or verification grace period is kept.
+
+**Impact:** If this browser has a different key from another teacher device, the retry can silently rotate the server key. QR tokens already issued by the prior key may then fail when students sync queued attendance, and there is no old key available to verify them.
+
+**Recommended fix:** Make key rotation an explicit, audited operation with a transition period that accepts already-issued tokens under the prior public key, or retain key versions and bind each token/session to its signing-key version. Do not rotate solely because an activation error string contains a match.
+
+## Standards and specification review
+
+### Standards
+
+- `AGENTS.md` says not to put `className` and `style` on the same React Native element. New code does so at `android/app/(faculty)/settings.tsx:643` and `android/app/(faculty)/sessions/[id].tsx:130`.
+- The feature-parity gate requires paired Playwright and Maestro coverage for shared role journeys. The new wow-factor coverage adds Playwright journeys, but no corresponding new Maestro flow was found for those journeys. This is a validation gap, not proof that the mobile features are absent.
+
+### Specification
+
+- The previous audit's critical Nest provider blocker and missing forensics client/API methods are resolved in this snapshot.
+- WF-LD11 describes server-arrival linkage and a completed-day daily anchor. The current append order and anchor date do not match those requirements (findings H3 and H5).
+- WF-LD8 calls for a live count of coordinates beyond retention. The privacy screen currently substitutes a literal zero (finding M1).
+- WF-LD10's recommendation does not evaluate both online checkpoints (finding M2).
 
 ## Verification and limits
 
-- Reviewed the current source, Prisma schema/migration, API contracts, and existing audit reports. `git diff --check` completed without errors.
-- No application, database, or device was run; no runtime behavior was reproduced, and no tests were run.
-- Frontend (`pnpm --dir frontend exec tsc --noEmit`) and Android (`pnpm --dir android typecheck`) could not reach TypeScript: both terminated in `pnpm` with `[ERROR] fetch failed`. The missing `ApiClient` methods and Nest provider gap are confirmed by source inspection; compiler/bootstrap results were not run.
-- This report records issues verified in the current source and is not a status update for every historical item in `documentation/bug-audit-2026-10-08.md`.
+- Backend, frontend, and Android `tsc --noEmit` checks passed.
+- Shared `tsc --noEmit -p shared/tsconfig.json` failed on the missing `Session.mode` test fixture (M3).
+- No test suites, application builds, Docker stack, database, or Android device were run for this audit. The repository's progress notes report green automated suites and a rebuilt Docker stack, but those results were not independently reproduced here.
+- The working tree was clean at the audited snapshot. No source changes were made during this audit.

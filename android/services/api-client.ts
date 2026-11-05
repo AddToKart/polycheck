@@ -488,6 +488,56 @@ async function del<T>(path: string): Promise<T> {
   return handleResponse<T>(res);
 }
 
+function isInvalidSigningKeyError(error: unknown): error is ApiRequestError {
+  if (
+    !(error instanceof ApiRequestError) ||
+    error.status < 400 ||
+    error.status >= 500
+  ) {
+    return false;
+  }
+  return (
+    error.message.includes("signature is invalid") ||
+    error.message.includes("signing key")
+  );
+}
+
+/**
+ * The public key persists server-side and provisioning is rate limited, so
+ * upload it only once per app session/account. A key that already matches the
+ * cached session is known to the server, enabling fully offline QR use.
+ * `force` re-uploads after the server rejects a signature (for example after a
+ * key rotation) so a stale local key can recover without clearing storage.
+ */
+async function ensureTeacherSigningKeyProvisioned(
+  user: User,
+  session: Session,
+  key: { publicKey: string },
+  force = false,
+): Promise<void> {
+  if (!force) {
+    if (session.teacherPublicKey === key.publicKey) {
+      provisionedTeacherKeys.add(user.id);
+      return;
+    }
+    if (provisionedTeacherKeys.has(user.id)) return;
+  }
+  try {
+    await post("/auth/provision-key", { publicKey: key.publicKey });
+    provisionedTeacherKeys.add(user.id);
+  } catch (error) {
+    if (!isNetworkError(error)) throw error;
+    // Typed 4xx on purpose: callers' offline-activation catch treats
+    // network-shaped failures as "activate locally", but an unprovisioned
+    // signing key would make every queued scan fail server-side verification.
+    // This precondition must fail closed.
+    throw new ApiRequestError(
+      "Connect to the internet once to register this device before generating offline QR codes.",
+      400,
+    );
+  }
+}
+
 export const api = {
   getPrivacyNotice(): Promise<PrivacyNotice> {
     return get("/auth/privacy-notice");
@@ -909,49 +959,40 @@ export const api = {
       },
       key.secretKey,
     );
-    try {
-      // Public key persists server-side and provisioning is rate limited, so only
-      // upload when it was not already provisioned in this session. A key that
-      // matches the cached session is already known to the server.
-      if (!provisionedTeacherKeys.has(user.id)) {
-        if (session.teacherPublicKey === key.publicKey) {
-          provisionedTeacherKeys.add(user.id);
-        } else {
-          try {
-            await post("/auth/provision-key", { publicKey: key.publicKey });
-            provisionedTeacherKeys.add(user.id);
-          } catch (error) {
-            if (!isNetworkError(error)) throw error;
-            // Typed 4xx on purpose: the outer offline-activation catch treats
-            // network-shaped failures as "activate locally", but an
-            // unprovisioned signing key would make every queued scan fail
-            // server-side verification. This precondition must fail closed.
-            throw new ApiRequestError(
-              "Connect to the internet once to register this device before generating offline QR codes.",
-              400,
-            );
+    const activationBody = {
+      validityMinutes,
+      gracePeriodMinutes: effectiveGrace,
+      token,
+      // V4 anti-ghost-professor evidence; absent fix keeps today's behavior.
+      ...(teacherLocation?.latitude !== undefined &&
+      teacherLocation?.longitude !== undefined
+        ? {
+            latitude: teacherLocation.latitude,
+            longitude: teacherLocation.longitude,
+            ...(teacherLocation.override
+              ? { overrideTeacherLocation: true }
+              : {}),
           }
-        }
-      }
-      const activated = await post<Session>(`/sessions/${sessionId}/activate`, {
-        validityMinutes,
-        gracePeriodMinutes: effectiveGrace,
-        token,
-        // V4 anti-ghost-professor evidence; absent fix keeps today's behavior.
-        ...(teacherLocation?.latitude !== undefined &&
-        teacherLocation?.longitude !== undefined
-          ? {
-              latitude: teacherLocation.latitude,
-              longitude: teacherLocation.longitude,
-              ...(teacherLocation.override
-                ? { overrideTeacherLocation: true }
-                : {}),
-            }
-          : {}),
-      });
+        : {}),
+    };
+    try {
+      await ensureTeacherSigningKeyProvisioned(user, session, key);
+      const activated = await post<Session>(
+        `/sessions/${sessionId}/activate`,
+        activationBody,
+      );
       await cacheSessions([activated]);
       return activated;
     } catch (error) {
+      if (isInvalidSigningKeyError(error)) {
+        await ensureTeacherSigningKeyProvisioned(user, session, key, true);
+        const retried = await post<Session>(
+          `/sessions/${sessionId}/activate`,
+          activationBody,
+        );
+        await cacheSessions([retried]);
+        return retried;
+      }
       if (!isNetworkError(error)) throw error;
       const activated: Session = {
         ...session,
@@ -1040,39 +1081,33 @@ export const api = {
     const expiresAtIso = new Date(
       issuedAt + validitySeconds * 1000,
     ).toISOString();
+    const activationBody = {
+      checkpoint,
+      validitySeconds,
+      ...(checkpoint === "start"
+        ? { gracePeriodMinutes: effectiveGrace }
+        : {}),
+      ...(regenerate ? { regenerate: true } : {}),
+      token,
+    };
     try {
-      if (!provisionedTeacherKeys.has(user.id)) {
-        if (session.teacherPublicKey === key.publicKey) {
-          provisionedTeacherKeys.add(user.id);
-        } else {
-          try {
-            await post("/auth/provision-key", { publicKey: key.publicKey });
-            provisionedTeacherKeys.add(user.id);
-          } catch (error) {
-            if (!isNetworkError(error)) throw error;
-            // Typed 4xx on purpose: the outer offline-activation catch treats
-            // network-shaped failures as "activate locally", but an
-            // unprovisioned signing key would make every queued scan fail
-            // server-side verification. This precondition must fail closed.
-            throw new ApiRequestError(
-              "Connect to the internet once to register this device before generating offline QR codes.",
-              400,
-            );
-          }
-        }
-      }
-      const activated = await post<Session>(`/sessions/${sessionId}/activate`, {
-        checkpoint,
-        validitySeconds,
-        ...(checkpoint === "start"
-          ? { gracePeriodMinutes: effectiveGrace }
-          : {}),
-        ...(regenerate ? { regenerate: true } : {}),
-        token,
-      });
+      await ensureTeacherSigningKeyProvisioned(user, session, key);
+      const activated = await post<Session>(
+        `/sessions/${sessionId}/activate`,
+        activationBody,
+      );
       await cacheSessions([activated]);
       return activated;
     } catch (error) {
+      if (isInvalidSigningKeyError(error)) {
+        await ensureTeacherSigningKeyProvisioned(user, session, key, true);
+        const retried = await post<Session>(
+          `/sessions/${sessionId}/activate`,
+          activationBody,
+        );
+        await cacheSessions([retried]);
+        return retried;
+      }
       if (!isNetworkError(error)) throw error;
       const activated: Session = {
         ...session,
