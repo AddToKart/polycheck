@@ -121,7 +121,10 @@ export default function FacultyAttendanceScreen() {
   const signOut = () => { void api.logout(); router.replace('/') }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow="Faculty records"
         title="Attendance overview"

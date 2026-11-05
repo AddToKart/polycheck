@@ -492,7 +492,10 @@ export default function SessionDetailScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow={onlineMode ? 'Online attendance · no GPS' : 'Live attendance'}
         title={session.subjectName}

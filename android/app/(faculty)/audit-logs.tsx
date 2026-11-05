@@ -141,7 +141,10 @@ export default function AuditLogsScreen() {
   ]
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader eyebrow="Governance" title="Audit log" subtitle="Account, classroom, and settings changes in your scope." onBack={() => router.back()} actions={<><CampusIconButton icon="shield" label="Verify Ledger Integrity" onPress={() => void runLedgerVerify()} disabled={ledger.phase === 'busy'} inverse testID="ledger-verify-button" /><CampusIconButton icon="refresh" label="Refresh audit log" onPress={() => void load()} inverse /><CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle theme" onPress={toggle} inverse /></>} />
       <View className="border-b border-line px-4 py-3 dark:border-line-dark">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>

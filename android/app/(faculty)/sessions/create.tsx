@@ -182,7 +182,11 @@ export default function CreateSessionScreen() {
 
   const disabled = !sectionId || (bulkMode && bulkCount === 0) || hasConflict || submitting
 
-  return <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+  return (
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
     <CampusHeader eyebrow="Session planning" title={bulkMode ? 'Create recurring sessions' : 'Create a session'} subtitle="Choose the class, meeting window, and trusted attendance area." onBack={() => router.back()} />
     <ScrollView contentContainerClassName="px-4 pb-28 pt-3" keyboardShouldPersistTaps="handled" scrollEnabled={!mapFocus} showsVerticalScrollIndicator={false}>
       <SectionHeading eyebrow="Step one" title="Choose the class" />

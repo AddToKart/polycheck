@@ -70,7 +70,11 @@ export default function CreateSectionScreen() {
     } finally { setSubmitting(false) }
   }
 
-  return <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+  return (
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
     <CampusHeader eyebrow="Subject setup" title="Create a section" subtitle={`${subject.name} · ${subject.code}`} onBack={() => router.back()} />
     <ScrollView contentContainerClassName="px-4 pb-28 pt-3" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <SectionHeading eyebrow="Class identity" title="Section details" />

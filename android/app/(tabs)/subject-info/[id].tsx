@@ -63,9 +63,19 @@ export default function StudentSubjectInfoScreen() {
   const isPresident = studentRoles.some((role) => role.role === 'president')
   const isQac = studentRoles.some((role) => role.role === 'qac')
 
-  if (loading) return <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark"><Text className="font-sans text-sm text-muted dark:text-zinc-400">Loading class…</Text></SafeAreaView>
+  if (loading) return (
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark"
+    >
+      <Text className="font-sans text-sm text-muted dark:text-zinc-400">Loading class…</Text>
+    </SafeAreaView>
+  )
   if (!section) return (
-    <SafeAreaView className="flex-1 bg-campus p-5 dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus p-5 dark:bg-campus-dark"
+    >
       <CampusEmptyState icon="error-outline" title="Class not found" description="This class may have been removed or is no longer available to your account." />
     </SafeAreaView>
   )
@@ -79,7 +89,10 @@ export default function StudentSubjectInfoScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow={`${subject?.code ?? 'Class'} · Section ${section.section}`}
         title={subject?.name ?? 'Class details'}

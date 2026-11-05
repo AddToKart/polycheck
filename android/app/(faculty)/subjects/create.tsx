@@ -34,7 +34,10 @@ export default function CreateSubjectScreen() {
   if (!user) return null
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader eyebrow="Faculty workspace" title="Create a subject" subtitle="Add the parent course first, then create its class sections." onBack={() => router.back()} />
       <ScrollView className="flex-1" contentContainerClassName="px-4 pb-12" keyboardShouldPersistTaps="handled">
         <CampusCard>

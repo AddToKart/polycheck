@@ -246,7 +246,10 @@ export default function InstitutionSettingsScreen() {
   )
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow={isSuperAdmin ? 'Super administrator' : 'IT Operations Suite'}
         title="Institution settings"

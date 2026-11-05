@@ -662,7 +662,10 @@ export default function FacultyUsersScreen() {
   const editFields = editTarget ? profileFieldsForRole(editTarget.role) : []
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow="Account administration"
         title="Campus users"

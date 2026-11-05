@@ -55,7 +55,10 @@ export default function SubjectSessionsScreen() {
   const selectedSection = sections.find((section) => section.id === selectedSectionId)
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader eyebrow={subject.code} title="Subject sessions" subtitle={subject.name} onBack={() => router.replace(`/(faculty)/subjects/${id}`)} />
 
       <View className="px-4">

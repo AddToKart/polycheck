@@ -66,7 +66,10 @@ export default function FacultySearchScreen() {
   if (!currentUser) return null
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader eyebrow="Faculty tools" title="Global search" subtitle="Find students, class sections, and attendance sessions." onBack={() => router.back()} />
       <View className="mx-4 mb-2 min-h-14 flex-row items-center rounded-2xl border border-line bg-white px-4 dark:border-line-dark dark:bg-surface-dark">
         {searching ? <ActivityIndicator size="small" color={isDark ? pupColors.golden : pupColors.maroon} /> : <MaterialIcons name="search" size={21} color={isDark ? '#A1A1AA' : '#746C6E'} />}

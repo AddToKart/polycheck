@@ -151,7 +151,11 @@ export default function SystemReportsScreen() {
   const readOnly = scope === 'department'
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID="system-reports-screen">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+      testID="system-reports-screen"
+    >
       <CampusHeader
         eyebrow="Administration"
         title="System Reports"
