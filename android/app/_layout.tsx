@@ -1,8 +1,7 @@
 import "../global.css";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { SplashScreen, Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useRef, useState } from "react";
-import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
 import {
   ActivityIndicator,
@@ -38,6 +37,7 @@ import { OutageSimulatorSheet } from "../components/OutageSimulatorSheet";
 import { isOutageSimulatorEnabled } from "../lib/more-items";
 import { PrivacyConsentGate } from "../components/PrivacyConsentGate";
 import { StudentScreenCaptureGuard } from "../components/StudentScreenCaptureGuard";
+import * as ScreenCapture from "expo-screen-capture";
 import { CampusToastProvider, useCampusToast } from "../components/CampusToast";
 import * as Sentry from "@sentry/react-native";
 
@@ -70,11 +70,7 @@ if (sentryDsn && process.env.EXPO_PUBLIC_E2E_MODE !== "true") {
   }
 }
 
-try {
-  SplashScreen.preventAutoHideAsync();
-} catch {
-  // safe fallback
-}
+void SplashScreen.preventAutoHideAsync().catch(() => {});
 configureForegroundNotifications();
 
 function RootLayoutInner() {
@@ -102,6 +98,14 @@ function RootLayoutInner() {
     DMSans_700Bold: require("@expo-google-fonts/dm-sans/700Bold/DMSans_700Bold.ttf"),
     Lora_400Regular: require("../assets/fonts/Lora_400Regular.ttf"),
   });
+
+  useEffect(() => {
+    void SplashScreen.hideAsync().catch(() => {});
+    if (process.env.EXPO_PUBLIC_ENABLE_SCREEN_GUARD !== "true") {
+      void ScreenCapture.allowScreenCaptureAsync("polycheck-student-privacy").catch(() => {});
+      void ScreenCapture.allowScreenCaptureAsync().catch(() => {});
+    }
+  }, []);
 
   // ── Session & sync bootstrap ────────────────────────────────────────────────
   // Runs once on mount. Subscribes to auth changes (for session monitoring)
@@ -263,18 +267,7 @@ function RootLayoutInner() {
   }, [fontsLoaded, sessionReady]);
 
   if (!fontsLoaded || !sessionReady) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: pupColors.maroonDark,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <ActivityIndicator size="large" color={pupColors.golden} />
-      </View>
-    );
+    return null;
   }
 
   return (
