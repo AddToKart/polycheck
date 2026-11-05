@@ -342,10 +342,10 @@ function RootLayout() {
   );
 }
 
-let ExportedRoot = RootLayout;
+let ExportedRoot: React.ComponentType = RootLayout;
 if (sentryDsn && typeof Sentry?.wrap === "function") {
   try {
-    ExportedRoot = Sentry.wrap(RootLayout);
+    ExportedRoot = Sentry.wrap(RootLayout) as React.ComponentType;
   } catch {
     ExportedRoot = RootLayout;
   }

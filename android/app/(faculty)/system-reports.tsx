@@ -14,6 +14,7 @@ import {
 } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
+import { useTheme } from '../../theme/ThemeContext'
 import { canAccessItOperations } from '@polycheck/shared'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
@@ -67,6 +68,7 @@ function statusPillTextClass(status: ReportStatus): string {
 
 /** Super-admin triage cockpit: metric cards, filters, detail + resolution. */
 export default function SystemReportsScreen() {
+  const { isDark } = useTheme()
   const currentUser = useAuthGate(['teacher', 'super_admin'], canAccessItOperations)
   const { showToast } = useCampusToast()
 

@@ -278,4 +278,5 @@ export default function CreateSessionScreen() {
     <TimePickerSheet visible={showStartTime} title="Select start time" value={startTime} onChange={setStartTime} onClose={() => setShowStartTime(false)} />
     <TimePickerSheet visible={showEndTime} title="Select end time" value={endTime} onChange={setEndTime} onClose={() => setShowEndTime(false)} />
   </SafeAreaView>
+  )
 }

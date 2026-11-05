@@ -7,6 +7,7 @@ import type { DayOfWeek, Subject } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
 import { useAuthGate } from '../../../hooks/use-auth-gate'
 import { useTheme } from '../../../theme/ThemeContext'
+import { pupColors } from '../../../theme/colors'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard, SectionHeading } from '../../../components/CampusPrimitives'
 import { CampusFormField } from '../../../components/CampusFormField'
@@ -119,4 +120,5 @@ export default function CreateSectionScreen() {
     <TimePickerSheet visible={showStartTime} title="Select start time" value={newStartTime} onChange={setNewStartTime} onClose={() => setShowStartTime(false)} />
     <TimePickerSheet visible={showEndTime} title="Select end time" value={newEndTime} onChange={setNewEndTime} onClose={() => setShowEndTime(false)} />
   </SafeAreaView>
+  )
 }
