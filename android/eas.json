@@ -10,6 +10,10 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://polycheck-api.addtokart.tech/api",
+        "EXPO_PUBLIC_ALLOW_QR_FALLBACKS": "true"
+      },
       "android": {
         "buildType": "apk"
       }
