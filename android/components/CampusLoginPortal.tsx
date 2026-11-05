@@ -69,7 +69,10 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
 
   if (maintenance) {
     return (
-      <SafeAreaView className="flex-1 bg-maroon dark:bg-surface-dark">
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: isDark ? pupColors.surfaceDark : pupColors.maroon }}
+        className="flex-1 bg-maroon dark:bg-surface-dark"
+      >
         <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
           <MaintenanceScreen
             embedded
@@ -93,7 +96,11 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-maroon dark:bg-surface-dark" testID={`${portal}-login-screen`}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.surfaceDark : pupColors.maroon }}
+      className="flex-1 bg-maroon dark:bg-surface-dark"
+      testID={`${portal}-login-screen`}
+    >
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           style={{ flex: 1 }}

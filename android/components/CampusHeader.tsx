@@ -12,8 +12,20 @@ type CampusHeaderProps = {
 }
 
 export const CampusHeader = ({ eyebrow, title, subtitle, onBack, actions }: CampusHeaderProps) => (
-  <View className="px-4 pb-3 pt-2">
-    <View className="relative overflow-hidden rounded-none border-b-4 border-b-golden bg-maroon px-5 pb-5 pt-4 dark:bg-maroon-deep">
+  <View style={{ paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8 }}>
+    <View
+      style={{
+        position: 'relative',
+        overflow: 'hidden',
+        borderBottomWidth: 4,
+        borderBottomColor: pupColors.golden,
+        backgroundColor: pupColors.maroon,
+        paddingHorizontal: 20,
+        paddingBottom: 20,
+        paddingTop: 16,
+      }}
+      className="relative overflow-hidden rounded-none border-b-4 border-b-golden bg-maroon px-5 pb-5 pt-4 dark:bg-maroon-deep"
+    >
       <View className="mb-4 flex-row items-center justify-between">
         <View className="flex-row items-center gap-3">
           {onBack ? (

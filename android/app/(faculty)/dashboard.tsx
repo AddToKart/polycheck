@@ -108,7 +108,11 @@ function TeacherDashboard({ user }: { user: User }) {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID="faculty-dashboard-screen">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+      testID="faculty-dashboard-screen"
+    >
       <CampusHeader
         eyebrow="Faculty Workspace"
         title={user.fullName}
