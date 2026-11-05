@@ -120,7 +120,10 @@ export default function IdCardScreen() {
 
   if (!student) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark">
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+        className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark"
+      >
         <ActivityIndicator size="large" color={pupColors.maroon} />
       </SafeAreaView>
     )
@@ -146,7 +149,10 @@ export default function IdCardScreen() {
   const backRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['180deg', '360deg'] })
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow="Verified Credential"
         title="Digital Student ID"

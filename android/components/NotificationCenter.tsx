@@ -192,7 +192,11 @@ export function NotificationCenter() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID="notification-center">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+      testID="notification-center"
+    >
       <CampusHeader
         eyebrow="Updates"
         title="Notifications"

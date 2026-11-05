@@ -38,7 +38,11 @@ export default function EnrollScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID="student-enroll-screen">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+      testID="student-enroll-screen"
+    >
       <CampusHeader
         eyebrow="Student enrollment"
         title="Add a class"

@@ -156,7 +156,10 @@ export default function HistoryScreen() {
 
   if (!student) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark">
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+        className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark"
+      >
         <ActivityIndicator size="large" color={pupColors.maroon} />
       </SafeAreaView>
     )
@@ -219,7 +222,10 @@ export default function HistoryScreen() {
   )
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow="Personal Attendance"
         title="Audit History"

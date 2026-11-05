@@ -16,18 +16,25 @@ type CampusCardProps = {
 }
 
 export const CampusCard = ({ children, className, onPress, accessibilityLabel, testID }: CampusCardProps) => {
+  const { isDark } = useTheme()
   const classes = joinClasses(
     'rounded-none border border-line bg-white p-5 dark:border-line-dark dark:bg-surface-dark border-l-4 border-l-maroon dark:border-l-golden',
     className,
   )
 
-  if (!onPress) return <View className={classes} testID={testID}>{children}</View>
+  const cardStyle = {
+    backgroundColor: isDark ? '#171316' : '#FFFFFF',
+    borderColor: isDark ? '#30272A' : '#E8E2E3',
+  }
+
+  if (!onPress) return <View style={cardStyle} className={classes} testID={testID}>{children}</View>
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       testID={testID}
+      style={cardStyle}
       className={classes}
       onPress={onPress}
     >

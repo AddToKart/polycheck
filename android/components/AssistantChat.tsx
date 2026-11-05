@@ -565,7 +565,12 @@ export function AssistantChat({ mode, onBack }: AssistantChatProps) {
   )
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-campus dark:bg-campus-dark" testID="assistant-screen">
+    <SafeAreaView
+      edges={['top']}
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+      testID="assistant-screen"
+    >
       <CampusHeader
         eyebrow={copy.eyebrow}
         title="Assistant"
@@ -576,9 +581,13 @@ export function AssistantChat({ mode, onBack }: AssistantChatProps) {
         )}
       />
 
-      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        className="flex-1"
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         {initializing ? (
-          <View className="flex-1 items-center justify-center" accessibilityLiveRegion="polite" accessibilityLabel="Loading assistant">
+          <View style={{ flex: 1 }} className="flex-1 items-center justify-center" accessibilityLiveRegion="polite" accessibilityLabel="Loading assistant">
             <ActivityIndicator size="large" color={isDark ? pupColors.golden : pupColors.maroon} />
             <Text className="mt-3 font-sans-bold text-[10px] uppercase tracking-[2px] text-muted dark:text-zinc-400">Loading assistant…</Text>
           </View>
@@ -588,6 +597,7 @@ export function AssistantChat({ mode, onBack }: AssistantChatProps) {
           <>
             <ScrollView
               ref={scrollRef}
+              style={{ flex: 1 }}
               className="flex-1"
               contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, gap: 16 }}
               keyboardShouldPersistTaps="handled"

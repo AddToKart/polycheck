@@ -127,7 +127,10 @@ export default function ScheduleScreen() {
 
   if (!studentId) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark">
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+        className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark"
+      >
         <ActivityIndicator size="large" color={pupColors.maroon} />
       </SafeAreaView>
     )
@@ -138,7 +141,10 @@ export default function ScheduleScreen() {
     : `${new Date(`${weekDays[0].date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} – ${new Date(`${weekDays[6].date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}`
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow="Class Calendar"
         title="My Schedule"
