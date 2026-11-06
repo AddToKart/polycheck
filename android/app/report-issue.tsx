@@ -249,6 +249,7 @@ export default function ReportIssueScreen() {
               <View className="mt-3 flex-row items-center gap-3">
                 <Image
                   source={{ uri: screenshot.dataUrl }}
+                  style={{ width: 56, height: 56 }}
                   className="h-14 w-14 border border-line"
                   testID="report-attachment-preview"
                   accessibilityLabel={`Selected screenshot ${screenshot.label}`}

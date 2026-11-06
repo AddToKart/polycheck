@@ -168,7 +168,7 @@ export function ExcuseRequestModal({
             <Text className="mb-2 mt-4 font-sans-bold text-xs uppercase tracking-wider text-ink dark:text-zinc-200">Evidence (optional)</Text>
             {photo ? (
               <View className="flex-row items-center gap-3 rounded-none border border-line p-3 dark:border-line-dark">
-                <Image source={{ uri: photo.uri }} className="h-16 w-16 rounded-none" resizeMode="cover" accessibilityLabel="Selected excuse evidence" />
+                <Image source={{ uri: photo.uri }} style={{ width: 64, height: 64 }} className="h-16 w-16 rounded-none" resizeMode="cover" accessibilityLabel="Selected excuse evidence" />
                 <View className="flex-1">
                   <Text className="font-sans-bold text-xs text-ink dark:text-white">Photo attached</Text>
                   <Text className="mt-1 font-sans text-[11px] text-muted dark:text-zinc-400">Stored with your request for review.</Text>

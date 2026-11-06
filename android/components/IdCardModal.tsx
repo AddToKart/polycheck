@@ -26,7 +26,7 @@ const IdCardFront = ({
   <View className="flex-1 overflow-hidden rounded-none border-2 border-zinc-300 bg-white dark:border-zinc-700 dark:bg-surface-dark shadow-md">
     <View className="flex-row items-center gap-3 bg-maroon p-3 border-b-2 border-golden">
       <View className="h-9 w-9 items-center justify-center rounded-none bg-white">
-        <Image source={require('../assets/pup-logo.png')} className="h-7 w-7" resizeMode="contain" />
+        <Image source={require('../assets/pup-logo.png')} style={{ width: 28, height: 28 }} className="h-7 w-7" resizeMode="contain" />
       </View>
       <View className="flex-1">
         <Text className="font-sans-bold text-[7px] uppercase tracking-[1.5px] text-golden">Republic of the Philippines</Text>
