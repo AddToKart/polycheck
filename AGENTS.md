@@ -622,6 +622,16 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - **V4 (ghost professor)**: `activate()` optionally accepts teacher `latitude/longitude` (+ `overrideTeacherLocation`), gated to in-person sessions only (online stays RA-10173 zero-GPS). Off-campus fix beyond `max(geofenceRadius, 150)` ⇒ typed **409** `teacher_location_outside_geofence` carrying `distanceMeters/allowedDistanceMeters/canRequestOverride` (forwarded by `AllExceptionsFilter`); a confirmed override re-sends with the flag, writes the fail-open `session.activation_override` audit row, and proceeds. Web cockpit captures a one-shot `navigator.geolocation` fix (absent fix = info toast, unchanged behavior) and hosts an accessible override alertdialog; Android mirrors it via `expo-location` + native destructive Alert. `GenerateCheckpointQrInput.teacherLocation?` rides the shared contract; offline queued activations stay coordinate-free by design. Env: `TEACHER_ACTIVATION_LOCATION_ENFORCEMENT` (default true), `TEACHER_ACTIVATION_TOLERANCE_METERS` (default 150, 30–2000).
   - **Verification**: backend **778 / 68 suites** (24 new tests across resolution/attendance-conflict/sections-tombstone/sessions-gate), web **285**, Android **322**, shared **108**; typecheck/lint/format clean; `pnpm build` clean; full Chromium E2E **100 passed / 3 skipped / 0 failed**; hardening spec 8/8 on Firefox + WebKit; containers rebuilt with the tombstone migration applied and the V2/V3/V4 flows smoke-verified live.
 
+### Done (cont.)
+- **APK Release Readiness & Build-Pipeline Proofing (`plan/apk-readiness-plan.md`, APK0–APK10)**:
+  - **Unstyled-APK root cause (proven)**: root `.gitignore` pattern `metro.config.js` ignored `android/metro.config.js`, so EAS builds ran without NativeWind v5 / `react-native-css` wiring. Expo SDK 57 still resolves the `.css` import on native without NativeWind and silently ships an empty stylesheet (the bundle succeeds). Emulator builds worked because the file existed locally. Fixed by anchoring the ignore to `/metro.config.js` and committing the project config.
+  - **Regression gates**: `scripts/verify-tracked-build-files.mjs` (release-critical files present, tracked, not ignored) and `scripts/verify-android-bundle-styles.mjs` (production `expo export` must contain `twsa-safe-area` / `color-red-50` / `color-zinc-700`; proven to fail 3/3 when the Metro config is absent) are wired into the CI `verify` job. `android/RELEASE.md` gains the post-build APK/AAB fingerprint check.
+  - **EAS preview config**: `build.preview` now references the EAS `preview` environment and keeps the deployed staging `EXPO_PUBLIC_API_URL`; docs cover physical-device URLs and the non-dev startup guard.
+  - **Dependency alignment**: Expo `57.0.32`, RN `0.86.3`, expo-router `57.0.30` and the rest of the SDK patch line — `expo install --check` exits 0 and `expo-doctor` is 21/21. Metro 0.84.5 replaced `image-size` with its own asset parser, so the former `image-size` override and `patches/metro@0.84.4.patch` were removed as obsolete; the styled-bundle gate still passes on 0.84.5.
+  - **Security**: `next 16.4.1` (two critical RCE advisories), `@sentry/nextjs 10.75.2` (critical middleware bypass), `better-auth 1.7.7` (critical OAuth-state + two highs; no Prisma migration needed), zod `4.6.7`; overrides for body-parser 2.4.0, multer 2.5.0, undici 8.12.2, vite 7.3.7, node-forge 1.4.1, qs 6.16.2, markdown-it 14.3.3. `pnpm security:audit` exits 0 with one justified ignore (`decode-uri-component` via `query-string@7`; the fixed release is ESM-only and would break Expo Router deep-link parsing). Two stale ignores (withdrawn/fixed advisories) were removed.
+  - **Hygiene**: 7 frontend lint warnings cleared (0 problems), the Android Jest teardown warning eliminated via in-band `maxWorkers: 1` (Windows jest-worker 500 ms shutdown race with no real handle leak; scanner fake-timer restore moved to `afterEach`), and a full-suite `SessionGuard` `waitFor` timeout hardened.
+  - **Verification**: shared **176**, backend **993 / 82 suites**, web **398 / 59 files**, Android **656 / 35 suites**; frontend/backend/android typecheck, lint, format, Prisma validate, Next build, backend build, `expo install --check`, `expo-doctor 21/21`, `pnpm security:audit` exit 0, and a styled production export all pass locally. EAS preview rebuild + device smoke remain (credentials/device required).
+
 ### Blocked
 - (none)
 
@@ -685,6 +695,12 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - Kiosk/finale and radar journeys are Chromium-verified; add Maestro coverage for the Android denied-attempt log + finale banner when device runs resume.
 
 ## Critical Context
+- `android/metro.config.js` is load-bearing: it wires NativeWind v5 (`withNativeWind` → `react-native-css` custom Metro transformer + resolver). It must stay tracked; the root `.gitignore` only ignores the root-level `/metro.config.js`. Without it EAS builds silently ship an empty stylesheet (`className` dead, inline `StyleSheet` styles still render).
+- NativeWind v5 is a thin wrapper over `react-native-css` + Expo's CSS transform; there is **no babel plugin** — `android/global.css` uses Tailwind v4 `@source` directives for content scanning.
+- Styled-bundle fingerprint: a corrected production Hermes bundle contains `twsa-safe-area`, `color-red-50`, and `color-zinc-700`; a config-less bundle contains zero of them. Enforced by `scripts/verify-android-bundle-styles.mjs` in CI and documented in `android/RELEASE.md`.
+- Metro 0.84.5+ (Expo 57.0.32 line) ships its own image parser and no longer depends on `image-size`, so no pnpm patch/override is needed for the old image-size v2 incompatibility.
+- EAS `preview` profile uses the EAS `preview` environment and pins `EXPO_PUBLIC_API_URL` to the deployed staging API in `eas.json`; physical-device local testing needs the LAN IP (never `10.0.2.2`).
+- Android release builds are **EAS-only** on Windows: the local CMake path-length limit (`react-native-worklets` >250-char object paths under `.pnpm`) makes `gradlew assembleDebug` unreliable; see `plan/apk-readiness-plan.md` APK8.
 - Android package: `edu.pup.polycheck`; iOS bundle: `edu.pup.polycheck`.
 - Hardening flags (V1–V4): `CONCURRENT_SESSION_CONFLICT_DETECTION` (default true) + `CONCURRENT_SESSION_LOOKBACK_MINUTES` (default 30); `TEACHER_ACTIVATION_LOCATION_ENFORCEMENT` (default true) + `TEACHER_ACTIVATION_TOLERANCE_METERS` (default 150). V3's block table is `EnrollmentTombstone`; blocked students see `403 code=student_blocked_from_section`; teacher enroll/import clear blocks. In-person activations may carry teacher coordinates; overrides are audited `session.activation_override`.
 - Single-active-session is **students only** (`backend/src/auth/session-policy.ts`); staff logins stamp the current `authVersion` and never delete sibling sessions, so faculty/super-admin credentials work on the web dashboard and mobile app simultaneously. Student logins still bump `authVersion` and delete siblings, and both clients keep the realtime `/auth/me` probe guard (`isOwnLoginInFlight`) for the self-addressed replacement broadcast.
@@ -731,6 +747,12 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - `shared/src/validation/index.ts` — SessionCreateSchema enforces `qrValidityMinutes` (1–15) and `gracePeriodMinutes` (0–60)
 - `shared/src/utils/token.ts` — `isTokenInValidityWindow` replaces `isTokenExpired`; `createQRTokenData` takes `validityMinutes` + `gracePeriodMinutes`
 - `android/services/api-client.ts` — real NestJS HTTP client with SQLite-backed offline behavior
+- `android/metro.config.js` — required NativeWind v5 / react-native-css Metro wiring (transformer + resolver); must stay tracked for EAS
+- `scripts/verify-tracked-build-files.mjs` — CI gate: release-critical files are present, tracked, and not ignored
+- `scripts/verify-android-bundle-styles.mjs` — CI gate: production Android export contains the compiled NativeWind stylesheet fingerprint
+- `scripts/build-shared-if-available.mjs` — guarded root postinstall that builds `@polycheck/shared` only when sources/tooling exist
+- `android/jest.config.js` — in-band Android test execution (Windows jest-worker shutdown race)
+- `plan/apk-readiness-plan.md` — executed APK readiness plan + deviations
 - `android/services/api-config.ts` — device-safe backend URL resolution
 - `frontend/src/lib/api-client.ts` — real NestJS HTTP client
 - `frontend/src/lib/api-config.ts` — browser backend URL configuration
