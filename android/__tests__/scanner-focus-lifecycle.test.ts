@@ -5,6 +5,10 @@ import {
 } from '../hooks/scanner-focus-lifecycle'
 
 describe('scanner focus lifecycle', () => {
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
   it('mounts the camera only while focused and permission is granted', () => {
     expect(shouldMountScannerCamera(true, true)).toBe(true)
     expect(shouldMountScannerCamera(false, true)).toBe(false)
@@ -47,7 +51,6 @@ describe('scanner focus lifecycle', () => {
     expect(setShowManual).toHaveBeenCalledWith(false)
     expect(setManualToken).toHaveBeenCalledWith('')
     expect(setDecodingImage).toHaveBeenCalledWith(false)
-    jest.useRealTimers()
   })
 
   it('invalidates an in-flight scan on blur by advancing the operation generation', () => {
