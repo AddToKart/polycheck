@@ -15,7 +15,6 @@ import { Badge } from '@/components/ui/badge'
 import { LoadingSpinner } from '@/lib/hooks'
 import { useNotifications } from '@/lib/notifications'
 import { createSessionHref, sessionsListHref } from '@/lib/section-context'
-
 import { PaginationBar } from '@/components/ui/pagination-bar'
 
 const PAGE_SIZE = 10
@@ -621,6 +620,17 @@ export default function SectionDetailPage() {
                     </Link>
                   ))}
                 </div>
+              )}
+              {sessions.length > 0 && (
+                <PaginationBar
+                  page={safeSessionPage}
+                  totalPages={totalSessionPages}
+                  totalItems={sortedSessions.length}
+                  pageSize={SESSIONS_PAGE_SIZE}
+                  itemName="sessions"
+                  onPageChange={setSessionPage}
+                  showNumbers
+                />
               )}
             </CardContent>
           </Card>

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, ArrowRight } from 'lucide-react'
-import { PaginationBar } from '@/components/ui/pagination-bar'
 
 const SUBJECTS_PAGE_SIZE = 9
 import { api } from '@/lib/api-client'
@@ -12,6 +11,7 @@ import type { User, Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { PaginationBar } from '@/components/ui/pagination-bar'
 
 export default function SubjectsPage() {
   const router = useRouter()
@@ -134,6 +134,19 @@ export default function SubjectsPage() {
               </div>
             )}
           </div>
+
+          {subjects.length > 0 && (
+            <PaginationBar
+              page={safePage}
+              totalPages={totalPages}
+              totalItems={subjects.length}
+              pageSize={SUBJECTS_PAGE_SIZE}
+              itemName="subjects"
+              onPageChange={setPage}
+              showNumbers
+              className="mt-6 border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+            />
+          )}
         </div>
       </main>
     </div>

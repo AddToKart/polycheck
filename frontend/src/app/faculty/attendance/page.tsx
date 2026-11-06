@@ -140,7 +140,7 @@ function AttendanceOverviewContent() {
     [],
   )
 
-  const summaries = report?.summaries ?? []
+  const summaries = useMemo(() => report?.summaries ?? [], [report])
   const totalPages = Math.max(1, Math.ceil(summaries.length / ATTENDANCE_PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
   const pagedSummaries = useMemo(

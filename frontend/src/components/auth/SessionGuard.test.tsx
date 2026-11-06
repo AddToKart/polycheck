@@ -52,8 +52,15 @@ describe('SessionGuard storage failure handling', () => {
 
     await expect(api.getSubjects()).rejects.toThrow('Session expired')
 
-    await waitFor(() => expect(routerMock.replace).toHaveBeenCalledWith('/'))
-    expect(screen.queryByText('Protected QR content')).not.toBeInTheDocument()
+    await waitFor(
+      () => {
+        expect(routerMock.replace).toHaveBeenCalledWith('/')
+        expect(screen.queryByText('Protected QR content')).not.toBeInTheDocument()
+      },
+      // The guard's state flush can exceed the 1s default when the full suite
+      // runs under coverage load; the assertions themselves are unchanged.
+      { timeout: 3000 },
+    )
   })
 
   it('periodically revalidates over HTTP and hides content after session replacement', async () => {

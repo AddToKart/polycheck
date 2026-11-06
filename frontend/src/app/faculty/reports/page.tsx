@@ -140,7 +140,7 @@ export default function ReportsPage() {
     setDateTo(defaultEndDate)
   }
 
-  const filteredSummaries = report?.summaries ?? []
+  const filteredSummaries = useMemo(() => report?.summaries ?? [], [report])
   const totalPages = Math.max(1, Math.ceil(filteredSummaries.length / REPORTS_PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
   const pagedSummaries = useMemo(
@@ -558,6 +558,17 @@ export default function ReportsPage() {
                   </tbody>
                 </table>
               </div>
+              {filteredSummaries.length > 0 && (
+                <PaginationBar
+                  page={safePage}
+                  totalPages={totalPages}
+                  totalItems={filteredSummaries.length}
+                  pageSize={REPORTS_PAGE_SIZE}
+                  itemName="sections"
+                  onPageChange={setPage}
+                  showNumbers
+                />
+              )}
             </CardContent>
           </Card>
         </div>
