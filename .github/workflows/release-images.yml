@@ -42,7 +42,7 @@ jobs:
       release-sha: ${{ steps.manifest.outputs.release_sha }}
     steps:
       - name: Verify release commit and successful CI
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           REQUESTED_SHA: ${{ env.RELEASE_SHA }}
           TRIGGERING_RUN_ID: ${{ github.event.workflow_run.id }}
