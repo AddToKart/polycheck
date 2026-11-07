@@ -744,7 +744,7 @@ export default function SessionDetailScreen() {
               <View key={field.label} className="flex-1">
                 <Text className="mb-2 font-sans-bold text-xs text-ink dark:text-zinc-200">{field.label}</Text>
                 <View className="min-h-14 flex-row items-center rounded-2xl border border-zinc-300 bg-zinc-50 px-4 dark:border-zinc-700 dark:bg-white/5">
-                  <TextInput accessibilityLabel={field.label} className="flex-1 text-center font-heading text-xl text-ink dark:text-white" keyboardType="number-pad" value={field.value} onChangeText={field.setValue} />
+                  <TextInput accessibilityLabel={field.label} className="flex-1 font-heading text-xl text-ink dark:text-white" style={{ textAlign: 'center' }} keyboardType="number-pad" value={field.value} onChangeText={field.setValue} />
                   <Text className="font-sans text-[10px] text-muted dark:text-zinc-500">min</Text>
                 </View>
                 <Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">{field.hint}</Text>
@@ -784,7 +784,7 @@ export default function SessionDetailScreen() {
               <View className="flex-1">
                 <Text className="mb-2 font-sans-bold text-xs text-ink dark:text-zinc-200">Validity (seconds)</Text>
                 <View className="min-h-14 flex-row items-center rounded-2xl border border-zinc-300 bg-zinc-50 px-4 dark:border-zinc-700 dark:bg-white/5">
-                  <TextInput accessibilityLabel="Checkpoint validity seconds" className="flex-1 text-center font-heading text-xl text-ink dark:text-white" keyboardType="number-pad" value={checkpointValiditySeconds} onChangeText={setCheckpointValiditySeconds} />
+                  <TextInput accessibilityLabel="Checkpoint validity seconds" className="flex-1 font-heading text-xl text-ink dark:text-white" style={{ textAlign: 'center' }} keyboardType="number-pad" value={checkpointValiditySeconds} onChangeText={setCheckpointValiditySeconds} />
                   <Text className="font-sans text-[10px] text-muted dark:text-zinc-500">sec</Text>
                 </View>
                 <Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">60–300 sec</Text>
@@ -793,7 +793,7 @@ export default function SessionDetailScreen() {
                 <View className="flex-1">
                   <Text className="mb-2 font-sans-bold text-xs text-ink dark:text-zinc-200">Grace (minutes)</Text>
                   <View className="min-h-14 flex-row items-center rounded-2xl border border-zinc-300 bg-zinc-50 px-4 dark:border-zinc-700 dark:bg-white/5">
-                    <TextInput accessibilityLabel="Check-in grace minutes" className="flex-1 text-center font-heading text-xl text-ink dark:text-white" keyboardType="number-pad" value={checkpointGraceMinutes} onChangeText={setCheckpointGraceMinutes} />
+                    <TextInput accessibilityLabel="Check-in grace minutes" className="flex-1 font-heading text-xl text-ink dark:text-white" style={{ textAlign: 'center' }} keyboardType="number-pad" value={checkpointGraceMinutes} onChangeText={setCheckpointGraceMinutes} />
                     <Text className="font-sans text-[10px] text-muted dark:text-zinc-500">min</Text>
                   </View>
                   <Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">0–60 min</Text>
@@ -820,7 +820,8 @@ export default function SessionDetailScreen() {
                   <View className="min-h-14 flex-1 flex-row items-center rounded-2xl border border-zinc-300 bg-zinc-50 px-4 dark:border-zinc-700 dark:bg-white/5">
                     <TextInput
                       accessibilityLabel="Meeting PIN"
-                      className="flex-1 text-center font-heading text-xl tracking-[6px] text-ink dark:text-white"
+                      className="flex-1 font-heading text-xl tracking-[6px] text-ink dark:text-white"
+                      style={{ textAlign: 'center' }}
                       keyboardType="number-pad"
                       maxLength={4}
                       value={checkpointPin}

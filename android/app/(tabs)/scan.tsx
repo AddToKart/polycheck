@@ -1224,7 +1224,8 @@ export default function ScanScreen() {
             <TextInput
               accessibilityLabel="Meeting PIN"
               testID="scan-pin-input"
-              className="mt-4 min-h-14 w-full border border-zinc-200 bg-campus px-4 text-center font-sans-bold text-2xl tracking-[10px] text-maroon-ink dark:border-white/20 dark:bg-campus-dark dark:text-white"
+              className="mt-4 min-h-14 w-full border border-zinc-200 bg-campus px-4 font-sans-bold text-2xl tracking-[10px] text-maroon-ink dark:border-white/20 dark:bg-campus-dark dark:text-white"
+              style={{ textAlign: 'center' }}
               keyboardType="number-pad"
               maxLength={4}
               autoFocus

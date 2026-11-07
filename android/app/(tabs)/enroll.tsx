@@ -65,7 +65,8 @@ export default function EnrollScreen() {
               <TextInput
                 accessibilityLabel="Enrollment code"
                 testID="enrollment-code-input"
-                className="my-7 h-16 rounded-2xl border border-line bg-zinc-50 px-4 text-center font-sans-bold text-xl uppercase tracking-[4px] text-ink dark:border-line-dark dark:bg-white/5 dark:text-white"
+                className="my-7 h-16 rounded-2xl border border-line bg-zinc-50 px-4 font-sans-bold text-xl uppercase tracking-[4px] text-ink dark:border-line-dark dark:bg-white/5 dark:text-white"
+                style={{ textAlign: 'center' }}
                 value={code}
                 onChangeText={setCode}
                 placeholder="ABC123"
