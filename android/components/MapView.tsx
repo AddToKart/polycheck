@@ -104,6 +104,15 @@ function html(
   .student-popup .status { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 2px; }
   .student-popup .time { font-size: 10px; color: #999; }
   .student-popup .device { font-size: 10px; color: #aaa; margin-top: 2px; }
+  .map-attribution {
+    position: absolute;
+    right: 4px;
+    bottom: 2px;
+    z-index: 1000;
+    pointer-events: none;
+    font: 9px 'DM Sans', sans-serif;
+    color: rgba(0, 0, 0, 0.55);
+  }
   ${isDark ? `
   .leaflet-container { background: ${pupColors.campusDark} !important; }
   .leaflet-popup-content-wrapper { background: ${pupColors.surfaceDark} !important; color: #fff !important; border: 1px solid rgba(255,223,0,0.15) !important; border-radius: 0 !important; }
@@ -117,17 +126,16 @@ function html(
 <body>
 <div id="map"></div>
 <div class="radius-label">Geofence: ${radius}m</div>
+<div class="map-attribution">© OpenStreetMap contributors</div>
 <script>
   var map = L.map('map', {
     center: [${lat}, ${lng}],
-    zoom: 17,
+    zoom: 18,
     zoomControl: true,
     attributionControl: false
   });
 
-  var tileUrl = ${isDark}
-    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
-    : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png';
+  var tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
   L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(map);
 
@@ -199,8 +207,12 @@ function html(
   updatePins(${pinsJSON});
 
   function update(lat, lng, rad) {
-    marker.setLatLng([lat, lng]);
-    circle.setLatLng([lat, lng]);
+    // One source of truth: derive a single LatLng and apply it to both layers.
+    // Marker and circle can otherwise drift apart when values arrive as strings
+    // or in separate updates, which reads as "the pin is inaccurate".
+    var point = L.latLng(lat, lng);
+    marker.setLatLng(point);
+    circle.setLatLng(point);
     circle.setRadius(rad);
     document.querySelector('.radius-label').textContent = 'Geofence: ' + rad + 'm';
   }

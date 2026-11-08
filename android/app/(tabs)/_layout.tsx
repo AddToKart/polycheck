@@ -15,6 +15,14 @@ const navTransitionsEnabled =
   process.env.EXPO_PUBLIC_ENABLE_NAV_TRANSITIONS === 'true'
 const restoreThemeRemount = process.env.EXPO_PUBLIC_RESTORE_THEME_REMOUNT === 'true'
 
+// Detail/action screens inside the student tab group: the floating nav bar
+// must not cover their primary bottom action (e.g. "Create session").
+const HIDDEN_TAB_BAR_ROUTES = new Set([
+  'subject-info/[id]',
+  'subject-info/[id]/create-session',
+  'subject-info/[id]/sessions/[sessionId]',
+])
+
 const iconMap: Record<string, keyof typeof MaterialIcons.glyphMap> = {
   dashboard: 'grid-view',
   schedule: 'calendar-month',
@@ -56,9 +64,8 @@ export default function TabLayout() {
       key={restoreThemeRemount ? (isDark ? 'dark' : 'light') : 'student-tabs'}
       screenOptions={({ route }) => ({
         headerShown: false,
-        // Cross-fade tab switches; also covers the hidden detail screens that
-        // live in this group (subject-info, enroll, id-card...) so every
-        // navigation animates instead of hard-swapping.
+        // Instant screen changes by default (stable on Android release);
+        // opt into the cross-fade with EXPO_PUBLIC_ENABLE_NAV_TRANSITIONS.
         animation: navTransitionsEnabled ? 'fade' : 'none',
         ...(navTransitionsEnabled
           ? {
@@ -69,29 +76,31 @@ export default function TabLayout() {
           : {}),
         tabBarActiveTintColor: pupColors.golden,
         tabBarInactiveTintColor: 'rgba(255,255,255,0.70)',
-        tabBarStyle: {
-          position: 'absolute',
-          bottom: bottomMargin,
-          left: 16,
-          right: 16,
-          backgroundColor: isDark ? pupColors.maroonInk : pupColors.maroon,
-          borderRadius: 32,
-          borderWidth: 0,
-          height: 64,
-          paddingTop: 6,
-          paddingBottom: 6,
-          ...Platform.select({
-            ios: {
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 6 },
-              shadowOpacity: 0.35,
-              shadowRadius: 10,
+        tabBarStyle: HIDDEN_TAB_BAR_ROUTES.has(route.name)
+          ? { display: 'none' }
+          : {
+              position: 'absolute',
+              bottom: bottomMargin,
+              left: 16,
+              right: 16,
+              backgroundColor: isDark ? pupColors.maroonInk : pupColors.maroon,
+              borderRadius: 32,
+              borderWidth: 0,
+              height: 64,
+              paddingTop: 6,
+              paddingBottom: 6,
+              ...Platform.select({
+                ios: {
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 6 },
+                  shadowOpacity: 0.35,
+                  shadowRadius: 10,
+                },
+                android: {
+                  elevation: 12,
+                },
+              }),
             },
-            android: {
-              elevation: 12,
-            },
-          }),
-        },
         tabBarItemStyle: {
           justifyContent: 'center',
           alignItems: 'center',
