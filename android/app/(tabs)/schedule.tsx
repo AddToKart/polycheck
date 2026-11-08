@@ -9,7 +9,8 @@ import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
-import { CampusIconButton, CampusEmptyState, SectionHeading } from '../../components/CampusPrimitives'
+import { CampusIconButton, CampusEmptyState, CampusLoadError, CampusSkeleton, ListSkeleton, SectionHeading } from '../../components/CampusPrimitives'
+import { useLoadState } from '../../hooks/use-load-state'
 import {
   StudentCalendarEventList,
   StudentCalendarEventModal,
@@ -36,6 +37,7 @@ export default function ScheduleScreen() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
   const [subjects, setSubjects] = useState<Record<string, Subject>>({})
+  const loadState = useLoadState()
 
   useFocusEffect(useCallback(() => {
     if (!studentId) return
@@ -47,10 +49,13 @@ export default function ScheduleScreen() {
         setSessions(sessionList)
         setAttendanceRecords(att)
         setSubjects(Object.fromEntries(sub.map((s) => [s.id, s])))
+        loadState.markReady()
       })
-      .catch(() => undefined)
+      .catch(() => {
+        if (active) loadState.markError()
+      })
     return () => { active = false }
-  }, [studentId]))
+  }, [studentId, loadState.reloadToken]))
 
   const monthDays = useMemo(() => {
     const year = currentDate.getFullYear()
@@ -205,7 +210,18 @@ export default function ScheduleScreen() {
           ))}
         </ScrollView>
 
-        {!sections.length ? (
+        {loadState.state === 'loading' ? (
+          <View className="gap-3">
+            <CampusSkeleton className="h-64 w-full"><View /></CampusSkeleton>
+            <ListSkeleton rows={2} rowClass="h-16" />
+          </View>
+        ) : loadState.state === 'error' ? (
+          <CampusLoadError
+            title="Unable to load your schedule"
+            message="Classes could not be fetched. Your attendance data is safe on the server."
+            onRetry={loadState.retry}
+          />
+        ) : !sections.length ? (
           <CampusEmptyState icon="calendar-today" title="NO CLASSES TO SCHEDULE" description="Enroll in a class to see its weekly schedule and attendance sessions." />
         ) : viewMode === 'week' ? (
           <StudentWeekCalendar weekDays={weekDays} eventsByDate={eventsByDate} onSelectEvent={setSelectedEvent} />

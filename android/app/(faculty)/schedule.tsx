@@ -10,9 +10,10 @@ import { useAuthGate } from '../../hooks/use-auth-gate'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
-import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../components/CampusPrimitives'
+import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, CampusSkeleton, ListSkeleton, SectionHeading } from '../../components/CampusPrimitives'
 import { StudentMonthCalendar, StudentWeekCalendar } from '../../components/StudentCalendarViews'
 import { useCampusToast } from '../../components/CampusToast'
+import { useLoadState } from '../../hooks/use-load-state'
 
 const EventDetail = ({ icon, label, value }: { icon: keyof typeof MaterialIcons.glyphMap; label: string; value: string }) => {
   const { isDark } = useTheme()
@@ -38,6 +39,7 @@ export default function FacultyScheduleScreen() {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
+  const loadState = useLoadState()
 
   useEffect(() => {
     if (!currentUser) return
@@ -51,9 +53,16 @@ export default function FacultyScheduleScreen() {
       ? getDateRangeForMonth(currentDate.getFullYear(), currentDate.getMonth())
       : { start: getWeekDays(currentDate)[0].date, end: getWeekDays(currentDate)[6].date }
     void Promise.all([api.getCalendarEvents(user.id, range.start, range.end), api.getAttendanceRecords(undefined, range.start, range.end)])
-      .then(([nextEvents, nextRecords]) => { setEvents(nextEvents); setAttendanceRecords(nextRecords) })
-      .catch(() => showToast('error', 'Unable to load schedule', 'Please check your connection and try again.'))
-  }, [currentDate, showToast, user, viewMode])
+      .then(([nextEvents, nextRecords]) => {
+        setEvents(nextEvents)
+        setAttendanceRecords(nextRecords)
+        loadState.markReady()
+      })
+      .catch(() => {
+        loadState.markError()
+        showToast('error', 'Unable to load schedule', 'Check your connection and try again.')
+      })
+  }, [currentDate, showToast, user, viewMode, loadState.reloadToken])
 
   const monthDays = useMemo(() => getMonthDays(currentDate.getFullYear(), currentDate.getMonth()), [currentDate])
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate])
@@ -145,6 +154,19 @@ export default function FacultyScheduleScreen() {
       </View>
 
       <ScrollView style={{ flex: 1 }} scrollEnabled={viewMode === 'month'} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 8 }} showsVerticalScrollIndicator={false}>
+        {loadState.state === 'loading' ? (
+          <View className="gap-3">
+            <CampusSkeleton className="h-64 w-full"><View /></CampusSkeleton>
+            <ListSkeleton rows={2} rowClass="h-16" />
+          </View>
+        ) : loadState.state === 'error' ? (
+          <CampusLoadError
+            title="Unable to load the calendar"
+            message="Sessions and attendance could not be fetched. Try again or reopen the screen."
+            onRetry={loadState.retry}
+          />
+        ) : (
+        <>
         {viewMode === 'month' ? (
           <StudentMonthCalendar
             monthDays={monthDays}
@@ -186,6 +208,8 @@ export default function FacultyScheduleScreen() {
             </View>
           </>
         ) : null}
+        </>
+        )}
       </ScrollView>
 
       <Modal visible={!!selectedEvent} transparent animationType="slide" onRequestClose={() => setSelectedEvent(null)}>

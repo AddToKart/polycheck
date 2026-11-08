@@ -1,6 +1,7 @@
 import "../global.css";
-import { SplashScreen, Stack, useRouter, useSegments } from "expo-router";
+import { SplashScreen, Stack, useRouter, useSegments, type ErrorBoundaryProps } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { CampusRouteError } from "../components/CampusRouteError";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useFonts } from "expo-font";
 import {
@@ -42,10 +43,19 @@ import { CampusToastProvider, useCampusToast } from "../components/CampusToast";
 import * as Sentry from "@sentry/react-native";
 
 const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
-// F7 demo killswitch — env-gated (default off; production pins "false").
+// Diagnostics killswitch: keeps the app navigable while bisecting the
+// scene/navigation animation regime on a device build (default = animations on).
+const navTransitionsDisabled =
+  process.env.EXPO_PUBLIC_DISABLE_NAV_TRANSITIONS === "true";
+// F7 demo killswitch - env-gated (default off; production pins "false").
 const outageSimulatorEnabled = isOutageSimulatorEnabled(
   process.env.EXPO_PUBLIC_ENABLE_OUTAGE_SIMULATOR,
 );
+
+/** Route-level error boundary: a render throw becomes a themed retry screen. */
+export function ErrorBoundary(props: ErrorBoundaryProps) {
+  return <CampusRouteError {...props} />;
+}
 
 if (sentryDsn && process.env.EXPO_PUBLIC_E2E_MODE !== "true") {
   try {
@@ -290,11 +300,13 @@ function RootLayoutInner() {
           contentStyle: {
             backgroundColor: isDark ? pupColors.campusDark : pupColors.campus,
           },
-          animation: "slide_from_right",
+          animation: navTransitionsDisabled ? "none" : "slide_from_right",
           // Bootstrap redirects (login -> dashboard, gates, sign-out) replace
           // the route; pop-style entry makes those feel like "arriving"
           // instead of pushing a new page.
-          animationTypeForReplace: "pop",
+          ...(navTransitionsDisabled
+            ? {}
+            : { animationTypeForReplace: "pop" as const }),
           gestureEnabled: true,
         }}
       >

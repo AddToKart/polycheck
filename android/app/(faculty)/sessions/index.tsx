@@ -9,9 +9,10 @@ import { useAuthGate } from '../../../hooks/use-auth-gate'
 import { useTheme } from '../../../theme/ThemeContext'
 import { pupColors } from '../../../theme/colors'
 import { CampusHeader } from '../../../components/CampusHeader'
-import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
+import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, CampusSkeleton, ListSkeleton, SectionHeading } from '../../../components/CampusPrimitives'
 import { FilterChipsRow, FilterPanel, FilterSelect } from '../../../components/FilterPrimitives'
 import { useCampusToast } from '../../../components/CampusToast'
+import { useLoadState } from '../../../hooks/use-load-state'
 import { campusDate, datePresetRange, filterSessions, type DatePreset, type SessionStatusFilter } from '../../../lib/filters'
 import { resolveSessionSectionContext } from '../../../lib/session-context'
 
@@ -42,17 +43,25 @@ export default function FacultySessionsScreen() {
   const [selectedSectionId, setSelectedSectionId] = useState(routeSectionIdValue)
   const [statusFilter, setStatusFilter] = useState<SessionStatusFilter>('all')
   const [datePreset, setDatePreset] = useState<DatePreset>('all')
+  const loadState = useLoadState()
 
   useEffect(() => {
     if (!user) return
+    let active = true
     void Promise.all([api.getSessions(), api.getSubjects(), api.getSections()])
       .then(([nextSessions, nextSubjects, nextSections]) => {
+        if (!active) return
         setSessions(nextSessions)
         setSubjects(nextSubjects)
         setSections(nextSections)
+        loadState.markReady()
       })
-      .catch(() => showToast('error', 'Unable to load sessions', 'Check your connection and try again.'))
-  }, [showToast, user])
+      .catch(() => {
+        if (active) loadState.markError()
+        showToast('error', 'Unable to load sessions', 'Check your connection and try again.')
+      })
+    return () => { active = false }
+  }, [showToast, user, loadState.reloadToken])
 
   // Re-apply the route context when a new deep link targets the mounted screen.
   useEffect(() => {
@@ -242,7 +251,18 @@ export default function FacultySessionsScreen() {
           />
         </FilterPanel>
 
-        {groupedSessions.length === 0 ? (
+        {loadState.state === 'loading' ? (
+          <View className="gap-3">
+            <CampusSkeleton className="h-20 w-full"><View /></CampusSkeleton>
+            <ListSkeleton rows={4} rowClass="h-20" />
+          </View>
+        ) : loadState.state === 'error' ? (
+          <CampusLoadError
+            title="Unable to load sessions"
+            message="Sessions, subjects and sections could not be fetched. Try again."
+            onRetry={loadState.retry}
+          />
+        ) : groupedSessions.length === 0 ? (
           <CampusEmptyState
             icon="event-busy"
             title={isFiltered ? 'No matching sessions' : 'No sessions found'}

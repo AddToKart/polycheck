@@ -8,13 +8,14 @@ import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
-import { AttendanceStatusPill, CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
+import { AttendanceStatusPill, CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, CampusSkeleton, ListSkeleton } from '../../components/CampusPrimitives'
 import { AttendanceDisputeModal, AttendanceRecordDetailModal } from '../../components/AttendanceRecordModals'
 import { ExcuseRequestModal } from '../../components/ExcuseRequestModal'
 import { FilterChipsRow, FilterPanel, FilterSelect } from '../../components/FilterPrimitives'
 import { useCampusToast } from '../../components/CampusToast'
 import { EXCUSE_STATUS_META, excuseReasonLabel, isExcuseEligible } from '../../lib/excuses'
 import { datePresetRange, filterAttendanceRecords } from '../../lib/filters'
+import { useLoadState } from '../../hooks/use-load-state'
 
 type FilterTab = 'all' | AttendanceStatus
 type HistoryDatePreset = 'all' | '7d' | '30d'
@@ -60,6 +61,7 @@ export default function HistoryScreen() {
   const [submittingDispute, setSubmittingDispute] = useState(false)
   const [excuseVisible, setExcuseVisible] = useState(false)
   const [submittingExcuse, setSubmittingExcuse] = useState(false)
+  const loadState = useLoadState()
 
   const user = api.getCurrentUser()
   const student = useMemo(() => {
@@ -83,10 +85,15 @@ export default function HistoryScreen() {
         setAllRecords(records)
         setSectionsMap(new Map(sections.map((section) => [section.id, section])))
         setSubjects(Object.fromEntries(subjectList.map((subject) => [subject.id, subject])))
+        loadState.markReady()
       })
-      .catch(() => { if (active) showToast('error', 'Unable to load history', 'Check your connection and try again.') })
+      .catch(() => {
+        if (!active) return
+        loadState.markError()
+        showToast('error', 'Unable to load history', 'Check your connection and try again.')
+      })
     return () => { active = false }
-  }, [showToast, student?.id]))
+  }, [showToast, student?.id, loadState.reloadToken]))
 
   const filteredRecords = useMemo(() => filterAttendanceRecords(
     allRecords,
@@ -243,20 +250,39 @@ export default function HistoryScreen() {
         data={filteredRecords}
         keyExtractor={(record) => record.id}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}
-        ListHeaderComponent={listHeader}
+        ListHeaderComponent={
+          loadState.state === 'ready' ? listHeader : (
+            <View className="pt-4 gap-3">
+              {loadState.state === 'error' ? (
+                <CampusLoadError
+                  title="Unable to load your history"
+                  message="Attendance records could not be fetched. Try again — nothing was lost."
+                  onRetry={loadState.retry}
+                />
+              ) : (
+                <>
+                  <CampusSkeleton className="h-20 w-full"><View /></CampusSkeleton>
+                  <ListSkeleton rows={4} rowClass="h-20" />
+                </>
+              )}
+            </View>
+          )
+        }
         ItemSeparatorComponent={() => <View className="h-3" />}
         ListEmptyComponent={(
-          <CampusEmptyState
-            icon="search-off"
-            title="NO RECORDS IN THIS VIEW"
-            description={
-              activeFilter !== 'all'
-                ? `No ${activeFilter} records match this subject and date range.`
-                : isFiltered
-                  ? 'No records match the selected subject or date range.'
-                  : 'Your attendance records will appear after your first class check-in.'
-            }
-          />
+          loadState.state === 'ready' ? (
+            <CampusEmptyState
+              icon="search-off"
+              title="NO RECORDS IN THIS VIEW"
+              description={
+                activeFilter !== 'all'
+                  ? `No ${activeFilter} records match this subject and date range.`
+                  : isFiltered
+                    ? 'No records match the selected subject or date range.'
+                    : 'Your attendance records will appear after your first class check-in.'
+              }
+            />
+          ) : null
         )}
         renderItem={({ item: record }) => {
           const excuseMeta = record.excuseStatus ? EXCUSE_STATUS_META[record.excuseStatus] : null

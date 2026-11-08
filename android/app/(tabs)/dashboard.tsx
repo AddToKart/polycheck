@@ -18,10 +18,13 @@ import {
   CampusCard,
   CampusEmptyState,
   CampusIconButton,
+  CampusLoadError,
+  DashboardSkeleton,
   MetricTile,
   SectionHeading,
 } from '../../components/CampusPrimitives'
 import { IdCardModal } from '../../components/IdCardModal'
+import { useLoadState } from '../../hooks/use-load-state'
 
 const greeting = () => {
   const hour = new Date().getHours()
@@ -50,6 +53,7 @@ export default function DashboardScreen() {
   const [myAttendance, setMyAttendance] = useState<AttendanceRecord[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [subjects, setSubjects] = useState<Record<string, Subject>>({})
+  const loadState = useLoadState()
 
   const loadDashboard = useCallback(async () => {
     if (!student) return
@@ -66,8 +70,12 @@ export default function DashboardScreen() {
   }, [student?.id])
 
   useFocusEffect(useCallback(() => {
-    void loadDashboard().catch(() => undefined)
-  }, [loadDashboard]))
+    let active = true
+    void loadDashboard()
+      .then(() => { if (active) loadState.markReady() })
+      .catch(() => { if (active) loadState.markError() })
+    return () => { active = false }
+  }, [loadDashboard, loadState.reloadToken]))
 
   const attendanceTotals = useMemo(() => myAttendance.reduce(
     (totals, record) => ({ ...totals, [record.status]: totals[record.status] + 1 }),
@@ -131,6 +139,19 @@ export default function DashboardScreen() {
         )}
       />
 
+      {loadState.state === 'error' ? (
+        <View className="px-4 pt-4">
+          <CampusLoadError
+            title="Unable to load your dashboard"
+            message="Your classes and attendance could not be fetched. Nothing is lost — try again."
+            onRetry={loadState.retry}
+          />
+        </View>
+      ) : loadState.state === 'loading' ? (
+        <View className="px-4 pt-4">
+          <DashboardSkeleton />
+        </View>
+      ) : (
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}
@@ -279,6 +300,7 @@ export default function DashboardScreen() {
           />
         ) : null}
       </ScrollView>
+      )}
 
       <IdCardModal
         visible={showIdModal}

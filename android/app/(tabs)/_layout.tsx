@@ -9,6 +9,12 @@ import { shouldShowAssistantEntry } from '../../lib/assistant-visibility'
 import { pupColors } from '../../theme/colors'
 import { useTheme } from '../../theme/ThemeContext'
 
+// Device-bisect levers (default: animations on, no theme remount). Flip via
+// EXPO_PUBLIC_* in the EAS preview env to isolate navigation regressions.
+const navTransitionsDisabled =
+  process.env.EXPO_PUBLIC_DISABLE_NAV_TRANSITIONS === 'true'
+const restoreThemeRemount = process.env.EXPO_PUBLIC_RESTORE_THEME_REMOUNT === 'true'
+
 const iconMap: Record<string, keyof typeof MaterialIcons.glyphMap> = {
   dashboard: 'grid-view',
   schedule: 'calendar-month',
@@ -47,15 +53,20 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      key={restoreThemeRemount ? (isDark ? 'dark' : 'light') : 'student-tabs'}
       screenOptions={({ route }) => ({
         headerShown: false,
         // Cross-fade tab switches; also covers the hidden detail screens that
         // live in this group (subject-info, enroll, id-card...) so every
         // navigation animates instead of hard-swapping.
-        animation: 'fade',
-        sceneStyle: {
-          backgroundColor: isDark ? pupColors.campusDark : pupColors.campus,
-        },
+        animation: navTransitionsDisabled ? 'none' : 'fade',
+        ...(navTransitionsDisabled
+          ? {}
+          : {
+              sceneStyle: {
+                backgroundColor: isDark ? pupColors.campusDark : pupColors.campus,
+              },
+            }),
         tabBarActiveTintColor: pupColors.golden,
         tabBarInactiveTintColor: 'rgba(255,255,255,0.70)',
         tabBarStyle: {

@@ -41,6 +41,48 @@ export const ListSkeleton = ({ rows = 3, rowClass = 'h-16' }: { rows?: number; r
   </View>
 )
 
+type CampusLoadErrorProps = {
+  title?: string
+  message?: string
+  onRetry: () => void
+}
+
+/** Failure state with a retry action — introduced so a failed fetch is never
+ * rendered as an empty (or permanently blank) screen. */
+export const CampusLoadError = ({
+  title = 'Unable to load this screen',
+  message = 'Check your connection and try again.',
+  onRetry,
+}: CampusLoadErrorProps) => {
+  const { isDark } = useTheme()
+  return (
+    <View
+      accessibilityRole="alert"
+      className="items-center rounded-none border border-dashed border-line bg-white px-6 py-10 dark:border-line-dark dark:bg-surface-dark"
+    >
+      <View className="mb-3 h-12 w-12 items-center justify-center rounded-none bg-maroon/5 dark:bg-golden/10">
+        <MaterialIcons name="cloud-off" size={24} color={isDark ? pupColors.golden : pupColors.maroon} />
+      </View>
+      <Text className="text-center font-sans-bold text-base font-bold text-ink dark:text-white uppercase tracking-wider">
+        {title}
+      </Text>
+      <Text className="mt-2 max-w-64 text-center font-sans text-xs leading-5 text-muted dark:text-zinc-400">
+        {message}
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Try again"
+        onPress={onRetry}
+        className="mt-5 min-h-11 items-center justify-center border border-maroon px-5 active:opacity-80 dark:border-golden"
+      >
+        <Text className="font-sans-bold text-[10px] uppercase tracking-widest text-maroon dark:text-golden">
+          Try again
+        </Text>
+      </Pressable>
+    </View>
+  )
+}
+
 
 type CampusCardProps = {
   children: ReactNode

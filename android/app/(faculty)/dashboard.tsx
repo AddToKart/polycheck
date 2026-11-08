@@ -21,10 +21,12 @@ import {
   CampusCard,
   CampusEmptyState,
   CampusIconButton,
+  CampusLoadError,
   DashboardSkeleton,
   MetricTile,
   SectionHeading,
 } from '../../components/CampusPrimitives'
+import { useLoadState } from '../../hooks/use-load-state'
 
 const campusDateFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: 'Asia/Manila',
@@ -68,6 +70,7 @@ function TeacherDashboard({ user }: { user: User }) {
   const [overview, setOverview] = useState<DashboardOverview | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshSignal, setRefreshSignal] = useState(0)
+  const loadState = useLoadState()
 
   const loadDashboard = useCallback(async () => {
     const today = campusDate()
@@ -84,11 +87,16 @@ function TeacherDashboard({ user }: { user: User }) {
   }, [user.id])
 
   useEffect(() => {
+    let active = true
     void loadDashboard()
-      .catch(() => showToast('error', 'Unable to load dashboard', 'Pull down to try again.'))
-  }, [loadDashboard, showToast])
+      .then(() => { if (active) loadState.markReady() })
+      .catch(() => {
+        if (active) loadState.markError()
+        showToast('error', 'Unable to load dashboard', 'Pull down to try again.')
+      })
+    return () => { active = false }
+  }, [loadDashboard, showToast, loadState.reloadToken])
 
-  const loadFinished = overview !== null
   const sessionsToday = overview?.counts.sessionsToday ?? 0
   const pendingDisputes = overview?.counts.pendingDisputes ?? 0
   const trend = useMemo(() => summarizeDashboardTrends(overview?.trends), [overview?.trends])
@@ -129,8 +137,19 @@ function TeacherDashboard({ user }: { user: User }) {
           </>
         )}
       />
-      {!loadFinished ? <DashboardSkeleton /> : null}
-
+      {loadState.state === 'error' ? (
+        <View className="px-4 pt-4">
+          <CampusLoadError
+            title="Unable to load your workspace"
+            message="Sections, sessions and attendance could not be fetched. Try again."
+            onRetry={loadState.retry}
+          />
+        </View>
+      ) : loadState.state === 'loading' ? (
+        <View className="px-4 pt-4">
+          <DashboardSkeleton />
+        </View>
+      ) : (
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}
@@ -305,6 +324,7 @@ function TeacherDashboard({ user }: { user: User }) {
           })}
         </View>
       </ScrollView>
+      )}
     </SafeAreaView>
   )
 }

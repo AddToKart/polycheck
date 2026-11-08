@@ -42,7 +42,7 @@ import {
   type RadarDeniedEntry,
 } from '../../../lib/radar-overlay'
 import { CampusHeader } from '../../../components/CampusHeader'
-import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton, CampusSkeleton, ListSkeleton, SectionHeading } from '../../../components/CampusPrimitives'
+import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, CampusSkeleton, ListSkeleton, SectionHeading } from '../../../components/CampusPrimitives'
 import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
 import { useCampusToast } from '../../../components/CampusToast'
 
@@ -175,6 +175,8 @@ export default function SessionDetailScreen() {
   const [lastUpdated, setLastUpdated] = useState(new Date())
   const [refreshLabel, setRefreshLabel] = useState('Updated just now')
   const [realtimeConnected, setRealtimeConnected] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const [reloadToken, setReloadToken] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const qrCodeRef = useRef<QrSvgHandle | null>(null)
@@ -206,14 +208,15 @@ export default function SessionDetailScreen() {
     if (!currentUser) return
     setUser(currentUser)
     if (!id) return
+    setLoadError(false)
     void api.getSession(id).then(async (nextSession) => {
       const section = await api.getSection(nextSession.sectionId)
       if (currentUser.role === 'teacher' && section.teacherId !== currentUser.id) { router.replace('/'); return }
       const students = await api.getSectionStudents(section.id)
       setEnrolledStudents(students.map(({ attendance: _attendance, ...student }) => student))
       await refreshData()
-    }).catch(() => router.replace('/'))
-  }, [id, currentUser, refreshData])
+    }).catch(() => setLoadError(true))
+  }, [id, currentUser, refreshData, reloadToken])
 
   const onlineMode = session?.mode === 'online'
   const activeCheckpointExpiry = onlineMode
@@ -282,16 +285,26 @@ export default function SessionDetailScreen() {
   }), [session?.mode, session?.geofence, attempts, records, enrolledStudents, anomalies])
 
   if (!user || !session) {
-    // Cockpit skeleton instead of a blank frame: the loading chain (session ->
-    // section -> roster -> records) can take a moment on cellular.
+    // Failure state beats a blank frame; still show the skeleton while the
+    // session chain (session -> section -> roster -> records) is in flight.
     return (
       <SafeAreaView
         style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
         className="flex-1 bg-campus dark:bg-campus-dark"
       >
         <View className="flex-1 px-4 pt-8">
-          <CampusSkeleton className="h-24 w-full"><View /></CampusSkeleton>
-          <View className="mt-4"><ListSkeleton rows={3} rowClass="h-32" /></View>
+          {loadError ? (
+            <CampusLoadError
+              title="Unable to open this session"
+              message="The session could not be loaded. Check your connection, then try again."
+              onRetry={() => setReloadToken((token) => token + 1)}
+            />
+          ) : (
+            <>
+              <CampusSkeleton className="h-24 w-full"><View /></CampusSkeleton>
+              <View className="mt-4"><ListSkeleton rows={3} rowClass="h-32" /></View>
+            </>
+          )}
         </View>
       </SafeAreaView>
     )

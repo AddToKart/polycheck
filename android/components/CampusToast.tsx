@@ -32,11 +32,15 @@ const variantStyles: Record<ToastType, { icon: keyof typeof MaterialIcons.glyphM
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
+// Device-bisect lever: disable the Reanimated toast wrapper entirely.
+const toastAnimationDisabled =
+  process.env.EXPO_PUBLIC_DISABLE_ANIMATED_TOAST === 'true'
+
 const ToastCard = ({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => void }) => {
   const { isDark } = useTheme()
   const variant = variantStyles[toast.type]
   const iconColor = toast.type === 'info' && isDark ? pupColors.golden : variant.iconColor
-  const reduceMotion = useReducedMotion()
+  const reduceMotion = useReducedMotion() || toastAnimationDisabled
   // Enter slides down + fades; exit fades up. Reanimated springs the removal
   // from the visible array automatically when the toast is dismissed/expired.
   const entering = reduceMotion ? undefined : FadeInDown.duration(220).springify()
