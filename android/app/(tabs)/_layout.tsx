@@ -9,10 +9,10 @@ import { shouldShowAssistantEntry } from '../../lib/assistant-visibility'
 import { pupColors } from '../../theme/colors'
 import { useTheme } from '../../theme/ThemeContext'
 
-// Device-bisect levers (default: animations on, no theme remount). Flip via
-// EXPO_PUBLIC_* in the EAS preview env to isolate navigation regressions.
-const navTransitionsDisabled =
-  process.env.EXPO_PUBLIC_DISABLE_NAV_TRANSITIONS === 'true'
+// Device animation lever: instant screen changes are the stable default.
+// Set EXPO_PUBLIC_ENABLE_NAV_TRANSITIONS=true to opt back into the cross-fade.
+const navTransitionsEnabled =
+  process.env.EXPO_PUBLIC_ENABLE_NAV_TRANSITIONS === 'true'
 const restoreThemeRemount = process.env.EXPO_PUBLIC_RESTORE_THEME_REMOUNT === 'true'
 
 const iconMap: Record<string, keyof typeof MaterialIcons.glyphMap> = {
@@ -59,14 +59,14 @@ export default function TabLayout() {
         // Cross-fade tab switches; also covers the hidden detail screens that
         // live in this group (subject-info, enroll, id-card...) so every
         // navigation animates instead of hard-swapping.
-        animation: navTransitionsDisabled ? 'none' : 'fade',
-        ...(navTransitionsDisabled
-          ? {}
-          : {
+        animation: navTransitionsEnabled ? 'fade' : 'none',
+        ...(navTransitionsEnabled
+          ? {
               sceneStyle: {
                 backgroundColor: isDark ? pupColors.campusDark : pupColors.campus,
               },
-            }),
+            }
+          : {}),
         tabBarActiveTintColor: pupColors.golden,
         tabBarInactiveTintColor: 'rgba(255,255,255,0.70)',
         tabBarStyle: {

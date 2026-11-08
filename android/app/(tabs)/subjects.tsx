@@ -5,10 +5,11 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import type { AttendanceRecord, Section, Subject } from '@polycheck/shared'
 import { api } from '../../services/api-client'
+import { useLoadState } from '../../hooks/use-load-state'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
-import { CampusCard, CampusEmptyState } from '../../components/CampusPrimitives'
+import { CampusCard, CampusEmptyState, CampusLoadError, CampusSkeleton, ListSkeleton } from '../../components/CampusPrimitives'
 import { useCampusToast } from '../../components/CampusToast'
 
 export default function StudentSubjectsListScreen() {
@@ -18,6 +19,7 @@ export default function StudentSubjectsListScreen() {
   const [mySections, setMySections] = useState<Section[]>([])
   const [myAttendance, setMyAttendance] = useState<AttendanceRecord[]>([])
   const [subjects, setSubjects] = useState<Record<string, Subject>>({})
+  const loadState = useLoadState()
 
   const user = api.getCurrentUser()
   const student = user && 'studentId' in user ? user : null
@@ -29,9 +31,13 @@ export default function StudentSubjectsListScreen() {
         setMySections(sections)
         setMyAttendance(attendance)
         setSubjects(Object.fromEntries(allSubjects.map((subject) => [subject.id, subject])))
+        loadState.markReady()
       })
-      .catch(() => showToast('error', 'Unable to load classes', 'Check your connection and try again.'))
-  }, [showToast, student?.id])
+      .catch(() => {
+        loadState.markError()
+        showToast('error', 'Unable to load classes', 'Check your connection and try again.')
+      })
+  }, [showToast, student?.id, loadState.reloadToken])
 
   const filteredSections = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -72,7 +78,18 @@ export default function StudentSubjectsListScreen() {
       </View>
 
       <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pb-12">
-        {filteredSections.length === 0 ? (
+        {loadState.state === 'loading' ? (
+          <View className="gap-3 pt-1">
+            <CampusSkeleton className="h-36 w-full"><View /></CampusSkeleton>
+            <ListSkeleton rows={2} rowClass="h-36" />
+          </View>
+        ) : loadState.state === 'error' ? (
+          <CampusLoadError
+            title="Unable to load your classes"
+            message="Enrolled classes could not be fetched. Check your connection and try again."
+            onRetry={loadState.retry}
+          />
+        ) : filteredSections.length === 0 ? (
           <CampusEmptyState
             icon="search-off"
             title={searchQuery ? 'No matching classes' : 'No classes yet'}

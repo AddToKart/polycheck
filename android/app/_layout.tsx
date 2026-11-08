@@ -43,10 +43,12 @@ import { CampusToastProvider, useCampusToast } from "../components/CampusToast";
 import * as Sentry from "@sentry/react-native";
 
 const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
-// Diagnostics killswitch: keeps the app navigable while bisecting the
-// scene/navigation animation regime on a device build (default = animations on).
-const navTransitionsDisabled =
-  process.env.EXPO_PUBLIC_DISABLE_NAV_TRANSITIONS === "true";
+// Navigation animations are opt-in. Instant screen changes are the stable
+// default on Android release builds: a stuck scene transition can leave two
+// screens composited (rounded cards/text from the outgoing screen over the
+// incoming one). Set EXPO_PUBLIC_ENABLE_NAV_TRANSITIONS=true to restore them.
+const navTransitionsEnabled =
+  process.env.EXPO_PUBLIC_ENABLE_NAV_TRANSITIONS === "true";
 // F7 demo killswitch - env-gated (default off; production pins "false").
 const outageSimulatorEnabled = isOutageSimulatorEnabled(
   process.env.EXPO_PUBLIC_ENABLE_OUTAGE_SIMULATOR,
@@ -300,13 +302,13 @@ function RootLayoutInner() {
           contentStyle: {
             backgroundColor: isDark ? pupColors.campusDark : pupColors.campus,
           },
-          animation: navTransitionsDisabled ? "none" : "slide_from_right",
+          animation: navTransitionsEnabled ? "slide_from_right" : "none",
           // Bootstrap redirects (login -> dashboard, gates, sign-out) replace
           // the route; pop-style entry makes those feel like "arriving"
           // instead of pushing a new page.
-          ...(navTransitionsDisabled
-            ? {}
-            : { animationTypeForReplace: "pop" as const }),
+          ...(navTransitionsEnabled
+            ? { animationTypeForReplace: "pop" as const }
+            : {}),
           gestureEnabled: true,
         }}
       >

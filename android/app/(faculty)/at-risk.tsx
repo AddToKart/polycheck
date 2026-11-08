@@ -21,10 +21,11 @@ import {
 } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
+import { useLoadState } from '../../hooks/use-load-state'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
-import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
+import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, CampusSkeleton, ListSkeleton } from '../../components/CampusPrimitives'
 import { useCampusToast } from '../../components/CampusToast'
 import {
   CHED_NOTICE_FILENAME,
@@ -58,8 +59,8 @@ export default function FacultyAtRiskScreen() {
   const { showToast } = useCampusToast()
   const [view, setView] = useState<AtRiskView>('list')
   const [rows, setRows] = useState<StudentAtRisk[]>([])
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const loadState = useLoadState()
   // F5: the "Issue CHED notice" confirmation sheet state.
   const [noticeRow, setNoticeRow] = useState<StudentAtRisk | null>(null)
   const [noticeNote, setNoticeNote] = useState('')
@@ -69,16 +70,15 @@ export default function FacultyAtRiskScreen() {
   const [referralRefreshKey, setReferralRefreshKey] = useState(0)
 
   const load = useCallback(async () => {
-    setLoading(true)
     setError(null)
     try {
       setRows(await api.getAtRiskStudents({ limit: 50 }))
+      loadState.markReady()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to load at-risk students')
-    } finally {
-      setLoading(false)
+      loadState.markError()
     }
-  }, [])
+  }, [loadState.reloadToken])
 
   useEffect(() => {
     if (!currentUser) return
@@ -190,9 +190,18 @@ export default function FacultyAtRiskScreen() {
       </View>
 
       {view === 'list' ? (
-        loading ? (
-          <View className="flex-1 items-center justify-center">
-            <ActivityIndicator size="large" color={isDark ? pupColors.golden : pupColors.maroon} />
+        loadState.state === 'loading' ? (
+          <View className="flex-1 px-4 pt-4">
+            <CampusSkeleton className="h-28 w-full"><View /></CampusSkeleton>
+            <View className="mt-3"><ListSkeleton rows={3} rowClass="h-32" /></View>
+          </View>
+        ) : loadState.state === 'error' ? (
+          <View className="flex-1 px-4 pt-4">
+            <CampusLoadError
+              title="Unable to load at-risk students"
+              message={error ?? 'Check your connection and try again.'}
+              onRetry={loadState.retry}
+            />
           </View>
         ) : (
           <FlatList

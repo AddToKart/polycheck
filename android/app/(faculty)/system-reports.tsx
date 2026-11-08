@@ -14,11 +14,12 @@ import {
 } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
+import { useLoadState } from '../../hooks/use-load-state'
 import { useTheme } from '../../theme/ThemeContext'
 import { canAccessItOperations } from '@polycheck/shared'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
-import { CampusButton, CampusCard, MetricTile } from '../../components/CampusPrimitives'
+import { CampusButton, CampusCard, CampusLoadError, CampusSkeleton, ListSkeleton, MetricTile } from '../../components/CampusPrimitives'
 import { CampusFormField } from '../../components/CampusFormField'
 import { useCampusToast } from '../../components/CampusToast'
 
@@ -85,6 +86,7 @@ export default function SystemReportsScreen() {
   const [adminNotes, setAdminNotes] = useState('')
   const [screenshotUri, setScreenshotUri] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const loadState = useLoadState()
   const scope = (currentUser as { scope?: string | null } | null)?.scope ?? null
   const canManage = currentUser?.role === 'super_admin' && scope !== 'department'
 
@@ -105,12 +107,14 @@ export default function SystemReportsScreen() {
       setReports(page.data)
       setTotal(page.total)
       setError('')
+      loadState.markReady()
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load reports.')
+      loadState.markError()
     } finally {
       setLoading(false)
     }
-  }, [categoryFilter, currentUser, searchInput, statusFilter])
+  }, [categoryFilter, currentUser, searchInput, statusFilter, loadState.reloadToken])
 
   useEffect(() => {
     void load()
@@ -173,13 +177,24 @@ export default function SystemReportsScreen() {
         </View>
       ) : null}
 
-      {error ? (
+      {loadState.state === 'error' ? (
         <View className="mx-4 mt-2">
-          <CampusButton label="Retry" icon="refresh" variant="secondary" onPress={() => void load()} />
+          <CampusLoadError
+            title="Unable to load system reports"
+            message={error || 'Check your connection and try again.'}
+            onRetry={loadState.retry}
+          />
         </View>
       ) : null}
 
-      {stats ? (
+      {loadState.state === 'loading' ? (
+        <View className="mt-3 gap-3 px-4">
+          <CampusSkeleton className="h-24 w-full"><View /></CampusSkeleton>
+          <ListSkeleton rows={3} rowClass="h-24" />
+        </View>
+      ) : null}
+
+      {loadState.state === 'ready' && stats ? (
         <View className="mt-3 px-4">
           <View className="flex-row gap-3">
             <View className="flex-1">
@@ -262,6 +277,7 @@ export default function SystemReportsScreen() {
         </View>
       </View>
 
+      {loadState.state === 'ready' ? (
       <FlatList
         className="flex-1 px-4 pt-3"
         contentContainerClassName="pb-24 gap-3"
@@ -309,6 +325,7 @@ export default function SystemReportsScreen() {
           </Pressable>
         )}
       />
+      ) : null}
 
       <Modal
         visible={detail !== null}

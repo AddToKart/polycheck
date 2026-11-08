@@ -6,11 +6,12 @@ import { router } from 'expo-router'
 import type { AttendanceRecord, DisputeReason, Section, Session, Subject, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
+import { useLoadState } from '../../hooks/use-load-state'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { DisputeTimeline } from '../../components/DisputeTimeline'
-import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
+import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, CampusSkeleton, ListSkeleton } from '../../components/CampusPrimitives'
 import { FilterChipsRow, FilterSelect } from '../../components/FilterPrimitives'
 import { useCampusToast } from '../../components/CampusToast'
 import { datePresetRange, isInDateRange, type DatePreset } from '../../lib/filters'
@@ -69,6 +70,7 @@ export default function DisputesScreen() {
   const [timelineOpen, setTimelineOpen] = useState(true)
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({})
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
+  const loadState = useLoadState()
 
   useEffect(() => {
     if (!currentUser) return
@@ -79,9 +81,13 @@ export default function DisputesScreen() {
         setDisputes(nextDisputes)
         setSections(Object.fromEntries(sectionList.map((section) => [section.id, section])))
         setSessions(Object.fromEntries(sessionList.map((session) => [session.id, session])))
+        loadState.markReady()
       })
-      .catch(() => showToast('error', 'Unable to load disputes', 'Please check your connection and try again.'))
-  }, [currentUser, showToast])
+      .catch(() => {
+        loadState.markError()
+        showToast('error', 'Unable to load disputes', 'Please check your connection and try again.')
+      })
+  }, [currentUser, showToast, loadState.reloadToken])
 
   const pendingCount = disputes.filter((record) => record.status === 'disputed').length
   const resolvedCount = disputes.filter((record) => record.disputeResolved).length
@@ -241,6 +247,19 @@ export default function DisputesScreen() {
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 8, gap: 12 }} showsVerticalScrollIndicator={false}>
+        {loadState.state === 'loading' ? (
+          <View className="gap-3">
+            <CampusSkeleton className="h-16 w-full"><View /></CampusSkeleton>
+            <ListSkeleton rows={3} rowClass="h-24" />
+          </View>
+        ) : loadState.state === 'error' ? (
+          <CampusLoadError
+            title="Unable to load disputes"
+            message="Disputed records could not be fetched. Check your connection and try again."
+            onRetry={loadState.retry}
+          />
+        ) : (
+          <>
         {!records.length ? <CampusEmptyState icon="verified" title={`No ${activeTab} records`} description="Adjust the student search, subject, section, or date filter to broaden this view." /> : null}
         {groups.map((subject) => {
           const count = subject.sections.reduce((sum, section) => sum + section.sessions.reduce((sessionSum, session) => sessionSum + session.records.length, 0), 0)
@@ -270,6 +289,8 @@ export default function DisputesScreen() {
             </CampusCard>
           )
         })}
+          </>
+        )}
       </ScrollView>
 
       <Modal visible={!!selectedRecord} transparent animationType="slide" onRequestClose={() => setSelectedRecord(null)}>

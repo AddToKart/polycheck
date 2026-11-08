@@ -5,12 +5,13 @@ import { router } from 'expo-router'
 import { getRecentCampusDateRange, type AttendanceReport, type Section, type Subject } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
+import { useLoadState } from '../../hooks/use-load-state'
 import { shareCsvFile } from '../../services/file-sharing'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import DatePickerModal from '../../components/DatePickerModal'
 import { CampusHeader } from '../../components/CampusHeader'
-import { CampusEmptyState, CampusIconButton, SectionHeading } from '../../components/CampusPrimitives'
+import { CampusEmptyState, CampusIconButton, CampusLoadError, CampusSkeleton, ListSkeleton, SectionHeading } from '../../components/CampusPrimitives'
 import { AttendanceDateRangeCard, AttendanceMetricGrid, AttendanceSummaryCard } from '../../components/AttendanceReportCards'
 import { FilterChip, FilterPanel, FilterSelect } from '../../components/FilterPrimitives'
 import { useCampusToast } from '../../components/CampusToast'
@@ -40,6 +41,7 @@ export default function FacultyAttendanceScreen() {
   const [sections, setSections] = useState<Section[]>([])
   const [selectedSubject, setSelectedSubject] = useState('')
   const [selectedSection, setSelectedSection] = useState('')
+  const loadState = useLoadState()
 
   useEffect(() => {
     if (!user) return
@@ -60,10 +62,18 @@ export default function FacultyAttendanceScreen() {
       subjectId: selectedSubject || undefined,
       sectionId: selectedSection || undefined,
     })
-      .then((nextReport) => { if (active) setReport(nextReport) })
-      .catch(() => showToast('error', 'Unable to load attendance', 'Check your connection and try again.'))
+      .then((nextReport) => {
+        if (!active) return
+        setReport(nextReport)
+        loadState.markReady()
+      })
+      .catch(() => {
+        if (!active) return
+        loadState.markError()
+        showToast('error', 'Unable to load attendance', 'Check your connection and try again.')
+      })
     return () => { active = false }
-  }, [fromDate, selectedSection, selectedSubject, toDate, user])
+  }, [fromDate, selectedSection, selectedSubject, toDate, user, loadState.reloadToken])
 
   const sectionOptions = useMemo(() => sections
     .filter((section) => !selectedSubject || section.subjectId === selectedSubject)
@@ -180,22 +190,38 @@ export default function FacultyAttendanceScreen() {
           onReset={resetFilters}
           filtered={isFiltered}
         />
-        <AttendanceMetricGrid metrics={[
-          { label: 'Sessions', value: totals.totalSessions, tone: 'brand' },
-          { label: 'Present', value: totals.present, tone: 'success' },
-          { label: 'Late', value: totals.late, tone: 'warning' },
-          { label: 'Absent', value: totals.absent, tone: 'danger' },
-          { label: 'Excused', value: totals.excused, tone: 'excused' },
-          { label: 'Pending', value: totals.pending, tone: 'neutral' },
-          { label: 'Disputed', value: totals.disputed, tone: 'disputed' },
-        ]} />
 
-        <SectionHeading eyebrow={`${report?.summaries.length ?? 0} classes`} title="Attendance by class" />
-        <View className="gap-3">
-          {!report?.summaries.length ? <CampusEmptyState icon="assessment" title="No attendance data" description="No records match the selected subject, section, and date range." /> : report.summaries.map((summary) => (
-            <AttendanceSummaryCard key={summary.sectionId} summary={summary} onPress={() => router.push(`/(faculty)/sections/${summary.sectionId}` as never)} />
-          ))}
-        </View>
+        {loadState.state === 'loading' ? (
+          <View className="gap-3">
+            <CampusSkeleton className="h-24 w-full"><View /></CampusSkeleton>
+            <ListSkeleton rows={3} rowClass="h-24" />
+          </View>
+        ) : loadState.state === 'error' ? (
+          <CampusLoadError
+            title="Unable to load attendance"
+            message="Attendance totals could not be fetched. Check your connection and try again."
+            onRetry={loadState.retry}
+          />
+        ) : (
+          <>
+            <AttendanceMetricGrid metrics={[
+              { label: 'Sessions', value: totals.totalSessions, tone: 'brand' },
+              { label: 'Present', value: totals.present, tone: 'success' },
+              { label: 'Late', value: totals.late, tone: 'warning' },
+              { label: 'Absent', value: totals.absent, tone: 'danger' },
+              { label: 'Excused', value: totals.excused, tone: 'excused' },
+              { label: 'Pending', value: totals.pending, tone: 'neutral' },
+              { label: 'Disputed', value: totals.disputed, tone: 'disputed' },
+            ]} />
+
+            <SectionHeading eyebrow={`${report?.summaries.length ?? 0} classes`} title="Attendance by class" />
+            <View className="gap-3">
+              {!report?.summaries.length ? <CampusEmptyState icon="assessment" title="No attendance data" description="No records match the selected subject, section, and date range." /> : report.summaries.map((summary) => (
+                <AttendanceSummaryCard key={summary.sectionId} summary={summary} onPress={() => router.push(`/(faculty)/sections/${summary.sectionId}` as never)} />
+              ))}
+            </View>
+          </>
+        )}
       </ScrollView>
 
       <DatePickerModal visible={fromPickerVisible} onClose={() => setFromPickerVisible(false)} onSelectDate={(value) => { setFromDate(value); setQuickRange(null) }} value={fromDate} title="Select From Date" isDark={isDark} />

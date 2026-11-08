@@ -46,7 +46,7 @@ export default function StudentDetailScreen() {
   const [releaseReason, setReleaseReason] = useState<EmergencyDeviceReleaseReason>('lost_or_damaged')
   const [releaseNote, setReleaseNote] = useState('')
   const [releasing, setReleasing] = useState(false)
-  const flipAnimation = useRef(new Animated.Value(0)).current
+  const flipAnimation = useRef(new Animated.Value(1)).current
 
   const loadData = useCallback(async () => {
     if (!studentId || !currentUser) return
@@ -76,16 +76,19 @@ export default function StudentDetailScreen() {
   useEffect(() => { void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion) }, [])
 
   const flip = () => {
-    Animated.timing(flipAnimation, { toValue: isFlipped ? 0 : 180, duration: reduceMotion ? 0 : 450, useNativeDriver: true }).start()
-    setIsFlipped((value) => !value)
+    // Single-face flip: mount only the visible side and fade through the
+    // swap. Relying on backfaceVisibility on Android/Fabric can render both
+    // faces at once (overlapping card text inside rounded corners).
+    Animated.timing(flipAnimation, { toValue: 0, duration: reduceMotion ? 0 : 120, useNativeDriver: true }).start(() => {
+      setIsFlipped((value) => !value)
+      Animated.timing(flipAnimation, { toValue: 1, duration: reduceMotion ? 0 : 160, useNativeDriver: true }).start()
+    })
   }
 
   if (!currentUser) return null
   if (loading || !student) return <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark"><ActivityIndicator size="large" color={isDark ? pupColors.golden : pupColors.maroon} /><Text className="mt-4 font-sans text-sm text-muted dark:text-zinc-400">Loading student profile…</Text></SafeAreaView>
 
   const isTeacher = currentUser.role === 'teacher'
-  const frontRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['0deg', '180deg'] })
-  const backRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['180deg', '360deg'] })
   const totalPresent = records.filter((record) => record.status === 'present').length
   const totalLate = records.filter((record) => record.status === 'late').length
   const totalAbsent = records.filter((record) => record.status === 'absent').length
@@ -196,7 +199,13 @@ export default function StudentDetailScreen() {
       <View className="mb-3 w-full items-center">
       <View style={{ width: '100%', maxWidth: 390, aspectRatio: 1.586 }}>
       <Pressable accessibilityRole="button" accessibilityLabel={`Student ID card, showing ${isFlipped ? 'back' : 'front'}. Tap to flip.`} accessibilityHint="Shows identity and verification details" onPress={flip} className="h-full w-full">
-        <Animated.View pointerEvents={isFlipped ? 'none' : 'auto'} style={{ position: 'absolute', height: '100%', width: '100%', backfaceVisibility: 'hidden', transform: [{ rotateY: frontRotation }] }}>
+        <Animated.View style={{ position: 'absolute', height: '100%', width: '100%', opacity: flipAnimation }}>
+          {isFlipped ? (
+          <View className="h-full w-full overflow-hidden rounded-[26px] border-2 border-maroon/20 bg-[#FDFBF7] shadow-lg dark:border-golden/20 dark:bg-[#151013]">
+          <View className="mt-4 h-12 w-full bg-zinc-900" />
+          <View className="flex-1 flex-row p-4"><View className="flex-[2] justify-between pr-4"><View><Text className="font-sans-bold text-[8px] uppercase tracking-[1.5px] text-maroon dark:text-golden">Conditions of use</Text><Text className="mt-2 font-sans text-[8px] leading-3 text-zinc-600 dark:text-zinc-300">This card is non-transferable and remains the property of PUP. Report a lost card immediately.</Text></View><View><Text className="font-sans-bold text-[7px] uppercase tracking-[1px] text-zinc-500">In case of emergency</Text><View className="mt-2 h-4 border-b border-zinc-400" /><View className="mt-1 h-4 border-b border-zinc-400" /></View></View><View className="flex-1 items-center justify-center border-l-2 border-dashed border-maroon/15 pl-4 dark:border-golden/15"><View className="rounded-xl bg-white p-1"><QRCode value={student.studentId} size={70} backgroundColor="#FFFFFF" color="#0A0A0A" /></View><Text className="mt-2 text-center font-sans-bold text-[6px] tracking-[1.5px] text-zinc-500">SCAN TO VERIFY</Text></View></View>
+          </View>
+          ) : (
           <View className="h-full w-full overflow-hidden rounded-[26px] border-2 border-maroon/20 bg-[#FDFBF7] shadow-lg dark:border-golden/20 dark:bg-[#151013]">
           <View className="flex-row items-center gap-3 bg-maroon px-4 py-3"><Image source={require('../../../assets/pup-logo.png')} className="h-9 w-9" /><View className="flex-1"><Text className="font-sans-bold text-[8px] uppercase tracking-[1.5px] text-golden">Polytechnic University of the Philippines</Text><Text className="mt-1 font-sans-bold text-[10px] uppercase tracking-[1px] text-white">Student identification card</Text></View></View>
           <View className="flex-1 flex-row">
@@ -204,13 +213,7 @@ export default function StudentDetailScreen() {
             <View className="flex-1 justify-center gap-3 p-4"><IdLabel label="Student number" value={student.studentId} prominent /><IdLabel label="Full name" value={student.fullName} /><View className="flex-row gap-3"><View className="flex-1"><IdLabel label="Program" value={student.program} /></View><View className="flex-1"><IdLabel label="Validity" value="2026–2027" /></View></View></View>
           </View>
           </View>
-        </Animated.View>
-
-        <Animated.View pointerEvents={isFlipped ? 'auto' : 'none'} style={{ position: 'absolute', height: '100%', width: '100%', backfaceVisibility: 'hidden', transform: [{ rotateY: backRotation }] }}>
-          <View className="h-full w-full overflow-hidden rounded-[26px] border-2 border-maroon/20 bg-[#FDFBF7] shadow-lg dark:border-golden/20 dark:bg-[#151013]">
-          <View className="mt-4 h-12 w-full bg-zinc-900" />
-          <View className="flex-1 flex-row p-4"><View className="flex-[2] justify-between pr-4"><View><Text className="font-sans-bold text-[8px] uppercase tracking-[1.5px] text-maroon dark:text-golden">Conditions of use</Text><Text className="mt-2 font-sans text-[8px] leading-3 text-zinc-600 dark:text-zinc-300">This card is non-transferable and remains the property of PUP. Report a lost card immediately.</Text></View><View><Text className="font-sans-bold text-[7px] uppercase tracking-[1px] text-zinc-500">In case of emergency</Text><View className="mt-2 h-4 border-b border-zinc-400" /><View className="mt-1 h-4 border-b border-zinc-400" /></View></View><View className="flex-1 items-center justify-center border-l-2 border-dashed border-maroon/15 pl-4 dark:border-golden/15"><View className="rounded-xl bg-white p-1"><QRCode value={student.studentId} size={70} backgroundColor="#FFFFFF" color="#0A0A0A" /></View><Text className="mt-2 text-center font-sans-bold text-[6px] tracking-[1.5px] text-zinc-500">SCAN TO VERIFY</Text></View></View>
-          </View>
+          )}
         </Animated.View>
       </Pressable>
       </View>

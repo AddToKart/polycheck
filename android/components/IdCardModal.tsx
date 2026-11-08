@@ -114,21 +114,26 @@ export const IdCardModal = ({ visible, student, onClose, deviceId }: IdCardModal
   const { isDark } = useTheme()
   const resolvedDeviceId = deviceId ?? api.getCurrentUser()?.boundDeviceId ?? null
   const [isFlipped, setIsFlipped] = useState(false)
-  const flipAnimation = useRef(new Animated.Value(0)).current
+  const flipAnimation = useRef(new Animated.Value(1)).current
 
   const flipCard = () => {
     void AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
+      // Single-face swap: avoid backfaceVisibility on Android/Fabric, which can
+      // leave both card faces rendered at once (overlapping text).
       Animated.timing(flipAnimation, {
-        toValue: isFlipped ? 0 : 180,
-        duration: reduceMotion ? 0 : 420,
+        toValue: 0,
+        duration: reduceMotion ? 0 : 120,
         useNativeDriver: true,
-      }).start()
-      setIsFlipped((flipped) => !flipped)
+      }).start(() => {
+        setIsFlipped((flipped) => !flipped)
+        Animated.timing(flipAnimation, {
+          toValue: 1,
+          duration: reduceMotion ? 0 : 160,
+          useNativeDriver: true,
+        }).start()
+      })
     })
   }
-
-  const frontRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['0deg', '180deg'] })
-  const backRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['180deg', '360deg'] })
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -176,15 +181,13 @@ export const IdCardModal = ({ visible, student, onClose, deviceId }: IdCardModal
           >
             <Animated.View
               className="absolute inset-0 shadow-lg"
-              style={{ transform: [{ perspective: 1000 }, { rotateY: frontRotation }], backfaceVisibility: 'hidden' }}
+              style={{ opacity: flipAnimation }}
             >
-              <IdCardFront student={student} isDark={isDark} deviceId={resolvedDeviceId} />
-            </Animated.View>
-            <Animated.View
-              className="absolute inset-0 shadow-lg"
-              style={{ transform: [{ perspective: 1000 }, { rotateY: backRotation }], backfaceVisibility: 'hidden' }}
-            >
-              <IdCardBack isDark={isDark} deviceId={resolvedDeviceId} />
+              {isFlipped ? (
+                <IdCardBack isDark={isDark} deviceId={resolvedDeviceId} />
+              ) : (
+                <IdCardFront student={student} isDark={isDark} deviceId={resolvedDeviceId} />
+              )}
             </Animated.View>
           </Pressable>
 

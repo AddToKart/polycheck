@@ -8,11 +8,12 @@ import { router } from 'expo-router'
 import type { AdminUserStatusFilter, SuperAdmin, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
+import { useLoadState } from '../../hooks/use-load-state'
 import { canAccessUserAdmin } from '@polycheck/shared'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
-import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
+import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, ListSkeleton } from '../../components/CampusPrimitives'
 import { CampusFormField } from '../../components/CampusFormField'
 import { BulkImportSheet } from '../../components/BulkImportSheet'
 import { useCampusToast } from '../../components/CampusToast'
@@ -259,6 +260,7 @@ export default function FacultyUsersScreen() {
   const [inactiveStudentTotal, setInactiveStudentTotal] = useState(0)
   const [busyUserId, setBusyUserId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const loadState = useLoadState()
 
   const [showImportStudents, setShowImportStudents] = useState(false)
   const [showCreateTeacher, setShowCreateTeacher] = useState(false)
@@ -309,11 +311,13 @@ export default function FacultyUsersScreen() {
       setTotal(page.total)
       setHasMore(page.hasMore)
       setNextOffset(nextUsersOffset(page))
+      loadState.markReady()
     } catch (loadError) {
       if (requestId !== requestIdRef.current) return
       const message = loadError instanceof Error ? loadError.message : 'Please try again.'
       setError(message)
       setHasMore(false)
+      loadState.markError()
       showToast('error', 'Unable to load users', message)
     } finally {
       if (requestId === requestIdRef.current) {
@@ -327,7 +331,7 @@ export default function FacultyUsersScreen() {
   useEffect(() => {
     if (!currentUser) return
     void loadPage(0, 'replace')
-  }, [currentUser, loadPage, refreshNonce])
+  }, [currentUser, loadPage, refreshNonce, loadState.reloadToken])
 
   useEffect(() => {
     if (!roleTabs.some((tab) => tab.id === activeTab)) setActiveTab('teachers')
@@ -807,14 +811,14 @@ export default function FacultyUsersScreen() {
           void loadPage(nextOffset, 'append').finally(() => { loadingMoreRef.current = false })
         }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadPage(0, 'refresh')} tintColor={isDark ? pupColors.golden : pupColors.maroon} />}
-        ListEmptyComponent={loading ? (
-          <View className="items-center py-16"><ActivityIndicator size="large" color={isDark ? pupColors.golden : pupColors.maroon} /><Text className="mt-3 font-sans text-sm text-muted dark:text-zinc-400">Loading accounts…</Text></View>
-        ) : error ? (
-          <CampusCard className="border-l-red-600 p-4">
-            <Text accessibilityLiveRegion="assertive" className="font-sans-bold text-sm text-red-900 dark:text-red-200">Unable to load users</Text>
-            <Text className="mt-1 font-sans text-xs leading-5 text-red-700 dark:text-red-300">{error}</Text>
-            <CampusButton label="Try again" icon="refresh" onPress={() => void loadPage(0, 'replace')} className="mt-4" />
-          </CampusCard>
+        ListEmptyComponent={loadState.state === 'error' ? (
+          <CampusLoadError
+            title="Unable to load users"
+            message={error ?? 'Check your connection and try again.'}
+            onRetry={loadState.retry}
+          />
+        ) : loadState.state === 'loading' || loading ? (
+          <ListSkeleton rows={5} rowClass="h-28" />
         ) : (
           <CampusEmptyState
             icon="group-off"

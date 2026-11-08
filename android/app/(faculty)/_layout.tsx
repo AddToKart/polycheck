@@ -12,9 +12,9 @@ import { fonts } from '../../theme/typography'
 import { pupColors } from '../../theme/colors'
 import { useTheme } from '../../theme/ThemeContext'
 
-// Device-bisect levers (default: animations on, no theme remount).
-const navTransitionsDisabled =
-  process.env.EXPO_PUBLIC_DISABLE_NAV_TRANSITIONS === 'true'
+// Device animation lever: instant screen changes are the stable default.
+const navTransitionsEnabled =
+  process.env.EXPO_PUBLIC_ENABLE_NAV_TRANSITIONS === 'true'
 const restoreThemeRemount = process.env.EXPO_PUBLIC_RESTORE_THEME_REMOUNT === 'true'
 
 function TabIcon({ name, color }: { name: keyof typeof MaterialIcons.glyphMap; focused: boolean; color: any }) {
@@ -180,14 +180,14 @@ export default function FacultyLayout() {
           headerShown: false,
           // Cross-fade tab switches; also covers the hidden detail screens in
           // this group (sessions/[id], subjects/[id], users, settings...).
-          animation: navTransitionsDisabled ? 'none' : 'fade',
-          ...(navTransitionsDisabled
-            ? {}
-            : {
+          animation: navTransitionsEnabled ? 'fade' : 'none',
+          ...(navTransitionsEnabled
+            ? {
                 sceneStyle: {
                   backgroundColor: isDark ? pupColors.campusDark : pupColors.campus,
                 },
-              }),
+              }
+            : {}),
           tabBarActiveTintColor: pupColors.golden,
           tabBarInactiveTintColor: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.65)',
           tabBarStyle: route.name === 'sessions/create' || route.name === 'sessions/[id]' || route.name === 'subjects/create' || route.name === 'subjects/[id]' || route.name === 'subjects/[id]/sessions' || route.name === 'sections/create' || route.name === 'sections/[id]' || route.name === 'student/[id]' || route.name === 'settings' ? { display: 'none' } : tabStyle,

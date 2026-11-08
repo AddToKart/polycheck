@@ -5,10 +5,11 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import type { Section, SectionRole, Session, Subject } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
+import { useLoadState } from '../../../hooks/use-load-state'
 import { useTheme } from '../../../theme/ThemeContext'
 import { pupColors } from '../../../theme/colors'
 import { CampusHeader } from '../../../components/CampusHeader'
-import { CampusButton, CampusCard, CampusEmptyState, SectionHeading } from '../../../components/CampusPrimitives'
+import { CampusButton, CampusCard, CampusEmptyState, CampusLoadError, CampusSkeleton, ListSkeleton, SectionHeading } from '../../../components/CampusPrimitives'
 import { useCampusToast } from '../../../components/CampusToast'
 
 const InfoRow = ({ icon, label, value }: { icon: keyof typeof MaterialIcons.glyphMap; label: string; value: string }) => {
@@ -35,7 +36,7 @@ export default function StudentSubjectInfoScreen() {
   const [roles, setRoles] = useState<SectionRole[]>([])
   const [hasPermission, setHasPermission] = useState(false)
   const [subject, setSubject] = useState<Subject | null>(null)
-  const [loading, setLoading] = useState(true)
+  const loadState = useLoadState()
 
   useEffect(() => {
     if (!id) return
@@ -53,22 +54,35 @@ export default function StudentSubjectInfoScreen() {
         setRoles(studentRoles)
         setSubject(nextSubject)
         setHasPermission(permission)
+        loadState.markReady()
       })
-      .catch(() => { if (active) setSection(null) })
-      .finally(() => { if (active) setLoading(false) })
+      .catch(() => { if (active) loadState.markError() })
     return () => { active = false }
-  }, [id])
+  }, [id, loadState.reloadToken])
 
   const studentRoles = roles.filter((role) => role.sectionId === id)
   const isPresident = studentRoles.some((role) => role.role === 'president')
   const isQac = studentRoles.some((role) => role.role === 'qac')
 
-  if (loading) return (
+  if (loadState.state === 'loading') return (
     <SafeAreaView
       style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
-      className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark"
+      className="flex-1 bg-campus px-5 pt-10 dark:bg-campus-dark"
     >
-      <Text className="font-sans text-sm text-muted dark:text-zinc-400">Loading class…</Text>
+      <CampusSkeleton className="h-28 w-full"><View /></CampusSkeleton>
+      <View className="mt-3"><ListSkeleton rows={3} rowClass="h-20" /></View>
+    </SafeAreaView>
+  )
+  if (loadState.state === 'error') return (
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 justify-center bg-campus px-5 dark:bg-campus-dark"
+    >
+      <CampusLoadError
+        title="Unable to load this class"
+        message="Class details could not be fetched. Check your connection and try again."
+        onRetry={loadState.retry}
+      />
     </SafeAreaView>
   )
   if (!section) return (
