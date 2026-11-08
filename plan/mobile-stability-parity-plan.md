@@ -140,3 +140,17 @@ Ordered by the parity audit (§6 below) and the user's "feels like Electron":
 - **Device repro of the schedule/data-loss syndrome still needs a demo login.** The AVD password for the staging seed differs from `.env.docker.local`; without a valid staging credential the emulator cannot exercise authenticated screens. Provide one throwaway login (any role) to close ST2.
 - Remaining ST4 gates: faculty attendance, reports, at-risk, disputes, excuses, users, system-reports, assistant thread list, student subjects list, subject-info (has a spinner but maps errors to “not found”). Mechanical, same pattern.
 - PX wave (push-stack restructure, haptics, parity items PX5–PX8) remains per §4.
+
+---
+
+## Execution record — 2026-11-08 (stability wave 2, commit `05d89fa`)
+
+**Two compositing defects that can show rounded UI over another screen's text, both fixed:**
+1. **Tab cross-fade default removed.** A stuck/queued `animation: 'fade'` transition leaves the outgoing scene composited under the incoming one (its rounded cards and text remain visible over the new screen). Navigation is now **instant by default**; the slide/fade set is opt-in via `EXPO_PUBLIC_ENABLE_NAV_TRANSITIONS=true`. Themed `contentStyle`/backgrounds stay (no white flash). Previous lever `EXPO_PUBLIC_DISABLE_NAV_TRANSITIONS` is superseded.
+2. **ID-card 3D flip rewritten (3 places).** `backfaceVisibility: 'hidden'` is unreliable on Android/Fabric; both absolutely-positioned faces can render at once, producing exactly "rounded corners overlapping text" (front + mirrored back inside `rounded-[26px]` cards). `IdCardModal`, the student ID tab and the faculty student-detail card now mount **one face** and fade through the swap (reduced-motion aware). No 3D transforms remain.
+
+**Retry gates completed** on the remaining data screens: attendance, reports, users (initial/empty load), disputes, excuses, at-risk (fake "everyone on track" empty state replaced), system-reports, student subjects, subject-info (network failure no longer reported as "class not found"). Every data screen now has loading → skeleton, failure → `CampusLoadError` with working retry, empty → only after a successful load.
+
+**Verified:** Android 656/656, typecheck clean, styled-bundle gate green; EAS preview `f763cd1c-1d6d-42f3-a1c6-85a6c912047d` finished; artifact fingerprint checked (`twsa-safe-area=4`); installed on AVD (cold start 1.75 s, portal 95.4% maroon / 178 buckets, zero fatal).
+
+**Still blocked on owner:** Sentry DSN/org/project on the EAS preview environment (no variables configured) and one throwaway demo login for authenticated device repro. A screenshot of the remaining overlap (when available) will map to either the flip card (already fixed), a specific sheet/overlay, or the build-identification issue.
