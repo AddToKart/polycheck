@@ -237,3 +237,41 @@ APK0 → APK1 are one sitting (~30 min). APK2–APK4 are the substantive half-da
 | APK10 verification | **EAS verified; device smoke pending** | shared 176; backend 993/82; web 398/59; Android 656/35; typecheck/lint/format/Prisma build all green; production export fingerprints pass; `security:audit` 0; Next/backend builds green. EAS preview build `fe94588c-7f16-4eea-9777-ab6a2b0a17f8` FINISHED; downloaded APK bundle fingerprints `twsa-safe-area=4`, `color-red-50=1`, `color-zinc-700=1` (styled). Device visual smoke remains. |
 
 **Additional hardening found during execution:** frontend `SessionGuard.test.tsx` flaked only under full-suite load (1s `waitFor` default); both assertions now live inside one `waitFor` with a 3s budget so CI coverage load cannot time it out. Backend Jest also prints the same Windows worker-shutdown warning under parallel local runs (993/993 pass; CI already runs `--runInBand`); left as-is.
+
+---
+
+## Addendum — 2026-11-08 runtime bug + polish wave (post-device feedback)
+
+**Device-reported regressions after the styled release APK** (all confirmed or triaged):
+
+1. **Styled TextInput crash (`textAlign` on `text-center` classes)** — `react-native-css@3.0.7`'s
+   `TextInput` wrapper declares `nativeStyleMapping: { textAlign: true }` and executes
+   `path.split(".")` on the **boolean** whenever the resolved style contains a `textAlign` value.
+   Any styled `TextInput` with `text-center` crashed on render: the faculty QR-validity prompt,
+   the checkpoint prompt (validity/grace/PIN), the student enroll screen, and the scan PIN modal.
+   The login inputs are unaffected because they use inline styles. Fixed app-side
+   (`fix(android): move textAlign off text-center className`, commit `7d7f846`): `textAlign` moved
+   to inline `style` on all 6 affected inputs, matching the working inline-styled pattern. The
+   upstream `3.1.0-rc.1` still contains the bug (byte-identical `nativeStyleMapping`), so the
+   `nativewind@5.0.0-rc.1` bump was evaluated and **reverted** (no benefit, unknown risk —
+   `5.0.0-preview.4` + `3.0.7` stay). The same boolean pattern exists on `ImageBackground`
+   (`backgroundColor: true`), but the app never uses `ImageBackground`.
+2. **"Feels like Electron / white screens / no page animation"** — shell-level fixes
+   (commit `803a831`): detail screens live inside hidden tabs (`href: null`), so every navigation
+   was an unanimated tab swap over the platform-default white background. Root `Stack` gains
+   themed `contentStyle` + `slide_from_right` + pop-style replaces; both `Tabs` groups gain
+   `animation: 'fade'` + themed `sceneStyle`; the `key={isDark}` remount (full white flash on
+   dark-mode toggle) removed; mount-time `SplashScreen.hideAsync()` race removed (splash until
+   fonts+session ready; themed root layout behind it); `active:` press feedback on CampusButton/
+   CampusCard/CampusIconButton; animated CampusToast (FadeInDown/FadeOutUp, reduced-motion gated
+   via Reanimated, which was linked but unused); `router.back()` on two back buttons that used
+   `router.replace` (clobbered scroll); `CampusSkeleton`/`DashboardSkeleton`/`ListSkeleton`
+   adopted on the three slowest screens (cockpit, faculty dashboard, subjects; kills the
+   false "No subjects yet" during load). Verified on the emulator: mid-flight push frame
+   (`88.9%` maroon / `7.0%` `#904040` blend) instead of a white flash; 656 android tests +
+   typecheck pass; styled-bundle fingerprints intact.
+3. **Emulator compositor wedge (diagnostic pitfall, not a bug)**: after an extended adb session
+   the AVD rendered `screencap` as pure black for the app window while the launcher continued
+   compositing, and neither flags nor a `pm clear` changed it; an AVD **reboot** restored the
+   real pixels (80.9% maroon portal). If screenshots go all-black during diagnostics, reboot the
+   emulator before suspecting code.
