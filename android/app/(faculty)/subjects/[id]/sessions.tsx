@@ -59,7 +59,7 @@ export default function SubjectSessionsScreen() {
       style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
       className="flex-1 bg-campus dark:bg-campus-dark"
     >
-      <CampusHeader eyebrow={subject.code} title="Subject sessions" subtitle={subject.name} onBack={() => router.replace(`/(faculty)/subjects/${id}`)} />
+      <CampusHeader eyebrow={subject.code} title="Subject sessions" subtitle={subject.name} onBack={() => router.back()} />
 
       <View className="px-4">
         <Pressable accessibilityRole="button" accessibilityLabel={`Filter by ${selectedSection ? `Section ${selectedSection.section}` : 'all sections'}`} onPress={() => setSectionPickerVisible(true)} className={`mb-3 min-h-12 flex-row items-center gap-2 rounded-2xl border px-4 ${selectedSectionId ? 'border-maroon bg-maroon dark:border-golden dark:bg-golden' : 'border-line bg-white dark:border-line-dark dark:bg-surface-dark'}`}>

@@ -21,6 +21,7 @@ import {
   CampusCard,
   CampusEmptyState,
   CampusIconButton,
+  DashboardSkeleton,
   MetricTile,
   SectionHeading,
 } from '../../components/CampusPrimitives'
@@ -83,9 +84,11 @@ function TeacherDashboard({ user }: { user: User }) {
   }, [user.id])
 
   useEffect(() => {
-    void loadDashboard().catch(() => showToast('error', 'Unable to load dashboard', 'Pull down to try again.'))
+    void loadDashboard()
+      .catch(() => showToast('error', 'Unable to load dashboard', 'Pull down to try again.'))
   }, [loadDashboard, showToast])
 
+  const loadFinished = overview !== null
   const sessionsToday = overview?.counts.sessionsToday ?? 0
   const pendingDisputes = overview?.counts.pendingDisputes ?? 0
   const trend = useMemo(() => summarizeDashboardTrends(overview?.trends), [overview?.trends])
@@ -126,6 +129,7 @@ function TeacherDashboard({ user }: { user: User }) {
           </>
         )}
       />
+      {!loadFinished ? <DashboardSkeleton /> : null}
 
       <ScrollView
         style={{ flex: 1 }}

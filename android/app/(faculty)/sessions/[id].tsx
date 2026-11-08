@@ -42,7 +42,7 @@ import {
   type RadarDeniedEntry,
 } from '../../../lib/radar-overlay'
 import { CampusHeader } from '../../../components/CampusHeader'
-import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
+import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton, CampusSkeleton, ListSkeleton, SectionHeading } from '../../../components/CampusPrimitives'
 import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
 import { useCampusToast } from '../../../components/CampusToast'
 
@@ -281,7 +281,21 @@ export default function SessionDetailScreen() {
     anomalies,
   }), [session?.mode, session?.geofence, attempts, records, enrolledStudents, anomalies])
 
-  if (!user || !session) return null
+  if (!user || !session) {
+    // Cockpit skeleton instead of a blank frame: the loading chain (session ->
+    // section -> roster -> records) can take a moment on cellular.
+    return (
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+        className="flex-1 bg-campus dark:bg-campus-dark"
+      >
+        <View className="flex-1 px-4 pt-8">
+          <CampusSkeleton className="h-24 w-full"><View /></CampusSkeleton>
+          <View className="mt-4"><ListSkeleton rows={3} rowClass="h-32" /></View>
+        </View>
+      </SafeAreaView>
+    )
+  }
   const isTeacher = user.role === 'teacher'
   const activeQrToken = onlineMode
     ? checkpointTab === 'start'

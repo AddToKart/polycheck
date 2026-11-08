@@ -19,6 +19,7 @@ module.exports = {
     '^expo-sqlite$': '<rootDir>/__mocks__/expo-sqlite.ts',
     '^expo-constants$': '<rootDir>/__mocks__/expo-constants.ts',
     '^react-native$': '<rootDir>/__mocks__/react-native.ts',
+    '^react-native-reanimated$': '<rootDir>/__mocks__/react-native-reanimated.ts',
     '^@polycheck/shared$': '<rootDir>/__mocks__/polycheck-shared.ts',
   },
   transformIgnorePatterns: ['node_modules/(?!(@polycheck)/)'],

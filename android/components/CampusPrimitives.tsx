@@ -7,6 +7,41 @@ import { pupColors } from '../theme/colors'
 
 const joinClasses = (...classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(' ')
 
+/** Loading placeholder matching the shared card chrome (pulse via animate-pulse). */
+export const CampusSkeleton = ({ className, children }: { className?: string; children?: ReactNode }) => (
+  <View
+    accessibilityLabel="Loading"
+    className={joinClasses('rounded-none border border-line bg-zinc-100 dark:border-line-dark dark:bg-white/5 animate-pulse', className)}
+  >
+    {children}
+  </View>
+)
+
+/** Faculty/user dashboard skeleton: metric tiles + two card blocks. */
+export const DashboardSkeleton = () => (
+  <View accessibilityLabel="Loading dashboard" className="gap-4">
+    <View className="flex-row flex-wrap gap-3">
+      {[0, 1, 2, 3].map((i) => (
+        <CampusSkeleton key={i} className="min-w-[46%] flex-1 p-4">
+          <View />
+        </CampusSkeleton>
+      ))}
+    </View>
+    <CampusSkeleton className="h-28 w-full"><View /></CampusSkeleton>
+    <CampusSkeleton className="h-24 w-full"><View /></CampusSkeleton>
+  </View>
+)
+
+/** Vertical list skeleton: three row blocks. */
+export const ListSkeleton = ({ rows = 3, rowClass = 'h-16' }: { rows?: number; rowClass?: string }) => (
+  <View accessibilityLabel="Loading list" className="gap-3">
+    {Array.from({ length: rows }).map((_, i) => (
+      <CampusSkeleton key={i} className={joinClasses('w-full', rowClass)}><View /></CampusSkeleton>
+    ))}
+  </View>
+)
+
+
 type CampusCardProps = {
   children: ReactNode
   className?: string
@@ -35,7 +70,7 @@ export const CampusCard = ({ children, className, onPress, accessibilityLabel, t
       accessibilityLabel={accessibilityLabel}
       testID={testID}
       style={cardStyle}
-      className={classes}
+      className={joinClasses(classes, 'active:opacity-90 active:border-l-golden')}
       onPress={onPress}
     >
       {children}
@@ -65,7 +100,7 @@ export const CampusIconButton = ({ icon, label, onPress, inverse = false, testID
       disabled={disabled}
       onPress={onPress}
       className={joinClasses(
-        'h-10 w-10 items-center justify-center rounded-none border',
+        'h-10 w-10 items-center justify-center rounded-none border active:opacity-80',
         inverse
           ? 'border-white/20 bg-white/10'
           : 'border-line bg-white dark:border-line-dark dark:bg-surface-dark',
@@ -126,7 +161,7 @@ export const CampusButton = ({
       disabled={disabled}
       onPress={onPress}
       className={joinClasses(
-        'min-h-12 flex-row items-center justify-center gap-2 rounded-none border px-5 uppercase tracking-widest',
+        'min-h-12 flex-row items-center justify-center gap-2 rounded-none border px-5 uppercase tracking-widest active:opacity-80',
         variants[variant],
         disabled && 'opacity-50',
         className,

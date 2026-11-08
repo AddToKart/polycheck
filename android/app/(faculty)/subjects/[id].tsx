@@ -37,7 +37,7 @@ export default function SubjectDetailScreen() {
         eyebrow={subject.code}
         title={subject.name}
         subtitle={subject.description || `${sections.length} class sections`}
-        onBack={() => router.replace('/(faculty)/subjects')}
+        onBack={() => router.back()}
         actions={<CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />}
       />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}>

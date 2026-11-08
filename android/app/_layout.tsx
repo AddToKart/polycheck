@@ -100,7 +100,9 @@ function RootLayoutInner() {
   });
 
   useEffect(() => {
-    void SplashScreen.hideAsync().catch(() => {});
+    // The splash is hidden by onLayoutRootView once fonts + the session
+    // bootstrap are ready; hiding it here would leave a white frame between
+    // the splash and the first themed render.
     if (process.env.EXPO_PUBLIC_ENABLE_SCREEN_GUARD !== "true") {
       void ScreenCapture.allowScreenCaptureAsync("polycheck-student-privacy").catch(() => {});
       void ScreenCapture.allowScreenCaptureAsync().catch(() => {});
@@ -280,7 +282,22 @@ function RootLayoutInner() {
       onLayout={onLayoutRootView}
     >
       <StatusBar style={isDark ? "light" : "dark"} />
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          // Themed screen background kills the platform-default white frame
+          // that shows while a pushed screen's first styled frame mounts.
+          contentStyle: {
+            backgroundColor: isDark ? pupColors.campusDark : pupColors.campus,
+          },
+          animation: "slide_from_right",
+          // Bootstrap redirects (login -> dashboard, gates, sign-out) replace
+          // the route; pop-style entry makes those feel like "arriving"
+          // instead of pushing a new page.
+          animationTypeForReplace: "pop",
+          gestureEnabled: true,
+        }}
+      >
         <Stack.Screen
           name="change-password"
           options={{ headerShown: false, gestureEnabled: false }}

@@ -9,7 +9,7 @@ import { useAuthGate } from '../../hooks/use-auth-gate'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
-import { CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
+import { CampusCard, CampusEmptyState, CampusIconButton, CampusSkeleton } from '../../components/CampusPrimitives'
 import { useCampusToast } from '../../components/CampusToast'
 
 export default function FacultySubjectsScreen() {
@@ -18,6 +18,7 @@ export default function FacultySubjectsScreen() {
   const user = useAuthGate(['teacher', 'super_admin'])
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [sections, setSections] = useState<Section[]>([])
+  const [loadFinished, setLoadFinished] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -27,6 +28,7 @@ export default function FacultySubjectsScreen() {
         setSections(nextSections)
       })
       .catch(() => showToast('error', 'Unable to load subjects', 'Check your connection and try again.'))
+      .finally(() => setLoadFinished(true))
   }, [showToast, user])
 
   if (!user) return null
@@ -56,7 +58,13 @@ export default function FacultySubjectsScreen() {
       />
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, gap: 12 }}>
-        {subjects.length === 0 ? (
+        {!loadFinished ? (
+          <View accessibilityLabel="Loading subjects" className="gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <CampusSkeleton key={i} className="h-24 w-full"><View /></CampusSkeleton>
+            ))}
+          </View>
+        ) : subjects.length === 0 ? (
           <CampusEmptyState
             icon="auto-stories"
             title="No subjects yet"

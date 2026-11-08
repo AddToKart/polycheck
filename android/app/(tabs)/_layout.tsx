@@ -47,9 +47,15 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      key={isDark ? 'dark' : 'light'}
       screenOptions={({ route }) => ({
         headerShown: false,
+        // Cross-fade tab switches; also covers the hidden detail screens that
+        // live in this group (subject-info, enroll, id-card...) so every
+        // navigation animates instead of hard-swapping.
+        animation: 'fade',
+        sceneStyle: {
+          backgroundColor: isDark ? pupColors.campusDark : pupColors.campus,
+        },
         tabBarActiveTintColor: pupColors.golden,
         tabBarInactiveTintColor: 'rgba(255,255,255,0.70)',
         tabBarStyle: {
