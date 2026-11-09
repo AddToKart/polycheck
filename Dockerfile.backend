@@ -7,7 +7,7 @@ COPY backend/package.json backend/package.json
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm config set fetch-timeout 300000 \
  && pnpm config set fetch-retries 10 \
- && pnpm install --frozen-lockfile --filter @polycheck/backend... --filter @polycheck/shared...
+ && pnpm install --ignore-scripts --frozen-lockfile --filter @polycheck/backend... --filter @polycheck/shared...
 COPY shared shared
 COPY backend backend
 RUN pnpm --filter @polycheck/shared build \
@@ -29,7 +29,7 @@ COPY backend/package.json backend/package.json
 RUN --mount=type=cache,id=pnpm-production,target=/root/.local/share/pnpm/store \
     pnpm config set fetch-timeout 300000 \
  && pnpm config set fetch-retries 10 \
- && pnpm install --prod --frozen-lockfile --filter @polycheck/backend... --filter @polycheck/shared...
+ && pnpm install --ignore-scripts --prod --frozen-lockfile --filter @polycheck/backend... --filter @polycheck/shared...
 
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
