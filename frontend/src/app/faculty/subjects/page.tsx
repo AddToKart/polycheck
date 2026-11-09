@@ -18,6 +18,7 @@ export default function SubjectsPage() {
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({})
+  const [sectionCourses, setSectionCourses] = useState<Record<string, string[]>>({})
 
   useEffect(() => {
     const init = async () => {
@@ -29,10 +30,18 @@ export default function SubjectsPage() {
       setUser(cu)
       const allSections = await api.getSections()
       const counts: Record<string, number> = {}
+      const courses: Record<string, Set<string>> = {}
       for (const sec of allSections) {
         counts[sec.subjectId] = (counts[sec.subjectId] || 0) + 1
+        const course = sec.course?.trim()
+        if (course) (courses[sec.subjectId] ??= new Set()).add(course)
       }
       setSectionCounts(counts)
+      setSectionCourses(
+        Object.fromEntries(
+          Object.entries(courses).map(([subjectId, set]) => [subjectId, [...set].sort()]),
+        ),
+      )
       setSubjects(await api.getSubjects())
     }
     init()
@@ -90,6 +99,7 @@ export default function SubjectsPage() {
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {pagedSubjects.map((subject) => {
               const sectionCount = sectionCounts[subject.id] ?? 0
+              const courses = sectionCourses[subject.id] ?? []
               return (
               <div
                 key={subject.id}
@@ -106,6 +116,11 @@ export default function SubjectsPage() {
                         {sectionCount} Section{sectionCount !== 1 ? 's' : ''}
                       </span>
                     </div>
+                    {courses.length > 0 && (
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                        Courses: {courses.join(', ')}
+                      </p>
+                    )}
                     <CardTitle className="text-xl font-heading font-bold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors line-clamp-2 leading-tight">
                       {subject.name}
                     </CardTitle>

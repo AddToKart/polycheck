@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useFocusEffect } from 'expo-router'
@@ -19,6 +19,8 @@ import {
   filterExcuseRecords,
   type ExcuseTab,
 } from '../../lib/excuses'
+import { confirmSignOut } from '../../lib/sign-out'
+import { keyboardAvoidingBehavior } from '../../lib/keyboard'
 import { datePresetRange, type DatePreset } from '../../lib/filters'
 
 const dateOptions: Array<{ value: DatePreset; label: string }> = [
@@ -132,7 +134,7 @@ export default function FacultyExcusesScreen() {
     }
   }
 
-  const signOut = () => { void api.logout(); router.replace('/') }
+  const signOut = confirmSignOut
   const isFiltered = selectedSectionId !== '' || datePreset !== 'all'
 
   return (
@@ -291,6 +293,7 @@ export default function FacultyExcusesScreen() {
       </ScrollView>
 
       <Modal visible={!!selectedRecord} transparent animationType="slide" onRequestClose={() => setSelectedRecord(null)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={keyboardAvoidingBehavior}>
         <Pressable className="flex-1 justify-end bg-black/60" onPress={() => setSelectedRecord(null)}>
           {selectedRecord ? (
             <Pressable
@@ -384,6 +387,7 @@ export default function FacultyExcusesScreen() {
             </Pressable>
           ) : null}
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   )

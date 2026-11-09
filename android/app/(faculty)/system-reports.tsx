@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, FlatList, Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { Alert, FlatList, Image, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -22,6 +22,7 @@ import { CampusHeader } from '../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusLoadError, CampusSkeleton, ListSkeleton, MetricTile } from '../../components/CampusPrimitives'
 import { CampusFormField } from '../../components/CampusFormField'
 import { useCampusToast } from '../../components/CampusToast'
+import { keyboardAvoidingBehavior } from '../../lib/keyboard'
 
 const STATUS_FILTERS: { value: ReportStatus | ''; label: string }[] = [
   { value: '', label: 'All' },
@@ -333,6 +334,7 @@ export default function SystemReportsScreen() {
         animationType="fade"
         onRequestClose={() => setDetail(null)}
       >
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={keyboardAvoidingBehavior}>
         <Pressable className="flex-1 justify-end bg-black/70" onPress={() => setDetail(null)}>
           <Pressable onPress={() => undefined} className="max-h-[92%] rounded-t-[36px] border-t-4 border-t-golden bg-white px-5 pb-10 pt-4 dark:bg-surface-dark" testID="report-detail-sheet">
             <View className="mb-3 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
@@ -443,6 +445,7 @@ export default function SystemReportsScreen() {
             </ScrollView>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   )

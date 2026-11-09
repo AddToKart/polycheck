@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
-import { router, useLocalSearchParams } from 'expo-router'
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import type { Section, SectionRole, Session, Subject } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
 import { useLoadState } from '../../../hooks/use-load-state'
@@ -37,6 +37,26 @@ export default function StudentSubjectInfoScreen() {
   const [hasPermission, setHasPermission] = useState(false)
   const [subject, setSubject] = useState<Subject | null>(null)
   const loadState = useLoadState()
+  // Only the newest permission check may write; a stale response must not
+  // overwrite a newer grant/revoke result.
+  const permissionRequestRef = useRef(0)
+
+  /**
+   * Re-reads the current permission. Failures keep the last known state — the
+   * card must not flash "No active permission" over a grant the instructor
+   * just made because of a transient network hiccup.
+   */
+  const recheckPermission = useCallback(async (userId: string) => {
+    if (!id) return
+    const requestId = ++permissionRequestRef.current
+    try {
+      const permission = await api.checkSessionPermission(id, userId)
+      if (requestId !== permissionRequestRef.current) return
+      setHasPermission(permission)
+    } catch {
+      /* keep the last known permission */
+    }
+  }, [id])
 
   useEffect(() => {
     if (!id) return
@@ -47,22 +67,37 @@ export default function StudentSubjectInfoScreen() {
       .then(async ([nextSection, nextSessions, studentRoles]) => {
         const nextSubject = await api.getSubject(nextSection.subjectId)
         const president = studentRoles.some((role) => role.sectionId === id && role.role === 'president')
-        const permission = president ? await api.checkSessionPermission(id, currentUser.id) : false
+        // Keep the initial load's behavior: resolve the permission before the
+        // card becomes visible so it never flickers from denied to granted.
+        if (president) await recheckPermission(currentUser.id)
         if (!active) return
         setSection(nextSection)
         setSessions(nextSessions)
         setRoles(studentRoles)
         setSubject(nextSubject)
-        setHasPermission(permission)
+        if (!president) {
+          // Clear any in-flight check from a previously viewed section.
+          permissionRequestRef.current += 1
+          setHasPermission(false)
+        }
         loadState.markReady()
       })
       .catch(() => { if (active) loadState.markError() })
     return () => { active = false }
-  }, [id, loadState.reloadToken])
+  }, [id, recheckPermission, loadState.reloadToken])
 
   const studentRoles = roles.filter((role) => role.sectionId === id)
   const isPresident = studentRoles.some((role) => role.role === 'president')
   const isQac = studentRoles.some((role) => role.role === 'qac')
+
+  // Grants/revocations happen on other screens (instructor approvals) and the
+  // create-session screen; re-check whenever this screen regains focus so the
+  // card reflects the current permission instead of its mount-time snapshot.
+  useFocusEffect(useCallback(() => {
+    const currentUser = api.getCurrentUser()
+    if (!id || !currentUser || !isPresident) return
+    void recheckPermission(currentUser.id)
+  }, [id, isPresident, recheckPermission]))
 
   if (loadState.state === 'loading') return (
     <SafeAreaView

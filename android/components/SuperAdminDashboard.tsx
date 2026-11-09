@@ -17,6 +17,7 @@ import {
   MetricTile,
   SectionHeading,
 } from './CampusPrimitives'
+import { confirmSignOut } from '../lib/sign-out'
 import { useCampusToast } from './CampusToast'
 import {
   buildAccountSplit,
@@ -162,10 +163,7 @@ export function SuperAdminDashboard({ user }: { user: User }) {
   const healthStyle = healthPalette[health.tone]
   const scopeLabel = overview ? describeAdminScope(overview.scope, overview.department) : null
 
-  const signOut = () => {
-    void api.logout()
-    router.replace('/')
-  }
+  const signOut = confirmSignOut
 
   return (
     <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID="super-admin-dashboard-screen">

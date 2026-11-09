@@ -17,6 +17,7 @@ import { FilterChip, FilterPanel, FilterSelect } from '../../components/FilterPr
 import { useCampusToast } from '../../components/CampusToast'
 import { datePresetRange } from '../../lib/filters'
 
+import { confirmSignOut } from '../../lib/sign-out'
 const { startDate: defaultFromDate, endDate: defaultToDate } = getRecentCampusDateRange(30)
 
 type QuickRange = 'today' | '7d' | '30d'
@@ -129,7 +130,7 @@ export default function FacultyAttendanceScreen() {
       showToast('error', 'Unable to export attendance', error instanceof Error ? error.message : 'Try again in a moment.')
     }
   }
-  const signOut = () => { void api.logout(); router.replace('/') }
+  const signOut = confirmSignOut
 
   return (
     <SafeAreaView

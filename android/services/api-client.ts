@@ -280,6 +280,20 @@ function isNetworkError(error: unknown) {
   return !(error instanceof ApiRequestError) || error.status >= 500;
 }
 
+/**
+ * Offline read fallback for list getters that feed screens.
+ *
+ * A cold or cleared SQLite cache is indistinguishable from "no data" and would
+ * render a false empty state (0 sections, no subjects, no history) with no
+ * retry affordance. Only serve the cache when it actually has rows; otherwise
+ * rethrow the original network failure so the screen shows its error panel.
+ * Non-empty caches keep the existing offline-first behavior.
+ */
+function cachedListOrThrow<T>(cached: T[], error: unknown): T[] {
+  if (cached.length > 0) return cached;
+  throw error;
+}
+
 async function authHeaders(): Promise<Record<string, string>> {
   const token = await getTokenFromStore();
   return {
@@ -755,7 +769,7 @@ export const api = {
       return subjects;
     } catch (error) {
       if (!isNetworkError(error)) throw error;
-      return getCachedSubjects();
+      return cachedListOrThrow(await getCachedSubjects(), error);
     }
   },
   async getSubject(id: string): Promise<Subject> {
@@ -788,7 +802,7 @@ export const api = {
       return sections;
     } catch (error) {
       if (!isNetworkError(error)) throw error;
-      const sections = await getCachedSections();
+      const sections = cachedListOrThrow(await getCachedSections(), error);
       return subjectId
         ? sections.filter((section) => section.subjectId === subjectId)
         : sections;
@@ -846,12 +860,15 @@ export const api = {
   },
   async getStudentSections(studentId: string): Promise<Section[]> {
     try {
-      const sections = await get<Section[]>(`/sections?studentId=${studentId}`);
+      // The endpoint scopes sections by the authenticated role; `studentId` is
+      // not a supported query parameter (the server silently ignores it), so
+      // ask for the role-scoped list and keep the local cache warm.
+      const sections = await get<Section[]>("/sections");
       await replaceCachedSections(sections);
       return sections;
     } catch (error) {
       if (!isNetworkError(error)) throw error;
-      return await getCachedSections();
+      return cachedListOrThrow(await getCachedSections(), error);
     }
   },
   async resetEnrollmentCode(
@@ -897,7 +914,12 @@ export const api = {
       return sessions;
     } catch (error) {
       if (!isNetworkError(error)) throw error;
-      return getCachedSessions(sectionId);
+      const sessions = await getCachedSessions(sectionId);
+      if (sessions.length > 0) return sessions;
+      // Distinguish a cold cache (surface the retry panel) from a section that
+      // legitimately has no cached sessions while other rows exist.
+      cachedListOrThrow(await getCachedSessions(), error);
+      return [];
     }
   },
   async getSession(id: string): Promise<Session> {
@@ -1169,7 +1191,12 @@ export const api = {
       return sessions;
     } catch (error) {
       if (!isNetworkError(error)) throw error;
-      return getCachedSessions(sectionId);
+      const sessions = await getCachedSessions(sectionId);
+      if (sessions.length > 0) return sessions;
+      // Distinguish a cold cache (surface the retry panel) from a section that
+      // legitimately has no cached sessions while other rows exist.
+      cachedListOrThrow(await getCachedSessions(), error);
+      return [];
     }
   },
 
@@ -1788,7 +1815,10 @@ export const api = {
       return getCachedAttendanceRecords(studentId);
     } catch (error) {
       if (!isNetworkError(error)) throw error;
-      return getCachedAttendanceRecords(studentId);
+      return cachedListOrThrow(
+        await getCachedAttendanceRecords(studentId),
+        error,
+      );
     }
   },
   getMySubjects(studentId: string): Promise<Subject[]> {

@@ -147,6 +147,8 @@ export interface DelegatedTeacherPermissions {
 export interface CreateSectionInput {
   subjectId: string;
   section: string;
+  /** PUP Santa Maria program/course code (e.g. 'BSIT'); required by the web form. */
+  course?: string;
   room: string;
   schedule: {
     day: string;
@@ -260,14 +262,26 @@ export interface EnrollStudentInput {
   studentName: string;
 }
 
+export interface BulkSessionSlot {
+  day: string;
+  startTime: string;
+  endTime: string;
+}
+
 export interface BulkSessionInput {
   sectionId: string;
   subjectName: string;
   startDate: string;
   endDate: string;
-  daysOfWeek: string[];
-  startTime: string;
-  endTime: string;
+  /**
+   * Slot-aware bulk creation: one entry per class meeting, each with its own
+   * times. When present it overrides `daysOfWeek` + the global time pair.
+   */
+  slots?: BulkSessionSlot[];
+  /** Legacy shape (still valid, still used by the Android composer). */
+  daysOfWeek?: string[];
+  startTime?: string;
+  endTime?: string;
   room?: string;
   mode?: SessionMode;
   /** Optional - set at QR generation time. Defaults to 15 if omitted. */

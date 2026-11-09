@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
@@ -13,6 +13,7 @@ import MapView from '../../../components/MapView'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard, SectionHeading } from '../../../components/CampusPrimitives'
 import { CampusFormField } from '../../../components/CampusFormField'
+import { KeyboardAwareScrollView } from '../../../components/KeyboardAwareScrollView'
 import { CampusPickerField, ChoiceSheet, formatCampusTime, TimePickerSheet } from '../../../components/CampusPickerSheets'
 import { useCampusToast } from '../../../components/CampusToast'
 
@@ -188,7 +189,7 @@ export default function CreateSessionScreen() {
       className="flex-1 bg-campus dark:bg-campus-dark"
     >
     <CampusHeader eyebrow="Session planning" title={bulkMode ? 'Create recurring sessions' : 'Create a session'} subtitle="Choose the class, meeting window, and trusted attendance area." onBack={() => router.back()} />
-    <ScrollView contentContainerClassName="px-4 pb-28 pt-3" keyboardShouldPersistTaps="handled" scrollEnabled={!mapFocus} showsVerticalScrollIndicator={false}>
+    <KeyboardAwareScrollView contentContainerClassName="px-4 pb-28 pt-3" keyboardShouldPersistTaps="handled" scrollEnabled={!mapFocus} showsVerticalScrollIndicator={false}>
       <SectionHeading eyebrow="Step one" title="Choose the class" />
       <CampusCard className="mb-7 gap-4">
         <CampusPickerField label="Subject" value={selectedSubject ? `${selectedSubject.name} (${selectedSubject.code})` : ''} placeholder="Select a subject" onPress={() => setShowSubjectPicker(true)} />
@@ -270,7 +271,7 @@ export default function CreateSessionScreen() {
       )}
 
       <CampusButton label={submitting ? 'Creating…' : bulkMode ? `Create ${bulkCount} sessions` : 'Create session'} icon="add" disabled={disabled} onPress={() => void create()} />
-    </ScrollView>
+    </KeyboardAwareScrollView>
 
     <ChoiceSheet visible={showSubjectPicker} title="Select subject" options={subjects.map((subject) => ({ value: subject.id, label: `${subject.name} (${subject.code})` }))} value={selectedSubjectId} onSelect={setSelectedSubjectId} onClose={() => setShowSubjectPicker(false)} />
     <ChoiceSheet visible={showSectionPicker} title="Select section" options={sections.map((section) => ({ value: section.id, label: `Section ${section.section}${section.room ? ` · ${section.room}` : ''}` }))} value={sectionId} onSelect={setSectionId} onClose={() => setShowSectionPicker(false)} />

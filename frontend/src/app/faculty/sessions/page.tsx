@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Plus, ArrowLeft, ArrowRight, Layers, X } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Session, Subject, Section } from '@polycheck/shared'
+import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
@@ -142,7 +143,7 @@ function SessionsContent() {
   const getSectionLabel = (targetSectionId: string) => {
     const sec = sectionMap.get(targetSectionId)
     if (!sec) return 'Unknown Section'
-    return `Section ${sec.section}${sec.room ? ` \u2014 ${sec.room}` : ''}`
+    return `${formatSectionHeading(sec)}${sec.room ? ` \u2014 ${sec.room}` : ''}`
   }
 
   const handleSubjectChange = (value: string) => {

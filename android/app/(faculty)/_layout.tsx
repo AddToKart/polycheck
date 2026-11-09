@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AccessibilityInfo, Animated, AppState, Modal, Platform, Pressable, Text, View } from 'react-native'
-import { Tabs, router } from 'expo-router'
+import { Tabs, router, type Href } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { AiCapabilities, User } from '@polycheck/shared'
@@ -54,13 +54,23 @@ function MoreSheet({ visible, onClose, isDark, isSuper, showAssistant, pendingEx
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <Pressable className="flex-1 bg-black/50" onPress={onClose}>
-        <View className="flex-1" />
+      {/*
+       * The backdrop is an absolute sibling of the sheet, not its parent:
+       * nesting the sheet inside the backdrop Pressable made item taps fight
+       * the parent responder and the sheet's own dismissal. Siblings keep
+       * backdrop taps closing and sheet taps routing.
+       */}
+      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close menu"
+          className="absolute inset-0 bg-black/50"
+          onPress={onClose}
+        />
         <Animated.View
           testID="faculty-more-sheet"
           className="rounded-none border-t-4 border-t-golden bg-white px-4 pt-3 dark:border-line-dark dark:bg-[#151013]"
           style={{ transform: [{ translateY: slideAnim }], paddingBottom: insets.bottom + 16 }}
-          onStartShouldSetResponder={() => true}
         >
           <View className="items-center pb-3 pt-1">
             <View className="h-1 w-10 bg-zinc-400 dark:bg-zinc-600" />
@@ -77,7 +87,11 @@ function MoreSheet({ visible, onClose, isDark, isSuper, showAssistant, pendingEx
               onPress={() => {
                 // The simulator is a sheet, not a route — open it instead of pushing.
                 if (item.route === OUTAGE_SIMULATOR_ROUTE) { onClose(); onOpenSimulator(); return }
-                onClose(); router.push(item.route as any)
+                onClose()
+                // Let the Modal teardown commit before pushing; a push in the
+                // same tick as the close can be swallowed on Android and leave
+                // the user on the dashboard.
+                requestAnimationFrame(() => router.push(item.route as Href))
               }}
               className="mb-2 min-h-14 flex-row items-center gap-4 rounded-none border border-line border-l-4 border-l-maroon bg-zinc-50 px-3 py-3 dark:border-line-dark dark:border-l-golden dark:bg-white/5"
             >
@@ -97,7 +111,7 @@ function MoreSheet({ visible, onClose, isDark, isSuper, showAssistant, pendingEx
             </Pressable>
           ))}
         </Animated.View>
-      </Pressable>
+      </View>
     </Modal>
   )
 }
@@ -106,7 +120,15 @@ export default function FacultyLayout() {
   const { isDark } = useTheme()
   const insets = useSafeAreaInsets()
   const currentUser = api.getCurrentUser()
-  const isSuper = currentUser?.role === 'super_admin'
+  // Freeze the last authenticated role while the group tears down after a
+  // sign-out. Logging out nulls the user, which would otherwise flip the
+  // super-admin tab configuration (five Tabs.Screen hrefs + More-sheet items)
+  // in the same frame the navigator is being replaced — native crash on the
+  // admin stack only. A real logged-out mount starts with a null ref.
+  const lastUserRef = useRef<User | null>(currentUser)
+  if (currentUser) lastUserRef.current = currentUser
+  const layoutUser = currentUser ?? lastUserRef.current
+  const isSuper = layoutUser?.role === 'super_admin'
   const [moreVisible, setMoreVisible] = useState(false)
   const [simulatorVisible, setSimulatorVisible] = useState(false)
   const [capabilities, setCapabilities] = useState<AiCapabilities | null>(null)
@@ -263,7 +285,7 @@ export default function FacultyLayout() {
         <Tabs.Screen name="schedule" options={{ href: null }} />
       </Tabs>
 
-      <MoreSheet visible={moreVisible} onClose={() => setMoreVisible(false)} isDark={isDark} isSuper={isSuper} showAssistant={showAssistant} pendingExcuses={pendingExcuses} user={currentUser} onOpenSimulator={() => setSimulatorVisible(true)} />
+      <MoreSheet visible={moreVisible} onClose={() => setMoreVisible(false)} isDark={isDark} isSuper={isSuper} showAssistant={showAssistant} pendingExcuses={pendingExcuses} user={layoutUser} onOpenSimulator={() => setSimulatorVisible(true)} />
       {OUTAGE_SIMULATOR_ENABLED ? <OutageSimulatorSheet visible={simulatorVisible} onClose={() => setSimulatorVisible(false)} /> : null}
     </>
   )

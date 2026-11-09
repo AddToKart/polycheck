@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api-client'
 import {
   formatCampusDate,
+  formatSectionHeading,
   getRecentCampusDateRange,
   type AttendanceReport,
   type Section,
@@ -367,7 +368,9 @@ function AttendanceOverviewContent() {
                             {s.subjectName}
                           </p>
                           <p className="text-xs text-zinc-400 mt-0.5">
-                            Section {section?.section ?? s.sectionId.slice(-3).toUpperCase()}
+                            {section
+                              ? formatSectionHeading(section)
+                              : `Section ${s.sectionId.slice(-3).toUpperCase()}`}
                             {section?.room ? ` · ${section.room}` : ''}
                           </p>
                         </td>

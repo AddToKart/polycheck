@@ -31,13 +31,28 @@ export function datePresetRange(
   return { startDate: start.toISOString().slice(0, 10), endDate: today }
 }
 
+/**
+ * Resolves an ISO timestamp or a plain `YYYY-MM-DD` value to the PUP civil
+ * date. Attendance timestamps are stored in UTC, so slicing the raw string
+ * buckets early-morning check-ins (00:00–07:59 campus, e.g. a 7:30 AM class)
+ * into the previous day and makes date chips hide boundary records. Date-only
+ * values (session dates) are already civil dates and pass through unchanged.
+ */
+export function campusDateOf(value: string): string {
+  const dateOnly = value.slice(0, 10)
+  if (value.length <= 10 || !value.includes('T')) return dateOnly
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return dateOnly
+  return campusDate(parsed)
+}
+
 export function isInDateRange(
   value: string | undefined,
   startDate?: string,
   endDate?: string,
 ): boolean {
   if (!value) return !startDate && !endDate
-  const date = value.slice(0, 10)
+  const date = campusDateOf(value)
   if (startDate && date < startDate) return false
   if (endDate && date > endDate) return false
   return true

@@ -12,6 +12,7 @@ import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusIconButton } from '../../components/CampusPrimitives'
 import { CampusFormField } from '../../components/CampusFormField'
+import { KeyboardAwareScrollView } from '../../components/KeyboardAwareScrollView'
 import { CampusSwitchRow } from '../../components/CampusSwitchRow'
 import { useCampusToast } from '../../components/CampusToast'
 import {
@@ -318,7 +319,7 @@ export default function InstitutionSettingsScreen() {
             </View>
           ) : null}
 
-          <ScrollView
+          <KeyboardAwareScrollView
             ref={scrollRef}
             style={{ flex: 1 }}
             contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 110 }}
@@ -473,7 +474,7 @@ export default function InstitutionSettingsScreen() {
                 </Text>
               ) : null}
             </CampusCard>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </>
       )}
     </SafeAreaView>

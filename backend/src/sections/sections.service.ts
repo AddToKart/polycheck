@@ -102,7 +102,7 @@ export class SectionsService {
     const subject = await this.prisma.subject.findUnique({ where: { id: dto.subjectId } })
     if (!subject) throw new BadRequestException('Subject not found')
 
-    const { schedule, subjectId, section, room, semester } = dto
+    const { schedule, subjectId, section, course, room, semester } = dto
     this.assertScheduleRanges(schedule)
     const enrollmentCodeExpiry = await this.enrollmentCodeExpiry()
 
@@ -110,6 +110,7 @@ export class SectionsService {
       data: {
         subjectId,
         section,
+        course: course?.trim() || null,
         room,
         semester,
         teacherId: user.id,
@@ -136,7 +137,7 @@ export class SectionsService {
       throw new ForbiddenException('You can only update your own sections')
     }
 
-    const { schedule, ...sectionData } = dto
+    const { schedule, course, ...sectionData } = dto
     if (schedule) this.assertScheduleRanges(schedule)
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -152,7 +153,16 @@ export class SectionsService {
           })),
         })
       }
-      return tx.section.update({ where: { id }, data: sectionData, include: sectionInclude })
+      return tx.section.update({
+        where: { id },
+        data: {
+          ...sectionData,
+          // Omitted course leaves the stored value untouched; an explicitly
+          // empty value clears it (legacy sections may have no course).
+          ...(course !== undefined ? { course: course.trim() || null } : {}),
+        },
+        include: sectionInclude,
+      })
     })
     return this.presentSection(updated)
   }
@@ -456,6 +466,7 @@ export class SectionsService {
       id: section.id,
       subjectId: section.subjectId,
       section: section.section,
+      course: section.course ?? undefined,
       room: section.room,
       schedule: section.schedule,
       semester: section.semester,

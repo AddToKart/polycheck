@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -10,7 +10,9 @@ import { pupColors } from '../theme/colors'
 import { CampusHeader } from '../components/CampusHeader'
 import { CampusButton, CampusCard, CampusIconButton } from '../components/CampusPrimitives'
 import { CampusFormField } from '../components/CampusFormField'
+import { KeyboardAwareScrollView } from '../components/KeyboardAwareScrollView'
 
+import { confirmSignOut } from '../lib/sign-out'
 const MIN_PASSWORD_LENGTH = 12
 
 /**
@@ -69,10 +71,7 @@ export default function ChangePasswordScreen() {
     }
   }
 
-  const signOut = async () => {
-    await api.logout()
-    router.replace('/')
-  }
+  const signOut = confirmSignOut
 
   return (
     <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID="change-password-screen">
@@ -82,8 +81,8 @@ export default function ChangePasswordScreen() {
         subtitle="This account is using a temporary password. Set your own before continuing."
         actions={<CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />}
       />
-      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView className="flex-1" contentContainerClassName="px-4 pb-10 pt-2" keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAwareScrollView className="flex-1" contentContainerClassName="px-4 pb-10 pt-2" keyboardShouldPersistTaps="handled">
           <CampusCard className="p-5">
             <View className="mb-5 h-12 w-12 items-center justify-center rounded-none bg-maroon dark:bg-golden">
               <MaterialIcons name="lock-reset" size={24} color={isDark ? pupColors.maroonDark : '#FFFFFF'} />
@@ -142,7 +141,7 @@ export default function ChangePasswordScreen() {
               className="mt-3"
             />
           </CampusCard>
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   )

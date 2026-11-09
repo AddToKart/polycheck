@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -27,6 +28,7 @@ import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, CampusSkeleton, ListSkeleton } from '../../components/CampusPrimitives'
 import { useCampusToast } from '../../components/CampusToast'
+import { keyboardAvoidingBehavior } from '../../lib/keyboard'
 import {
   CHED_NOTICE_FILENAME,
   REFERRAL_STATUS_PILL_CLASSES,
@@ -283,6 +285,7 @@ export default function FacultyAtRiskScreen() {
       )}
 
       <Modal visible={!!noticeRow} transparent animationType="slide" onRequestClose={closeNoticeSheet}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={keyboardAvoidingBehavior}>
         <Pressable className="flex-1 justify-end bg-black/55" onPress={closeNoticeSheet}>
           {noticeRow ? (
             <Pressable
@@ -377,6 +380,7 @@ export default function FacultyAtRiskScreen() {
             </Pressable>
           ) : null}
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   )

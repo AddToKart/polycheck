@@ -20,6 +20,7 @@ import {
   AttendanceMetricGrid,
   AttendanceSummaryCard,
 } from '../../components/AttendanceReportCards'
+import { confirmSignOut } from '../../lib/sign-out'
 import { useCampusToast } from '../../components/CampusToast'
 import { uniqueDepartments } from '../../components/users-screen-helpers'
 
@@ -204,10 +205,7 @@ export default function FacultyReportsScreen() {
     }
   }
 
-  const handleLogout = () => {
-    api.logout()
-    router.replace('/')
-  }
+  const handleLogout = confirmSignOut
 
   return (
     <SafeAreaView

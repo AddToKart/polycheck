@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -23,6 +23,8 @@ import {
   MetricTile,
   SectionHeading,
 } from '../../components/CampusPrimitives'
+import { useCampusToast } from '../../components/CampusToast'
+import { confirmSignOut } from '../../lib/sign-out'
 import { IdCardModal } from '../../components/IdCardModal'
 import { useLoadState } from '../../hooks/use-load-state'
 
@@ -35,6 +37,7 @@ const greeting = () => {
 
 export default function DashboardScreen() {
   const { isDark, toggle } = useTheme()
+  const { showToast } = useCampusToast()
   const [refreshing, setRefreshing] = useState(false)
   const [showIdModal, setShowIdModal] = useState(false)
   const user = api.getCurrentUser()
@@ -54,27 +57,44 @@ export default function DashboardScreen() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [subjects, setSubjects] = useState<Record<string, Subject>>({})
   const loadState = useLoadState()
+  // Ordered responses: only the newest request may write state, so a slow
+  // focus refresh can never overwrite a newer pull-to-refresh (or vice versa).
+  const requestIdRef = useRef(0)
+  const hasLoadedRef = useRef(false)
 
   const loadDashboard = useCallback(async () => {
     if (!student) return
-    const [sections, attendance, allSubjects, allSessions] = await Promise.all([
-      api.getStudentSections(student.id),
-      api.getMyAttendance(student.id),
-      api.getSubjects(),
-      api.getSessions(),
-    ])
-    setMySections(sections)
-    setMyAttendance(attendance)
-    setSessions(allSessions)
-    setSubjects(Object.fromEntries(allSubjects.map((subject) => [subject.id, subject])))
-  }, [student?.id])
+    const requestId = ++requestIdRef.current
+    try {
+      const [sections, attendance, allSubjects, allSessions] = await Promise.all([
+        api.getStudentSections(student.id),
+        api.getMyAttendance(student.id),
+        api.getSubjects(),
+        api.getSessions(),
+      ])
+      if (requestId !== requestIdRef.current) return
+      setMySections(sections)
+      setMyAttendance(attendance)
+      setSessions(allSessions)
+      setSubjects(Object.fromEntries(allSubjects.map((subject) => [subject.id, subject])))
+      hasLoadedRef.current = true
+      loadState.markReady()
+    } catch {
+      if (requestId !== requestIdRef.current) return
+      if (hasLoadedRef.current) {
+        // Keep the last successful snapshot on screen; a transient failure
+        // must not replace loaded classes/attendance with an error wall.
+        showToast('error', "Couldn't refresh your dashboard", 'Showing your last loaded data. Check your connection and try again.')
+        return
+      }
+      loadState.markError()
+    }
+  }, [showToast, student?.id, loadState.markReady, loadState.markError])
 
   useFocusEffect(useCallback(() => {
-    let active = true
     void loadDashboard()
-      .then(() => { if (active) loadState.markReady() })
-      .catch(() => { if (active) loadState.markError() })
-    return () => { active = false }
+    // Leaving the screen invalidates any in-flight response from this visit.
+    return () => { requestIdRef.current += 1 }
   }, [loadDashboard, loadState.reloadToken]))
 
   const attendanceTotals = useMemo(() => myAttendance.reduce(
@@ -115,10 +135,7 @@ export default function DashboardScreen() {
     )
   }
 
-  const signOut = () => {
-    void api.logout()
-    router.replace('/')
-  }
+  const signOut = confirmSignOut
 
   return (
     <SafeAreaView

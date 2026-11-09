@@ -154,3 +154,78 @@ Ordered by the parity audit (§6 below) and the user's "feels like Electron":
 **Verified:** Android 656/656, typecheck clean, styled-bundle gate green; EAS preview `f763cd1c-1d6d-42f3-a1c6-85a6c912047d` finished; artifact fingerprint checked (`twsa-safe-area=4`); installed on AVD (cold start 1.75 s, portal 95.4% maroon / 178 buckets, zero fatal).
 
 **Still blocked on owner:** Sentry DSN/org/project on the EAS preview environment (no variables configured) and one throwaway demo login for authenticated device repro. A screenshot of the remaining overlap (when available) will map to either the flip card (already fixed), a specific sheet/overlay, or the build-identification issue.
+
+---
+
+## Execution record - 2026-11-09 (stability wave 3, uncommitted)
+
+**Keyboard (Android 15+ edge-to-edge):**
+- Edge-to-edge on targetSdk 36 makes `adjustResize` a no-op; the IME covered forms and sheet inputs.
+- New `android/lib/keyboard.ts` (`keyboardAvoidingBehavior`, padding on iOS / API 35+).
+- Root `KeyboardAvoidingView` wraps the root `Stack` when `Platform.Version >= 35`; screens keep their own avoidance on older Android/iOS.
+- Helper applied to the remaining Android KAVs: scan manual-entry + PIN modals, dispute/excuse modals, bulk import sheet; QR-validity + checkpoint prompt modals in the faculty cockpit are now KAV-wrapped.
+- `(tabs)/enroll` and `change-password` Android `'height'` avoidance removed (double compensation with the root inset).
+
+**Sign-out confirmation:**
+- New `android/lib/sign-out.ts` `confirmSignOut()` (destructive Alert; cancels cleanly).
+- All 10 sign-out affordances route through it: student dashboard/history/ID card; faculty dashboard/subjects/attendance/excuses/reports; super dashboard; forced change-password screen. Profile logout stays the post-unregister confirm.
+
+**Scanner overlap:**
+- Bottom control panel height is measured and the center overlay reserves it plus the header, so the gold frame and "CENTER INSTRUCTOR'S QR CODE" no longer render underneath the panel.
+- Scan frame is height-aware (`min(width * 0.82, 340, height - 470)`).
+
+**Student session detail:**
+- Status is now Scheduled / Active / Completed instead of "Completed" for any inactive session.
+- While armed, the signed class QR renders on the student detail so class officers can show it to classmates; otherwise an "Awaiting instructor activation" explainer is shown.
+- Activation remains instructor-only: backend `POST /sessions/:id/activate` is `@Roles('teacher')`, and tokens are signed with the instructor's provisioned device key. Server-signed officer activation is an open product/security decision (would need a delegated-signing or server-signing design), not implemented.
+
+**Verified:** Android typecheck clean, 656/656 tests, styled-bundle gate PASS (`twsa-safe-area=4, color-red-50=1, color-zinc-700=1`). EAS preview build `b8ffc0a9-feb8-4fa0-9b1f-f2f28804bd20` finished (artifact `https://expo.dev/artifacts/eas/hLKSlevPHE9usJujzjYtxqYbOIMT5MwKbqUHWf0nJAk.apk`, 149.8 MB); downloaded APK bundle fingerprint re-verified in the artifact. Installed on the AVD (API 37): landing renders styled (81% maroon, gold/white accents), UI hierarchy shows all expected portal/login text, zero fatal or React Native errors. Keyboard check on the login form: IME shown with the password field and SIGN IN button still fully above it, confirming the root `KeyboardAvoidingView` path on Android 15+. Authenticated screens (scan frame, cockpit sheets, student session detail QR) could not be device-smoked without staging credentials.
+
+---
+
+## Open device-reported bugs - 2026-11-09 (investigation complete, execution pending go-signal)
+
+Static investigation done (read-only). Fixes batched into ONE execution pass. Probes found:
+
+1. **Faculty "My subjects" shows 0 sections.** Card count = `sections.filter(s => s.subjectId === subject.id)` (`app/(faculty)/subjects.tsx:86`); code + API shape verified fine. Scope asymmetry is the lead: `GET /subjects` (teacher) matches `createdById OR sections.some{teacherId}` while `GET /sections` (teacher) matches only `teacherId: user.id` (`backend/src/subjects/subjects.service.ts:94` vs `sections.service.ts:52`); same pattern possible for department-scoped super admins (`adminSubjectWhere` via `createdBy.department` vs `adminSectionWhere` via `teacher.department`). Diagnostic ask: does subject DETAIL show sections? Also add a section-count telemetry point or surface raw counts.
+2. **Student data vanishes after refresh; inconsistent fetch** (dashboard TODAY visible while My Classes = "NO CLASSES YET"; history fine then empty). Dashboard uses `getStudentSections` -> `GET /sections?studentId=` (`api-client.ts:849`) - the controller only binds `subjectId` (`sections.controller.ts:19-21`), the param is ignored; plus every list fetch falls back to the SQLite cache on network error (`getCachedSections`), so a transient staging hiccup silently renders stale/empty. Fix direction: bind `studentId` server-side (scope-checked), drop the silent [] fallbacks (fail loud into the retry panel), version requests to kill out-of-order overwrites, and surface "cached data" chips.
+3. **Faculty/super logout crashes (student OK).** `confirmSignOut()` runs `router.replace('/')` (`lib/sign-out.ts:20`) while the current staff screen's `useAuthGate` ALSO calls `router.replace('/')` on user-null - a double concurrent replace racing the same screen unmount. Student dashboard has no `useAuthGate` (grep) - the structural difference. Fix: gate skips when `isOwnLogoutInFlight()` (same pattern as the login in-flight stamp) or confirmSignOut navigates after the auth listener fires once.
+4. **Keyboard FOLLOW-UP (corrected by device report): OK only on student surfaces; overlaps on faculty + super-admin screens.** Student pages/sheets (enroll, scan PIN/manual, dispute/excuse modals) behave. Faculty/super textboxes overlap: full-page forms (create subject/section/session), section "Enroll student" search bar, users/search/audit inputs, and any remaining inline page fields below the fold. Root cause: those screens rely ONLY on the root `KeyboardAvoidingView` (which pads but never auto-reveals the focused field - the native auto-scroll normally comes from `adjustResize`, a no-op under RN 0.86 edge-to-edge: `WindowUtil.kt:164-165` `setDecorFitsSystemWindows(false)`); the student surfaces that work carry their own `keyboardAvoidingBehavior` KAVs. Fix: post wave-3 parity sweeps the remaining faculty/super input surfaces with per-surface KAV padding (`keyboardAvoidingBehavior` helper), `keyboardVerticalOffset` where safe-area applies, plus auto-scroll-to-input (`scrollResponderScrollNativeHandleToKeyboard`) so tall physical keyboards + suggestion strips cannot cover lower rows. Re-verify both login portals (shared `CampusLoginPortal.tsx` - inner KAV is iOS-only today) after the sweep. (Earlier attribution reversed after more device testing.)
+5. **More-sheet taps fall back to the dashboard.** All routes registered as `Tabs.Screen` (`(faculty)/_layout.tsx:216-263`; `more-tab` itself opens the sheet), handler is a plain `router.push(item.route as any)`. Suspicious pattern to test first: the sheet container `Animated.View onStartShouldSetResponder={() => true}` (`_layout.tsx:63`) - try removing it / reordering; also verify the push commits when the Modal is concurrently unmounting. The Maestro flow covering More->Schedule (`maestro/flows/02-faculty-journey.yaml:32-36`) has NEVER been device-run - wire it into the fix verification.
+6. **Scroll inconsistent across screens.** Ranked: (a) root KAV padding + ScrollView interaction freezing scroll after keyboard open/close cycles; (b) `onStartShouldSetResponder` containers (MoreSheet `_layout.tsx:63`, MapView `MapView.tsx:400`, StudentCalendarEventModal:29, OutageSimulatorSheet:111, sessions sheet:100) claiming the responder from ScrollView children; (c) `Pressable` rows with `active:` feedback stealing first-touch. Discriminator: screen recording of one failing scroll; then bisect by disabling each pattern behind the existing env levers.
+7. **Sideways swipe on schedule week is hard/laggy.** `StudentWeekCalendar` (`components/StudentCalendarViews.tsx:119-131`) = horizontal ScrollView, `snapToInterval={242}` + `decelerationRate="fast"`, children are full-card `Pressable` event rows with `hitSlop={4}` - tap-vs-drag disambiguation on Android makes drags sticky. Fix: keep snap but use `pagingEnabled`/`snapToOffsets` with default deceleration, add `delayPressIn`-based activation on the event Pressables (or wrap them in `onStartShouldSetResponderCapture: () => false`), and widen the free drag area between cards.
+8. **Section-permission card shows "No active permission" after a grant.** Client chain has no silent-false: card = `api.checkSessionPermission(id, user.id)` -> `GET /session-permissions/check/:sectionId/:studentId` -> DB `isActive:true, expiresAt > now` (`backend/src/session-permissions/session-permissions.service.ts:58-67`; grant upserts now+24h). Needs runtime truth: which account granted (must own the section), device cache vs server, and whether `expiresAt` already passed. Plan: add pull-to-refresh + a visible last-checked timestamp on the card, log the raw check response, and verify end-to-end on the emulator with a staging login.
+9. **Filters report (sentence cut).** Need clarification: which page's filter, exact behavior (values not applied / list resets / server ignores query).
+10. **Keyboard follow-ups already covered** in #4.
+
+Verification gate for the batch: emulator (API 35+) + Maestro 01/02/03 or a debug build pointed at the local compose stack, plus one staging demo login per role if available.
+
+---
+
+## Execution record - 2026-11-09 (device-bug batch, wave 4, uncommitted)
+
+**Executed with four parallel mobile sub-agents (file-scoped work), then integrated.**
+
+**Keyboard (faculty/super + login):**
+- New `android/components/KeyboardAwareScrollView.tsx`: forwards refs, listens to `keyboardDidShow`, waits 100 ms for the IME/inset settle, then reveals the focused input via `scrollResponderScrollNativeHandleToKeyboard` with a 300 ms re-measure fallback `measureInWindow` -> `scrollTo`. No inner KeyboardAvoidingView (root KAV already applies the Android 15+ inset; avoids double shift).
+- Adopted on faculty/super form pages: subjects/sections/sessions create, settings, sections detail, session cockpit page, profile, report-issue, change-password, and the CampusLoginPortal form.
+- Modal-hosted input sheets received `keyboardAvoidingBehavior` KAVs: system-reports (detail + notes), users (create/edit/admin), at-risk (CHED notice), excuses (review note), student detail (device release).
+
+**Gestures / scroll:**
+- Week schedule carousel: removed `decelerationRate="fast"` and per-card `hitSlop`; added `snapToAlignment`, `disableIntervalMomentum`, `nestedScrollEnabled`, `directionalLockEnabled`; layout/snap interval unchanged.
+- Removed the `onStartShouldSetResponder={() => true}` guards by restructuring bottom sheets as sibling-of-backdrop modals (StudentCalendarEventModal, OutageSimulatorSheet, section session picker in `subjects/[id]/sessions.tsx`); backdrop taps still dismiss, sheet taps now pass to children/scroll views. Schedule legend gains `nestedScrollEnabled`.
+
+**Data consistency:**
+- `cachedListOrThrow` policy in `services/api-client.ts`: network failure + non-empty cache serves offline data; empty cache rethrows so screens show retry instead of false empty states. Applied to subjects/sections/student-sections/sessions/section-sessions/my-attendance reads.
+- `getStudentSections` now calls role-scoped `GET /sections` (the `studentId` query param was never bound server-side). Same fix mirrored in `frontend/src/lib/api-client.ts`.
+- Student dashboard/history/schedule keep the last good data on refresh failure (toast instead of wiping) and use request-id ordering so stale responses cannot overwrite newer ones.
+- Section detail re-checks `checkSessionPermission` on focus (and after returning from session creation), so a freshly granted permission appears without a remount.
+- Filter audit fixed a real bug: date chips compared raw UTC timestamps against Asia/Manila civil dates, hiding early-morning records at range boundaries (`campusDateOf` in `lib/filters.ts` + tests).
+
+**Logout crash + More sheet:**
+- New sign-out in-flight stamp (`isSignOutInFlight`) set synchronously by `confirmSignOut`/`signOutNow`, cleared ~2 s after the navigation frame; honored by `useAuthGate` and the root layout's centralized redirect so staff logout performs exactly one `router.replace('/')` (previously raced the screen gate; student screens had no gate, matching the crash asymmetry). Profile device-unregister now uses the same stamped helper.
+- More sheet restructured: backdrop is an absolute sibling Pressable, sheet content is no longer wrapped in a responder claim; item navigation deferred one frame after close. Routes/animations/badges unchanged.
+
+**Verification:** Android typecheck clean; **661/661 tests / 36 suites**; frontend `tsc --noEmit` clean; styled-bundle gate PASS (`twsa-safe-area=4, color-red-50=1, color-zinc-700=1`).
+
+**Not device-verified (needs the next build):** focused-input reveal with a physical IME, week-swipe feel, More-sheet taps, and staff logout crash elimination. Filters item from the report still needs clarification (only the date-boundary defect was provable). Sentry remains unconfigured.

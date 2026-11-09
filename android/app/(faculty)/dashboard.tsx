@@ -26,6 +26,7 @@ import {
   MetricTile,
   SectionHeading,
 } from '../../components/CampusPrimitives'
+import { confirmSignOut } from '../../lib/sign-out'
 import { useLoadState } from '../../hooks/use-load-state'
 
 const campusDateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -113,10 +114,7 @@ function TeacherDashboard({ user }: { user: User }) {
     }
   }
 
-  const signOut = () => {
-    void api.logout()
-    router.replace('/')
-  }
+  const signOut = confirmSignOut
 
   return (
     <SafeAreaView

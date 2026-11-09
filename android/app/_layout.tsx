@@ -4,9 +4,12 @@ import { StatusBar } from "expo-status-bar";
 import { CampusRouteError } from "../components/CampusRouteError";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useFonts } from "expo-font";
+import { isSignOutInFlight } from "../lib/sign-out";
 import {
   ActivityIndicator,
   AppState,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   Text,
   View,
@@ -49,6 +52,12 @@ const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
 // incoming one). Set EXPO_PUBLIC_ENABLE_NAV_TRANSITIONS=true to restore them.
 const navTransitionsEnabled =
   process.env.EXPO_PUBLIC_ENABLE_NAV_TRANSITIONS === "true";
+
+// Android 15+ enforces edge-to-edge, so the window no longer resizes for the
+// keyboard (`adjustResize` is a no-op). Inset the navigator itself there; on
+// iOS (and older Android) each screen/modal keeps its own avoidance.
+const keyboardInsetsRequired =
+  Platform.OS === "android" && Number(Platform.Version) >= 35;
 // F7 demo killswitch - env-gated (default off; production pins "false").
 const outageSimulatorEnabled = isOutageSimulatorEnabled(
   process.env.EXPO_PUBLIC_ENABLE_OUTAGE_SIMULATOR,
@@ -240,8 +249,13 @@ function RootLayoutInner() {
     const inChangePasswordScreen = segments[0] === "change-password";
 
     if (!currentUser) {
-      // Not logged in — go to landing if trying to access protected routes
-      if (inTabsGroup || inFacultyGroup || inChangePasswordScreen) {
+      // Not logged in — go to landing if trying to access protected routes.
+      // While a sign-out is in flight the helper already owns this navigation;
+      // replacing here too would race the screen teardown (staff-only crash).
+      if (
+        !isSignOutInFlight() &&
+        (inTabsGroup || inFacultyGroup || inChangePasswordScreen)
+      ) {
         routerRef.current.replace("/");
       }
     } else if (currentUser.mustChangePassword) {
@@ -294,7 +308,11 @@ function RootLayoutInner() {
       onLayout={onLayoutRootView}
     >
       <StatusBar style={isDark ? "light" : "dark"} />
-      <Stack
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={keyboardInsetsRequired ? "padding" : undefined}
+      >
+        <Stack
         screenOptions={{
           headerShown: false,
           // Themed screen background kills the platform-default white frame
@@ -317,6 +335,7 @@ function RootLayoutInner() {
           options={{ headerShown: false, gestureEnabled: false }}
         />
       </Stack>
+      </KeyboardAvoidingView>
       {currentUser?.role === "student" ? <StudentScreenCaptureGuard /> : null}
       <PrivacyConsentGate user={currentUser} />
       {maintenance && currentUser && !isMaintenanceExempt(currentUser) ? (

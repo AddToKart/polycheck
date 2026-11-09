@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
@@ -17,6 +17,7 @@ import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, CampusLoa
 import { CampusFormField } from '../../components/CampusFormField'
 import { BulkImportSheet } from '../../components/BulkImportSheet'
 import { useCampusToast } from '../../components/CampusToast'
+import { keyboardAvoidingBehavior } from '../../lib/keyboard'
 import {
   assignableRoleFor,
   buildAdminUserFilters,
@@ -51,6 +52,7 @@ const emptyAdminForm = { fullName: '', email: '', department: '', password: '' }
 const AccountSheet = ({ visible, title, description, children, onClose }: { visible: boolean; title: string; description: string; children: ReactNode; onClose: () => void }) => {  const { isDark } = useTheme()
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={keyboardAvoidingBehavior}>
       <Pressable className="flex-1 justify-end bg-black/80" onPress={onClose}>
         <Pressable onPress={() => undefined} className="max-h-[92%] rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-surface-dark">
           <View className="mb-4 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
@@ -66,6 +68,7 @@ const AccountSheet = ({ visible, title, description, children, onClose }: { visi
           {children}
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }

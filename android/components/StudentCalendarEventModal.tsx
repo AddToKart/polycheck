@@ -25,8 +25,14 @@ export const StudentCalendarEventModal = ({ event, onClose, onViewSubject }: { e
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable className="flex-1 justify-end bg-black/60" onPress={onClose}>
-        <View className="rounded-t-[32px] border-t border-line bg-white p-5 pb-8 dark:border-line-dark dark:bg-surface-dark" onStartShouldSetResponder={() => true}>
+      <View className="flex-1 justify-end">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss class details"
+          className="absolute inset-0 bg-black/60"
+          onPress={onClose}
+        />
+        <View className="rounded-t-[32px] border-t border-line bg-white p-5 pb-8 dark:border-line-dark dark:bg-surface-dark">
           <View className="mb-5 h-1 w-10 self-center rounded-full bg-zinc-300 dark:bg-zinc-700" />
           <View className="flex-row items-start justify-between gap-3">
             <View className="flex-1">
@@ -58,7 +64,7 @@ export const StudentCalendarEventModal = ({ event, onClose, onViewSubject }: { e
             <CampusButton label="View class" icon="arrow-forward" onPress={() => onViewSubject(event.sectionId)} className="flex-1" />
           </View>
         </View>
-      </Pressable>
+      </View>
     </Modal>
   )
 }

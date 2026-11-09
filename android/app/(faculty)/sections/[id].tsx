@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { Alert, Pressable, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
@@ -14,6 +14,7 @@ import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHe
 import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
 import { ChoiceSheet } from '../../../components/CampusPickerSheets'
 import { BulkImportSheet } from '../../../components/BulkImportSheet'
+import { KeyboardAwareScrollView } from '../../../components/KeyboardAwareScrollView'
 import { useCampusToast } from '../../../components/CampusToast'
 import { classRecordDownloadPath, classRecordFileName } from '../../../lib/institution-settings'
 
@@ -220,7 +221,7 @@ export default function SectionDetailScreen() {
         </View>
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 12 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 12 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {activeTab === 'roster' ? (
           <>
             <SectionHeading eyebrow="Attendance" title="Section performance" />
@@ -498,7 +499,7 @@ export default function SectionDetailScreen() {
             </View>
           </>
         ) : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <ChoiceSheet visible={assignRole !== null} title={assignRole === 'president' ? 'Assign president' : 'Assign QAC coordinator'} options={assignCandidates.map((student) => ({ value: student.id, label: `${student.fullName} · ${student.studentId}` }))} value="" onSelect={(studentId) => { void assignStudentRole(studentId) }} onClose={() => setAssignRole(null)} />
 

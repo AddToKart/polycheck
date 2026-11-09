@@ -42,6 +42,14 @@ export class CreateSectionDto {
   @MaxLength(100)
   section!: string
 
+  // Optional so legacy/Android clients keep validating; the web form requires
+  // a course. Persisted trimmed, with an empty value normalized to null.
+  @IsString()
+  @IsOptional()
+  @MinLength(1)
+  @MaxLength(30)
+  course?: string
+
   @IsString()
   @MinLength(1)
   @MaxLength(100)

@@ -1343,6 +1343,21 @@ describe('offline fallbacks', () => {
     await expect(api.getStudentSections('student-1')).resolves.toEqual([secA])
   })
 
+  it('rethrows the network error when the offline cache is empty', async () => {
+    await expect(api.getSubjects()).rejects.toThrow('Network request failed')
+    await expect(api.getSections()).rejects.toThrow('Network request failed')
+    await expect(api.getSessions()).rejects.toThrow('Network request failed')
+    await expect(api.getSectionSessions('sec-1')).rejects.toThrow('Network request failed')
+    await expect(api.getStudentSections('student-1')).rejects.toThrow('Network request failed')
+    await expect(api.getMyAttendance('student-1')).rejects.toThrow('Network request failed')
+  })
+
+  it('serves a filtered empty result when the cache has rows for other scopes', async () => {
+    const secA = makeSection('sec-1', 'A-1', 'L201', '1S', 'subj-1')
+    storeMock.getCachedSections.mockResolvedValue([secA])
+    await expect(api.getSections('subj-2')).resolves.toEqual([])
+  })
+
   it('refuses to reset the enrollment code while offline', async () => {
     await expect(api.resetEnrollmentCode('sec-1')).rejects.toThrow(
       'Cannot reset enrollment code while offline. Please try again when connected.',
@@ -1388,8 +1403,9 @@ describe('online read-through caching', () => {
 
   it('replaces the section cache for the student section list', async () => {
     const secA = makeSection('sec-1', 'A-1', 'L201', '1S', 'subj-1')
-    handlers.set('/sections?studentId=student-1', () => jsonResponse([secA]))
+    handlers.set('/sections', () => jsonResponse([secA]))
     await expect(api.getStudentSections('student-1')).resolves.toEqual([secA])
+    expect(fetchMock).toHaveBeenCalledWith(`${API_BASE}/sections`, expect.anything())
     expect(storeMock.replaceCachedSections).toHaveBeenCalledWith([secA])
   })
 

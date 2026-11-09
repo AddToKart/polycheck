@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AccessibilityInfo, Alert, Animated, Image, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native'
+import { AccessibilityInfo, Alert, Animated, Image, KeyboardAvoidingView, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
@@ -44,7 +44,9 @@ import {
 import { CampusHeader } from '../../../components/CampusHeader'
 import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, CampusSkeleton, ListSkeleton, SectionHeading } from '../../../components/CampusPrimitives'
 import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
+import { KeyboardAwareScrollView } from '../../../components/KeyboardAwareScrollView'
 import { useCampusToast } from '../../../components/CampusToast'
+import { keyboardAvoidingBehavior } from '../../../lib/keyboard'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'incomplete', 'absent']
 const FILTERS: Array<AttendanceStatus | 'all'> = ['all', 'present', 'late', 'incomplete', 'absent', 'excused', 'pending', 'disputed']
@@ -535,7 +537,7 @@ export default function SessionDetailScreen() {
           </>
         )}
       />
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 12 }} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 12 }} showsVerticalScrollIndicator={false}>
       {finaleModel ? (
         <CampusCard testID="session-finale-banner" className="mb-5 overflow-hidden bg-maroon dark:bg-maroon-deep">
           <View className="flex-row items-center gap-3">
@@ -748,9 +750,10 @@ export default function SessionDetailScreen() {
       </CampusCard>
 
       {isTeacher && session.isActive ? <CampusButton label="End session" icon="stop" onPress={endSession} className="border-red-600 bg-red-600 dark:border-red-600 dark:bg-red-600" /> : null}
-    </ScrollView>
+    </KeyboardAwareScrollView>
 
     <Modal visible={isTeacher && showValidityPrompt} transparent animationType="slide" onRequestClose={() => setShowValidityPrompt(false)}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={keyboardAvoidingBehavior}>
       <Pressable className="flex-1 justify-end bg-black/80" onPress={() => setShowValidityPrompt(false)}>
         <Pressable onPress={() => undefined} className="rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-surface-dark">
           <View className="mb-4 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
@@ -784,11 +787,13 @@ export default function SessionDetailScreen() {
           </View>
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
 
       <Modal visible={isTeacher && showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}><Pressable accessibilityRole="button" accessibilityLabel="Close full-screen QR code" className="flex-1 items-center justify-center bg-black/95 px-5" onPress={() => setShowQrModal(false)}>{activeQrToken ? <View className="rounded-[32px] bg-white p-4"><QRCode value={activeQrToken} size={270} quietZone={8} backgroundColor={pupColors.white} color={pupColors.black} /></View> : null}{onlineMode && activePinPlain ? <View className="mt-4 flex-row items-center gap-2 rounded-2xl border border-golden px-4 py-2"><MaterialIcons name="pin" size={16} color={pupColors.golden} /><Text className="font-sans-bold text-sm uppercase tracking-[1px] text-golden">PIN {activePinPlain} · announce aloud</Text></View> : null}<Text className="mt-6 font-sans-medium text-sm text-white/60">Tap anywhere to close</Text></Pressable></Modal>
 
       <Modal visible={isTeacher && showCheckpointPrompt} transparent animationType="slide" onRequestClose={() => setShowCheckpointPrompt(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={keyboardAvoidingBehavior}>
         <Pressable className="flex-1 justify-end bg-black/80" onPress={() => setShowCheckpointPrompt(false)}>
           <Pressable onPress={() => undefined} className="rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-surface-dark">
             <View className="mb-4 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
@@ -881,6 +886,7 @@ export default function SessionDetailScreen() {
             </View>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   )

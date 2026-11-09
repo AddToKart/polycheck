@@ -3,8 +3,9 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { BookOpen, MapPin, CalendarDays, Plus, X } from 'lucide-react'
+import { BookOpen, GraduationCap, MapPin, CalendarDays, Plus, X } from 'lucide-react'
 import { api } from '@/lib/api-client'
+import { pupCourseName, pupCoursesByDepartment } from '@polycheck/shared'
 import type { User, Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -18,6 +19,12 @@ const SEMESTERS = [
   '2nd Semester',
   'Summer',
 ] as const
+
+/** Sentinel option that swaps the catalog select for a free-text course code. */
+const CUSTOM_COURSE_OPTION = '__custom__'
+const COURSE_GROUPS = pupCoursesByDepartment()
+const SELECT_CLASS =
+  'flex h-10 w-full rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon/30 focus-visible:border-maroon'
 
 function getCurrentAY() {
   const now = new Date()
@@ -41,6 +48,8 @@ function CreateSectionForm() {
   const [subject, setSubject] = useState<Subject | null>(null)
   const [section, setSection] = useState('')
   const [room, setRoom] = useState('')
+  const [courseSelection, setCourseSelection] = useState('')
+  const [customCourse, setCustomCourse] = useState('')
   const [semester, setSemester] = useState(`1st Semester AY ${getCurrentAY()}`)
   const [schedule, setSchedule] = useState<ScheduleEntry[]>([])
   const [currentDay, setCurrentDay] = useState('Mon')
@@ -72,6 +81,10 @@ function CreateSectionForm() {
 
   if (!user || !subject) return null
 
+  const isCustomCourse = courseSelection === CUSTOM_COURSE_OPTION
+  const resolvedCourse = (isCustomCourse ? customCourse : courseSelection).trim()
+  const selectedCourseName = pupCourseName(resolvedCourse)
+
   const handleAddSchedule = () => {
     if (!currentDay || !currentStartTime || !currentEndTime) return
     setSchedule([
@@ -92,10 +105,11 @@ function CreateSectionForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!section || !room || !semester || schedule.length === 0) return
+    if (!section || !room || !semester || schedule.length === 0 || !resolvedCourse) return
     await api.createSection({
       subjectId: subject.id,
       section,
+      course: resolvedCourse,
       room,
       schedule: schedule.map((s) => ({
         day: s.day,
@@ -140,6 +154,65 @@ function CreateSectionForm() {
                   {subject.name}{' '}
                   <span className="font-mono text-zinc-500 dark:text-zinc-400">({subject.code})</span>
                 </p>
+              </CardContent>
+            </Card>
+
+            {/* Course */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-zinc-800 dark:text-zinc-100">
+                  <GraduationCap className="w-5 h-5 text-maroon" />
+                  Course
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Two sections can share a subject while belonging to different programs, so the
+                  course is shown anywhere the section is identified.
+                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="course">Course</Label>
+                  <select
+                    id="course"
+                    value={courseSelection}
+                    onChange={(e) => setCourseSelection(e.target.value)}
+                    className={SELECT_CLASS}
+                    required
+                  >
+                    <option value="">Select a course...</option>
+                    {COURSE_GROUPS.map((group) => (
+                      <optgroup key={group.department} label={group.department}>
+                        {group.courses.map((course) => (
+                          <option key={course.code} value={course.code}>
+                            {course.code} — {course.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    <option value={CUSTOM_COURSE_OPTION}>Other — specify manually</option>
+                  </select>
+                </div>
+
+                {isCustomCourse ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="custom-course">Custom course code</Label>
+                    <Input
+                      id="custom-course"
+                      value={customCourse}
+                      onChange={(e) => setCustomCourse(e.target.value)}
+                      placeholder="e.g. BSIT"
+                      maxLength={30}
+                      required
+                    />
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Stored exactly as typed (trimmed), up to 30 characters.
+                    </p>
+                  </div>
+                ) : courseSelection ? (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    {courseSelection} · {selectedCourseName}
+                  </p>
+                ) : null}
               </CardContent>
             </Card>
 
@@ -280,7 +353,7 @@ function CreateSectionForm() {
 
             {/* Actions */}
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="submit" disabled={!section || !room || schedule.length === 0}>
+              <Button type="submit" disabled={!section || !room || schedule.length === 0 || !resolvedCourse}>
                 Create Section
               </Button>
               <Button variant="ghost" asChild>

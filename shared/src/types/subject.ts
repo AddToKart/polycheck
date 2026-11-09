@@ -20,6 +20,12 @@ export interface Section {
   id: string
   subjectId: string
   section: string
+  /**
+   * PUP Santa Maria program/course short code (e.g. 'BSIT'). Two sections can
+   * carry the same subject while belonging to different courses, so this must
+   * be displayed anywhere a section is identified. Optional for legacy rows.
+   */
+  course?: string
   room: string
   schedule: ScheduleDay[]
   semester: string

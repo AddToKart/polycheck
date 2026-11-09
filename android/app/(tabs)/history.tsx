@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -17,6 +17,7 @@ import { EXCUSE_STATUS_META, excuseReasonLabel, isExcuseEligible } from '../../l
 import { datePresetRange, filterAttendanceRecords } from '../../lib/filters'
 import { useLoadState } from '../../hooks/use-load-state'
 
+import { confirmSignOut } from '../../lib/sign-out'
 type FilterTab = 'all' | AttendanceStatus
 type HistoryDatePreset = 'all' | '7d' | '30d'
 
@@ -62,6 +63,10 @@ export default function HistoryScreen() {
   const [excuseVisible, setExcuseVisible] = useState(false)
   const [submittingExcuse, setSubmittingExcuse] = useState(false)
   const loadState = useLoadState()
+  // Ordered responses: stale focus/refresh results can never overwrite newer
+  // data, and a failed refresh keeps the last rendered records on screen.
+  const requestIdRef = useRef(0)
+  const hasLoadedRef = useRef(false)
 
   const user = api.getCurrentUser()
   const student = useMemo(() => {
@@ -73,27 +78,36 @@ export default function HistoryScreen() {
     }
   }, [user])
 
-  useFocusEffect(useCallback(() => {
+  const loadHistory = useCallback(async () => {
     if (!student) {
       setAllRecords([])
       return
     }
-    let active = true
-    void Promise.all([api.getMyAttendance(student.id), api.getSections(), api.getSubjects()])
-      .then(([records, sections, subjectList]) => {
-        if (!active) return
-        setAllRecords(records)
-        setSectionsMap(new Map(sections.map((section) => [section.id, section])))
-        setSubjects(Object.fromEntries(subjectList.map((subject) => [subject.id, subject])))
-        loadState.markReady()
-      })
-      .catch(() => {
-        if (!active) return
-        loadState.markError()
-        showToast('error', 'Unable to load history', 'Check your connection and try again.')
-      })
-    return () => { active = false }
-  }, [showToast, student?.id, loadState.reloadToken]))
+    const requestId = ++requestIdRef.current
+    try {
+      const [records, sections, subjectList] = await Promise.all([api.getMyAttendance(student.id), api.getSections(), api.getSubjects()])
+      if (requestId !== requestIdRef.current) return
+      setAllRecords(records)
+      setSectionsMap(new Map(sections.map((section) => [section.id, section])))
+      setSubjects(Object.fromEntries(subjectList.map((subject) => [subject.id, subject])))
+      hasLoadedRef.current = true
+      loadState.markReady()
+    } catch {
+      if (requestId !== requestIdRef.current) return
+      if (hasLoadedRef.current) {
+        showToast('error', "Couldn't refresh your history", 'Showing your last loaded records. Check your connection and try again.')
+        return
+      }
+      loadState.markError()
+      showToast('error', 'Unable to load history', 'Check your connection and try again.')
+    }
+  }, [showToast, student?.id, loadState.markReady, loadState.markError])
+
+  useFocusEffect(useCallback(() => {
+    void loadHistory()
+    // Leaving the screen invalidates any in-flight response from this visit.
+    return () => { requestIdRef.current += 1 }
+  }, [loadHistory, loadState.reloadToken]))
 
   const filteredRecords = useMemo(() => filterAttendanceRecords(
     allRecords,
@@ -129,7 +143,12 @@ export default function HistoryScreen() {
     setSubmittingDispute(true)
     try {
       await api.submitDispute({ recordId: selectedRecord.id, reason, description })
-      setAllRecords(await api.getMyAttendance(student.id))
+      const requestId = ++requestIdRef.current
+      const records = await api.getMyAttendance(student.id)
+      if (requestId === requestIdRef.current) {
+        hasLoadedRef.current = true
+        setAllRecords(records)
+      }
       setDisputeVisible(false)
       setSelectedRecord(null)
       showToast('success', 'Issue reported', 'Your instructor can now review this attendance record.')
@@ -145,7 +164,12 @@ export default function HistoryScreen() {
     setSubmittingExcuse(true)
     try {
       await api.requestExcuse(selectedRecord.id, { reason, description, ...(evidenceData ? { evidenceData } : {}) })
-      setAllRecords(await api.getMyAttendance(student.id))
+      const requestId = ++requestIdRef.current
+      const records = await api.getMyAttendance(student.id)
+      if (requestId === requestIdRef.current) {
+        hasLoadedRef.current = true
+        setAllRecords(records)
+      }
       setExcuseVisible(false)
       setSelectedRecord(null)
       showToast('success', 'Excuse requested', 'Your instructor will review the request and notify you.')
@@ -156,10 +180,7 @@ export default function HistoryScreen() {
     }
   }
 
-  const signOut = () => {
-    void api.logout()
-    router.replace('/')
-  }
+  const signOut = confirmSignOut
 
   if (!student) {
     return (

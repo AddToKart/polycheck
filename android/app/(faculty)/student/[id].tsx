@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AccessibilityInfo, ActivityIndicator, Alert, Animated, Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { AccessibilityInfo, ActivityIndicator, Alert, Animated, Image, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
@@ -15,6 +15,7 @@ import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
 import { useCampusToast } from '../../../components/CampusToast'
 import QRCode from 'react-native-qrcode-svg'
 import * as Crypto from 'expo-crypto'
+import { keyboardAvoidingBehavior } from '../../../lib/keyboard'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
 const SESSION_PAGE_SIZE = 5
@@ -277,6 +278,7 @@ export default function StudentDetailScreen() {
       </Modal>
 
       <Modal visible={releaseOpen} transparent animationType="fade" onRequestClose={() => setReleaseOpen(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={keyboardAvoidingBehavior}>
         <View className="flex-1 items-center justify-center bg-black/60 px-6">
           <View className="w-full border-t-4 border-golden bg-white p-6 dark:bg-[#1F191D]" testID="teacher-device-release-modal">
             <Text className="font-heading text-xl text-ink dark:text-white">Emergency device release</Text>
@@ -320,6 +322,7 @@ export default function StudentDetailScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   )

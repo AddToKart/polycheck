@@ -1626,5 +1626,123 @@ describe('SessionsService', () => {
       prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-other', subject: { name: 'CS 101' } })
       await expect(service.createBulk(dto, teacherUser)).rejects.toThrow(ForbiddenException)
     })
+
+    describe('slot-aware bulk creation (SL2)', () => {
+      // 2026-07-13 is a Monday; the week runs through Sunday 2026-07-19.
+      const weekRange = { startDate: '2026-07-13', endDate: '2026-07-19' }
+
+      function mockSuccessfulCreation() {
+        prisma.section.findUnique.mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } })
+        prisma.session.findMany.mockResolvedValue([])
+        prisma.$transaction.mockImplementation(async (ops: any) => Promise.all(ops.map((op: any) => op)))
+        prisma.session.create.mockImplementation(async ({ data }: any) => makeSession(data))
+        prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      }
+
+      it('sweeps each slot weekday with its own start/end times', async () => {
+        mockSuccessfulCreation()
+
+        const result = await service.createBulk(
+          {
+            sectionId: 'sec-1',
+            subjectName: 'CS 101',
+            ...weekRange,
+            geofence: dto.geofence,
+            slots: [
+              { day: 'Mon', startTime: '08:00', endTime: '10:30' },
+              { day: 'Wed', startTime: '09:00', endTime: '12:30' },
+            ],
+          },
+          teacherUser,
+        )
+
+        expect(result).toHaveLength(2)
+        expect(prisma.session.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({ date: '2026-07-13', startTime: '08:00', endTime: '10:30' }),
+        })
+        expect(prisma.session.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({ date: '2026-07-15', startTime: '09:00', endTime: '12:30' }),
+        })
+      })
+
+      it('lets slots win over contradictory legacy fields', async () => {
+        mockSuccessfulCreation()
+
+        const result = await service.createBulk(
+          {
+            sectionId: 'sec-1',
+            subjectName: 'CS 101',
+            ...weekRange,
+            geofence: dto.geofence,
+            daysOfWeek: ['Tue'],
+            startTime: '13:00',
+            endTime: '14:00',
+            slots: [{ day: 'Mon', startTime: '08:00', endTime: '10:30' }],
+          },
+          teacherUser,
+        )
+
+        expect(result).toHaveLength(1)
+        expect(prisma.session.findMany).toHaveBeenCalledWith({
+          where: { sectionId: 'sec-1', date: { in: ['2026-07-13'] } },
+          select: { date: true },
+        })
+        expect(prisma.session.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({ date: '2026-07-13', startTime: '08:00', endTime: '10:30' }),
+        })
+      })
+
+      it('rejects a payload with neither slots nor the legacy fields', async () => {
+        await expect(
+          service.createBulk(
+            {
+              sectionId: 'sec-1',
+              subjectName: 'CS 101',
+              ...weekRange,
+              geofence: dto.geofence,
+            },
+            teacherUser,
+          ),
+        ).rejects.toThrow('Provide either class slots or daysOfWeek with startTime and endTime')
+        expect(prisma.section.findUnique).not.toHaveBeenCalled()
+      })
+
+      it('rejects a slot whose end time is not after its start time', async () => {
+        await expect(
+          service.createBulk(
+            {
+              sectionId: 'sec-1',
+              subjectName: 'CS 101',
+              ...weekRange,
+              geofence: dto.geofence,
+              slots: [{ day: 'Mon', startTime: '11:00', endTime: '10:00' }],
+            },
+            teacherUser,
+          ),
+        ).rejects.toThrow('endTime must be after startTime')
+        expect(prisma.section.findUnique).not.toHaveBeenCalled()
+      })
+
+      it('deduplicates identical slot rows within the request', async () => {
+        mockSuccessfulCreation()
+
+        const result = await service.createBulk(
+          {
+            sectionId: 'sec-1',
+            subjectName: 'CS 101',
+            ...weekRange,
+            geofence: dto.geofence,
+            slots: [
+              { day: 'Mon', startTime: '08:00', endTime: '10:30' },
+              { day: 'Mon', startTime: '08:00', endTime: '10:30' },
+            ],
+          },
+          teacherUser,
+        )
+
+        expect(result).toHaveLength(1)
+        expect(prisma.session.create).toHaveBeenCalledTimes(1)
+      })
+    })
   })
 })

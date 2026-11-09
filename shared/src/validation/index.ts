@@ -45,6 +45,12 @@ export const SubjectCreateSchema = z.object({
 export const SectionCreateSchema = z.object({
   subjectId: z.string().min(1, 'Subject is required'),
   section: z.string().min(1, 'Section is required'),
+  course: z
+    .string()
+    .trim()
+    .min(1, 'Course is required')
+    .max(30, 'Course must be 30 characters or fewer')
+    .optional(),
   room: z.string().min(1, 'Room is required'),
   schedule: z.array(ScheduleDaySchema).min(1, 'At least one schedule day required'),
   semester: z.string().min(1, 'Semester is required'),
@@ -93,14 +99,32 @@ export const SessionCreateSchema = z.object({
   }
 })
 
+export const BulkSessionSlotSchema = z
+  .object({
+    day: DayOfWeekEnum,
+    startTime: TimeSchema,
+    endTime: TimeSchema,
+  })
+  .refine((value) => value.endTime > value.startTime, {
+    message: 'End time must be after start time',
+    path: ['endTime'],
+  })
+
+/**
+ * Bulk session creation accepts two shapes:
+ * - Legacy: `daysOfWeek` + one `startTime`/`endTime` pair (applied to every day).
+ * - Slot-aware: `slots` (one entry per class meeting), each with its own times.
+ * When `slots` is present it wins; `daysOfWeek`/`startTime`/`endTime` may be omitted.
+ */
 export const BulkSessionCreateSchema = z.object({
   sectionId: z.string().min(1),
   subjectName: z.string().min(1),
   startDate: IsoDateSchema,
   endDate: IsoDateSchema,
-  daysOfWeek: z.array(DayOfWeekEnum).min(1).max(7),
-  startTime: TimeSchema,
-  endTime: TimeSchema,
+  daysOfWeek: z.array(DayOfWeekEnum).min(1).max(7).optional(),
+  startTime: TimeSchema.optional(),
+  endTime: TimeSchema.optional(),
+  slots: z.array(BulkSessionSlotSchema).min(1).max(7).optional(),
   room: z.string().optional(),
   mode: SessionModeSchema.default('in_person'),
   qrValidityMinutes: z.number().min(1).max(15).default(15),
@@ -109,13 +133,45 @@ export const BulkSessionCreateSchema = z.object({
   startGraceMinutes: z.number().int().min(0).max(60).optional(),
   endQrValiditySeconds: z.number().int().min(60).max(300).optional(),
   geofence: GeofenceConfigSchema.optional(),
-}).refine((value) => value.endTime > value.startTime, {
-  message: 'End time must be after start time',
-  path: ['endTime'],
 }).refine((value) => value.endDate >= value.startDate, {
   message: 'End date must be on or after start date',
   path: ['endDate'],
 }).superRefine((value, ctx) => {
+  if (value.slots && value.slots.length > 0) {
+    const seen = new Set<string>()
+    value.slots.forEach((slot, index) => {
+      const key = `${slot.day}-${slot.startTime}-${slot.endTime}`
+      if (seen.has(key)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['slots', index],
+          message: 'Duplicate class slot',
+        })
+      }
+      seen.add(key)
+    })
+  } else {
+    if (!value.daysOfWeek || value.daysOfWeek.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['daysOfWeek'],
+        message: 'Select at least one day',
+      })
+    }
+    if (!value.startTime || !value.endTime) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['startTime'],
+        message: 'Start and end time are required',
+      })
+    } else if (value.endTime <= value.startTime) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['endTime'],
+        message: 'End time must be after start time',
+      })
+    }
+  }
   if (value.mode === 'in_person' && !value.geofence) {
     ctx.addIssue({
       code: 'custom',

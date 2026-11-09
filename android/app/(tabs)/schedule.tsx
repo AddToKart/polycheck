@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -10,6 +10,7 @@ import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusIconButton, CampusEmptyState, CampusLoadError, CampusSkeleton, ListSkeleton, SectionHeading } from '../../components/CampusPrimitives'
+import { useCampusToast } from '../../components/CampusToast'
 import { useLoadState } from '../../hooks/use-load-state'
 import {
   StudentCalendarEventList,
@@ -25,6 +26,7 @@ const getMonthName = (month: number) => ['January', 'February', 'March', 'April'
 
 export default function ScheduleScreen() {
   const { isDark, toggle } = useTheme()
+  const { showToast } = useCampusToast()
   const user = api.getCurrentUser()
   const studentId = user && 'studentId' in user ? user.id : null
 
@@ -38,24 +40,38 @@ export default function ScheduleScreen() {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
   const [subjects, setSubjects] = useState<Record<string, Subject>>({})
   const loadState = useLoadState()
+  // Ordered responses: a stale focus refresh can never overwrite newer data,
+  // and a failed refresh keeps the last rendered schedule on screen.
+  const requestIdRef = useRef(0)
+  const hasLoadedRef = useRef(false)
+
+  const loadSchedule = useCallback(async () => {
+    if (!studentId) return
+    const requestId = ++requestIdRef.current
+    try {
+      const [sec, sessionList, att, sub] = await Promise.all([api.getStudentSections(studentId), api.getSessions(), api.getMyAttendance(studentId), api.getSubjects()])
+      if (requestId !== requestIdRef.current) return
+      setSections(sec)
+      setSessions(sessionList)
+      setAttendanceRecords(att)
+      setSubjects(Object.fromEntries(sub.map((s) => [s.id, s])))
+      hasLoadedRef.current = true
+      loadState.markReady()
+    } catch {
+      if (requestId !== requestIdRef.current) return
+      if (hasLoadedRef.current) {
+        showToast('error', "Couldn't refresh your schedule", 'Showing your last loaded schedule. Check your connection and try again.')
+        return
+      }
+      loadState.markError()
+    }
+  }, [studentId, showToast, loadState.markReady, loadState.markError])
 
   useFocusEffect(useCallback(() => {
-    if (!studentId) return
-    let active = true
-    void Promise.all([api.getStudentSections(studentId), api.getSessions(), api.getMyAttendance(studentId), api.getSubjects()])
-      .then(([sec, sessionList, att, sub]) => {
-        if (!active) return
-        setSections(sec)
-        setSessions(sessionList)
-        setAttendanceRecords(att)
-        setSubjects(Object.fromEntries(sub.map((s) => [s.id, s])))
-        loadState.markReady()
-      })
-      .catch(() => {
-        if (active) loadState.markError()
-      })
-    return () => { active = false }
-  }, [studentId, loadState.reloadToken]))
+    void loadSchedule()
+    // Leaving the screen invalidates any in-flight response from this visit.
+    return () => { requestIdRef.current += 1 }
+  }, [loadSchedule, loadState.reloadToken]))
 
   const monthDays = useMemo(() => {
     const year = currentDate.getFullYear()
@@ -195,7 +211,7 @@ export default function ScheduleScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}
         showsVerticalScrollIndicator={false}
       >
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="mb-3 gap-4 px-1">
+        <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerClassName="mb-3 gap-4 px-1">
           {[
             ['bg-zinc-400', 'Scheduled'],
             ['bg-zinc-600', 'Moved'],

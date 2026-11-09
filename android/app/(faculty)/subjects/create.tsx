@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "../../../components/KeyboardAwareScrollView";
 import { router } from "expo-router";
 import { api } from "../../../services/api-client";
 import { useAuthGate } from "../../../hooks/use-auth-gate";
@@ -62,7 +63,7 @@ export default function CreateSubjectScreen() {
         subtitle="Add the parent course first, then create its class sections."
         onBack={() => router.back()}
       />
-      <ScrollView
+      <KeyboardAwareScrollView
         className="flex-1"
         contentContainerClassName="px-4 pb-12"
         keyboardShouldPersistTaps="handled"
@@ -108,7 +109,7 @@ export default function CreateSubjectScreen() {
             className="mt-7"
           />
         </CampusCard>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

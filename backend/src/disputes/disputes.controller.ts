@@ -14,6 +14,7 @@ class SubmitDisputeDto {
     'invalid_signature',
     'device_mismatch',
     'suspicious_coordinates',
+    'other',
   ])
   reason!: string
   @IsString() @MinLength(10) @MaxLength(1000) description!: string

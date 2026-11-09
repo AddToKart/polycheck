@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { ArrowLeft, FileDown, FileUp, Loader2, Search, Key, RefreshCw, Ban, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle, CalendarDays } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Section, Session, Student, SectionRole, SessionPermission } from '@polycheck/shared'
+import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Sidebar } from '@/components/layout/sidebar'
 import { BulkImportDialog } from '@/components/import/BulkImportDialog'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -236,7 +237,7 @@ export default function SectionDetailPage() {
             </Link>
             <div className="min-w-0">
               <h1 className="text-2xl font-heading font-bold text-maroon-dark dark:text-white">{subjectName}</h1>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">{subjectCode} &middot; Section {section.section}</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">{subjectCode} &middot; {formatSectionHeading(section)}</p>
             </div>
           </div>
 

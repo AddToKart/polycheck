@@ -10,6 +10,7 @@ import { CampusHeader } from '../../components/CampusHeader'
 import { CampusIconButton } from '../../components/CampusPrimitives'
 import { HologramOverlay } from '../../components/HologramOverlay'
 
+import { confirmSignOut } from '../../lib/sign-out'
 type StudentCredential = {
   fullName: string
   studentId: string
@@ -148,10 +149,7 @@ export default function IdCardScreen() {
     })
   }
 
-  const signOut = () => {
-    void api.logout()
-    router.replace('/')
-  }
+  const signOut = confirmSignOut
 
   return (
     <SafeAreaView

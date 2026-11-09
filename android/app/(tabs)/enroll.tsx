@@ -50,7 +50,7 @@ export default function EnrollScreen() {
         onBack={() => router.back()}
       />
 
-      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
           <View className="flex-1 px-4 pb-8 pt-2">
             <CampusCard className="p-6">

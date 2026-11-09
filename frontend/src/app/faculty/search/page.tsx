@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api-client'
 import type { User, Student, Subject, Section, Session } from '@polycheck/shared'
+import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Input } from '@/components/ui/input'
 import { Search, Users, BookOpen, CalendarCheck, X } from 'lucide-react'
@@ -170,7 +171,7 @@ function SearchPageInner() {
                           {subj?.name ?? 'Unknown Subject'}
                         </p>
                         <p className="break-words text-xs text-zinc-400">
-                          {subj?.code} · Section {sec.section}{sec.room ? ` · ${sec.room}` : ''}
+                          {subj?.code} · {formatSectionHeading(sec)}{sec.room ? ` · ${sec.room}` : ''}
                         </p>
                       </div>
                     </Link>

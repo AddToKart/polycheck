@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Alert, FlatList, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, FlatList, Text, View } from 'react-native'
+import Constants, { ExecutionEnvironment } from 'expo-constants'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -7,6 +8,7 @@ import { cooldownRemainingMinutes, formatCooldownRemaining } from '@polycheck/sh
 import { REPORT_CATEGORY_LABELS, REPORT_STATUS_LABELS, type SystemReport } from '@polycheck/shared'
 import { api } from '../services/api-client'
 import { useAuthGate } from '../hooks/use-auth-gate'
+import { signOutNow } from '../lib/sign-out'
 import { useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
 import { CampusHeader } from '../components/CampusHeader'
@@ -17,6 +19,7 @@ import {
   SectionHeading,
 } from '../components/CampusPrimitives'
 import { CampusFormField } from '../components/CampusFormField'
+import { KeyboardAwareScrollView } from '../components/KeyboardAwareScrollView'
 import { HologramOverlay } from '../components/HologramOverlay'
 import { useCampusToast } from '../components/CampusToast'
 
@@ -153,8 +156,7 @@ export default function ProfileScreen() {
               try {
                 const result = await api.unregisterDevice(current.boundDeviceId ?? '')
                 showToast('success', 'Device unregistered', result.message)
-                await api.logout()
-                router.replace('/')
+                signOutNow()
               } catch (error) {
                 showToast('error', 'Unable to unregister', error instanceof Error ? error.message : 'Try again.')
               }
@@ -181,7 +183,7 @@ export default function ProfileScreen() {
           />
         }
       />
-      <ScrollView className="flex-1" contentContainerClassName="px-4 pb-16 pt-2">
+      <KeyboardAwareScrollView className="flex-1" contentContainerClassName="px-4 pb-16 pt-2">
         <CampusCard className="p-5">
           <View className="flex-row items-center gap-3">
             <View className="h-14 w-14 items-center justify-center bg-maroon">
@@ -409,7 +411,12 @@ export default function ProfileScreen() {
             </CampusCard>
           </>
         ) : null}
-      </ScrollView>
+
+        <Text className="mt-8 text-center font-sans text-[10px] tracking-wider text-muted dark:text-zinc-600">
+          Polycheck {Constants.expoConfig?.version ?? '?'} · build {Constants.nativeBuildVersion ?? '?'}
+          {Constants.executionEnvironment === ExecutionEnvironment.StoreClient ? '' : ' · expo go'}
+        </Text>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   )
 }

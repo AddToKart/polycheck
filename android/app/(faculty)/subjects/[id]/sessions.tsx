@@ -96,18 +96,24 @@ export default function SubjectSessionsScreen() {
       </ScrollView>
 
       <Modal visible={sectionPickerVisible} transparent animationType="fade" onRequestClose={() => setSectionPickerVisible(false)}>
-        <Pressable className="flex-1 justify-end bg-black/60" onPress={() => setSectionPickerVisible(false)}>
-          <View className="max-h-[70%] rounded-t-[32px] bg-white p-5 pb-8 dark:bg-surface-dark" onStartShouldSetResponder={() => true}>
+        <View className="flex-1 justify-end">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss section picker"
+            className="absolute inset-0 bg-black/60"
+            onPress={() => setSectionPickerVisible(false)}
+          />
+          <View className="max-h-[70%] rounded-t-[32px] bg-white p-5 pb-8 dark:bg-surface-dark">
             <View className="mb-5 h-1 w-10 self-center rounded-full bg-zinc-300 dark:bg-zinc-700" />
             <Text className="mb-4 font-heading text-2xl text-ink dark:text-white">Choose a section</Text>
-            <ScrollView>
+            <ScrollView nestedScrollEnabled>
               {[{ id: '', section: 'All sections', room: '' }, ...sections].map((section) => {
                 const active = section.id === selectedSectionId
                 return <Pressable key={section.id || 'all'} accessibilityRole="radio" accessibilityState={{ checked: active }} onPress={() => { setSelectedSectionId(section.id); setSectionPickerVisible(false) }} className={`mb-2 min-h-14 flex-row items-center rounded-2xl border px-4 ${active ? 'border-maroon bg-maroon/5 dark:border-golden dark:bg-golden/10' : 'border-line dark:border-line-dark'}`}><Text className="flex-1 font-sans-bold text-sm text-ink dark:text-white">{section.id ? `Section ${section.section}${section.room ? ` · ${section.room}` : ''}` : section.section}</Text>{active ? <MaterialIcons name="check-circle" size={20} color={isDark ? pupColors.golden : pupColors.maroon} /> : null}</Pressable>
               })}
             </ScrollView>
           </View>
-        </Pressable>
+        </View>
       </Modal>
     </SafeAreaView>
   )

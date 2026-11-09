@@ -102,13 +102,17 @@ export function OutageSimulatorSheet({ visible, onClose }: { visible: boolean; o
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <Pressable className="flex-1 bg-black/50" onPress={onClose}>
-        <View className="flex-1" />
+      <View className="flex-1 justify-end">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss outage simulator"
+          className="absolute inset-0 bg-black/50"
+          onPress={onClose}
+        />
         <Animated.View
           testID="outage-simulator-sheet"
           className="rounded-t-[36px] border-t-2 border-golden/60 bg-white px-5 pt-4 shadow-2xl dark:border-golden/25 dark:bg-surface-dark"
           style={{ transform: [{ translateY: slideAnim }], paddingBottom: insets.bottom + 24 }}
-          onStartShouldSetResponder={() => true}
         >
           <View className="items-center pb-3 pt-1">
             <View className="h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
@@ -183,7 +187,7 @@ export function OutageSimulatorSheet({ visible, onClose }: { visible: boolean; o
             The sync engine is untouched — receipts, retries and reconciliation are the production pipeline.
           </Text>
         </Animated.View>
-      </Pressable>
+      </View>
     </Modal>
   )
 }

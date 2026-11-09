@@ -13,6 +13,7 @@ import { CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, Campus
 import { useCampusToast } from '../../components/CampusToast'
 import { useLoadState } from '../../hooks/use-load-state'
 
+import { confirmSignOut } from '../../lib/sign-out'
 export default function FacultySubjectsScreen() {
   const { isDark, toggle } = useTheme()
   const { showToast } = useCampusToast()
@@ -42,10 +43,7 @@ export default function FacultySubjectsScreen() {
   if (!user) return null
   const isSuper = user.role === 'super_admin'
 
-  const signOut = () => {
-    void api.logout()
-    router.replace('/')
-  }
+  const signOut = confirmSignOut
 
   return (
     <SafeAreaView

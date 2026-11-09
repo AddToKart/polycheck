@@ -213,6 +213,9 @@ model Section {
   subjectId            String
   subject              Subject   @relation(fields: [subjectId], references: [id])
   section              String
+  // PUP Santa Maria program/course short code (e.g. 'BSIT'). Optional for
+  // legacy rows created before courses were captured; new web sections set it.
+  course               String?
   room                 String
   semester             String
   teacherId            String

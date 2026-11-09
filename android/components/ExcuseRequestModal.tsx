@@ -12,6 +12,7 @@ import {
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
+import { keyboardAvoidingBehavior } from '../lib/keyboard'
 import type { ExcuseReason } from '@polycheck/shared'
 import { EXCUSE_REASON_OPTIONS, validateExcuseForm } from '../lib/excuses'
 import { useTheme } from '../theme/ThemeContext'
@@ -95,7 +96,7 @@ export function ExcuseRequestModal({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         className="flex-1 justify-end bg-black/65"
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={keyboardAvoidingBehavior}
       >
         <Pressable className="flex-1" onPress={onClose} accessibilityRole="button" accessibilityLabel="Close excuse form" />
         <Pressable

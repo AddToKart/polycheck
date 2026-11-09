@@ -713,8 +713,11 @@ const apiBase = {
     }
   },
   async getStudentSections(studentId: string): Promise<Section[]> {
+    // `/sections` is role-scoped server-side; the argument stays for the
+    // shared ApiClient contract.
+    void studentId;
     try {
-      const sections = await get<Section[]>(`/sections?studentId=${studentId}`);
+      const sections = await get<Section[]>("/sections");
       await cacheSections(sections).catch(() => undefined);
       await setEnrolledSectionIds(sections.map((section) => section.id)).catch(
         () => undefined,

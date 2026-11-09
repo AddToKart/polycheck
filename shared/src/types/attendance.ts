@@ -27,7 +27,8 @@ export type StudentDisputeReason =
   | "duplicate_submission"
   | "invalid_signature"
   | "device_mismatch"
-  | "suspicious_coordinates";
+  | "suspicious_coordinates"
+  | "other";
 
 export type SystemDisputeReason =
   | "delayed_offline_sync"

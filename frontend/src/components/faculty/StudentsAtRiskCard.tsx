@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { AlertTriangle, ChevronRight, RefreshCw } from 'lucide-react'
 import type { AttendanceStandingStatus, Section, StudentAtRisk } from '@polycheck/shared'
+import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -80,7 +81,7 @@ export function StudentsAtRiskCard({
             <option value="">All sections</option>
             {sections.map((section) => (
               <option key={section.id} value={section.id}>
-                Section {section.section}
+                {formatSectionHeading(section)}
               </option>
             ))}
           </select>

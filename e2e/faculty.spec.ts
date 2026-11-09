@@ -126,14 +126,15 @@ test.describe('Faculty (Teacher) Flows', () => {
     await page.goto('/faculty/sections/create?subjectId=subj-001')
     await expect(page.getByRole('heading', { name: 'Create Section' })).toBeVisible()
     await page.getByLabel('Section').fill(sectionName)
+    await page.getByLabel('Course').selectOption('BSIT')
     await page.getByLabel('Room').fill('E2E Room')
     // Add one schedule entry
     await page.getByRole('button', { name: /Add/i }).click()
     await expect(page.getByText('09:00 - 10:30')).toBeVisible()
     await page.getByRole('button', { name: 'Create Section' }).click()
-    // Lands back on the subject detail page with the new section visible
+    // Lands back on the subject detail page with the new section + course visible
     await expect(page).toHaveURL(/\/faculty\/subjects\/subj-001$/, { timeout: 20_000 })
-    await expect(page.getByText(sectionName).first()).toBeVisible()
+    await expect(page.getByText(new RegExp(`${sectionName}.*BSIT`)).first()).toBeVisible()
     assertNoErrors(errors)
   })
 

@@ -10,6 +10,7 @@ import { useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
 import { CampusIconButton } from './CampusPrimitives'
 import { CampusHeader } from './CampusHeader'
+import { KeyboardAwareScrollView } from './KeyboardAwareScrollView'
 import { useCampusToast } from './CampusToast'
 import { MaintenanceScreen } from './maintenance/MaintenanceScreen'
 
@@ -102,7 +103,7 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
       testID={`${portal}-login-screen`}
     >
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
+        <KeyboardAwareScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"
@@ -316,7 +317,7 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
               </Text>
             </Pressable>
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
 
       <Modal visible={cooldown !== null} transparent animationType="fade" onRequestClose={() => setCooldown(null)}>

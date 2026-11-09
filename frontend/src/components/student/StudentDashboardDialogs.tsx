@@ -7,6 +7,11 @@ import StatusBadge from '@/components/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import {
+  DISPUTE_DESCRIPTION_MAX_LENGTH,
+  DISPUTE_DESCRIPTION_MIN_LENGTH,
+  isDisputeDescriptionValid,
+} from '@/lib/student-dispute'
 
 interface StudentDisputeDialogProps {
   record: AttendanceRecord | null
@@ -14,6 +19,7 @@ interface StudentDisputeDialogProps {
   description: string
   feedback: { type: 'success' | 'error'; message: string } | null
   subjectName: string
+  submitting: boolean
   onClose: () => void
   onReasonChange: (value: string) => void
   onDescriptionChange: (value: string) => void
@@ -21,6 +27,8 @@ interface StudentDisputeDialogProps {
 }
 
 export function StudentDisputeDialog(props: StudentDisputeDialogProps) {
+  const descriptionValid = isDisputeDescriptionValid(props.description)
+  const showLengthHint = props.description.length > 0 && !descriptionValid
   return (
     <Dialog open={Boolean(props.record)} onOpenChange={(open) => { if (!open) props.onClose() }}>
       <DialogContent className="max-w-[92vw] sm:max-w-lg">
@@ -33,10 +41,47 @@ export function StudentDisputeDialog(props: StudentDisputeDialogProps) {
               <p><span className="font-bold text-zinc-900 dark:text-zinc-100">Session:</span> {props.subjectName}</p>
               <p><span className="font-bold text-zinc-900 dark:text-zinc-100">Status:</span> <StatusBadge status={props.record.status} /></p>
             </div>
-            <div><label className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1.5">Reason</label><select value={props.reason} onChange={(event) => props.onReasonChange(event.target.value)} className="w-full h-10 rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors"><option value="">Select a reason</option><option value="outside_geofence">Wrong location</option><option value="expired_token">Wrong time</option><option value="duplicate_submission">I was present</option><option value="invalid_signature">Technical issue</option><option value="device_mismatch">Other</option></select></div>
-            <div><label className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1.5">Description</label><textarea value={props.description} onChange={(event) => props.onDescriptionChange(event.target.value)} rows={3} className="w-full rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors resize-none" placeholder="Describe the issue..." /></div>
-            {props.feedback ? <div className={`text-xs font-bold uppercase tracking-widest px-3 py-2 ${props.feedback.type === 'success' ? 'text-golden bg-maroon-dark' : 'text-white bg-red-600'}`}>{props.feedback.message}</div> : null}
-            <div className="flex flex-wrap justify-end gap-3 pt-2"><DialogClose asChild><Button variant="outline" className="rounded-none text-xs font-bold uppercase tracking-widest">Cancel</Button></DialogClose><Button onClick={props.onSubmit} disabled={!props.reason} className="rounded-none bg-maroon text-white hover:bg-maroon-dark text-xs font-bold uppercase tracking-widest"><Flag className="w-3 h-3 mr-2" />Submit Dispute</Button></div>
+            <div>
+              <label htmlFor="dispute-reason" className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1.5">Reason</label>
+              <select id="dispute-reason" value={props.reason} onChange={(event) => props.onReasonChange(event.target.value)} className="w-full h-10 rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors">
+                <option value="">Select a reason</option>
+                <option value="outside_geofence">Wrong location</option>
+                <option value="expired_token">Wrong time</option>
+                <option value="duplicate_submission">I was present</option>
+                <option value="invalid_signature">Technical issue</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                <label htmlFor="dispute-description" className="block text-xs font-bold uppercase tracking-widest text-zinc-500">Description</label>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                  {props.description.length}/{DISPUTE_DESCRIPTION_MAX_LENGTH}
+                </span>
+              </div>
+              <textarea
+                id="dispute-description"
+                value={props.description}
+                onChange={(event) => props.onDescriptionChange(event.target.value)}
+                rows={3}
+                maxLength={DISPUTE_DESCRIPTION_MAX_LENGTH}
+                aria-describedby="dispute-description-hint"
+                aria-invalid={showLengthHint}
+                className="w-full rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors resize-none"
+                placeholder="Describe the issue..."
+              />
+              <p id="dispute-description-hint" className={`mt-1 text-[10px] font-bold uppercase tracking-widest ${showLengthHint ? 'text-red-500' : 'text-zinc-400'}`}>
+                At least {DISPUTE_DESCRIPTION_MIN_LENGTH} characters required
+              </p>
+            </div>
+            {props.feedback ? <div role={props.feedback.type === 'error' ? 'alert' : 'status'} className={`text-xs font-bold uppercase tracking-widest px-3 py-2 ${props.feedback.type === 'success' ? 'text-golden bg-maroon-dark' : 'text-white bg-red-600'}`}>{props.feedback.message}</div> : null}
+            <div className="flex flex-wrap justify-end gap-3 pt-2">
+              <DialogClose asChild><Button variant="outline" className="rounded-none text-xs font-bold uppercase tracking-widest">Cancel</Button></DialogClose>
+              <Button onClick={props.onSubmit} disabled={!props.reason || !descriptionValid || props.submitting} className="rounded-none bg-maroon text-white hover:bg-maroon-dark text-xs font-bold uppercase tracking-widest">
+                <Flag className="w-3 h-3 mr-2" />
+                {props.submitting ? 'Submitting...' : 'Submit Dispute'}
+              </Button>
+            </div>
           </div>
         ) : null}
       </DialogContent>
