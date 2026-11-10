@@ -14,7 +14,9 @@ COPY backend backend
 # "exit code 1" from the whole chain, and layers cache independently.
 # Node heap caps keep the compilers under the host memory ceiling (the Linux
 # OOM killer SIGKILLs node silently, surfacing as a context-free exit 1).
-RUN pnpm --filter @polycheck/shared build
+RUN echo "[dcc] start: arch=$(uname -m) node=$(node -v) pnpm=$(pnpm -v) mem=$(cat /proc/meminfo | head -1)" \
+ && pnpm --filter @polycheck/shared build \
+ && echo "[dcc] shared build ok"
 RUN NODE_OPTIONS=--max-old-space-size=1024 DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm --filter @polycheck/backend prisma:generate
 RUN NODE_OPTIONS=--max-old-space-size=1280 pnpm --filter @polycheck/backend build
 RUN NODE_OPTIONS=--max-old-space-size=1280 pnpm --filter @polycheck/backend exec tsc \
