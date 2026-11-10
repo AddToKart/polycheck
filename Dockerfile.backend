@@ -10,10 +10,14 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
  && pnpm install --ignore-scripts --frozen-lockfile --filter @polycheck/backend... --filter @polycheck/shared...
 COPY shared shared
 COPY backend backend
-RUN pnpm --filter @polycheck/shared build \
- && DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm --filter @polycheck/backend prisma:generate \
- && pnpm --filter @polycheck/backend build \
- && pnpm --filter @polycheck/backend exec tsc \
+# Split build steps: a failing step is logged by name instead of a silent
+# "exit code 1" from the whole chain, and layers cache independently.
+# Node heap caps keep the compilers under the host memory ceiling (the Linux
+# OOM killer SIGKILLs node silently, surfacing as a context-free exit 1).
+RUN pnpm --filter @polycheck/shared build
+RUN NODE_OPTIONS=--max-old-space-size=1024 DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm --filter @polycheck/backend prisma:generate
+RUN NODE_OPTIONS=--max-old-space-size=1280 pnpm --filter @polycheck/backend build
+RUN NODE_OPTIONS=--max-old-space-size=1280 pnpm --filter @polycheck/backend exec tsc \
       --ignoreConfig \
       --outDir /app/backend/dist-seed \
       --module nodenext --moduleResolution nodenext \
