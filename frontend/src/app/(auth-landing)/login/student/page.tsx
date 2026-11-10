@@ -6,8 +6,12 @@ import { IdCard, Lock, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { api } from "@/lib/api-client";
+import { api, ApiHttpError } from "@/lib/api-client";
 import { PendingPasswordChange } from "@/components/auth/PendingPasswordChange";
+import {
+  StudentLoginDeviceGate,
+  type StudentLoginGate,
+} from "@/components/auth/StudentLoginDeviceGate";
 import { MaintenancePage } from "@/components/maintenance/MaintenancePage";
 import { useLanding } from "../../layout";
 import type { User } from "@polycheck/shared";
@@ -21,33 +25,81 @@ export default function StudentLoginPage() {
   const [loading, setLoading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [pendingUser, setPendingUser] = useState<User | null>(null);
+  const [gate, setGate] = useState<StudentLoginGate | null>(null);
   const [maintenance, setMaintenance] = useState<{ message?: string; estimatedEnd?: string } | null>(null);
   const { exitingRoute } = useLanding();
 
   useEffect(() => setHydrated(true), []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitLogin = async () => {
     setError("");
     setLoading(true);
     try {
       const user = await api.loginStudent(studentId, password);
       if (user?.mustChangePassword) {
+        setGate(null);
         setPendingUser(user);
       } else if (user) {
+        setGate(null);
         router.push("/student/dashboard");
       } else {
+        setGate(null);
         setError("Invalid student ID or password.");
       }
-    } catch (err: any) {
-      if (err?.code === "system_maintenance") {
-        setMaintenance({ message: err.message, estimatedEnd: err.estimatedEnd });
+    } catch (err) {
+      if (!(err instanceof ApiHttpError)) {
+        setGate(null);
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Invalid student ID or password.",
+        );
+        return;
+      }
+      if (err.code === "system_maintenance") {
+        setGate(null);
+        setMaintenance({
+          message: err.message,
+          estimatedEnd: err.estimatedEnd,
+        });
+      } else if (err.code === "device_cooldown_active") {
+        const remainingSeconds =
+          typeof err.remainingSeconds === "number"
+            ? Math.max(1, err.remainingSeconds)
+            : Math.max(
+                1,
+                Math.ceil(
+                  (typeof err.remainingMinutes === "number"
+                    ? err.remainingMinutes
+                    : 1) * 60,
+                ),
+              );
+        setGate({
+          kind: "cooldown",
+          message:
+            err.message ||
+            "This account is locked while a device change cools down.",
+          remainingSeconds,
+          anchorMs: Date.now(),
+        });
+      } else if (err.code === "active_session_elsewhere") {
+        setGate({
+          kind: "active_session",
+          message: err.message,
+          activeDeviceKind: err.activeDeviceKind ?? null,
+        });
       } else {
+        setGate(null);
         setError(err.message || "Invalid student ID or password.");
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void submitLogin();
   };
 
   if (maintenance) {
@@ -98,83 +150,91 @@ export default function StudentLoginPage() {
           </h2>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {error && (
-            <div className="p-4 rounded-none bg-red-50 dark:bg-red-900/20 border-l-4 border-red-600 text-red-700 dark:text-red-400 text-sm font-medium">
-              {error}
-            </div>
-          )}
-
-          <div className="space-y-3">
-            <Label
-              htmlFor="studentId"
-              className="uppercase tracking-widest text-xs text-zinc-500"
-            >
-              Student Number
-            </Label>
-            <div className="relative">
-              <div className="absolute left-0 top-0 bottom-0 w-12 flex items-center justify-center bg-zinc-100 dark:bg-zinc-800 border border-r-0 border-zinc-200 dark:border-zinc-700">
-                <IdCard className="w-5 h-5 text-zinc-500" />
+        {gate ? (
+          <StudentLoginDeviceGate
+            gate={gate}
+            retrying={loading}
+            onRetry={() => void submitLogin()}
+          />
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {error && (
+              <div className="p-4 rounded-none bg-red-50 dark:bg-red-900/20 border-l-4 border-red-600 text-red-700 dark:text-red-400 text-sm font-medium">
+                {error}
               </div>
-              <Input
-                id="studentId"
-                type="text"
-                value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
-                placeholder="2024-00123-MN-0"
-                className="pl-16 h-12 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-lg rounded-none focus-visible:ring-maroon dark:focus-visible:ring-golden"
-                required
-              />
-            </div>
-          </div>
+            )}
 
-          <div className="space-y-3">
-            <Label
-              htmlFor="password"
-              className="uppercase tracking-widest text-xs text-zinc-500"
-            >
-              Password
-            </Label>
-            <div className="relative">
-              <div className="absolute left-0 top-0 bottom-0 w-12 flex items-center justify-center bg-zinc-100 dark:bg-zinc-800 border border-r-0 border-zinc-200 dark:border-zinc-700">
-                <Lock className="w-5 h-5 text-zinc-500" />
-              </div>
-              <Input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="pl-16 pr-12 h-12 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-lg rounded-none focus-visible:ring-maroon dark:focus-visible:ring-golden"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 focus:outline-none"
+            <div className="space-y-3">
+              <Label
+                htmlFor="studentId"
+                className="uppercase tracking-widest text-xs text-zinc-500"
               >
-                {showPassword ? (
-                  <EyeOff className="w-5 h-5" />
-                ) : (
-                  <Eye className="w-5 h-5" />
-                )}
-              </button>
+                Student Number
+              </Label>
+              <div className="relative">
+                <div className="absolute left-0 top-0 bottom-0 w-12 flex items-center justify-center bg-zinc-100 dark:bg-zinc-800 border border-r-0 border-zinc-200 dark:border-zinc-700">
+                  <IdCard className="w-5 h-5 text-zinc-500" />
+                </div>
+                <Input
+                  id="studentId"
+                  type="text"
+                  value={studentId}
+                  onChange={(e) => setStudentId(e.target.value)}
+                  placeholder="2024-00123-MN-0"
+                  className="pl-16 h-12 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-lg rounded-none focus-visible:ring-maroon dark:focus-visible:ring-golden"
+                  required
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="pt-2">
-            <Button
-              type="submit"
-              disabled={!hydrated || loading}
-              className="w-full h-12 text-base font-bold tracking-wide uppercase bg-maroon hover:bg-maroon-dark text-white rounded-none transition-all duration-300 relative overflow-hidden group"
-            >
-              <span className="relative z-10">
-                {loading ? "Verifying..." : "Authenticate"}
-              </span>
-              <div className="absolute inset-0 bg-black/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out"></div>
-            </Button>
-          </div>
-        </form>
+            <div className="space-y-3">
+              <Label
+                htmlFor="password"
+                className="uppercase tracking-widest text-xs text-zinc-500"
+              >
+                Password
+              </Label>
+              <div className="relative">
+                <div className="absolute left-0 top-0 bottom-0 w-12 flex items-center justify-center bg-zinc-100 dark:bg-zinc-800 border border-r-0 border-zinc-200 dark:border-zinc-700">
+                  <Lock className="w-5 h-5 text-zinc-500" />
+                </div>
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="pl-16 pr-12 h-12 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-lg rounded-none focus-visible:ring-maroon dark:focus-visible:ring-golden"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 focus:outline-none"
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-5 h-5" />
+                  ) : (
+                    <Eye className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <Button
+                type="submit"
+                disabled={!hydrated || loading}
+                className="w-full h-12 text-base font-bold tracking-wide uppercase bg-maroon hover:bg-maroon-dark text-white rounded-none transition-all duration-300 relative overflow-hidden group"
+              >
+                <span className="relative z-10">
+                  {loading ? "Verifying..." : "Authenticate"}
+                </span>
+                <div className="absolute inset-0 bg-black/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out"></div>
+              </Button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

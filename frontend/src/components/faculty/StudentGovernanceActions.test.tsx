@@ -10,7 +10,10 @@ const apiMock = vi.hoisted(() => ({
 
 vi.mock('@/lib/api-client', () => ({ api: apiMock }))
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 const student = {
   id: 's-1',
@@ -83,5 +86,80 @@ describe('StudentGovernanceActions', () => {
         note: 'Lost phone',
       }),
     )
+  })
+
+  it('shows the cooldown countdown and the exempt device before release', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-10T00:00:00.000Z'))
+    const view = render(
+      <NotificationProvider>
+        <StudentGovernanceActions
+          student={{
+            ...student,
+            deviceCooldownUntil: '2026-11-10T00:02:00.000Z',
+            cooldownDeviceId: 'web-abcd1234',
+            deviceBoundAt: null,
+            boundDeviceId: null,
+          }}
+          sectionId="sec-1"
+          permissions={{ canResetStudentPasswords: true, canEmergencyUnbindDevices: true }}
+        />
+      </NotificationProvider>,
+    )
+
+    expect(screen.getByText(/device locked · 2:00 left/i)).toBeInTheDocument()
+    expect(screen.getByText(/exempt device · web browser •·•·1234/i)).toBeInTheDocument()
+    expect(screen.queryByText(/no device bound/i)).not.toBeInTheDocument()
+
+    view.unmount()
+    vi.useRealTimers()
+  })
+
+  it('shows bound and cooldown chips together when both are active', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-10T00:00:00.000Z'))
+    render(
+      <NotificationProvider>
+        <StudentGovernanceActions
+          student={{
+            ...student,
+            deviceCooldownUntil: '2026-11-10T01:30:00.000Z',
+            cooldownDeviceId: 'mobile-xyz9988',
+            deviceBoundAt: '2026-10-01T08:00:00.000Z',
+            boundDeviceId: 'web-abcd1234',
+          }}
+          sectionId="sec-1"
+          permissions={{ canResetStudentPasswords: true, canEmergencyUnbindDevices: true }}
+        />
+      </NotificationProvider>,
+    )
+
+    expect(screen.getByText(/device locked · 1:30:00 left/i)).toBeInTheDocument()
+    expect(screen.getByText(/exempt device · mobile app •·•·9988/i)).toBeInTheDocument()
+    expect(screen.getByText(/device bound · web browser •·•·1234/i)).toBeInTheDocument()
+  })
+
+  it('reports what the release cleared in the success notification', async () => {
+    apiMock.emergencyReleaseDevice.mockResolvedValue({
+      user: {
+        ...student,
+        deviceCooldownUntil: null,
+        cooldownDeviceId: null,
+        deviceBoundAt: null,
+        boundDeviceId: null,
+      },
+      clearedCooldown: true,
+      hadCooldown: true,
+      hadBinding: true,
+      message: 'released',
+    })
+    renderActions({ canResetStudentPasswords: false, canEmergencyUnbindDevices: true })
+
+    fireEvent.click(screen.getByRole('button', { name: /emergency device release/i }))
+    fireEvent.click(screen.getByRole('button', { name: /release device/i }))
+
+    expect(
+      await screen.findByText(/cooldown cleared and device binding removed/i),
+    ).toBeInTheDocument()
   })
 })

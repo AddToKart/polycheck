@@ -95,6 +95,7 @@ import {
   markSigningKeyProvisioned,
 } from "./signing-key";
 import { API_BASE } from "./api-config";
+import { getOrCreateWebInstallationId } from "./device-id";
 import {
   cacheAttendanceRecords,
   cacheRoster,
@@ -139,6 +140,9 @@ export class ApiHttpError extends Error {
     readonly allowedDistanceMeters?: number,
     readonly canRequestOverride?: boolean,
     readonly estimatedEnd?: string,
+    readonly remainingSeconds?: number,
+    readonly activeDeviceKind?: "mobile" | "web" | null,
+    readonly activeSessionLastActiveAt?: string,
   ) {
     super(message);
     this.name = "ApiHttpError";
@@ -273,6 +277,20 @@ async function handleResponse<T>(res: Response): Promise<T> {
         : undefined;
     const estimatedEnd =
       typeof err.estimatedEnd === "string" ? err.estimatedEnd : undefined;
+    const remainingSeconds =
+      typeof err.remainingSeconds === "number"
+        ? err.remainingSeconds
+        : undefined;
+    const activeDeviceKind =
+      err.activeDeviceKind === "mobile" || err.activeDeviceKind === "web"
+        ? err.activeDeviceKind
+        : err.activeDeviceKind === null
+          ? null
+          : undefined;
+    const activeSessionLastActiveAt =
+      typeof err.activeSessionLastActiveAt === "string"
+        ? err.activeSessionLastActiveAt
+        : undefined;
     // Maintenance is a cross-cutting state, not a page-local error: publish it
     // before throwing so the global overlay can render even when the caller
     // catches and ignores the failure.
@@ -300,6 +318,9 @@ async function handleResponse<T>(res: Response): Promise<T> {
       allowedDistanceMeters,
       canRequestOverride,
       estimatedEnd,
+      remainingSeconds,
+      activeDeviceKind,
+      activeSessionLastActiveAt,
     );
   }
   return res.json();
@@ -465,7 +486,11 @@ const apiBase = {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId, password: password ?? "" }),
+        body: JSON.stringify({
+          studentId,
+          password: password ?? "",
+          deviceId: getOrCreateWebInstallationId(),
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ message: "Login failed" }));
@@ -475,15 +500,36 @@ const apiBase = {
         const code = typeof err.code === "string" ? err.code : undefined;
         const estimatedEnd =
           typeof err.estimatedEnd === "string" ? err.estimatedEnd : undefined;
+        const remainingMinutes =
+          typeof err.remainingMinutes === "number"
+            ? err.remainingMinutes
+            : undefined;
+        const remainingSeconds =
+          typeof err.remainingSeconds === "number"
+            ? err.remainingSeconds
+            : undefined;
+        const activeDeviceKind =
+          err.activeDeviceKind === "mobile" || err.activeDeviceKind === "web"
+            ? err.activeDeviceKind
+            : err.activeDeviceKind === null
+              ? null
+              : undefined;
+        const activeSessionLastActiveAt =
+          typeof err.activeSessionLastActiveAt === "string"
+            ? err.activeSessionLastActiveAt
+            : undefined;
         throw new ApiHttpError(
           msg,
           res.status,
           code,
-          undefined,
+          remainingMinutes,
           undefined,
           undefined,
           undefined,
           estimatedEnd,
+          remainingSeconds,
+          activeDeviceKind,
+          activeSessionLastActiveAt,
         );
       }
       const data = await res.json();
@@ -537,7 +583,11 @@ const apiBase = {
     }
   },
 
-  async logout() {
+  async logout(options: { armDeviceCooldown?: boolean } = {}) {
+    // Student logouts arm the server-side device cooldown and exempt this
+    // browser; programmatic terminations (replaced/revoked sessions) opt out
+    // so a server-driven kick never punishes another device.
+    const armDeviceCooldown = options.armDeviceCooldown !== false;
     currentUser = null;
     saveUser(null);
     void wipeOfflineStore().catch(() => undefined);
@@ -545,6 +595,15 @@ const apiBase = {
       await fetchWithTimeout(`${API_BASE}/auth/logout`, {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          armDeviceCooldown
+            ? {
+                deviceId: getOrCreateWebInstallationId(),
+                armDeviceCooldown: true,
+              }
+            : { armDeviceCooldown: false },
+        ),
       });
     } catch {
       /* Local logout still succeeds when the server is unavailable. */

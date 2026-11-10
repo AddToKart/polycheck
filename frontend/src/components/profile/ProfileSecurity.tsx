@@ -115,7 +115,10 @@ export function DevicePanel({
       onUpdated(result.user)
       setConfirmOpen(false)
       addNotification('success', 'Device unregistered', result.message)
-      await api.logout()
+      // Unregister already armed the cooldown with the unregistered device
+      // exempt. Re-arming from this browser would move the exemption to the
+      // wrong device, so the follow-up logout must not touch it.
+      await api.logout({ armDeviceCooldown: false })
       onLoggedOut()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to unregister this device.')

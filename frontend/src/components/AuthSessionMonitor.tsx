@@ -33,7 +33,9 @@ async function terminateOnAuthoritativeReplacement() {
   } catch {
     // Best-effort notice persistence.
   }
-  void api.logout()
+  // A replacement/revocation is not a user logout: never arm the student
+  // device cooldown from this programmatic termination.
+  void api.logout({ armDeviceCooldown: false })
   // A full reload is deliberate: it clears all in-memory state after the
   // session was revoked. `replace` also keeps the revoked page out of
   // history so the back button cannot restore protected content.

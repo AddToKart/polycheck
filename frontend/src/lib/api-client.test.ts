@@ -53,6 +53,48 @@ describe('real API client', () => {
     expect(JSON.stringify(localStorage)).not.toContain('must-not-be-persisted')
   })
 
+  it('sends the stable web installation id with student logins', async () => {
+    localStorage.setItem('polycheck.installation-id.v1', 'web-existing-device')
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ user: student }))
+    const { api } = await import('./api-client')
+
+    await api.loginStudent(student.studentId, 'strong-password')
+
+    const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body))
+    expect(body).toEqual({
+      studentId: student.studentId,
+      password: 'strong-password',
+      deviceId: 'web-existing-device',
+    })
+  })
+
+  it('parses device-integrity fields from a rejected student login', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse(
+        {
+          code: 'device_cooldown_active',
+          message: 'This account is locked while a device change cools down.',
+          remainingMinutes: 2,
+          remainingSeconds: 117,
+        },
+        403,
+      ),
+    )
+    const { api } = await import('./api-client')
+
+    const error = await api.loginStudent(student.studentId, 'strong-password').catch((caught) => caught)
+
+    expect(error).toEqual(
+      expect.objectContaining({
+        name: 'ApiHttpError',
+        status: 403,
+        code: 'device_cooldown_active',
+        remainingMinutes: 2,
+        remainingSeconds: 117,
+      }),
+    )
+  })
+
   it('clears stale profile state when the API rejects a cookie session', async () => {
     localStorage.setItem('polycheck-user', JSON.stringify(student))
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ message: 'Session expired' }, 401))
@@ -94,6 +136,82 @@ describe('real API client', () => {
     // Should not throw — local logout succeeds
     await api.logout()
     expect(api.getCurrentUser()).toBeNull()
+  })
+
+  it('arms the device cooldown on logout by sending the web installation id', async () => {
+    localStorage.setItem('polycheck.installation-id.v1', 'web-logout-device')
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({}))
+    const { api } = await import('./api-client')
+
+    await api.logout()
+
+    const init = vi.mocked(fetch).mock.calls[0]?.[1]
+    expect(init?.method).toBe('POST')
+    expect(init?.credentials).toBe('include')
+    expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(JSON.parse(String(init?.body))).toEqual({
+      deviceId: 'web-logout-device',
+      armDeviceCooldown: true,
+    })
+  })
+
+  it('does not arm the device cooldown for programmatic logouts', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({}))
+    const { api } = await import('./api-client')
+
+    await api.logout({ armDeviceCooldown: false })
+
+    const init = vi.mocked(fetch).mock.calls[0]?.[1]
+    expect(init?.method).toBe('POST')
+    expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(JSON.parse(String(init?.body))).toEqual({ armDeviceCooldown: false })
+  })
+
+  it('parses cooldown counters from a 403 response', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse(
+        {
+          code: 'device_cooldown_active',
+          message: 'Cooling down',
+          remainingMinutes: 2,
+          remainingSeconds: 91,
+        },
+        403,
+      ),
+    )
+    const { api, ApiHttpError } = await import('./api-client')
+
+    const error = (await api.getUnreadNotificationCount().catch((caught) => caught)) as InstanceType<
+      typeof ApiHttpError
+    >
+
+    expect(error).toBeInstanceOf(ApiHttpError)
+    expect(error.remainingMinutes).toBe(2)
+    expect(error.remainingSeconds).toBe(91)
+  })
+
+  it('parses the blocking session metadata from an active-session 403', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse(
+        {
+          code: 'active_session_elsewhere',
+          message: 'Signed in on another device',
+          activeDeviceKind: 'mobile',
+          activeSessionLastActiveAt: '2026-11-11T04:00:00.000Z',
+        },
+        403,
+      ),
+    )
+    const { api, ApiHttpError } = await import('./api-client')
+
+    const error = (await api.getUnreadNotificationCount().catch((caught) => caught)) as InstanceType<
+      typeof ApiHttpError
+    >
+
+    expect(error).toBeInstanceOf(ApiHttpError)
+    expect(error.code).toBe('active_session_elsewhere')
+    expect(error.activeDeviceKind).toBe('mobile')
+    expect(error.activeSessionLastActiveAt).toBe('2026-11-11T04:00:00.000Z')
   })
 
   it('restoreSession fetches /auth/me and persists user', async () => {

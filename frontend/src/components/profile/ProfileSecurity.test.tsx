@@ -76,6 +76,9 @@ describe('DevicePanel', () => {
       expect(apiMock.unregisterDevice).toHaveBeenCalledWith('mobile-abcd12345678'),
     )
     await waitFor(() => expect(apiMock.logout).toHaveBeenCalledTimes(1))
+    // Unregister already armed the cooldown for the bound device; the cleanup
+    // logout must not move the exemption to this browser.
+    expect(apiMock.logout).toHaveBeenCalledWith({ armDeviceCooldown: false })
     expect(onUpdated).toHaveBeenCalledTimes(1)
     expect(onLoggedOut).toHaveBeenCalledTimes(1)
   })

@@ -1,10 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { KeyRound, ShieldAlert, Smartphone } from 'lucide-react'
-import type { DelegatedTeacherPermissions, EmergencyDeviceReleaseReason, User } from '@polycheck/shared'
+import {
+  formatCooldownCountdown,
+  type DelegatedTeacherPermissions,
+  type EmergencyDeviceReleaseReason,
+  type User,
+} from '@polycheck/shared'
 import { api } from '@/lib/api-client'
-import { formatCooldownRemaining, cooldownRemainingMinutes } from '@polycheck/shared/utils'
+import { useTrustedNow } from '@/lib/hooks/use-trusted-now'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -20,10 +25,42 @@ const REASONS: { value: EmergencyDeviceReleaseReason; label: string }[] = [
 ]
 
 interface StudentGovernanceActionsProps {
-  student: Pick<User, 'id' | 'fullName' | 'studentId' | 'deviceCooldownUntil' | 'deviceBoundAt'>
+  student: Pick<
+    User,
+    | 'id'
+    | 'fullName'
+    | 'studentId'
+    | 'deviceCooldownUntil'
+    | 'deviceBoundAt'
+    | 'boundDeviceId'
+    | 'cooldownDeviceId'
+  >
   sectionId: string | null
   permissions?: DelegatedTeacherPermissions | null
   onChanged?: () => void
+}
+
+/** Seconds left in an absolute cooldown timestamp, or null once it expires. */
+function cooldownSecondsUntil(
+  until: string | null | undefined,
+  trustedNowMs: number,
+): number | null {
+  if (!until) return null
+  const untilMs = Date.parse(until)
+  if (!Number.isFinite(untilMs) || untilMs <= trustedNowMs) return null
+  return (untilMs - trustedNowMs) / 1_000
+}
+
+/** Kind + masked tail; never renders the full installation id. */
+function deviceLabel(deviceId: string | null | undefined): string | null {
+  if (!deviceId) return null
+  const kind = deviceId.startsWith('mobile-')
+    ? 'Mobile app'
+    : deviceId.startsWith('web-')
+      ? 'Web browser'
+      : 'Device'
+  const tail = deviceId.replace(/[^A-Za-z0-9]/g, '').slice(-4)
+  return tail ? `${kind} •·•·${tail}` : kind
 }
 
 /**
@@ -45,15 +82,16 @@ export function StudentGovernanceActions({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [credentials, setCredentials] = useState<CredentialSummary | null>(null)
-  const [nowMs, setNowMs] = useState(() => Date.now())
+  const { nowMs, offsetMs } = useTrustedNow()
 
-  const cooldownMinutes = cooldownRemainingMinutes(student.deviceCooldownUntil ?? null, nowMs)
-
-  useEffect(() => {
-    if (cooldownMinutes === null) return
-    const timer = window.setInterval(() => setNowMs(Date.now()), 30_000)
-    return () => window.clearInterval(timer)
-  }, [cooldownMinutes])
+  const cooldownSeconds = cooldownSecondsUntil(
+    student.deviceCooldownUntil,
+    nowMs + (offsetMs ?? 0),
+  )
+  const cooldownActive = cooldownSeconds !== null
+  const boundLabel = deviceLabel(student.boundDeviceId)
+  const exemptLabel = deviceLabel(student.cooldownDeviceId)
+  const hasBinding = Boolean(student.boundDeviceId || student.deviceBoundAt)
 
   if (!sectionId) return null
   if (permissions && !permissions.canResetStudentPasswords && !permissions.canEmergencyUnbindDevices) {
@@ -88,17 +126,29 @@ export function StudentGovernanceActions({
     setSubmitting(true)
     setError('')
     try {
-      await api.emergencyReleaseDevice(student.id, {
+      const result = await api.emergencyReleaseDevice(student.id, {
         sectionId,
         reason,
         ...(note.trim() ? { note: note.trim() } : {}),
       })
+      const clearedCooldown = result.hadCooldown ?? result.clearedCooldown
+      // Older servers may omit `hadBinding`; fall back to the local snapshot so
+      // the toast still describes what the release changed.
+      const hadBinding = result.hadBinding ?? hasBinding
+      const outcome =
+        clearedCooldown && hadBinding
+          ? 'Cooldown cleared and device binding removed.'
+          : clearedCooldown
+            ? 'Cooldown cleared.'
+            : hadBinding
+              ? 'Device binding removed.'
+              : 'No binding or cooldown was active.'
       setReleaseOpen(false)
       setNote('')
       addNotification(
         'success',
         'Device released',
-        `${student.fullName} can sign in on a device again. The action was audited.`,
+        `${student.fullName} can sign in on a device again. ${outcome} The action was audited.`,
       )
       onChanged?.()
     } catch (cause) {
@@ -110,15 +160,26 @@ export function StudentGovernanceActions({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {student.deviceCooldownUntil && cooldownMinutes !== null ? (
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
-          <Smartphone className="h-3.5 w-3.5" aria-hidden="true" />
-          Device locked · {formatCooldownRemaining(cooldownMinutes)} left
-        </span>
-      ) : student.deviceBoundAt ? (
+      {cooldownActive ? (
+        <>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+            <Smartphone className="h-3.5 w-3.5" aria-hidden="true" />
+            Device locked · {formatCooldownCountdown(cooldownSeconds)} left
+          </span>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+            Exempt device · {exemptLabel ?? 'unknown'}
+          </span>
+        </>
+      ) : null}
+      {hasBinding ? (
         <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
           <Smartphone className="h-3.5 w-3.5" aria-hidden="true" />
-          Device bound
+          Device bound{boundLabel ? ` · ${boundLabel}` : ''}
+        </span>
+      ) : !cooldownActive ? (
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-300 bg-zinc-50 px-3 py-1 text-xs font-semibold text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
+          <Smartphone className="h-3.5 w-3.5" aria-hidden="true" />
+          No device bound
         </span>
       ) : null}
 
@@ -175,6 +236,23 @@ export function StudentGovernanceActions({
               reason is recorded in the audit log.
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-1 border-l-4 border-amber-400 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+            {cooldownActive ? (
+              <p>
+                Cooldown active · {formatCooldownCountdown(cooldownSeconds)} left
+                {exemptLabel
+                  ? ` · exempt device ${exemptLabel}`
+                  : ' · exempt device unknown'}
+              </p>
+            ) : null}
+            {hasBinding ? (
+              <p>Device bound{boundLabel ? ` · ${boundLabel}` : ''}</p>
+            ) : null}
+            {!cooldownActive && !hasBinding ? (
+              <p>No device bound and no cooldown is active.</p>
+            ) : null}
+            {!cooldownActive && hasBinding ? <p>No active cooldown.</p> : null}
+          </div>
           <form className="space-y-4" onSubmit={(event) => void handleRelease(event)}>
             <div className="space-y-2">
               <Label htmlFor="release-reason">Reason</Label>
