@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test'
-import { loginFaculty, trackErrors, assertNoErrors } from './helpers'
+import { loginFaculty, trackErrors, assertNoErrors, installSessionCleanup } from './helpers'
+
+installSessionCleanup()
 
 const MASTER_CSV = [
   'Student No.,Name,Program,Year Level,College/Department',

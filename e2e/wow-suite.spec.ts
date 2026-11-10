@@ -12,7 +12,10 @@ import {
   loginFaculty,
   logout,
   trackErrors,
+  installSessionCleanup,
 } from './helpers'
+
+installSessionCleanup()
 
 /**
  * Final E2E wave for `plan/wow-factor-suite-plan.md` (§2 F1–F9, §5 matrix).

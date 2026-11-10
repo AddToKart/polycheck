@@ -1,5 +1,16 @@
 import { test, expect } from '@playwright/test'
-import { API_BASE, loginFaculty, apiLoginFaculty, apiLoginStudent, trackErrors, assertNoErrors } from './helpers'
+import {
+  API_BASE,
+  loginFaculty,
+  apiLoginFaculty,
+  apiLoginStudent,
+  apiLogout,
+  trackErrors,
+  assertNoErrors,
+  installSessionCleanup,
+} from './helpers'
+
+installSessionCleanup()
 
 test.use({ serviceWorkers: 'block' })
 
@@ -176,6 +187,11 @@ test.describe('Hybrid online attendance', () => {
     expect(scanned.error).toBeUndefined()
     expect(scanned.checkInStatus).toBe('present')
     expect(scanned.status).toBe('pending')
+
+    // Student logins are single-device now: revoke the student session before
+    // switching this API jar to the teacher, otherwise the later student
+    // re-login in this test would be rejected by the active-session gate.
+    expect((await apiLogout(request)).ok(), 'student session revoked before the faculty close').toBeTruthy()
 
     // The professor's laptop dies: the class is closed WITHOUT Step 2 having
     // ever been armed. The close must keep the check-in credit.

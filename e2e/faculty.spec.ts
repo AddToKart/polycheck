@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test'
-import { loginFaculty, trackErrors, assertNoErrors, createDisposableSession } from './helpers'
+import { loginFaculty, trackErrors, assertNoErrors, createDisposableSession, installSessionCleanup } from './helpers'
+
+installSessionCleanup()
 
 test.describe('Faculty (Teacher) Flows', () => {
   test.beforeEach(async ({ page }) => {

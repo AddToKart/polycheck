@@ -13,7 +13,10 @@ import {
   loginFaculty,
   logout,
   waitForPath,
+  installSessionCleanup,
 } from './helpers'
+
+installSessionCleanup()
 
 test.describe('Campus designations & maintenance mode', () => {
   // Always reopen the campus after this file, even when the journey fails

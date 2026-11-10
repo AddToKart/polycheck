@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test'
-import { ADMIN_EMAIL, loginFaculty, trackErrors, assertNoErrors } from './helpers'
+import { ADMIN_EMAIL, loginFaculty, trackErrors, assertNoErrors, installSessionCleanup } from './helpers'
+
+installSessionCleanup()
 
 // Profile + institution governance surfaces. Service workers are blocked so
 // route interception and /auth/me mocks behave consistently across engines.

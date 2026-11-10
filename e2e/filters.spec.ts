@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test'
-import { API_BASE, loginFaculty, trackErrors, assertNoErrors } from './helpers'
+import { API_BASE, loginFaculty, trackErrors, assertNoErrors, installSessionCleanup } from './helpers'
+
+installSessionCleanup()
 
 test.use({ serviceWorkers: 'block' })
 

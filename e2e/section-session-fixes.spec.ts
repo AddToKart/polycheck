@@ -7,7 +7,10 @@ import {
   loginFaculty,
   loginStudent,
   trackErrors,
+  installSessionCleanup,
 } from './helpers'
+
+installSessionCleanup()
 
 interface SectionSeed {
   id: string

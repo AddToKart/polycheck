@@ -1,5 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
-import { ADMIN_EMAIL, loginFaculty, trackErrors, assertNoErrors } from './helpers'
+import { ADMIN_EMAIL, loginFaculty, trackErrors, assertNoErrors, installSessionCleanup } from './helpers'
+
+installSessionCleanup()
 
 // The production service worker bypasses Playwright route interception in WebKit;
 // user-management specs mock /auth/me, so run them without the SW.

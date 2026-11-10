@@ -1,6 +1,9 @@
-import { expect, Page, type APIRequestContext } from '@playwright/test'
+import { expect, test, Page, type APIRequestContext } from '@playwright/test'
 
 export const API_BASE = 'http://localhost:4000/api'
+
+/** localStorage key used by `frontend/src/lib/device-id.ts`. */
+export const WEB_INSTALLATION_ID_KEY = 'polycheck.installation-id.v1'
 
 export const SEED_PASSWORD = 'PolycheckLocal1!'
 
@@ -22,10 +25,11 @@ export function campusDate(daysAgo = 0): string {
 }
 
 /**
- * Authenticate an isolated API context. Tests must never share an account's
- * browser cookie and API cookie: single-active-session enforcement invalidates
- * the older session. Use `request`/`pwRequest.newContext()` for setup when the
- * page will later log in as the same account.
+ * Authenticate an isolated API context. Student accounts hold one active
+ * device: a second login from a different device is REJECTED and the first
+ * session stays live. A page that will later log in as the same student must
+ * revoke the API session first (`apiLogout(request)`) or use a disposable
+ * account. Staff accounts keep concurrent sessions.
  */
 export async function apiLoginFaculty(request: APIRequestContext, email = FACULTY_EMAIL) {
   const response = await request.post(`${API_BASE}/auth/login/faculty`, {
@@ -39,6 +43,88 @@ export async function apiLoginStudent(request: APIRequestContext, studentId = ST
     data: { studentId, password: SEED_PASSWORD },
   })
   expect(response.ok(), await response.text()).toBeTruthy()
+}
+
+/**
+ * POST /auth/logout. Defaults to a NON-arming logout: spec teardown must never
+ * leave a student device cooldown behind (a logout without a device id never
+ * arms, and `armDeviceCooldown: false` opts out explicitly). Pass
+ * `armDeviceCooldown: true` plus the browser's device id only when a journey
+ * deliberately exercises the logout-armed cooldown.
+ */
+export async function apiLogout(
+  request: APIRequestContext,
+  options: { deviceId?: string; armDeviceCooldown?: boolean } = {},
+) {
+  return request.post(`${API_BASE}/auth/logout`, {
+    data: {
+      ...(options.deviceId ? { deviceId: options.deviceId } : {}),
+      armDeviceCooldown: options.armDeviceCooldown === true,
+    },
+    failOnStatusCode: false,
+  })
+}
+
+/**
+ * Suite-wide session hygiene. Student logins are single-device now: a live
+ * session left behind by one test blocks the next test's fresh browser context
+ * (every context gets a new `web-…` device id). Revoke both the browser
+ * context's session and the API fixture's session without arming a cooldown.
+ * Both calls are best-effort — an unauthenticated context answers 401.
+ *
+ * IMPORTANT: Playwright caches imported modules per worker process, so a
+ * module-level `test.afterEach` in this file would only attach to the FIRST
+ * spec file the worker loads. Every spec calls `installSessionCleanup()` at
+ * module scope instead (see the import block of any spec).
+ */
+export function installSessionCleanup() {
+  test.afterEach(async ({ context, request }) => {
+    await apiLogout(context.request).catch(() => undefined)
+    await apiLogout(request).catch(() => undefined)
+  })
+}
+
+/** The browser installation id the web client sends as its device identity. */
+export async function getWebDeviceId(page: Page): Promise<string | null> {
+  return page.evaluate((key) => window.localStorage.getItem(key), WEB_INSTALLATION_ID_KEY)
+}
+
+/**
+ * Submit the student login form once and return the login response. Unlike
+ * `loginStudent`, this does not retry or require success: device-gate journeys
+ * assert the 403 body and the rendered gate panel.
+ */
+export async function attemptStudentLogin(
+  page: Page,
+  options: { studentId?: string; password?: string } = {},
+) {
+  await page.goto('/login/student')
+  await page.getByLabel('Student Number').fill(options.studentId ?? STUDENT_ID)
+  await page.getByLabel('Password').fill(options.password ?? SEED_PASSWORD)
+  const authenticate = page.getByRole('button', { name: /Authenticate/i })
+  await expect(authenticate).toBeEnabled()
+  const loginResponse = page.waitForResponse(
+    (r) => r.url().includes('/api/auth/login/student') && r.request().method() === 'POST',
+    { timeout: 20_000 },
+  )
+  await authenticate.click()
+  return loginResponse
+}
+
+/**
+ * Teacher Emergency Device Release. Clears the binding, the cooldown, and the
+ * cooldown exemption, and revokes the student's sessions. The caller's request
+ * context must be authenticated as a teacher who owns `sectionId`.
+ */
+export async function releaseStudentDevice(
+  request: APIRequestContext,
+  studentUserId = 's-001',
+  sectionId = 'sec-001',
+) {
+  return request.post(`${API_BASE}/users/students/${studentUserId}/device-release`, {
+    data: { sectionId, reason: 'lost_or_damaged' },
+    failOnStatusCode: false,
+  })
 }
 
 interface TrackedError {

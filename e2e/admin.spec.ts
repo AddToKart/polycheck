@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test'
-import { loginFaculty, trackErrors, assertNoErrors } from './helpers'
+import { loginFaculty, trackErrors, assertNoErrors, installSessionCleanup } from './helpers'
+
+installSessionCleanup()
 
 test.describe('Super Admin Flows', () => {
   test.beforeEach(async ({ page }) => {

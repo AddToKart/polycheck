@@ -5,12 +5,16 @@ import {
   FACULTY_EMAIL,
   SEED_PASSWORD,
   apiLoginFaculty,
+  apiLogout,
   assertNoErrors,
   loginFaculty,
   loginStudent,
   trackErrors,
   waitForPath,
+  installSessionCleanup,
 } from './helpers'
+
+installSessionCleanup()
 
 test.describe('Student Flows', () => {
   test.beforeEach(async ({ page }) => {
@@ -139,7 +143,12 @@ test.describe('Student Flows', () => {
       page.getByText(/Dispute submitted successfully\.|Failed to submit dispute\./i),
     ).toBeVisible()
 
-    // 2. Teacher sees the pending dispute and accepts it
+    // 2. Teacher sees the pending dispute and accepts it.
+    // Student logins are single-device now: revoke this browser's student
+    // session BEFORE swapping it to the teacher account, otherwise the live
+    // device session survives the faculty login and blocks the next student
+    // test's fresh context. Non-arming so teardown never leaves a cooldown.
+    expect((await apiLogout(page.request)).ok(), 'student session revoked before faculty login').toBeTruthy()
     await loginFaculty(page)
     await page.goto('/faculty/disputes')
     await expect(page.getByText(/Pending Disputes \(\d+\)/)).toBeVisible()
@@ -209,7 +218,13 @@ test.describe('Student Flows', () => {
     ).toBeVisible({ timeout: 15_000 })
     await page.keyboard.press('Escape')
 
-    // Cleanup: faculty removes the enrollment created by this test.
+    // Cleanup: faculty removes the enrollment created by this test. Revoke the
+    // disposable student's live session first — a faculty login replaces the
+    // cookie but not the student session row.
+    expect(
+      (await apiLogout(page.request)).ok(),
+      'disposable student session revoked before faculty login',
+    ).toBeTruthy()
     await loginFaculty(page)
     const res = await page.request.delete(`${API_BASE}/sections/sec-002/students/${disposableStudent.id}`)
     expect(res.ok()).toBeTruthy()
