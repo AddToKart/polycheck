@@ -96,6 +96,8 @@ model User {
   boundDeviceId             String?
   deviceBoundAt             DateTime?
   deviceCooldownUntil       DateTime?
+  // Device exempt from the logout-armed cooldown (the device that logged out).
+  cooldownDeviceId          String?
   canResetStudentPasswords  Boolean?
   canEmergencyUnbindDevices Boolean?
   // PUP Santa Maria concurrent administrative designations (teacher accounts only).
@@ -166,10 +168,14 @@ model AuthSession {
   userAgent  String?
   userId     String
   generation Int      @default(0)
+  // Installation/browser identity that holds this session. Nullable so legacy
+  // rows (and clients that do not send a device id) never block another device.
+  deviceId   String?
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([userId, generation])
+  @@index([userId, deviceId])
   @@index([expiresAt])
 }
 

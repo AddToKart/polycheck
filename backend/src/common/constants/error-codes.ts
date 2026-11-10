@@ -23,6 +23,7 @@ export const ErrorCode = {
   IDEMPOTENCY_RESPONSE_UNAVAILABLE: 'idempotency_response_unavailable',
   PASSWORD_CHANGE_REQUIRED: 'password_change_required',
   DEVICE_COOLDOWN_ACTIVE: 'device_cooldown_active',
+  ACTIVE_SESSION_ELSEWHERE: 'active_session_elsewhere',
   TEACHER_POLICY_DISABLED: 'teacher_policy_disabled',
   TEACHER_PERMISSION_DISABLED: 'teacher_permission_disabled',
   STUDENT_BLOCKED_FROM_SECTION: 'student_blocked_from_section',

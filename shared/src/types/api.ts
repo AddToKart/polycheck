@@ -115,6 +115,10 @@ export interface EmergencyDeviceReleaseInput {
 export interface EmergencyDeviceReleaseResult {
   user: User;
   clearedCooldown: boolean;
+  /** Alias of `clearedCooldown`, named for the cooldown-focused release UI. */
+  hadCooldown?: boolean;
+  /** Whether the student had a device binding before the release. */
+  hadBinding?: boolean;
   message: string;
 }
 

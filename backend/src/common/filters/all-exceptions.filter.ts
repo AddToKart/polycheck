@@ -20,6 +20,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
               code?: unknown
               error?: unknown
               remainingMinutes?: unknown
+              remainingSeconds?: unknown
+              activeDeviceKind?: unknown
+              activeSessionLastActiveAt?: unknown
               distanceMeters?: unknown
               allowedDistanceMeters?: unknown
               canRequestOverride?: unknown
@@ -41,6 +44,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ...(responseObject && typeof responseObject.code === 'string' ? { code: responseObject.code } : {}),
         ...(responseObject && typeof responseObject.remainingMinutes === 'number'
           ? { remainingMinutes: responseObject.remainingMinutes }
+          : {}),
+        ...(responseObject && typeof responseObject.remainingSeconds === 'number'
+          ? { remainingSeconds: responseObject.remainingSeconds }
+          : {}),
+        // Active-session rejections identify the device that holds the login
+        // (null for legacy rows) and when it was last active so clients can
+        // render the explainer without guessing.
+        ...(responseObject &&
+        (responseObject.activeDeviceKind === null || typeof responseObject.activeDeviceKind === 'string')
+          ? { activeDeviceKind: responseObject.activeDeviceKind }
+          : {}),
+        ...(responseObject && typeof responseObject.activeSessionLastActiveAt === 'string'
+          ? { activeSessionLastActiveAt: responseObject.activeSessionLastActiveAt }
           : {}),
         // Teacher activation geofence rejections carry measured distances so
         // the override dialog can state them without re-deriving the math.

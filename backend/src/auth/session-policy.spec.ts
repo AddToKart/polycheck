@@ -1,17 +1,16 @@
-import { broadcastsLoginReplacement, resolveSessionCreateAfter, resolveSessionGeneration } from './session-policy'
+import { resolveSessionCreateAfter, resolveSessionGeneration } from './session-policy'
 
-describe('session policy (single-active-session scoping)', () => {
+describe('session policy (device-integrity login scoping)', () => {
   describe('resolveSessionGeneration', () => {
     it('blocks inactive accounts from signing in', () => {
       expect(resolveSessionGeneration({ isActive: false, role: 'student', authVersion: 4 })).toEqual({ allowed: false })
       expect(resolveSessionGeneration({ isActive: false, role: 'teacher', authVersion: 4 })).toEqual({ allowed: false })
     })
 
-    it('bumps authVersion and stamps the new value for students (single session)', () => {
+    it('stamps the current authVersion for students without bumping it', () => {
       expect(resolveSessionGeneration({ isActive: true, role: 'student', authVersion: 7 })).toEqual({
         allowed: true,
-        generation: 8,
-        bumpedAuthVersion: true,
+        generation: 7,
       })
     })
 
@@ -19,12 +18,10 @@ describe('session policy (single-active-session scoping)', () => {
       expect(resolveSessionGeneration({ isActive: true, role: 'teacher', authVersion: 7 })).toEqual({
         allowed: true,
         generation: 7,
-        bumpedAuthVersion: false,
       })
       expect(resolveSessionGeneration({ isActive: true, role: 'super_admin', authVersion: 3 })).toEqual({
         allowed: true,
         generation: 3,
-        bumpedAuthVersion: false,
       })
     })
   })
@@ -40,9 +37,9 @@ describe('session policy (single-active-session scoping)', () => {
       expect(resolveSessionCreateAfter({ id: 's1', generation: 5 }, null)).toBe('delete-self')
     })
 
-    it('deletes sibling sessions for students', () => {
+    it('only purges same-device duplicates for students (never sibling devices)', () => {
       expect(resolveSessionCreateAfter({ id: 's1', generation: 6 }, { authVersion: 6, role: 'student' })).toBe(
-        'delete-others',
+        'purge-same-device',
       )
     })
 
@@ -51,14 +48,6 @@ describe('session policy (single-active-session scoping)', () => {
       expect(resolveSessionCreateAfter({ id: 's1', generation: 6 }, { authVersion: 6, role: 'super_admin' })).toBe(
         'keep',
       )
-    })
-  })
-
-  describe('broadcastsLoginReplacement', () => {
-    it('broadcasts the new_login replacement for students only', () => {
-      expect(broadcastsLoginReplacement('student')).toBe(true)
-      expect(broadcastsLoginReplacement('teacher')).toBe(false)
-      expect(broadcastsLoginReplacement('super_admin')).toBe(false)
     })
   })
 })
