@@ -10,6 +10,7 @@ import { useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
 import { CampusIconButton } from './CampusPrimitives'
 import { CampusHeader } from './CampusHeader'
+import { KeyboardAwareScrollView } from './KeyboardAwareScrollView'
 import { useCampusToast } from './CampusToast'
 import { MaintenanceScreen } from './maintenance/MaintenanceScreen'
 
@@ -69,7 +70,10 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
 
   if (maintenance) {
     return (
-      <SafeAreaView className="flex-1 bg-maroon dark:bg-surface-dark">
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: isDark ? pupColors.surfaceDark : pupColors.maroon }}
+        className="flex-1 bg-maroon dark:bg-surface-dark"
+      >
         <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
           <MaintenanceScreen
             embedded
@@ -93,9 +97,13 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-maroon dark:bg-surface-dark" testID={`${portal}-login-screen`}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.surfaceDark : pupColors.maroon }}
+      className="flex-1 bg-maroon dark:bg-surface-dark"
+      testID={`${portal}-login-screen`}
+    >
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
+        <KeyboardAwareScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"
@@ -309,7 +317,7 @@ export const CampusLoginPortal = ({ portal }: CampusLoginPortalProps) => {
               </Text>
             </Pressable>
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
 
       <Modal visible={cooldown !== null} transparent animationType="fade" onRequestClose={() => setCooldown(null)}>

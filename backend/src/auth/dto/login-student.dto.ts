@@ -11,8 +11,10 @@ export class LoginStudentDto {
   password!: string
 
   /**
-   * Mobile installation identity. Web browser logins never send this; the
-   * server only applies device binding/cooldown rules on the mobile routes.
+   * Installation identity of the calling client. Web browsers send their
+   * persistent `web-…` installation id and the mobile app sends its `mobile-…`
+   * SecureStore id; both channels are subject to the same student-only device
+   * gates (active session elsewhere + logout cooldown).
    */
   @IsOptional()
   @IsString()

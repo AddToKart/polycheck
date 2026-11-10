@@ -12,12 +12,19 @@ import {
   AI_THREAD_JOIN_EVENT,
   AI_THREAD_JOINED_EVENT,
   AI_THREAD_LEAVE_EVENT,
+  ATTENDANCE_ANOMALY_EVENT,
+  KIOSK_JOIN_EVENT,
+  KIOSK_JOINED_EVENT,
+  KIOSK_LEAVE_EVENT,
+  SESSION_FINALE_EVENT,
   SERVER_METRICS_ROOM,
   SERVER_SUBSCRIBE_EVENT,
   SERVER_SUBSCRIBED_EVENT,
   SERVER_UNSUBSCRIBE_EVENT,
   isMaintenanceExempt,
   type AppNotification,
+  type AttendanceAnomalyEvent,
+  type SessionFinaleSummary,
 } from '@polycheck/shared'
 import type { Server, Socket } from 'socket.io'
 import { NOTIFICATION_CREATED_EVENT, USER_NOTIFICATION_EVENT } from '../notifications/notification-events'
@@ -59,6 +66,8 @@ export class AttendanceGateway implements OnGatewayInit, OnModuleDestroy {
   private metricsTimer?: NodeJS.Timeout
   private publishingMetrics = false
   private connectionListener?: (socket: Socket) => void
+  /** Projector-kiosk presence per session (single-digit kiosks; in-memory is fine). */
+  private readonly kioskViewers = new Map<string, Set<string>>()
 
   constructor(
     private readonly sessions: SessionAuthenticator,
@@ -94,7 +103,10 @@ export class AttendanceGateway implements OnGatewayInit, OnModuleDestroy {
 
     this.connectionListener = (socket) => {
       this.updateSocketCount()
-      socket.on('disconnect', () => this.updateSocketCount())
+      socket.on('disconnect', () => {
+        this.updateSocketCount()
+        this.removeKioskPresence(socket.id)
+      })
     }
     server.on('connection', this.connectionListener)
 
@@ -241,6 +253,55 @@ export class AttendanceGateway implements OnGatewayInit, OnModuleDestroy {
     return { event: 'session:left', data: { sessionId } }
   }
 
+  /**
+   * F1 projector-kiosk presence handshake. Session-scoped access (same
+   * `assertSessionAccess` as roster rooms); the kiosk room is tracked so the
+   * cockpit can show an at-a-glance presence count without a publisher loop.
+   */
+  @SubscribeMessage(KIOSK_JOIN_EVENT)
+  async joinKiosk(@ConnectedSocket() socket: Socket, @MessageBody() body: { sessionId?: string }) {
+    const sessionId = body?.sessionId?.trim()
+    if (!sessionId || sessionId.length > 128) throw new WsException('A valid sessionId is required')
+    const principal = await this.sessions.authenticate(this.handshakeHeaders(socket))
+    socket.data.user = principal
+    const session = await this.prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { id: true, sectionId: true, teacherId: true },
+    })
+    if (!session) throw new WsException('Session not found')
+    await this.assertSessionAccess(principal, session)
+    await socket.join(this.kioskRoom(session.id))
+    const viewers = this.kioskViewers.get(session.id) ?? new Set<string>()
+    viewers.add(socket.id)
+    this.kioskViewers.set(session.id, viewers)
+    return { event: KIOSK_JOINED_EVENT, data: { sessionId: session.id, kioskCount: viewers.size } }
+  }
+
+  @SubscribeMessage(KIOSK_LEAVE_EVENT)
+  async leaveKiosk(@ConnectedSocket() socket: Socket, @MessageBody() body: { sessionId?: string }) {
+    const sessionId = body?.sessionId?.trim()
+    if (!sessionId || sessionId.length > 128) throw new WsException('A valid sessionId is required')
+    await socket.leave(this.kioskRoom(sessionId))
+    this.removeKioskPresence(socket.id, sessionId)
+    return { event: KIOSK_LEAVE_EVENT, data: { sessionId, kioskCount: this.kioskCount(sessionId) } }
+  }
+
+  /** Live kiosk viewer count for one session room (0 after the last disconnect). */
+  kioskCount(sessionId: string): number {
+    return this.kioskViewers.get(sessionId)?.size ?? 0
+  }
+
+  private removeKioskPresence(socketId: string, sessionId?: string) {
+    if (sessionId) {
+      const viewers = this.kioskViewers.get(sessionId)
+      if (viewers?.delete(socketId) && viewers.size === 0) this.kioskViewers.delete(sessionId)
+      return
+    }
+    for (const [id, viewers] of this.kioskViewers) {
+      if (viewers.delete(socketId) && viewers.size === 0) this.kioskViewers.delete(id)
+    }
+  }
+
   @SubscribeMessage(SERVER_SUBSCRIBE_EVENT)
   async subscribeServerMetrics(@ConnectedSocket() socket: Socket) {
     await this.assertServerMetricsAccess(socket)
@@ -266,15 +327,38 @@ export class AttendanceGateway implements OnGatewayInit, OnModuleDestroy {
     sectionId: string
     studentId: string
     status: string
+    studentName?: string
   }) {
     this.server.to(this.sessionRoom(record.sessionId)).emit('attendance:updated', {
       recordId: record.id,
       sessionId: record.sessionId,
       sectionId: record.sectionId,
       studentId: record.studentId,
+      // Additive enrichment (F1 kiosk ticker): existing listeners keep working.
+      studentName: record.studentName,
       status: record.status,
       timestamp: new Date().toISOString(),
     })
+  }
+
+  /** F2 radar: a denied in-person scan with coordinates, broadcast to the session room. */
+  emitAttendanceAnomaly(session: { id: string }, payload: AttendanceAnomalyEvent) {
+    if (!this.server) return
+    this.server.to(this.sessionRoom(session.id)).emit(ATTENDANCE_ANOMALY_EVENT, payload)
+  }
+
+  /**
+   * F1: the authoritative end-of-class broadcast. `end()` and the auto-end cron
+   * both call this once after their resolution commit; `endedAt` lets clients
+   * dedupe repeated deliveries.
+   */
+  emitSessionFinale(session: { id: string }, summary: SessionFinaleSummary) {
+    if (!this.server) return
+    this.server.to(this.sessionRoom(session.id)).emit(SESSION_FINALE_EVENT, summary)
+  }
+
+  private kioskRoom(sessionId: string) {
+    return `kiosk:${sessionId}`
   }
 
   private async assertSessionAccess(user: SocketUser, session: { sectionId: string; teacherId: string }) {

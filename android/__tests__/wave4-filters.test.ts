@@ -1,6 +1,7 @@
 import type { AttendanceRecord, Section, Session } from '@polycheck/shared'
 import {
   campusDate,
+  campusDateOf,
   datePresetRange,
   filterAttendanceRecords,
   filterSessions,
@@ -74,9 +75,20 @@ describe('datePresetRange', () => {
 })
 
 describe('isInDateRange', () => {
-  it('compares ISO timestamps by civil date', () => {
-    expect(isInDateRange('2026-10-25T23:59:00.000Z', '2026-10-25', '2026-10-25')).toBe(true)
-    expect(isInDateRange('2026-10-26T00:00:00.000Z', '2026-10-25', '2026-10-25')).toBe(false)
+  it('resolves timestamps to the PUP civil date (UTC+08:00)', () => {
+    expect(campusDateOf('2026-10-25T23:59:00.000Z')).toBe('2026-10-26')
+    expect(campusDateOf('2026-10-24T16:00:00.000Z')).toBe('2026-10-25')
+    // Date-only values are already civil dates and must not shift.
+    expect(campusDateOf('2026-10-25')).toBe('2026-10-25')
+  })
+
+  it('compares ISO timestamps by campus day, not UTC day', () => {
+    // 23:59Z is 07:59 the next morning in Manila.
+    expect(isInDateRange('2026-10-25T23:59:00.000Z', '2026-10-25', '2026-10-25')).toBe(false)
+    expect(isInDateRange('2026-10-25T23:59:00.000Z', '2026-10-26', '2026-10-26')).toBe(true)
+    // 16:00Z is exactly midnight on the next campus day (inclusive bound).
+    expect(isInDateRange('2026-10-24T16:00:00.000Z', '2026-10-25', '2026-10-25')).toBe(true)
+    expect(isInDateRange('2026-10-25', '2026-10-25', '2026-10-25')).toBe(true)
     expect(isInDateRange('2026-10-25T12:00:00.000Z')).toBe(true)
   })
 })

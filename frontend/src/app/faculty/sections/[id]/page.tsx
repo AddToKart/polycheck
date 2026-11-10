@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, FileUp, Search, Key, RefreshCw, Ban, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle, CalendarDays } from 'lucide-react'
+import { ArrowLeft, FileDown, FileUp, Loader2, Search, Key, RefreshCw, Ban, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle, CalendarDays } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Section, Session, Student, SectionRole, SessionPermission } from '@polycheck/shared'
+import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Sidebar } from '@/components/layout/sidebar'
 import { BulkImportDialog } from '@/components/import/BulkImportDialog'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -13,12 +14,29 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { LoadingSpinner } from '@/lib/hooks'
+import { useNotifications } from '@/lib/notifications'
 import { createSessionHref, sessionsListHref } from '@/lib/section-context'
-
 import { PaginationBar } from '@/components/ui/pagination-bar'
 
 const PAGE_SIZE = 10
 const SESSIONS_PAGE_SIZE = 6
+
+/** F4 (WF-LD1): the official PUP class record is generated server-side (pdfkit). */
+function triggerBrowserDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.style.display = 'none'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+}
+
+function safeFileSegment(value: string): string {
+  return value.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '')
+}
 
 export default function SectionDetailPage() {
   const params = useParams()
@@ -39,6 +57,42 @@ export default function SectionDetailPage() {
   const [sectionRoles, setSectionRoles] = useState<SectionRole[]>([])
   const [sessionPermissions, setSessionPermissions] = useState<SessionPermission[]>([])
   const [expiredPermissionIds, setExpiredPermissionIds] = useState<Set<string>>(new Set())
+
+  // F4: the official PUP class record export.
+  const { addNotification } = useNotifications()
+  const [classRecordLoading, setClassRecordLoading] = useState(false)
+  const handleClassRecordExport = async () => {
+    if (!id || classRecordLoading || !section) return
+    setClassRecordLoading(true)
+    try {
+      const blob = await api.downloadAssistantFile(
+        `/docs/class-record/${encodeURIComponent(id)}?format=pdf`,
+      )
+      const filenameSegments = [subjectCode, section.section, section.semester]
+        .map(safeFileSegment)
+        .filter(Boolean)
+      triggerBrowserDownload(
+        blob,
+        filenameSegments.length > 0
+          ? `PUP-Class-Record-${filenameSegments.join('-')}.pdf`
+          : 'PUP-Class-Record.pdf',
+      )
+      addNotification(
+        'success',
+        'Class record downloaded',
+        'The official PUP class record PDF has been saved.',
+      )
+    } catch (error) {
+      addNotification(
+        'error',
+        'Download failed',
+        error instanceof Error ? error.message : 'Unable to download the class record.',
+      )
+    } finally {
+      setClassRecordLoading(false)
+    }
+  }
+
   const applyPermissions = (permissions: SessionPermission[]) => {
     const now = Date.now()
     setSessionPermissions(permissions)
@@ -183,7 +237,7 @@ export default function SectionDetailPage() {
             </Link>
             <div className="min-w-0">
               <h1 className="text-2xl font-heading font-bold text-maroon-dark dark:text-white">{subjectName}</h1>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">{subjectCode} &middot; Section {section.section}</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">{subjectCode} &middot; {formatSectionHeading(section)}</p>
             </div>
           </div>
 
@@ -514,6 +568,19 @@ export default function SectionDetailPage() {
                 Section Sessions
               </CardTitle>
               <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleClassRecordExport()}
+                  disabled={classRecordLoading}
+                >
+                  {classRecordLoading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <FileDown className="w-3.5 h-3.5" />
+                  )}
+                  Class record (PUP)
+                </Button>
                 <Button variant="outline" size="sm" asChild>
                   <Link href={sessionsListHref(id)}>All sessions</Link>
                 </Button>
@@ -554,6 +621,17 @@ export default function SectionDetailPage() {
                     </Link>
                   ))}
                 </div>
+              )}
+              {sessions.length > 0 && (
+                <PaginationBar
+                  page={safeSessionPage}
+                  totalPages={totalSessionPages}
+                  totalItems={sortedSessions.length}
+                  pageSize={SESSIONS_PAGE_SIZE}
+                  itemName="sessions"
+                  onPageChange={setSessionPage}
+                  showNumbers
+                />
               )}
             </CardContent>
           </Card>

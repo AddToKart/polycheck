@@ -7,6 +7,83 @@ import { pupColors } from '../theme/colors'
 
 const joinClasses = (...classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(' ')
 
+/** Loading placeholder matching the shared card chrome (pulse via animate-pulse). */
+export const CampusSkeleton = ({ className, children }: { className?: string; children?: ReactNode }) => (
+  <View
+    accessibilityLabel="Loading"
+    className={joinClasses('rounded-none border border-line bg-zinc-100 dark:border-line-dark dark:bg-white/5 animate-pulse', className)}
+  >
+    {children}
+  </View>
+)
+
+/** Faculty/user dashboard skeleton: metric tiles + two card blocks. */
+export const DashboardSkeleton = () => (
+  <View accessibilityLabel="Loading dashboard" className="gap-4">
+    <View className="flex-row flex-wrap gap-3">
+      {[0, 1, 2, 3].map((i) => (
+        <CampusSkeleton key={i} className="min-w-[46%] flex-1 p-4">
+          <View />
+        </CampusSkeleton>
+      ))}
+    </View>
+    <CampusSkeleton className="h-28 w-full"><View /></CampusSkeleton>
+    <CampusSkeleton className="h-24 w-full"><View /></CampusSkeleton>
+  </View>
+)
+
+/** Vertical list skeleton: three row blocks. */
+export const ListSkeleton = ({ rows = 3, rowClass = 'h-16' }: { rows?: number; rowClass?: string }) => (
+  <View accessibilityLabel="Loading list" className="gap-3">
+    {Array.from({ length: rows }).map((_, i) => (
+      <CampusSkeleton key={i} className={joinClasses('w-full', rowClass)}><View /></CampusSkeleton>
+    ))}
+  </View>
+)
+
+type CampusLoadErrorProps = {
+  title?: string
+  message?: string
+  onRetry: () => void
+}
+
+/** Failure state with a retry action — introduced so a failed fetch is never
+ * rendered as an empty (or permanently blank) screen. */
+export const CampusLoadError = ({
+  title = 'Unable to load this screen',
+  message = 'Check your connection and try again.',
+  onRetry,
+}: CampusLoadErrorProps) => {
+  const { isDark } = useTheme()
+  return (
+    <View
+      accessibilityRole="alert"
+      className="items-center rounded-none border border-dashed border-line bg-white px-6 py-10 dark:border-line-dark dark:bg-surface-dark"
+    >
+      <View className="mb-3 h-12 w-12 items-center justify-center rounded-none bg-maroon/5 dark:bg-golden/10">
+        <MaterialIcons name="cloud-off" size={24} color={isDark ? pupColors.golden : pupColors.maroon} />
+      </View>
+      <Text className="text-center font-sans-bold text-base font-bold text-ink dark:text-white uppercase tracking-wider">
+        {title}
+      </Text>
+      <Text className="mt-2 max-w-64 text-center font-sans text-xs leading-5 text-muted dark:text-zinc-400">
+        {message}
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Try again"
+        onPress={onRetry}
+        className="mt-5 min-h-11 items-center justify-center border border-maroon px-5 active:opacity-80 dark:border-golden"
+      >
+        <Text className="font-sans-bold text-[10px] uppercase tracking-widest text-maroon dark:text-golden">
+          Try again
+        </Text>
+      </Pressable>
+    </View>
+  )
+}
+
+
 type CampusCardProps = {
   children: ReactNode
   className?: string
@@ -16,19 +93,26 @@ type CampusCardProps = {
 }
 
 export const CampusCard = ({ children, className, onPress, accessibilityLabel, testID }: CampusCardProps) => {
+  const { isDark } = useTheme()
   const classes = joinClasses(
     'rounded-none border border-line bg-white p-5 dark:border-line-dark dark:bg-surface-dark border-l-4 border-l-maroon dark:border-l-golden',
     className,
   )
 
-  if (!onPress) return <View className={classes} testID={testID}>{children}</View>
+  const cardStyle = {
+    backgroundColor: isDark ? '#171316' : '#FFFFFF',
+    borderColor: isDark ? '#30272A' : '#E8E2E3',
+  }
+
+  if (!onPress) return <View style={cardStyle} className={classes} testID={testID}>{children}</View>
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       testID={testID}
-      className={classes}
+      style={cardStyle}
+      className={joinClasses(classes, 'active:opacity-90 active:border-l-golden')}
       onPress={onPress}
     >
       {children}
@@ -58,7 +142,7 @@ export const CampusIconButton = ({ icon, label, onPress, inverse = false, testID
       disabled={disabled}
       onPress={onPress}
       className={joinClasses(
-        'h-10 w-10 items-center justify-center rounded-none border',
+        'h-10 w-10 items-center justify-center rounded-none border active:opacity-80',
         inverse
           ? 'border-white/20 bg-white/10'
           : 'border-line bg-white dark:border-line-dark dark:bg-surface-dark',
@@ -119,7 +203,7 @@ export const CampusButton = ({
       disabled={disabled}
       onPress={onPress}
       className={joinClasses(
-        'min-h-12 flex-row items-center justify-center gap-2 rounded-none border px-5 uppercase tracking-widest',
+        'min-h-12 flex-row items-center justify-center gap-2 rounded-none border px-5 uppercase tracking-widest active:opacity-80',
         variants[variant],
         disabled && 'opacity-50',
         className,

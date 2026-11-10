@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react'
 import { AccessibilityInfo, Animated, Image, Modal, Pressable, Text, View } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
+import { api } from '../services/api-client'
 import { useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
 import { CampusIconButton } from './CampusPrimitives'
+import { HologramOverlay } from './HologramOverlay'
 
 type StudentCredential = {
   fullName: string
@@ -12,11 +14,19 @@ type StudentCredential = {
   yearLevel: number
 }
 
-const IdCardFront = ({ student, isDark }: { student: StudentCredential; isDark: boolean }) => (
+const IdCardFront = ({
+  student,
+  isDark,
+  deviceId,
+}: {
+  student: StudentCredential
+  isDark: boolean
+  deviceId?: string | null
+}) => (
   <View className="flex-1 overflow-hidden rounded-none border-2 border-zinc-300 bg-white dark:border-zinc-700 dark:bg-surface-dark shadow-md">
     <View className="flex-row items-center gap-3 bg-maroon p-3 border-b-2 border-golden">
       <View className="h-9 w-9 items-center justify-center rounded-none bg-white">
-        <Image source={require('../assets/pup-logo.png')} className="h-7 w-7" resizeMode="contain" />
+        <Image source={require('../assets/pup-logo.png')} style={{ width: 28, height: 28 }} className="h-7 w-7" resizeMode="contain" />
       </View>
       <View className="flex-1">
         <Text className="font-sans-bold text-[7px] uppercase tracking-[1.5px] text-golden">Republic of the Philippines</Text>
@@ -54,10 +64,12 @@ const IdCardFront = ({ student, isDark }: { student: StudentCredential; isDark: 
         </View>
       </View>
     </View>
+
+    <HologramOverlay isDark={isDark} deviceId={deviceId} />
   </View>
 )
 
-const IdCardBack = ({ isDark }: { isDark: boolean }) => (
+const IdCardBack = ({ isDark, deviceId }: { isDark: boolean; deviceId?: string | null }) => (
   <View className="flex-1 overflow-hidden rounded-none border-2 border-zinc-300 bg-white dark:border-zinc-700 dark:bg-surface-dark shadow-md">
     <View className="mt-4 h-11 w-full bg-zinc-900" />
     <View className="flex-1 flex-row gap-4 p-4">
@@ -81,6 +93,8 @@ const IdCardBack = ({ isDark }: { isDark: boolean }) => (
         <Text className="mt-2 text-center font-mono text-[7px] font-bold uppercase tracking-widest text-zinc-500">SCAN TO VERIFY</Text>
       </View>
     </View>
+
+    <HologramOverlay isDark={isDark} deviceId={deviceId} />
   </View>
 )
 
@@ -88,26 +102,38 @@ type IdCardModalProps = {
   visible: boolean
   student: StudentCredential
   onClose: () => void
+  /**
+   * Bound installation id of the student whose card is shown (only its last 4
+   * characters are ever rendered). Falls back to the current user's binding —
+   * correct for the student's own dashboard, where viewer and student match.
+   */
+  deviceId?: string | null
 }
 
-export const IdCardModal = ({ visible, student, onClose }: IdCardModalProps) => {
+export const IdCardModal = ({ visible, student, onClose, deviceId }: IdCardModalProps) => {
   const { isDark } = useTheme()
+  const resolvedDeviceId = deviceId ?? api.getCurrentUser()?.boundDeviceId ?? null
   const [isFlipped, setIsFlipped] = useState(false)
-  const flipAnimation = useRef(new Animated.Value(0)).current
+  const flipAnimation = useRef(new Animated.Value(1)).current
 
   const flipCard = () => {
     void AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
+      // Single-face swap: avoid backfaceVisibility on Android/Fabric, which can
+      // leave both card faces rendered at once (overlapping text).
       Animated.timing(flipAnimation, {
-        toValue: isFlipped ? 0 : 180,
-        duration: reduceMotion ? 0 : 420,
+        toValue: 0,
+        duration: reduceMotion ? 0 : 120,
         useNativeDriver: true,
-      }).start()
-      setIsFlipped((flipped) => !flipped)
+      }).start(() => {
+        setIsFlipped((flipped) => !flipped)
+        Animated.timing(flipAnimation, {
+          toValue: 1,
+          duration: reduceMotion ? 0 : 160,
+          useNativeDriver: true,
+        }).start()
+      })
     })
   }
-
-  const frontRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['0deg', '180deg'] })
-  const backRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['180deg', '360deg'] })
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -155,15 +181,13 @@ export const IdCardModal = ({ visible, student, onClose }: IdCardModalProps) => 
           >
             <Animated.View
               className="absolute inset-0 shadow-lg"
-              style={{ transform: [{ perspective: 1000 }, { rotateY: frontRotation }], backfaceVisibility: 'hidden' }}
+              style={{ opacity: flipAnimation }}
             >
-              <IdCardFront student={student} isDark={isDark} />
-            </Animated.View>
-            <Animated.View
-              className="absolute inset-0 shadow-lg"
-              style={{ transform: [{ perspective: 1000 }, { rotateY: backRotation }], backfaceVisibility: 'hidden' }}
-            >
-              <IdCardBack isDark={isDark} />
+              {isFlipped ? (
+                <IdCardBack isDark={isDark} deviceId={resolvedDeviceId} />
+              ) : (
+                <IdCardFront student={student} isDark={isDark} deviceId={resolvedDeviceId} />
+              )}
             </Animated.View>
           </Pressable>
 

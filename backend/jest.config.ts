@@ -29,6 +29,7 @@ const config: Config = {
   },
   moduleNameMapper: {
     '^@polycheck/shared$': '<rootDir>/../shared/src/index.ts',
+    '^@polycheck/shared/ledger$': '<rootDir>/../shared/src/utils/ledger.ts',
   },
 }
 

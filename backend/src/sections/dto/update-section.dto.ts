@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer'
-import { IsArray, IsOptional, IsString, MinLength, ValidateNested } from 'class-validator'
+import { IsArray, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator'
 
 class ScheduleDayDto {
   @IsString()
@@ -24,6 +24,12 @@ export class UpdateSectionDto {
   @MinLength(1)
   @IsOptional()
   section?: string
+
+  @IsString()
+  @IsOptional()
+  @MinLength(1)
+  @MaxLength(30)
+  course?: string
 
   @IsString()
   @MinLength(1)

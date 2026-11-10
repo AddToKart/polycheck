@@ -18,6 +18,11 @@ import { Button } from '@/components/ui/button'
 import { OfflineSyncPanel } from '@/components/OfflineSyncPanel'
 import { OfflineReadinessChip } from '@/components/offline/OfflineReadinessChip'
 import { api } from '@/lib/api-client'
+import {
+  DISPUTE_DESCRIPTION_TOO_SHORT_MESSAGE,
+  describeDisputeSubmitError,
+  isDisputeDescriptionValid,
+} from '@/lib/student-dispute'
 
 const ScanQrModal = lazy(() => import('@/components/ScanQrModal'))
 const ATTENDANCE_PAGE_SIZE = 8
@@ -45,6 +50,7 @@ function StudentDashboardContent() {
   const [disputeReason, setDisputeReason] = useState('')
   const [disputeDescription, setDisputeDescription] = useState('')
   const [disputeFeedback, setDisputeFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [disputeSubmitting, setDisputeSubmitting] = useState(false)
   const [isScanModalOpen, setIsScanModalOpen] = useState(false)
   const [scanSessionId, setScanSessionId] = useState<string>()
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false)
@@ -205,17 +211,29 @@ function StudentDashboardContent() {
   }
 
   const handleSubmitDispute = async () => {
-    if (!disputeRecord || !disputeReason || !user) return
-    const result = await api.submitDispute({ recordId: disputeRecord.id, reason: disputeReason as StudentDisputeReason, description: disputeDescription })
-    if (result) {
-      setDisputeFeedback({ type: 'success', message: 'Dispute submitted successfully.' })
-      setRecords(await api.getAttendanceForStudent(user.id))
-    } else {
-      setDisputeFeedback({ type: 'error', message: 'Failed to submit dispute.' })
+    if (!disputeRecord || !disputeReason || !user || disputeSubmitting) return
+    if (!isDisputeDescriptionValid(disputeDescription)) {
+      setDisputeFeedback({ type: 'error', message: DISPUTE_DESCRIPTION_TOO_SHORT_MESSAGE })
+      return
     }
-    setDisputeReason('')
-    setDisputeDescription('')
-    setTimeout(() => setDisputeFeedback(null), 3000)
+    setDisputeFeedback(null)
+    setDisputeSubmitting(true)
+    try {
+      const result = await api.submitDispute({ recordId: disputeRecord.id, reason: disputeReason as StudentDisputeReason, description: disputeDescription.trim() })
+      if (!result) {
+        setDisputeFeedback({ type: 'error', message: 'Failed to submit dispute.' })
+        return
+      }
+      setDisputeFeedback({ type: 'success', message: 'Dispute submitted successfully.' })
+      setDisputeReason('')
+      setDisputeDescription('')
+      setTimeout(() => setDisputeFeedback(null), 3000)
+      void api.getAttendanceForStudent(user.id).then(setRecords).catch(() => undefined)
+    } catch (error) {
+      setDisputeFeedback({ type: 'error', message: describeDisputeSubmitError(error) })
+    } finally {
+      setDisputeSubmitting(false)
+    }
   }
 
   if (!user) return null
@@ -249,7 +267,7 @@ function StudentDashboardContent() {
           {activeTab === 'schedule' ? <StudentWeeklySchedule date={scheduleDate} onDateChange={setScheduleDate} sections={sections} sessions={sessions} records={records} subjectMap={subjectMap} /> : null}
           {activeTab === 'attendance' ? <StudentAttendanceAudit records={pagedRecords} filteredCount={filteredRecords.length} filter={attendanceFilter} page={attendancePage} pageCount={attendancePageCount} pageSize={ATTENDANCE_PAGE_SIZE} onFilterChange={setAttendanceFilter} onPageChange={setAttendancePage} onReportIssue={openDispute} onRequestExcuse={openExcuse} sectionSubjectName={sectionSubjectName} subjectOptions={attendanceSubjectOptions} subjectId={attendanceSubjectId} fromDate={attendanceFrom} toDate={attendanceTo} onSubjectChange={setAttendanceSubjectId} onFromDateChange={setAttendanceFrom} onToDateChange={setAttendanceTo} onClearFilters={clearAttendanceFilters} /> : null}
 
-          <StudentDisputeDialog record={disputeRecord} reason={disputeReason} description={disputeDescription} feedback={disputeFeedback} subjectName={disputeRecord ? sectionSubjectName(disputeRecord.sectionId) : ''} onClose={() => { setDisputeRecord(null); setDisputeFeedback(null) }} onReasonChange={setDisputeReason} onDescriptionChange={setDisputeDescription} onSubmit={() => void handleSubmitDispute()} />
+          <StudentDisputeDialog record={disputeRecord} reason={disputeReason} description={disputeDescription} feedback={disputeFeedback} subjectName={disputeRecord ? sectionSubjectName(disputeRecord.sectionId) : ''} submitting={disputeSubmitting} onClose={() => { setDisputeRecord(null); setDisputeFeedback(null) }} onReasonChange={setDisputeReason} onDescriptionChange={setDisputeDescription} onSubmit={() => void handleSubmitDispute()} />
           <StudentExcuseDialog record={excuseRecord} subjectName={excuseRecord ? sectionSubjectName(excuseRecord.sectionId) : ''} onClose={() => setExcuseRecord(null)} onSubmitted={() => { setExcuseRecord(null); void refreshAttendance() }} />
           <StudentEnrollmentDialog open={isEnrollModalOpen} code={enrollCode} loading={enrollLoading} success={enrollSuccess} error={enrollError} onOpenChange={setIsEnrollModalOpen} onCodeChange={setEnrollCode} onSubmit={(event) => void handleEnrollSubmit(event)} />
         </div>

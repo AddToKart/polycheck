@@ -7,6 +7,7 @@ const section = {
   id: 'section-1',
   subjectId: 'subject-1',
   section: 'A',
+  course: 'BSIT',
   room: 'R1',
   semester: '2026',
   teacherId: 'teacher-1',
@@ -38,6 +39,98 @@ describe('SectionsService', () => {
     const result = await service.findOne('section-1', { id: 'student-1', role: 'student' })
 
     expect(result).not.toHaveProperty('enrollmentCode')
+  })
+
+  describe('course persistence (CS2)', () => {
+    const createDto = {
+      subjectId: 'subject-1',
+      section: 'A',
+      course: ' BSIT ',
+      room: 'R1',
+      schedule: [{ day: 'Mon', startTime: '09:00', endTime: '10:00' }],
+      semester: '2026',
+    }
+
+    function prismaForCreate(created: unknown) {
+      return {
+        subject: { findUnique: jest.fn().mockResolvedValue({ id: 'subject-1' }) },
+        section: { create: jest.fn().mockResolvedValue(created) },
+      }
+    }
+
+    it('persists a trimmed course code on create and returns it', async () => {
+      const prisma = prismaForCreate({ ...section, course: 'BSIT' })
+      const service = new SectionsService(prisma as never, settings as never)
+
+      const result = await service.create(createDto, { id: 'teacher-1', role: 'teacher' })
+
+      const data = prisma.section.create.mock.calls[0][0].data as Record<string, unknown>
+      expect(data.course).toBe('BSIT')
+      expect(result.course).toBe('BSIT')
+    })
+
+    it('still creates legacy sections without a course', async () => {
+      const prisma = prismaForCreate({ ...section, course: null })
+      const service = new SectionsService(prisma as never, settings as never)
+
+      const legacyDto = {
+        subjectId: createDto.subjectId,
+        section: createDto.section,
+        room: createDto.room,
+        schedule: createDto.schedule,
+        semester: createDto.semester,
+      }
+      const result = await service.create(legacyDto, { id: 'teacher-1', role: 'teacher' })
+
+      const data = prisma.section.create.mock.calls[0][0].data as Record<string, unknown>
+      expect(data.course).toBeNull()
+      expect(result.course).toBeUndefined()
+    })
+
+    it('updates and returns the trimmed course code', async () => {
+      const tx = {
+        scheduleDay: { deleteMany: jest.fn(), createMany: jest.fn() },
+        section: { update: jest.fn().mockResolvedValue({ ...section, course: 'BSCS' }) },
+      }
+      const prisma = {
+        section: { findUnique: jest.fn().mockResolvedValue(section) },
+        $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
+      }
+      const service = new SectionsService(prisma as never, settings as never)
+
+      const result = await service.update(
+        'section-1',
+        { course: ' BSCS ' },
+        {
+          id: 'teacher-1',
+          role: 'teacher',
+        },
+      )
+
+      expect(tx.section.update).toHaveBeenCalledWith({
+        where: { id: 'section-1' },
+        data: { course: 'BSCS' },
+        include: expect.anything(),
+      })
+      expect(result.course).toBe('BSCS')
+    })
+
+    it('leaves the stored course untouched when update omits it', async () => {
+      const tx = {
+        scheduleDay: { deleteMany: jest.fn(), createMany: jest.fn() },
+        section: { update: jest.fn().mockResolvedValue(section) },
+      }
+      const prisma = {
+        section: { findUnique: jest.fn().mockResolvedValue(section) },
+        $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
+      }
+      const service = new SectionsService(prisma as never, settings as never)
+
+      await service.update('section-1', { room: 'R2' }, { id: 'teacher-1', role: 'teacher' })
+
+      const data = tx.section.update.mock.calls[0][0].data as Record<string, unknown>
+      expect(data).not.toHaveProperty('course')
+    })
   })
 
   it('updates schedules and section fields in one transaction', async () => {

@@ -25,6 +25,8 @@ class GeofenceDto {
 }
 
 const SESSION_MODES = ['in_person', 'online'] as const
+const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
+const TIME_OF_DAY = /^([01]\d|2[0-3]):[0-5]\d$/
 
 export class CreateSessionDto {
   @IsString() @MaxLength(128) sectionId!: string
@@ -65,19 +67,42 @@ export class ActivateSessionDto {
   @IsOptional() @IsBoolean() overrideTeacherLocation?: boolean
 }
 
+/**
+ * One class meeting of a slot-aware bulk request. The weekday is swept over
+ * [startDate, endDate] with this slot's own times.
+ */
+export class BulkSessionSlotDto {
+  @IsString() @IsIn(DAYS_OF_WEEK) day!: string
+  @IsString() @Matches(TIME_OF_DAY) startTime!: string
+  @IsString() @Matches(TIME_OF_DAY) endTime!: string
+}
+
 export class CreateBulkSessionsDto {
   @IsString() @MaxLength(128) sectionId!: string
   @IsString() @MaxLength(200) subjectName!: string
   @IsOptional() @IsIn(SESSION_MODES) mode?: 'in_person' | 'online'
   @Matches(/^\d{4}-\d{2}-\d{2}$/) startDate!: string
   @Matches(/^\d{4}-\d{2}-\d{2}$/) endDate!: string
+  /**
+   * Slot-aware shape: when present and non-empty it wins over the legacy
+   * daysOfWeek + startTime/endTime pair (which is then ignored).
+   */
+  @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(7)
-  @IsIn(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], { each: true })
-  daysOfWeek!: string[]
-  @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) startTime!: string
-  @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) endTime!: string
+  @ValidateNested({ each: true })
+  @Type(() => BulkSessionSlotDto)
+  slots?: BulkSessionSlotDto[]
+  // Legacy shape — still sent by the Android composer.
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(7)
+  @IsIn(DAYS_OF_WEEK, { each: true })
+  daysOfWeek?: string[]
+  @IsOptional() @IsString() @Matches(TIME_OF_DAY) startTime?: string
+  @IsOptional() @IsString() @Matches(TIME_OF_DAY) endTime?: string
   @IsOptional() @IsString() @MaxLength(100) room?: string
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(15) qrValidityMinutes?: number
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(60) gracePeriodMinutes?: number

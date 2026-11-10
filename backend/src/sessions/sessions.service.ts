@@ -17,6 +17,7 @@ import { RedisService } from '../infrastructure/redis.service'
 import { Prisma, type Session, type SessionMode } from '../prisma/client'
 import { ErrorCode } from '../common/constants/error-codes'
 import { haversineDistance } from '@polycheck/shared'
+import type { FinaleCountStatus } from '@polycheck/shared'
 import { parseIsoDate } from '../common/utils/iso-date'
 import { sessionDurationMinutes } from '../common/utils/session-time'
 import { adminSessionWhere, assertSectionInAdminScope } from '../common/admin-scope'
@@ -155,8 +156,8 @@ export class SessionsService {
     const mode: SessionMode = dto.mode ?? 'in_person'
     this.assertModeShape(mode, dto.geofence)
     this.assertOnlineTimingDefaults(dto)
+    const bulkWindows = this.resolveBulkWindows(dto)
     const section = await this.assertTeacherOwnsSection(dto.sectionId, user.id)
-    this.assertTimeRange(dto.startTime, dto.endTime)
     const start = this.assertDate(dto.startDate, 'startDate')
     const end = this.assertDate(dto.endDate, 'endDate')
     if (end < start) throw new BadRequestException('End date must be on or after start date')
@@ -164,12 +165,8 @@ export class SessionsService {
       throw new BadRequestException('Bulk creation is limited to one year')
     }
 
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    const dates: string[] = []
-    for (const cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
-      if (dto.daysOfWeek.includes(dayNames[cursor.getUTCDay()])) dates.push(cursor.toISOString().slice(0, 10))
-    }
-    if (dates.length === 0) throw new BadRequestException('No session dates match the selected days')
+    const rows = this.expandBulkWindows(bulkWindows, start, end)
+    const dates = [...new Set(rows.map((row) => row.date))].sort()
 
     const existing = await this.prisma.session.findMany({
       where: { sectionId: dto.sectionId, date: { in: dates } },
@@ -192,15 +189,15 @@ export class SessionsService {
     let sessions: Session[]
     try {
       sessions = await this.prisma.$transaction(
-        dates.map((date) =>
+        rows.map((row) =>
           this.prisma.session.create({
             data: {
               sectionId: dto.sectionId,
               subjectName: section.subject.name,
               mode,
-              date,
-              startTime: dto.startTime,
-              endTime: dto.endTime,
+              date: row.date,
+              startTime: row.startTime,
+              endTime: row.endTime,
               room: dto.room,
               // Timing defaults — the authoritative values are set at QR generation time
               qrValidityMinutes: dto.qrValidityMinutes ?? 15,
@@ -223,6 +220,62 @@ export class SessionsService {
     for (const session of sessions) this.realtime.emitSessionState(session, 'created')
     const publicKey = await this.teacherPublicKey(user.id)
     return sessions.map((session) => this.present(session, publicKey, true))
+  }
+
+  /**
+   * Bulk creation accepts two shapes. The slot-aware shape (one entry per
+   * class meeting, each with its own weekday and times) wins whenever it is
+   * present and non-empty — legacy `daysOfWeek` / `startTime` / `endTime` are
+   * then ignored even if sent. Without slots the legacy single-pair shape is
+   * required and behaves exactly as before (the Android composer still sends
+   * it). Shape validation runs before any database read.
+   */
+  private resolveBulkWindows(dto: CreateBulkSessionsDto) {
+    if (dto.slots?.length) {
+      for (const slot of dto.slots) this.assertTimeRange(slot.startTime, slot.endTime)
+      return dto.slots.map((slot) => ({
+        day: slot.day,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+      }))
+    }
+
+    if (!dto.daysOfWeek?.length || !dto.startTime || !dto.endTime) {
+      throw new BadRequestException('Provide either class slots or daysOfWeek with startTime and endTime')
+    }
+    this.assertTimeRange(dto.startTime, dto.endTime)
+    return dto.daysOfWeek.map((day) => ({
+      day,
+      startTime: dto.startTime as string,
+      endTime: dto.endTime as string,
+    }))
+  }
+
+  /**
+   * Sweeps each window's weekday over [start, end], keeping the slot's own
+   * times. Identical (date, startTime, endTime) rows are emitted once so two
+   * overlapping slots cannot insert duplicates within the same request.
+   */
+  private expandBulkWindows(
+    windows: Array<{ day: string; startTime: string; endTime: string }>,
+    start: Date,
+    end: Date,
+  ) {
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    const rows: Array<{ date: string; startTime: string; endTime: string }> = []
+    const seen = new Set<string>()
+    for (const window of windows) {
+      for (const cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+        if (dayNames[cursor.getUTCDay()] !== window.day) continue
+        const date = cursor.toISOString().slice(0, 10)
+        const key = `${date}|${window.startTime}|${window.endTime}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        rows.push({ date, startTime: window.startTime, endTime: window.endTime })
+      }
+    }
+    if (rows.length === 0) throw new BadRequestException('No session dates match the selected days')
+    return rows
   }
 
   async activate(id: string, dto: ActivateSessionDto, user: RequestUser) {
@@ -642,6 +695,7 @@ export class SessionsService {
     this.realtime.emitSessionState(ended, 'ended')
     await this.invalidateActiveSessionCache(ended)
     await this.notifyAbsentStudents(ended, absentStudentIds)
+    await this.emitSessionFinale(ended)
     return this.present(ended, await this.teacherPublicKey(session.teacherId), true)
   }
 
@@ -695,6 +749,7 @@ export class SessionsService {
           this.realtime.emitSessionState(ended, 'ended')
           await this.invalidateActiveSessionCache(ended)
           await this.notifyAbsentStudents(ended, absentStudentIds)
+          await this.emitSessionFinale(ended)
           Logger.log(`Automatically ended expired session ${session.id} (${session.subjectName})`, 'SessionsService')
         } catch (error) {
           Logger.error(
@@ -719,6 +774,52 @@ export class SessionsService {
           )
         }
       }
+    }
+  }
+
+  /**
+   * F1: the session:finale broadcast following the claim+resolution commit.
+   * Counts come from the resolved records and capacity from the section's
+   * roster, so the projector recap can never disagree with the report the
+   * registrar will read. Best-effort: a slow/unavailable metrics read only
+   * skips the broadcast.
+   */
+  private async emitSessionFinale(ended: Pick<Session, 'id' | 'sectionId' | 'endedAt'>) {
+    try {
+      const [grouped, capacity] = await Promise.all([
+        this.prisma.attendanceRecord.groupBy({
+          by: ['status'],
+          where: { sessionId: ended.id },
+          _count: { _all: true },
+        }),
+        this.prisma.enrollment.count({ where: { sectionId: ended.sectionId } }),
+      ])
+      const counts: Record<FinaleCountStatus, number> = {
+        present: 0,
+        late: 0,
+        absent: 0,
+        excused: 0,
+        incomplete: 0,
+        disputed: 0,
+        pending: 0,
+      }
+      for (const group of grouped) {
+        if (group.status in counts) counts[group.status] = group._count._all
+      }
+      this.realtime.emitSessionFinale(
+        { id: ended.id },
+        {
+          sessionId: ended.id,
+          endedAt: ended.endedAt?.toISOString() ?? new Date().toISOString(),
+          counts,
+          capacity,
+        },
+      )
+    } catch (error) {
+      Logger.error(
+        `Failed to emit session finale for ${ended.id}: ${error instanceof Error ? error.message : 'unknown'}`,
+        'SessionsService',
+      )
     }
   }
 

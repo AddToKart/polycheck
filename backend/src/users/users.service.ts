@@ -62,6 +62,7 @@ const GOVERNANCE_USER_SELECT = {
   boundDeviceId: true,
   deviceBoundAt: true,
   deviceCooldownUntil: true,
+  cooldownDeviceId: true,
   canResetStudentPasswords: true,
   canEmergencyUnbindDevices: true,
   contactEmail: true,
@@ -495,8 +496,9 @@ export class UsersService {
   }
 
   /**
-   * Teacher safety net for a lost/damaged/borrowed device. Clears the binding
-   * and cooldown so the student can log in on a replacement device immediately.
+   * Teacher safety net for a lost/damaged/borrowed device. Clears the binding,
+   * the cooldown, and the cooldown exemption, then revokes the account's
+   * sessions so the student can log in on a replacement device immediately.
    */
   async emergencyReleaseDevice(
     studentId: string,
@@ -518,23 +520,29 @@ export class UsersService {
     }
 
     const now = new Date()
-    const clearedCooldown = await this.prisma.$transaction(async (tx) => {
+    const release = await this.prisma.$transaction(async (tx) => {
       await this.assertStudentInTeacherSection(tx, studentId, dto.sectionId, user.id)
       const target = await tx.user.findUnique({
         where: { id: studentId },
-        select: { boundDeviceId: true, deviceCooldownUntil: true },
+        select: { boundDeviceId: true, deviceCooldownUntil: true, cooldownDeviceId: true },
       })
       if (!target) throw new NotFoundException('User not found')
       const hadBinding = target.boundDeviceId !== null
       const hadCooldown = target.deviceCooldownUntil !== null && target.deviceCooldownUntil.getTime() > now.getTime()
       await tx.user.update({
         where: { id: studentId },
-        data: { boundDeviceId: null, deviceBoundAt: null, deviceCooldownUntil: null },
+        data: {
+          boundDeviceId: null,
+          deviceBoundAt: null,
+          deviceCooldownUntil: null,
+          cooldownDeviceId: null,
+        },
       })
-      if (hadBinding || hadCooldown) {
-        await tx.authSession.deleteMany({ where: { userId: studentId } })
-      }
-      return hadCooldown
+      // The release is the escape hatch for the active-session gate too, so it
+      // always terminates the account's sessions — not only when a binding or
+      // cooldown existed.
+      await tx.authSession.deleteMany({ where: { userId: studentId } })
+      return { hadBinding, hadCooldown }
     })
 
     await this.recordAdminAudit(user, 'teacher.device_release', studentId, {
@@ -542,7 +550,8 @@ export class UsersService {
       reason: dto.reason,
       note: dto.note ?? null,
       ipAddress: ipAddress ?? null,
-      clearedCooldown,
+      clearedCooldown: release.hadCooldown,
+      hadBinding: release.hadBinding,
     })
     await this.notifications?.notify(studentId, {
       type: 'device_released',
@@ -553,7 +562,8 @@ export class UsersService {
     const profile = await this.loadGovernanceProfile(studentId)
     return {
       user: profile,
-      clearedCooldown,
+      clearedCooldown: release.hadCooldown,
+      hadCooldown: release.hadCooldown,
       message: 'Device released. The student can log in on a new device now.',
     }
   }

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import Animated, { FadeInDown, FadeOutUp, useReducedMotion } from 'react-native-reanimated'
 import { useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
 import {
@@ -29,17 +30,30 @@ const variantStyles: Record<ToastType, { icon: keyof typeof MaterialIcons.glyphM
   warning: { icon: 'warning', iconColor: '#B45309', iconBg: 'bg-amber-50 dark:bg-amber-950/40', accent: 'border-l-amber-500' },
 }
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
+
+// Device-bisect lever: disable the Reanimated toast wrapper entirely.
+const toastAnimationDisabled =
+  process.env.EXPO_PUBLIC_DISABLE_ANIMATED_TOAST === 'true'
+
 const ToastCard = ({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => void }) => {
   const { isDark } = useTheme()
   const variant = variantStyles[toast.type]
   const iconColor = toast.type === 'info' && isDark ? pupColors.golden : variant.iconColor
+  const reduceMotion = useReducedMotion() || toastAnimationDisabled
+  // Enter slides down + fades; exit fades up. Reanimated springs the removal
+  // from the visible array automatically when the toast is dismissed/expired.
+  const entering = reduceMotion ? undefined : FadeInDown.duration(220).springify()
+  const exiting = reduceMotion ? undefined : FadeOutUp.duration(160)
 
   return (
-    <Pressable
+    <AnimatedPressable
       testID={`campus-toast-${toast.type}`}
       accessibilityRole="alert"
       accessibilityLiveRegion={toast.type === 'error' ? 'assertive' : 'polite'}
       onPress={onDismiss}
+      entering={entering}
+      exiting={exiting}
       className={`flex-row items-start gap-3 border border-l-4 border-line bg-white p-3 dark:border-line-dark dark:bg-surface-dark ${variant.accent}`}
     >
       <View className={`mt-0.5 h-9 w-9 items-center justify-center ${variant.iconBg}`}>
@@ -58,7 +72,7 @@ const ToastCard = ({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => vo
       >
         <MaterialIcons name="close" size={16} color={isDark ? pupColors.mutedLight : pupColors.muted} />
       </Pressable>
-    </Pressable>
+    </AnimatedPressable>
   )
 }
 

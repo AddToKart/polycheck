@@ -29,14 +29,42 @@ infrastructure details see [`../documentation/PRODUCTION_READINESS.md`](../docum
 The fallback gate is secure-by-default in code (`scan.tsx`: enabled only when the variable is
 exactly `"true"`). Local `.env` may set `true`; production tooling must set or inherit `false`.
 
+### Preview profile environment
+
+`eas.json` `build.preview` pins `EXPO_PUBLIC_API_URL` to the deployed staging API and also resolves
+the project's `preview` environment (dashboard → Environment variables, or
+`eas env:create --environment preview ...`) for any additional variables. Non-development builds
+throw at startup when `EXPO_PUBLIC_API_URL` is missing (`services/api-config.ts`), so keep the value
+present. Change it in `eas.json` when testing against a local backend, and never use the emulator
+alias `10.0.2.2` for a physical-device build — it only resolves inside the Android emulator. Use the
+build machine's LAN IP (e.g. `http://192.168.1.50:4000/api`) for a local API. The preview profile
+keeps `EXPO_PUBLIC_ALLOW_QR_FALLBACKS=true` for QA; do not propagate it to production, which stays
+pinned to `false`.
+
 ## Pre-upload checklist
 
 1. `pnpm -C android typecheck` and `pnpm -C android test` — all suites green.
 2. `pnpm -C android e2e` (or the relevant Maestro flow) against a preview build.
 3. `eas build --profile production --platform android` (AAB) — no non-production screens reachable.
-4. Manual device smoke (release build, not Expo Go): login → scan with fallbacks disabled →
-   offline scan → reconnect sync → teacher cockpit.
-5. Confirm store listing version matches `expo.version`; retain the build artifact SHA.
+4. **Styled-bundle gate:** after every EAS build, extract the APK/AAB and confirm the Hermes
+   bundle contains at least one `twsa-safe-area` marker (zero = NativeWind's Metro config was
+   missing and the APK will be unstyled):
+   ```powershell
+   New-Item -ItemType Directory -Force .\apk-contents | Out-Null
+   tar -xf .\polycheck.apk -C .\apk-contents assets/index.android.bundle
+   rg -a -c "twsa-safe-area" .\apk-contents\assets\index.android.bundle
+   ```
+   ```bash
+   unzip -p polycheck.apk assets/index.android.bundle | grep -a -c "twsa-safe-area"
+   ```
+   For an AAB, the bundle path is `base/assets/index.android.bundle` (e.g.
+   `unzip -p app-release.aab base/assets/index.android.bundle | grep -a -c "twsa-safe-area"`).
+   CI runs the equivalent gate on every `verify` job:
+   `node scripts/verify-android-bundle-styles.mjs`.
+5. Manual device smoke (release build, not Expo Go): login → scan with fallbacks disabled →
+   offline scan → reconnect sync → teacher cockpit → assistant reply containing a table, list,
+   and link (markdown-it 14 is a major override; confirm rendering after assistant changes).
+6. Confirm store listing version matches `expo.version`; retain the build artifact SHA.
 
 ## Assets
 

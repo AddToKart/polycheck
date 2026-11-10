@@ -1,26 +1,52 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native'
+import { AccessibilityInfo, Alert, Animated, Image, KeyboardAvoidingView, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import * as Clipboard from 'expo-clipboard'
 import * as Crypto from 'expo-crypto'
 import * as Location from 'expo-location'
+import * as SecureStore from 'expo-secure-store'
+import { io, type Socket } from 'socket.io-client'
 import QRCode from 'react-native-qrcode-svg'
-import { randomMeetingPin } from '@polycheck/shared'
-import type { AttendanceRecord, AttendanceStatus, ProofOfClass, Session, Student, User } from '@polycheck/shared'
+import {
+  ATTENDANCE_ANOMALY_EVENT,
+  randomMeetingPin,
+  SESSION_FINALE_EVENT,
+} from '@polycheck/shared'
+import type {
+  AttendanceAnomalyEvent,
+  AttendanceRecord,
+  AttendanceStatus,
+  ProofOfClass,
+  ScanAttemptView,
+  Session,
+  SessionFinaleSummary,
+  Student,
+  User,
+} from '@polycheck/shared'
 import type { TeacherActivationLocation } from '@polycheck/shared'
 import { api, ApiRequestError } from '../../../services/api-client'
+import { API_BASE } from '../../../services/api-config'
 import { useAuthGate } from '../../../hooks/use-auth-gate'
 import { sharePngFile } from '../../../services/file-sharing'
 import { useTheme } from '../../../theme/ThemeContext'
 import { pupColors } from '../../../theme/colors'
-import MapView, { type StudentMapPin } from '../../../components/MapView'
-import { subscribeToSession } from '../../../services/realtime'
+import MapView from '../../../components/MapView'
+import {
+  formatRadarCounters,
+  mapFinaleBanner,
+  mergeAnomaly,
+  shapeRadarOverlay,
+  type FinaleBannerModel,
+  type RadarDeniedEntry,
+} from '../../../lib/radar-overlay'
 import { CampusHeader } from '../../../components/CampusHeader'
-import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../../components/CampusPrimitives'
+import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, CampusSkeleton, ListSkeleton, SectionHeading } from '../../../components/CampusPrimitives'
 import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
+import { KeyboardAwareScrollView } from '../../../components/KeyboardAwareScrollView'
 import { useCampusToast } from '../../../components/CampusToast'
+import { keyboardAvoidingBehavior } from '../../../lib/keyboard'
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'incomplete', 'absent']
 const FILTERS: Array<AttendanceStatus | 'all'> = ['all', 'present', 'late', 'incomplete', 'absent', 'excused', 'pending', 'disputed']
@@ -31,6 +57,88 @@ type QrSvgHandle = { toDataURL: (callback: (base64: string) => void) => void }
 const CardTitle = ({ icon, title, detail }: { icon: keyof typeof MaterialIcons.glyphMap; title: string; detail?: string }) => {
   const { isDark } = useTheme()
   return <View className="mb-4 flex-row items-center gap-2"><View className="h-9 w-9 items-center justify-center rounded-xl bg-maroon/5 dark:bg-golden/10"><MaterialIcons name={icon} size={18} color={isDark ? pupColors.golden : pupColors.maroon} /></View><Text className="flex-1 font-sans-bold text-base text-ink dark:text-white">{title}</Text>{detail ? <Text className="font-sans-medium text-xs text-muted dark:text-zinc-400">{detail}</Text> : null}</View>
+}
+
+// F2/F1: the shared realtime helper (services/realtime.ts) is outside this
+// task's ownership and only wires session:state/attendance:updated — the same
+// precedent as the web radar modal, which replicates its connection recipe to
+// add the anomaly + finale listeners on the same session room. One socket,
+// same auth/join/leave discipline.
+function subscribeToSessionEvents(
+  sessionId: string,
+  handlers: {
+    onUpdate: () => void
+    onAnomaly: (event: AttendanceAnomalyEvent) => void
+    onFinale: (summary: SessionFinaleSummary) => void
+    onConnectionChange?: (connected: boolean) => void
+  },
+): () => void {
+  let disposed = false
+  let socket: Socket | null = null
+
+  void SecureStore.getItemAsync('polycheck-token').then((token) => {
+    if (!token || disposed) return
+    socket = io(`${API_BASE.replace(/\/api\/?$/, '')}/attendance`, {
+      auth: { token },
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 8,
+      reconnectionDelay: 1_000,
+      timeout: 8_000,
+    })
+    socket.on('connect', () => {
+      handlers.onConnectionChange?.(true)
+      socket?.emit('session:join', { sessionId })
+    })
+    socket.on('disconnect', () => handlers.onConnectionChange?.(false))
+    socket.on('connect_error', () => handlers.onConnectionChange?.(false))
+    socket.on('session:state', handlers.onUpdate)
+    socket.on('attendance:updated', handlers.onUpdate)
+    socket.on(ATTENDANCE_ANOMALY_EVENT, (event: AttendanceAnomalyEvent) => {
+      if (event?.sessionId === sessionId) handlers.onAnomaly(event)
+    })
+    socket.on(SESSION_FINALE_EVENT, (summary: SessionFinaleSummary) => {
+      if (summary?.sessionId === sessionId) handlers.onFinale(summary)
+    })
+  })
+
+  return () => {
+    disposed = true
+    socket?.emit('session:leave', { sessionId })
+    socket?.removeAllListeners()
+    socket?.disconnect()
+  }
+}
+
+// Denied-attempt log row: blinking red dot (static under reduce-motion).
+const RadarDeniedRow = ({ entry }: { entry: RadarDeniedEntry }) => {
+  const pulse = useRef(new Animated.Value(1)).current
+  const [reduceMotion, setReduceMotion] = useState(true)
+
+  useEffect(() => { void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion) }, [])
+
+  useEffect(() => {
+    if (reduceMotion) { pulse.setValue(1); return }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 0.25, duration: 700, useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+    ]))
+    loop.start()
+    return () => loop.stop()
+  }, [pulse, reduceMotion])
+
+  return (
+    <View testID={`radar-denied-${entry.key}`} className="flex-row items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2.5 dark:border-red-900/60 dark:bg-red-950/30">
+      <Animated.View style={{ opacity: pulse }} className="mt-1 h-2.5 w-2.5 rounded-full bg-red-600" />
+      <View className="flex-1">
+        <Text className="font-sans-bold text-xs text-ink dark:text-white" numberOfLines={2}>{entry.copy}</Text>
+        <Text className="mt-0.5 font-sans text-[10px] text-muted dark:text-zinc-400" numberOfLines={1}>
+          {entry.studentName}{entry.reason ? ` · ${entry.reason.replace(/_/g, ' ')}` : ''} · {new Date(entry.timestamp).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        </Text>
+      </View>
+      <MaterialIcons name="block" size={15} color={pupColors.danger} />
+    </View>
+  )
 }
 
 export default function SessionDetailScreen() {
@@ -48,6 +156,10 @@ export default function SessionDetailScreen() {
   const [filter, setFilter] = useState<AttendanceStatus | 'all'>('all')
   const [rosterPage, setRosterPage] = useState(1)
   const [proofsOfClass, setProofsOfClass] = useState<ProofOfClass[]>([])
+  // F2 radar: stored scan attempts + live anomaly events + F1 finale broadcast.
+  const [attempts, setAttempts] = useState<ScanAttemptView[]>([])
+  const [anomalies, setAnomalies] = useState<AttendanceAnomalyEvent[]>([])
+  const [finale, setFinale] = useState<SessionFinaleSummary | null>(null)
   const [showQrModal, setShowQrModal] = useState(false)
   const [showValidityPrompt, setShowValidityPrompt] = useState(false)
   const [validityMinutes, setValidityMinutes] = useState('15')
@@ -65,6 +177,8 @@ export default function SessionDetailScreen() {
   const [lastUpdated, setLastUpdated] = useState(new Date())
   const [refreshLabel, setRefreshLabel] = useState('Updated just now')
   const [realtimeConnected, setRealtimeConnected] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const [reloadToken, setReloadToken] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const qrCodeRef = useRef<QrSvgHandle | null>(null)
@@ -81,6 +195,14 @@ export default function SessionDetailScreen() {
       setRecords(nextRecords)
       setProofsOfClass(nextProofs)
       setLastUpdated(new Date())
+      // F2 radar: cheap attempts refetch rides the same refresh cadence (live
+      // socket updates + polling fallback). Failures keep the previous pins —
+      // an offline cockpit must not blank the radar it already drew.
+      if (nextSession.mode !== 'online') {
+        void api.getScanAttempts(id).then((rows) => setAttempts(rows)).catch(() => undefined)
+      } else {
+        setAttempts([])
+      }
     } catch { showToast('error', 'Unable to refresh session', 'Please check your connection and try again.') }
   }, [id, showToast])
 
@@ -88,14 +210,15 @@ export default function SessionDetailScreen() {
     if (!currentUser) return
     setUser(currentUser)
     if (!id) return
+    setLoadError(false)
     void api.getSession(id).then(async (nextSession) => {
       const section = await api.getSection(nextSession.sectionId)
       if (currentUser.role === 'teacher' && section.teacherId !== currentUser.id) { router.replace('/'); return }
       const students = await api.getSectionStudents(section.id)
       setEnrolledStudents(students.map(({ attendance: _attendance, ...student }) => student))
       await refreshData()
-    }).catch(() => router.replace('/'))
-  }, [id, currentUser, refreshData])
+    }).catch(() => setLoadError(true))
+  }, [id, currentUser, refreshData, reloadToken])
 
   const onlineMode = session?.mode === 'online'
   const activeCheckpointExpiry = onlineMode
@@ -127,7 +250,17 @@ export default function SessionDetailScreen() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [session, activeCheckpointExpiry, activeGraceMinutes])
 
-  useEffect(() => { if (id) return subscribeToSession(id, () => { void refreshData() }, setRealtimeConnected) }, [id, refreshData])
+  useEffect(() => {
+    if (!id) return
+    return subscribeToSessionEvents(id, {
+      onUpdate: () => { void refreshData() },
+      onAnomaly: (event) => { setAnomalies((prev) => mergeAnomaly(prev, event)) },
+      // Idempotent by the server commit instant: repeated broadcasts keep the
+      // first banner instead of re-rendering the finale.
+      onFinale: (summary) => { setFinale((prev) => (prev && prev.endedAt === summary.endedAt ? prev : summary)) },
+      onConnectionChange: setRealtimeConnected,
+    })
+  }, [id, refreshData])
   useEffect(() => {
     if (!session?.isActive || realtimeConnected) { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }; return }
     pollRef.current = setInterval(() => { void refreshData() }, 10_000)
@@ -141,12 +274,43 @@ export default function SessionDetailScreen() {
     return () => clearInterval(timer)
   }, [lastUpdated])
 
-  const studentPins = useMemo<StudentMapPin[]>(() => records
-    .filter((record) => record.coordinates.latitude !== null && record.coordinates.longitude !== null)
-    .filter((record) => record.coordinates.latitude !== 0 || record.coordinates.longitude !== 0)
-    .map((record) => ({ id: record.studentId, latitude: record.coordinates.latitude as number, longitude: record.coordinates.longitude as number, label: record.studentName, program: record.studentProgram, status: record.status, timestamp: record.timestamp, deviceId: record.deviceId })), [records])
+  // F2 radar shaping: record pins keep their status colours (existing map
+  // behaviour preserved); denied attempts and live anomalies add red pins and
+  // the forensic log. Shaped above the early return to preserve the
+  // hooks-order fix.
+  const radar = useMemo(() => shapeRadarOverlay({
+    geofence: session?.mode === 'online' ? null : session?.geofence ?? null,
+    attempts,
+    records,
+    students: enrolledStudents,
+    anomalies,
+  }), [session?.mode, session?.geofence, attempts, records, enrolledStudents, anomalies])
 
-  if (!user || !session) return null
+  if (!user || !session) {
+    // Failure state beats a blank frame; still show the skeleton while the
+    // session chain (session -> section -> roster -> records) is in flight.
+    return (
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+        className="flex-1 bg-campus dark:bg-campus-dark"
+      >
+        <View className="flex-1 px-4 pt-8">
+          {loadError ? (
+            <CampusLoadError
+              title="Unable to open this session"
+              message="The session could not be loaded. Check your connection, then try again."
+              onRetry={() => setReloadToken((token) => token + 1)}
+            />
+          ) : (
+            <>
+              <CampusSkeleton className="h-24 w-full"><View /></CampusSkeleton>
+              <View className="mt-4"><ListSkeleton rows={3} rowClass="h-32" /></View>
+            </>
+          )}
+        </View>
+      </SafeAreaView>
+    )
+  }
   const isTeacher = user.role === 'teacher'
   const activeQrToken = onlineMode
     ? checkpointTab === 'start'
@@ -176,6 +340,9 @@ export default function SessionDetailScreen() {
     disputed: records.filter((record) => record.status === 'disputed').length,
     excused: records.filter((record) => record.status === 'excused').length,
   }
+  // F1 parity: the finale banner renders from the session:finale broadcast
+  // (idempotent by endedAt); the kiosk itself stays web-only by design.
+  const finaleModel: FinaleBannerModel | null = finale ? mapFinaleBanner(finale) : null
 
   const openCheckpointPrompt = (checkpoint: 'start' | 'end', options?: { regenerate?: boolean }) => {
     const remembered = checkpoint === 'start' ? startPinPlain : endPinPlain
@@ -354,7 +521,10 @@ export default function SessionDetailScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow={onlineMode ? 'Online attendance · no GPS' : 'Live attendance'}
         title={session.subjectName}
@@ -367,7 +537,41 @@ export default function SessionDetailScreen() {
           </>
         )}
       />
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 12 }} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 12 }} showsVerticalScrollIndicator={false}>
+      {finaleModel ? (
+        <CampusCard testID="session-finale-banner" className="mb-5 overflow-hidden bg-maroon dark:bg-maroon-deep">
+          <View className="flex-row items-center gap-3">
+            <Image source={require('../../../assets/pup-logo.png')} className="h-12 w-12" resizeMode="contain" />
+            <View className="flex-1">
+              <Text className="font-sans-bold text-[9px] uppercase tracking-[2px] text-golden">
+                Class complete · {new Date(finaleModel.endedAt).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+              </Text>
+              <Text className="mt-0.5 font-heading text-lg text-white">Attendance finalized</Text>
+            </View>
+            <View className="items-center rounded-2xl bg-golden px-3 py-2">
+              <Text className="font-heading text-xl text-maroon-dark">{finaleModel.rateLabel}</Text>
+              <Text className="font-sans-bold text-[8px] uppercase tracking-widest text-maroon-dark">rate</Text>
+            </View>
+          </View>
+          <View className="mt-3 flex-row flex-wrap gap-2">
+            {([
+              { label: 'P', title: 'Present', value: finaleModel.counts.present },
+              { label: 'L', title: 'Late', value: finaleModel.counts.late },
+              { label: 'A', title: 'Absent', value: finaleModel.counts.absent },
+              { label: 'E', title: 'Excused', value: finaleModel.counts.excused },
+              { label: 'I', title: 'Incomplete', value: finaleModel.counts.incomplete },
+            ] as const).map((item) => (
+              <View key={item.label} className="min-w-[18%] flex-1 items-center rounded-xl border border-golden/30 bg-white/5 py-2">
+                <Text accessibilityLabel={`${item.title}: ${item.value}`} className="font-heading text-base text-golden">{item.value}</Text>
+                <Text className="font-sans-bold text-[8px] uppercase tracking-widest text-white/60">{item.label}</Text>
+              </View>
+            ))}
+          </View>
+          <Text className="mt-2 font-sans text-[10px] text-white/60">
+            {finaleModel.capacity} students on the roster{finaleModel.counts.disputed || finaleModel.counts.pending ? ` · ${finaleModel.counts.disputed} disputed / ${finaleModel.counts.pending} pending await review` : ''}. Excused rows sit outside the rate.
+          </Text>
+        </CampusCard>
+      ) : null}
       {isTeacher ? <CampusCard className="mb-5 overflow-hidden bg-maroon dark:bg-maroon-deep">
         <View className="mb-4 w-full flex-row items-center"><View className="h-9 w-9 items-center justify-center rounded-xl bg-white/10"><MaterialIcons name={onlineMode ? 'videocam' : 'qr-code-2'} size={19} color={pupColors.golden} /></View><View className="ml-3 flex-1"><Text className="font-sans-bold text-base text-white">{onlineMode ? 'Checkpoint QR codes' : 'Session QR'}</Text><Text className="mt-1 font-sans text-xs text-white/60">{onlineMode ? 'Students check in at the start and check out at the end.' : 'Students scan this code inside the geofence.'}</Text></View></View>
         {onlineMode ? (
@@ -485,8 +689,32 @@ export default function SessionDetailScreen() {
         </CampusCard>
       ) : (
         <CampusCard className="mb-5 p-4">
-          <CardTitle icon="location-on" title="Geofence evidence" detail={`${studentPins.length} locations`} />
-          <View className="overflow-hidden rounded-2xl"><MapView latitude={session.geofence!.latitude} longitude={session.geofence!.longitude} radius={session.geofence!.radiusMeters} studentPins={studentPins} /></View>
+          <CardTitle icon="location-on" title="Geofence evidence" detail={`${radar.recordPinCount} locations`} />
+          <View className="mb-3 flex-row items-center gap-2">
+            <View className="flex-row items-center gap-1.5 rounded-full border border-line bg-zinc-50 px-3 py-1.5 dark:border-line-dark dark:bg-white/5">
+              <MaterialIcons name="my-location" size={13} color={pupColors.success} />
+              <Text accessibilityLabel={`${radar.insideCount} students inside the geofence`} className="font-sans-bold text-[11px] text-ink dark:text-white">Inside: {radar.insideCount}</Text>
+            </View>
+            <View className="flex-row items-center gap-1.5 rounded-full border border-line bg-zinc-50 px-3 py-1.5 dark:border-line-dark dark:bg-white/5">
+              <MaterialIcons name="gps-off" size={13} color={pupColors.danger} />
+              <Text accessibilityLabel={`${radar.deniedCount} denied scan attempts`} className="font-sans-bold text-[11px] text-ink dark:text-white">Denied: {radar.deniedCount}</Text>
+            </View>
+            <Text className="flex-1 text-right font-sans text-[10px] text-muted dark:text-zinc-500">Live geofence radar</Text>
+          </View>
+          <View className="overflow-hidden rounded-2xl"><MapView latitude={session.geofence!.latitude} longitude={session.geofence!.longitude} radius={session.geofence!.radiusMeters} studentPins={radar.mapPins} /></View>
+          {radar.deniedLog.length || radar.noGps.length ? (
+            <View className="mt-3 gap-2" accessibilityLabel={formatRadarCounters(radar.insideCount, radar.deniedCount)}>
+              {radar.deniedLog.map((entry) => <RadarDeniedRow key={entry.key} entry={entry} />)}
+              {radar.noGps.length ? (
+                <View className="rounded-2xl border border-line bg-zinc-50 px-3 py-2.5 dark:border-line-dark dark:bg-white/5">
+                  <Text className="font-sans-bold text-[10px] uppercase tracking-widest text-muted dark:text-zinc-500">No GPS fix · {radar.noGps.length}</Text>
+                  <Text className="mt-1 font-sans text-[11px] leading-4 text-ink dark:text-zinc-200" numberOfLines={3}>
+                    {radar.noGps.map((entry) => entry.studentName).join(' · ')}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
           <View className="mt-3 flex-row gap-2">{[
             { label: 'Latitude', value: session.geofence!.latitude.toFixed(5) }, { label: 'Longitude', value: session.geofence!.longitude.toFixed(5) }, { label: 'Radius', value: `${session.geofence!.radiusMeters} m` },
           ].map((item) => <View key={item.label} className="flex-1 rounded-xl bg-zinc-50 p-2 dark:bg-white/5"><Text className="font-sans text-[9px] text-muted dark:text-zinc-500">{item.label}</Text><Text className="mt-1 font-sans-bold text-[10px] text-ink dark:text-white">{item.value}</Text></View>)}</View>
@@ -522,9 +750,10 @@ export default function SessionDetailScreen() {
       </CampusCard>
 
       {isTeacher && session.isActive ? <CampusButton label="End session" icon="stop" onPress={endSession} className="border-red-600 bg-red-600 dark:border-red-600 dark:bg-red-600" /> : null}
-    </ScrollView>
+    </KeyboardAwareScrollView>
 
     <Modal visible={isTeacher && showValidityPrompt} transparent animationType="slide" onRequestClose={() => setShowValidityPrompt(false)}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={keyboardAvoidingBehavior}>
       <Pressable className="flex-1 justify-end bg-black/80" onPress={() => setShowValidityPrompt(false)}>
         <Pressable onPress={() => undefined} className="rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-surface-dark">
           <View className="mb-4 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
@@ -545,7 +774,7 @@ export default function SessionDetailScreen() {
               <View key={field.label} className="flex-1">
                 <Text className="mb-2 font-sans-bold text-xs text-ink dark:text-zinc-200">{field.label}</Text>
                 <View className="min-h-14 flex-row items-center rounded-2xl border border-zinc-300 bg-zinc-50 px-4 dark:border-zinc-700 dark:bg-white/5">
-                  <TextInput accessibilityLabel={field.label} className="flex-1 text-center font-heading text-xl text-ink dark:text-white" keyboardType="number-pad" value={field.value} onChangeText={field.setValue} />
+                  <TextInput accessibilityLabel={field.label} className="flex-1 font-heading text-xl text-ink dark:text-white" style={{ textAlign: 'center' }} keyboardType="number-pad" value={field.value} onChangeText={field.setValue} />
                   <Text className="font-sans text-[10px] text-muted dark:text-zinc-500">min</Text>
                 </View>
                 <Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">{field.hint}</Text>
@@ -558,11 +787,13 @@ export default function SessionDetailScreen() {
           </View>
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
 
       <Modal visible={isTeacher && showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}><Pressable accessibilityRole="button" accessibilityLabel="Close full-screen QR code" className="flex-1 items-center justify-center bg-black/95 px-5" onPress={() => setShowQrModal(false)}>{activeQrToken ? <View className="rounded-[32px] bg-white p-4"><QRCode value={activeQrToken} size={270} quietZone={8} backgroundColor={pupColors.white} color={pupColors.black} /></View> : null}{onlineMode && activePinPlain ? <View className="mt-4 flex-row items-center gap-2 rounded-2xl border border-golden px-4 py-2"><MaterialIcons name="pin" size={16} color={pupColors.golden} /><Text className="font-sans-bold text-sm uppercase tracking-[1px] text-golden">PIN {activePinPlain} · announce aloud</Text></View> : null}<Text className="mt-6 font-sans-medium text-sm text-white/60">Tap anywhere to close</Text></Pressable></Modal>
 
       <Modal visible={isTeacher && showCheckpointPrompt} transparent animationType="slide" onRequestClose={() => setShowCheckpointPrompt(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={keyboardAvoidingBehavior}>
         <Pressable className="flex-1 justify-end bg-black/80" onPress={() => setShowCheckpointPrompt(false)}>
           <Pressable onPress={() => undefined} className="rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-surface-dark">
             <View className="mb-4 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
@@ -585,7 +816,7 @@ export default function SessionDetailScreen() {
               <View className="flex-1">
                 <Text className="mb-2 font-sans-bold text-xs text-ink dark:text-zinc-200">Validity (seconds)</Text>
                 <View className="min-h-14 flex-row items-center rounded-2xl border border-zinc-300 bg-zinc-50 px-4 dark:border-zinc-700 dark:bg-white/5">
-                  <TextInput accessibilityLabel="Checkpoint validity seconds" className="flex-1 text-center font-heading text-xl text-ink dark:text-white" keyboardType="number-pad" value={checkpointValiditySeconds} onChangeText={setCheckpointValiditySeconds} />
+                  <TextInput accessibilityLabel="Checkpoint validity seconds" className="flex-1 font-heading text-xl text-ink dark:text-white" style={{ textAlign: 'center' }} keyboardType="number-pad" value={checkpointValiditySeconds} onChangeText={setCheckpointValiditySeconds} />
                   <Text className="font-sans text-[10px] text-muted dark:text-zinc-500">sec</Text>
                 </View>
                 <Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">60–300 sec</Text>
@@ -594,7 +825,7 @@ export default function SessionDetailScreen() {
                 <View className="flex-1">
                   <Text className="mb-2 font-sans-bold text-xs text-ink dark:text-zinc-200">Grace (minutes)</Text>
                   <View className="min-h-14 flex-row items-center rounded-2xl border border-zinc-300 bg-zinc-50 px-4 dark:border-zinc-700 dark:bg-white/5">
-                    <TextInput accessibilityLabel="Check-in grace minutes" className="flex-1 text-center font-heading text-xl text-ink dark:text-white" keyboardType="number-pad" value={checkpointGraceMinutes} onChangeText={setCheckpointGraceMinutes} />
+                    <TextInput accessibilityLabel="Check-in grace minutes" className="flex-1 font-heading text-xl text-ink dark:text-white" style={{ textAlign: 'center' }} keyboardType="number-pad" value={checkpointGraceMinutes} onChangeText={setCheckpointGraceMinutes} />
                     <Text className="font-sans text-[10px] text-muted dark:text-zinc-500">min</Text>
                   </View>
                   <Text className="mt-1 font-sans text-[10px] text-muted dark:text-zinc-500">0–60 min</Text>
@@ -621,7 +852,8 @@ export default function SessionDetailScreen() {
                   <View className="min-h-14 flex-1 flex-row items-center rounded-2xl border border-zinc-300 bg-zinc-50 px-4 dark:border-zinc-700 dark:bg-white/5">
                     <TextInput
                       accessibilityLabel="Meeting PIN"
-                      className="flex-1 text-center font-heading text-xl tracking-[6px] text-ink dark:text-white"
+                      className="flex-1 font-heading text-xl tracking-[6px] text-ink dark:text-white"
+                      style={{ textAlign: 'center' }}
                       keyboardType="number-pad"
                       maxLength={4}
                       value={checkpointPin}
@@ -654,6 +886,7 @@ export default function SessionDetailScreen() {
             </View>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   )

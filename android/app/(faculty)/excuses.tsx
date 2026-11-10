@@ -1,15 +1,16 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useFocusEffect } from 'expo-router'
 import type { AttendanceRecord, ExcuseDecision, Section, Subject, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
+import { useLoadState } from '../../hooks/use-load-state'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
-import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../components/CampusPrimitives'
+import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, CampusSkeleton, ListSkeleton, SectionHeading } from '../../components/CampusPrimitives'
 import { FilterChipsRow, FilterSelect } from '../../components/FilterPrimitives'
 import { useCampusToast } from '../../components/CampusToast'
 import {
@@ -18,6 +19,8 @@ import {
   filterExcuseRecords,
   type ExcuseTab,
 } from '../../lib/excuses'
+import { confirmSignOut } from '../../lib/sign-out'
+import { keyboardAvoidingBehavior } from '../../lib/keyboard'
 import { datePresetRange, type DatePreset } from '../../lib/filters'
 
 const dateOptions: Array<{ value: DatePreset; label: string }> = [
@@ -49,6 +52,7 @@ export default function FacultyExcusesScreen() {
   const [reviewNote, setReviewNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const requestRef = useRef(0)
+  const loadState = useLoadState()
 
   const load = useCallback(async () => {
     if (!currentUser) return
@@ -68,13 +72,15 @@ export default function FacultyExcusesScreen() {
       setRecords(nextRecords)
       setSubjects(nextSubjects)
       setSections(nextSections)
+      loadState.markReady()
     } catch (error) {
       if (request !== requestRef.current) return
+      loadState.markError()
       showToast('error', 'Unable to load excuses', error instanceof Error ? error.message : 'Check your connection and try again.')
     } finally {
       if (request === requestRef.current) setLoading(false)
     }
-  }, [currentUser, datePreset, selectedSectionId, showToast])
+  }, [currentUser, datePreset, selectedSectionId, showToast, loadState.reloadToken])
 
   useFocusEffect(useCallback(() => {
     setUser(currentUser)
@@ -128,11 +134,14 @@ export default function FacultyExcusesScreen() {
     }
   }
 
-  const signOut = () => { void api.logout(); router.replace('/') }
+  const signOut = confirmSignOut
   const isFiltered = selectedSectionId !== '' || datePreset !== 'all'
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow="Attendance integrity"
         title="Excuse requests"
@@ -193,10 +202,16 @@ export default function FacultyExcusesScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 8, gap: 12 }}
         showsVerticalScrollIndicator={false}
       >
-        {loading && !records.length ? (
-          <View accessibilityRole="progressbar" className="items-center py-16">
-            <ActivityIndicator size="large" color={isDark ? pupColors.golden : pupColors.maroon} />
-            <Text className="mt-3 font-sans text-sm text-muted dark:text-zinc-400">Loading excuse requests…</Text>
+        {loadState.state === 'error' ? (
+          <CampusLoadError
+            title="Unable to load excuses"
+            message="Excuse requests could not be fetched. Check your connection and try again."
+            onRetry={loadState.retry}
+          />
+        ) : loadState.state === 'loading' || (loading && !records.length) ? (
+          <View accessibilityLabel="Loading excuse requests" className="gap-3">
+            <CampusSkeleton className="h-24 w-full"><View /></CampusSkeleton>
+            <ListSkeleton rows={3} rowClass="h-28" />
           </View>
         ) : !visibleRecords.length ? (
           <CampusEmptyState
@@ -278,6 +293,7 @@ export default function FacultyExcusesScreen() {
       </ScrollView>
 
       <Modal visible={!!selectedRecord} transparent animationType="slide" onRequestClose={() => setSelectedRecord(null)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={keyboardAvoidingBehavior}>
         <Pressable className="flex-1 justify-end bg-black/60" onPress={() => setSelectedRecord(null)}>
           {selectedRecord ? (
             <Pressable
@@ -371,6 +387,7 @@ export default function FacultyExcusesScreen() {
             </Pressable>
           ) : null}
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   )

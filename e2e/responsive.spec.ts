@@ -6,6 +6,7 @@ import {
   DEPARTMENT_HEAD_EMAIL,
   IT_COORDINATOR_EMAIL,
   REGISTRAR_EMAIL,
+  installSessionCleanup,
 } from './helpers'
 import {
   ANONYMOUS_ROUTES,
@@ -17,6 +18,8 @@ import {
   STUDENT_ROUTES,
   type RouteCase,
 } from './responsive-routes'
+
+installSessionCleanup()
 
 /**
  * Responsive gate — every route must fit every phone/tablet width.

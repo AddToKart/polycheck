@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, CalendarCheck, MapPin } from 'lucide-react'
 import { api } from '@/lib/api-client'
-import { formatCampusDate, type User, type Section, type Subject } from '@polycheck/shared'
+import { formatCampusDate, formatSectionHeading, type User, type Section, type Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import MapPicker from '@/components/MapPicker'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -146,7 +146,7 @@ export default function StudentCreateSessionPage() {
           </div>
 
           <h1 className="text-3xl font-heading font-bold text-maroon dark:text-white mb-2">Create Session</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-8">{subject?.name} &middot; Section {section.section}</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-8">{subject?.name} &middot; {formatSectionHeading(section)}</p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <Card>

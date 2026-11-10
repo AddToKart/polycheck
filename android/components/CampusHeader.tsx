@@ -12,34 +12,115 @@ type CampusHeaderProps = {
 }
 
 export const CampusHeader = ({ eyebrow, title, subtitle, onBack, actions }: CampusHeaderProps) => (
-  <View className="px-4 pb-3 pt-2">
-    <View className="relative overflow-hidden rounded-none border-b-4 border-b-golden bg-maroon px-5 pb-5 pt-4 dark:bg-maroon-deep">
-      <View className="mb-4 flex-row items-center justify-between">
-        <View className="flex-row items-center gap-3">
+  <View style={{ paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8 }}>
+    <View
+      style={{
+        position: 'relative',
+        overflow: 'hidden',
+        borderBottomWidth: 4,
+        borderBottomColor: pupColors.golden,
+        backgroundColor: pupColors.maroon,
+        paddingHorizontal: 20,
+        paddingBottom: 20,
+        paddingTop: 16,
+      }}
+      className="relative overflow-hidden rounded-none border-b-4 border-b-golden bg-maroon px-5 pb-5 pt-4 dark:bg-maroon-deep"
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           {onBack ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Go back"
               hitSlop={8}
               onPress={onBack}
-              className="h-10 w-10 items-center justify-center rounded-none border border-white/20 bg-white/10"
+              style={{
+                width: 40,
+                height: 40,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 1,
+                borderColor: 'rgba(255, 255, 255, 0.2)',
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              }}
             >
               <MaterialIcons name="arrow-back" size={20} color={pupColors.white} />
             </Pressable>
           ) : (
-            <Image source={require('../assets/pup-logo.png')} className="h-10 w-10" resizeMode="contain" />
+            <Image
+              source={require('../assets/pup-logo.png')}
+              style={{ width: 40, height: 40 }}
+              resizeMode="contain"
+            />
           )}
           <View>
-            <Text className="font-sans-bold text-[9px] uppercase tracking-[2.5px] text-golden">Polycheck</Text>
-            <Text className="mt-0.5 font-sans-medium text-[10px] text-white/70">PUP Attendance</Text>
+            <Text
+              style={{
+                fontFamily: 'DMSans_700Bold',
+                fontSize: 9,
+                textTransform: 'uppercase',
+                letterSpacing: 2.5,
+                color: pupColors.golden,
+              }}
+              className="font-sans-bold text-[9px] uppercase tracking-[2.5px] text-golden"
+            >
+              Polycheck
+            </Text>
+            <Text
+              style={{
+                fontFamily: 'DMSans_500Medium',
+                fontSize: 10,
+                color: 'rgba(255, 255, 255, 0.7)',
+                marginTop: 2,
+              }}
+              className="mt-0.5 font-sans-medium text-[10px] text-white/70"
+            >
+              PUP Attendance
+            </Text>
           </View>
         </View>
-        {actions ? <View className="flex-row items-center gap-2">{actions}</View> : null}
+        {actions ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>{actions}</View> : null}
       </View>
 
-      <Text className="font-sans-bold text-[10px] uppercase tracking-[2.5px] text-golden">{eyebrow}</Text>
-      <Text className="mt-1 font-sans-bold text-3xl font-bold leading-8 text-white" numberOfLines={2}>{title}</Text>
-      {subtitle ? <Text className="mt-1.5 font-sans text-xs leading-5 text-white/75">{subtitle}</Text> : null}
+      <Text
+        style={{
+          fontFamily: 'DMSans_700Bold',
+          fontSize: 10,
+          textTransform: 'uppercase',
+          letterSpacing: 2.5,
+          color: pupColors.golden,
+        }}
+        className="font-sans-bold text-[10px] uppercase tracking-[2.5px] text-golden"
+      >
+        {eyebrow}
+      </Text>
+      <Text
+        style={{
+          fontFamily: 'DMSans_700Bold',
+          fontSize: 28,
+          lineHeight: 34,
+          color: '#FFFFFF',
+          marginTop: 4,
+        }}
+        className="mt-1 font-sans-bold text-3xl font-bold leading-8 text-white"
+        numberOfLines={2}
+      >
+        {title}
+      </Text>
+      {subtitle ? (
+        <Text
+          style={{
+            fontFamily: 'DMSans_400Regular',
+            fontSize: 12,
+            lineHeight: 20,
+            color: 'rgba(255, 255, 255, 0.75)',
+            marginTop: 6,
+          }}
+          className="mt-1.5 font-sans text-xs leading-5 text-white/75"
+        >
+          {subtitle}
+        </Text>
+      ) : null}
     </View>
   </View>
 )

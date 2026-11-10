@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Download, Filter } from 'lucide-react'
+import { Download, FileText, Filter, Loader2 } from 'lucide-react'
 import { PaginationBar } from '@/components/ui/pagination-bar'
 
 const REPORTS_PAGE_SIZE = 10
@@ -23,11 +23,30 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useNotifications } from '@/lib/notifications'
 
 const { startDate: defaultStartDate, endDate: defaultEndDate } = getRecentCampusDateRange(30)
 
+/** F4 (WF-LD1): the official PUP class record is generated server-side (pdfkit). */
+function triggerBrowserDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.style.display = 'none'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+}
+
+function safeFileSegment(value: string): string {
+  return value.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
 export default function ReportsPage() {
   const router = useRouter()
+  const { addNotification } = useNotifications()
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [sections, setSections] = useState<Section[]>([])
@@ -121,7 +140,7 @@ export default function ReportsPage() {
     setDateTo(defaultEndDate)
   }
 
-  const filteredSummaries = report?.summaries ?? []
+  const filteredSummaries = useMemo(() => report?.summaries ?? [], [report])
   const totalPages = Math.max(1, Math.ceil(filteredSummaries.length / REPORTS_PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
   const pagedSummaries = useMemo(
@@ -165,6 +184,41 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url)
   }
 
+  // F4: the class record is only meaningful for one specific section.
+  const [classRecordLoading, setClassRecordLoading] = useState(false)
+  const handleClassRecordExport = async () => {
+    if (!selectedSection || classRecordLoading) return
+    setClassRecordLoading(true)
+    try {
+      const blob = await api.downloadAssistantFile(
+        `/docs/class-record/${encodeURIComponent(selectedSection)}?format=pdf`,
+      )
+      const section = sections.find((item) => item.id === selectedSection)
+      const subject = section ? subjects.find((item) => item.id === section.subjectId) : undefined
+      const filenameSegments = [subject?.code, section?.section].map((value) =>
+        value ? safeFileSegment(value) : '',
+      )
+      const filename =
+        filenameSegments.filter(Boolean).length > 0
+          ? `PUP-Class-Record-${filenameSegments.filter(Boolean).join('-')}.pdf`
+          : 'PUP-Class-Record.pdf'
+      triggerBrowserDownload(blob, filename)
+      addNotification(
+        'success',
+        'Class record downloaded',
+        'The official PUP class record PDF has been saved.',
+      )
+    } catch (error) {
+      addNotification(
+        'error',
+        'Download failed',
+        error instanceof Error ? error.message : 'Unable to download the class record.',
+      )
+    } finally {
+      setClassRecordLoading(false)
+    }
+  }
+
   const handleLogout = () => {
     api.logout()
     router.push('/')
@@ -180,10 +234,26 @@ export default function ReportsPage() {
         <div className="p-8 max-w-6xl mx-auto">
           <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
             <h1 className="text-3xl font-heading font-bold text-maroon dark:text-white">Reports</h1>
-            <Button onClick={handleExport}>
-              <Download className="w-4 h-4" />
-              Export
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {selectedSection ? (
+                <Button
+                  variant="outline"
+                  onClick={() => void handleClassRecordExport()}
+                  disabled={classRecordLoading}
+                >
+                  {classRecordLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <FileText className="w-4 h-4" />
+                  )}
+                  Class record
+                </Button>
+              ) : null}
+              <Button onClick={handleExport}>
+                <Download className="w-4 h-4" />
+                Export
+              </Button>
+            </div>
           </div>
 
           {user.role === 'teacher' && user.isDepartmentHead ? (
@@ -488,6 +558,17 @@ export default function ReportsPage() {
                   </tbody>
                 </table>
               </div>
+              {filteredSummaries.length > 0 && (
+                <PaginationBar
+                  page={safePage}
+                  totalPages={totalPages}
+                  totalItems={filteredSummaries.length}
+                  pageSize={REPORTS_PAGE_SIZE}
+                  itemName="sections"
+                  onPageChange={setPage}
+                  showNumbers
+                />
+              )}
             </CardContent>
           </Card>
         </div>

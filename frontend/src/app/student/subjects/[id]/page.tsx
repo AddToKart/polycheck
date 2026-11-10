@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { ArrowLeft, BookOpen, CalendarDays, MapPin, User, GraduationCap, Clock, LogOut, Plus, Camera, Play, Crown } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { Student, Section, Session, SectionRole } from '@polycheck/shared'
+import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -81,7 +82,7 @@ export default function StudentSubjectDetailPage() {
           </div>
 
           <h1 className="text-3xl font-heading font-bold text-foreground mb-2">{subject?.name}</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">{subject?.code} &middot; Section {section.section}</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">{subject?.code} &middot; {formatSectionHeading(section)}</p>
 
           {/* Role Badges */}
           {studentRoles.length > 0 && (

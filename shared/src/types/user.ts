@@ -18,8 +18,10 @@ export interface User {
   /** Mobile installation id bound to a student account (anti-cheat device binding). */
   boundDeviceId?: string | null
   deviceBoundAt?: string | null
-  /** While set and in the future, student mobile logins are rejected. */
+  /** While set and in the future, student logins from other devices are rejected. */
   deviceCooldownUntil?: string | null
+  /** Device exempt from the cooldown (the device that logged out or unregistered). */
+  cooldownDeviceId?: string | null
   /** Nullable per-teacher override; null means "follow the institution setting". */
   canResetStudentPasswords?: boolean | null
   canEmergencyUnbindDevices?: boolean | null

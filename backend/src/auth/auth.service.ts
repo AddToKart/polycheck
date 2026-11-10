@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
   HttpException,
   HttpStatus,
   Logger,
@@ -17,7 +18,6 @@ import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import type { User } from '../prisma/client'
 import { BetterAuthService } from './better-auth.service'
-import { broadcastsLoginReplacement } from './session-policy'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { DUMMY_PASSWORD_HASH, PASSWORD_HASH_COST } from './password-policy'
 import { ConfigService } from '@nestjs/config'
@@ -47,10 +47,22 @@ const PASSWORD_CHANGE_RATE_WINDOW_SECONDS = positiveInt(process.env.PASSWORD_CHA
 // Cache-hygiene lease only. Scan validation always reads the PostgreSQL key,
 // so lease expiry cannot make a stale Redis key authoritative.
 const KEY_ROTATION_LOCK_TTL_SECONDS = 10
+// Student logins are serialized per account so two simultaneous cross-device
+// attempts cannot both clear the device gate before either session exists.
+// The lease only covers the gate plus session creation; contention waits are
+// bounded so a wedged holder can never pin a login request open.
+const STUDENT_LOGIN_LOCK_TTL_SECONDS = 15
+const STUDENT_LOGIN_LOCK_MAX_ATTEMPTS = 10
+const STUDENT_LOGIN_LOCK_RETRY_BASE_MS = 200
+const STUDENT_LOGIN_LOCK_RETRY_MAX_MS = 500
 
 function positiveInt(value: string | undefined, fallback: number) {
   const parsed = value === undefined ? NaN : Number(value)
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
+}
+
+function studentLoginLockRetryDelayMs(attempt: number) {
+  return Math.min(STUDENT_LOGIN_LOCK_RETRY_BASE_MS * 2 ** (attempt - 1), STUDENT_LOGIN_LOCK_RETRY_MAX_MS)
 }
 
 export interface AuthResult {
@@ -76,6 +88,7 @@ export interface AuthResult {
     boundDeviceId?: string | null
     deviceBoundAt?: Date | null
     deviceCooldownUntil?: Date | null
+    cooldownDeviceId?: string | null
     contactEmail?: string | null
     contactPhone?: string | null
     canResetStudentPasswords?: boolean | null
@@ -128,7 +141,7 @@ export class AuthService {
     password: string,
     clientAddress = 'unknown',
     headers = new Headers(),
-    mobile?: { channel: 'mobile'; deviceId?: string },
+    device?: { channel: 'web' | 'mobile'; deviceId?: string },
   ): Promise<AuthResult> {
     const normalizedStudentId = studentId.trim().toUpperCase()
     await this.assertLoginWithinLimit('student', normalizedStudentId, clientAddress)
@@ -152,26 +165,32 @@ export class AuthService {
     // (rather than in the global guard) covers the @Public login routes.
     await this.assertLoginAllowedDuringMaintenance(user)
 
-    // Reject before creating a session: Better Auth would replace the active
-    // session on login, and a cooldown rejection must not sign the student out
-    // of a still-valid device.
-    if (mobile?.channel === 'mobile') {
-      await this.deviceBinding?.assertMobileLoginAllowed(user.id)
-    }
+    // Reject before creating a session: the device gates must never sign the
+    // student out of a still-valid device, and a successful login no longer
+    // replaces sibling sessions. The per-account lock serializes the gate with
+    // session creation + device stamping so two concurrent cross-device logins
+    // cannot both pass before either session row exists.
+    const deviceId = device?.deviceId?.trim() || null
+    const loginLock = await this.acquireStudentLoginLock(user.id)
+    try {
+      await this.deviceBinding?.assertLoginAllowed(user.id, deviceId)
 
-    const result = await this.createSession(user, password, headers)
-    if (mobile?.channel === 'mobile') {
-      try {
-        await this.deviceBinding?.registerBinding(user.id, mobile.deviceId, user.role)
-      } catch (error) {
-        // Binding is a security hardening layer; a transient failure must not
-        // turn a successful credential check into a failed login.
-        this.logger.warn(
-          `Could not bind device for user ${user.id}: ${error instanceof Error ? error.message : String(error)}`,
-        )
+      const result = await this.createSession(user, password, headers, deviceId)
+      if (device?.channel === 'mobile') {
+        try {
+          await this.deviceBinding?.registerBinding(user.id, deviceId, user.role)
+        } catch (error) {
+          // Binding is a security hardening layer; a transient failure must not
+          // turn a successful credential check into a failed login.
+          this.logger.warn(
+            `Could not bind device for user ${user.id}: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        }
       }
+      return result
+    } finally {
+      if (loginLock) await this.releaseStudentLoginLock(loginLock)
     }
-    return result
   }
 
   async loginFaculty(
@@ -319,8 +338,38 @@ export class AuthService {
     return { revoked: true, message: 'Signing key revoked. Provision a new key before generating QR tokens.' }
   }
 
-  async logout(headers: Headers) {
+  async logout(
+    headers: Headers,
+    user?: { id: string; role: string },
+    deviceId?: string,
+    armDeviceCooldown = true,
+    ipAddress?: string,
+  ) {
+    // Revoke first. If Better Auth rejects the sign-out the session may still
+    // exist, so no cooldown may be armed for a logout that never happened.
     const result = await this.betterAuth.auth.api.signOut({ headers, returnHeaders: true })
+
+    // Student logouts arm the device cooldown after the session is gone: the
+    // logging-out device stays exempt, every other device must wait (or the
+    // instructor can release it). Arming requires explicit opt-in
+    // (programmatic/forced web logouts send `armDeviceCooldown: false`) and a
+    // real device id (un-updated mobile builds send none, and a
+    // device-agnostic cooldown would lock every device out with no exempt
+    // device). Staff logouts and forced/security revocations never arm.
+    const normalizedDeviceId = deviceId?.trim()
+    if (user?.role === 'student' && armDeviceCooldown !== false && normalizedDeviceId) {
+      try {
+        await this.deviceBinding?.armLogoutCooldown(user.id, user.role, normalizedDeviceId, ipAddress)
+      } catch (error) {
+        // The logout already completed; a failed arming is logged and the
+        // active-session gate still protects the account.
+        this.logger.error(
+          `Could not arm the logout cooldown for student ${user.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
+      }
+    }
     return { message: 'Logged out successfully', headers: result.headers }
   }
 
@@ -389,19 +438,19 @@ export class AuthService {
     return this.getProfile(userId)
   }
 
-  private async createSession(user: User, password: string, headers: Headers): Promise<AuthResult> {
+  private async createSession(
+    user: User,
+    password: string,
+    headers: Headers,
+    deviceId?: string | null,
+  ): Promise<AuthResult> {
     try {
-      const result = await this.betterAuth.auth.api.signInEmail({
-        body: { email: user.authEmail, password, rememberMe: true },
+      const result = await this.betterAuth.signInWithDevice(
+        user.id,
+        { email: user.authEmail, password, rememberMe: true },
         headers,
-        returnHeaders: true,
-      })
-      // Only students are single-device: staff logins may coexist across the
-      // web dashboard and the mobile app, so they must not kick other devices
-      // or trigger the login-replacement client path.
-      if (broadcastsLoginReplacement(user.role)) {
-        this.events.emit('auth.session-replaced', { userId: user.id, reason: 'new_login' })
-      }
+        deviceId,
+      )
       return {
         token: result.headers.get('set-auth-token') ?? undefined,
         headers: result.headers,
@@ -477,6 +526,51 @@ export class AuthService {
     }
   }
 
+  /**
+   * Acquires the per-account student-login lease with bounded retries. Returns
+   * `null` when Redis is unavailable: login availability wins over
+   * serialization (the device gate remains authoritative), and the caller
+   * proceeds without the lock. Exhausted contention is a 409 — the gate and
+   * session creation never run unlocked just because another attempt is in
+   * flight.
+   */
+  private async acquireStudentLoginLock(userId: string): Promise<{ key: string; token: string } | null> {
+    const key = `student-login:${userId}`
+    for (let attempt = 1; attempt <= STUDENT_LOGIN_LOCK_MAX_ATTEMPTS; attempt += 1) {
+      let token: string | null
+      try {
+        token = await this.redis.acquireLock(key, STUDENT_LOGIN_LOCK_TTL_SECONDS)
+      } catch (error) {
+        this.logger.warn(
+          `Could not acquire the student login lock ${key}; continuing without serialization: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
+        return null
+      }
+      if (token) return { key, token }
+      if (attempt < STUDENT_LOGIN_LOCK_MAX_ATTEMPTS) {
+        await new Promise<void>((resolve) => setTimeout(resolve, studentLoginLockRetryDelayMs(attempt)))
+      }
+    }
+    throw new ConflictException('Another sign-in attempt is in progress. Please try again.')
+  }
+
+  private async releaseStudentLoginLock(lock: { key: string; token: string }) {
+    try {
+      const released = await this.redis.releaseLock(lock.key, lock.token)
+      if (!released) this.logger.warn(`Student login lock ${lock.key} was no longer owned at cleanup`)
+    } catch (error) {
+      // The lease expires on its own; cleanup failure must never turn a login
+      // that already created its session into an apparent API failure.
+      this.logger.error(
+        `Failed to release the student login lock ${lock.key}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    }
+  }
+
   private async withDelegatedPermissions(result: AuthResult, user: User): Promise<AuthResult> {
     if (user.role !== 'teacher' || !this.deviceBinding) return result
     try {
@@ -511,6 +605,7 @@ export class AuthService {
       boundDeviceId: user.boundDeviceId,
       deviceBoundAt: user.deviceBoundAt,
       deviceCooldownUntil: user.deviceCooldownUntil,
+      cooldownDeviceId: user.cooldownDeviceId,
       contactEmail: user.contactEmail,
       contactPhone: user.contactPhone,
       canResetStudentPasswords: user.canResetStudentPasswords,

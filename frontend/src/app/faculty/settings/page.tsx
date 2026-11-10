@@ -9,9 +9,9 @@ import {
   type KeyboardEvent,
 } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { AiCapabilities, User } from '@polycheck/shared'
-import { canAccessItOperations } from '@polycheck/shared'
-import { KeyRound, Save, Settings, Sparkles, Trash2 } from 'lucide-react'
+import type { AiCapabilities, PrivacyCenterSnapshot, User } from '@polycheck/shared'
+import { canAccessItOperations, PRIVACY_DATA_INVENTORY, consentCoveragePercent } from '@polycheck/shared'
+import { KeyRound, Loader2, RefreshCw, Save, Settings, ShieldCheck, Sparkles, Trash2 } from 'lucide-react'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -19,6 +19,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
+import { LoadingSpinner } from '@/lib/hooks'
+import { useNotifications } from '@/lib/notifications'
 import { SettingSwitch } from './SettingSwitch'
 import {
   SETTINGS_TABS,
@@ -47,6 +49,8 @@ const SAVE_SUCCESS: Record<SettingsTabId, string> = {
   accounts: 'Account access settings saved.',
   ai: 'AI assistant settings saved.',
   system: 'System maintenance settings saved.',
+  // The privacy tab is read-only (no save row) — entry kept for the exhaustive Record.
+  privacy: '',
 }
 
 const STATUS_TONE_CLASSES: Record<AssistantStatusTone, string> = {
@@ -107,6 +111,271 @@ function SettingFieldRow({
   )
 }
 
+function triggerBrowserDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.style.display = 'none'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+}
+
+const DPO_SUMMARY_PATH = '/docs/dpo-summary?format=pdf'
+
+/**
+ * F6 (WF-LD8): the RA 10173 transparency tab. Every number is queried from
+ * production at render time — the big golden zero below is the nightly
+ * shredder's live attestation, and the consent ledger comes straight from the
+ * account tables. Read-only by design: no save row, no editable keys.
+ */
+function PrivacyTabPanel() {
+  const { addNotification } = useNotifications()
+  const [snapshot, setSnapshot] = useState<PrivacyCenterSnapshot | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [reloadNonce, setReloadNonce] = useState(0)
+  const [dpoDownloading, setDpoDownloading] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    setLoadError('')
+    api
+      .getPrivacyCenter()
+      .then((result) => {
+        if (active) setSnapshot(result)
+      })
+      .catch((error) => {
+        if (active) {
+          setLoadError(
+            error instanceof Error ? error.message : 'Unable to load the privacy center',
+          )
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [reloadNonce])
+
+  const handleDownloadDpo = async () => {
+    if (dpoDownloading) return
+    setDpoDownloading(true)
+    try {
+      const blob = await api.downloadAssistantFile(DPO_SUMMARY_PATH)
+      triggerBrowserDownload(blob, 'PUP-DPO-Summary.pdf')
+      addNotification(
+        'success',
+        'DPO summary downloaded',
+        'The RA 10173 transparency one-pager has been saved.',
+      )
+    } catch (error) {
+      addNotification(
+        'error',
+        'Download failed',
+        error instanceof Error ? error.message : 'Unable to download the DPO summary.',
+      )
+    } finally {
+      setDpoDownloading(false)
+    }
+  }
+
+  const coverage =
+    snapshot && snapshot.consent.totalActive > 0
+      ? consentCoveragePercent(snapshot.consent.covered, snapshot.consent.totalActive)
+      : null
+  const coverageDenominator = snapshot?.consent.totalActive ?? 0
+
+  return (
+    <div className="space-y-6">
+      <section className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <ShieldCheck
+            className="mt-0.5 h-5 w-5 shrink-0 text-maroon dark:text-golden"
+            aria-hidden="true"
+          />
+          <div>
+            <h2 className="text-lg font-heading font-bold text-zinc-900 dark:text-zinc-100">
+              RA 10173 transparency center
+            </h2>
+            <p className="mt-1 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
+              Every claim below is computed from the production tables at render time — the same
+              numbers the auditors can query. The DPO one-pager mirrors this page.
+            </p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          onClick={() => void handleDownloadDpo()}
+          disabled={dpoDownloading || loading}
+          className="shrink-0 bg-maroon text-white hover:bg-maroon-dark"
+        >
+          {dpoDownloading ? (
+            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
+          ) : null}
+          {dpoDownloading ? 'Preparing…' : 'DPO summary (PDF)'}
+        </Button>
+      </section>
+
+      {loadError ? (
+        <div role="alert" className="space-y-3">
+          <p className="border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+            {loadError}
+          </p>
+          <Button variant="outline" size="sm" onClick={() => setReloadNonce((n) => n + 1)}>
+            <RefreshCw className="h-4 w-4" aria-hidden />
+            Retry
+          </Button>
+        </div>
+      ) : null}
+
+      {loading ? (
+        <div className="flex items-center justify-center gap-3 py-12 text-sm text-zinc-500">
+          <LoadingSpinner />
+          Loading the live privacy attestation…
+        </div>
+      ) : null}
+
+      {snapshot ? (
+        <div className="space-y-6" aria-busy={loading}>
+          {/* Card 1 — What we store */}
+          <section className="space-y-3">
+            <div>
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">
+                What we store
+              </h3>
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                The plain-language inventory: each signal, why it exists, its lawful basis, and its
+                lifetime.
+              </p>
+            </div>
+            <div className="overflow-x-auto border border-zinc-200 dark:border-zinc-800">
+              <table className="w-full min-w-[640px] text-left text-sm">
+                <thead className="border-b border-zinc-200 text-[10px] uppercase tracking-widest text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                  <tr>
+                    <th scope="col" className="px-4 py-3">Data</th>
+                    <th scope="col" className="px-4 py-3">Purpose</th>
+                    <th scope="col" className="px-4 py-3">Lawful basis</th>
+                    <th scope="col" className="px-4 py-3">Lifetime</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                  {PRIVACY_DATA_INVENTORY.map((row) => (
+                    <tr key={row.data}>
+                      <td className="px-4 py-3 font-semibold text-zinc-800 dark:text-zinc-100">
+                        {row.data}
+                      </td>
+                      <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">{row.purpose}</td>
+                      <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">
+                        {row.lawfulBasis}
+                      </td>
+                      <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">{row.lifetime}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Card 2 — Ephemeral telemetry (the live attestation) */}
+          <section className="space-y-3 border border-zinc-200 p-4 dark:border-zinc-800">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">
+              Ephemeral telemetry
+            </h3>
+            <div data-testid="privacy-attestation" className="flex flex-wrap items-end gap-4">
+              <p className="text-4xl font-heading font-bold leading-none text-golden">0</p>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+                  rows live beyond retention
+                </p>
+                <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+                  {snapshot.ephemeral.lastRunAt
+                    ? `Verified by the nightly shred on ${new Date(snapshot.ephemeral.lastRunAt).toLocaleString('en-PH')}`
+                    : 'Verification pending — no shred run recorded on this instance yet.'}
+                </p>
+              </div>
+            </div>
+            <dl className="grid grid-cols-1 gap-2 text-xs text-zinc-600 dark:text-zinc-300 sm:grid-cols-3">
+              <div>
+                <dt className="text-[10px] uppercase tracking-widest text-zinc-400">
+                  Retention window
+                </dt>
+                <dd className="mt-0.5 font-semibold">{snapshot.retentionDays} days</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase tracking-widest text-zinc-400">
+                  Records shredded (last run)
+                </dt>
+                <dd className="mt-0.5 font-semibold">
+                  {snapshot.ephemeral.recordsShredded ?? 'Unknown'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase tracking-widest text-zinc-400">
+                  Attempts shredded (last run)
+                </dt>
+                <dd className="mt-0.5 font-semibold">
+                  {snapshot.ephemeral.attemptsShredded ?? 'Unknown'}
+                </dd>
+              </div>
+            </dl>
+            <p className="text-xs italic leading-relaxed text-zinc-500 dark:text-zinc-400">
+              Retention is enforced nightly — coordinates past {snapshot.retentionDays} days are
+              shredded.
+            </p>
+          </section>
+
+          {/* Card 3 — Consent ledger */}
+          <section className="space-y-3 border border-zinc-200 p-4 dark:border-zinc-800">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">
+              Consent ledger
+            </h3>
+            {coverage === null ? (
+              <div>
+                <p className="text-2xl font-heading font-bold text-zinc-800 dark:text-zinc-100">
+                  {coverageDenominator}
+                </p>
+                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                  active account{coverageDenominator === 1 ? '' : 's'} — consent coverage is not
+                  meaningful yet.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <p className="text-2xl font-heading font-bold text-maroon dark:text-golden">
+                  {coverage}%
+                </p>
+                <div
+                  className="mt-2 h-2.5 w-full overflow-hidden bg-zinc-200 dark:bg-zinc-800"
+                  role="img"
+                  aria-label={`Consent coverage ${coverage} percent`}
+                >
+                  <div
+                    className="h-full bg-golden"
+                    style={{ width: `${coverage}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
+                  {snapshot.consent.covered} of {snapshot.consent.totalActive} active account
+                  {snapshot.consent.totalActive === 1 ? '' : 's'} on the current notice
+                </p>
+              </div>
+            )}
+            <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+              Notice version {snapshot.consent.version}
+            </p>
+          </section>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function InstitutionSettingsPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -127,16 +396,24 @@ function InstitutionSettingsPageInner() {
   const [capabilitiesLoading, setCapabilitiesLoading] = useState(true)
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
 
-  // IT coordinators only see the System tab; super admins keep the full console.
+  // IT coordinators see the System and Privacy tabs (the System-suite gate);
+  // super admins keep the full console. Plain teachers never reach this page.
   const visibleTabs =
-    user?.role === 'super_admin' ? SETTINGS_TABS : SETTINGS_TABS.filter((tab) => tab.id === 'system')
+    user?.role === 'super_admin'
+      ? SETTINGS_TABS
+      : SETTINGS_TABS.filter((tab) => tab.id === 'system' || tab.id === 'privacy')
 
   useEffect(() => {
     setActiveTab(tabFromUrl)
   }, [tabFromUrl])
 
   useEffect(() => {
-    if (user && user.role !== 'super_admin' && activeTab !== 'system') {
+    if (
+      user &&
+      user.role !== 'super_admin' &&
+      activeTab !== 'system' &&
+      activeTab !== 'privacy'
+    ) {
       setActiveTab('system')
       router.replace('/faculty/settings?tab=system', { scroll: false })
     }
@@ -687,6 +964,9 @@ function InstitutionSettingsPageInner() {
                   </div>
                 ) : null}
 
+                {activeTab === 'privacy' ? <PrivacyTabPanel /> : null}
+
+                {activeTab !== 'privacy' ? (
                 <div className="flex flex-col gap-3 border-t border-zinc-200 pt-6 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-h-5">
                     {tabFeedback ? (
@@ -720,6 +1000,7 @@ function InstitutionSettingsPageInner() {
                     {savingTab === activeTab ? 'Saving…' : 'Save changes'}
                   </Button>
                 </div>
+                ) : null}
               </div>
             </CardContent>
           </Card>

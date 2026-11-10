@@ -120,8 +120,11 @@ export const StudentWeekCalendar = ({
     {/* Horizontal Week Viewport */}
     <ScrollView
       horizontal
-      decelerationRate="fast"
       snapToInterval={242}
+      snapToAlignment="start"
+      disableIntervalMomentum
+      nestedScrollEnabled
+      directionalLockEnabled
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ gap: 12, paddingRight: 32, paddingBottom: 12 }}
     >
@@ -149,7 +152,6 @@ export const StudentWeekCalendar = ({
               ) : events.map((event) => (
                 <Pressable
                   key={event.id}
-                  hitSlop={4}
                   onPress={() => onSelectEvent(event)}
                   className={`rounded-none border-l-4 bg-zinc-50 p-3 dark:bg-white/5 ${event.status === 'moved' ? 'border-l-zinc-400' : event.type === 'schedule' ? 'border-l-zinc-300' : event.studentStatus === 'present' ? 'border-l-emerald-500' : event.studentStatus === 'late' ? 'border-l-amber-400' : event.studentStatus === 'absent' ? 'border-l-red-500' : 'border-l-maroon dark:border-l-golden'}`}
                 >
@@ -208,7 +210,13 @@ export const StudentCalendarEventModal = ({
 
   return (
     <Modal visible={Boolean(event)} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.80)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+      <View className="flex-1 items-center justify-center p-5">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss class detail"
+          className="absolute inset-0 bg-black/80"
+          onPress={onClose}
+        />
         {event ? (
           <View className="w-full border border-t-[5px] border-t-golden border-maroon bg-white p-5 dark:border-maroon-line dark:bg-surface-dark">
             <View className="mb-3 flex-row items-center justify-between border-b border-line pb-2 dark:border-line-dark">

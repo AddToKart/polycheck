@@ -6,7 +6,10 @@ import {
   apiLoginStudent,
   trackErrors,
   assertNoErrors,
+  installSessionCleanup,
 } from './helpers'
+
+installSessionCleanup()
 
 test.use({ serviceWorkers: 'block' })
 

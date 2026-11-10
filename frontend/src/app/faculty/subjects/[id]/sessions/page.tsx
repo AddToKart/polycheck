@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Search, ArrowLeft, CalendarDays } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Subject, Section, Session } from '@polycheck/shared'
+import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -106,7 +107,7 @@ function SubjectSessionsContent() {
   }, [paged])
 
   const getSectionLabel = (sec: Section) =>
-    `Section ${sec.section}${sec.room ? ` \u2014 ${sec.room}` : ''}`
+    `${formatSectionHeading(sec)}${sec.room ? ` \u2014 ${sec.room}` : ''}`
 
   const handleActivate = (sessionId: string) => {
     setActivating(sessionId)

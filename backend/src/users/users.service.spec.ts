@@ -957,9 +957,15 @@ describe('UsersService', () => {
         )
 
         expect(result.clearedCooldown).toBe(true)
+        expect(result.hadCooldown).toBe(true)
         expect(prisma.user.update).toHaveBeenCalledWith({
           where: { id: 'student-1' },
-          data: { boundDeviceId: null, deviceBoundAt: null, deviceCooldownUntil: null },
+          data: {
+            boundDeviceId: null,
+            deviceBoundAt: null,
+            deviceCooldownUntil: null,
+            cooldownDeviceId: null,
+          },
         })
         expect(prisma.authSession.deleteMany).toHaveBeenCalledWith({ where: { userId: 'student-1' } })
         expect(prisma.auditLog.create).toHaveBeenCalledWith({
@@ -988,7 +994,10 @@ describe('UsersService', () => {
         teacherActor,
       )
       expect(result.clearedCooldown).toBe(false)
-      expect(prisma.authSession.deleteMany).not.toHaveBeenCalled()
+      expect(result.hadCooldown).toBe(false)
+      // The release is also the escape hatch for an active session on another
+      // device, so sessions are always terminated by an emergency release.
+      expect(prisma.authSession.deleteMany).toHaveBeenCalledWith({ where: { userId: 'student-1' } })
     })
 
     it('updates contacts and audits the change', async () => {

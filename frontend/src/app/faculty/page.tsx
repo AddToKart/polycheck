@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api-client'
 import type { AdminOverview, User, Section, Subject, CalendarEvent, DashboardOverview, StudentAtRisk } from '@polycheck/shared'
-import { formatTime, getRecentCampusDateRange } from '@polycheck/shared/utils'
+import { formatSectionHeading, formatTime, getRecentCampusDateRange } from '@polycheck/shared/utils'
 import {
   activityOutcomeLabel,
   activityOutcomeTone,
@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/input'
 import { Sidebar } from '@/components/layout/sidebar'
 import StatusBadge from '@/components/StatusBadge'
 import { OfflineSyncPanel } from '@/components/OfflineSyncPanel'
+import { OutageSimulator } from '@/components/dev/OutageSimulator'
 import { StudentsAtRiskCard } from '@/components/faculty/StudentsAtRiskCard'
 import { LoadingSpinner } from '@/lib/hooks'
 
@@ -177,6 +178,12 @@ function TeacherDashboard({ user }: { user: User }) {
     for (const s of allSubjects) map.set(s.id, s)
     return map
   }, [allSubjects])
+
+  const sectionMap = useMemo(() => {
+    const map = new Map<string, Section>()
+    for (const section of sections) map.set(section.id, section)
+    return map
+  }, [sections])
 
   const statCards = [
     { label: 'My Subjects', value: overview?.counts.subjects ?? 0, icon: BookOpen },
@@ -398,6 +405,10 @@ function TeacherDashboard({ user }: { user: User }) {
               const isActive = ev.status === 'active'
               const isCompleted = ev.status === 'completed'
               const isMoved = ev.status === 'moved'
+              const eventSection = sectionMap.get(ev.sectionId)
+              const sectionLabel = eventSection
+                ? formatSectionHeading(eventSection)
+                : `Section ${ev.sectionName}`
                let borderStyle = "border-t-zinc-300 dark:border-t-zinc-800"
               if (isActive) borderStyle = "border-t-golden"
               else if (isCompleted) borderStyle = "border-t-zinc-400"
@@ -432,7 +443,7 @@ function TeacherDashboard({ user }: { user: User }) {
                       </div>
                       <h3 className="text-lg font-heading font-bold text-foreground mb-1 leading-snug line-clamp-1">{ev.subjectName}</h3>
                       <p className="text-xs text-zinc-500 uppercase tracking-wider mb-6">
-                        Section {ev.sectionName} {ev.room ? `\\ ${ev.room}` : ''}
+                        {sectionLabel} {ev.room ? `\\ ${ev.room}` : ''}
                       </p>
                     </div>
                     <div className="mt-auto pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between">
@@ -496,7 +507,7 @@ function TeacherDashboard({ user }: { user: User }) {
               <Link key={sec.id} href={`/faculty/sections/${sec.id}`} className={`flex items-center justify-between p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group ${i !== 0 ? 'border-t border-zinc-200 dark:border-zinc-800' : ''}`}>
                 <div className="min-w-0 flex-1">
                   <p className="text-base font-bold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors truncate">{subj?.name}</p>
-                  <p className="text-xs text-zinc-500 uppercase tracking-wider mt-1"><span className="text-maroon dark:text-golden font-medium">{subj?.code}</span> \ Section {sec.section}</p>
+                  <p className="text-xs text-zinc-500 uppercase tracking-wider mt-1"><span className="text-maroon dark:text-golden font-medium">{subj?.code}</span> \ {formatSectionHeading(sec)}</p>
                 </div>
                 <div className="text-right ml-4">
                   <span className="block text-xl font-heading font-bold text-foreground">{sec.studentCount}</span>
@@ -934,6 +945,8 @@ export default function FacultyPortalPage() {
             <>
               <OfflineSyncPanel className="mb-6" />
               <TeacherDashboard user={user} />
+              {/* F7 demo surface — flag-gated; env defaults off in production builds. */}
+              {process.env.NEXT_PUBLIC_ENABLE_OUTAGE_SIMULATOR === 'true' ? <OutageSimulator /> : null}
             </>
           )}
         </div>

@@ -18,9 +18,26 @@ export interface FacultyMoreInput {
   user: Pick<User, 'role' | 'isItCoordinator' | 'isDepartmentHead' | 'isUserRegistrar'> | null
   showAssistant: boolean
   pendingExcuses: number
+  /**
+   * F7 demo killswitch — env-gated (`EXPO_PUBLIC_ENABLE_OUTAGE_SIMULATOR`),
+   * default off. Passed in as a plain boolean so this derivation stays pure.
+   */
+  outageSimulatorEnabled?: boolean
 }
 
-export function buildFacultyMoreItems({ user, showAssistant, pendingExcuses }: FacultyMoreInput): FacultyMoreItem[] {
+/**
+ * Strict env parsing for the outage-simulator flag, mirroring the
+ * qr-fallback-policy pattern: only the exact string "true" enables it.
+ * Production builds pin "false" (eas.json production env).
+ */
+export function isOutageSimulatorEnabled(value: string | undefined): boolean {
+  return value === 'true'
+}
+
+/** Sentinel route for the More-sheet simulator entry (never navigated). */
+export const OUTAGE_SIMULATOR_ROUTE = 'outage-simulator'
+
+export function buildFacultyMoreItems({ user, showAssistant, pendingExcuses, outageSimulatorEnabled = false }: FacultyMoreInput): FacultyMoreItem[] {
   const isSuper = user?.role === 'super_admin'
   const items: FacultyMoreItem[] = isSuper
     ? [
@@ -65,6 +82,16 @@ export function buildFacultyMoreItems({ user, showAssistant, pendingExcuses }: F
           sub: 'Ask about your sections and exports',
           route: '/(faculty)/assistant',
         },
+        // F7 demo killswitch — appended last so the production order is
+        // untouched; only visible when the env flag explicitly enables it.
+        ...(outageSimulatorEnabled
+          ? [{
+              icon: 'bolt',
+              label: 'Outage Simulator',
+              sub: 'Demo: cut the network, keep attendance',
+              route: OUTAGE_SIMULATOR_ROUTE,
+            }]
+          : []),
       ]
 
   if (!isSuper) {

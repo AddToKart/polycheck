@@ -9,36 +9,47 @@ import { useAuthGate } from '../../hooks/use-auth-gate'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
-import { CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
+import { CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, CampusSkeleton } from '../../components/CampusPrimitives'
 import { useCampusToast } from '../../components/CampusToast'
+import { useLoadState } from '../../hooks/use-load-state'
 
+import { confirmSignOut } from '../../lib/sign-out'
 export default function FacultySubjectsScreen() {
   const { isDark, toggle } = useTheme()
   const { showToast } = useCampusToast()
   const user = useAuthGate(['teacher', 'super_admin'])
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [sections, setSections] = useState<Section[]>([])
+  const loadState = useLoadState()
 
   useEffect(() => {
     if (!user) return
+    let active = true
     void Promise.all([api.getSubjects(), api.getSections()])
       .then(([nextSubjects, nextSections]) => {
+        if (!active) return
         setSubjects(nextSubjects)
         setSections(nextSections)
+        loadState.markReady()
       })
-      .catch(() => showToast('error', 'Unable to load subjects', 'Check your connection and try again.'))
-  }, [showToast, user])
+      .catch(() => {
+        if (!active) return
+        loadState.markError()
+        showToast('error', 'Unable to load subjects', 'Check your connection and try again.')
+      })
+    return () => { active = false }
+  }, [showToast, user, loadState.reloadToken])
 
   if (!user) return null
   const isSuper = user.role === 'super_admin'
 
-  const signOut = () => {
-    void api.logout()
-    router.replace('/')
-  }
+  const signOut = confirmSignOut
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow={isSuper ? 'Institution catalog' : 'Teaching catalog'}
         title={isSuper ? 'Subject directory' : 'My subjects'}
@@ -53,7 +64,19 @@ export default function FacultySubjectsScreen() {
       />
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, gap: 12 }}>
-        {subjects.length === 0 ? (
+        {loadState.state === 'loading' ? (
+          <View accessibilityLabel="Loading subjects" className="gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <CampusSkeleton key={i} className="h-24 w-full"><View /></CampusSkeleton>
+            ))}
+          </View>
+        ) : loadState.state === 'error' ? (
+          <CampusLoadError
+            title="Unable to load subjects"
+            message="Your subjects and sections could not be fetched. Try again."
+            onRetry={loadState.retry}
+          />
+        ) : subjects.length === 0 ? (
           <CampusEmptyState
             icon="auto-stories"
             title="No subjects yet"

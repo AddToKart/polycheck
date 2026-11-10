@@ -39,6 +39,8 @@ import { ProofStorageService } from '../proofs/proof-storage.service'
 import { decodeImageDataUrl } from '../proofs/image-evidence'
 import { NotificationsService } from '../notifications/notifications.service'
 import { DeviceBindingService } from '../users/device-binding.service'
+import { LedgerService } from './ledger.service'
+import type { ScanAttemptView } from '@polycheck/shared'
 
 const OFFLINE_ACTIVATION_LOCK_TTL_SECONDS = 10
 const OFFLINE_ACTIVATION_WAIT_ATTEMPTS = 5
@@ -101,6 +103,22 @@ const PERSISTABLE_SECURITY_DISPUTE_REASONS = new Set([
   'concurrent_session_conflict',
 ])
 
+// F2 (WF-LD4): denial reasons that deserve a live radar anomaly marker —
+// geolocation/geofence evidence failures plus duplicate/replay denials. PIN
+// failures (`pin_incorrect`, `pin_locked`, `pin_required`) are authenticated
+// students mistyping a secret, not geolocation anomalies, and online-mode
+// events are never emitted: without coordinates there is nothing to plot.
+const SCAN_ANOMALY_DENIAL_REASONS = new Set([
+  'outside_geofence',
+  'mocked_location',
+  'poor_location_accuracy',
+  'geofence_uncertain',
+  'stale_location',
+  'client_attempt_conflict',
+  'replayed_rejection',
+  'duplicate',
+])
+
 @Injectable()
 export class AttendanceService {
   private readonly logger = new Logger(AttendanceService.name)
@@ -113,6 +131,7 @@ export class AttendanceService {
     private readonly scope: AttendanceScopeService,
     private readonly reportService: AttendanceReportService,
     private readonly geofence: GeofenceService,
+    private readonly ledger: LedgerService,
     @Optional() private readonly notifications?: NotificationsService,
     @Optional() private readonly storage?: ProofStorageService,
     @Optional() private readonly config?: ConfigService,
@@ -183,9 +202,9 @@ export class AttendanceService {
 
   // ── Scan attempts ──
 
-  async findAttempts(user: RequestUser, sessionId?: string) {
+  async findAttempts(user: RequestUser, sessionId?: string): Promise<(ScanAttemptView & ScanAttemptRawRow)[]> {
     const sessionWhere = await this.scope.sessionScope(user)
-    return this.prisma.scanAttempt.findMany({
+    const attempts = await this.prisma.scanAttempt.findMany({
       where: { ...(sessionId ? { sessionId } : {}), session: sessionWhere },
       include: {
         student: { select: { fullName: true, studentId: true } },
@@ -194,6 +213,7 @@ export class AttendanceService {
       orderBy: { timestamp: 'desc' },
       take: 1_000,
     })
+    return attempts.map((attempt) => this.presentAttempt(attempt))
   }
 
   // ── Scan / check / submit / sync ──
@@ -299,7 +319,17 @@ export class AttendanceService {
     const receivedAt = new Date()
     const tokenHash = createHash('sha256').update(evidence.qrToken).digest('hex')
     const replay = await this.scanValidator.findReplay(user.id, evidence, tokenHash)
-    if (replay) return replay
+    if (replay) {
+      // F2: replayed denials are duplicate anomalies (same funnel rules as a
+      // fresh rejection, minus a validation object — mode/distance are derived
+      // from the session row by the emitter).
+      if (!replay.success) {
+        await this.maybeEmitScanAnomaly(user, evidence, replay.reason ?? 'replayed_rejection', {
+          scannedAt: evidence.scannedAt ? new Date(evidence.scannedAt) : receivedAt,
+        })
+      }
+      return replay
+    }
 
     const withinLimit = await this.redis.consumeRateLimit(`scan:${user.id}:${evidence.sessionId}`, 10, 60)
     if (!withinLimit) {
@@ -504,8 +534,19 @@ export class AttendanceService {
           })
           return { record: null, priorStatus: rosterRecord.status }
         }
+        const committed = await tx.attendanceRecord.findUniqueOrThrow({ where: { id: rosterRecord.id } })
+        // Tamper evidence (F9/WF-LD11): the chain write lives inside the same
+        // transaction as the record commit. Any ledger failure rolls back the
+        // attendance commit entirely (fail closed); offline sync batches land
+        // here too (arrival order is the linkage order), as do online scans.
+        await this.ledger.appendLedger(tx, {
+          id: committed.id,
+          sessionId: committed.sessionId,
+          studentId: committed.studentId,
+          timestamp: committed.timestamp,
+        })
         return {
-          record: await tx.attendanceRecord.findUniqueOrThrow({ where: { id: rosterRecord.id } }),
+          record: committed,
           priorStatus: rosterRecord.status,
         }
       })
@@ -517,6 +558,13 @@ export class AttendanceService {
       throw error
     }
     if (!transactionResult.record) {
+      // F2: replay anomalies include duplicate submissions for the same session.
+      await this.maybeEmitScanAnomaly(user, evidence, 'duplicate', {
+        mode: validation.mode,
+        distanceMeters: validation.distanceMeters,
+        geofenceRadiusMeters: validation.geofenceRadiusMeters,
+        scannedAt: validation.scannedAt,
+      })
       return {
         success: false,
         status: transactionResult.priorStatus,
@@ -579,24 +627,37 @@ export class AttendanceService {
       include: { student: { select: { fullName: true, program: true } } },
     })
     if (!enrollment) throw new NotFoundException('Student is not enrolled in this section')
-    const record = await this.prisma.attendanceRecord.upsert({
-      where: { sessionId_studentId: { sessionId: dto.sessionId, studentId: dto.studentId } },
-      create: {
-        sessionId: dto.sessionId,
-        sectionId: dto.sectionId,
-        studentId: dto.studentId,
-        studentName: enrollment.student.fullName,
-        studentProgram: enrollment.student.program,
-        timestamp: new Date(),
-        status: dto.status,
-        latitude: session.geofenceLatitude,
-        longitude: session.geofenceLongitude,
-        deviceId: 'manual',
-        isSynced: true,
-        syncedAt: new Date(),
-        manuallySet: true,
-      },
-      update: { status: dto.status, manuallySet: true, timestamp: new Date() },
+    const now = new Date()
+    const record = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.attendanceRecord.upsert({
+        where: { sessionId_studentId: { sessionId: dto.sessionId, studentId: dto.studentId } },
+        create: {
+          sessionId: dto.sessionId,
+          sectionId: dto.sectionId,
+          studentId: dto.studentId,
+          studentName: enrollment.student.fullName,
+          studentProgram: enrollment.student.program,
+          timestamp: now,
+          status: dto.status,
+          latitude: session.geofenceLatitude,
+          longitude: session.geofenceLongitude,
+          deviceId: 'manual',
+          isSynced: true,
+          syncedAt: now,
+          manuallySet: true,
+        },
+        // A manual re-mark never rewrites the timestamp: the stored recordHash
+        // covers the scan/seed moment and chain nodes are immutable. Recency
+        // remains visible through updatedAt.
+        update: { status: dto.status, manuallySet: true },
+      })
+      await this.ledger.appendLedger(tx, {
+        id: row.id,
+        sessionId: row.sessionId,
+        studentId: row.studentId,
+        timestamp: row.timestamp,
+      })
+      return row
     })
     this.realtime.emitAttendanceUpdated(record)
     return this.present(record)
@@ -1006,7 +1067,10 @@ export class AttendanceService {
     outcome: string,
     offline = false,
   ) {
-    const session = await this.prisma.session.findUnique({ where: { id: evidence.sessionId }, select: { id: true } })
+    const session = await this.prisma.session.findUnique({
+      where: { id: evidence.sessionId },
+      select: { id: true, mode: true, geofenceLatitude: true, geofenceLongitude: true, geofenceRadiusMeters: true },
+    })
     if (!session) return
     try {
       await this.prisma.scanAttempt.create({
@@ -1015,6 +1079,78 @@ export class AttendanceService {
     } catch (error) {
       if (!(error && typeof error === 'object' && 'code' in error && error.code === 'P2002')) throw error
     }
+    await this.maybeEmitScanAnomaly(user, evidence, validation.reason ?? '', validation)
+  }
+
+  // ── Private: F2 anomaly broadcast ──
+
+  /**
+   * F2 (WF-LD4): emits `attendance:anomaly` to the session room for denied
+   * in-person attempts carrying coordinates. The validator stays pure; all
+   * denial funnels route through here. Never throws: a realtime outage must
+   * not break the scan response or the persisted attempt.
+   */
+  private async maybeEmitScanAnomaly(
+    user: RequestUser,
+    evidence: ScanEvidence,
+    reason: string,
+    context: Pick<ScanValidation, 'mode' | 'distanceMeters' | 'geofenceRadiusMeters' | 'scannedAt'>,
+  ) {
+    try {
+      if (!SCAN_ANOMALY_DENIAL_REASONS.has(reason)) return
+      if (evidence.latitude === undefined || evidence.longitude === undefined) return
+      // Online sessions are location-free (RA 10173): no coordinates, no event.
+      let mode = context.mode
+      let distanceMeters = context.distanceMeters
+      let geofenceRadiusMeters = context.geofenceRadiusMeters
+      if (mode === undefined || distanceMeters === undefined) {
+        const session = await this.prisma.session.findUnique({
+          where: { id: evidence.sessionId },
+          select: { id: true, mode: true, geofenceLatitude: true, geofenceLongitude: true, geofenceRadiusMeters: true },
+        })
+        if (!session) return
+        mode = mode ?? session.mode ?? 'in_person'
+        if (distanceMeters === undefined && session.geofenceLatitude !== null && session.geofenceLongitude !== null) {
+          distanceMeters = this.geofence.calculateDistance(
+            evidence.latitude,
+            evidence.longitude,
+            session.geofenceLatitude,
+            session.geofenceLongitude,
+          )
+        }
+        if (geofenceRadiusMeters === undefined && session.geofenceRadiusMeters !== null) {
+          geofenceRadiusMeters = session.geofenceRadiusMeters
+        }
+      }
+      if (mode !== 'in_person') return
+      const student = await this.prisma.user.findUnique({
+        where: { id: user.id },
+        select: { fullName: true, studentId: true },
+      })
+      this.realtime.emitAttendanceAnomaly(
+        { id: evidence.sessionId },
+        {
+          sessionId: evidence.sessionId,
+          studentId: user.id,
+          ...(student?.fullName ? { studentName: student.fullName } : {}),
+          ...(student?.studentId ? { studentNumber: student.studentId } : {}),
+          latitude: evidence.latitude,
+          longitude: evidence.longitude,
+          distanceMeters: distanceMeters ?? null,
+          geofenceRadiusMeters: geofenceRadiusMeters ?? null,
+          reason,
+          timestamp: (
+            context.scannedAt ?? this.scanValidator.clientScannedAt(evidence, false, new Date())
+          ).toISOString(),
+        },
+      )
+    } catch (error) {
+      this.logger.warn(
+        `Could not emit attendance anomaly for session ${evidence.sessionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    }
   }
 
   // ── Private: presentation helper ──
@@ -1022,4 +1158,46 @@ export class AttendanceService {
   private present(record: AttendanceRecord) {
     return { ...record, coordinates: { latitude: record.latitude, longitude: record.longitude } }
   }
+
+  private presentAttempt(attempt: ScanAttemptWithJoins): ScanAttemptView & ScanAttemptRawRow {
+    const { latitude, longitude, deviceId, outcome, reason } = attempt
+    const viewOutcome =
+      outcome === 'denied' ? ('denied' as const) : outcome === 'flagged' ? ('pending' as const) : ('accepted' as const)
+    return {
+      ...attempt,
+      timestamp: attempt.timestamp.toISOString(),
+      clientScannedAt: attempt.clientScannedAt?.toISOString() ?? null,
+      receivedAt: attempt.receivedAt.toISOString(),
+      studentName: attempt.student?.fullName ?? '',
+      studentNumber: attempt.student?.studentId ?? undefined,
+      coordinates: { latitude, longitude },
+      accuracyMeters: attempt.accuracyMeters,
+      distanceMeters: attempt.distanceMeters,
+      geofenceRadiusMeters: attempt.geofenceRadiusMeters,
+      mocked: attempt.mocked,
+      pinVerified: attempt.pinVerified,
+      offline: attempt.offline,
+      inputChannel: attempt.inputChannel,
+      checkpoint: attempt.checkpoint,
+      outcome: viewOutcome,
+      denialReason: reason,
+      deviceIdMasked: maskDeviceId(deviceId),
+    }
+  }
+}
+
+type ScanAttemptWithJoins = Prisma.ScanAttemptGetPayload<{
+  include: {
+    student: { select: { fullName: true; studentId: true } }
+    session: { select: { subjectName: true; sectionId: true } }
+  }
+}>
+
+type ScanAttemptRawRow = Omit<
+  ScanAttemptWithJoins,
+  'outcome' | 'timestamp' | 'clientScannedAt' | 'receivedAt' | 'locationCapturedAt' | 'createdAt'
+>
+
+function maskDeviceId(deviceId: string | null | undefined) {
+  return deviceId ? `…${deviceId.slice(-4)}` : null
 }

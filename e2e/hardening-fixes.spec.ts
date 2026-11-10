@@ -6,10 +6,14 @@ import {
   STUDENT_ID,
   apiLoginFaculty,
   apiLoginStudent,
+  apiLogout,
   loginFaculty,
   trackErrors,
   assertNoErrors,
+  installSessionCleanup,
 } from './helpers'
+
+installSessionCleanup()
 
 test.use({ serviceWorkers: 'block' })
 
@@ -182,6 +186,12 @@ test.describe('V3 — enrollment tombstone', () => {
     expect(blockedBody.code).toBe('student_blocked_from_section')
     expect(blockedBody.message ?? '').toContain('removed from this section by the instructor')
 
+    // Student logins are single-device now: the first device-less login leaves
+    // a live (legacy, null-device) session, and a second device-less login in
+    // the same API context would be rejected by the active-session gate.
+    // Revoke it non-armingly before switching the jar to the teacher.
+    expect((await apiLogout(request)).ok(), 'student session revoked before re-admission').toBeTruthy()
+
     // Explicit teacher re-admission clears the tombstone and enrolls.
     await apiLoginFaculty(request)
     const readmit = await request.post(`${API_BASE}/sections/sec-002/enroll-student`, {
@@ -201,6 +211,9 @@ test.describe('V3 — enrollment tombstone', () => {
     expect(reBlocked.status()).toBe(403)
     const reBlockedBody = (await reBlocked.json()) as { code?: string }
     expect(reBlockedBody.code).toBe('student_blocked_from_section')
+
+    // Leave no live student session behind for later specs.
+    expect((await apiLogout(request)).ok(), 'student session revoked at test end').toBeTruthy()
   })
 })
 

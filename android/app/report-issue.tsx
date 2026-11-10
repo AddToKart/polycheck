@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Image, Platform, Pressable, ScrollView, Text, View } from 'react-native'
+import { Image, Platform, Pressable, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
@@ -20,6 +20,7 @@ import { pupColors } from '../theme/colors'
 import { CampusHeader } from '../components/CampusHeader'
 import { CampusButton, CampusCard } from '../components/CampusPrimitives'
 import { CampusFormField } from '../components/CampusFormField'
+import { KeyboardAwareScrollView } from '../components/KeyboardAwareScrollView'
 import { useCampusToast } from '../components/CampusToast'
 import { buildMobileAppVersion, buildMobileDeviceLabel, MOBILE_NETWORK_TYPE } from '../lib/report-telemetry'
 
@@ -138,7 +139,7 @@ export default function ReportIssueScreen() {
           </Pressable>
         }
       />
-      <ScrollView
+      <KeyboardAwareScrollView
         className="flex-1"
         contentContainerClassName="px-4 pb-16 pt-2 gap-4"
         keyboardShouldPersistTaps="handled"
@@ -249,6 +250,7 @@ export default function ReportIssueScreen() {
               <View className="mt-3 flex-row items-center gap-3">
                 <Image
                   source={{ uri: screenshot.dataUrl }}
+                  style={{ width: 56, height: 56 }}
                   className="h-14 w-14 border border-line"
                   testID="report-attachment-preview"
                   accessibilityLabel={`Selected screenshot ${screenshot.label}`}
@@ -278,7 +280,7 @@ export default function ReportIssueScreen() {
             className="mt-5"
           />
         </CampusCard>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   )
 }

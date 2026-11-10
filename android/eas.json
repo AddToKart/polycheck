@@ -10,6 +10,13 @@
     },
     "preview": {
       "distribution": "internal",
+      "environment": "preview",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://polycheck-api.addtokart.tech/api",
+        "EXPO_PUBLIC_ALLOW_QR_FALLBACKS": "true",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      },
       "android": {
         "buildType": "apk"
       }
@@ -19,7 +26,8 @@
       "environment": "production",
       "env": {
         "EXPO_PUBLIC_ALLOW_QR_FALLBACKS": "false",
-        "EXPO_PUBLIC_E2E_MODE": "false"
+        "EXPO_PUBLIC_E2E_MODE": "false",
+        "EXPO_PUBLIC_ENABLE_OUTAGE_SIMULATOR": "false"
       },
       "android": {
         "buildType": "app-bundle"

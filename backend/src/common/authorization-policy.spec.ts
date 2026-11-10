@@ -55,6 +55,7 @@ describe('role capability policy', () => {
     [UsersController.prototype.update, 'user_admin'],
     [DashboardController.prototype.serverStatusSnapshot, 'it_operations'],
     [SettingsController.prototype.set, 'it_operations'],
+    [SettingsController.prototype.privacyCenter, 'it_operations'],
     [ReportsController.prototype.stats, 'it_operations'],
     [ReportsController.prototype.list, 'it_operations'],
     [ReportsController.prototype.findOne, 'it_operations'],

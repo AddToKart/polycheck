@@ -58,7 +58,10 @@ export default function FacultyServerStatusScreen() {
   if (!currentUser) return null
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow="IT Operations Suite"
         title="Server status"

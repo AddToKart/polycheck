@@ -4,6 +4,7 @@ import { AuthService } from './auth.service'
 import { toWebHeaders } from './http-headers'
 import { LoginStudentDto } from './dto/login-student.dto'
 import { LoginFacultyDto } from './dto/login-faculty.dto'
+import { LogoutDto } from './dto/logout.dto'
 import { ProvisionKeyDto } from './dto/provision-key.dto'
 import { Roles } from '../common/decorators/roles.decorator'
 import { Public } from '../common/decorators/public.decorator'
@@ -41,7 +42,10 @@ export class AuthController {
     @Req() req: ExpressRequest,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.auth.loginStudent(dto.studentId, dto.password, req.ip, toWebHeaders(req.headers))
+    const result = await this.auth.loginStudent(dto.studentId, dto.password, req.ip, toWebHeaders(req.headers), {
+      channel: 'web',
+      deviceId: dto.deviceId,
+    })
     this.applyAuthHeaders(res, result.headers)
     return { user: result.user }
   }
@@ -105,8 +109,18 @@ export class AuthController {
 
   @AllowPendingPasswordChange()
   @Post('logout')
-  async logout(@Request() req: AuthenticatedRequest, @Res({ passthrough: true }) res: Response) {
-    const result = await this.auth.logout(toWebHeaders(req.headers))
+  async logout(
+    @Request() req: AuthenticatedRequest,
+    @Body() dto: LogoutDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.auth.logout(
+      toWebHeaders(req.headers),
+      req.user,
+      dto.deviceId,
+      dto.armDeviceCooldown,
+      req.ip,
+    )
     this.applyAuthHeaders(res, result.headers)
     return { message: result.message }
   }

@@ -19,6 +19,64 @@ const STATUS_RANK: Record<AttendanceStandingStatus, number> = {
   insufficient_data: 3,
 }
 
+/**
+ * The deterministic at-risk classification shared by the at-risk list, the
+ * F5 referral gate, and the CHED notice document (same math everywhere).
+ * Counts follow the engine's rule: pending/disputed/excused rows are excluded
+ * and incomplete (half-attended) rows do not count as attended sessions.
+ */
+export interface AtRiskClassification {
+  thresholdPercent: number
+  present: number
+  late: number
+  absent: number
+  countedSessions: number
+  attendedSessions: number
+  attendanceRate: number | null
+  absencesBeforeBelowThreshold: number | null
+  status: AttendanceStandingStatus
+}
+
+export function classifyAtRiskRow(counts: Record<string, number>, thresholdPercent: number): AtRiskClassification {
+  const present = counts.present ?? 0
+  const late = counts.late ?? 0
+  const absent = counts.absent ?? 0
+  // The at-risk engine counts exactly what the teacher sees: pending/disputed/
+  // excused rows are excluded, and a half-attended (incomplete) session does
+  // not count as attended. Mirrors the pre-referral list() math exactly.
+  const countedSessions = present + late + absent
+  const attendedSessions = present + late
+  const attendanceRate = countedSessions === 0 ? null : Math.round((attendedSessions / countedSessions) * 1000) / 10
+  const absencesBeforeBelowThreshold =
+    countedSessions === 0 || thresholdPercent <= 0
+      ? null
+      : Math.max(0, Math.floor((attendedSessions * 100) / thresholdPercent) - countedSessions)
+  const status: AttendanceStandingStatus =
+    countedSessions === 0
+      ? 'insufficient_data'
+      : attendanceRate! < thresholdPercent
+        ? 'below_threshold'
+        : absencesBeforeBelowThreshold === 0
+          ? 'at_risk'
+          : 'on_track'
+  return {
+    thresholdPercent,
+    present,
+    late,
+    absent,
+    countedSessions,
+    attendedSessions,
+    attendanceRate,
+    absencesBeforeBelowThreshold,
+    status,
+  }
+}
+
+/** True when the engine currently says this student deserves a CHED slip. */
+export function isReferralEligible(classification: Pick<AtRiskClassification, 'status'>): boolean {
+  return classification.status === 'below_threshold' || classification.status === 'at_risk'
+}
+
 interface SectionInfo {
   id: string
   name: string
@@ -127,24 +185,7 @@ export class AttendanceAtRiskService {
       if (!section) continue
       const key = this.key(enrollment.sectionId, enrollment.student.id)
       const statusCounts = counts.get(key) ?? {}
-      const present = statusCounts.present ?? 0
-      const late = statusCounts.late ?? 0
-      const absent = statusCounts.absent ?? 0
-      const countedSessions = present + late + absent
-      const attendedSessions = present + late
-      const attendanceRate = countedSessions === 0 ? null : Math.round((attendedSessions / countedSessions) * 1000) / 10
-      const absencesBeforeBelowThreshold =
-        countedSessions === 0 || thresholdPercent <= 0
-          ? null
-          : Math.max(0, Math.floor((attendedSessions * 100) / thresholdPercent) - countedSessions)
-      const status: AttendanceStandingStatus =
-        countedSessions === 0
-          ? 'insufficient_data'
-          : attendanceRate! < thresholdPercent
-            ? 'below_threshold'
-            : absencesBeforeBelowThreshold === 0
-              ? 'at_risk'
-              : 'on_track'
+      const classification = classifyAtRiskRow(statusCounts, thresholdPercent)
       const lastAbsenceDate = lastAbsence.get(key)
       rows.push({
         studentId: enrollment.student.id,
@@ -154,10 +195,10 @@ export class AttendanceAtRiskService {
         sectionName: section.name,
         subjectName: section.subjectName,
         professorName: section.professorName,
-        thresholdPercent,
-        attendanceRate,
-        status,
-        absencesBeforeBelowThreshold,
+        thresholdPercent: classification.thresholdPercent,
+        attendanceRate: classification.attendanceRate,
+        status: classification.status,
+        absencesBeforeBelowThreshold: classification.absencesBeforeBelowThreshold,
         ...(lastAbsenceDate ? { lastAbsenceDate: lastAbsenceDate.toISOString().slice(0, 10) } : {}),
       })
     }
@@ -170,6 +211,27 @@ export class AttendanceAtRiskService {
         left.sectionName.localeCompare(right.sectionName),
     )
     return rows.slice(0, limit)
+  }
+
+  /**
+   * Single-row classification for one (section, student) pair — the F5 referral
+   * gate and the CHED notice reuse the exact engine math without loading the
+   * whole roster. Resolves null when the student has no records in the section
+   * (the referral gate treats unknown data as ineligible).
+   */
+  async classifyStudent(sectionId: string, studentId: string): Promise<AtRiskClassification | null> {
+    const [thresholdPercent, grouped] = await Promise.all([
+      this.standing.thresholdPercent(),
+      this.prisma.attendanceRecord.groupBy({
+        by: ['status'],
+        where: { sectionId, studentId },
+        _count: { _all: true },
+      }),
+    ])
+    if (grouped.length === 0) return null
+    const counts: Record<string, number> = {}
+    for (const group of grouped) counts[group.status] = group._count._all
+    return classifyAtRiskRow(counts, thresholdPercent)
   }
 
   private key(sectionId: string, studentId: string) {

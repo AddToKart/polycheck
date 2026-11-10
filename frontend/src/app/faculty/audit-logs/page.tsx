@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { FileClock, RefreshCw, Search } from 'lucide-react'
-import { getRecentCampusDateRange, type AuditLogPage, type AuditOutcome, type User } from '@polycheck/shared'
+import { FileClock, Loader2, RefreshCw, Search, ShieldCheck } from 'lucide-react'
+import { getRecentCampusDateRange, type AuditLogPage, type AuditOutcome, type LedgerVerifyResult, type User } from '@polycheck/shared'
 import { api } from '@/lib/api-client'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Badge } from '@/components/ui/badge'
@@ -22,6 +22,16 @@ const outcomeStyle: Record<AuditOutcome, string> = {
   initiated: 'border-zinc-300 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300',
 }
 
+// Copy for hash-chain break reasons (shared `LedgerBreakReason` wording).
+const LEDGER_BREAK_REASONS: Record<
+  NonNullable<LedgerVerifyResult['brokenAt']>['reason'],
+  string
+> = {
+  hash_mismatch: 'stored hash no longer recomputes (row altered or removed)',
+  link_mismatch: 'chain linkage broken (a predecessor hash is missing)',
+  anchor_mismatch: 'published daily anchor no longer matches the chain',
+}
+
 export default function AuditLogsPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -33,6 +43,11 @@ export default function AuditLogsPage() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  // Ledger integrity verify (F9, WF-LD11) — read-only re-scan of the chains.
+  const [verifying, setVerifying] = useState(false)
+  const [ledgerResult, setLedgerResult] = useState<LedgerVerifyResult | null>(null)
+  const [verifyError, setVerifyError] = useState('')
 
   useEffect(() => {
     const current = api.getCurrentUser()
@@ -66,6 +81,19 @@ export default function AuditLogsPage() {
   useEffect(() => { void load() }, [load])
   useEffect(() => { setPage(1) }, [search, outcome, startDate, endDate])
 
+  const runLedgerVerify = useCallback(async () => {
+    setVerifying(true)
+    setLedgerResult(null)
+    setVerifyError('')
+    try {
+      setLedgerResult(await api.verifyLedger())
+    } catch (cause) {
+      setVerifyError(cause instanceof Error ? cause.message : 'Unable to verify the attendance ledger')
+    } finally {
+      setVerifying(false)
+    }
+  }, [])
+
   if (!user) return null
 
   return (
@@ -79,8 +107,48 @@ export default function AuditLogsPage() {
               <h1 className="flex items-center gap-3 text-3xl font-heading font-bold text-maroon dark:text-white"><FileClock className="h-7 w-7" /> Audit Log</h1>
               <p className="mt-2 text-sm text-zinc-500">Trace account, classroom, and settings changes within your administrative scope.</p>
             </div>
-            <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh</Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => void runLedgerVerify()}
+                disabled={verifying}
+                data-testid="verify-ledger-button"
+                className="border-maroon/50 text-maroon hover:bg-maroon/10 dark:border-golden/50 dark:text-golden dark:hover:bg-golden/10"
+              >
+                {verifying ? (
+                  <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <ShieldCheck className="h-4 w-4" />
+                )}
+                {verifying ? 'Scanning…' : 'Verify Ledger Integrity'}
+              </Button>
+              <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh</Button>
+            </div>
           </div>
+
+          {ledgerResult ? (
+            ledgerResult.verified ? (
+              <div data-testid="ledger-verify-result" role="status" className="mb-5 rounded-none border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
+                <p>✓ Ledger intact — <span className="font-semibold tabular-nums">{ledgerResult.recordsChecked.toLocaleString()}</span> records across <span className="font-semibold tabular-nums">{ledgerResult.sessionsChecked.toLocaleString()}</span> sessions verified</p>
+                {ledgerResult.lastAnchorDate ? (
+                  <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">Daily chain heads are published to the audit trail. Last anchor: {ledgerResult.lastAnchorDate}</p>
+                ) : null}
+              </div>
+            ) : (
+              <div data-testid="ledger-verify-result" role="status" className="mb-5 rounded-none border border-red-300 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                <p>✗ Chain broken at <span className="break-all font-semibold">{ledgerResult.brokenAt?.recordId ?? 'unknown record'}</span> — investigate session <span className="break-all font-semibold">{ledgerResult.brokenAt?.sessionId ?? 'unknown'}</span></p>
+                {ledgerResult.brokenAt ? (
+                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">Reason: {LEDGER_BREAK_REASONS[ledgerResult.brokenAt.reason]}</p>
+                ) : null}
+              </div>
+            )
+          ) : null}
+          {verifyError ? (
+            <div role="alert" className="mb-5 rounded-none border border-red-300 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+              <p>{verifyError}</p>
+              <Button variant="outline" size="sm" className="mt-2 border-red-300 text-red-700 hover:bg-red-100 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/50" onClick={() => void runLedgerVerify()}>Retry verification</Button>
+            </div>
+          ) : null}
 
           <Card className="mb-6">
             <CardContent className="grid grid-cols-1 gap-4 p-5 md:grid-cols-5">

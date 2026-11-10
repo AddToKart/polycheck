@@ -21,6 +21,18 @@ export class SettingsController {
   }
 
   /**
+   * RA 10173 transparency snapshot (F6). Plain teachers never reach it — the
+   * System-suite designation applies exactly like the maintenance write:
+   * IT coordinators and institution super admins only.
+   */
+  @Get('privacy-center')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('it_operations')
+  privacyCenter() {
+    return this.settings.getPrivacyCenterSnapshot()
+  }
+
+  /**
    * Super admins keep full institution-scoped writes. IT coordinators may only
    * write the three maintenance keys — academic and AI settings remain outside
    * their separation-of-duties boundary.

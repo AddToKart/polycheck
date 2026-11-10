@@ -2,6 +2,7 @@
   "name": "polycheck",
   "private": true,
   "scripts": {
+    "postinstall": "node scripts/build-shared-if-available.mjs",
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",

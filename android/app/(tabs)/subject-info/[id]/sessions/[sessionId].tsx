@@ -13,6 +13,7 @@ import { CampusHeader } from '../../../../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusEmptyState, SectionHeading } from '../../../../../components/CampusPrimitives'
 import { CampusFormField } from '../../../../../components/CampusFormField'
 import { useCampusToast } from '../../../../../components/CampusToast'
+import QRCode from 'react-native-qrcode-svg'
 
 export default function StudentSessionDetailScreen() {
   const { isDark } = useTheme()
@@ -93,15 +94,30 @@ export default function StudentSessionDetailScreen() {
   if (!session || !section) return null
 
   const sessionStats: Array<{ label: string; value: string; icon: keyof typeof MaterialIcons.glyphMap }> = [
-    { label: 'Time', value: `${session.startTime}–${session.endTime}`, icon: 'access-time' },
-    { label: 'Status', value: session.isActive ? 'Active now' : 'Completed', icon: session.isActive ? 'radio-button-checked' : 'check-circle' },
+    { label: 'Time', value: `${session.startTime}-${session.endTime}`, icon: 'access-time' },
+    {
+      label: 'Status',
+      value: session.endedAt ? 'Completed' : session.isActive ? 'Active now' : 'Scheduled',
+      icon: session.isActive ? 'radio-button-checked' : 'event',
+    },
     { label: 'Room', value: session.room || 'TBA', icon: 'room' },
     { label: 'QR validity', value: `${session.qrValidityMinutes} min`, icon: 'qr-code-2' },
     { label: 'Grace period', value: `${session.gracePeriodMinutes} min`, icon: 'timer' },
   ]
+  // The signed class QR becomes available as soon as the session is armed; it
+  // is already delivered to every enrolled client by the API, so class officers
+  // can display it to classmates. Activation itself is instructor-only because
+  // the token must be signed by the instructor's device key.
+  const activeClassQr =
+    session.isActive && !session.endedAt
+      ? session.qrToken ?? session.startQrToken ?? session.endQrToken ?? null
+      : null
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow={new Date(`${session.date}T00:00:00`).toLocaleDateString('en-PH', { weekday: 'long', month: 'short', day: 'numeric' })}
         title={subject?.name ?? 'Class session'}
@@ -122,6 +138,30 @@ export default function StudentSessionDetailScreen() {
             ))}
           </View>
         </CampusCard>
+
+        {activeClassQr ? (
+          <CampusCard className="mb-5 items-center gap-4">
+            <View className="items-center gap-1">
+              <Text className="font-sans-bold text-[10px] uppercase tracking-[2px] text-maroon dark:text-golden">Class QR — share with classmates</Text>
+              <Text className="mt-1 text-center font-sans text-xs leading-5 text-muted dark:text-zinc-400">Live while this session is active. Students scan it in the Polycheck scanner.</Text>
+            </View>
+            <View className="bg-white p-3">
+              <QRCode value={activeClassQr} size={200} backgroundColor={pupColors.white} color={pupColors.black} />
+            </View>
+          </CampusCard>
+        ) : !session.endedAt ? (
+          <CampusCard className="mb-5">
+            <View className="flex-row items-start gap-3">
+              <View className="h-10 w-10 items-center justify-center rounded-2xl bg-maroon/5 dark:bg-golden/10">
+                <MaterialIcons name="lock-clock" size={20} color={isDark ? pupColors.golden : pupColors.maroon} />
+              </View>
+              <View className="flex-1">
+                <Text className="font-sans-bold text-sm text-ink dark:text-white">Awaiting instructor activation</Text>
+                <Text className="mt-1 font-sans text-xs leading-5 text-muted dark:text-zinc-400">Your instructor activates this session from their own device — the QR token must be signed with their key. Once active, the class QR appears here automatically for the whole class.</Text>
+              </View>
+            </View>
+          </CampusCard>
+        ) : null}
 
         <SectionHeading eyebrow="Session evidence" title="Proof of class" />
         {isQac ? (

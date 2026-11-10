@@ -7,6 +7,7 @@ import { CalendarCheck, MapPin, ShieldCheck, School, Video } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import {
   formatCampusDate,
+  sectionCourseLabel,
   type User,
   type Subject,
   type Section,
@@ -19,6 +20,19 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  CUSTOM_SLOT_VALUE,
+  buildBulkRows,
+  buildBulkSlots,
+  countSlotOccurrences,
+  defaultSlotSelection,
+  firstInvalidSlotRow,
+  nextOccurrenceDate,
+  slotLabel,
+  slotSelectionForDate,
+  type BulkSlotRow,
+  type SessionSlot,
+} from '@/lib/session-slots'
 
 export default function CreateSessionPage() {
   const router = useRouter()
@@ -46,6 +60,8 @@ export default function CreateSessionPage() {
     return formatCampusDate(d)
   })
   const [bulkDays, setBulkDays] = useState<string[]>([])
+  const [bulkRows, setBulkRows] = useState<BulkSlotRow[]>([])
+  const [slotSelection, setSlotSelection] = useState<string>(CUSTOM_SLOT_VALUE)
   const [isRescheduled, setIsRescheduled] = useState(false)
   const [rescheduledFromDate, setRescheduledFromDate] = useState('')
   const [existingSessionOnDate, setExistingSessionOnDate] = useState<Session | null>(null)
@@ -105,23 +121,35 @@ export default function CreateSessionPage() {
   const selectedSection = sections.find((s) => s.id === sectionId)
   const selectedSubject = subjects.find((s) => s.id === subjectId)
 
+  // Class meetings from the selected section's schedule. A slot without its own
+  // room falls back to the section room so the prefill stays truthful.
+  const scheduleSlots: SessionSlot[] = (selectedSection?.schedule ?? []).map((slot) => ({
+    day: slot.day,
+    startTime: slot.startTime,
+    endTime: slot.endTime,
+    room: slot.room?.trim() || selectedSection?.room?.trim() || undefined,
+  }))
+  const hasScheduleSlots = scheduleSlots.length > 0
+
   const hasDuplicateConflict = !!existingSessionOnDate && !isRescheduled
 
   useEffect(() => {
     if (selectedSection) {
-      const scheduleDays = selectedSection.schedule.map((s) => s.day)
-      setBulkDays(scheduleDays)
+      setBulkDays(selectedSection.schedule.map((s) => s.day))
+      setBulkRows(buildBulkRows(selectedSection.schedule, selectedSection.room))
       setRoom(selectedSection.room || '')
       setIsRescheduled(false)
       setRescheduledFromDate('')
       if (selectedSection.schedule.length > 0) {
-        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-        const currentDay = dayNames[new Date(`${dateRef.current}T00:00:00`).getDay()]
-        const matchedSched = selectedSection.schedule.find((s) => s.day === currentDay) ?? selectedSection.schedule[0]
+        const selection = defaultSlotSelection(selectedSection.schedule, dateRef.current)
+        setSlotSelection(selection)
+        const matchedSched = selectedSection.schedule[Number(selection)]
         if (matchedSched) {
           setStartTime(matchedSched.startTime)
           setEndTime(matchedSched.endTime)
         }
+      } else {
+        setSlotSelection(CUSTOM_SLOT_VALUE)
       }
     }
   }, [selectedSection])
@@ -156,18 +184,40 @@ export default function CreateSessionPage() {
     return dates
   }
 
-    const handleDateChange = (newDate: string) => {
+  const handleDateChange = (newDate: string) => {
     setDate(newDate)
     if (formError) setFormError(null)
     if (selectedSection && selectedSection.schedule.length > 0) {
-      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-      const currentDay = dayNames[new Date(`${newDate}T00:00:00`).getDay()]
-      const matchedSched = selectedSection.schedule.find((s) => s.day === currentDay)
-      if (matchedSched) {
-        setStartTime(matchedSched.startTime)
-        setEndTime(matchedSched.endTime)
+      const selection = slotSelectionForDate(selectedSection.schedule, newDate)
+      setSlotSelection(selection)
+      if (selection !== CUSTOM_SLOT_VALUE) {
+        const matchedSched = selectedSection.schedule[Number(selection)]
+        if (matchedSched) {
+          setStartTime(matchedSched.startTime)
+          setEndTime(matchedSched.endTime)
+        }
       }
     }
+  }
+
+  // Picking a class meeting refills its time/room and moves the date to that
+  // meeting's next occurrence (today when it already matches). Times and date
+  // stay editable afterwards; the custom option changes nothing.
+  const handleSlotChange = (selection: string) => {
+    setSlotSelection(selection)
+    if (formError) setFormError(null)
+    if (selection === CUSTOM_SLOT_VALUE) return
+    const slot = scheduleSlots[Number(selection)]
+    if (!slot) return
+    setStartTime(slot.startTime)
+    setEndTime(slot.endTime)
+    if (slot.room) setRoom(slot.room)
+    setDate(nextOccurrenceDate(slot.day))
+  }
+
+  const updateBulkRow = (index: number, patch: Partial<BulkSlotRow>) => {
+    setBulkRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)))
+    if (formError) setFormError(null)
   }
 
   const handleStartTimeChange = (newStartTime: string) => {
@@ -192,45 +242,57 @@ export default function CreateSessionPage() {
     if (formError) setFormError(null)
   }
 
-  const calculateBulkCount = () => {
-    if (!bulkStartDate || !bulkEndDate || bulkDays.length === 0) return 0
-    const dayMap: Record<string, number> = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 }
-    const targetDays = bulkDays.map((d) => dayMap[d])
-    const start = new Date(bulkStartDate)
-    const end = new Date(bulkEndDate)
-    let count = 0
-    const cursor = new Date(start)
-    while (cursor <= end) {
-      if (targetDays.includes(cursor.getDay())) count++
-      cursor.setDate(cursor.getDate() + 1)
-    }
-    return count
-  }
+  // Legacy fallback used only when a section somehow has no schedule entries:
+  // the global time pair applies to every checked weekday.
+  const legacyBulkCount = bulkDays.length
+    ? countSlotOccurrences(
+        bulkDays.map((day) => ({ day, selected: true })),
+        bulkStartDate,
+        bulkEndDate,
+      )
+    : 0
 
-    const handleSubmit = async (e: React.FormEvent) => {
+  const bulkCount = bulkMode
+    ? hasScheduleSlots
+      ? countSlotOccurrences(bulkRows, bulkStartDate, bulkEndDate)
+      : legacyBulkCount
+    : 0
+
+  // In slot mode each row carries its own time pair, so the global pair is
+  // hidden and validation runs per selected row instead.
+  const showGlobalTimeRange = !bulkMode || !hasScheduleSlots
+  const invalidBulkRow = bulkMode && hasScheduleSlots ? firstInvalidSlotRow(bulkRows) : null
+  const timeRangeInvalid = showGlobalTimeRange ? endTime <= startTime : invalidBulkRow !== null
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedSection || !selectedSubject || !user || submitting) return
-    if (endTime <= startTime) {
-      setFormError('End time must be after start time.')
+    if (showGlobalTimeRange) {
+      if (endTime <= startTime) {
+        setFormError('End time must be after start time.')
+        return
+      }
+    } else if (invalidBulkRow) {
+      setFormError(`End time must be after start time for the ${invalidBulkRow.day} class meeting.`)
+      return
+    }
+    if (bulkMode && bulkCount === 0) {
+      setFormError('No matching sessions found for the selected date range and days.')
       return
     }
     setSubmitting(true)
     setFormError(null)
     try {
       if (bulkMode) {
-        const count = calculateBulkCount()
-        if (count === 0) {
-          setFormError('No matching sessions found for the selected date range and days.')
-          return
-        }
+        const slots = hasScheduleSlots ? buildBulkSlots(bulkRows) : undefined
         await api.createBulkSessions({
           sectionId: selectedSection.id,
           subjectName: selectedSubject.name,
           startDate: bulkStartDate,
           endDate: bulkEndDate,
-          daysOfWeek: bulkDays,
-          startTime,
-          endTime,
+          // Slot payload wins over the legacy global pair; the legacy shape is
+          // kept only for the no-schedule fallback.
+          ...(slots ? { slots } : { daysOfWeek: bulkDays, startTime, endTime }),
           room: room || undefined,
           mode,
           qrValidityMinutes: defaultQrValidity,
@@ -238,7 +300,7 @@ export default function CreateSessionPage() {
           ...(mode === 'in_person' ? { geofence: { latitude, longitude, radiusMeters: radius } } : {}),
           teacherId: user.id,
         })
-        alert(`Created ${count} sessions successfully!`)
+        alert(`Created ${bulkCount} sessions successfully!`)
         router.push('/faculty/sessions')
       } else {
         const replaceDates = getStandardReplaceDates()
@@ -378,11 +440,14 @@ export default function CreateSessionPage() {
                     <option value="">Select a section...</option>
                     {sections
                       .filter((s) => s.subjectId === subjectId)
-                      .map((sec) => (
-                        <option key={sec.id} value={sec.id}>
-                          Section {sec.section} &mdash; {sec.room} &mdash; {sec.schedule.map((d) => d.day).join(', ')}
-                        </option>
-                      ))}
+                      .map((sec) => {
+                        const course = sectionCourseLabel(sec.course)
+                        return (
+                          <option key={sec.id} value={sec.id}>
+                            Section {sec.section} &mdash; {sec.room} &mdash; {sec.schedule.map((d) => d.day).join(', ')}{course ? ` · ${course}` : ''}
+                          </option>
+                        )
+                      })}
                   </select>
                 </div>
 
@@ -411,33 +476,119 @@ export default function CreateSessionPage() {
                         <Input id="bulkEndDate" type="date" value={bulkEndDate} onChange={(e) => setBulkEndDate(e.target.value)} required />
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Days of Week</Label>
-                      <div className="flex flex-wrap gap-3">
-                        {ALL_DAYS.map((day) => {
-                          const selected = bulkDays.includes(day)
-                          return (
-                            <label key={day} className={`flex items-center gap-1.5 px-3 py-1.5 border text-xs cursor-pointer transition-colors ${selected ? 'bg-maroon text-white border-maroon dark:bg-golden dark:text-maroon dark:border-golden' : 'border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-400'}`}>
-                              <input
-                                type="checkbox"
-                                checked={selected}
-                                onChange={() => {
-                                  setBulkDays((prev) => selected ? prev.filter((d) => d !== day) : [...prev, day])
-                                }}
-                                className="sr-only"
-                              />
-                              {day}
-                            </label>
-                          )
-                        })}
+                    {hasScheduleSlots ? (
+                      <div className="space-y-2">
+                        <Label>Class meetings</Label>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                          One row per meeting from the section schedule. Each row keeps its own time pair.
+                        </p>
+                        <div className="space-y-2">
+                          {bulkRows.map((row, index) => (
+                            <div
+                              key={`${row.day}-${index}`}
+                              className={`flex flex-col gap-2 border p-3 sm:flex-row sm:items-center ${
+                                row.selected
+                                  ? 'border-maroon/40 bg-white dark:border-golden/40 dark:bg-zinc-800'
+                                  : 'border-zinc-200 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900/60'
+                              }`}
+                            >
+                              <label
+                                htmlFor={`bulk-slot-${index}`}
+                                className="flex min-w-24 cursor-pointer items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-200"
+                              >
+                                <input
+                                  id={`bulk-slot-${index}`}
+                                  type="checkbox"
+                                  checked={row.selected}
+                                  onChange={(e) => updateBulkRow(index, { selected: e.target.checked })}
+                                  className="accent-maroon h-4 w-4"
+                                />
+                                {row.day}
+                              </label>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Input
+                                  aria-label={`${row.day} start time`}
+                                  type="time"
+                                  value={row.startTime}
+                                  onChange={(e) => updateBulkRow(index, { startTime: e.target.value })}
+                                  className="w-32"
+                                  required={row.selected}
+                                />
+                                <span aria-hidden="true" className="text-zinc-400">–</span>
+                                <Input
+                                  aria-label={`${row.day} end time`}
+                                  type="time"
+                                  value={row.endTime}
+                                  onChange={(e) => updateBulkRow(index, { endTime: e.target.value })}
+                                  className="w-32"
+                                  required={row.selected}
+                                />
+                              </div>
+                              {row.room && (
+                                <span className="text-xs text-zinc-500 dark:text-zinc-400">{row.room}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        {invalidBulkRow && (
+                          <p className="text-xs font-medium text-red-600 dark:text-red-400">
+                            End time must be after start time for each selected class meeting.
+                          </p>
+                        )}
                       </div>
-                    </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Label>Days of Week</Label>
+                        <div className="flex flex-wrap gap-3">
+                          {ALL_DAYS.map((day) => {
+                            const selected = bulkDays.includes(day)
+                            return (
+                              <label key={day} className={`flex items-center gap-1.5 px-3 py-1.5 border text-xs cursor-pointer transition-colors ${selected ? 'bg-maroon text-white border-maroon dark:bg-golden dark:text-maroon dark:border-golden' : 'border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-400'}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={selected}
+                                  onChange={() => {
+                                    setBulkDays((prev) => selected ? prev.filter((d) => d !== day) : [...prev, day])
+                                  }}
+                                  className="sr-only"
+                                />
+                                {day}
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
                     <p className="text-xs text-maroon dark:text-golden font-semibold">
-                      {calculateBulkCount()} session{calculateBulkCount() !== 1 ? 's' : ''} will be created
+                      {bulkCount} session{bulkCount !== 1 ? 's' : ''} will be created
                     </p>
                   </div>
                 ) : (
                   <>
+                    {selectedSection && hasScheduleSlots && (
+                      <div className="space-y-2">
+                        <Label htmlFor="classMeeting">Class meeting</Label>
+                        <select
+                          id="classMeeting"
+                          value={slotSelection}
+                          onChange={(e) => handleSlotChange(e.target.value)}
+                          aria-describedby="classMeetingHint"
+                          className="flex h-10 w-full rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon/30 focus-visible:border-maroon"
+                        >
+                          {scheduleSlots.map((slot, index) => (
+                            <option key={`${slot.day}-${index}`} value={String(index)}>
+                              {slotLabel(slot)}
+                            </option>
+                          ))}
+                          <option value={CUSTOM_SLOT_VALUE}>Not a scheduled day (custom)</option>
+                        </select>
+                        <p id="classMeetingHint" className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                          Choosing a meeting fills in its time and room and moves the date to its next
+                          occurrence. Every field stays editable.
+                        </p>
+                      </div>
+                    )}
+
                     <div className="space-y-2">
                       <Label htmlFor="date">Date</Label>
                       <Input id="date" type="date" value={date} onChange={(e) => handleDateChange(e.target.value)} required />
@@ -495,20 +646,24 @@ export default function CreateSessionPage() {
                   </>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="startTime">Start Time</Label>
-                    <Input id="startTime" type="time" value={startTime} onChange={(e) => handleStartTimeChange(e.target.value)} required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="endTime">End Time</Label>
-                    <Input id="endTime" type="time" value={endTime} onChange={(e) => handleEndTimeChange(e.target.value)} required />
-                  </div>
-                </div>
-                {endTime <= startTime && (
-                  <p className="text-xs text-red-600 dark:text-red-400 font-medium">
-                    End time must be after start time.
-                  </p>
+                {showGlobalTimeRange && (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="startTime">Start Time</Label>
+                        <Input id="startTime" type="time" value={startTime} onChange={(e) => handleStartTimeChange(e.target.value)} required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="endTime">End Time</Label>
+                        <Input id="endTime" type="time" value={endTime} onChange={(e) => handleEndTimeChange(e.target.value)} required />
+                      </div>
+                    </div>
+                    {endTime <= startTime && (
+                      <p className="text-xs text-red-600 dark:text-red-400 font-medium">
+                        End time must be after start time.
+                      </p>
+                    )}
+                  </>
                 )}
 
                 <div className="space-y-2">
@@ -568,8 +723,8 @@ export default function CreateSessionPage() {
             )}
 
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="submit" disabled={!selectedSection || !selectedSubject || (bulkMode && calculateBulkCount() === 0) || hasDuplicateConflict || endTime <= startTime || submitting}>
-                {submitting ? 'Creating...' : bulkMode ? `Create ${calculateBulkCount()} Sessions` : 'Create Session'}
+              <Button type="submit" disabled={!selectedSection || !selectedSubject || (bulkMode && bulkCount === 0) || hasDuplicateConflict || timeRangeInvalid || submitting}>
+                {submitting ? 'Creating...' : bulkMode ? `Create ${bulkCount} Sessions` : 'Create Session'}
               </Button>
               <Button variant="ghost" asChild>
                 <Link href="/faculty/sessions">Cancel</Link>

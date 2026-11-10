@@ -2,10 +2,15 @@ import { WsException } from '@nestjs/websockets'
 import {
   AI_THREAD_JOINED_EVENT,
   AI_THREAD_LEAVE_EVENT,
+  ATTENDANCE_ANOMALY_EVENT,
+  KIOSK_JOINED_EVENT,
+  KIOSK_LEAVE_EVENT,
   SERVER_METRICS_EVENT,
   SERVER_METRICS_ROOM,
   SERVER_SUBSCRIBED_EVENT,
   SERVER_UNSUBSCRIBE_EVENT,
+  SESSION_FINALE_EVENT,
+  type SessionFinaleSummary,
 } from '@polycheck/shared'
 import { AttendanceGateway } from './attendance.gateway'
 
@@ -262,5 +267,142 @@ describe('AttendanceGateway', () => {
     gateway.handleNotificationCreated({ userId: 'teacher-1', notification })
 
     expect(server.to).toHaveBeenCalledWith('auth:user:teacher-1')
+  })
+
+  // ── F1 kiosk presence + broadcast helpers ──
+
+  function kioskSocket(join?: jest.Mock, leave?: jest.Mock) {
+    const user = { id: 'teacher-1', role: 'teacher' }
+    return {
+      user,
+      socket: {
+        data: {},
+        id: 'socket-1',
+        handshake: { headers: {}, auth: {} },
+        join: join ?? jest.fn(() => Promise.resolve()),
+        leave: leave ?? jest.fn(() => Promise.resolve()),
+      },
+    }
+  }
+
+  function kioskSession() {
+    return { id: 'sess-1', sectionId: 'sec-1', teacherId: 'teacher-1' }
+  }
+
+  it('joins an owning teacher to the kiosk room and reports the presence count', async () => {
+    const prisma = { session: { findUnique: jest.fn().mockResolvedValue(kioskSession()) } }
+    const user = { id: 'teacher-1', role: 'teacher' }
+    const sessions = { authenticate: jest.fn().mockResolvedValue(user) }
+    const gateway = makeGateway(sessions, prisma, statusMock())
+    const { socket } = kioskSocket()
+    socket.id = 'kiosk-a'
+
+    const ack = await gateway.joinKiosk(socket as never, { sessionId: 'sess-1' })
+    expect(ack).toEqual({
+      event: KIOSK_JOINED_EVENT,
+      data: { sessionId: 'sess-1', kioskCount: 1 },
+    })
+    expect(socket.join).toHaveBeenCalledWith('kiosk:sess-1')
+
+    const second = kioskSocket()
+    second.socket.id = 'kiosk-b'
+    await gateway.joinKiosk(second.socket as never, { sessionId: 'sess-1' })
+    expect(gateway.kioskCount('sess-1')).toBe(2)
+  })
+
+  it('denies students and foreign teachers kiosk access (attendance:anomaly and finale stay staff-only)', async () => {
+    const prisma = { session: { findUnique: jest.fn().mockResolvedValue(kioskSession()) } }
+    const sessions = { authenticate: jest.fn().mockResolvedValue({ id: 'student-1', role: 'student' }) }
+    const gateway = makeGateway(sessions, prisma, statusMock())
+    const { socket } = kioskSocket()
+
+    await expect(gateway.joinKiosk(socket as never, { sessionId: 'sess-1' })).rejects.toThrow(WsException)
+    expect(socket.join).not.toHaveBeenCalled()
+
+    const foreignSessions = { authenticate: jest.fn().mockResolvedValue({ id: 'teacher-9', role: 'teacher' }) }
+    const foreignGateway = makeGateway(foreignSessions, prisma, statusMock())
+    const foreignSocket = kioskSocket().socket
+    await expect(foreignGateway.joinKiosk(foreignSocket as never, { sessionId: 'sess-1' })).rejects.toThrow(WsException)
+    expect(foreignSocket.join).not.toHaveBeenCalled()
+    expect(gateway.kioskCount('sess-1')).toBe(0)
+  })
+
+  it('rejects a kiosk join without a session id', async () => {
+    const gateway = makeGateway({}, {}, statusMock())
+    const { socket } = kioskSocket()
+    await expect(gateway.joinKiosk(socket as never, {})).rejects.toThrow(WsException)
+    expect(socket.join).not.toHaveBeenCalled()
+  })
+
+  it('leaves the kiosk room and decrements the per-session presence count', async () => {
+    const prisma = { session: { findUnique: jest.fn().mockResolvedValue(kioskSession()) } }
+    const sessions = { authenticate: jest.fn().mockResolvedValue({ id: 'teacher-1', role: 'teacher' }) }
+    const gateway = makeGateway(sessions, prisma, statusMock())
+    const first = kioskSocket()
+    first.socket.id = 'kiosk-a'
+    const second = kioskSocket()
+    second.socket.id = 'kiosk-b'
+    await gateway.joinKiosk(first.socket as never, { sessionId: 'sess-1' })
+    await gateway.joinKiosk(second.socket as never, { sessionId: 'sess-1' })
+
+    const ack = await gateway.leaveKiosk(second.socket as never, { sessionId: 'sess-1' })
+
+    expect(ack).toEqual({ event: KIOSK_LEAVE_EVENT, data: { sessionId: 'sess-1', kioskCount: 1 } })
+    expect(second.socket.leave).toHaveBeenCalledWith('kiosk:sess-1')
+    expect(gateway.kioskCount('sess-1')).toBe(1)
+  })
+
+  it('emits the finale and anomaly events to the session room', () => {
+    const gateway = makeGateway({}, {}, statusMock())
+    const server = makeServer()
+    ;(gateway as unknown as { server: unknown }).server = server
+
+    const recap: SessionFinaleSummary = {
+      sessionId: 'sess-1',
+      endedAt: '2026-11-02T03:30:00.000Z',
+      counts: { present: 12, late: 2, absent: 1, excused: 1, incomplete: 0, disputed: 0, pending: 0 },
+      capacity: 16,
+    }
+    gateway.emitSessionFinale({ id: 'sess-1' }, recap)
+    expect(server.to).toHaveBeenCalledWith('session:sess-1')
+    expect(server.to('session:sess-1').emit).toHaveBeenCalledWith(SESSION_FINALE_EVENT, recap)
+
+    gateway.emitAttendanceAnomaly(
+      { id: 'sess-1' },
+      {
+        sessionId: 'sess-1',
+        studentId: 'stu-1',
+        studentName: 'Juan Dela Cruz',
+        latitude: 14.87,
+        longitude: 120.999,
+        distanceMeters: 124,
+        geofenceRadiusMeters: 50,
+        reason: 'outside_geofence',
+        timestamp: '2026-11-02T03:11:00.000Z',
+      },
+    )
+    expect(server.to('session:sess-1').emit).toHaveBeenCalledWith(ATTENDANCE_ANOMALY_EVENT, expect.anything())
+
+    server.to.mockClear()
+    server.to('session:sess-1')
+    gateway.emitAttendanceUpdated({
+      id: 'rec-1',
+      sessionId: 'sess-1',
+      sectionId: 'sec-1',
+      studentId: 'stu-1',
+      studentName: 'Juan Dela Cruz',
+      status: 'present',
+    })
+    const payload = server.to('session:sess-1').emit.mock.calls.at(-1)?.[1] as Record<string, unknown>
+    // The kiosk ticker reads studentName; every legacy key stays intact.
+    expect(payload).toEqual({
+      recordId: 'rec-1',
+      sessionId: 'sess-1',
+      sectionId: 'sec-1',
+      studentId: 'stu-1',
+      studentName: 'Juan Dela Cruz',
+      status: 'present',
+      timestamp: expect.any(String),
+    })
   })
 })

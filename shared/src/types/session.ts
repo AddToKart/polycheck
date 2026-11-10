@@ -61,3 +61,37 @@ export interface QRTokenPayload {
   pinHash?: string
   validitySeconds?: number
 }
+
+// ── F1/F2 (WF-LD3/LD4): realtime event names + session finale contracts ──
+
+/** Broadcast when a scan is denied in person with coordinates (geofence radar). */
+export const ATTENDANCE_ANOMALY_EVENT = 'attendance:anomaly'
+
+/** Broadcast by `end()` and the auto-end cron once attendance resolves. */
+export const SESSION_FINALE_EVENT = 'session:finale'
+
+/** Projector kiosk presence handshake (session-scoped staff views). */
+export const KIOSK_JOIN_EVENT = 'kiosk:join'
+export const KIOSK_JOINED_EVENT = 'kiosk:joined'
+export const KIOSK_LEAVE_EVENT = 'kiosk:leave'
+
+export const FINALE_COUNT_STATUSES = [
+  'present',
+  'late',
+  'absent',
+  'excused',
+  'incomplete',
+  'disputed',
+  'pending',
+] as const
+
+export type FinaleCountStatus = (typeof FINALE_COUNT_STATUSES)[number]
+
+export interface SessionFinaleSummary {
+  sessionId: string
+  /** Server commit instant — lets clients dedupe repeated broadcasts. */
+  endedAt: string
+  counts: Record<FinaleCountStatus, number>
+  /** Roster size of the section (enrollment count) when known. */
+  capacity: number
+}

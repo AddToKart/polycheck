@@ -2,13 +2,18 @@ import { test, expect } from '@playwright/test'
 import {
   ADMIN_EMAIL,
   FACULTY_EMAIL,
+  apiLogout,
+  attemptStudentLogin,
   loginFaculty,
   loginStudent,
   logout,
   trackErrors,
   assertNoErrors,
   SEED_PASSWORD,
+  installSessionCleanup,
 } from './helpers'
+
+installSessionCleanup()
 
 test.describe('Auth & Session', () => {
   test('landing page renders PUP branding and role selection', async ({ page }) => {
@@ -162,20 +167,47 @@ test.describe('Auth & Session', () => {
     assertNoErrors(errorsA)
   })
 
-  test('student single-session: signing in on a second browser ends the first', async ({ browser }) => {
+  test('student second-device login is rejected while the first device stays signed in', async ({ browser }) => {
+    // Single-device policy: the server gate rejects a login from a different
+    // device with an explainer, and the active device is never kicked. Two
+    // fresh contexts act as two separate devices (each gets its own `web-…` id).
     const contextA = await browser.newContext()
     const contextB = await browser.newContext()
     const pageA = await contextA.newPage()
     const pageB = await contextB.newPage()
+    const errorsA = trackErrors(pageA)
+    const errorsB = trackErrors(pageB)
 
-    await loginStudent(pageA)
-    await expect(pageA.getByText(/Dashboard|Welcome/i).first()).toBeVisible()
-    await loginStudent(pageB)
-    await expect(pageB.getByText(/Dashboard|Welcome/i).first()).toBeVisible()
+    try {
+      await loginStudent(pageA)
+      await expect(pageA.getByText(/Dashboard|Welcome/i).first()).toBeVisible()
 
-    // The replaced first device learns about it over realtime + /auth/me
-    // probe and takes the destructive path exactly as before.
-    await expect(pageA).toHaveURL((url) => url.pathname === '/', { timeout: 20_000 })
+      const blocked = await attemptStudentLogin(pageB)
+      expect(blocked.status()).toBe(403)
+      const body = (await blocked.json()) as { code?: string }
+      expect(body.code).toBe('active_session_elsewhere')
+      await expect(
+        pageB.getByRole('heading', { name: /Already signed in elsewhere/i }),
+      ).toBeVisible()
+      await expect(pageB).toHaveURL((url) => url.pathname === '/login/student')
+
+      // The first device is untouched: a protected page reload still works and
+      // there is no replacement kick/broadcast.
+      await pageA.reload()
+      await expect(pageA).toHaveURL((url) => url.pathname.startsWith('/student/'))
+      await expect(pageA.getByText(/Dashboard|Welcome/i).first()).toBeVisible()
+
+      assertNoErrors(errorsA)
+      assertNoErrors(errorsB, [
+        /\[console\.error\] Failed to load resource: the server responded with a status of 403/,
+      ])
+    } finally {
+      // Custom contexts bypass the suite-wide afterEach: revoke the live
+      // session non-armingly so the next student test is not blocked.
+      await apiLogout(pageA.request).catch(() => undefined)
+      await contextA.close()
+      await contextB.close()
+    }
   })
 
   test('super admin login reaches admin dashboard', async ({ page }) => {

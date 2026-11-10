@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, ArrowRight } from 'lucide-react'
-import { PaginationBar } from '@/components/ui/pagination-bar'
 
 const SUBJECTS_PAGE_SIZE = 9
 import { api } from '@/lib/api-client'
@@ -12,12 +11,14 @@ import type { User, Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { PaginationBar } from '@/components/ui/pagination-bar'
 
 export default function SubjectsPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({})
+  const [sectionCourses, setSectionCourses] = useState<Record<string, string[]>>({})
 
   useEffect(() => {
     const init = async () => {
@@ -29,10 +30,18 @@ export default function SubjectsPage() {
       setUser(cu)
       const allSections = await api.getSections()
       const counts: Record<string, number> = {}
+      const courses: Record<string, Set<string>> = {}
       for (const sec of allSections) {
         counts[sec.subjectId] = (counts[sec.subjectId] || 0) + 1
+        const course = sec.course?.trim()
+        if (course) (courses[sec.subjectId] ??= new Set()).add(course)
       }
       setSectionCounts(counts)
+      setSectionCourses(
+        Object.fromEntries(
+          Object.entries(courses).map(([subjectId, set]) => [subjectId, [...set].sort()]),
+        ),
+      )
       setSubjects(await api.getSubjects())
     }
     init()
@@ -90,6 +99,7 @@ export default function SubjectsPage() {
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {pagedSubjects.map((subject) => {
               const sectionCount = sectionCounts[subject.id] ?? 0
+              const courses = sectionCourses[subject.id] ?? []
               return (
               <div
                 key={subject.id}
@@ -106,6 +116,11 @@ export default function SubjectsPage() {
                         {sectionCount} Section{sectionCount !== 1 ? 's' : ''}
                       </span>
                     </div>
+                    {courses.length > 0 && (
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                        Courses: {courses.join(', ')}
+                      </p>
+                    )}
                     <CardTitle className="text-xl font-heading font-bold text-foreground group-hover:text-maroon dark:group-hover:text-golden transition-colors line-clamp-2 leading-tight">
                       {subject.name}
                     </CardTitle>
@@ -134,6 +149,19 @@ export default function SubjectsPage() {
               </div>
             )}
           </div>
+
+          {subjects.length > 0 && (
+            <PaginationBar
+              page={safePage}
+              totalPages={totalPages}
+              totalItems={subjects.length}
+              pageSize={SUBJECTS_PAGE_SIZE}
+              itemName="subjects"
+              onPageChange={setPage}
+              showNumbers
+              className="mt-6 border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+            />
+          )}
         </div>
       </main>
     </div>

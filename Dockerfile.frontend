@@ -7,13 +7,15 @@ COPY frontend/package.json frontend/package.json
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm config set fetch-timeout 300000 \
  && pnpm config set fetch-retries 10 \
- && pnpm install --frozen-lockfile --filter frontend... --filter @polycheck/shared...
+ && pnpm install --ignore-scripts --frozen-lockfile --filter frontend... --filter @polycheck/shared...
 COPY shared shared
 COPY frontend frontend
 ARG NEXT_PUBLIC_API_URL
 # Fallbacks (image upload / manual token entry) are recovery/testing surfaces.
 # Local development passes `true` explicitly through docker-compose.local.yml.
 ARG NEXT_PUBLIC_ALLOW_QR_FALLBACKS=false
+# F7 outage simulator (demo killswitch) — dev/demo only; off in production.
+ARG NEXT_PUBLIC_ENABLE_OUTAGE_SIMULATOR=false
 # Offline-first PWA (manifest, service worker, queued attendance). Kill switch.
 ARG NEXT_PUBLIC_PWA_OFFLINE=true
 ARG NEXT_PUBLIC_PRIVACY_NOTICE_VERSION
@@ -22,6 +24,7 @@ ARG SENTRY_ORG
 ARG SENTRY_PROJECT
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_ALLOW_QR_FALLBACKS=$NEXT_PUBLIC_ALLOW_QR_FALLBACKS
+ENV NEXT_PUBLIC_ENABLE_OUTAGE_SIMULATOR=$NEXT_PUBLIC_ENABLE_OUTAGE_SIMULATOR
 ENV NEXT_PUBLIC_PWA_OFFLINE=$NEXT_PUBLIC_PWA_OFFLINE
 ENV NEXT_PUBLIC_PRIVACY_NOTICE_VERSION=$NEXT_PUBLIC_PRIVACY_NOTICE_VERSION
 ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN

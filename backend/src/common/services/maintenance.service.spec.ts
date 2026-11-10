@@ -125,4 +125,89 @@ describe('MaintenanceService', () => {
     expect(prisma.scanAttempt.deleteMany).not.toHaveBeenCalled()
     expect(redis.releaseLock).not.toHaveBeenCalled()
   })
+
+  describe('attendance ledger anchoring (F9)', () => {
+    const makeService = (prisma: Record<string, unknown>) =>
+      new MaintenanceService(
+        prisma as never,
+        { expireStale: jest.fn() } as never,
+        { acquireLock: jest.fn().mockResolvedValue('owner-token'), releaseLock: jest.fn() } as never,
+      )
+
+    it('publishes the day head into an append-only audit row at 2AM', async () => {
+      const prisma = {
+        attendanceRecord: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'rec-2',
+            sessionId: 'sess-1',
+            recordHash: 'head-hash',
+          }),
+          count: jest.fn().mockResolvedValue(9),
+        },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+      }
+      const service = makeService(prisma)
+
+      await service.anchorAttendanceLedger()
+
+      const headWhere = prisma.attendanceRecord.findFirst.mock.calls[0][0]
+      expect(headWhere.where).toEqual(
+        expect.objectContaining({
+          recordHash: { not: null },
+          timestamp: expect.objectContaining({ gte: expect.any(Date), lt: expect.any(Date) }),
+        }),
+      )
+      const start = headWhere.where.timestamp.gte as Date
+      const end = headWhere.where.timestamp.lt as Date
+      expect((end.getTime() - start.getTime()) % (24 * 3600_000)).toBe(0)
+      expect(prisma.auditLog.create).toHaveBeenCalledTimes(1)
+      const row = prisma.auditLog.create.mock.calls[0][0].data
+      expect(row).toEqual(
+        expect.objectContaining({
+          actorId: 'system',
+          actorRole: 'system',
+          action: 'ledger.anchored',
+          entityType: 'ledger',
+        }),
+      )
+      expect(row.metadata).toEqual(
+        expect.objectContaining({
+          lastRecordHash: 'head-hash',
+          recordsCounted: 9,
+          sessionId: 'sess-1',
+          recordId: 'rec-2',
+        }),
+      )
+      expect(row.metadata.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    })
+
+    it('skips the anchor row when the day has no chained records', async () => {
+      const prisma = {
+        attendanceRecord: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          count: jest.fn().mockResolvedValue(0),
+        },
+        auditLog: { create: jest.fn() },
+      }
+      const service = makeService(prisma)
+
+      await service.anchorAttendanceLedger()
+
+      expect(prisma.auditLog.create).not.toHaveBeenCalled()
+      expect(prisma.attendanceRecord.count).not.toHaveBeenCalled()
+    })
+
+    it('stays fail-open when the anchor write fails', async () => {
+      const prisma = {
+        attendanceRecord: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'rec-1', sessionId: 'sess-1', recordHash: 'hash' }),
+          count: jest.fn().mockResolvedValue(1),
+        },
+        auditLog: { create: jest.fn().mockRejectedValue(new Error('audit table down')) },
+      }
+      const service = makeService(prisma)
+
+      await expect(service.anchorAttendanceLedger()).resolves.toBeUndefined()
+    })
+  })
 })

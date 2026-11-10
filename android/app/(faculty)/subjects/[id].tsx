@@ -29,12 +29,15 @@ export default function SubjectDetailScreen() {
   if (!currentUser || !subject) return null
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow={subject.code}
         title={subject.name}
         subtitle={subject.description || `${sections.length} class sections`}
-        onBack={() => router.replace('/(faculty)/subjects')}
+        onBack={() => router.back()}
         actions={<CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />}
       />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}>

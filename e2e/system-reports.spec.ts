@@ -1,5 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
-import { API_BASE, ADMIN_EMAIL, SEED_PASSWORD, loginFaculty, trackErrors, assertNoErrors } from './helpers'
+import { API_BASE, ADMIN_EMAIL, SEED_PASSWORD, loginFaculty, trackErrors, assertNoErrors, installSessionCleanup } from './helpers'
+
+installSessionCleanup()
 
 // Triage and intake run against the API with service workers blocked so
 // route mocks are engine-consistent.

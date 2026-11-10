@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'expo-router'
 import type { User } from '@polycheck/shared'
 import { api } from '../services/api-client'
+import { isSignOutInFlight } from '../lib/sign-out'
 
 export type AllowedRole = User['role']
 
@@ -28,6 +29,13 @@ export function useAuthGate(roles: AllowedRole[] = [], allow?: (user: User) => b
   const rolesKey = roles.join(',')
 
   useEffect(() => {
+    // Sign-out already navigates to '/' itself; the auth listener also renders
+    // this screen with a null user. Redirecting here would race that replace
+    // against the screen unmount (native navigator crash). The stamp clears
+    // shortly after the sign-out navigation settles, so every other gate
+    // behavior is unchanged.
+    if (isSignOutInFlight()) return
+
     const allowedRoles = rolesKey ? rolesKey.split(',') : []
     if (!user) {
       router.replace('/')

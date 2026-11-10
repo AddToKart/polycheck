@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { ArrowLeft, Users, CalendarDays, Copy, Plus } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import type { User, Subject, Section } from '@polycheck/shared'
+import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -120,7 +121,7 @@ export default function SubjectDetailPage() {
                   <CardHeader className="pb-4 pt-6 px-6">
                     <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
                       <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-1">
-                        Section {section.section}
+                        {formatSectionHeading(section)}
                       </span>
                       <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
                         {section.studentCount} enrolled

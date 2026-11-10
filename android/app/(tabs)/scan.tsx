@@ -40,9 +40,12 @@ import {
   isScannerOperationCurrent,
 } from "../../hooks/scanner-focus-lifecycle";
 import { shouldShowScanFallbacks } from "../../hooks/qr-fallback-policy";
+import { keyboardAvoidingBehavior } from "../../lib/keyboard";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const scanSize = Math.min(SCREEN_WIDTH * 0.82, 340);
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+// Reserve the header (~96), the floating control panel (~280-310) and the
+// instruction label so the gold frame never sits underneath another layer.
+const scanSize = Math.min(SCREEN_WIDTH * 0.82, 340, Math.max(200, SCREEN_HEIGHT - 470));
 const allowQrFallbacksEnv = process.env.EXPO_PUBLIC_ALLOW_QR_FALLBACKS;
 
 type ScanResult = {
@@ -103,6 +106,7 @@ export default function ScanScreen() {
   } | null>(null);
   const [pinValue, setPinValue] = useState("");
   const [pinError, setPinError] = useState("");
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(0);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scannedRef = useRef(false);
   const focusedRef = useRef(false);
@@ -588,6 +592,10 @@ export default function ScanScreen() {
           alignItems: "center",
           justifyContent: "center",
           paddingHorizontal: 16,
+          // Keep the frame + instruction above the absolute bottom panel and
+          // the header; the panel height is measured so nothing is covered.
+          paddingTop: 96,
+          paddingBottom: bottomPanelHeight ? bottomPanelHeight + 12 : 280,
         }}
       >
         {cameraPermission?.granted ? (
@@ -832,6 +840,7 @@ export default function ScanScreen() {
 
       {/* Floating Bottom Control Panel - Explicit dark translucent inline style */}
       <View
+        onLayout={(event) => setBottomPanelHeight(event.nativeEvent.layout.height)}
         style={{
           position: "absolute",
           bottom: 0,
@@ -1036,7 +1045,7 @@ export default function ScanScreen() {
             backgroundColor: "rgba(0, 0, 0, 0.80)",
             padding: 20,
           }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={keyboardAvoidingBehavior}
         >
           <View className="border border-t-4 border-t-golden border-zinc-200 bg-white p-5 dark:border-white/20 dark:bg-surface-dark">
             <View
@@ -1188,7 +1197,7 @@ export default function ScanScreen() {
             backgroundColor: "rgba(0, 0, 0, 0.80)",
             padding: 20,
           }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={keyboardAvoidingBehavior}
         >
           <View className="border border-t-4 border-t-golden border-zinc-200 bg-white p-5 dark:border-white/20 dark:bg-surface-dark">
             <View className="flex-row items-start justify-between">
@@ -1224,7 +1233,8 @@ export default function ScanScreen() {
             <TextInput
               accessibilityLabel="Meeting PIN"
               testID="scan-pin-input"
-              className="mt-4 min-h-14 w-full border border-zinc-200 bg-campus px-4 text-center font-sans-bold text-2xl tracking-[10px] text-maroon-ink dark:border-white/20 dark:bg-campus-dark dark:text-white"
+              className="mt-4 min-h-14 w-full border border-zinc-200 bg-campus px-4 font-sans-bold text-2xl tracking-[10px] text-maroon-ink dark:border-white/20 dark:bg-campus-dark dark:text-white"
+              style={{ textAlign: 'center' }}
               keyboardType="number-pad"
               maxLength={4}
               autoFocus

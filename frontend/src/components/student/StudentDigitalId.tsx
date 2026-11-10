@@ -4,6 +4,7 @@ import Image from 'next/image'
 import { User, X } from 'lucide-react'
 import type { Student } from '@polycheck/shared'
 import { Card, CardContent } from '@/components/ui/card'
+import { HologramOverlay } from './HologramOverlay'
 import { pupColors } from '@/lib/colors'
 
 interface StudentDigitalIdProps {
@@ -83,7 +84,7 @@ export function StudentDigitalId({ user, isOpen, isFlipped, onOpen, onClose, onF
                         <div className="border-b-2 border-zinc-800 dark:border-zinc-400 mb-1 h-6 flex items-end justify-center"><span className="text-[8px] font-mono opacity-50 text-black dark:text-white">SIGNATURE</span></div>
                       </div>
                     </div>
-                    <div className="w-2/3 p-5 relative z-10 flex flex-col justify-center">
+                    <div className="w-2/3 p-5 flex flex-col justify-center">
                       <div className="mb-5"><p className="text-[8px] uppercase tracking-widest text-zinc-500 dark:text-zinc-400 font-bold mb-1">Student Number</p><p className="text-xl sm:text-2xl font-mono font-bold text-maroon dark:text-golden">{user.studentId}</p></div>
                       <div className="mb-5"><p className="text-[8px] uppercase tracking-widest text-zinc-500 dark:text-zinc-400 font-bold mb-1">Full Name</p><p className="text-lg sm:text-xl font-heading font-bold text-zinc-900 dark:text-white leading-tight uppercase">{user.fullName}</p></div>
                       <div className="grid grid-cols-2 gap-4 mt-2">
@@ -92,6 +93,7 @@ export function StudentDigitalId({ user, isOpen, isFlipped, onOpen, onClose, onF
                       </div>
                     </div>
                   </div>
+                  <HologramOverlay deviceId={user.boundDeviceId} tone="light" />
                 </div>
 
                 <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] bg-id-paper dark:bg-id-paper-dark border-2 border-zinc-300 dark:border-zinc-700 shadow-2xl flex flex-col">
@@ -110,6 +112,7 @@ export function StudentDigitalId({ user, isOpen, isFlipped, onOpen, onClose, onF
                       <p className="text-[7px] font-mono mt-3 text-zinc-500 text-center tracking-widest">SCAN TO VERIFY</p>
                     </div>
                   </div>
+                  <HologramOverlay deviceId={user.boundDeviceId} tone="light" />
                 </div>
               </div>
             </div>

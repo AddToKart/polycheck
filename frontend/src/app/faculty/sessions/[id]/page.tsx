@@ -2,8 +2,10 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import Image from 'next/image'
-import { ArrowLeft, QrCode, Timer, Play, StopCircle, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2, Copy, Download, Check, School, Video, ShieldCheck, KeyRound } from 'lucide-react'
+import { ArrowLeft, QrCode, Timer, Play, StopCircle, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2, Copy, Download, Check, School, Video, ShieldCheck, KeyRound, Radio, MonitorPlay } from 'lucide-react'
 import { api, isNetworkFailure, ApiHttpError } from '@/lib/api-client'
 import { randomMeetingPin } from '@polycheck/shared'
 import type { User, Session, AttendanceRecord, AttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
@@ -19,7 +21,23 @@ import CampusMap from '@/components/CampusMap'
 import { subscribeToSession } from '@/lib/realtime'
 import { pupColors } from '@/lib/colors'
 import { SessionRequestCoordinator } from '@/lib/session-request-coordinator'
+import { OutageSimulator } from '@/components/dev/OutageSimulator'
 import QRCode from 'qrcode'
+
+// F2 radar opens as a cockpit dialog; maplibre and its worker chain load only
+// when the teacher actually opens it.
+const GeofenceRadarModal = dynamic(
+  () => import('@/components/radar/GeofenceRadarModal'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center p-10" role="status">
+        <LoadingSpinner size="lg" />
+        <span className="sr-only">Loading geofence radar…</span>
+      </div>
+    ),
+  },
+)
 
 const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'incomplete', 'absent']
 
@@ -77,6 +95,8 @@ export default function SessionDetailPage() {
   const [redirecting, setRedirecting] = useState(false)
   const [generatingQr, setGeneratingQr] = useState(false)
   const [endingSession, setEndingSession] = useState(false)
+  // F2 radar / F1 kiosk entry points.
+  const [radarOpen, setRadarOpen] = useState(false)
   // V4 anti-ghost-professor: captured teacher fix + pending override dialog.
   const teacherFixRef = useRef<{ latitude: number; longitude: number } | null>(null)
   const teacherConflictEpochRef = useRef(0)
@@ -585,6 +605,23 @@ export default function SessionDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setRadarOpen(true)}
+              aria-label="Open live geofence radar"
+              title="Live geofence radar"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center p-2 hover:opacity-70 md:min-h-0 md:min-w-0"
+            >
+              <Radio className="w-4 h-4 text-maroon dark:text-golden" />
+            </button>
+            <Link
+              href={`/faculty/sessions/${id}/kiosk`}
+              aria-label="Open projector view (kiosk mode)"
+              title="Projector view (kiosk)"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center p-2 hover:opacity-70 md:min-h-0 md:min-w-0"
+            >
+              <MonitorPlay className="w-4 h-4 text-maroon dark:text-golden" />
+            </Link>
             <button
               type="button"
               onClick={() => void refreshData()}
@@ -1288,6 +1325,20 @@ export default function SessionDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Mounted only while open so maplibre's chunk loads on demand. */}
+      {radarOpen ? (
+        <GeofenceRadarModal
+          open={radarOpen}
+          onOpenChange={setRadarOpen}
+          session={session}
+          records={records}
+          students={enrolledStudents}
+        />
+      ) : null}
+
+      {/* F7 demo surface — flag-gated; env defaults off in production builds. */}
+      {process.env.NEXT_PUBLIC_ENABLE_OUTAGE_SIMULATOR === 'true' ? <OutageSimulator /> : null}
     </div>
   )
 }

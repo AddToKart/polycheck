@@ -110,3 +110,122 @@ export function oversightDepartment(user: any): string | null {
   const department = user.department?.trim()
   return department ? department : null
 }
+
+// Mirrors shared/src/types/attendance.ts label maps (manual mock must stay in sync).
+export const RECORD_TIMELINE_EVENT_KIND_LABELS = {
+  activation: 'Activation',
+  scan: 'Scan attempt',
+  signature: 'Signature',
+  queue: 'Queued on device',
+  network: 'Network',
+  sync: 'Sync',
+  dispute: 'Dispute',
+  decision: 'Decision',
+  excuse: 'Excuse',
+}
+
+export const DISPUTE_RECOMMENDATION_LABELS = {
+  accept: 'Accept',
+  review: 'Review',
+  reject: 'Reject',
+}
+
+// Mirrors shared/src/types/session.ts realtime event constants (F1/F2).
+export const ATTENDANCE_ANOMALY_EVENT = 'attendance:anomaly'
+export const SESSION_FINALE_EVENT = 'session:finale'
+export const KIOSK_JOIN_EVENT = 'kiosk:join'
+export const KIOSK_JOINED_EVENT = 'kiosk:joined'
+export const KIOSK_LEAVE_EVENT = 'kiosk:leave'
+
+// Mirrors shared/src/utils/calendar.ts getRecentCampusDateRange (manual mock must stay in sync).
+const PUP_TIMEZONE_OFFSET_MS = 8 * 60 * 60 * 1000
+
+export function getRecentCampusDateRange(days = 30, date = new Date()) {
+  const normalizedDays = Math.max(1, Math.trunc(days))
+  const campusDate = new Date(date.getTime() + PUP_TIMEZONE_OFFSET_MS)
+  const endDate = campusDate.toISOString().slice(0, 10)
+  campusDate.setUTCDate(campusDate.getUTCDate() - (normalizedDays - 1))
+  return { startDate: campusDate.toISOString().slice(0, 10), endDate }
+}
+
+// Mirrors shared/src/utils/id-hologram.ts (manual mock must stay in sync).
+export const HOLOGRAM_WATERMARK_TEXT = 'PUP-ID-VERIFIED' as const
+export const HOLOGRAM_WEB_SESSION_CHIP = 'WEB-SESSION' as const
+export const HOLOGRAM_DEVICE_CHIP_PREFIX = 'DEVICE-BOUND •·•·' as const
+export const HOLOGRAM_DEVICE_CHIP_FULL_MASK = 'DEVICE-BOUND •·•·•·' as const
+
+const EPOCH_FALLBACK_STAMP = '1970-01-01 00:00:00'
+
+function hologramPad2(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+export function formatLiveUtcStamp(nowMs: number, offsetMs = 0): string {
+  if (!Number.isFinite(nowMs) || !Number.isFinite(offsetMs)) {
+    return EPOCH_FALLBACK_STAMP
+  }
+  const date = new Date(nowMs + offsetMs)
+  return (
+    `${hologramPad2(date.getUTCFullYear())}` +
+    `-${hologramPad2(date.getUTCMonth() + 1)}` +
+    `-${hologramPad2(date.getUTCDate())}` +
+    ` ${hologramPad2(date.getUTCHours())}` +
+    `:${hologramPad2(date.getUTCMinutes())}` +
+    `:${hologramPad2(date.getUTCSeconds())}`
+  )
+}
+
+export function maskDeviceChip(deviceId?: string | null): string {
+  if (typeof deviceId !== 'string' || deviceId.trim().length === 0) {
+    return HOLOGRAM_WEB_SESSION_CHIP
+  }
+  const alphanumeric = deviceId.replace(/[^A-Za-z0-9]/g, '')
+  if (alphanumeric.length < 4) {
+    return HOLOGRAM_DEVICE_CHIP_FULL_MASK
+  }
+  const tail = alphanumeric.slice(-4)
+  return `${HOLOGRAM_DEVICE_CHIP_PREFIX}${tail}`
+}
+
+export function buildWatermarkLine(stamp: string, chip: string): string {
+  return `${HOLOGRAM_WATERMARK_TEXT} • LIVE UTC: ${stamp} • ${chip}`
+}
+// Mirrors shared/src/utils/outage-simulator.ts (manual mock must stay in sync).
+export const SIMULATED_NETWORK_OUTAGE_MESSAGE = 'Simulated network outage (Polycheck simulator)'
+let outageArmed = false
+const outageListeners = new Set<(armed: boolean) => void>()
+export function armOutage(): void {
+  if (outageArmed) return
+  outageArmed = true
+  for (const listener of outageListeners) listener(true)
+}
+export function disarmOutage(): void {
+  if (!outageArmed) return
+  outageArmed = false
+  for (const listener of outageListeners) listener(false)
+}
+export function isOutageArmed(): boolean {
+  return outageArmed
+}
+export function subscribeToOutage(listener: (armed: boolean) => void): () => void {
+  outageListeners.add(listener)
+  listener(outageArmed)
+  return () => {
+    outageListeners.delete(listener)
+  }
+}
+export function createSimulatedNetworkOutage(): TypeError {
+  return new TypeError(SIMULATED_NETWORK_OUTAGE_MESSAGE)
+}
+export function formatOutageReceipt(sequence: number, operationId?: string | null): string {
+  const id8 = operationId ? operationId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) : ''
+  return `Receipt #${Number.isFinite(sequence) && sequence > 0 ? sequence : 0}${id8 ? ` · ${id8}` : ''}`
+}
+
+// Mirrors shared/src/types/at-risk.ts REFERRAL_STATUS_LABELS.
+export const REFERRAL_STATUS_LABELS: Record<string, string> = {
+  generated: 'Generated',
+  acknowledged: 'Acknowledged',
+  counseling_scheduled: 'Counseling scheduled',
+  resolved: 'Resolved',
+}

@@ -38,7 +38,11 @@ export default function EnrollScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID="student-enroll-screen">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+      testID="student-enroll-screen"
+    >
       <CampusHeader
         eyebrow="Student enrollment"
         title="Add a class"
@@ -46,7 +50,7 @@ export default function EnrollScreen() {
         onBack={() => router.back()}
       />
 
-      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
           <View className="flex-1 px-4 pb-8 pt-2">
             <CampusCard className="p-6">
@@ -61,7 +65,8 @@ export default function EnrollScreen() {
               <TextInput
                 accessibilityLabel="Enrollment code"
                 testID="enrollment-code-input"
-                className="my-7 h-16 rounded-2xl border border-line bg-zinc-50 px-4 text-center font-sans-bold text-xl uppercase tracking-[4px] text-ink dark:border-line-dark dark:bg-white/5 dark:text-white"
+                className="my-7 h-16 rounded-2xl border border-line bg-zinc-50 px-4 font-sans-bold text-xl uppercase tracking-[4px] text-ink dark:border-line-dark dark:bg-white/5 dark:text-white"
+                style={{ textAlign: 'center' }}
                 value={code}
                 onChangeText={setCode}
                 placeholder="ABC123"

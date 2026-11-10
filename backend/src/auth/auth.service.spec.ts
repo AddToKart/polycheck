@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   HttpException,
   HttpStatus,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
   UnauthorizedException,
@@ -22,6 +23,14 @@ import { SystemMaintenanceService } from '../maintenance-mode/system-maintenance
 
 const VALID_PASSWORD = 'correct-horse-battery-staple'
 const VALID_HASH = hashSync(VALID_PASSWORD, 10)
+
+/** Lets real macrotasks (bcrypt chunks) run while fake timers are installed. */
+async function waitForCalls(mock: { mock: { calls: unknown[] } }, count: number) {
+  for (let i = 0; i < 2_000 && mock.mock.calls.length < count; i += 1) {
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  expect(mock.mock.calls.length).toBeGreaterThanOrEqual(count)
+}
 
 function buildUser(overrides: Partial<User> = {}): User {
   return {
@@ -71,12 +80,16 @@ describe('AuthService', () => {
     acquireLock: jest.Mock
     releaseLock: jest.Mock
   }
-  let betterAuth: { auth: { api: { signInEmail: jest.Mock; signOut: jest.Mock } } }
+  let betterAuth: {
+    signInWithDevice: jest.Mock
+    auth: { api: { signInEmail: jest.Mock; signOut: jest.Mock } }
+  }
   let events: { emit: jest.Mock }
   let notifications: { notify: jest.Mock }
   let deviceBinding: {
-    assertMobileLoginAllowed: jest.Mock
+    assertLoginAllowed: jest.Mock
     registerBinding: jest.Mock
+    armLogoutCooldown: jest.Mock
     getEffectiveTeacherPermissions: jest.Mock
   }
   let maintenance: { current: jest.Mock; bypasses: jest.Mock }
@@ -102,11 +115,12 @@ describe('AuthService', () => {
       releaseLock: jest.fn().mockResolvedValue(true),
     }
     betterAuth = {
+      signInWithDevice: jest.fn().mockResolvedValue({
+        headers: new Headers({ 'set-auth-token': 'signed-bearer-token' }),
+      }),
       auth: {
         api: {
-          signInEmail: jest.fn().mockResolvedValue({
-            headers: new Headers({ 'set-auth-token': 'signed-bearer-token' }),
-          }),
+          signInEmail: jest.fn(),
           signOut: jest.fn().mockResolvedValue({
             headers: new Headers({ 'set-cookie': 'polycheck_access=; Max-Age=0; Path=/' }),
           }),
@@ -116,8 +130,9 @@ describe('AuthService', () => {
     events = { emit: jest.fn() }
     notifications = { notify: jest.fn().mockResolvedValue(undefined) }
     deviceBinding = {
-      assertMobileLoginAllowed: jest.fn().mockResolvedValue(undefined),
+      assertLoginAllowed: jest.fn().mockResolvedValue(undefined),
       registerBinding: jest.fn().mockResolvedValue(undefined),
+      armLogoutCooldown: jest.fn().mockResolvedValue(null),
       getEffectiveTeacherPermissions: jest.fn().mockResolvedValue({
         canResetStudentPasswords: true,
         canEmergencyUnbindDevices: true,
@@ -161,21 +176,21 @@ describe('AuthService', () => {
       expect(result.user.role).toBe('student')
       expect(result.user.mustChangePassword).toBe(false)
       expect(result.user).not.toHaveProperty('password')
-      expect(betterAuth.auth.api.signInEmail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          body: expect.objectContaining({ email: 'u-user-1@auth.polycheck.invalid' }),
-        }),
+      expect(betterAuth.signInWithDevice).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ email: 'u-user-1@auth.polycheck.invalid' }),
+        expect.any(Headers),
+        null,
       )
-      // Students are the single-device anti-cheat surface: their login replaces
-      // every other session via the authVersion bump and kicks connected
-      // devices through the realtime replacement broadcast.
-      expect(events.emit).toHaveBeenCalledWith('auth.session-replaced', { userId: 'user-1', reason: 'new_login' })
+      // A successful login no longer replaces other sessions: the gates decide
+      // before the session is created.
+      expect(events.emit).not.toHaveBeenCalledWith('auth.session-replaced', expect.anything())
     })
 
     it('rejects invalid password even when student exists', async () => {
       prisma.user.findUnique.mockResolvedValue(buildUser())
       await expect(service.loginStudent('S-001', 'wrong-password')).rejects.toThrow(UnauthorizedException)
-      expect(betterAuth.auth.api.signInEmail).not.toHaveBeenCalled()
+      expect(betterAuth.signInWithDevice).not.toHaveBeenCalled()
     })
 
     it('rejects unknown student and exercises DUMMY_HASH compare (timing safety)', async () => {
@@ -221,6 +236,8 @@ describe('AuthService', () => {
       const result = await service.loginFaculty('Teacher@PUP.edu', VALID_PASSWORD)
       expect(result.token).toBe('signed-bearer-token')
       expect(prisma.user.findUnique.mock.calls[0][0]).toEqual({ where: { email: 'teacher@pup.edu' } })
+      // Staff logins are never serialized by the student login lock.
+      expect(redis.acquireLock).not.toHaveBeenCalled()
       // Staff accounts may hold concurrent sessions: the login replacement
       // broadcast (and its sibling-session revocation server-side) is
       // student-only.
@@ -357,28 +374,52 @@ describe('AuthService', () => {
     })
   })
 
-  describe('mobile device governance', () => {
-    it('rejects a cooled student mobile login before creating a session', async () => {
+  describe('device-integrity login gates', () => {
+    it('rejects a gated login before creating a session', async () => {
       prisma.user.findUnique.mockResolvedValue(buildUser())
-      deviceBinding.assertMobileLoginAllowed.mockRejectedValueOnce(
+      deviceBinding.assertLoginAllowed.mockRejectedValueOnce(
         new ForbiddenException({
           statusCode: 403,
           error: 'Forbidden',
-          code: 'device_cooldown_active',
-          remainingMinutes: 42,
-          message: 'Device change cooldown is active',
+          code: 'active_session_elsewhere',
+          activeDeviceKind: 'mobile',
+          activeSessionLastActiveAt: '2026-11-10T09:15:00.000Z',
+          message: 'Active session elsewhere',
         }),
       )
 
       await expect(
         service.loginStudent('S-001', VALID_PASSWORD, '127.0.0.1', new Headers(), {
-          channel: 'mobile',
-          deviceId: 'mobile-abc',
+          channel: 'web',
+          deviceId: 'web-abc',
         }),
       ).rejects.toMatchObject({
-        response: expect.objectContaining({ code: 'device_cooldown_active', remainingMinutes: 42 }),
+        response: expect.objectContaining({
+          code: 'active_session_elsewhere',
+          activeDeviceKind: 'mobile',
+          activeSessionLastActiveAt: '2026-11-10T09:15:00.000Z',
+        }),
       })
-      expect(betterAuth.auth.api.signInEmail).not.toHaveBeenCalled()
+      expect(betterAuth.signInWithDevice).not.toHaveBeenCalled()
+      expect(deviceBinding.registerBinding).not.toHaveBeenCalled()
+      expect(prisma.user.update).not.toHaveBeenCalled()
+    })
+
+    it('applies the gate to web logins and threads the browser device id', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser())
+
+      await service.loginStudent('S-001', VALID_PASSWORD, '127.0.0.1', new Headers(), {
+        channel: 'web',
+        deviceId: 'web-abc',
+      })
+
+      expect(deviceBinding.assertLoginAllowed).toHaveBeenCalledWith('user-1', 'web-abc')
+      expect(betterAuth.signInWithDevice).toHaveBeenCalledWith(
+        'user-1',
+        expect.any(Object),
+        expect.any(Headers),
+        'web-abc',
+      )
       expect(deviceBinding.registerBinding).not.toHaveBeenCalled()
     })
 
@@ -390,17 +431,139 @@ describe('AuthService', () => {
         deviceId: 'mobile-abc',
       })
 
-      expect(deviceBinding.assertMobileLoginAllowed).toHaveBeenCalledWith('user-1')
+      expect(deviceBinding.assertLoginAllowed).toHaveBeenCalledWith('user-1', 'mobile-abc')
+      expect(betterAuth.signInWithDevice).toHaveBeenCalledWith(
+        'user-1',
+        expect.any(Object),
+        expect.any(Headers),
+        'mobile-abc',
+      )
       expect(deviceBinding.registerBinding).toHaveBeenCalledWith('user-1', 'mobile-abc', 'student')
     })
 
-    it('never applies device rules to web logins', async () => {
+    it('fails closed on the gate when a login carries no device id', async () => {
       prisma.user.findUnique.mockResolvedValue(buildUser())
 
       await service.loginStudent('S-001', VALID_PASSWORD)
 
-      expect(deviceBinding.assertMobileLoginAllowed).not.toHaveBeenCalled()
+      expect(deviceBinding.assertLoginAllowed).toHaveBeenCalledWith('user-1', null)
+      expect(betterAuth.signInWithDevice).toHaveBeenCalledWith('user-1', expect.any(Object), expect.any(Headers), null)
       expect(deviceBinding.registerBinding).not.toHaveBeenCalled()
+    })
+
+    it('acquires the per-account lock before the device gate and releases it after the login completes', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser())
+
+      await service.loginStudent('S-001', VALID_PASSWORD, '127.0.0.1', new Headers(), {
+        channel: 'web',
+        deviceId: 'web-abc',
+      })
+
+      expect(redis.acquireLock).toHaveBeenCalledWith('student-login:user-1', 15)
+      expect(redis.acquireLock.mock.invocationCallOrder[0]).toBeLessThan(
+        deviceBinding.assertLoginAllowed.mock.invocationCallOrder[0],
+      )
+      expect(betterAuth.signInWithDevice.mock.invocationCallOrder[0]).toBeLessThan(
+        redis.releaseLock.mock.invocationCallOrder[0],
+      )
+      expect(redis.releaseLock).toHaveBeenCalledWith('student-login:user-1', 'lock-token')
+    })
+
+    it('releases the lock when the device gate rejects the login', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser())
+      deviceBinding.assertLoginAllowed.mockRejectedValueOnce(
+        new ForbiddenException({
+          statusCode: 403,
+          error: 'Forbidden',
+          code: 'active_session_elsewhere',
+          message: 'Active session elsewhere',
+        }),
+      )
+
+      await expect(
+        service.loginStudent('S-001', VALID_PASSWORD, '127.0.0.1', new Headers(), {
+          channel: 'web',
+          deviceId: 'web-abc',
+        }),
+      ).rejects.toMatchObject({ response: expect.objectContaining({ code: 'active_session_elsewhere' }) })
+
+      expect(betterAuth.signInWithDevice).not.toHaveBeenCalled()
+      expect(redis.releaseLock).toHaveBeenCalledWith('student-login:user-1', 'lock-token')
+    })
+
+    it('retries lock contention with backoff and continues once the lease is free', async () => {
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] })
+      try {
+        prisma.user.findUnique.mockResolvedValue(buildUser())
+        redis.acquireLock.mockResolvedValueOnce(null).mockResolvedValueOnce(null).mockResolvedValueOnce('lock-token')
+
+        const pending = service.loginStudent('S-001', VALID_PASSWORD, '127.0.0.1', new Headers(), {
+          channel: 'web',
+          deviceId: 'web-abc',
+        })
+        await waitForCalls(redis.acquireLock, 1)
+        await jest.advanceTimersByTimeAsync(10_000)
+
+        await expect(pending).resolves.toMatchObject({ token: 'signed-bearer-token' })
+        expect(redis.acquireLock).toHaveBeenCalledTimes(3)
+        expect(deviceBinding.assertLoginAllowed).toHaveBeenCalledTimes(1)
+        expect(betterAuth.signInWithDevice).toHaveBeenCalledTimes(1)
+        expect(redis.releaseLock).toHaveBeenCalledWith('student-login:user-1', 'lock-token')
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('returns 409 after exhausting contention without gating or creating a session', async () => {
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] })
+      try {
+        prisma.user.findUnique.mockResolvedValue(buildUser())
+        redis.acquireLock.mockResolvedValue(null)
+
+        const pending = service.loginStudent('S-001', VALID_PASSWORD, '127.0.0.1', new Headers(), {
+          channel: 'web',
+          deviceId: 'web-abc',
+        })
+        const rejection = expect(pending).rejects.toMatchObject({
+          status: HttpStatus.CONFLICT,
+          response: {
+            statusCode: HttpStatus.CONFLICT,
+            message: 'Another sign-in attempt is in progress. Please try again.',
+          },
+        })
+        await waitForCalls(redis.acquireLock, 1)
+        await jest.advanceTimersByTimeAsync(10_000)
+        await rejection
+
+        expect(redis.acquireLock).toHaveBeenCalledTimes(10)
+        expect(deviceBinding.assertLoginAllowed).not.toHaveBeenCalled()
+        expect(betterAuth.signInWithDevice).not.toHaveBeenCalled()
+        expect(redis.releaseLock).not.toHaveBeenCalled()
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('fails open without serialization when Redis is unavailable', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+      try {
+        prisma.user.findUnique.mockResolvedValue(buildUser())
+        redis.acquireLock.mockRejectedValueOnce(new ServiceUnavailableException('Redis is unavailable'))
+
+        await expect(
+          service.loginStudent('S-001', VALID_PASSWORD, '127.0.0.1', new Headers(), {
+            channel: 'web',
+            deviceId: 'web-abc',
+          }),
+        ).resolves.toMatchObject({ token: 'signed-bearer-token' })
+
+        expect(deviceBinding.assertLoginAllowed).toHaveBeenCalledWith('user-1', 'web-abc')
+        expect(betterAuth.signInWithDevice).toHaveBeenCalled()
+        expect(redis.releaseLock).not.toHaveBeenCalled()
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('continuing without serialization'))
+      } finally {
+        warn.mockRestore()
+      }
     })
 
     it('adds effective delegated permissions for teacher logins and profiles', async () => {
@@ -616,6 +779,58 @@ describe('AuthService', () => {
       expect(result.message).toBe('Logged out successfully')
       expect(betterAuth.auth.api.signOut).toHaveBeenCalledWith({ headers, returnHeaders: true })
       expect(result.headers.get('set-cookie')).toContain('polycheck_access=')
+      expect(deviceBinding.armLogoutCooldown).not.toHaveBeenCalled()
+    })
+
+    it('revokes the student session before arming the cooldown with the client address', async () => {
+      const headers = new Headers({ authorization: 'Bearer token' })
+      await service.logout(headers, { id: 'user-1', role: 'student' }, 'mobile-abc', true, '203.0.113.10')
+
+      expect(deviceBinding.armLogoutCooldown).toHaveBeenCalledWith('user-1', 'student', 'mobile-abc', '203.0.113.10')
+      expect(betterAuth.auth.api.signOut.mock.invocationCallOrder[0]).toBeLessThan(
+        deviceBinding.armLogoutCooldown.mock.invocationCallOrder[0],
+      )
+    })
+
+    it('never arms a cooldown when the sign-out fails', async () => {
+      betterAuth.auth.api.signOut.mockRejectedValueOnce(new Error('better auth unavailable'))
+
+      await expect(
+        service.logout(new Headers(), { id: 'user-1', role: 'student' }, 'web-abc', true, '203.0.113.10'),
+      ).rejects.toThrow('better auth unavailable')
+
+      expect(deviceBinding.armLogoutCooldown).not.toHaveBeenCalled()
+    })
+
+    it('never arms when the caller opts out with armDeviceCooldown: false', async () => {
+      await service.logout(new Headers(), { id: 'user-1', role: 'student' }, 'web-abc', false)
+
+      expect(deviceBinding.armLogoutCooldown).not.toHaveBeenCalled()
+      expect(betterAuth.auth.api.signOut).toHaveBeenCalled()
+    })
+
+    it('never arms when the logout carries no device id', async () => {
+      await service.logout(new Headers(), { id: 'user-1', role: 'student' })
+      await service.logout(new Headers(), { id: 'user-1', role: 'student' }, '   ')
+
+      expect(deviceBinding.armLogoutCooldown).not.toHaveBeenCalled()
+      expect(betterAuth.auth.api.signOut).toHaveBeenCalledTimes(2)
+    })
+
+    it('never arms a cooldown for staff logouts', async () => {
+      await service.logout(new Headers(), { id: 'teacher-1', role: 'teacher' }, 'web-abc')
+      await service.logout(new Headers(), { id: 'admin-1', role: 'super_admin' }, 'web-abc', true)
+      expect(deviceBinding.armLogoutCooldown).not.toHaveBeenCalled()
+      expect(betterAuth.auth.api.signOut).toHaveBeenCalled()
+    })
+
+    it('still completes the logout when arming the cooldown fails', async () => {
+      deviceBinding.armLogoutCooldown.mockRejectedValueOnce(new Error('db down'))
+
+      await expect(service.logout(new Headers(), { id: 'user-1', role: 'student' }, 'web-abc')).resolves.toEqual(
+        expect.objectContaining({ message: 'Logged out successfully' }),
+      )
+      expect(betterAuth.auth.api.signOut).toHaveBeenCalled()
     })
   })
 

@@ -44,8 +44,8 @@ export const PrivacyConsentGate = ({ user }: { user: User | null }) => {
 
   return (
     <Modal visible={Boolean(requiresConsent)} animationType="fade" presentationStyle="fullScreen">
-      <SafeAreaView className="flex-1 bg-black">
-        <View className="flex-1 justify-center px-5">
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#000000' }} className="flex-1 bg-black">
+        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 20 }} className="flex-1 justify-center px-5">
           <View className="border border-t-4 border-zinc-700 border-t-golden bg-surface-dark p-6">
             <Text className="font-sans-bold text-xs uppercase tracking-[2px] text-golden">Privacy consent</Text>
             <Text className="mt-3 font-serif text-3xl font-bold text-white">Attendance uses location evidence</Text>

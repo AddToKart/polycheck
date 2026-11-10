@@ -8,6 +8,7 @@ import { api } from '@/lib/api-client'
 import type { User, Student, Session, AttendanceRecord, AttendanceStatus } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { StudentGovernanceActions } from '@/components/faculty/StudentGovernanceActions'
+import { HologramOverlay } from '@/components/student/HologramOverlay'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -176,12 +177,12 @@ export default function StudentDetailPage() {
                   {/* Body */}
                   <div className="flex-1 flex flex-wrap p-5 items-center gap-6 relative bg-id-paper dark:bg-id-paper-dark">
                     <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]" style={{ backgroundImage: 'url(/pup-logo.png)', backgroundPosition: 'center', backgroundSize: 'contain', backgroundRepeat: 'no-repeat' }}></div>
-                    <div className="w-24 h-32 bg-maroon dark:bg-golden flex items-center justify-center shrink-0 border-2 border-zinc-300 dark:border-zinc-800 shadow-md relative z-10">
+                    <div className="w-24 h-32 bg-maroon dark:bg-golden flex items-center justify-center shrink-0 border-2 border-zinc-300 dark:border-zinc-800 shadow-md">
                       <span className="text-2xl font-heading font-bold text-white dark:text-maroon-dark">
                         {student.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                       </span>
                     </div>
-                    <div className="min-w-0 flex-1 flex flex-col justify-center relative z-10">
+                    <div className="min-w-0 flex-1 flex flex-col justify-center">
                       <h2 className="break-words text-lg font-heading font-bold text-zinc-900 dark:text-white leading-tight uppercase">{student.fullName}</h2>
                       <p className="text-sm font-mono font-bold text-maroon dark:text-golden mt-1">{student.studentId}</p>
                       <hr className="my-3 border-zinc-200 dark:border-zinc-700" />
@@ -201,6 +202,7 @@ export default function StudentDetailPage() {
                       </div>
                     </div>
                   </div>
+                  <HologramOverlay deviceId={student.boundDeviceId} tone="light" />
                 </div>
 
                 {/* Back Face */}
@@ -235,6 +237,7 @@ export default function StudentDetailPage() {
                       <p className="text-[7px] font-mono mt-2 text-zinc-400 dark:text-zinc-500 text-center tracking-widest uppercase">SCAN TO VERIFY</p>
                     </div>
                   </div>
+                  <HologramOverlay deviceId={student.boundDeviceId} tone="light" />
                 </div>
 
               </div>

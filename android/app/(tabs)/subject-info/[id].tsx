@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
-import { router, useLocalSearchParams } from 'expo-router'
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import type { Section, SectionRole, Session, Subject } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
+import { useLoadState } from '../../../hooks/use-load-state'
 import { useTheme } from '../../../theme/ThemeContext'
 import { pupColors } from '../../../theme/colors'
 import { CampusHeader } from '../../../components/CampusHeader'
-import { CampusButton, CampusCard, CampusEmptyState, SectionHeading } from '../../../components/CampusPrimitives'
+import { CampusButton, CampusCard, CampusEmptyState, CampusLoadError, CampusSkeleton, ListSkeleton, SectionHeading } from '../../../components/CampusPrimitives'
 import { useCampusToast } from '../../../components/CampusToast'
 
 const InfoRow = ({ icon, label, value }: { icon: keyof typeof MaterialIcons.glyphMap; label: string; value: string }) => {
@@ -35,7 +36,27 @@ export default function StudentSubjectInfoScreen() {
   const [roles, setRoles] = useState<SectionRole[]>([])
   const [hasPermission, setHasPermission] = useState(false)
   const [subject, setSubject] = useState<Subject | null>(null)
-  const [loading, setLoading] = useState(true)
+  const loadState = useLoadState()
+  // Only the newest permission check may write; a stale response must not
+  // overwrite a newer grant/revoke result.
+  const permissionRequestRef = useRef(0)
+
+  /**
+   * Re-reads the current permission. Failures keep the last known state — the
+   * card must not flash "No active permission" over a grant the instructor
+   * just made because of a transient network hiccup.
+   */
+  const recheckPermission = useCallback(async (userId: string) => {
+    if (!id) return
+    const requestId = ++permissionRequestRef.current
+    try {
+      const permission = await api.checkSessionPermission(id, userId)
+      if (requestId !== permissionRequestRef.current) return
+      setHasPermission(permission)
+    } catch {
+      /* keep the last known permission */
+    }
+  }, [id])
 
   useEffect(() => {
     if (!id) return
@@ -46,26 +67,64 @@ export default function StudentSubjectInfoScreen() {
       .then(async ([nextSection, nextSessions, studentRoles]) => {
         const nextSubject = await api.getSubject(nextSection.subjectId)
         const president = studentRoles.some((role) => role.sectionId === id && role.role === 'president')
-        const permission = president ? await api.checkSessionPermission(id, currentUser.id) : false
+        // Keep the initial load's behavior: resolve the permission before the
+        // card becomes visible so it never flickers from denied to granted.
+        if (president) await recheckPermission(currentUser.id)
         if (!active) return
         setSection(nextSection)
         setSessions(nextSessions)
         setRoles(studentRoles)
         setSubject(nextSubject)
-        setHasPermission(permission)
+        if (!president) {
+          // Clear any in-flight check from a previously viewed section.
+          permissionRequestRef.current += 1
+          setHasPermission(false)
+        }
+        loadState.markReady()
       })
-      .catch(() => { if (active) setSection(null) })
-      .finally(() => { if (active) setLoading(false) })
+      .catch(() => { if (active) loadState.markError() })
     return () => { active = false }
-  }, [id])
+  }, [id, recheckPermission, loadState.reloadToken])
 
   const studentRoles = roles.filter((role) => role.sectionId === id)
   const isPresident = studentRoles.some((role) => role.role === 'president')
   const isQac = studentRoles.some((role) => role.role === 'qac')
 
-  if (loading) return <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark"><Text className="font-sans text-sm text-muted dark:text-zinc-400">Loading class…</Text></SafeAreaView>
+  // Grants/revocations happen on other screens (instructor approvals) and the
+  // create-session screen; re-check whenever this screen regains focus so the
+  // card reflects the current permission instead of its mount-time snapshot.
+  useFocusEffect(useCallback(() => {
+    const currentUser = api.getCurrentUser()
+    if (!id || !currentUser || !isPresident) return
+    void recheckPermission(currentUser.id)
+  }, [id, isPresident, recheckPermission]))
+
+  if (loadState.state === 'loading') return (
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus px-5 pt-10 dark:bg-campus-dark"
+    >
+      <CampusSkeleton className="h-28 w-full"><View /></CampusSkeleton>
+      <View className="mt-3"><ListSkeleton rows={3} rowClass="h-20" /></View>
+    </SafeAreaView>
+  )
+  if (loadState.state === 'error') return (
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 justify-center bg-campus px-5 dark:bg-campus-dark"
+    >
+      <CampusLoadError
+        title="Unable to load this class"
+        message="Class details could not be fetched. Check your connection and try again."
+        onRetry={loadState.retry}
+      />
+    </SafeAreaView>
+  )
   if (!section) return (
-    <SafeAreaView className="flex-1 bg-campus p-5 dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus p-5 dark:bg-campus-dark"
+    >
       <CampusEmptyState icon="error-outline" title="Class not found" description="This class may have been removed or is no longer available to your account." />
     </SafeAreaView>
   )
@@ -79,7 +138,10 @@ export default function StudentSubjectInfoScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow={`${subject?.code ?? 'Class'} · Section ${section.section}`}
         title={subject?.name ?? 'Class details'}

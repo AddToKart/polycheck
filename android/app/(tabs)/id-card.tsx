@@ -8,7 +8,9 @@ import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusIconButton } from '../../components/CampusPrimitives'
+import { HologramOverlay } from '../../components/HologramOverlay'
 
+import { confirmSignOut } from '../../lib/sign-out'
 type StudentCredential = {
   fullName: string
   studentId: string
@@ -16,11 +18,19 @@ type StudentCredential = {
   yearLevel: number
 }
 
-const IdCardFront = ({ student, isDark }: { student: StudentCredential; isDark: boolean }) => (
+const IdCardFront = ({
+  student,
+  isDark,
+  deviceId,
+}: {
+  student: StudentCredential
+  isDark: boolean
+  deviceId?: string | null
+}) => (
   <View className="flex-1 overflow-hidden rounded-none border-2 border-zinc-300 bg-white dark:border-zinc-700 dark:bg-surface-dark shadow-md">
     <View className="flex-row items-center gap-3 bg-maroon p-3 border-b-2 border-golden">
       <View className="h-9 w-9 items-center justify-center rounded-none bg-white">
-        <Image source={require('../../assets/pup-logo.png')} className="h-7 w-7" resizeMode="contain" />
+        <Image source={require('../../assets/pup-logo.png')} style={{ width: 28, height: 28 }} className="h-7 w-7" resizeMode="contain" />
       </View>
       <View className="flex-1">
         <Text className="font-sans-bold text-[7px] uppercase tracking-[1.5px] text-golden">Republic of the Philippines</Text>
@@ -58,10 +68,12 @@ const IdCardFront = ({ student, isDark }: { student: StudentCredential; isDark: 
         </View>
       </View>
     </View>
+
+    <HologramOverlay isDark={isDark} deviceId={deviceId} />
   </View>
 )
 
-const IdCardBack = ({ isDark }: { isDark: boolean }) => (
+const IdCardBack = ({ isDark, deviceId }: { isDark: boolean; deviceId?: string | null }) => (
   <View className="flex-1 overflow-hidden rounded-none border-2 border-zinc-300 bg-white dark:border-zinc-700 dark:bg-surface-dark shadow-md">
     <View className="mt-4 h-11 w-full bg-zinc-900" />
     <View className="flex-1 flex-row gap-4 p-4">
@@ -85,12 +97,15 @@ const IdCardBack = ({ isDark }: { isDark: boolean }) => (
         <Text className="mt-2 text-center font-mono text-[7px] font-bold uppercase tracking-widest text-zinc-500">SCAN TO VERIFY</Text>
       </View>
     </View>
+
+    <HologramOverlay isDark={isDark} deviceId={deviceId} />
   </View>
 )
 
 export default function IdCardScreen() {
   const { isDark, toggle } = useTheme()
   const user = api.getCurrentUser()
+  const deviceId = user?.boundDeviceId ?? null
   const student = useMemo(() => {
     if (!user) return null
     return {
@@ -102,11 +117,14 @@ export default function IdCardScreen() {
   }, [user])
 
   const [isFlipped, setIsFlipped] = useState(false)
-  const flipAnimation = useRef(new Animated.Value(0)).current
+  const flipAnimation = useRef(new Animated.Value(1)).current
 
   if (!student) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark">
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+        className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark"
+      >
         <ActivityIndicator size="large" color={pupColors.maroon} />
       </SafeAreaView>
     )
@@ -114,25 +132,30 @@ export default function IdCardScreen() {
 
   const flipCard = () => {
     void AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
+      // Single-face swap: backfaceVisibility is unreliable on Android/Fabric
+      // and can render both faces at once (overlapping card text).
       Animated.timing(flipAnimation, {
-        toValue: isFlipped ? 0 : 180,
-        duration: reduceMotion ? 0 : 420,
+        toValue: 0,
+        duration: reduceMotion ? 0 : 120,
         useNativeDriver: true,
-      }).start()
-      setIsFlipped((flipped) => !flipped)
+      }).start(() => {
+        setIsFlipped((flipped) => !flipped)
+        Animated.timing(flipAnimation, {
+          toValue: 1,
+          duration: reduceMotion ? 0 : 160,
+          useNativeDriver: true,
+        }).start()
+      })
     })
   }
 
-  const signOut = () => {
-    void api.logout()
-    router.replace('/')
-  }
-
-  const frontRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['0deg', '180deg'] })
-  const backRotation = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['180deg', '360deg'] })
+  const signOut = confirmSignOut
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow="Verified Credential"
         title="Digital Student ID"
@@ -157,15 +180,13 @@ export default function IdCardScreen() {
         >
           <Animated.View
             className="absolute inset-0 shadow-lg"
-            style={{ transform: [{ perspective: 1000 }, { rotateY: frontRotation }], backfaceVisibility: 'hidden' }}
+            style={{ opacity: flipAnimation }}
           >
-            <IdCardFront student={student} isDark={isDark} />
-          </Animated.View>
-          <Animated.View
-            className="absolute inset-0 shadow-lg"
-            style={{ transform: [{ perspective: 1000 }, { rotateY: backRotation }], backfaceVisibility: 'hidden' }}
-          >
-            <IdCardBack isDark={isDark} />
+            {isFlipped ? (
+              <IdCardBack isDark={isDark} deviceId={deviceId} />
+            ) : (
+              <IdCardFront student={student} isDark={isDark} deviceId={deviceId} />
+            )}
           </Animated.View>
         </Pressable>
 

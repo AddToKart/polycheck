@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -8,14 +8,16 @@ import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
-import { AttendanceStatusPill, CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
+import { AttendanceStatusPill, CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, CampusSkeleton, ListSkeleton } from '../../components/CampusPrimitives'
 import { AttendanceDisputeModal, AttendanceRecordDetailModal } from '../../components/AttendanceRecordModals'
 import { ExcuseRequestModal } from '../../components/ExcuseRequestModal'
 import { FilterChipsRow, FilterPanel, FilterSelect } from '../../components/FilterPrimitives'
 import { useCampusToast } from '../../components/CampusToast'
 import { EXCUSE_STATUS_META, excuseReasonLabel, isExcuseEligible } from '../../lib/excuses'
 import { datePresetRange, filterAttendanceRecords } from '../../lib/filters'
+import { useLoadState } from '../../hooks/use-load-state'
 
+import { confirmSignOut } from '../../lib/sign-out'
 type FilterTab = 'all' | AttendanceStatus
 type HistoryDatePreset = 'all' | '7d' | '30d'
 
@@ -60,6 +62,11 @@ export default function HistoryScreen() {
   const [submittingDispute, setSubmittingDispute] = useState(false)
   const [excuseVisible, setExcuseVisible] = useState(false)
   const [submittingExcuse, setSubmittingExcuse] = useState(false)
+  const loadState = useLoadState()
+  // Ordered responses: stale focus/refresh results can never overwrite newer
+  // data, and a failed refresh keeps the last rendered records on screen.
+  const requestIdRef = useRef(0)
+  const hasLoadedRef = useRef(false)
 
   const user = api.getCurrentUser()
   const student = useMemo(() => {
@@ -71,22 +78,36 @@ export default function HistoryScreen() {
     }
   }, [user])
 
-  useFocusEffect(useCallback(() => {
+  const loadHistory = useCallback(async () => {
     if (!student) {
       setAllRecords([])
       return
     }
-    let active = true
-    void Promise.all([api.getMyAttendance(student.id), api.getSections(), api.getSubjects()])
-      .then(([records, sections, subjectList]) => {
-        if (!active) return
-        setAllRecords(records)
-        setSectionsMap(new Map(sections.map((section) => [section.id, section])))
-        setSubjects(Object.fromEntries(subjectList.map((subject) => [subject.id, subject])))
-      })
-      .catch(() => { if (active) showToast('error', 'Unable to load history', 'Check your connection and try again.') })
-    return () => { active = false }
-  }, [showToast, student?.id]))
+    const requestId = ++requestIdRef.current
+    try {
+      const [records, sections, subjectList] = await Promise.all([api.getMyAttendance(student.id), api.getSections(), api.getSubjects()])
+      if (requestId !== requestIdRef.current) return
+      setAllRecords(records)
+      setSectionsMap(new Map(sections.map((section) => [section.id, section])))
+      setSubjects(Object.fromEntries(subjectList.map((subject) => [subject.id, subject])))
+      hasLoadedRef.current = true
+      loadState.markReady()
+    } catch {
+      if (requestId !== requestIdRef.current) return
+      if (hasLoadedRef.current) {
+        showToast('error', "Couldn't refresh your history", 'Showing your last loaded records. Check your connection and try again.')
+        return
+      }
+      loadState.markError()
+      showToast('error', 'Unable to load history', 'Check your connection and try again.')
+    }
+  }, [showToast, student?.id, loadState.markReady, loadState.markError])
+
+  useFocusEffect(useCallback(() => {
+    void loadHistory()
+    // Leaving the screen invalidates any in-flight response from this visit.
+    return () => { requestIdRef.current += 1 }
+  }, [loadHistory, loadState.reloadToken]))
 
   const filteredRecords = useMemo(() => filterAttendanceRecords(
     allRecords,
@@ -122,7 +143,12 @@ export default function HistoryScreen() {
     setSubmittingDispute(true)
     try {
       await api.submitDispute({ recordId: selectedRecord.id, reason, description })
-      setAllRecords(await api.getMyAttendance(student.id))
+      const requestId = ++requestIdRef.current
+      const records = await api.getMyAttendance(student.id)
+      if (requestId === requestIdRef.current) {
+        hasLoadedRef.current = true
+        setAllRecords(records)
+      }
       setDisputeVisible(false)
       setSelectedRecord(null)
       showToast('success', 'Issue reported', 'Your instructor can now review this attendance record.')
@@ -138,7 +164,12 @@ export default function HistoryScreen() {
     setSubmittingExcuse(true)
     try {
       await api.requestExcuse(selectedRecord.id, { reason, description, ...(evidenceData ? { evidenceData } : {}) })
-      setAllRecords(await api.getMyAttendance(student.id))
+      const requestId = ++requestIdRef.current
+      const records = await api.getMyAttendance(student.id)
+      if (requestId === requestIdRef.current) {
+        hasLoadedRef.current = true
+        setAllRecords(records)
+      }
       setExcuseVisible(false)
       setSelectedRecord(null)
       showToast('success', 'Excuse requested', 'Your instructor will review the request and notify you.')
@@ -149,14 +180,14 @@ export default function HistoryScreen() {
     }
   }
 
-  const signOut = () => {
-    void api.logout()
-    router.replace('/')
-  }
+  const signOut = confirmSignOut
 
   if (!student) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark">
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+        className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark"
+      >
         <ActivityIndicator size="large" color={pupColors.maroon} />
       </SafeAreaView>
     )
@@ -219,7 +250,10 @@ export default function HistoryScreen() {
   )
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow="Personal Attendance"
         title="Audit History"
@@ -237,20 +271,39 @@ export default function HistoryScreen() {
         data={filteredRecords}
         keyExtractor={(record) => record.id}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}
-        ListHeaderComponent={listHeader}
+        ListHeaderComponent={
+          loadState.state === 'ready' ? listHeader : (
+            <View className="pt-4 gap-3">
+              {loadState.state === 'error' ? (
+                <CampusLoadError
+                  title="Unable to load your history"
+                  message="Attendance records could not be fetched. Try again — nothing was lost."
+                  onRetry={loadState.retry}
+                />
+              ) : (
+                <>
+                  <CampusSkeleton className="h-20 w-full"><View /></CampusSkeleton>
+                  <ListSkeleton rows={4} rowClass="h-20" />
+                </>
+              )}
+            </View>
+          )
+        }
         ItemSeparatorComponent={() => <View className="h-3" />}
         ListEmptyComponent={(
-          <CampusEmptyState
-            icon="search-off"
-            title="NO RECORDS IN THIS VIEW"
-            description={
-              activeFilter !== 'all'
-                ? `No ${activeFilter} records match this subject and date range.`
-                : isFiltered
-                  ? 'No records match the selected subject or date range.'
-                  : 'Your attendance records will appear after your first class check-in.'
-            }
-          />
+          loadState.state === 'ready' ? (
+            <CampusEmptyState
+              icon="search-off"
+              title="NO RECORDS IN THIS VIEW"
+              description={
+                activeFilter !== 'all'
+                  ? `No ${activeFilter} records match this subject and date range.`
+                  : isFiltered
+                    ? 'No records match the selected subject or date range.'
+                    : 'Your attendance records will appear after your first class check-in.'
+              }
+            />
+          ) : null
         )}
         renderItem={({ item: record }) => {
           const excuseMeta = record.excuseStatus ? EXCUSE_STATUS_META[record.excuseStatus] : null

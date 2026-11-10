@@ -102,28 +102,44 @@ describe('Application integration (e2e)', () => {
     expect(response.body.message).toBeDefined()
   })
 
-  it('enforces one Better Auth session across web cookies and mobile bearer tokens', async () => {
+  it('blocks a second student device, allows same-device re-login, and arms a logout cooldown', async () => {
     const credentials = { studentId: AUTH_STUDENT_ID, password: AUTH_PASSWORD }
-    const browser = request.agent(baseUrl)
-    await browser.post('/api/auth/login/student').send(credentials).expect(201)
-    await browser
+    const browserA = request.agent(baseUrl)
+    await browserA.post('/api/auth/login/student').send({ ...credentials, deviceId: 'web-a' }).expect(201)
+    await browserA
       .get('/api/auth/me')
       .expect(200)
       .expect(({ body }) => expect(body.id).toBe(AUTH_USER_ID))
 
-    const firstMobile = await request(baseUrl).post('/api/auth/mobile/login/student').send(credentials).expect(201)
-    expect(firstMobile.body.token).toEqual(expect.any(String))
-    await browser.get('/api/auth/me').expect(401)
+    // A different device is rejected with the explainer payload; the first
+    // device keeps its session untouched.
+    const blocked = await request(baseUrl)
+      .post('/api/auth/login/student')
+      .send({ ...credentials, deviceId: 'web-b' })
+      .expect(403)
+    expect(blocked.body.code).toBe('active_session_elsewhere')
+    expect(blocked.body.activeDeviceKind).toBe('web')
+    expect(blocked.body.activeSessionLastActiveAt).toEqual(expect.any(String))
+    await browserA.get('/api/auth/me').expect(200)
 
-    const secondMobile = await request(baseUrl).post('/api/auth/mobile/login/student').send(credentials).expect(201)
-    await request(baseUrl).get('/api/auth/me').set('Authorization', `Bearer ${firstMobile.body.token}`).expect(401)
-    await request(baseUrl).get('/api/auth/me').set('Authorization', `Bearer ${secondMobile.body.token}`).expect(200)
+    // Same-device re-login passes and purges the stale same-device row.
+    await browserA.post('/api/auth/login/student').send({ ...credentials, deviceId: 'web-a' }).expect(201)
+    await browserA.get('/api/auth/me').expect(200)
 
+    // A mobile login from another device is rejected while web-a holds the
+    // session; logging out web-a arms a cooldown that exempts only web-a.
     await request(baseUrl)
-      .post('/api/auth/logout')
-      .set('Authorization', `Bearer ${secondMobile.body.token}`)
-      .expect(201)
-    await request(baseUrl).get('/api/auth/me').set('Authorization', `Bearer ${secondMobile.body.token}`).expect(401)
+      .post('/api/auth/mobile/login/student')
+      .send({ ...credentials, deviceId: 'mobile-a' })
+      .expect(403)
+    await browserA.post('/api/auth/logout').send({ deviceId: 'web-a' }).expect(201)
+    const cooled = await request(baseUrl)
+      .post('/api/auth/mobile/login/student')
+      .send({ ...credentials, deviceId: 'mobile-a' })
+      .expect(403)
+    expect(cooled.body.code).toBe('device_cooldown_active')
+    expect(cooled.body.remainingSeconds).toEqual(expect.any(Number))
+    await browserA.post('/api/auth/login/student').send({ ...credentials, deviceId: 'web-a' }).expect(201)
   }, 20_000)
 })
 

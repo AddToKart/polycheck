@@ -7,7 +7,10 @@ import {
   SEED_PASSWORD,
   FACULTY_EMAIL,
   ADMIN_EMAIL,
+  installSessionCleanup,
 } from './helpers'
+
+installSessionCleanup()
 
 const API = 'http://localhost:4000/api'
 const CYCLE_LABELS = ['Present', 'Late', 'Absent']

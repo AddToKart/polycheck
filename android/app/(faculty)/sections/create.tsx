@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Pressable, ScrollView, Text, View } from 'react-native'
+import { Pressable, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
@@ -7,9 +7,11 @@ import type { DayOfWeek, Subject } from '@polycheck/shared'
 import { api } from '../../../services/api-client'
 import { useAuthGate } from '../../../hooks/use-auth-gate'
 import { useTheme } from '../../../theme/ThemeContext'
+import { pupColors } from '../../../theme/colors'
 import { CampusHeader } from '../../../components/CampusHeader'
 import { CampusButton, CampusCard, SectionHeading } from '../../../components/CampusPrimitives'
 import { CampusFormField } from '../../../components/CampusFormField'
+import { KeyboardAwareScrollView } from '../../../components/KeyboardAwareScrollView'
 import { CampusPickerField, ChoiceSheet, formatCampusTime, TimePickerSheet } from '../../../components/CampusPickerSheets'
 import { useCampusToast } from '../../../components/CampusToast'
 
@@ -70,9 +72,13 @@ export default function CreateSectionScreen() {
     } finally { setSubmitting(false) }
   }
 
-  return <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+  return (
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
     <CampusHeader eyebrow="Subject setup" title="Create a section" subtitle={`${subject.name} · ${subject.code}`} onBack={() => router.back()} />
-    <ScrollView contentContainerClassName="px-4 pb-28 pt-3" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    <KeyboardAwareScrollView contentContainerClassName="px-4 pb-28 pt-3" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <SectionHeading eyebrow="Class identity" title="Section details" />
       <CampusCard className="mb-7 gap-4">
         <CampusFormField label="Section name" icon="groups" placeholder="e.g. A, B, BSIT 3-1" value={section} onChangeText={setSection} />
@@ -108,11 +114,12 @@ export default function CreateSectionScreen() {
         <Text className="mt-2 text-center font-sans text-xs text-white/60">The server will issue the authoritative enrollment code.</Text>
       </CampusCard>
       <CampusButton label={submitting ? 'Creating section…' : 'Create section'} icon="add" disabled={!valid || submitting} onPress={() => void create()} />
-    </ScrollView>
+    </KeyboardAwareScrollView>
 
     <ChoiceSheet visible={showSemesterPicker} title="Select semester" options={SEMESTERS.map((value) => ({ value, label: value }))} value={semester} onSelect={setSemester} onClose={() => setShowSemesterPicker(false)} />
     <ChoiceSheet visible={showDayPicker} title="Select day" options={DAYS.map((value) => ({ value, label: value }))} value={newDay} onSelect={(value) => setNewDay(value as DayOfWeek)} onClose={() => setShowDayPicker(false)} />
     <TimePickerSheet visible={showStartTime} title="Select start time" value={newStartTime} onChange={setNewStartTime} onClose={() => setShowStartTime(false)} />
     <TimePickerSheet visible={showEndTime} title="Select end time" value={newEndTime} onChange={setNewEndTime} onClose={() => setShowEndTime(false)} />
   </SafeAreaView>
+  )
 }

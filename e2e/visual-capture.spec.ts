@@ -9,6 +9,7 @@ import {
   loginFaculty,
   loginStudent,
   shot,
+  installSessionCleanup,
 } from './helpers'
 import {
   ANONYMOUS_ROUTES,
@@ -20,6 +21,8 @@ import {
   STUDENT_ROUTES,
   type RouteCase,
 } from './responsive-routes'
+
+installSessionCleanup()
 
 /**
  * Visual capture spec — screenshots every key page at desktop + mobile

@@ -16,6 +16,11 @@
       "import": "./dist/utils/index.mjs",
       "require": "./dist/utils/index.js"
     },
+    "./ledger": {
+      "types": "./dist/utils/ledger.d.ts",
+      "import": "./dist/utils/ledger.mjs",
+      "require": "./dist/utils/ledger.js"
+    },
     "./map": {
       "types": "./dist/map/index.d.ts",
       "import": "./dist/map/index.mjs",
@@ -37,7 +42,7 @@
     "@noble/hashes": "^1.8.0",
     "papaparse": "^5.7.0",
     "tweetnacl": "^1.0.3",
-    "zod": "^4.4.3"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/papaparse": "^5.5.2",

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api-client'
 import {
   formatCampusDate,
+  formatSectionHeading,
   getRecentCampusDateRange,
   type AttendanceReport,
   type Section,
@@ -140,7 +141,7 @@ function AttendanceOverviewContent() {
     [],
   )
 
-  const summaries = report?.summaries ?? []
+  const summaries = useMemo(() => report?.summaries ?? [], [report])
   const totalPages = Math.max(1, Math.ceil(summaries.length / ATTENDANCE_PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
   const pagedSummaries = useMemo(
@@ -367,7 +368,9 @@ function AttendanceOverviewContent() {
                             {s.subjectName}
                           </p>
                           <p className="text-xs text-zinc-400 mt-0.5">
-                            Section {section?.section ?? s.sectionId.slice(-3).toUpperCase()}
+                            {section
+                              ? formatSectionHeading(section)
+                              : `Section ${s.sectionId.slice(-3).toUpperCase()}`}
                             {section?.room ? ` · ${section.room}` : ''}
                           </p>
                         </td>

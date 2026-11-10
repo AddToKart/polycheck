@@ -21,9 +21,13 @@ import {
   CampusCard,
   CampusEmptyState,
   CampusIconButton,
+  CampusLoadError,
+  DashboardSkeleton,
   MetricTile,
   SectionHeading,
 } from '../../components/CampusPrimitives'
+import { confirmSignOut } from '../../lib/sign-out'
+import { useLoadState } from '../../hooks/use-load-state'
 
 const campusDateFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: 'Asia/Manila',
@@ -67,6 +71,7 @@ function TeacherDashboard({ user }: { user: User }) {
   const [overview, setOverview] = useState<DashboardOverview | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshSignal, setRefreshSignal] = useState(0)
+  const loadState = useLoadState()
 
   const loadDashboard = useCallback(async () => {
     const today = campusDate()
@@ -83,8 +88,15 @@ function TeacherDashboard({ user }: { user: User }) {
   }, [user.id])
 
   useEffect(() => {
-    void loadDashboard().catch(() => showToast('error', 'Unable to load dashboard', 'Pull down to try again.'))
-  }, [loadDashboard, showToast])
+    let active = true
+    void loadDashboard()
+      .then(() => { if (active) loadState.markReady() })
+      .catch(() => {
+        if (active) loadState.markError()
+        showToast('error', 'Unable to load dashboard', 'Pull down to try again.')
+      })
+    return () => { active = false }
+  }, [loadDashboard, showToast, loadState.reloadToken])
 
   const sessionsToday = overview?.counts.sessionsToday ?? 0
   const pendingDisputes = overview?.counts.pendingDisputes ?? 0
@@ -102,13 +114,14 @@ function TeacherDashboard({ user }: { user: User }) {
     }
   }
 
-  const signOut = () => {
-    void api.logout()
-    router.replace('/')
-  }
+  const signOut = confirmSignOut
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID="faculty-dashboard-screen">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+      testID="faculty-dashboard-screen"
+    >
       <CampusHeader
         eyebrow="Faculty Workspace"
         title={user.fullName}
@@ -122,7 +135,19 @@ function TeacherDashboard({ user }: { user: User }) {
           </>
         )}
       />
-
+      {loadState.state === 'error' ? (
+        <View className="px-4 pt-4">
+          <CampusLoadError
+            title="Unable to load your workspace"
+            message="Sections, sessions and attendance could not be fetched. Try again."
+            onRetry={loadState.retry}
+          />
+        </View>
+      ) : loadState.state === 'loading' ? (
+        <View className="px-4 pt-4">
+          <DashboardSkeleton />
+        </View>
+      ) : (
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}
@@ -297,6 +322,7 @@ function TeacherDashboard({ user }: { user: User }) {
           })}
         </View>
       </ScrollView>
+      )}
     </SafeAreaView>
   )
 }

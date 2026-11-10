@@ -5,9 +5,20 @@ import {
   DEFAULT_MAINTENANCE_MESSAGE,
   MAINTENANCE_SETTINGS_CHANGED_EVENT,
   MAINTENANCE_SETTING_KEYS,
+  clampRetentionDays,
   isMaintenanceSettingKey,
+  PRIVACY_DATA_INVENTORY,
+  type PrivacyCenterSnapshot,
 } from '@polycheck/shared'
 import { isSealedSecret, openSecret, sealSecret } from '../common/utils/secret-box'
+import {
+  GEOLOCATION_RETENTION_DAYS_KEY,
+  PRIVACY_SHRED_LAST_RUN_REDIS_KEY,
+  PRIVACY_SHRED_LAST_RUN_TTL_SECONDS,
+  isShredRecord,
+  type PrivacyShredRecord,
+} from '../common/constants/privacy'
+import { RedisService } from '../infrastructure/redis.service'
 import { PrismaService } from '../prisma/prisma.service'
 
 const INTEGER_SETTING_RANGES = {
@@ -17,6 +28,7 @@ const INTEGER_SETTING_RANGES = {
   enrollment_code_expiry_days: { min: 1, max: 90 },
   attendance_min_rate_percent: { min: 0, max: 100 },
   device_cooldown_hours: { min: 1, max: 24 },
+  geolocation_retention_days: { min: 7, max: 90 },
 } as const
 
 const BOOLEAN_SETTING_KEYS = [
@@ -59,12 +71,23 @@ export type OptionalDatetimeInstitutionSettingKey = (typeof OPTIONAL_DATETIME_SE
 export class SettingsService {
   private readonly logger = new Logger(SettingsService.name)
 
+  /**
+   * Last nightly telemetry shred (F6). Deliberately NOT a settings row:
+   * operational telemetry is not configuration, so it lives outside the
+   * `INSTITUTION_SETTING_KEYS` whitelist. Redis (`privacy:shred:last`, 48 h
+   * TTL) carries the summary across restarts and pods; this static field is
+   * the DB-free in-process fallback so a Redis outage still serves the last
+   * run this instance performed.
+   */
+  private static lastShredRun: PrivacyShredRecord | null = null
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     // Optional so existing unit tests can construct the service without the
     // globally provided event emitter; production always injects it.
     @Optional() private readonly events?: EventEmitter2,
+    @Optional() private readonly redis?: RedisService,
   ) {}
 
   list() {
@@ -131,6 +154,80 @@ export class SettingsService {
     const rawUntil = (values.get('maintenance_until') ?? '').trim()
     const estimatedEnd = rawUntil && !Number.isNaN(Date.parse(rawUntil)) ? rawUntil : null
     return { enabled, message: message || DEFAULT_MAINTENANCE_MESSAGE, estimatedEnd }
+  }
+
+  /** Retention window for ephemeral geolocation telemetry (RA 10173 center). */
+  async getGeolocationRetentionDays(): Promise<number> {
+    const configured = await this.getInteger(GEOLOCATION_RETENTION_DAYS_KEY, 30)
+    return clampRetentionDays(configured)
+  }
+
+  /**
+   * Called by the nightly shred job in MaintenanceService. Fail-open: the
+   * in-memory copy is authoritative for this process and a Redis outage only
+   * degrades cross-restart visibility of the last run.
+   */
+  async recordPrivacyShredRun(summary: PrivacyShredRecord): Promise<void> {
+    SettingsService.lastShredRun = isShredRecord(summary) ? summary : null
+    try {
+      const persisted = await this.redis?.setJson(
+        PRIVACY_SHRED_LAST_RUN_REDIS_KEY,
+        summary,
+        PRIVACY_SHRED_LAST_RUN_TTL_SECONDS,
+      )
+      if (persisted === false) {
+        this.logger.warn('Could not persist the privacy shred summary to Redis; keeping the in-process copy only')
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not persist the privacy shred summary: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+
+  /**
+   * RA 10173 transparency snapshot (GET /settings/privacy-center). Every
+   * number is computed from production data at render time — consent counts
+   * straight from the user table, retention clamped 7–90, and the shred
+   * summary read through Redis with the in-process fallback.
+   */
+  async getPrivacyCenterSnapshot(): Promise<PrivacyCenterSnapshot> {
+    const version = this.privacyNoticeVersion()
+    const [retentionDays, covered, totalActive, storedRun] = await Promise.all([
+      this.getGeolocationRetentionDays(),
+      this.prisma.user.count({ where: { isActive: true, privacyConsentVersion: version } }),
+      this.prisma.user.count({ where: { isActive: true } }),
+      this.readLastShredRun(),
+    ])
+    return {
+      retentionDays,
+      consent: { covered, totalActive, version },
+      ephemeral: {
+        lastRunAt: storedRun?.lastRunAt ?? null,
+        recordsShredded: storedRun?.recordsShredded ?? null,
+        attemptsShredded: storedRun?.attemptsShredded ?? null,
+      },
+      dataInventory: PRIVACY_DATA_INVENTORY,
+      breaches: [],
+    }
+  }
+
+  /** The notice version consent rows are compared against (same source as the consent guard). */
+  private privacyNoticeVersion(): string {
+    return this.config.getOrThrow<string>('PRIVACY_NOTICE_VERSION')
+  }
+
+  /** Read-through last-run lookup: in-memory first, then the 48 h Redis copy. */
+  private async readLastShredRun(): Promise<PrivacyShredRecord | null> {
+    const memory = SettingsService.lastShredRun
+    if (memory) return memory
+    try {
+      const stored = await this.redis?.getJson<unknown>(PRIVACY_SHRED_LAST_RUN_REDIS_KEY)
+      if (stored && isShredRecord(stored)) SettingsService.lastShredRun = stored
+      return isShredRecord(stored) ? stored : null
+    } catch {
+      return null
+    }
   }
 
   /** Decrypted AI API key stored by a super admin, or null when unset. */

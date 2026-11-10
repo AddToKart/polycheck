@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { Alert, Pressable, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
@@ -14,7 +14,9 @@ import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, SectionHe
 import { AttendanceMetricGrid } from '../../../components/AttendanceReportCards'
 import { ChoiceSheet } from '../../../components/CampusPickerSheets'
 import { BulkImportSheet } from '../../../components/BulkImportSheet'
+import { KeyboardAwareScrollView } from '../../../components/KeyboardAwareScrollView'
 import { useCampusToast } from '../../../components/CampusToast'
+import { classRecordDownloadPath, classRecordFileName } from '../../../lib/institution-settings'
 
 const PAGE_SIZE = 10
 const initials = (name: string) => name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()
@@ -40,6 +42,8 @@ export default function SectionDetailScreen() {
   const [sectionRoles, setSectionRoles] = useState<SectionRole[]>([])
   const [sessionPermissions, setSessionPermissions] = useState<SessionPermission[]>([])
   const [assignRole, setAssignRole] = useState<'president' | 'qac' | null>(null)
+  // F4: the official PUP class record export (authenticated PDF share).
+  const [classRecordLoading, setClassRecordLoading] = useState(false)
   const isTeacher = api.getCurrentUser()?.role === 'teacher'
 
   const refreshRoster = useCallback(async () => { if (id) setStudents(await api.getSectionStudents(id)) }, [id])
@@ -125,6 +129,22 @@ export default function SectionDetailScreen() {
     }
   }
 
+  const shareClassRecord = async () => {
+    if (!id || classRecordLoading) return
+    setClassRecordLoading(true)
+    try {
+      await api.downloadAssistantFile(
+        classRecordDownloadPath(id),
+        classRecordFileName(parentSubject?.code ?? '', section?.section ?? ''),
+      )
+      showToast('success', 'Class record ready', 'The official PUP class record PDF was opened in your share sheet.')
+    } catch (error) {
+      showToast('error', 'Download failed', error instanceof Error ? error.message : 'Unable to download the class record.')
+    } finally {
+      setClassRecordLoading(false)
+    }
+  }
+
   const resetCode = async () => {
     try {
       const result = await api.resetEnrollmentCode(id!)
@@ -157,13 +177,28 @@ export default function SectionDetailScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow="Section workspace"
         title={`${parentSubject?.name ?? 'Subject'} · ${section.section}`}
         subtitle={`${parentSubject?.code ?? ''} · ${section.semester}`}
         onBack={() => router.back()}
-        actions={<CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />}
+        actions={
+          <>
+            <CampusIconButton
+              icon="picture-as-pdf"
+              label="Share official class record (PDF)"
+              onPress={() => void shareClassRecord()}
+              disabled={classRecordLoading}
+              inverse
+              testID="share-class-record"
+            />
+            <CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />
+          </>
+        }
       />
 
       <View className="px-4 pt-2">
@@ -186,7 +221,7 @@ export default function SectionDetailScreen() {
         </View>
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 12 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 12 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {activeTab === 'roster' ? (
           <>
             <SectionHeading eyebrow="Attendance" title="Section performance" />
@@ -464,7 +499,7 @@ export default function SectionDetailScreen() {
             </View>
           </>
         ) : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <ChoiceSheet visible={assignRole !== null} title={assignRole === 'president' ? 'Assign president' : 'Assign QAC coordinator'} options={assignCandidates.map((student) => ({ value: student.id, label: `${student.fullName} · ${student.studentId}` }))} value="" onSelect={(studentId) => { void assignStudentRole(studentId) }} onClose={() => setAssignRole(null)} />
 

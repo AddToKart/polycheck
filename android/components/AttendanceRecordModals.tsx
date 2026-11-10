@@ -4,6 +4,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import type { AttendanceRecord, StudentDisputeReason } from '@polycheck/shared'
 import { useTheme } from '../theme/ThemeContext'
 import { pupColors } from '../theme/colors'
+import { keyboardAvoidingBehavior } from '../lib/keyboard'
 import { excuseReasonLabel, excuseStatusLabel } from '../lib/excuses'
 import { AttendanceStatusPill, CampusButton } from './CampusPrimitives'
 
@@ -105,7 +106,7 @@ export const AttendanceDisputeModal = ({ visible, submitting, onClose, onSubmit 
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView className="flex-1 justify-center bg-black/65 p-5" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView className="flex-1 justify-center bg-black/65 p-5" behavior={keyboardAvoidingBehavior}>
         <View className="max-h-[88%] rounded-none border border-line border-t-4 border-t-golden bg-white p-5 dark:border-line-dark dark:bg-surface-dark">
           <ModalHeading eyebrow="Attendance Correction" title="Report an Issue" onClose={onClose} />
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>

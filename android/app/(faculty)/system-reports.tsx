@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, FlatList, Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { Alert, FlatList, Image, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -14,12 +14,15 @@ import {
 } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
+import { useLoadState } from '../../hooks/use-load-state'
+import { useTheme } from '../../theme/ThemeContext'
 import { canAccessItOperations } from '@polycheck/shared'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
-import { CampusButton, CampusCard, MetricTile } from '../../components/CampusPrimitives'
+import { CampusButton, CampusCard, CampusLoadError, CampusSkeleton, ListSkeleton, MetricTile } from '../../components/CampusPrimitives'
 import { CampusFormField } from '../../components/CampusFormField'
 import { useCampusToast } from '../../components/CampusToast'
+import { keyboardAvoidingBehavior } from '../../lib/keyboard'
 
 const STATUS_FILTERS: { value: ReportStatus | ''; label: string }[] = [
   { value: '', label: 'All' },
@@ -67,6 +70,7 @@ function statusPillTextClass(status: ReportStatus): string {
 
 /** Super-admin triage cockpit: metric cards, filters, detail + resolution. */
 export default function SystemReportsScreen() {
+  const { isDark } = useTheme()
   const currentUser = useAuthGate(['teacher', 'super_admin'], canAccessItOperations)
   const { showToast } = useCampusToast()
 
@@ -83,6 +87,7 @@ export default function SystemReportsScreen() {
   const [adminNotes, setAdminNotes] = useState('')
   const [screenshotUri, setScreenshotUri] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const loadState = useLoadState()
   const scope = (currentUser as { scope?: string | null } | null)?.scope ?? null
   const canManage = currentUser?.role === 'super_admin' && scope !== 'department'
 
@@ -103,12 +108,14 @@ export default function SystemReportsScreen() {
       setReports(page.data)
       setTotal(page.total)
       setError('')
+      loadState.markReady()
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load reports.')
+      loadState.markError()
     } finally {
       setLoading(false)
     }
-  }, [categoryFilter, currentUser, searchInput, statusFilter])
+  }, [categoryFilter, currentUser, searchInput, statusFilter, loadState.reloadToken])
 
   useEffect(() => {
     void load()
@@ -151,7 +158,11 @@ export default function SystemReportsScreen() {
   const readOnly = scope === 'department'
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID="system-reports-screen">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+      testID="system-reports-screen"
+    >
       <CampusHeader
         eyebrow="Administration"
         title="System Reports"
@@ -167,13 +178,24 @@ export default function SystemReportsScreen() {
         </View>
       ) : null}
 
-      {error ? (
+      {loadState.state === 'error' ? (
         <View className="mx-4 mt-2">
-          <CampusButton label="Retry" icon="refresh" variant="secondary" onPress={() => void load()} />
+          <CampusLoadError
+            title="Unable to load system reports"
+            message={error || 'Check your connection and try again.'}
+            onRetry={loadState.retry}
+          />
         </View>
       ) : null}
 
-      {stats ? (
+      {loadState.state === 'loading' ? (
+        <View className="mt-3 gap-3 px-4">
+          <CampusSkeleton className="h-24 w-full"><View /></CampusSkeleton>
+          <ListSkeleton rows={3} rowClass="h-24" />
+        </View>
+      ) : null}
+
+      {loadState.state === 'ready' && stats ? (
         <View className="mt-3 px-4">
           <View className="flex-row gap-3">
             <View className="flex-1">
@@ -256,6 +278,7 @@ export default function SystemReportsScreen() {
         </View>
       </View>
 
+      {loadState.state === 'ready' ? (
       <FlatList
         className="flex-1 px-4 pt-3"
         contentContainerClassName="pb-24 gap-3"
@@ -303,6 +326,7 @@ export default function SystemReportsScreen() {
           </Pressable>
         )}
       />
+      ) : null}
 
       <Modal
         visible={detail !== null}
@@ -310,6 +334,7 @@ export default function SystemReportsScreen() {
         animationType="fade"
         onRequestClose={() => setDetail(null)}
       >
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={keyboardAvoidingBehavior}>
         <Pressable className="flex-1 justify-end bg-black/70" onPress={() => setDetail(null)}>
           <Pressable onPress={() => undefined} className="max-h-[92%] rounded-t-[36px] border-t-4 border-t-golden bg-white px-5 pb-10 pt-4 dark:bg-surface-dark" testID="report-detail-sheet">
             <View className="mb-3 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
@@ -420,6 +445,7 @@ export default function SystemReportsScreen() {
             </ScrollView>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   )

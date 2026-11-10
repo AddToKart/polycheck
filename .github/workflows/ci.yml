@@ -55,6 +55,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm security:audit
       - run: pnpm peers check
+      - run: node scripts/verify-tracked-build-files.mjs
       - run: pnpm --dir android exec expo install --check
       - run: pnpm --filter @polycheck/backend prisma:generate
       - run: pnpm --filter @polycheck/backend prisma:migrate:deploy
@@ -70,6 +71,8 @@ jobs:
       - run: pnpm --dir frontend build
       - run: pnpm --dir android typecheck
       - run: pnpm --dir android test:coverage
+      - name: Android bundle contains compiled styles
+        run: node scripts/verify-android-bundle-styles.mjs
 
   web-e2e:
     runs-on: ubuntu-latest

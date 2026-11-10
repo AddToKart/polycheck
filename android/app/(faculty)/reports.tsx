@@ -1,24 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
+import { Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { getRecentCampusDateRange, type AttendanceReport, type Section, type Subject, type Teacher } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
+import { useLoadState } from '../../hooks/use-load-state'
 import { canAccessAcademicOversight } from '@polycheck/shared'
 import { shareCsvFile } from '../../services/file-sharing'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import DatePickerModal from '../../components/DatePickerModal'
 import { CampusHeader } from '../../components/CampusHeader'
-import { CampusCard, CampusEmptyState, CampusIconButton, SectionHeading } from '../../components/CampusPrimitives'
+import { CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, CampusSkeleton, ListSkeleton, SectionHeading } from '../../components/CampusPrimitives'
 import {
   AttendanceDateRangeCard,
   AttendanceDistributionCard,
   AttendanceMetricGrid,
   AttendanceSummaryCard,
 } from '../../components/AttendanceReportCards'
+import { confirmSignOut } from '../../lib/sign-out'
 import { useCampusToast } from '../../components/CampusToast'
 import { uniqueDepartments } from '../../components/users-screen-helpers'
 
@@ -96,6 +98,7 @@ export default function FacultyReportsScreen() {
   const [endDate, setEndDate] = useState(defaultEndDate)
   const [startPickerVisible, setStartPickerVisible] = useState(false)
   const [endPickerVisible, setEndPickerVisible] = useState(false)
+  const loadState = useLoadState()
 
   useEffect(() => {
     if (!currentUser) return
@@ -141,14 +144,18 @@ export default function FacultyReportsScreen() {
       sectionId: selectedSection || undefined,
       department: selectedDepartment || undefined,
     }).then((nextReport) => {
-      if (active) setReport(nextReport)
+      if (!active) return
+      setReport(nextReport)
+      loadState.markReady()
     }).catch(() => {
-      if (active) showToast('error', 'Unable to load report', 'Please check the selected filters and try again.')
+      if (!active) return
+      loadState.markError()
+      showToast('error', 'Unable to load report', 'Please check the selected filters and try again.')
     }).finally(() => {
       if (active) setLoading(false)
     })
     return () => { active = false }
-  }, [currentUser, selectedDepartment, selectedSection, selectedSubject, selectedTeacher, showToast, startDate, endDate])
+  }, [currentUser, selectedDepartment, selectedSection, selectedSubject, selectedTeacher, showToast, startDate, endDate, loadState.reloadToken])
 
   if (!currentUser) return null
 
@@ -198,13 +205,13 @@ export default function FacultyReportsScreen() {
     }
   }
 
-  const handleLogout = () => {
-    api.logout()
-    router.replace('/')
-  }
+  const handleLogout = confirmSignOut
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow="Institution oversight"
         title="Attendance reports"
@@ -309,10 +316,16 @@ export default function FacultyReportsScreen() {
           filtered={isFiltered}
         />
 
-        {loading ? (
-          <View accessibilityRole="progressbar" className="items-center py-16">
-            <ActivityIndicator size="large" color={isDark ? pupColors.golden : pupColors.maroon} />
-            <Text className="mt-4 font-sans-medium text-sm text-muted dark:text-zinc-400">Building the report…</Text>
+        {loadState.state === 'error' ? (
+          <CampusLoadError
+            title="Unable to load the report"
+            message="Attendance figures could not be fetched. Check your connection and try again."
+            onRetry={loadState.retry}
+          />
+        ) : loadState.state === 'loading' || loading ? (
+          <View accessibilityLabel="Loading report" className="gap-3">
+            <CampusSkeleton className="h-28 w-full"><View /></CampusSkeleton>
+            <ListSkeleton rows={3} rowClass="h-24" />
           </View>
         ) : (
           <>

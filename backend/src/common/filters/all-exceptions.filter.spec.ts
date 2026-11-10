@@ -81,6 +81,60 @@ describe('AllExceptionsFilter', () => {
     })
   })
 
+  it('preserves the exact countdown and the blocking-device hint on login gates', () => {
+    const cooldown = new ForbiddenException({
+      code: 'device_cooldown_active',
+      remainingMinutes: 42,
+      remainingSeconds: 2513,
+      message: 'Device change cooldown is active',
+    })
+    filter.catch(cooldown, makeHost('/auth/mobile/login/student'))
+    expect(response.json).toHaveBeenCalledWith({
+      statusCode: 403,
+      error: 'ForbiddenException',
+      message: 'Device change cooldown is active',
+      code: 'device_cooldown_active',
+      remainingMinutes: 42,
+      remainingSeconds: 2513,
+      path: '/auth/mobile/login/student',
+      timestamp: expect.any(String),
+    })
+
+    response.json.mockClear()
+    const elsewhere = new ForbiddenException({
+      code: 'active_session_elsewhere',
+      activeDeviceKind: 'mobile',
+      activeSessionLastActiveAt: '2026-11-10T09:15:00.000Z',
+      message: 'This account is currently signed in on another device',
+    })
+    filter.catch(elsewhere, makeHost('/auth/login/student'))
+    expect(response.json).toHaveBeenCalledWith({
+      statusCode: 403,
+      error: 'ForbiddenException',
+      message: 'This account is currently signed in on another device',
+      code: 'active_session_elsewhere',
+      activeDeviceKind: 'mobile',
+      activeSessionLastActiveAt: '2026-11-10T09:15:00.000Z',
+      path: '/auth/login/student',
+      timestamp: expect.any(String),
+    })
+  })
+
+  it('forwards a null activeDeviceKind for legacy blocking sessions', () => {
+    const exception = new ForbiddenException({
+      code: 'active_session_elsewhere',
+      activeDeviceKind: null,
+      activeSessionLastActiveAt: '2026-11-10T09:15:00.000Z',
+      message: 'This device could not be identified',
+    })
+
+    filter.catch(exception, makeHost('/auth/login/student'))
+
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'active_session_elsewhere', activeDeviceKind: null }),
+    )
+  })
+
   it('preserves the maintenance 503 surface with its estimated resumption', () => {
     const exception = new ServiceUnavailableException({
       code: 'system_maintenance',

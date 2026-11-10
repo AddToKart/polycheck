@@ -35,6 +35,7 @@ const TYPE_ICONS: Record<NotificationType, keyof typeof MaterialIcons.glyphMap> 
   device_released: 'smartphone',
   system_report_resolved: 'task-alt',
   key_provisioned: 'vpn-key',
+  at_risk_referral: 'assignment-late',
 }
 
 function relativeTimeLabel(createdAt: string, now: number): string {
@@ -191,7 +192,11 @@ export function NotificationCenter() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark" testID="notification-center">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+      testID="notification-center"
+    >
       <CampusHeader
         eyebrow="Updates"
         title="Notifications"

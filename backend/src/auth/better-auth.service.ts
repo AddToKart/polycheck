@@ -5,6 +5,7 @@ import type { BetterAuthOptions } from 'better-auth'
 import { PrismaService } from '../prisma/prisma.service'
 import { PASSWORD_HASH_COST } from './password-policy'
 import { resolveSessionCreateAfter, resolveSessionGeneration } from './session-policy'
+import { DeviceBindingService } from '../users/device-binding.service'
 
 interface BetterAuthRuntime {
   api: {
@@ -57,11 +58,34 @@ const importEsm = new Function('specifier', 'return import(specifier)') as <T>(s
 @Injectable()
 export class BetterAuthService implements OnModuleInit {
   auth!: BetterAuthRuntime
+  /**
+   * Device id for the login currently being created. The Better Auth database
+   * hook cannot see the HTTP body, so the caller attaches the device just
+   * before `signInEmail` and the session-create hook consumes it. Entries are
+   * removed in a `finally` even when the sign-in fails.
+   */
+  private readonly pendingLoginDevices = new Map<string, string>()
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly deviceBinding: DeviceBindingService,
   ) {}
+
+  async signInWithDevice(
+    userId: string,
+    body: { email: string; password: string; rememberMe: boolean },
+    headers: Headers,
+    deviceId?: string | null,
+  ): Promise<{ headers: Headers }> {
+    const normalized = deviceId?.trim()
+    if (normalized) this.pendingLoginDevices.set(userId, normalized)
+    try {
+      return await this.auth.api.signInEmail({ body, headers, returnHeaders: true })
+    } finally {
+      this.pendingLoginDevices.delete(userId)
+    }
+  }
 
   async onModuleInit() {
     const [{ betterAuth }, { prismaAdapter }, { bearer }] = await Promise.all([
@@ -131,6 +155,12 @@ export class BetterAuthService implements OnModuleInit {
             returned: true,
             defaultValue: 0,
           },
+          deviceId: {
+            type: 'string',
+            required: false,
+            input: false,
+            returned: true,
+          },
         },
       },
       verification: { modelName: 'AuthVerification' },
@@ -163,13 +193,6 @@ export class BetterAuthService implements OnModuleInit {
                 authVersion: account.authVersion,
               })
               if (!decision.allowed) return false
-              if (decision.bumpedAuthVersion) {
-                await this.prisma.user.update({
-                  where: { id: session.userId },
-                  data: { authVersion: { increment: 1 } },
-                  select: { authVersion: true },
-                })
-              }
               return { data: { ...session, generation: decision.generation } }
             },
             after: async (session) => {
@@ -184,10 +207,11 @@ export class BetterAuthService implements OnModuleInit {
                 await this.prisma.authSession.deleteMany({ where: { id: session.id } })
                 return
               }
-              if (action === 'delete-others') {
-                await this.prisma.authSession.deleteMany({
-                  where: { userId: session.userId, id: { not: session.id } },
-                })
+              if (action === 'purge-same-device') {
+                const deviceId = this.pendingLoginDevices.get(String(session.userId))
+                if (deviceId) {
+                  await this.deviceBinding.stampLoginSession(String(session.userId), deviceId, String(session.id))
+                }
               }
             },
           },

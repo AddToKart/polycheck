@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
 import { canAccessItOperations } from '@polycheck/shared'
-import type { AiCapabilities, SuperAdmin } from '@polycheck/shared'
+import type { AiCapabilities, PrivacyCenterSnapshot, SuperAdmin } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
 import { useTheme } from '../../theme/ThemeContext'
@@ -12,13 +12,17 @@ import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
 import { CampusButton, CampusCard, CampusIconButton } from '../../components/CampusPrimitives'
 import { CampusFormField } from '../../components/CampusFormField'
+import { KeyboardAwareScrollView } from '../../components/KeyboardAwareScrollView'
 import { CampusSwitchRow } from '../../components/CampusSwitchRow'
 import { useCampusToast } from '../../components/CampusToast'
 import {
+  DPO_SUMMARY_DOWNLOAD_PATH,
+  DPO_SUMMARY_FILENAME,
   SETTINGS_TABS,
   SETTING_DEFAULTS,
   TAB_SETTING_KEYS,
   areAiRoleSwitchesDisabled,
+  buildPrivacyView,
   describeAssistantStatus,
   fieldsForTab,
   isTabDirty,
@@ -26,6 +30,7 @@ import {
   mergeSettingValues,
   settingIsOn,
   switchesForTab,
+  visibleSettingsTabs,
   type AssistantStatusTone,
   type SettingFieldDefinition,
   type SettingsTabId,
@@ -37,6 +42,7 @@ const TAB_INTROS: Record<SettingsTabId, string> = {
   accounts: 'Control what teachers can do when managing student accounts.',
   ai: 'Availability, provider configuration, and the encrypted API key for the assistant.',
   system: 'Close the campus system for maintenance and announce the estimated resumption.',
+  privacy: 'The RA 10173 transparency center — read-only, computed from production at render time.',
 }
 
 const STATUS_TONE_CLASSES: Record<AssistantStatusTone, string> = {
@@ -60,7 +66,9 @@ const STATUS_ICONS: Record<AssistantStatusTone, keyof typeof MaterialIcons.glyph
 export default function InstitutionSettingsScreen() {
   const currentUser = useAuthGate(['teacher', 'super_admin'], canAccessItOperations)
   const isSuperAdmin = currentUser?.role === 'super_admin'
-  const visibleTabs = isSuperAdmin ? SETTINGS_TABS : SETTINGS_TABS.filter((tab) => tab.id === 'system')
+  // Super admins keep the full console; IT coordinators see the System suite
+  // plus the read-only privacy center (the System-suite gate).
+  const visibleTabs = visibleSettingsTabs(currentUser)
   const { isDark, toggle } = useTheme()
   const { showToast } = useCampusToast()
   const [activeTab, setActiveTab] = useState<SettingsTabId>('institution')
@@ -239,14 +247,17 @@ export default function InstitutionSettingsScreen() {
   )
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow={isSuperAdmin ? 'Super administrator' : 'IT Operations Suite'}
         title="Institution settings"
         subtitle={
           isSuperAdmin
-            ? 'Campus-wide defaults, access policy, the AI assistant, and maintenance.'
-            : 'Maintenance controls and the campus announcement.'
+            ? 'Campus-wide defaults, access policy, the AI assistant, maintenance, and privacy.'
+            : 'Maintenance controls, the campus announcement, and the privacy center.'
         }
         onBack={() => router.back()}
         actions={<CampusIconButton icon={isDark ? 'light-mode' : 'dark-mode'} label="Toggle color theme" onPress={toggle} inverse />}
@@ -308,7 +319,7 @@ export default function InstitutionSettingsScreen() {
             </View>
           ) : null}
 
-          <ScrollView
+          <KeyboardAwareScrollView
             ref={scrollRef}
             style={{ flex: 1 }}
             contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 110 }}
@@ -318,7 +329,9 @@ export default function InstitutionSettingsScreen() {
               <Text className="font-heading text-xl text-ink dark:text-white">{activeTabMeta.label}</Text>
               <Text className="mt-2 font-sans text-sm leading-5 text-muted dark:text-zinc-400">{TAB_INTROS[activeTab]}</Text>
 
-              {activeTab !== 'ai' && activeFields.length > 0 ? (
+              {activeTab === 'privacy' ? <PrivacyTabPanel /> : null}
+
+              {activeTab !== 'ai' && activeTab !== 'privacy' && activeFields.length > 0 ? (
                 <View className="mt-5 gap-4">
                   {activeFields.map(renderField)}
                 </View>
@@ -454,16 +467,196 @@ export default function InstitutionSettingsScreen() {
                 </>
               ) : null}
 
-              {renderSaveButton()}
+              {activeTab !== 'privacy' ? renderSaveButton() : null}
               {activeTab === 'ai' ? (
                 <Text className="mt-2 font-sans text-[11px] leading-4 text-muted dark:text-zinc-500">
                   The API key saves separately from availability and configuration.
                 </Text>
               ) : null}
             </CampusCard>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </>
       )}
     </SafeAreaView>
+  )
+}
+
+const PrivacyStatRow = ({ label, value }: { label: string; value: string }) => (
+  <View className="flex-row items-center justify-between rounded-none border border-line bg-zinc-50 px-3 py-2 dark:border-line-dark dark:bg-white/5">
+    <Text className="shrink-0 font-sans text-[10px] uppercase tracking-widest text-muted dark:text-zinc-500">{label}</Text>
+    <Text className="ml-2 flex-1 text-right font-sans-bold text-xs text-ink dark:text-white">{value}</Text>
+  </View>
+)
+
+const PrivacyGroupHeading = ({ title, caption }: { title: string; caption: string }) => (
+  <View>
+    <Text className="font-sans-bold text-[10px] uppercase tracking-widest text-maroon dark:text-golden">{title}</Text>
+    <Text className="mt-1 font-sans text-[11px] leading-4 text-muted dark:text-zinc-400">{caption}</Text>
+  </View>
+)
+
+/**
+ * F6 (WF-LD8): the RA 10173 transparency tab, condensed Android mirror of the
+ * web privacy center. Read-only by design — no save row, no editable keys;
+ * every number is fetched live from `GET /settings/privacy-center`.
+ */
+function PrivacyTabPanel() {
+  const { isDark } = useTheme()
+  const { showToast } = useCampusToast()
+  const [snapshot, setSnapshot] = useState<PrivacyCenterSnapshot | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [reloadNonce, setReloadNonce] = useState(0)
+  const [dpoSharing, setDpoSharing] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    setLoadError('')
+    api
+      .getPrivacyCenter()
+      .then((result) => {
+        if (active) setSnapshot(result)
+      })
+      .catch((error) => {
+        if (active) {
+          setLoadError(error instanceof Error ? error.message : 'Unable to load the privacy center')
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [reloadNonce])
+
+  const shareDpoSummary = async () => {
+    if (dpoSharing) return
+    setDpoSharing(true)
+    try {
+      await api.downloadAssistantFile(DPO_SUMMARY_DOWNLOAD_PATH, DPO_SUMMARY_FILENAME)
+      showToast('success', 'DPO summary ready', 'The RA 10173 transparency one-pager was opened in your share sheet.')
+    } catch (error) {
+      showToast('error', 'Download failed', error instanceof Error ? error.message : 'Unable to download the DPO summary.')
+    } finally {
+      setDpoSharing(false)
+    }
+  }
+
+  const view = snapshot ? buildPrivacyView(snapshot) : null
+
+  return (
+    <View>
+      <View className="mt-4 flex-row items-start gap-2">
+        <MaterialIcons name="privacy-tip" size={18} color={isDark ? pupColors.golden : pupColors.maroon} style={{ marginTop: 1 }} />
+        <Text className="flex-1 font-sans text-[11px] leading-5 text-muted dark:text-zinc-400">
+          Every claim below is computed from the production tables at render time — the same numbers the auditors
+          can query. The DPO one-pager mirrors this tab.
+        </Text>
+      </View>
+
+      <CampusButton
+        label={dpoSharing ? 'Preparing…' : 'DPO summary (PDF)'}
+        icon={dpoSharing ? undefined : 'picture-as-pdf'}
+        onPress={() => void shareDpoSummary()}
+        disabled={dpoSharing || loading}
+        className="mt-4"
+        testID="settings-privacy-dpo"
+      />
+
+      {loadError ? (
+        <View className="mt-4 gap-3">
+          <View accessibilityLiveRegion="assertive" className="border border-red-200 bg-red-50 px-3 py-2 dark:border-red-900 dark:bg-red-950/30">
+            <Text className="font-sans text-xs leading-5 text-red-700 dark:text-red-300">{loadError}</Text>
+          </View>
+          <CampusButton label="Retry" icon="refresh" variant="secondary" onPress={() => setReloadNonce((n) => n + 1)} testID="settings-privacy-retry" />
+        </View>
+      ) : null}
+
+      {loading ? (
+        <View className="mt-5 flex-row items-center gap-2">
+          <ActivityIndicator size="small" color={isDark ? pupColors.golden : pupColors.maroon} />
+          <Text className="font-sans text-xs text-muted dark:text-zinc-400">Loading the live privacy attestation…</Text>
+        </View>
+      ) : null}
+
+      {view ? (
+        <View aria-busy={loading}>
+          {/* Group 1 — What we store */}
+          <View className="mt-6 border-t border-line pt-5 dark:border-line-dark">
+            <PrivacyGroupHeading
+              title="What we store"
+              caption="The plain-language inventory: each signal, why it exists, its lawful basis, and its lifetime."
+            />
+            <View className="mt-3 gap-3">
+              {view.inventoryRows.map((row) => (
+                <View key={row.data} className="rounded-none border border-line bg-zinc-50 p-3 dark:border-line-dark dark:bg-white/5">
+                  <Text className="font-sans-bold text-xs leading-5 text-ink dark:text-white">{row.data}</Text>
+                  <Text className="mt-1 font-sans text-[11px] leading-4 text-muted dark:text-zinc-400">{row.purpose}</Text>
+                  <Text className="mt-1 font-sans text-[10px] leading-4 text-muted dark:text-zinc-500">{row.lawfulBasis}</Text>
+                  <Text className="mt-1 font-sans text-[10px] italic leading-4 text-muted dark:text-zinc-500">{row.lifetime}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Group 2 — Ephemeral telemetry (the live attestation) */}
+          <View className="mt-6 border-t border-line pt-5 dark:border-line-dark">
+            <PrivacyGroupHeading title="Ephemeral telemetry" caption="GPS coordinates are shredded nightly; the attestation is the shredder's live count." />
+            <View className="mt-3 flex-row items-end gap-3" testID="privacy-attestation">
+              <Text className="font-heading text-4xl leading-10 text-golden">{view.attestationValue}</Text>
+              <View className="flex-1">
+                <Text className="font-sans-bold text-[10px] uppercase tracking-widest text-muted dark:text-zinc-400">
+                  rows live beyond retention
+                </Text>
+                <Text className="mt-1 font-sans text-[11px] leading-4 text-muted dark:text-zinc-400">
+                  {view.lastRunAt
+                    ? `Verified by the nightly shred on ${new Date(view.lastRunAt).toLocaleString('en-PH')}`
+                    : 'Verification pending — no shred run recorded on this instance yet.'}
+                </Text>
+              </View>
+            </View>
+            <View className="mt-3 gap-2">
+              <PrivacyStatRow label="Retention window" value={`${view.retentionDays} days`} />
+              <PrivacyStatRow label="Records shredded (last run)" value={view.recordsShredded} />
+              <PrivacyStatRow label="Attempts shredded (last run)" value={view.attemptsShredded} />
+            </View>
+            <Text className="mt-2 font-sans text-[11px] italic leading-4 text-muted dark:text-zinc-400">
+              Retention is enforced nightly — coordinates past {view.retentionDays} days are shredded.
+            </Text>
+          </View>
+
+          {/* Group 3 — Consent ledger */}
+          <View className="mt-6 border-t border-line pt-5 dark:border-line-dark">
+            <PrivacyGroupHeading title="Consent ledger" caption="Onboarding consent coverage for the current privacy notice version." />
+            {view.coveragePercent === null ? (
+              <View className="mt-3">
+                <Text className="font-heading text-2xl text-ink dark:text-white">{view.consentTotal}</Text>
+                <Text className="mt-1 font-sans text-[11px] leading-4 text-muted dark:text-zinc-400">
+                  active account{view.consentTotal === 1 ? '' : 's'} — consent coverage is not meaningful yet.
+                </Text>
+              </View>
+            ) : (
+              <View className="mt-3">
+                <Text className="font-heading text-2xl text-maroon dark:text-golden">{view.coveragePercent}%</Text>
+                <View
+                  className="mt-2 h-2.5 w-full overflow-hidden bg-zinc-200 dark:bg-white/10"
+                  accessibilityLabel={`Consent coverage ${view.coveragePercent} percent`}
+                >
+                  <View style={{ width: `${view.coveragePercent}%` }} className="h-full bg-golden" />
+                </View>
+                <Text className="mt-2 font-sans text-[11px] leading-4 text-muted dark:text-zinc-400">
+                  {view.consentCovered} of {view.consentTotal} active accounts on the current notice
+                </Text>
+              </View>
+            )}
+            <Text className="mt-2 font-sans-bold text-[10px] uppercase tracking-widest text-muted dark:text-zinc-500">
+              Notice version {view.consentVersion}
+            </Text>
+          </View>
+        </View>
+      ) : null}
+    </View>
   )
 }

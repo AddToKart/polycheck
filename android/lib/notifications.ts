@@ -11,6 +11,7 @@ const NOTIFICATION_TYPES: NotificationType[] = [
   'password_reset',
   'role_changed',
   'key_provisioned',
+  'at_risk_referral',
 ]
 
 const STUDENT_TYPE_ROUTES: Partial<Record<NotificationType, string>> = {
@@ -24,6 +25,7 @@ const FACULTY_TYPE_ROUTES: Partial<Record<NotificationType, string>> = {
   dispute_filed: '/(faculty)/disputes',
   excuse_requested: '/(faculty)/excuses',
   key_provisioned: '/(faculty)/sessions',
+  at_risk_referral: '/(faculty)/at-risk',
 }
 
 export function isNotificationType(value: unknown): value is NotificationType {

@@ -30,11 +30,18 @@ describe('AuthController', () => {
     })
 
     const result = await controller.loginStudent(
-      { studentId: '2026-00001-MN-0', password: 'strong-password' },
+      { studentId: '2026-00001-MN-0', password: 'strong-password', deviceId: 'web-abc' },
       request as Request,
       response as unknown as Response,
     )
 
+    expect(auth.loginStudent).toHaveBeenCalledWith(
+      '2026-00001-MN-0',
+      'strong-password',
+      '203.0.113.10',
+      expect.any(Headers),
+      { channel: 'web', deviceId: 'web-abc' },
+    )
     expect(response.append).toHaveBeenCalledTimes(2)
     expect(response.append).toHaveBeenNthCalledWith(
       1,
@@ -110,13 +117,41 @@ describe('AuthController', () => {
     })
 
     const result = await controller.logout(
-      { user: { id: 'student-1' }, headers: {} } as never,
+      { user: { id: 'student-1', role: 'student' }, headers: {}, ip: '203.0.113.10' } as never,
+      { deviceId: 'web-abc' },
       response as unknown as Response,
     )
 
-    expect(auth.logout).toHaveBeenCalledWith(expect.any(Headers))
+    expect(auth.logout).toHaveBeenCalledWith(
+      expect.any(Headers),
+      { id: 'student-1', role: 'student' },
+      'web-abc',
+      undefined,
+      '203.0.113.10',
+    )
     expect(response.append).toHaveBeenCalledWith('set-cookie', 'polycheck_access=; Max-Age=0; Path=/')
     expect(result).toEqual({ message: 'Logged out successfully' })
+  })
+
+  it('forwards the programmatic-logout cooldown opt-out', async () => {
+    auth.logout.mockResolvedValue({
+      message: 'Logged out successfully',
+      headers: new Headers({ 'set-cookie': 'polycheck_access=; Max-Age=0; Path=/' }),
+    })
+
+    await controller.logout(
+      { user: { id: 'student-1', role: 'student' }, headers: {}, ip: '203.0.113.10' } as never,
+      { armDeviceCooldown: false },
+      response as unknown as Response,
+    )
+
+    expect(auth.logout).toHaveBeenCalledWith(
+      expect.any(Headers),
+      { id: 'student-1', role: 'student' },
+      undefined,
+      false,
+      '203.0.113.10',
+    )
   })
 
   it('delegates getProfile to the auth service with the request user id', async () => {

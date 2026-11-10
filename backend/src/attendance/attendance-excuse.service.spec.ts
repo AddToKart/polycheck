@@ -51,6 +51,7 @@ function makeService() {
     {} as never,
     {} as never,
     {} as never,
+    { appendLedger: jest.fn() } as never,
     notifications as never,
     storage as never,
     config as never,

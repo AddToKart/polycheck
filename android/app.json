@@ -25,7 +25,13 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "edu.pup.polycheck",
-      "permissions": ["android.permission.CAMERA", "android.permission.ACCESS_FINE_LOCATION", "android.permission.POST_NOTIFICATIONS"]
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -73,7 +79,18 @@
           "defaultChannel": "default"
         }
       ],
-      "@sentry/react-native/expo"
-    ]
+      [
+        "@sentry/react-native/expo",
+        {
+          "uploadSourceMaps": false
+        }
+      ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c3eb1e24-6f31-4088-afd9-93d9a1d74146"
+      }
+    }
   }
 }

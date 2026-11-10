@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
@@ -8,14 +8,16 @@ import { router } from 'expo-router'
 import type { AdminUserStatusFilter, SuperAdmin, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
+import { useLoadState } from '../../hooks/use-load-state'
 import { canAccessUserAdmin } from '@polycheck/shared'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
-import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
+import { CampusButton, CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, ListSkeleton } from '../../components/CampusPrimitives'
 import { CampusFormField } from '../../components/CampusFormField'
 import { BulkImportSheet } from '../../components/BulkImportSheet'
 import { useCampusToast } from '../../components/CampusToast'
+import { keyboardAvoidingBehavior } from '../../lib/keyboard'
 import {
   assignableRoleFor,
   buildAdminUserFilters,
@@ -50,6 +52,7 @@ const emptyAdminForm = { fullName: '', email: '', department: '', password: '' }
 const AccountSheet = ({ visible, title, description, children, onClose }: { visible: boolean; title: string; description: string; children: ReactNode; onClose: () => void }) => {  const { isDark } = useTheme()
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={keyboardAvoidingBehavior}>
       <Pressable className="flex-1 justify-end bg-black/80" onPress={onClose}>
         <Pressable onPress={() => undefined} className="max-h-[92%] rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-surface-dark">
           <View className="mb-4 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
@@ -65,6 +68,7 @@ const AccountSheet = ({ visible, title, description, children, onClose }: { visi
           {children}
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
@@ -259,6 +263,7 @@ export default function FacultyUsersScreen() {
   const [inactiveStudentTotal, setInactiveStudentTotal] = useState(0)
   const [busyUserId, setBusyUserId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const loadState = useLoadState()
 
   const [showImportStudents, setShowImportStudents] = useState(false)
   const [showCreateTeacher, setShowCreateTeacher] = useState(false)
@@ -309,11 +314,13 @@ export default function FacultyUsersScreen() {
       setTotal(page.total)
       setHasMore(page.hasMore)
       setNextOffset(nextUsersOffset(page))
+      loadState.markReady()
     } catch (loadError) {
       if (requestId !== requestIdRef.current) return
       const message = loadError instanceof Error ? loadError.message : 'Please try again.'
       setError(message)
       setHasMore(false)
+      loadState.markError()
       showToast('error', 'Unable to load users', message)
     } finally {
       if (requestId === requestIdRef.current) {
@@ -327,7 +334,7 @@ export default function FacultyUsersScreen() {
   useEffect(() => {
     if (!currentUser) return
     void loadPage(0, 'replace')
-  }, [currentUser, loadPage, refreshNonce])
+  }, [currentUser, loadPage, refreshNonce, loadState.reloadToken])
 
   useEffect(() => {
     if (!roleTabs.some((tab) => tab.id === activeTab)) setActiveTab('teachers')
@@ -662,7 +669,10 @@ export default function FacultyUsersScreen() {
   const editFields = editTarget ? profileFieldsForRole(editTarget.role) : []
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow="Account administration"
         title="Campus users"
@@ -804,14 +814,14 @@ export default function FacultyUsersScreen() {
           void loadPage(nextOffset, 'append').finally(() => { loadingMoreRef.current = false })
         }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadPage(0, 'refresh')} tintColor={isDark ? pupColors.golden : pupColors.maroon} />}
-        ListEmptyComponent={loading ? (
-          <View className="items-center py-16"><ActivityIndicator size="large" color={isDark ? pupColors.golden : pupColors.maroon} /><Text className="mt-3 font-sans text-sm text-muted dark:text-zinc-400">Loading accounts…</Text></View>
-        ) : error ? (
-          <CampusCard className="border-l-red-600 p-4">
-            <Text accessibilityLiveRegion="assertive" className="font-sans-bold text-sm text-red-900 dark:text-red-200">Unable to load users</Text>
-            <Text className="mt-1 font-sans text-xs leading-5 text-red-700 dark:text-red-300">{error}</Text>
-            <CampusButton label="Try again" icon="refresh" onPress={() => void loadPage(0, 'replace')} className="mt-4" />
-          </CampusCard>
+        ListEmptyComponent={loadState.state === 'error' ? (
+          <CampusLoadError
+            title="Unable to load users"
+            message={error ?? 'Check your connection and try again.'}
+            onRetry={loadState.retry}
+          />
+        ) : loadState.state === 'loading' || loading ? (
+          <ListSkeleton rows={5} rowClass="h-28" />
         ) : (
           <CampusEmptyState
             icon="group-off"

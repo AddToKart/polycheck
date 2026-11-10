@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
 import * as Crypto from 'expo-crypto'
+import { keyboardAvoidingBehavior } from '../lib/keyboard'
 import {
   buildEnrollRows,
   buildStudentRows,
@@ -324,6 +325,7 @@ export function BulkImportSheet({ visible, onClose, mode, sectionId, onCompleted
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={keyboardAvoidingBehavior}>
       <Pressable className="flex-1 justify-end bg-black/80" onPress={close}>
         <Pressable onPress={() => undefined} className="max-h-[94%] rounded-t-[36px] border-t-2 border-x border-maroon/20 bg-white px-5 pb-10 pt-4 shadow-2xl dark:border-golden/25 dark:bg-surface-dark">
           <View className="mb-4 h-1.5 w-14 self-center rounded-full bg-maroon/30 dark:bg-golden/40" />
@@ -563,6 +565,7 @@ export function BulkImportSheet({ visible, onClose, mode, sectionId, onCompleted
           </ScrollView>
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }

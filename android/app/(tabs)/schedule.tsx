@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -9,7 +9,9 @@ import { api } from '../../services/api-client'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
-import { CampusIconButton, CampusEmptyState, SectionHeading } from '../../components/CampusPrimitives'
+import { CampusIconButton, CampusEmptyState, CampusLoadError, CampusSkeleton, ListSkeleton, SectionHeading } from '../../components/CampusPrimitives'
+import { useCampusToast } from '../../components/CampusToast'
+import { useLoadState } from '../../hooks/use-load-state'
 import {
   StudentCalendarEventList,
   StudentCalendarEventModal,
@@ -24,6 +26,7 @@ const getMonthName = (month: number) => ['January', 'February', 'March', 'April'
 
 export default function ScheduleScreen() {
   const { isDark, toggle } = useTheme()
+  const { showToast } = useCampusToast()
   const user = api.getCurrentUser()
   const studentId = user && 'studentId' in user ? user.id : null
 
@@ -36,21 +39,39 @@ export default function ScheduleScreen() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
   const [subjects, setSubjects] = useState<Record<string, Subject>>({})
+  const loadState = useLoadState()
+  // Ordered responses: a stale focus refresh can never overwrite newer data,
+  // and a failed refresh keeps the last rendered schedule on screen.
+  const requestIdRef = useRef(0)
+  const hasLoadedRef = useRef(false)
+
+  const loadSchedule = useCallback(async () => {
+    if (!studentId) return
+    const requestId = ++requestIdRef.current
+    try {
+      const [sec, sessionList, att, sub] = await Promise.all([api.getStudentSections(studentId), api.getSessions(), api.getMyAttendance(studentId), api.getSubjects()])
+      if (requestId !== requestIdRef.current) return
+      setSections(sec)
+      setSessions(sessionList)
+      setAttendanceRecords(att)
+      setSubjects(Object.fromEntries(sub.map((s) => [s.id, s])))
+      hasLoadedRef.current = true
+      loadState.markReady()
+    } catch {
+      if (requestId !== requestIdRef.current) return
+      if (hasLoadedRef.current) {
+        showToast('error', "Couldn't refresh your schedule", 'Showing your last loaded schedule. Check your connection and try again.')
+        return
+      }
+      loadState.markError()
+    }
+  }, [studentId, showToast, loadState.markReady, loadState.markError])
 
   useFocusEffect(useCallback(() => {
-    if (!studentId) return
-    let active = true
-    void Promise.all([api.getStudentSections(studentId), api.getSessions(), api.getMyAttendance(studentId), api.getSubjects()])
-      .then(([sec, sessionList, att, sub]) => {
-        if (!active) return
-        setSections(sec)
-        setSessions(sessionList)
-        setAttendanceRecords(att)
-        setSubjects(Object.fromEntries(sub.map((s) => [s.id, s])))
-      })
-      .catch(() => undefined)
-    return () => { active = false }
-  }, [studentId]))
+    void loadSchedule()
+    // Leaving the screen invalidates any in-flight response from this visit.
+    return () => { requestIdRef.current += 1 }
+  }, [loadSchedule, loadState.reloadToken]))
 
   const monthDays = useMemo(() => {
     const year = currentDate.getFullYear()
@@ -127,7 +148,10 @@ export default function ScheduleScreen() {
 
   if (!studentId) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark">
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+        className="flex-1 items-center justify-center bg-campus dark:bg-campus-dark"
+      >
         <ActivityIndicator size="large" color={pupColors.maroon} />
       </SafeAreaView>
     )
@@ -138,7 +162,10 @@ export default function ScheduleScreen() {
     : `${new Date(`${weekDays[0].date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} – ${new Date(`${weekDays[6].date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}`
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow="Class Calendar"
         title="My Schedule"
@@ -184,7 +211,7 @@ export default function ScheduleScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110 }}
         showsVerticalScrollIndicator={false}
       >
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="mb-3 gap-4 px-1">
+        <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerClassName="mb-3 gap-4 px-1">
           {[
             ['bg-zinc-400', 'Scheduled'],
             ['bg-zinc-600', 'Moved'],
@@ -199,7 +226,18 @@ export default function ScheduleScreen() {
           ))}
         </ScrollView>
 
-        {!sections.length ? (
+        {loadState.state === 'loading' ? (
+          <View className="gap-3">
+            <CampusSkeleton className="h-64 w-full"><View /></CampusSkeleton>
+            <ListSkeleton rows={2} rowClass="h-16" />
+          </View>
+        ) : loadState.state === 'error' ? (
+          <CampusLoadError
+            title="Unable to load your schedule"
+            message="Classes could not be fetched. Your attendance data is safe on the server."
+            onRetry={loadState.retry}
+          />
+        ) : !sections.length ? (
           <CampusEmptyState icon="calendar-today" title="NO CLASSES TO SCHEDULE" description="Enroll in a class to see its weekly schedule and attendance sessions." />
         ) : viewMode === 'week' ? (
           <StudentWeekCalendar weekDays={weekDays} eventsByDate={eventsByDate} onSelectEvent={setSelectedEvent} />

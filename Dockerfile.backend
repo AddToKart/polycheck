@@ -7,18 +7,32 @@ COPY backend/package.json backend/package.json
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm config set fetch-timeout 300000 \
  && pnpm config set fetch-retries 10 \
- && pnpm install --frozen-lockfile --filter @polycheck/backend... --filter @polycheck/shared...
+ && pnpm install --ignore-scripts --frozen-lockfile --filter @polycheck/backend... --filter @polycheck/shared...
 COPY shared shared
 COPY backend backend
-RUN pnpm --filter @polycheck/shared build \
- && DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm --filter @polycheck/backend prisma:generate \
- && pnpm --filter @polycheck/backend build \
- && pnpm --filter @polycheck/backend exec tsc \
+# Build steps invoke the toolchain .bin entries directly instead of going
+# through `pnpm <filter> build`: pnpm's verifyDepsBeforeRun check can trigger
+# an implicit reinstall mid-build whose root postinstall expects the repo's
+# `scripts/` folder (not copied in this image), which failed as a
+# context-free exit 1. Direct binaries are the same commands the package
+# scripts run, with no lifecycle hooks, so this failure class disappears.
+# Node heap caps keep the compilers under the host memory ceiling.
+RUN echo "[dcc] start: arch=$(uname -m) node=$(node -v) pnpm=$(pnpm -v) mem=$(head -1 /proc/meminfo)" \
+ && cd /app/shared \
+ && ./node_modules/.bin/tsup \
+ && echo "[dcc] shared build ok"
+RUN cd /app/backend \
+ && NODE_OPTIONS=--max-old-space-size=1024 DATABASE_URL=postgresql://build:build@localhost:5432/build \
+    ./node_modules/.bin/prisma generate
+RUN cd /app/backend \
+ && NODE_OPTIONS=--max-old-space-size=1280 ./node_modules/.bin/nest build
+RUN cd /app/backend \
+ && NODE_OPTIONS=--max-old-space-size=1280 ./node_modules/.bin/tsc \
       --ignoreConfig \
       --outDir /app/backend/dist-seed \
       --module nodenext --moduleResolution nodenext \
       --target es2022 --esModuleInterop --skipLibCheck --resolveJsonModule \
-      prisma/seed.ts src/prisma/client.ts
+      prisma/seed.ts prisma/backfills/ledger-backfill.ts src/prisma/client.ts
 
 FROM node:22-alpine AS production-dependencies
 WORKDIR /app
@@ -29,7 +43,7 @@ COPY backend/package.json backend/package.json
 RUN --mount=type=cache,id=pnpm-production,target=/root/.local/share/pnpm/store \
     pnpm config set fetch-timeout 300000 \
  && pnpm config set fetch-retries 10 \
- && pnpm install --prod --frozen-lockfile --filter @polycheck/backend... --filter @polycheck/shared...
+ && pnpm install --ignore-scripts --prod --frozen-lockfile --filter @polycheck/backend... --filter @polycheck/shared...
 
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production

@@ -6,10 +6,12 @@ import { router } from 'expo-router'
 import type { AttendanceRecord, DisputeReason, Section, Session, Subject, User } from '@polycheck/shared'
 import { api } from '../../services/api-client'
 import { useAuthGate } from '../../hooks/use-auth-gate'
+import { useLoadState } from '../../hooks/use-load-state'
 import { useTheme } from '../../theme/ThemeContext'
 import { pupColors } from '../../theme/colors'
 import { CampusHeader } from '../../components/CampusHeader'
-import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton } from '../../components/CampusPrimitives'
+import { DisputeTimeline } from '../../components/DisputeTimeline'
+import { AttendanceStatusPill, CampusButton, CampusCard, CampusEmptyState, CampusIconButton, CampusLoadError, CampusSkeleton, ListSkeleton } from '../../components/CampusPrimitives'
 import { FilterChipsRow, FilterSelect } from '../../components/FilterPrimitives'
 import { useCampusToast } from '../../components/CampusToast'
 import { datePresetRange, isInDateRange, type DatePreset } from '../../lib/filters'
@@ -17,6 +19,7 @@ import { datePresetRange, isInDateRange, type DatePreset } from '../../lib/filte
 const DISPUTE_LABELS: Record<DisputeReason, string> = {
   outside_geofence: 'Outside geofence', expired_token: 'Expired token', duplicate_submission: 'Duplicate submission',
   invalid_signature: 'Invalid signature', device_mismatch: 'Device mismatch', suspicious_coordinates: 'Suspicious GPS',
+  other: 'Other',
   delayed_offline_sync: 'Delayed offline sync', invalid_timestamp: 'Invalid timestamp', token_mismatch: 'QR token mismatch',
   session_inactive: 'Inactive session', not_enrolled: 'Not enrolled', qr_expired: 'QR expired', rate_limited: 'Rate limited',
   mocked_location: 'Mock GPS / Fake location', rooted_device: 'Rooted / Jailbroken device', hook_detected: 'Hooking tool detected',
@@ -26,6 +29,7 @@ const DISPUTE_LABELS: Record<DisputeReason, string> = {
 const DISPUTE_ICONS: Record<DisputeReason, keyof typeof MaterialIcons.glyphMap> = {
   outside_geofence: 'location-off', expired_token: 'timer-off', duplicate_submission: 'content-copy',
   invalid_signature: 'fingerprint', device_mismatch: 'devices', suspicious_coordinates: 'gps-fixed',
+  other: 'flag',
   delayed_offline_sync: 'cloud-off', invalid_timestamp: 'access-time', token_mismatch: 'qr-code-2',
   session_inactive: 'timer-off', not_enrolled: 'person-off', qr_expired: 'timer-off', rate_limited: 'speed',
   mocked_location: 'wrong-location', rooted_device: 'security', hook_detected: 'code',
@@ -65,8 +69,10 @@ export default function DisputesScreen() {
   const [selectedSectionId, setSelectedSectionId] = useState('')
   const [datePreset, setDatePreset] = useState<DatePreset>('all')
   const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null)
+  const [timelineOpen, setTimelineOpen] = useState(true)
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({})
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
+  const loadState = useLoadState()
 
   useEffect(() => {
     if (!currentUser) return
@@ -77,9 +83,13 @@ export default function DisputesScreen() {
         setDisputes(nextDisputes)
         setSections(Object.fromEntries(sectionList.map((section) => [section.id, section])))
         setSessions(Object.fromEntries(sessionList.map((session) => [session.id, session])))
+        loadState.markReady()
       })
-      .catch(() => showToast('error', 'Unable to load disputes', 'Please check your connection and try again.'))
-  }, [currentUser, showToast])
+      .catch(() => {
+        loadState.markError()
+        showToast('error', 'Unable to load disputes', 'Please check your connection and try again.')
+      })
+  }, [currentUser, showToast, loadState.reloadToken])
 
   const pendingCount = disputes.filter((record) => record.status === 'disputed').length
   const resolvedCount = disputes.filter((record) => record.disputeResolved).length
@@ -178,7 +188,10 @@ export default function DisputesScreen() {
   const selectedSession = selectedRecord ? sessions[selectedRecord.sessionId] : undefined
 
   return (
-    <SafeAreaView className="flex-1 bg-campus dark:bg-campus-dark">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? pupColors.campusDark : pupColors.campus }}
+      className="flex-1 bg-campus dark:bg-campus-dark"
+    >
       <CampusHeader
         eyebrow="Attendance integrity"
         title="Disputed records"
@@ -236,6 +249,19 @@ export default function DisputesScreen() {
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 110, paddingTop: 8, gap: 12 }} showsVerticalScrollIndicator={false}>
+        {loadState.state === 'loading' ? (
+          <View className="gap-3">
+            <CampusSkeleton className="h-16 w-full"><View /></CampusSkeleton>
+            <ListSkeleton rows={3} rowClass="h-24" />
+          </View>
+        ) : loadState.state === 'error' ? (
+          <CampusLoadError
+            title="Unable to load disputes"
+            message="Disputed records could not be fetched. Check your connection and try again."
+            onRetry={loadState.retry}
+          />
+        ) : (
+          <>
         {!records.length ? <CampusEmptyState icon="verified" title={`No ${activeTab} records`} description="Adjust the student search, subject, section, or date filter to broaden this view." /> : null}
         {groups.map((subject) => {
           const count = subject.sections.reduce((sum, section) => sum + section.sessions.reduce((sessionSum, session) => sessionSum + session.records.length, 0), 0)
@@ -256,7 +282,7 @@ export default function DisputesScreen() {
                   </Pressable>
                   {sectionExpanded ? <View className="gap-4 border-t border-line px-3 py-4 dark:border-line-dark">{section.sessions.map((session) => <View key={session.sessionId} className="gap-2">
                     <View className="flex-row items-center gap-2"><MaterialIcons name="event" size={15} color={isDark ? pupColors.golden : pupColors.maroon} /><Text className="font-sans-semibold text-[11px] text-muted dark:text-zinc-400">{session.sessionDate}{session.sessionTime ? ` · ${session.sessionTime}` : ''}</Text></View>
-                    {session.records.map((record) => <Pressable key={record.id} accessibilityRole="button" accessibilityLabel={`Review ${record.studentName} dispute`} onPress={() => setSelectedRecord(record)} className="rounded-2xl border border-line bg-white p-4 dark:border-line-dark dark:bg-surface-dark">
+                    {session.records.map((record) => <Pressable key={record.id} accessibilityRole="button" accessibilityLabel={`Review ${record.studentName} dispute`} onPress={() => { setSelectedRecord(record); setTimelineOpen(true) }} className="rounded-2xl border border-line bg-white p-4 dark:border-line-dark dark:bg-surface-dark">
                       <View className="flex-row items-center gap-3"><View className="h-10 w-10 items-center justify-center rounded-xl bg-golden/20"><MaterialIcons name={record.disputeReason ? DISPUTE_ICONS[record.disputeReason] : 'warning'} size={19} color={pupColors.maroon} /></View><View className="flex-1"><Text className="font-sans-bold text-sm text-ink dark:text-white">{record.studentName}</Text><Text className="mt-1 font-sans text-xs text-muted dark:text-zinc-400">{record.disputeReason ? DISPUTE_LABELS[record.disputeReason] : 'Unknown reason'}</Text></View><MaterialIcons name="chevron-right" size={20} color="#746C6E" /></View>
                     </Pressable>)}
                   </View>)}</View> : null}
@@ -265,6 +291,8 @@ export default function DisputesScreen() {
             </CampusCard>
           )
         })}
+          </>
+        )}
       </ScrollView>
 
       <Modal visible={!!selectedRecord} transparent animationType="slide" onRequestClose={() => setSelectedRecord(null)}>
@@ -285,6 +313,21 @@ export default function DisputesScreen() {
                 <DetailRow label="Session" value={`${new Date(selectedRecord.timestamp).toLocaleDateString()}${selectedSession ? ` · ${selectedSession.startTime} – ${selectedSession.endTime}` : ''}`} />
                 {selectedRecord.notes ? <DetailRow label="Notes" value={selectedRecord.notes} /> : null}
               </CampusCard>
+
+              <View className="mb-5 overflow-hidden rounded-2xl border border-line bg-white dark:border-line-dark dark:bg-surface-dark">
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: timelineOpen }}
+                  accessibilityLabel="Forensic timeline"
+                  onPress={() => setTimelineOpen((open) => !open)}
+                  className="min-h-12 flex-row items-center gap-2 px-4 py-3"
+                >
+                  <MaterialIcons name="timeline" size={18} color={isDark ? pupColors.golden : pupColors.maroon} />
+                  <Text className="flex-1 font-sans-bold text-sm text-ink dark:text-white">Forensic timeline</Text>
+                  <MaterialIcons name={timelineOpen ? 'expand-less' : 'expand-more'} size={20} color={isDark ? pupColors.golden : pupColors.maroon} />
+                </Pressable>
+                {timelineOpen ? <View className="border-t border-line px-4 pb-4 pt-3 dark:border-line-dark"><DisputeTimeline recordId={selectedRecord.id} /></View> : null}
+              </View>
 
               {!selectedRecord.disputeResolved && user.role === 'teacher' ? <View className="gap-3">
                 <CampusButton label="Accept as present" icon="check-circle" onPress={() => void resolve('accept')} />

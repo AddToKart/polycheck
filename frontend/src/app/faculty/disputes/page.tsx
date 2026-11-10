@@ -18,6 +18,7 @@ import {
   Calendar,
   ChevronDown,
   ChevronUp,
+  History,
   Search,
   ShieldAlert,
   Cpu,
@@ -34,7 +35,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useNotifications } from '@/lib/notifications'
 import { useUrlFilters } from '@/lib/hooks/use-url-filters'
 import { SecurityDisputeBadge } from './security-dispute-badge'
-import { PaginationBar } from '@/components/ui/pagination-bar'
+import { DisputeTimeline } from '@/components/disputes/DisputeTimeline'
 
 const DISPUTES_PER_PAGE = 10
 
@@ -51,6 +52,7 @@ const DISPUTE_LABELS: Record<DisputeReason, string> = {
   duplicate_submission: 'Duplicate Submission',
   invalid_signature: 'Invalid Signature',
   device_mismatch: 'Device Mismatch',
+  other: 'Other',
   suspicious_coordinates: 'Suspicious GPS',
   delayed_offline_sync: 'Delayed Offline Sync',
   invalid_timestamp: 'Invalid Timestamp',
@@ -72,6 +74,7 @@ const DISPUTE_ICONS: Record<DisputeReason, React.ElementType> = {
   duplicate_submission: Copy,
   invalid_signature: Fingerprint,
   device_mismatch: Smartphone,
+  other: AlertTriangle,
   suspicious_coordinates: AlertTriangle,
   delayed_offline_sync: Clock,
   invalid_timestamp: Clock,
@@ -115,6 +118,14 @@ function DisputesContent() {
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({})
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
   const [page, setPage] = useState(1)
+
+  // Forensic timeline collapsible — defaults open for every dispute drawer.
+  const [timelineOpen, setTimelineOpen] = useState(true)
+
+  const openDispute = (record: AttendanceRecord) => {
+    setSelectedRecord(record)
+    setTimelineOpen(true)
+  }
 
   useEffect(() => {
     setPage(1)
@@ -541,7 +552,7 @@ function DisputesContent() {
                                               type="button"
                                               key={record.id}
                                               className="text-left rounded-none border border-zinc-200 dark:border-golden/15 dark:bg-pup-black hover:bg-zinc-50/50 dark:hover:bg-surface-dark cursor-pointer transition-colors"
-                                              onClick={() => setSelectedRecord(record)}
+                                              onClick={() => openDispute(record)}
                                               aria-label={`${activeTab === 'pending' ? 'Review' : 'View'} dispute from ${record.studentName}`}
                                             >
                                               <CardContent className="p-4">
@@ -645,6 +656,33 @@ function DisputesContent() {
                 </div>
               )
             })()}
+
+            {/* Forensic timeline (F8, WF-LD10) — advisory recommendations; the
+                Accept/Reject/Override actions below stay fully manual. */}
+            <section className="mb-4 rounded-none border border-zinc-200 dark:border-golden/15">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+                onClick={() => setTimelineOpen((value) => !value)}
+                aria-expanded={timelineOpen}
+                aria-controls="forensic-timeline-panel"
+              >
+                <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-maroon dark:text-golden">
+                  <History className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  Forensic timeline
+                </span>
+                {timelineOpen ? (
+                  <ChevronUp className="w-4 h-4 shrink-0 text-zinc-400 dark:text-zinc-500" aria-hidden="true" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 shrink-0 text-zinc-400 dark:text-zinc-500" aria-hidden="true" />
+                )}
+              </button>
+              {timelineOpen && selectedRecord && (
+                <div id="forensic-timeline-panel" className="border-t border-zinc-200 px-4 pb-4 pt-3 dark:border-zinc-800">
+                  <DisputeTimeline recordId={selectedRecord.id} open={timelineOpen} />
+                </div>
+              )}
+            </section>
 
             {!selectedRecord.disputeResolved && user.role === 'teacher' ? (
               <>

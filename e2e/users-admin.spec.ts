@@ -1,5 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
-import { ADMIN_EMAIL, loginFaculty, trackErrors, assertNoErrors } from './helpers'
+import { ADMIN_EMAIL, loginFaculty, trackErrors, assertNoErrors, installSessionCleanup } from './helpers'
+
+installSessionCleanup()
 
 // The production service worker bypasses Playwright route interception in WebKit;
 // user-management specs mock /auth/me, so run them without the SW.
@@ -91,7 +93,7 @@ test.describe('Super Admin user management', () => {
     await expect(row).toBeVisible()
 
     await row.getByRole('button', { name: /Edit/ }).click()
-    await expect(page.getByRole('heading', { name: 'Edit profile' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Edit Account Profile' })).toBeVisible()
     await page.getByLabel('Full name').fill(updatedName)
     await page.getByRole('button', { name: 'Save changes' }).click()
 
