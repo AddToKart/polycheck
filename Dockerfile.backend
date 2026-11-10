@@ -10,16 +10,24 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
  && pnpm install --ignore-scripts --frozen-lockfile --filter @polycheck/backend... --filter @polycheck/shared...
 COPY shared shared
 COPY backend backend
-# Split build steps: a failing step is logged by name instead of a silent
-# "exit code 1" from the whole chain, and layers cache independently.
-# Node heap caps keep the compilers under the host memory ceiling (the Linux
-# OOM killer SIGKILLs node silently, surfacing as a context-free exit 1).
-RUN echo "[dcc] start: arch=$(uname -m) node=$(node -v) pnpm=$(pnpm -v) mem=$(cat /proc/meminfo | head -1)" \
- && pnpm --filter @polycheck/shared build \
+# Build steps invoke the toolchain .bin entries directly instead of going
+# through `pnpm <filter> build`: pnpm's verifyDepsBeforeRun check can trigger
+# an implicit reinstall mid-build whose root postinstall expects the repo's
+# `scripts/` folder (not copied in this image), which failed as a
+# context-free exit 1. Direct binaries are the same commands the package
+# scripts run, with no lifecycle hooks, so this failure class disappears.
+# Node heap caps keep the compilers under the host memory ceiling.
+RUN echo "[dcc] start: arch=$(uname -m) node=$(node -v) pnpm=$(pnpm -v) mem=$(head -1 /proc/meminfo)" \
+ && cd /app/shared \
+ && ./node_modules/.bin/tsup \
  && echo "[dcc] shared build ok"
-RUN NODE_OPTIONS=--max-old-space-size=1024 DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm --filter @polycheck/backend prisma:generate
-RUN NODE_OPTIONS=--max-old-space-size=1280 pnpm --filter @polycheck/backend build
-RUN NODE_OPTIONS=--max-old-space-size=1280 pnpm --filter @polycheck/backend exec tsc \
+RUN cd /app/backend \
+ && NODE_OPTIONS=--max-old-space-size=1024 DATABASE_URL=postgresql://build:build@localhost:5432/build \
+    ./node_modules/.bin/prisma generate
+RUN cd /app/backend \
+ && NODE_OPTIONS=--max-old-space-size=1280 ./node_modules/.bin/nest build
+RUN cd /app/backend \
+ && NODE_OPTIONS=--max-old-space-size=1280 ./node_modules/.bin/tsc \
       --ignoreConfig \
       --outDir /app/backend/dist-seed \
       --module nodenext --moduleResolution nodenext \
