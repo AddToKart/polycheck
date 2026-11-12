@@ -13,7 +13,9 @@ import {
 installSessionCleanup()
 
 const API = 'http://localhost:4000/api'
-const CYCLE_LABELS = ['Present', 'Late', 'Absent']
+// Mirrors STATUS_CYCLE in faculty/students/[id]/page.tsx (DD-W23 added
+// `incomplete` so the student-detail cycle matches the cockpit cycle).
+const CYCLE_LABELS = ['Present', 'Late', 'Incomplete', 'Absent']
 
 function uniqueStudentId() {
   return `2999-${String(Date.now() % 100000).padStart(5, '0')}-MN-0`
@@ -152,9 +154,8 @@ test.describe('Faculty Student Detail', () => {
     const expectedNext = CYCLE_LABELS[(CYCLE_LABELS.indexOf(original) + 1) % CYCLE_LABELS.length]
     await cycleButton.click()
     await expect(cycleButton).toContainText(expectedNext, { timeout: 10_000 })
-    // Two more clicks complete the 3-state cycle back to the original status.
-    await cycleButton.click()
-    await cycleButton.click()
+    // Remaining clicks complete the full cycle back to the original status.
+    for (let i = 0; i < CYCLE_LABELS.length - 1; i++) await cycleButton.click()
     await expect(cycleButton).toContainText(original, { timeout: 10_000 })
     assertNoErrors(errors)
   })

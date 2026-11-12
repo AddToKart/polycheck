@@ -1,4 +1,4 @@
-import { expect, test, Page, type APIRequestContext } from '@playwright/test'
+import { expect, request as pwRequest, test, Page, type APIRequestContext, type APIResponse } from '@playwright/test'
 
 export const API_BASE = 'http://localhost:4000/api'
 
@@ -11,6 +11,19 @@ export const FACULTY_EMAIL = 'jmdelacruz@pup.edu.ph'
 export const ADMIN_EMAIL = 'mcreyes@pup.edu.ph'
 export const STUDENT_ID = '2024-00001-MN-0'
 export const STUDENT_EMAIL = 'amreyes@iskolar.pup.edu.ph'
+/** Internal user id and owning section of the seeded student (release target). */
+export const STUDENT_USER_ID = 's-001'
+export const STUDENT_SECTION_ID = 'sec-001'
+
+/**
+ * Installation id every suite-owned API context signs in with. Student logins
+ * are single-device: a login whose device cannot be identified is refused while
+ * ANY live session exists, and one from a different known device is refused
+ * while that device still holds the account. Reusing one stable id makes a
+ * repeated API login same-device admissible and lets the gate purge the stale
+ * row instead of failing closed.
+ */
+export const STUDENT_API_DEVICE_ID = 'web-e2e-api-context'
 
 // PUP Santa Maria dual-hat seed accounts (seeded with administrative designations).
 export const IT_COORDINATOR_EMAIL = 'bry.mis@pup.edu.ph'
@@ -38,10 +51,42 @@ export async function apiLoginFaculty(request: APIRequestContext, email = FACULT
   expect(response.ok(), await response.text()).toBeTruthy()
 }
 
-export async function apiLoginStudent(request: APIRequestContext, studentId = STUDENT_ID) {
-  const response = await request.post(`${API_BASE}/auth/login/student`, {
-    data: { studentId, password: SEED_PASSWORD },
-  })
+/**
+ * Sign an API context in as a student with the suite's stable installation id.
+ *
+ * The device gate fails closed on an unidentified attempt and refuses an
+ * identified one while another known device holds the account, so a session
+ * orphaned by an interrupted run, a concurrent worker, or an account switch in
+ * one browser context would otherwise poison every later student login. When
+ * the gate answers `active_session_elsewhere` the stale session is cleared
+ * through the teacher's Emergency Device Release and the login retried once.
+ *
+ * `options.studentUserId`/`options.sectionId` describe the release target for a
+ * non-seeded student (defaults to the seeded student, whose id and section the
+ * suite already owns).
+ */
+export async function apiLoginStudent(
+  request: APIRequestContext,
+  studentId = STUDENT_ID,
+  options: { studentUserId?: string; sectionId?: string } = {},
+) {
+  const releaseTarget =
+    studentId === STUDENT_ID
+      ? { userId: STUDENT_USER_ID, sectionId: STUDENT_SECTION_ID }
+      : options.studentUserId && options.sectionId
+        ? { userId: options.studentUserId, sectionId: options.sectionId }
+        : null
+
+  const login = () =>
+    request.post(`${API_BASE}/auth/login/student`, {
+      data: { studentId, password: SEED_PASSWORD, deviceId: STUDENT_API_DEVICE_ID },
+    })
+
+  let response = await login()
+  if (!response.ok() && releaseTarget && (await isActiveSessionElsewhere(response))) {
+    await clearStaleStudentSession(releaseTarget.userId, releaseTarget.sectionId)
+    response = await login()
+  }
   expect(response.ok(), await response.text()).toBeTruthy()
 }
 
@@ -66,16 +111,40 @@ export async function apiLogout(
 }
 
 /**
+ * Revoke the session a browser context currently holds, symmetrically with
+ * `apiLogout` (non-arming: teardown must never leave a student cooldown).
+ *
+ * Call this BEFORE switching accounts inside one browser context. A new login
+ * replaces the session cookie, so by teardown the context can only revoke the
+ * LAST account: the earlier account's session row is orphaned and then blocks
+ * every unidentified student login (the gate fails closed). Tests that log a
+ * second identity into the same context without this helper leak a live session
+ * for the rest of the worker.
+ */
+export async function revokeBrowserSession(page: Page) {
+  const response = await apiLogout(page.request)
+  if (!response.ok()) {
+    throw new Error(
+      `Could not revoke the browser session before switching accounts: ${response.status()} ${await response.text()}`,
+    )
+  }
+}
+
+/**
  * Suite-wide session hygiene. Student logins are single-device now: a live
  * session left behind by one test blocks the next test's fresh browser context
  * (every context gets a new `web-…` device id). Revoke both the browser
  * context's session and the API fixture's session without arming a cooldown.
  * Both calls are best-effort — an unauthenticated context answers 401.
  *
- * IMPORTANT: Playwright caches imported modules per worker process, so a
- * module-level `test.afterEach` in this file would only attach to the FIRST
- * spec file the worker loads. Every spec calls `installSessionCleanup()` at
- * module scope instead (see the import block of any spec).
+ * Playwright caches imported modules per worker process, so a module-level
+ * `test.afterEach` in this file would only attach to the FIRST spec file the
+ * worker loads. Every spec calls `installSessionCleanup()` at module scope
+ * instead (see the import block of any spec).
+ *
+ * This hook revokes the session the context still HOLDS. An account switch in
+ * one context orphans the previous account's row before teardown runs — such
+ * tests must call `revokeBrowserSession(page)` first.
  */
 export function installSessionCleanup() {
   test.afterEach(async ({ context, request }) => {
@@ -118,13 +187,49 @@ export async function attemptStudentLogin(
  */
 export async function releaseStudentDevice(
   request: APIRequestContext,
-  studentUserId = 's-001',
-  sectionId = 'sec-001',
+  studentUserId = STUDENT_USER_ID,
+  sectionId = STUDENT_SECTION_ID,
 ) {
   return request.post(`${API_BASE}/users/students/${studentUserId}/device-release`, {
     data: { sectionId, reason: 'lost_or_damaged' },
     failOnStatusCode: false,
   })
+}
+
+/** True when a student login was refused because a live session holds the account. */
+async function isActiveSessionElsewhere(response: APIResponse): Promise<boolean> {
+  if (response.status() !== 403) return false
+  try {
+    const body = (await response.json()) as { code?: string }
+    return body.code === 'active_session_elsewhere'
+  } catch {
+    // A non-JSON error body cannot be the device gate's typed refusal.
+    return false
+  }
+}
+
+/**
+ * Terminate a student's live sessions through the teacher's Emergency Device
+ * Release (the only non-student capability that clears the active-session gate).
+ * Uses its own throwaway context so the caller's cookies and session stay
+ * untouched. Throws when the release itself is refused, so a login that still
+ * cannot proceed surfaces why.
+ */
+async function clearStaleStudentSession(studentUserId: string, sectionId: string) {
+  const api = await pwRequest.newContext()
+  try {
+    await apiLoginFaculty(api)
+    const release = await releaseStudentDevice(api, studentUserId, sectionId)
+    if (!release.ok()) {
+      throw new Error(
+        `Could not clear the stale session for ${studentUserId}: ${release.status()} ${await release.text()}`,
+      )
+    }
+  } finally {
+    // Best-effort: the throwaway context is disposed regardless.
+    await apiLogout(api).catch(() => undefined)
+    await api.dispose()
+  }
 }
 
 interface TrackedError {
@@ -268,7 +373,15 @@ export async function loginFaculty(page: Page, email = FACULTY_EMAIL) {
   await expect(brand).toBeVisible({ timeout: 20_000 })
 }
 
+/**
+ * Sign a browser context in as the seeded student, healing one stale session.
+ * The student gate fails closed when another session holds the account, so a
+ * leftover from an interrupted run would otherwise fail every attempt of a
+ * fresh context. On the typed refusal the stale session is released through the
+ * teacher's Emergency Device Release and the attempt is retried.
+ */
 export async function loginStudent(page: Page) {
+  let healed = false
   for (let attempt = 0; attempt < 3; attempt++) {
     await page.goto('/login/student')
     await page.getByLabel('Student Number').fill(STUDENT_ID)
@@ -285,6 +398,10 @@ export async function loginStudent(page: Page) {
       await page.waitForURL((url) => url.pathname.startsWith('/student/'), { timeout: 20_000 })
       await hideDevOverlay(page)
       return
+    }
+    if (!healed && response && (await isActiveSessionElsewhere(response))) {
+      healed = true
+      await clearStaleStudentSession(STUDENT_USER_ID, STUDENT_SECTION_ID)
     }
   }
   throw new Error('Student login failed after 3 attempts')

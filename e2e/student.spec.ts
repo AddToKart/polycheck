@@ -5,12 +5,12 @@ import {
   FACULTY_EMAIL,
   SEED_PASSWORD,
   apiLoginFaculty,
-  apiLogout,
   assertNoErrors,
   loginFaculty,
   loginStudent,
   trackErrors,
   waitForPath,
+  revokeBrowserSession,
   installSessionCleanup,
 } from './helpers'
 
@@ -147,8 +147,8 @@ test.describe('Student Flows', () => {
     // Student logins are single-device now: revoke this browser's student
     // session BEFORE swapping it to the teacher account, otherwise the live
     // device session survives the faculty login and blocks the next student
-    // test's fresh context. Non-arming so teardown never leaves a cooldown.
-    expect((await apiLogout(page.request)).ok(), 'student session revoked before faculty login').toBeTruthy()
+    // test's fresh context.
+    await revokeBrowserSession(page)
     await loginFaculty(page)
     await page.goto('/faculty/disputes')
     await expect(page.getByText(/Pending Disputes \(\d+\)/)).toBeVisible()
@@ -196,6 +196,12 @@ test.describe('Student Flows', () => {
     expect(createdStudent).not.toBeNull()
     const disposableStudent = createdStudent as { id: string }
 
+    // The beforeEach student session must be revoked BEFORE the context logs in
+    // as the disposable account: the new login replaces the cookie, so teardown
+    // could only revoke the disposable session and the seeded student's row
+    // would outlive this file, blocking every later unidentified student login.
+    await revokeBrowserSession(page)
+
     await page.goto('/login/student')
     await page.getByLabel('Student Number').fill(studentNumber)
     await page.getByLabel('Password').fill(newStudentPassword)
@@ -221,10 +227,7 @@ test.describe('Student Flows', () => {
     // Cleanup: faculty removes the enrollment created by this test. Revoke the
     // disposable student's live session first — a faculty login replaces the
     // cookie but not the student session row.
-    expect(
-      (await apiLogout(page.request)).ok(),
-      'disposable student session revoked before faculty login',
-    ).toBeTruthy()
+    await revokeBrowserSession(page)
     await loginFaculty(page)
     const res = await page.request.delete(`${API_BASE}/sections/sec-002/students/${disposableStudent.id}`)
     expect(res.ok()).toBeTruthy()
