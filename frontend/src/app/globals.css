@@ -120,26 +120,26 @@ body {
 
 /* Logo Responsive Transition Positions */
 .logo-home {
-  top: 2rem;
-  left: 2rem;
-  width: 4rem;
-  height: 4rem;
+  top: 1.25rem;
+  left: 1.25rem;
+  width: 3.25rem;
+  height: 3.25rem;
 }
 .logo-login {
-  top: 6.5rem;
-  left: 2rem;
-  width: 3.5rem;
-  height: 3.5rem;
+  top: 4.75rem;
+  left: 1.25rem;
+  width: 3rem;
+  height: 3rem;
 }
 
 /* Header Text Responsive Transition Positions */
 .header-text-home {
-  top: 2rem;
-  left: 7rem;
+  top: 1.25rem;
+  left: 5.25rem;
 }
 .header-text-login {
-  top: 6.5rem;
-  left: 6.5rem;
+  top: 4.75rem;
+  left: 5rem;
 }
 
 /* Left Panel Width Transitions */
