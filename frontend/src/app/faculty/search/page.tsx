@@ -1,9 +1,11 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
+import { describeMutationError } from '@/lib/run-mutation'
+import { createLatestRequestGuard, runLatest } from '@/lib/latest-request'
 import type { User, Student, Subject, Section, Session } from '@polycheck/shared'
 import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -16,6 +18,9 @@ type SearchResult = {
   sessions: Session[]
 }
 
+const EMPTY_RESULTS: SearchResult = { students: [], sections: [], sessions: [] }
+const SEARCH_DEBOUNCE_MS = 300
+
 function SearchPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -23,9 +28,18 @@ function SearchPageInner() {
 
   const [user, setUser] = useState<User | null>(null)
   const [query, setQuery] = useState(initialQ)
-  const [results, setResults] = useState<SearchResult>({ students: [], sections: [], sessions: [] })
+  const [results, setResults] = useState<SearchResult>(EMPTY_RESULTS)
   const [searched, setSearched] = useState(false)
   const [subjects, setSubjects] = useState<Subject[]>([])
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [subjectsError, setSubjectsError] = useState<string | null>(null)
+  const [subjectsRetry, setSubjectsRetry] = useState(0)
+
+  // Monotonic request guard: a slow response for an older query must never
+  // overwrite the results of the query the user typed last.
+  const searchGuardRef = useRef(createLatestRequestGuard())
+  const debounceRef = useRef<number | undefined>(undefined)
+  const committedQueryRef = useRef('')
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -34,40 +48,83 @@ function SearchPageInner() {
   }, [router])
 
   useEffect(() => {
+    let active = true
+    setSubjectsError(null)
     const fn = async () => {
-      const s = await api.getSubjects()
-      setSubjects(s)
+      try {
+        const s = await api.getSubjects()
+        if (active) setSubjects(s)
+      } catch (error) {
+        if (active) {
+          setSubjectsError(describeMutationError(error, 'Subject names could not be loaded.'))
+        }
+      }
     }
-    fn()
+    void fn()
+    return () => { active = false }
+  }, [subjectsRetry])
+
+  const runSearch = useCallback(async (raw: string) => {
+    const term = raw.trim()
+    if (!term) {
+      searchGuardRef.current.invalidate()
+      setResults(EMPTY_RESULTS)
+      setSearched(false)
+      setSearchError(null)
+      return
+    }
+    const { stale, result, error } = await runLatest(searchGuardRef.current, () => api.search(term))
+    if (stale) return
+    if (error) {
+      setSearchError(describeMutationError(error, 'Search failed. Please try again.'))
+      return
+    }
+    if (!result) return
+    setResults(result)
+    setSearched(true)
+    setSearchError(null)
+    committedQueryRef.current = term
+    router.replace(`/faculty/search?q=${encodeURIComponent(term)}`, { scroll: false })
+  }, [router])
+
+  // URL-driven searches (deep links, back/forward) run immediately; the
+  // committed-query ref keeps our own `router.replace` from re-querying.
+  useEffect(() => {
+    if (!initialQ) return
+    if (committedQueryRef.current === initialQ) return
+    setQuery(initialQ)
+    committedQueryRef.current = initialQ
+    void runSearch(initialQ)
+  }, [initialQ, runSearch])
+
+  useEffect(() => () => {
+    clearTimeout(debounceRef.current)
   }, [])
 
-  useEffect(() => {
-    if (initialQ) {
-      const fn = async () => {
-        const r = await api.search(initialQ)
-        setResults(r)
-        setSearched(true)
-      }
-      fn()
-    }
-  }, [initialQ])
-
-  const handleSearch = async (q: string) => {
-    setQuery(q)
-    if (q.trim().length > 0) {
-      const r = await api.search(q)
-      setResults(r)
-      setSearched(true)
-      router.replace(`/faculty/search?q=${encodeURIComponent(q)}`, { scroll: false })
-    } else {
-      setResults({ students: [], sections: [], sessions: [] })
+  const handleSearch = (value: string) => {
+    setQuery(value)
+    clearTimeout(debounceRef.current)
+    if (!value.trim()) {
+      // Invalidate any in-flight response so it cannot repopulate the list.
+      searchGuardRef.current.invalidate()
+      setResults(EMPTY_RESULTS)
       setSearched(false)
+      setSearchError(null)
+      return
     }
+    debounceRef.current = window.setTimeout(() => {
+      debounceRef.current = undefined
+      void runSearch(value)
+    }, SEARCH_DEBOUNCE_MS)
   }
 
   const totalResults = results.students.length + results.sections.length + results.sessions.length
 
-  const handleLogout = () => { api.logout(); router.push('/') }
+  const handleLogout = () => {
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
+  }
 
   if (!user) return null
 
@@ -103,6 +160,33 @@ function SearchPageInner() {
           </div>
 
           {/* Results summary */}
+          {searchError ? (
+            <div
+              role="alert"
+              className="mb-6 flex flex-wrap items-center justify-between gap-3 border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/30 dark:text-red-300"
+            >
+              <p>{searchError}</p>
+              <button
+                type="button"
+                className="text-[10px] font-bold uppercase tracking-widest underline"
+                onClick={() => void runSearch(query)}
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
+          {subjectsError ? (
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+              <p>{subjectsError}</p>
+              <button
+                type="button"
+                className="text-[10px] font-bold uppercase tracking-widest underline"
+                onClick={() => setSubjectsRetry((key) => key + 1)}
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
           {searched && query && (
             <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-6">
               {totalResults === 0 ? `No results for "${query}"` : `${totalResults} result${totalResults !== 1 ? 's' : ''} for "${query}"`}

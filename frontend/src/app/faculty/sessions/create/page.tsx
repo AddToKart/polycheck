@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { CalendarCheck, MapPin, ShieldCheck, School, Video } from 'lucide-react'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
+import { describeMutationError } from '@/lib/run-mutation'
+import { createLatestRequestGuard, runLatest } from '@/lib/latest-request'
+import { ErrorDisplay } from '@/lib/hooks'
 import {
   formatCampusDate,
   sectionCourseLabel,
@@ -65,8 +68,12 @@ export default function CreateSessionPage() {
   const [isRescheduled, setIsRescheduled] = useState(false)
   const [rescheduledFromDate, setRescheduledFromDate] = useState('')
   const [existingSessionOnDate, setExistingSessionOnDate] = useState<Session | null>(null)
+  const [duplicateCheckError, setDuplicateCheckError] = useState<string | null>(null)
+  const duplicateGuardRef = useRef(createLatestRequestGuard())
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [initError, setInitError] = useState<string | null>(null)
+  const [initRetry, setInitRetry] = useState(0)
   const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
   // The section-selection effect below initializes times based on the date that
@@ -79,16 +86,37 @@ export default function CreateSessionPage() {
   }, [date])
 
   useEffect(() => {
-    if (!bulkMode && sectionId && date) {
-      api.getSessions(sectionId).then((sessions) => {
-        setExistingSessionOnDate(sessions.find((s) => s.date === date) ?? null)
-      })
-    } else {
+    // Sequence guard (DD-W27): every dep change invalidates the previous
+    // request, so a stale response can never leave a phantom conflict that
+    // permanently blocks submit.
+    const guard = duplicateGuardRef.current
+    if (bulkMode || !sectionId || !date) {
+      guard.invalidate()
       setExistingSessionOnDate(null)
+      setDuplicateCheckError(null)
+      return
+    }
+    setExistingSessionOnDate(null)
+    setDuplicateCheckError(null)
+    let active = true
+    void runLatest(guard, () => api.getSessions(sectionId)).then(({ stale, result, error }) => {
+      if (!active || stale) return
+      if (error) {
+        setExistingSessionOnDate(null)
+        setDuplicateCheckError(
+          describeMutationError(error, 'Could not check for an existing session on this date.'),
+        )
+        return
+      }
+      setExistingSessionOnDate(result?.find((s) => s.date === date) ?? null)
+    })
+    return () => {
+      active = false
     }
   }, [bulkMode, sectionId, date])
 
   useEffect(() => {
+    let active = true
     const init = async () => {
       const cu = api.getCurrentUser()
     if (!cu || cu.role !== 'teacher') {
@@ -96,23 +124,33 @@ export default function CreateSessionPage() {
         return
       }
       setUser(cu)
-      const [subjectList, allSections, settings] = await Promise.all([
-        api.getSubjects(),
-        api.getSections(),
-        api.getSettings(),
-      ])
-      setSubjects(subjectList)
-      setSections(allSections.filter((s) => s.teacherId === cu.id))
-      const settingValues = new Map(settings.map((setting) => [setting.key, Number(setting.value)]))
-      const configuredRadius = settingValues.get('default_geofence_radius_meters')
-      const configuredValidity = settingValues.get('default_qr_validity_minutes')
-      const configuredGrace = settingValues.get('default_grace_period_minutes')
-      if (configuredRadius && configuredRadius >= 10 && configuredRadius <= 500) setRadius(configuredRadius)
-      if (configuredValidity && configuredValidity >= 1 && configuredValidity <= 15) setDefaultQrValidity(configuredValidity)
-      if (configuredGrace !== undefined && configuredGrace >= 0 && configuredGrace <= 60) setDefaultGracePeriod(configuredGrace)
+      try {
+        const [subjectList, allSections, settings] = await Promise.all([
+          api.getSubjects(),
+          api.getSections(),
+          api.getSettings(),
+        ])
+        if (!active) return
+        setSubjects(subjectList)
+        setSections(allSections.filter((s) => s.teacherId === cu.id))
+        const settingValues = new Map(settings.map((setting) => [setting.key, Number(setting.value)]))
+        const configuredRadius = settingValues.get('default_geofence_radius_meters')
+        const configuredValidity = settingValues.get('default_qr_validity_minutes')
+        const configuredGrace = settingValues.get('default_grace_period_minutes')
+        if (configuredRadius && configuredRadius >= 10 && configuredRadius <= 500) setRadius(configuredRadius)
+        if (configuredValidity && configuredValidity >= 1 && configuredValidity <= 15) setDefaultQrValidity(configuredValidity)
+        if (configuredGrace !== undefined && configuredGrace >= 0 && configuredGrace <= 60) setDefaultGracePeriod(configuredGrace)
+      } catch (error) {
+        if (active) {
+          setInitError(describeMutationError(error, 'Unable to load sections and defaults.'))
+        }
+      }
     }
-    init()
-  }, [router])
+    void init()
+    return () => {
+      active = false
+    }
+  }, [router, initRetry])
 
   useEffect(() => {
     setSectionId('')
@@ -335,11 +373,24 @@ export default function CreateSessionPage() {
   }
 
   const handleLogout = () => {
-    api.logout()
-    router.push('/')
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
   }
 
   if (!user) return null
+
+  if (initError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black p-6">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-8">
+            <ErrorDisplay message={initError} onRetry={() => setInitRetry((key) => key + 1)} />
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
@@ -360,6 +411,17 @@ export default function CreateSessionPage() {
               <CardContent className="space-y-5">
 
                 {/* Duplicate session warning */}
+                {duplicateCheckError ? (
+                  <div className="flex items-start gap-3 p-4 border-l-4 border-zinc-400 bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-600">
+                    <CalendarCheck className="w-4 h-4 text-zinc-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-widest mb-0.5">Duplicate check unavailable</p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        {duplicateCheckError} Verify the date manually before creating the session.
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
                 {hasDuplicateConflict && (
                   <div className="flex items-start gap-3 p-4 border-l-4 border-amber-400 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-500">
                     <CalendarCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />

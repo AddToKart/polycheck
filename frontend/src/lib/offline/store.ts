@@ -451,7 +451,9 @@ export async function drainOfflineQueue(
             lastError: `retryable: ${result.error.slice(0, 489)}`,
           })
           emit(SYNC_STATE_EVENT)
-          break
+          // Keep draining: one transient failure must not block the evidence
+          // queued behind it. The caller owns the retry cadence/backoff.
+          continue
         }
         await db.delete('queue_v2', row.id)
         emit(SYNC_STATE_EVENT)
@@ -459,7 +461,9 @@ export async function drainOfflineQueue(
         const message = error instanceof Error ? error.message.slice(0, 500) : 'Sync failed'
         await db.put('queue_v2', { ...row, attempts: row.attempts + 1, lastError: message })
         emit(SYNC_STATE_EVENT)
-        break
+        // Same rule as `retryable`: an unexpected throw is recorded against its
+        // own row, not against the rows queued behind it.
+        continue
       }
     }
     await setLastSyncAt()

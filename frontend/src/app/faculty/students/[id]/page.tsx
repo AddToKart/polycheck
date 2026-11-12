@@ -4,15 +4,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, UserX, RefreshCw, School } from 'lucide-react'
-import { api } from '@/lib/api-client'
-import type { User, Student, Session, AttendanceRecord, AttendanceStatus } from '@polycheck/shared'
+import { api, requestUserLogout } from '@/lib/api-client'
+import type { User, Student, Session, AttendanceRecord, AttendanceStatus, EditableAttendanceStatus } from '@polycheck/shared'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { ErrorDisplay, LoadingSpinner } from '@/lib/hooks'
+import { describeMutationError, useRunMutation } from '@/lib/run-mutation'
 import { Sidebar } from '@/components/layout/sidebar'
 import { StudentGovernanceActions } from '@/components/faculty/StudentGovernanceActions'
 import { HologramOverlay } from '@/components/student/HologramOverlay'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 
-const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'absent']
+const STATUS_CYCLE: EditableAttendanceStatus[] = ['present', 'late', 'incomplete', 'absent']
 
 const statusConfig: Record<AttendanceStatus, { label: string; bg: string; text: string }> = {
   present: { label: 'Present', bg: 'bg-amber-50 dark:bg-amber-950', text: 'text-amber-600' },
@@ -41,8 +43,11 @@ export default function StudentDetailPage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [ready, setReady] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
   const [sessionPage, setSessionPage] = useState(0)
   const [flipped, setFlipped] = useState(false)
+  const { run, isPending } = useRunMutation()
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -54,70 +59,120 @@ export default function StudentDetailPage() {
   }, [router])
 
   useEffect(() => {
+    let active = true
     const init = async () => {
-      if (!studentId) return
-      let secId = sectionId
-      if (!secId) {
-        const enrollments = await api.getEnrollments()
-        const enr = enrollments.find((e) => e.studentId === studentId)
-        if (enr) secId = enr.sectionId
+      if (!studentId) {
+        setLoadError('No student was selected.')
+        return
       }
-      if (!secId) return
-      const s = await api.getStudent(studentId)
-      if (!s) { router.push('/faculty/subjects'); return }
-      setStudent(s)
-      setSessions(await api.getSectionSessions(secId))
-      setRecords(await api.getStudentAttendanceForSection(studentId, secId))
-      setReady(true)
+      setLoadError(null)
+      try {
+        let secId = sectionId
+        if (!secId) {
+          const enrollments = await api.getEnrollments()
+          const enr = enrollments.find((e) => e.studentId === studentId)
+          if (enr) secId = enr.sectionId
+        }
+        if (!secId) {
+          if (active) {
+            setLoadError(
+              'This student is not enrolled in a section yet. Open the student from a section roster to see their attendance.',
+            )
+          }
+          return
+        }
+        const s = await api.getStudent(studentId)
+        if (!s) { router.push('/faculty/subjects'); return }
+        const [nextSessions, nextRecords] = await Promise.all([
+          api.getSectionSessions(secId),
+          api.getStudentAttendanceForSection(studentId, secId),
+        ])
+        if (!active) return
+        setStudent(s)
+        setSessions(nextSessions)
+        setRecords(nextRecords)
+        setReady(true)
+      } catch (error) {
+        if (active) {
+          setLoadError(describeMutationError(error, 'Unable to load this student.'))
+        }
+      }
     }
-    init()
-  }, [studentId, sectionId, router])
+    void init()
+    return () => {
+      active = false
+    }
+  }, [studentId, sectionId, router, reloadKey])
 
   const handleLogout = () => {
-    api.logout()
-    router.push('/')
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
   }
 
   const handleRemove = async () => {
     if (!sectionId || !studentId) return
-    if (window.confirm(`Remove ${student?.fullName} from this subject? This cannot be undone.`)) {
-      await api.removeStudentFromSection(sectionId, studentId)
-      router.push(`/faculty/sections/${sectionId}`)
-    }
+    if (!window.confirm(`Remove ${student?.fullName} from this subject? This cannot be undone.`)) return
+    await run(
+      'remove',
+      async () => {
+        await api.removeStudentFromSection(sectionId, studentId)
+        router.push(`/faculty/sections/${sectionId}`)
+      },
+      { errorTitle: 'Could not remove the student' },
+    )
   }
 
   const refreshStudent = async () => {
-    const refreshed = await api.getStudent(studentId)
-    setStudent(refreshed)
+    await run(
+      'refresh',
+      async () => {
+        const refreshed = await api.getStudent(studentId)
+        setStudent(refreshed)
+      },
+      { errorTitle: 'Could not refresh the student' },
+    )
   }
 
   const handleCycleStatus = async (record: AttendanceRecord) => {
-    const currentIdx = STATUS_CYCLE.indexOf(record.status)
+    const currentIdx = STATUS_CYCLE.findIndex((status) => status === record.status)
     const nextStatus = STATUS_CYCLE[(currentIdx + 1) % STATUS_CYCLE.length]
-    await api.updateAttendanceStatus(record.id, nextStatus)
-    setRecords((prev) =>
-      prev.map((r) => (r.id === record.id ? { ...r, status: nextStatus } : r))
+    await run(
+      `status:${record.id}`,
+      async () => {
+        await api.updateAttendanceStatus(record.id, nextStatus)
+        setRecords((prev) =>
+          prev.map((r) => (r.id === record.id ? { ...r, status: nextStatus } : r))
+        )
+      },
+      { errorTitle: 'Could not update the attendance status' },
     )
   }
 
   const handleAddAbsent = async (session: Session) => {
     const existing = records.find((r) => r.sessionId === session.id)
     if (existing) return
-    const newRecord: AttendanceRecord = {
-      id: crypto.randomUUID(),
-      sessionId: session.id,
-      sectionId,
-      studentId,
-      studentName: student?.fullName ?? '',
-      studentProgram: student?.program,
-      timestamp: new Date().toISOString(),
-      status: 'absent',
-      coordinates: { latitude: 0, longitude: 0 },
-      isSynced: false,
-      notes: 'Manually marked by teacher',
-    }
-    await api.addAttendanceRecord(newRecord)
-    setRecords((prev) => [...prev, newRecord])
+    await run(
+      `absent:${session.id}`,
+      async () => {
+        const newRecord: Omit<AttendanceRecord, 'status'> & { status: EditableAttendanceStatus } = {
+          id: crypto.randomUUID(),
+          sessionId: session.id,
+          sectionId,
+          studentId,
+          studentName: student?.fullName ?? '',
+          studentProgram: student?.program,
+          timestamp: new Date().toISOString(),
+          status: 'absent',
+          coordinates: { latitude: null, longitude: null },
+          isSynced: false,
+          notes: 'Manually marked by teacher',
+        }
+        await api.addAttendanceRecord(newRecord)
+        setRecords((prev) => [...prev, newRecord])
+      },
+      { errorTitle: 'Could not add the absent record' },
+    )
   }
 
   const getRecordForSession = (sessionId: string) =>
@@ -131,7 +186,25 @@ export default function StudentDetailPage() {
   const sessionPageCount = Math.max(1, Math.ceil(sortedSessions.length / SESSION_PAGE_SIZE))
   const pagedSessions = sortedSessions.slice(sessionPage * SESSION_PAGE_SIZE, (sessionPage + 1) * SESSION_PAGE_SIZE)
 
-  if (!user || !ready || !student) return null
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black p-6">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-8">
+            <ErrorDisplay message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+  if (!ready) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black">
+        <LoadingSpinner size="lg" />
+      </div>
+    )
+  }
+  if (!user || !student) return null
   const isTeacher = user.role === 'teacher'
 
   return (
@@ -260,7 +333,7 @@ export default function StudentDetailPage() {
           {/* Remove from Subject */}
           {isTeacher && (
             <div className="flex justify-center mb-8">
-              <Button variant="outline" className="h-11 text-red-500 border-red-500 hover:bg-red-50 dark:hover:bg-red-950 md:h-10" onClick={handleRemove}>
+              <Button variant="outline" className="h-11 text-red-500 border-red-500 hover:bg-red-50 dark:hover:bg-red-950 md:h-10" disabled={isPending('remove')} onClick={() => void handleRemove()}>
                 <UserX className="w-4 h-4 mr-2" /> Remove from Subject
               </Button>
             </div>
@@ -269,7 +342,7 @@ export default function StudentDetailPage() {
           {/* Attendance per Session */}
           <h2 className="text-lg font-bold text-zinc-800 dark:text-zinc-100 mb-1">Attendance per Session</h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-            {isTeacher ? 'Tap a status badge to cycle between Present, Late, and Absent.' : 'Read-only attendance history.'}
+            {isTeacher ? 'Tap a status badge to cycle between Present, Late, Incomplete, and Absent.' : 'Read-only attendance history.'}
           </p>
 
           {sortedSessions.length === 0 ? (
@@ -297,7 +370,7 @@ export default function StudentDetailPage() {
                         {record ? (
                           <button
                             onClick={() => { if (isTeacher) handleCycleStatus(record) }}
-                            disabled={!isTeacher}
+                            disabled={!isTeacher || isPending(`status:${record.id}`)}
                             className={`inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none md:min-h-0 ${isTeacher ? 'cursor-pointer transition-opacity hover:opacity-80' : 'cursor-default'} ${config.bg} ${config.text}`}
                           >
                             {config.label}
@@ -306,7 +379,7 @@ export default function StudentDetailPage() {
                         ) : (
                           <button
                             onClick={() => { if (isTeacher) handleAddAbsent(session) }}
-                            disabled={!isTeacher}
+                            disabled={!isTeacher || isPending(`absent:${session.id}`)}
                             className={`inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 md:min-h-0 ${isTeacher ? 'cursor-pointer hover:opacity-80 transition-opacity' : 'cursor-default'}`}
                           >
                             No Record {isTeacher && <span className="text-lg leading-none">+</span>}

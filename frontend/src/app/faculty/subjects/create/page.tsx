@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { BookOpen } from 'lucide-react'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
+import { describeMutationError, useRunMutation } from '@/lib/run-mutation'
 import type { User } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -19,6 +20,9 @@ export default function CreateSubjectPage() {
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
   const [description, setDescription] = useState('')
+  const [formError, setFormError] = useState<string | null>(null)
+  const { run, isPending } = useRunMutation()
+  const submitting = isPending('create')
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -34,13 +38,26 @@ export default function CreateSubjectPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name || !code) return
-    const subj = await api.createSubject({ name, code, description: description || undefined })
-    router.push(`/faculty/subjects/${subj.id}`)
+    setFormError(null)
+    await run(
+      'create',
+      () => api.createSubject({ name, code, description: description || undefined }),
+      {
+        errorTitle: 'Could not create subject',
+        onError: (error) => {
+          setFormError(describeMutationError(error, 'Unable to create the subject. Please check the details.'))
+        },
+        onSuccess: (subject) => {
+          router.push(`/faculty/subjects/${subject.id}`)
+        },
+      },
+    )
   }
 
   const handleLogout = () => {
-    api.logout()
-    router.push('/')
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
   }
 
   return (
@@ -95,9 +112,15 @@ export default function CreateSubjectPage() {
               </CardContent>
             </Card>
 
+            {formError ? (
+              <div role="alert" className="border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/30 dark:text-red-300">
+                {formError}
+              </div>
+            ) : null}
+
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="submit" variant="default">
-                Create Subject
+              <Button type="submit" variant="default" disabled={submitting}>
+                {submitting ? 'Creating…' : 'Create Subject'}
               </Button>
               <Button variant="ghost" asChild>
                 <Link href="/faculty/subjects">Cancel</Link>

@@ -220,4 +220,40 @@ describe('faculty create-session slot selector', () => {
       { day: 'Wed', startTime: '09:00', endTime: '12:30' },
     ])
   })
+
+  it('ignores a stale duplicate-check response so submit is never blocked by it', async () => {
+    const staleCheck = Promise.withResolvers<never[]>()
+    const freshCheck = Promise.withResolvers<never[]>()
+    apiMock.getSessions
+      .mockReturnValueOnce(staleCheck.promise as Promise<never[]>)
+      .mockReturnValue(freshCheck.promise as Promise<never[]>)
+
+    render(<CreateSessionPage />)
+    const subjectSelect = await screen.findByLabelText('Subject')
+    fireEvent.change(subjectSelect, { target: { value: subject.id } })
+    fireEvent.change(screen.getByLabelText('Section'), { target: { value: section.id } })
+    await screen.findByLabelText('Class meeting')
+
+    // Switch the date, superseding the in-flight check for the previous date.
+    fireEvent.change(getDateInput(), { target: { value: '2026-12-01' } })
+
+    freshCheck.resolve([])
+    await waitFor(() => expect(apiMock.getSessions).toHaveBeenCalledTimes(2))
+    // The stale answer names the CURRENT date — without a sequence guard it
+    // would both render a phantom conflict and disable submit forever.
+    staleCheck.resolve([
+      {
+        id: 'existing-session',
+        sectionId: section.id,
+        subjectId: subject.id,
+        subjectName: subject.name,
+        date: '2026-12-01',
+      } as never,
+    ])
+
+    await waitFor(() =>
+      expect(screen.queryByText('Session Conflict Detected')).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: 'Create Session' })).toBeEnabled()
+  })
 })

@@ -6,7 +6,7 @@ import type { User } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { AssistantChat } from '@/components/Assistant/AssistantChat'
 import { STUDENT_STARTER_PROMPTS } from '@/components/Assistant/suggestions'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
 import { LoadingSpinner } from '@/lib/hooks'
 
 export default function StudentAssistantPage() {
@@ -44,8 +44,9 @@ export default function StudentAssistantPage() {
       <Sidebar
         user={user}
         onLogout={() => {
-          void api.logout()
-          router.push('/')
+          void requestUserLogout().then((outcome) => {
+            if (outcome.loggedOut) router.push('/')
+          })
         }}
       />
       <main className="min-w-0 flex-1 md:h-dvh md:overflow-hidden">

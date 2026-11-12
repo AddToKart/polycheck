@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Plus, CalendarDays, Calendar, Clock, MapPin, User as UserIcon, CheckCircle, XCircle } from 'lucide-react'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
 import type { User, AttendanceRecord, Section, Session, Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Button } from '@/components/ui/button'
@@ -559,8 +559,9 @@ export default function FacultySchedulePage() {
   }, [router])
 
   const handleLogout = useCallback(() => {
-    api.logout()
-    router.push('/')
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
   }, [router])
 
   useEffect(() => {

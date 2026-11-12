@@ -7,12 +7,20 @@
  * Policy:
  * - App shell (document navigations): network-first, cached per URL.
  * - Immutable assets (/_next/static, icons, fonts): cache-first.
- * - Allowlisted API GET reads: network-first with timeout -> cache.
- * - API auth routes, writes (non-GET) and Socket.IO: never intercepted.
- * - The SW never sees credentials/tokens beyond opaque request headers it
- *   forwards; nothing from localStorage or IndexedDB is cached here.
+ * - Public, credential-free API reads (the `/health` probe only): network-first
+ *   with timeout -> cache.
+ * - Everything else under /api, API auth routes, writes (non-GET) and
+ *   Socket.IO: never intercepted and never cached.
+ * - VERSION bumped to v2 for the PII purge: v1 caches (which held authenticated
+ *   /api/users, /api/attendance and /api/dashboard bodies keyed by URL only)
+ *   are deleted on activate.
+ *
+ * IndexedDB is the only offline data store: it is encrypted and owner-scoped,
+ * while the Cache API is keyed by URL alone and ignores the session cookie. A
+ * cached authenticated body would therefore be served to whichever account
+ * opens the browser next — which is why no authenticated read may be cached.
  */
-const VERSION = 'polycheck-v1'
+const VERSION = 'polycheck-v2'
 const SHELL_CACHE = `${VERSION}-shell`
 const API_CACHE = `${VERSION}-api`
 const OFFLINE_URL = '/offline'
@@ -24,16 +32,10 @@ const PRECACHE_URLS = [
   '/manifest.webmanifest',
 ]
 
-const API_READ_PREFIXES = [
-  '/api/sessions',
-  '/api/sections',
-  '/api/subjects',
-  '/api/users',
-  '/api/students',
-  '/api/dashboard',
-  '/api/health',
-  '/api/attendance',
-]
+const API_READ_PREFIXES = ['/api/health']
+// Responses under these prefixes carry no account data, so they may be cached
+// even when the request was credentialed. Everything else must stay out.
+const API_SAFE_CACHE_PREFIXES = ['/api/health']
 const API_NEVER_CACHE = ['/api/auth']
 const API_READ_TIMEOUT_MS = 4000
 
@@ -62,8 +64,14 @@ self.addEventListener('activate', (event) => {
 })
 
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
+  const type = event.data && event.data.type
+  if (type === 'SKIP_WAITING') {
     self.skipWaiting()
+    return
+  }
+  if (type === 'CLEAR_API_CACHE') {
+    // Sent by the client on logout and account switch (see register-sw.ts).
+    event.waitUntil(caches.delete(API_CACHE))
   }
 })
 
@@ -90,7 +98,7 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  if (isApiRead(url.pathname)) {
+  if (isCacheableApiRead(request, url.pathname)) {
     event.respondWith(networkFirstApi(request))
   }
 })
@@ -98,6 +106,21 @@ self.addEventListener('fetch', (event) => {
 function isApiRead(pathname) {
   if (API_NEVER_CACHE.some((prefix) => pathname.startsWith(prefix))) return false
   return API_READ_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+}
+
+/**
+ * A credentialed request (Authorization header, or cross-origin) may only reach
+ * the cache for the explicitly safe, account-free prefixes.
+ */
+function requestCarriesCredentials(request) {
+  if (request.headers.get('authorization')) return true
+  return new URL(request.url).origin !== self.location.origin
+}
+
+function isCacheableApiRead(request, pathname) {
+  if (!isApiRead(pathname)) return false
+  if (!requestCarriesCredentials(request)) return true
+  return API_SAFE_CACHE_PREFIXES.some((prefix) => pathname.startsWith(prefix))
 }
 
 async function cacheFirst(request) {

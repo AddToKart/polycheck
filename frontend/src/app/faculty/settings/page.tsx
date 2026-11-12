@@ -17,10 +17,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { LoadingSpinner } from '@/lib/hooks'
 import { useNotifications } from '@/lib/notifications'
+import { describeMutationError } from '@/lib/run-mutation'
 import { SettingSwitch } from './SettingSwitch'
 import {
   SETTINGS_TABS,
@@ -509,17 +510,52 @@ function InstitutionSettingsPageInner() {
     })
 
     try {
-      const results = await Promise.all(
-        keys.map((key) => api.setSetting(key, (values[key] ?? '').trim())),
+      const results = await Promise.allSettled(
+        keys.map(async (key) => {
+          const result = await api.setSetting(key, (values[key] ?? '').trim())
+          return { key: result.key, value: result.value }
+        }),
       )
-      const normalized = Object.fromEntries(results.map((result) => [result.key, result.value]))
+      // Per-key truth: keys that saved become clean (dirty dots clear, values
+      // normalize); keys that failed stay dirty with their typed value intact.
+      const savedKeys = results.flatMap((result) =>
+        result.status === 'fulfilled' ? [result.value] : [],
+      )
+      const failedKeys = keys.filter((_, index) => results[index].status === 'rejected')
+      const normalized = Object.fromEntries(savedKeys.map((result) => [result.key, result.value]))
       setValues((current) => ({ ...current, ...normalized }))
       setSaved((current) => ({ ...current, ...normalized }))
-      setFeedback((current) => ({
-        ...current,
-        [tab]: { tone: 'success', message: SAVE_SUCCESS[tab] },
-      }))
-      if (tab === 'ai') await refreshCapabilities()
+
+      if (failedKeys.length === 0) {
+        setFeedback((current) => ({
+          ...current,
+          [tab]: { tone: 'success', message: SAVE_SUCCESS[tab] },
+        }))
+      } else {
+        const firstFailure = results.find((result) => result.status === 'rejected')
+        const reason =
+          firstFailure && firstFailure.status === 'rejected'
+            ? describeMutationError(firstFailure.reason)
+            : 'Unable to save settings'
+        const failedLabels = failedKeys
+          .map((key) =>
+            SETTING_FIELDS.find((item) => item.key === key)?.label ??
+            SETTING_SWITCHES.find((item) => item.key === key)?.label ??
+            key,
+          )
+          .join(', ')
+        setFeedback((current) => ({
+          ...current,
+          [tab]: {
+            tone: 'error',
+            message:
+              savedKeys.length > 0
+                ? `Saved ${savedKeys.length} of ${keys.length} settings. Could not save ${failedLabels}: ${reason}`
+                : `Unable to save settings (${failedLabels}): ${reason}`,
+          },
+        }))
+      }
+      if (tab === 'ai' && savedKeys.length > 0) await refreshCapabilities()
     } catch (error) {
       setFeedback((current) => ({
         ...current,
@@ -598,8 +634,9 @@ function InstitutionSettingsPageInner() {
       <Sidebar
         user={user}
         onLogout={() => {
-          void api.logout()
-          router.push('/')
+          void requestUserLogout().then((outcome) => {
+            if (outcome.loggedOut) router.push('/')
+          })
         }}
       />
       <main className="flex-1 overflow-y-auto">

@@ -169,4 +169,23 @@ describe('offline store', () => {
     await drainOfflineQueue(async () => ({ outcome: 'synced' as const }))
     await expect(getOfflineQueueIssues()).resolves.toEqual([])
   })
+
+  it('keeps draining past a retryable row so the evidence behind it still syncs', async () => {
+    await enqueueOfflineOperation('attendance_scan', { sessionId: 'sess-1', clientAttemptId: 'retry' })
+    await enqueueOfflineOperation('attendance_scan', { sessionId: 'sess-2', clientAttemptId: 'ok' })
+
+    await drainOfflineQueue(async (_kind, payload) =>
+      payload.clientAttemptId === 'retry'
+        ? { outcome: 'retryable' as const, error: 'Service unavailable' }
+        : { outcome: 'synced' as const },
+    )
+
+    // The retryable row is kept for the next attempt; the row queued behind it
+    // is not blocked by it.
+    await expect(getPendingSyncCount()).resolves.toBe(1)
+    const issues = await getOfflineQueueIssues()
+    expect(issues).toHaveLength(1)
+    expect(issues[0].error).toBe('Service unavailable')
+    expect(issues[0].failed).toBe(false)
+  })
 })

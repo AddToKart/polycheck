@@ -37,9 +37,18 @@ function kindLabel(kind: OfflineQueueIssue['kind']): string {
 
 /**
  * Queue/status surface for the offline-first web app. Mounted on student and
- * faculty dashboards; also owns the opportunistic drain triggers (online,
- * visibility, 30s while open, and post-action requests from the store).
+ * faculty dashboards; also owns the opportunistic drain triggers: immediately on
+ * mount (no cold-boot gap), on online/visibility, on post-action requests from
+ * the store, and on a 30 s tick that backs off exponentially (capped at
+ * `MAX_DRAIN_BACKOFF_MS`) while drains make no progress.
  */
+/** Cadence between drain attempts while the queue is healthy. */
+const DRAIN_INTERVAL_MS = 30_000
+/** Hard cap for the exponential retry backoff (never retry slower than this). */
+const MAX_DRAIN_BACKOFF_MS = 5 * 60_000
+/** Largest exponent used, so `base * 2 ** n` can never overflow the cap math. */
+const MAX_BACKOFF_STEP = 8
+
 export function OfflineSyncPanel({ className = '' }: { className?: string }) {
   const [pending, setPending] = useState(0)
   const [issues, setIssues] = useState<OfflineQueueIssue[]>([])
@@ -48,49 +57,98 @@ export function OfflineSyncPanel({ className = '' }: { className?: string }) {
   const [syncing, setSyncing] = useState(false)
   const [lowStorage, setLowStorage] = useState(false)
   const syncingRef = useRef(false)
+  const pendingRef = useRef(0)
+  const backoffRef = useRef(0)
+  const nextAttemptAtRef = useRef(0)
 
   const refresh = useCallback(async () => {
-    setPending(await getPendingSyncCount())
+    const count = await getPendingSyncCount()
+    pendingRef.current = count
+    setPending(count)
     setIssues(await getOfflineQueueIssues())
     setLastSyncAt(await getLastSyncAt())
   }, [])
 
-  const drain = useCallback(async () => {
-    if (syncingRef.current) return
-    if (typeof navigator !== 'undefined' && !navigator.onLine) return
-    if (!api.getCurrentUser()) return
+  /**
+   * One drain attempt. Resolves true only when the queue is empty or the attempt
+   * made measurable progress, so a failing endpoint backs off instead of being
+   * hammered every tick.
+   */
+  const drain = useCallback(async (): Promise<boolean> => {
+    if (syncingRef.current) return true
+    if (pendingRef.current === 0) return true
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return false
+    if (!api.getCurrentUser()) return false
     syncingRef.current = true
     setSyncing(true)
+    const before = pendingRef.current
+    let completed = false
     try {
       await api.syncOfflineQueue()
+      completed = true
     } catch {
-      // Remaining entries stay queued; retry triggers will try again.
+      // Remaining entries stay queued; the scheduler retries with backoff.
+      completed = false
     } finally {
       syncingRef.current = false
       setSyncing(false)
       await refresh()
     }
+    const after = pendingRef.current
+    return completed && (after === 0 || after < before)
   }, [refresh])
 
+  /** Drains, then arms the next attempt: base cadence on success, exponential backoff on failure. */
+  const runScheduledDrain = useCallback(async () => {
+    const progressed = await drain()
+    backoffRef.current = progressed
+      ? 0
+      : Math.min(backoffRef.current + 1, MAX_BACKOFF_STEP)
+    const delayMs = progressed
+      ? DRAIN_INTERVAL_MS
+      : Math.min(DRAIN_INTERVAL_MS * 2 ** backoffRef.current, MAX_DRAIN_BACKOFF_MS)
+    nextAttemptAtRef.current = Date.now() + delayMs
+  }, [drain])
+
+  /** Explicit trigger (queue event, online, visibility, Sync button). */
+  const drainNow = useCallback(async () => {
+    backoffRef.current = 0
+    nextAttemptAtRef.current = 0
+    await runScheduledDrain()
+  }, [runScheduledDrain])
+
   useEffect(() => {
-    void refresh()
+    let cancelled = false
+    const tick = () => {
+      if (Date.now() < nextAttemptAtRef.current) return
+      void runScheduledDrain()
+    }
     const onState = () => void refresh()
-    const onRequest = () => void drain()
+    const onRequest = () => {
+      void drainNow()
+    }
     const goOnline = () => {
       setOnline(true)
-      void drain()
+      onRequest()
     }
     const goOffline = () => setOnline(false)
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') void drain()
+      if (document.visibilityState === 'visible') onRequest()
     }
     window.addEventListener(SYNC_STATE_EVENT, onState)
     window.addEventListener(SYNC_REQUEST_EVENT, onRequest)
     window.addEventListener('online', goOnline)
     window.addEventListener('offline', goOffline)
     document.addEventListener('visibilitychange', onVisibility)
-    const interval = window.setInterval(() => void drain(), 30_000)
+    const interval = window.setInterval(tick, DRAIN_INTERVAL_MS)
+    // Cold boot: load the queue counts, then drain immediately instead of
+    // waiting a full interval for the first attempt.
+    void refresh().then(() => {
+      if (cancelled) return
+      void drainNow()
+    })
     return () => {
+      cancelled = true
       window.removeEventListener(SYNC_STATE_EVENT, onState)
       window.removeEventListener(SYNC_REQUEST_EVENT, onRequest)
       window.removeEventListener('online', goOnline)
@@ -98,7 +156,7 @@ export function OfflineSyncPanel({ className = '' }: { className?: string }) {
       document.removeEventListener('visibilitychange', onVisibility)
       window.clearInterval(interval)
     }
-  }, [drain, refresh])
+  }, [drainNow, refresh, runScheduledDrain])
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.storage?.estimate) return
@@ -137,7 +195,7 @@ export function OfflineSyncPanel({ className = '' }: { className?: string }) {
           <span>{formatLastSync(lastSyncAt)}</span>
           <button
             type="button"
-            onClick={() => void drain()}
+            onClick={() => void drainNow()}
             disabled={syncing || !online || pending === 0}
             className="inline-flex items-center gap-1 border border-zinc-300 px-2 py-1 font-semibold text-maroon transition-colors disabled:opacity-40 dark:border-golden/25 dark:text-golden"
             aria-label="Sync pending attendance now"
@@ -173,7 +231,7 @@ export function OfflineSyncPanel({ className = '' }: { className?: string }) {
                 <button
                   type="button"
                   onClick={() => {
-                    void retryOfflineOperation(issue.id).then(() => drain())
+                    void retryOfflineOperation(issue.id).then(() => drainNow())
                   }}
                   className="font-bold underline underline-offset-2"
                 >

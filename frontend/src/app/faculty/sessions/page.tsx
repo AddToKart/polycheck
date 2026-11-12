@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, ArrowLeft, ArrowRight, Layers, X } from 'lucide-react'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
 import type { User, Session, Subject, Section } from '@polycheck/shared'
 import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -155,8 +155,9 @@ function SessionsContent() {
   }
 
   const handleLogout = () => {
-    api.logout()
-    router.push('/')
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
   }
 
   if (!user) return null

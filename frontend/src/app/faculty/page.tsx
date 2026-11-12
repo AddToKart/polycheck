@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
 import type { AdminOverview, User, Section, Subject, CalendarEvent, DashboardOverview, StudentAtRisk } from '@polycheck/shared'
 import { formatSectionHeading, formatTime, getRecentCampusDateRange } from '@polycheck/shared/utils'
 import {
@@ -921,8 +921,9 @@ export default function FacultyPortalPage() {
   }, [router])
 
   const handleLogout = () => {
-    api.logout()
-    router.push('/')
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
   }
 
   if (loading) return (

@@ -4,7 +4,9 @@ import { Suspense, useEffect, useState, useMemo } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Search, ArrowLeft, CalendarDays } from 'lucide-react'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
+import { describeMutationError } from '@/lib/run-mutation'
+import { ErrorDisplay } from '@/lib/hooks'
 import type { User, Subject, Section, Session } from '@polycheck/shared'
 import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -33,6 +35,8 @@ function SubjectSessionsContent() {
   const [activating, setActivating] = useState('')
   const [allSessions, setAllSessions] = useState<Session[]>([])
   const [page, setPage] = useState(1)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     setPage(1)
@@ -49,26 +53,50 @@ function SubjectSessionsContent() {
 
   useEffect(() => {
     if (!id) return
+    let active = true
     const fn = async () => {
-      const subj = await api.getSubject(id)
-      if (!subj) { router.push('/faculty/subjects'); return }
-      setSubject(subj)
-      let secs = (await api.getSections()).filter((s) => s.subjectId === id)
-      if (user && user.role === 'teacher') {
-        secs = secs.filter((s) => s.teacherId === user.id)
+      setLoadError(null)
+      try {
+        const subj = await api.getSubject(id)
+        if (!subj) { router.push('/faculty/subjects'); return }
+        if (!active) return
+        setSubject(subj)
+        const all = await api.getSections()
+        let secs = all.filter((s) => s.subjectId === id)
+        if (user && user.role === 'teacher') {
+          secs = secs.filter((s) => s.teacherId === user.id)
+        }
+        if (!active) return
+        setSubjectSections(secs)
+      } catch (error) {
+        if (active) {
+          setLoadError(describeMutationError(error, 'Unable to load this subject.'))
+        }
       }
-      setSubjectSections(secs)
     }
-    fn()
-  }, [id, router, user])
+    void fn()
+    return () => {
+      active = false
+    }
+  }, [id, router, user, reloadKey])
 
   useEffect(() => {
+    let active = true
     const fn = async () => {
-      const sessions = await api.getSessions()
-      setAllSessions(sessions)
+      try {
+        const sessions = await api.getSessions()
+        if (active) setAllSessions(sessions)
+      } catch (error) {
+        if (active) {
+          setLoadError(describeMutationError(error, 'Unable to load sessions.'))
+        }
+      }
     }
-    fn()
-  }, [])
+    void fn()
+    return () => {
+      active = false
+    }
+  }, [reloadKey])
 
   const filtered = useMemo(() => {
     const sectionIds = subjectSections.map((sec) => sec.id)
@@ -115,8 +143,21 @@ function SubjectSessionsContent() {
   }
 
   const handleLogout = () => {
-    api.logout()
-    router.push('/')
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black p-6">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-8">
+            <ErrorDisplay message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   if (!user || !subject) return null
