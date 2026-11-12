@@ -170,6 +170,89 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return true
   }
 
+  /**
+   * Redis Streams helpers for the ingestion fallback drainer.
+   *
+   * Keys here are **full** Redis keys: the ingest gateway already writes them
+   * prefixed (`polycheck:ingest:scans`), so this service must not prefix again
+   * or the two processes would address different streams.
+   */
+  async streamEnsureGroup(fullKey: string, group: string): Promise<boolean> {
+    if (!this.client?.isReady) return false
+    try {
+      await this.client.xGroupCreate(fullKey, group, '$', { MKSTREAM: true })
+      return true
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('BUSYGROUP')) return true
+      this.logFallback('create stream group', error)
+      return false
+    }
+  }
+
+  async streamReadGroup(
+    fullKey: string,
+    group: string,
+    consumer: string,
+    count: number,
+  ): Promise<Array<{ id: string; payload: string }>> {
+    if (!this.client?.isReady) return []
+    try {
+      const reply = await this.client.xReadGroup(group, consumer, [{ key: fullKey, id: '>' }], { COUNT: count })
+      if (!reply) return []
+      const entries: Array<{ id: string; payload: string }> = []
+      for (const stream of reply) {
+        for (const message of stream.messages) {
+          const payload = message.message.payload
+          if (typeof payload === 'string') entries.push({ id: message.id, payload })
+        }
+      }
+      return entries
+    } catch (error) {
+      this.logFallback('read stream group', error)
+      return []
+    }
+  }
+
+  async streamAck(fullKey: string, group: string, ids: string[]): Promise<boolean> {
+    if (ids.length === 0) return true
+    if (!this.client?.isReady) return false
+    try {
+      await this.client.xAck(fullKey, group, ids)
+      return true
+    } catch (error) {
+      this.logFallback('ack stream entries', error)
+      return false
+    }
+  }
+
+  /**
+   * Reclaims entries left pending by a dead consumer (the ingest process that
+   * crashed mid-batch). Without this, those entries stay in the previous
+   * consumer's PEL forever because consumer names are PID-scoped.
+   */
+  async streamAutoClaim(
+    fullKey: string,
+    group: string,
+    consumer: string,
+    minIdleMs: number,
+    count: number,
+  ): Promise<Array<{ id: string; payload: string }>> {
+    if (!this.client?.isReady) return []
+    try {
+      const reply = await this.client.xAutoClaim(fullKey, group, consumer, minIdleMs, '0-0', { COUNT: count })
+      const entries: Array<{ id: string; payload: string }> = []
+      for (const message of reply.messages ?? []) {
+        if (!message) continue
+        const payload = message.message.payload
+        if (typeof payload === 'string') entries.push({ id: message.id, payload })
+      }
+      return entries
+    } catch (error) {
+      this.logFallback('auto-claim stream entries', error)
+      return []
+    }
+  }
+
   async acquireLock(key: string, ttlSeconds: number): Promise<string | null> {
     const ownershipToken = randomUUID()
     const acquired = await this.setIfAbsent(`lock:${key}`, ownershipToken, ttlSeconds)

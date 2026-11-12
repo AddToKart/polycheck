@@ -52,6 +52,8 @@ services:
     environment:
       NODE_ENV: development
       PORT: 4000
+      # Control-plane fallback drainer for the ingestion gateway (off by default).
+      INGEST_FALLBACK_DRAIN: ${INGEST_FALLBACK_DRAIN:-false}
       # Native bcrypt runs on the libuv threadpool (default 4). Size it to the box so
       # 2,000-student provisioning/logins are not serialized on one thread.
       # See plan/load-simulation-plan.md Addendum 2 (Finding F2).
@@ -124,6 +126,40 @@ services:
       - "${FRONTEND_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/login"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # Optional ingestion gateway (plan/fastify-ingestion-gateway-plan.md).
+  #   docker compose --profile gateway up -d
+  # Without the profile every request keeps going to NestJS — that is both the
+  # default local developer experience and the operational rollback path.
+  ingest:
+    image: polycheck-ingest-local
+    profiles: ["gateway"]
+    build:
+      context: .
+      dockerfile: Dockerfile.ingest
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 4001
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-polycheck_local_db_2026}@postgres:5432/polycheck?schema=public
+      CONTROL_PLANE_URL: http://backend:4000/api
+      INGEST_DRAINER_ENABLED: ${INGEST_DRAINER_ENABLED:-true}
+      INGEST_DB_POOL_SIZE: ${INGEST_DB_POOL_SIZE:-8}
+      LOG_LEVEL: info
+    ports:
+      - "${INGEST_PORT:-4001}:4001"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4001/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 12

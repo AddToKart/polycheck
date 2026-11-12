@@ -1,0 +1,247 @@
+/**
+ * HTTP surface for the ingestion gateway.
+ *
+ * Only the four hot paths are served here. Every response shape mirrors the
+ * NestJS control plane so no client can tell which process answered.
+ */
+import { createHash } from 'node:crypto'
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
+import type Redis from 'ioredis'
+import { z } from 'zod'
+import type { IngestConfig } from './config'
+import { validateScan, type ScanEvidenceInput, type SessionSnapshot } from './core/scan'
+import type { BufferedScan } from './queue'
+import { renderMetrics, type IngestMetrics } from './metrics'
+
+export const scanBodySchema = z.object({
+  sessionId: z.string().min(1).max(128),
+  qrToken: z.string().min(80).max(4096),
+  lat: z.number().min(-90).max(90).optional(),
+  lon: z.number().min(-180).max(180).optional(),
+  deviceId: z.string().max(128).optional(),
+  scannedAt: z.string().datetime().optional(),
+  clientAttemptId: z.string().max(128).optional(),
+  accuracyMeters: z.number().min(0).max(10_000).optional(),
+  locationCapturedAt: z.string().datetime().optional(),
+  mocked: z.boolean().optional(),
+  inputChannel: z.enum(['camera', 'image', 'manual']).optional(),
+  pin: z.string().regex(/^\d{2,4}$/).optional(),
+  deviceSecurity: z
+    .object({
+      rootDetected: z.boolean().optional(),
+      hookDetected: z.boolean().optional(),
+      emulatorDetected: z.boolean().optional(),
+    })
+    .optional(),
+})
+
+export interface AuthedUser {
+  id: string
+  role: string
+  privacyConsent: boolean
+}
+
+/**
+ * `null` = positively unauthorised (401). `unavailable` = the auth upstream could
+ * not answer — a retryable condition (503), never a session-terminating 401.
+ */
+export type AuthResolution = { user: AuthedUser } | { unavailable: true } | null
+
+export interface IngestDeps {
+  config: IngestConfig
+  redis: Redis
+  appendScan: (scan: BufferedScan) => Promise<string>
+  bufferDepth: () => Promise<number>
+  bufferLagSeconds: () => Promise<number>
+  resolveUser: (authorization: string | undefined) => Promise<AuthResolution>
+  /** Session snapshot + teacher key, both written by the control plane. */
+  readSnapshot: (sessionId: string) => Promise<{ snapshot: SessionSnapshot; teacherPublicKey: string } | undefined>
+  consumePinAttempt: (key: string, limit: number, windowMs: number) => Promise<boolean>
+  metrics: IngestMetrics
+}
+
+const bearer = (request: FastifyRequest): string | undefined => {
+  const header = request.headers.authorization
+  return typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : undefined
+}
+
+const tooMany = (reply: FastifyReply, retryAfterSeconds = 5) =>
+  reply
+    .code(503)
+    .header('retry-after', String(retryAfterSeconds))
+    .send({ statusCode: 503, error: 'ServiceUnavailable', message: 'Ingestion buffer is full', retryAfterSeconds })
+
+export function buildServer(deps: IngestDeps): FastifyInstance {
+  const app = Fastify({ logger: false, bodyLimit: 64 * 1024 })
+
+  app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
+
+  app.get('/health/clock', async () => ({ timestamp: new Date().toISOString() }))
+
+  app.get('/health/ready', async (_request, reply) => {
+    const checks: Record<string, string> = {}
+    let ready = true
+    try {
+      await deps.redis.ping()
+      checks.redis = 'ok'
+    } catch {
+      checks.redis = 'unavailable'
+      ready = false
+    }
+    try {
+      const depth = await deps.bufferDepth()
+      const lag = await deps.bufferLagSeconds()
+      checks.buffer = depth > deps.config.INGEST_MAX_BUFFER ? 'saturated' : 'ok'
+      checks.lag = lag > deps.config.INGEST_MAX_LAG_SECONDS ? 'behind' : 'ok'
+      if (checks.buffer !== 'ok' || checks.lag !== 'ok') ready = false
+    } catch {
+      checks.buffer = 'unavailable'
+      ready = false
+    }
+    const body = { status: ready ? 'ok' : 'degraded', timestamp: new Date().toISOString(), checks }
+    return ready ? body : reply.code(503).send(body)
+  })
+
+  app.get('/metrics', async (_request, reply) => {
+    const [depth, lag] = await Promise.all([deps.bufferDepth(), deps.bufferLagSeconds()])
+    const ready = depth <= deps.config.INGEST_MAX_BUFFER && lag <= deps.config.INGEST_MAX_LAG_SECONDS
+    return reply.type('text/plain; version=0.0.4; charset=utf-8').send(renderMetrics(deps.metrics, depth, lag, ready))
+  })
+
+  /**
+   * Accepts one live scan. The decision is made in-memory against the cached
+   * session snapshot; the write is buffered, never synchronous.
+   */
+  const submit = async (request: FastifyRequest, reply: FastifyReply) => {
+    const auth = await deps.resolveUser(bearer(request))
+    if (!auth) return reply.code(401).send({ statusCode: 401, message: 'Unauthorized' })
+    if ('unavailable' in auth) {
+      // The control plane could not confirm the session. Answering 401 here would
+      // make every client treat a transient upstream blip as a logout.
+      return reply
+        .code(503)
+        .header('retry-after', '2')
+        .send({ statusCode: 503, error: 'ServiceUnavailable', message: 'Authentication temporarily unavailable', retryAfterSeconds: 2 })
+    }
+    const user = auth.user
+    if (user.role !== 'student') return reply.code(403).send({ statusCode: 403, message: 'Insufficient role permissions' })
+    if (!user.privacyConsent) {
+      return reply.code(403).send({ statusCode: 403, message: 'Privacy consent required', code: 'privacy_consent_required' })
+    }
+
+    const parsed = scanBodySchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.code(400).send({
+        statusCode: 400,
+        error: 'BadRequestException',
+        message: parsed.error.issues.map((issue) => issue.message),
+      })
+    }
+    const body = parsed.data
+
+    const [depth, lag] = await Promise.all([deps.bufferDepth(), deps.bufferLagSeconds()])
+    if (depth > deps.config.INGEST_MAX_BUFFER || lag > deps.config.INGEST_MAX_LAG_SECONDS) {
+      return tooMany(reply)
+    }
+
+    const resolved = await deps.readSnapshot(body.sessionId)
+    if (!resolved) {
+      // Cannot validate without the snapshot: retryable, never a silent accept.
+      return tooMany(reply, 2)
+    }
+
+    const evidence: ScanEvidenceInput = {
+      qrToken: body.qrToken,
+      clientAttemptId: body.clientAttemptId,
+      accuracyMeters: body.accuracyMeters,
+      locationCapturedAt: body.locationCapturedAt,
+      mocked: body.mocked,
+      inputChannel: body.inputChannel,
+      pin: body.pin,
+      deviceSecurity: body.deviceSecurity,
+      scannedAt: body.scannedAt,
+      latitude: body.lat,
+      longitude: body.lon,
+      deviceId: body.deviceId,
+    }
+
+    const validation = await validateScan({
+      snapshot: resolved.snapshot,
+      teacherPublicKey: resolved.teacherPublicKey,
+      userId: user.id,
+      evidence,
+      offline: false,
+      receivedAt: new Date(),
+      consumePinAttempt: deps.consumePinAttempt,
+    })
+
+    const tokenHash = createHash('sha256').update(body.qrToken).digest('hex')
+
+    if (validation.success) {
+      deps.metrics.scansAccepted += 1
+      await deps.appendScan({
+        userId: user.id,
+        sessionId: resolved.snapshot.id,
+        sectionId: resolved.snapshot.sectionId,
+        status: validation.status === 'late' ? 'late' : validation.status === 'disputed' ? 'disputed' : 'present',
+        reason: validation.reason,
+        message: validation.message,
+        scannedAt: validation.scannedAt.toISOString(),
+        receivedAt: validation.receivedAt.toISOString(),
+        mode: validation.mode,
+        checkpoint: validation.checkpoint,
+        distanceMeters: validation.distanceMeters,
+        geofenceRadiusMeters: validation.geofenceRadiusMeters,
+        riskSignals: validation.riskSignals,
+        pinVerified: validation.pinVerified,
+        tokenHash,
+        latitude: body.lat,
+        longitude: body.lon,
+        accuracyMeters: body.accuracyMeters,
+        locationCapturedAt: body.locationCapturedAt,
+        deviceId: body.deviceId,
+        clientAttemptId: body.clientAttemptId,
+        inputChannel: body.inputChannel,
+        mocked: body.mocked,
+        offline: false,
+        qrToken: body.qrToken,
+      })
+    }
+
+    if (!validation.success) deps.metrics.scansRejected += 1
+
+    // Same envelope the control plane returns for both outcomes.
+    return reply.code(validation.success ? 201 : 200).send({
+      success: validation.success,
+      status: validation.status,
+      reason: validation.reason,
+      message: validation.message,
+      distanceMeters: validation.distanceMeters,
+      geofenceRadiusMeters: validation.geofenceRadiusMeters,
+      syncState: validation.success ? 'buffered' : 'rejected',
+    })
+  }
+
+  app.post('/attendance/scan', submit)
+  app.post('/attendance/check', submit)
+
+  /**
+   * `/sync/attendance/*` is deliberately NOT served here.
+   *
+   * The control plane's receipt contract is `{queued, receiptId}` (sha256 job
+   * id) with `{state, results}` where each result is the full written
+   * AttendanceRecord. Reproducing that requires returning rows from the
+   * asynchronous drainer, which is a different design than "ack, then write".
+   * Rather than ship a receipt that silently corrupts every client's offline
+   * replay, the gateway answers 404 here: a misrouted sync request fails loudly
+   * and the proxy sends it to NestJS, which owns the contract.
+   */
+  app.post('/sync/attendance/batches', async (_request, reply) =>
+    reply.code(404).send({
+      statusCode: 404,
+      message: 'Sync batches are served by the control plane, not the ingestion gateway',
+    }),
+  )
+
+  return app
+}

@@ -56,6 +56,7 @@ jobs:
       - run: pnpm security:audit
       - run: pnpm peers check
       - run: node scripts/verify-tracked-build-files.mjs
+      - run: node scripts/verify-shared-ingest-contract.mjs
       - run: pnpm --dir android exec expo install --check
       - run: pnpm --filter @polycheck/backend prisma:generate
       - run: pnpm --filter @polycheck/backend prisma:migrate:deploy
@@ -65,6 +66,8 @@ jobs:
       - run: pnpm --dir frontend test:coverage
       - run: pnpm --filter @polycheck/shared build
       - run: pnpm --dir shared test
+      - run: pnpm --filter @polycheck/ingest typecheck
+      - run: pnpm --filter @polycheck/ingest test
       - run: pnpm --filter @polycheck/backend build
       - run: pnpm --filter @polycheck/backend test:ci
       - run: pnpm --filter @polycheck/backend test:e2e

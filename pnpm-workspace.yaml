@@ -3,6 +3,7 @@ packages:
   - "frontend"
   - "android"
   - "backend"
+  - "services/ingest"
 allowBuilds:
   "@nestjs/core": true
   "@prisma/client": true
