@@ -11,6 +11,9 @@ const apiMock = vi.hoisted(() => ({
   getSectionStudents: vi.fn(),
   generateQrCode: vi.fn(),
   endSession: vi.fn(),
+  updateAttendanceStatus: vi.fn(),
+  addAttendanceRecord: vi.fn(),
+  getStudent: vi.fn(),
   logout: vi.fn(),
 }))
 const routerMock = vi.hoisted(() => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }))
@@ -85,6 +88,9 @@ describe('faculty session cockpit', () => {
     apiMock.getSectionStudents.mockResolvedValue([])
     apiMock.generateQrCode.mockResolvedValue({ ...session, isActive: true })
     apiMock.endSession.mockResolvedValue({ ...session, isActive: false, endedAt: '2026-08-06T10:00:00.000Z' })
+    apiMock.updateAttendanceStatus.mockResolvedValue({ id: 'rec-1', status: 'present' })
+    apiMock.addAttendanceRecord.mockResolvedValue({ id: 'rec-1', status: 'present' })
+    apiMock.getStudent.mockResolvedValue(null)
     qrMock.mockResolvedValue('data:image/png;base64,qr')
     routerMock.push.mockReset()
     subscribeMock.mockClear()
@@ -271,5 +277,52 @@ describe('faculty session cockpit', () => {
     expect(await screen.findByText('Inactive')).toBeInTheDocument()
     expect(apiMock.getSession).toHaveBeenCalledTimes(2)
     expect(addNotificationMock).toHaveBeenCalledWith('error', 'Could Not End Session', 'Network unavailable')
+  })
+
+  it('opens student detail modal on roster row click without instantly overwriting status and allows setting status', async () => {
+    const student = {
+      id: 'student-1',
+      fullName: 'Alexandra Marie Reyes',
+      studentId: '2024-00001-MN-0',
+      role: 'student' as const,
+      isActive: true,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+      program: 'BSIT',
+      yearLevel: 3,
+    }
+    apiMock.getSectionStudents.mockResolvedValue([student])
+    apiMock.getAttendanceRecords.mockResolvedValue([])
+
+    render(<SessionDetailPage />)
+
+    // Wait for student roster to render
+    expect(await screen.findByText('Alexandra Marie Reyes')).toBeInTheDocument()
+    expect(screen.getByText('2024-00001-MN-0')).toBeInTheDocument()
+
+    // Clicking the student row should NOT call updateAttendanceStatus or addAttendanceRecord
+    fireEvent.click(screen.getByText('Alexandra Marie Reyes'))
+
+    expect(apiMock.updateAttendanceStatus).not.toHaveBeenCalled()
+    expect(apiMock.addAttendanceRecord).not.toHaveBeenCalled()
+
+    // It should open the profile & attendance control modal
+    expect(await screen.findByText('Student Profile & Session Attendance Control')).toBeInTheDocument()
+    expect(screen.getByText('Current Session Status')).toBeInTheDocument()
+    expect(screen.getByText('Administrative Controls')).toBeInTheDocument()
+    expect(screen.getByText('Click card to flip')).toBeInTheDocument()
+
+    // Selecting a status inside the modal explicitly updates attendance
+    const presentButton = screen.getByRole('button', { name: /^present$/i })
+    fireEvent.click(presentButton)
+
+    expect(apiMock.addAttendanceRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        studentId: 'student-1',
+        sessionId: 'session-1',
+        status: 'present',
+        manuallySet: true,
+      }),
+    )
   })
 })
