@@ -9,7 +9,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
-import { compare, getRounds, hashSync } from 'bcryptjs'
+import { compare, hashSync } from '@node-rs/bcrypt'
 import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import { AuthService } from './auth.service'
@@ -22,11 +22,21 @@ import { DeviceBindingService } from '../users/device-binding.service'
 import { SystemMaintenanceService } from '../maintenance-mode/system-maintenance.service'
 
 const VALID_PASSWORD = 'correct-horse-battery-staple'
-const VALID_HASH = hashSync(VALID_PASSWORD, 10)
+const VALID_HASH = hashSync(VALID_PASSWORD, { cost: 10 })
 
 /** Lets real macrotasks (bcrypt chunks) run while fake timers are installed. */
-async function waitForCalls(mock: { mock: { calls: unknown[] } }, count: number) {
-  for (let i = 0; i < 2_000 && mock.mock.calls.length < count; i += 1) {
+async function waitForCalls(
+  mock: { mock: { calls: unknown[] } },
+  count: number,
+  timeoutMs = 5_000,
+) {
+  // Wall-clock bound, not iteration bound: native bcrypt (`@node-rs/bcrypt`)
+  // resolves from the libuv threadpool after ~50-100 ms of real work, whereas
+  // the previous pure-JS implementation resolved on the next microtask. A
+  // fixed number of `setImmediate` spins exhausted long before the hash
+  // finished. `process.hrtime` is monotonic and is not faked by Jest.
+  const deadline = process.hrtime.bigint() + BigInt(timeoutMs) * 1_000_000n
+  while (mock.mock.calls.length < count && process.hrtime.bigint() < deadline) {
     await new Promise((resolve) => setImmediate(resolve))
   }
   expect(mock.mock.calls.length).toBeGreaterThanOrEqual(count)
@@ -59,7 +69,9 @@ function buildUser(overrides: Partial<User> = {}): User {
 
 describe('AuthService', () => {
   it('uses the same bcrypt work factor for real and unknown-account checks', () => {
-    expect(getRounds(DUMMY_PASSWORD_HASH)).toBe(PASSWORD_HASH_COST)
+    // `@node-rs/bcrypt` does not export `getRounds`; the work factor is the
+    // third `$`-delimited segment of the encoded hash.
+    expect(Number(DUMMY_PASSWORD_HASH.split('$')[2])).toBe(PASSWORD_HASH_COST)
     expect(PASSWORD_HASH_COST).toBe(12)
   })
 

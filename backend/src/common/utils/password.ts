@@ -1,4 +1,4 @@
-import { hash } from 'bcryptjs'
+import { hash } from '@node-rs/bcrypt'
 import { randomInt } from 'node:crypto'
 import { PASSWORD_HASH_COST } from '../../auth/password-policy'
 
@@ -33,7 +33,7 @@ export async function hashPasswords(passwords: string[], concurrency = 4): Promi
   const hashes: string[] = []
   for (let index = 0; index < passwords.length; index += concurrency) {
     const batch = passwords.slice(index, index + concurrency)
-    hashes.push(...(await Promise.all(batch.map((password) => hash(password, PASSWORD_HASH_COST)))))
+    hashes.push(...(await Promise.all(batch.map((password) => hash(password, { cost: PASSWORD_HASH_COST })))))
   }
   return hashes
 }
