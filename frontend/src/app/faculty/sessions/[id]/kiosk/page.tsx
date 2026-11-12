@@ -27,9 +27,7 @@ import KioskQrRing from '@/components/kiosk/KioskQrRing'
 import KioskTicker, { addTickerEntry, pruneTicker } from '@/components/kiosk/KioskTicker'
 import KioskCapacityRing from '@/components/kiosk/KioskCapacityRing'
 import KioskFinale from '@/components/kiosk/KioskFinale'
-
-/** Statuses that count as a verified check-in for the capacity ring. */
-const CHECKED_IN_STATUSES = new Set<FinaleCountStatus>(['present', 'late', 'incomplete'])
+import { isCheckedInStatus, verifiedDelta } from '@/components/kiosk/kiosk-verified'
 
 /** Seeded ticker chips die ~6 s after load so the projector feels live. */
 const TICKER_SEED_LIFETIME_MS = 6_000
@@ -116,7 +114,7 @@ function recordsToCounts(records: AttendanceRecord[]): Record<FinaleCountStatus,
 }
 
 function recordsToVerified(records: AttendanceRecord[]): number {
-  return records.filter((record) => CHECKED_IN_STATUSES.has(record.status)).length
+  return records.filter((record) => isCheckedInStatus(record.status)).length
 }
 
 // ── Session-room socket with the kiosk presence handshake. Mirrors realtime
@@ -228,7 +226,9 @@ export default function SessionKioskPage() {
   const [nowTick, setNowTick] = useState(() => Date.now())
 
   const stageRef = useRef<HTMLElement | null>(null)
-  const seenRecordIdsRef = useRef<Set<string>>(new Set())
+  // Last observed status per record id. A cockpit override must move the
+  // "verified" ring, so events are applied as deltas, not first-seen counts.
+  const recordStatusRef = useRef<Map<string, string>>(new Map())
   const finaleEndedAtRef = useRef<string | null>(null)
   // Roster refs keep the socket registration effect off churny list data.
   const studentsRef = useRef<Student[]>([])
@@ -252,9 +252,12 @@ export default function SessionKioskPage() {
       try {
         const nextRecords = await api.getAttendanceRecords(sessionId)
         setVerified(recordsToVerified(nextRecords))
-        seenRecordIdsRef.current = new Set(nextRecords.map((record) => record.id))
+        recordStatusRef.current = new Map(nextRecords.map((record) => [record.id, record.status]))
         return nextRecords
       } catch {
+        // Documented degraded mode: the finale broadcast still lands, so a
+        // failed reconcile keeps the last known counts instead of blanking
+        // the projector. The next refetch (cutover/finale) repairs them.
         return []
       }
   }, [])
@@ -307,7 +310,7 @@ export default function SessionKioskPage() {
       setSectionLabel(section.section ?? '')
       setStudents(roster)
       setVerified(recordsToVerified(nextRecords))
-      seenRecordIdsRef.current = new Set(nextRecords.map((record) => record.id))
+      recordStatusRef.current = new Map(nextRecords.map((record) => [record.id, record.status]))
       // Seed the ticker with the most recent check-ins so late joiners land
       // on a live-looking feed; they share one seen-time and expire together.
       const recentCheckIns = [...nextRecords]
@@ -348,11 +351,14 @@ export default function SessionKioskPage() {
       status: string
       timestamp: string
     }) => {
-      if (seenRecordIdsRef.current.has(event.recordId)) return
-      seenRecordIdsRef.current.add(event.recordId)
-      setTickerEntries((previous) => addTickerEntry(previous, event, Date.now()))
-      if (CHECKED_IN_STATUSES.has(event.status as FinaleCountStatus)) {
-        setVerified((previous) => previous + 1)
+      const previousStatus = recordStatusRef.current.get(event.recordId)
+      recordStatusRef.current.set(event.recordId, event.status)
+      if (previousStatus === undefined) {
+        setTickerEntries((previous) => addTickerEntry(previous, event, Date.now()))
+      }
+      const delta = verifiedDelta(previousStatus, event.status)
+      if (delta !== 0) {
+        setVerified((previous) => Math.max(0, previous + delta))
       }
     },
     [],

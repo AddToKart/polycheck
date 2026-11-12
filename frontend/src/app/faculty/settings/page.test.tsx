@@ -220,6 +220,35 @@ describe('Institution Settings tabs', () => {
     expect(screen.getByRole('tab', { name: 'Institution' })).toBeInTheDocument()
   })
 
+  it('reports a partial save per key and keeps the failed key dirty', async () => {
+    navMock.tab = 'sessions'
+    apiMock.setSetting.mockImplementation(async (key: string, value: string) => {
+      if (key === 'default_geofence_radius_meters') {
+        throw new Error('Radius is out of range')
+      }
+      return { key, value, updatedAt: '2026-10-27T00:00:00.000Z' }
+    })
+
+    render(<InstitutionSettingsPage />)
+
+    fireEvent.change(await screen.findByLabelText('Default geofence radius (meters)'), {
+      target: { value: '55' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    expect(await screen.findByText(/Saved \d+ of \d+ settings/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Default geofence radius \(meters\).*Radius is out of range/),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('Session and attendance defaults saved.'),
+    ).not.toBeInTheDocument()
+    // The failed key was not written, so the tab keeps its dirty marker.
+    expect(
+      screen.getByRole('tab', { name: /Sessions & attendance.*Unsaved changes/ }),
+    ).toBeInTheDocument()
+  })
+
   it("saves only the active tab's keys", async () => {
     navMock.tab = 'sessions'
 

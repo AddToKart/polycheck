@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { Plus, ArrowRight } from 'lucide-react'
 
 const SUBJECTS_PAGE_SIZE = 9
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
 import type { User, Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -60,8 +60,9 @@ export default function SubjectsPage() {
   const isSuper = user.role === 'super_admin'
 
   const handleLogout = () => {
-    api.logout()
-    router.push('/')
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
   }
 
   return (

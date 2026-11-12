@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, FileDown, FileUp, Loader2, Search, Key, RefreshCw, Ban, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle, CalendarDays } from 'lucide-react'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
 import type { User, Section, Session, Student, SectionRole, SessionPermission } from '@polycheck/shared'
 import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -13,8 +13,9 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { LoadingSpinner } from '@/lib/hooks'
+import { LoadingSpinner, ErrorDisplay } from '@/lib/hooks'
 import { useNotifications } from '@/lib/notifications'
+import { describeMutationError, useRunMutation } from '@/lib/run-mutation'
 import { createSessionHref, sessionsListHref } from '@/lib/section-context'
 import { PaginationBar } from '@/components/ui/pagination-bar'
 
@@ -107,6 +108,9 @@ export default function SectionDetailPage() {
   const [subjectCode, setSubjectCode] = useState('')
 
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+  const { run, isPending } = useRunMutation()
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -115,41 +119,67 @@ export default function SectionDetailPage() {
       return
     }
     setUser(cu)
-    if (cu.role === 'teacher') api.getStudents().then(setAllStudents)
-  }, [router])
+    if (cu.role === 'teacher') {
+      void api.getStudents().then(setAllStudents).catch((error: unknown) => {
+        addNotification('error', 'Could not load students', describeMutationError(error))
+      })
+    }
+  }, [router, addNotification])
 
   useEffect(() => {
+    let active = true
     const init = async () => {
       const cu = api.getCurrentUser()
       if (!id) return
-      const sec = await api.getSection(id)
-      if (!sec) { router.push('/faculty/subjects'); return }
-      if (cu && cu.role === 'teacher' && sec.teacherId !== cu.id) {
-        router.push('/faculty')
-        return
+      setLoading(true)
+      setLoadError(null)
+      try {
+        const sec = await api.getSection(id)
+        if (!sec) { router.push('/faculty/subjects'); return }
+        if (cu && cu.role === 'teacher' && sec.teacherId !== cu.id) {
+          router.push('/faculty')
+          return
+        }
+        if (!active) return
+        setSection(sec)
+        const [sectionStudents, sectionSessions] = await Promise.all([
+          api.getSectionStudents(id),
+          api.getSectionSessions(id),
+        ])
+        if (!active) return
+        setStudents(sectionStudents)
+        setSessions(sectionSessions)
+        if (cu?.role === 'teacher') {
+          const [roles, permissions] = await Promise.all([
+            api.getSectionRoles(id),
+            api.getActiveSessionPermissions(id),
+          ])
+          if (!active) return
+          setSectionRoles(roles)
+          applyPermissions(permissions)
+        }
+        const subj = await api.getSubject(sec.subjectId)
+        if (!active) return
+        setSubjectName(subj?.name ?? '')
+        setSubjectCode(subj?.code ?? '')
+      } catch (error) {
+        if (active) {
+          setLoadError(describeMutationError(error, 'Unable to load this section.'))
+        }
+      } finally {
+        if (active) setLoading(false)
       }
-      setSection(sec)
-      const [sectionStudents, sectionSessions] = await Promise.all([
-        api.getSectionStudents(id),
-        api.getSectionSessions(id),
-      ])
-      setStudents(sectionStudents)
-      setSessions(sectionSessions)
-      if (cu?.role === 'teacher') {
-        setSectionRoles(await api.getSectionRoles(id))
-        applyPermissions(await api.getActiveSessionPermissions(id))
-      }
-      const subj = await api.getSubject(sec.subjectId)
-      setSubjectName(subj?.name ?? '')
-      setSubjectCode(subj?.code ?? '')
-      setLoading(false)
     }
-    init()
-  }, [id, router])
+    void init()
+    return () => {
+      active = false
+    }
+  }, [id, router, reloadKey])
 
   const handleLogout = () => {
-    api.logout()
-    router.push('/')
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
   }
 
   const filtered = useMemo(() => {
@@ -186,36 +216,135 @@ export default function SectionDetailPage() {
   }, [allStudents, enrollSearch, enrolledIds])
 
   const handleEnrollStudent = async (targetStudentId: string, targetStudentName: string) => {
-    const result = await api.enrollStudent({ sectionId: id!, studentId: targetStudentId, studentName: targetStudentName })
-    if (result) {
-      setEnrollSuccess(targetStudentName)
-      setStudents(await api.getSectionStudents(id!))
-      const sec = await api.getSection(id!)
-      if (sec) setSection({ ...sec })
-      setTimeout(() => setEnrollSuccess(''), 3000)
-    }
+    await run(
+      `enroll:${targetStudentId}`,
+      async () => {
+        const enrolled = await api.enrollStudent({ sectionId: id!, studentId: targetStudentId, studentName: targetStudentName })
+        if (!enrolled) throw new Error(`${targetStudentName} could not be enrolled.`)
+        setEnrollSuccess(targetStudentName)
+        setStudents(await api.getSectionStudents(id!))
+        const sec = await api.getSection(id!)
+        if (sec) setSection({ ...sec })
+        setTimeout(() => setEnrollSuccess(''), 3000)
+      },
+      { errorTitle: 'Enrollment failed' },
+    )
   }
 
   const handleResetCode = async () => {
     if (!id) return
-    const code = await api.resetEnrollmentCode(id)
-    const sec = await api.getSection(id)
-    if (sec) setSection({ ...sec })
-    alert(`New enrollment code: ${code}`)
+    await run(
+      'code:reset',
+      async () => {
+        const { enrollmentCode } = await api.resetEnrollmentCode(id)
+        const sec = await api.getSection(id)
+        if (sec) setSection({ ...sec })
+        window.alert(`New enrollment code: ${enrollmentCode}`)
+      },
+      { errorTitle: 'Could not reset the enrollment code' },
+    )
   }
 
   const handleDisableCode = async () => {
     if (!id) return
-    if (window.confirm('Students will no longer be able to enroll using this code. Continue?')) {
-      await api.disableEnrollmentCode(id)
-      const sec = await api.getSection(id)
-      if (sec) setSection({ ...sec })
-    }
+    if (!window.confirm('Students will no longer be able to enroll using this code. Continue?')) return
+    await run(
+      'code:disable',
+      async () => {
+        await api.disableEnrollmentCode(id)
+        const sec = await api.getSection(id)
+        if (sec) setSection({ ...sec })
+      },
+      { errorTitle: 'Could not disable the enrollment code' },
+    )
+  }
+
+  const handleGrantPermission = async (studentId: string) => {
+    if (!id) return
+    await run(
+      'president:grant',
+      async () => {
+        await api.grantSessionPermission(id, studentId)
+        applyPermissions(await api.getActiveSessionPermissions(id))
+      },
+      { errorTitle: 'Could not grant the permission' },
+    )
+  }
+
+  const handleRevokePermission = async (studentId: string) => {
+    if (!id) return
+    await run(
+      'president:revoke',
+      async () => {
+        await api.revokeSessionPermission(id, studentId)
+        applyPermissions(await api.getActiveSessionPermissions(id))
+      },
+      { errorTitle: 'Could not revoke the permission' },
+    )
+  }
+
+  const handleAssignPresident = async (studentId: string) => {
+    if (!id) return
+    await run(
+      'president:assign',
+      async () => {
+        await api.assignSectionRole(id, studentId, 'president')
+        setSectionRoles(await api.getSectionRoles(id))
+        setPresidentSelectOpen(false)
+      },
+      { errorTitle: 'Could not assign the president' },
+    )
+  }
+
+  const handleRemovePresident = async (studentId: string) => {
+    if (!id) return
+    await run(
+      'president:remove',
+      async () => {
+        await api.removeSectionRole(id, studentId, 'president')
+        setSectionRoles(await api.getSectionRoles(id))
+      },
+      { errorTitle: 'Could not remove the president' },
+    )
+  }
+
+  const handleAssignQac = async (studentId: string) => {
+    if (!id) return
+    await run(
+      `qac:assign:${studentId}`,
+      async () => {
+        await api.assignSectionRole(id, studentId, 'qac')
+        setSectionRoles(await api.getSectionRoles(id))
+        setQacSelectOpen(false)
+      },
+      { errorTitle: 'Could not assign the QAC' },
+    )
+  }
+
+  const handleRemoveQac = async (studentId: string) => {
+    if (!id) return
+    await run(
+      `qac:remove:${studentId}`,
+      async () => {
+        await api.removeSectionRole(id, studentId, 'qac')
+        setSectionRoles(await api.getSectionRoles(id))
+      },
+      { errorTitle: 'Could not remove the QAC' },
+    )
   }
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black">
       <LoadingSpinner size="lg" />
+    </div>
+  )
+  if (loadError) return (
+    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black p-6">
+      <Card className="w-full max-w-md">
+        <CardContent className="p-8">
+          <ErrorDisplay message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
+        </CardContent>
+      </Card>
     </div>
   )
   if (!user || !section) return null
@@ -308,10 +437,10 @@ export default function SectionDetailPage() {
                 <p className="text-sm text-zinc-400 italic mb-3">Enrollment code is disabled</p>
               )}
               <div className="flex flex-wrap gap-2">
-                <Button variant="default" size="sm" onClick={handleResetCode}>
+                <Button variant="default" size="sm" disabled={isPending('code:reset')} onClick={() => void handleResetCode()}>
                   <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Reset
                 </Button>
-                <Button variant="outline" size="sm" className="text-red-500 border-red-500 hover:bg-red-50 dark:hover:bg-red-950" onClick={handleDisableCode}>
+                <Button variant="outline" size="sm" className="text-red-500 border-red-500 hover:bg-red-50 dark:hover:bg-red-950" disabled={isPending('code:disable')} onClick={() => void handleDisableCode()}>
                   <Ban className="w-3.5 h-3.5 mr-1.5" /> Disable
                 </Button>
               </div>
@@ -378,9 +507,9 @@ export default function SectionDetailPage() {
                           <Button
                             size="sm"
                             variant={isAlreadyEnrolled ? 'outline' : 'default'}
-                            disabled={isAlreadyEnrolled}
+                            disabled={isAlreadyEnrolled || isPending(`enroll:${s.id}`)}
                             className="shrink-0 min-h-11 sm:ml-2 md:min-h-0"
-                            onClick={() => handleEnrollStudent(s.id, s.fullName)}
+                            onClick={() => void handleEnrollStudent(s.id, s.fullName)}
                           >
                             {isAlreadyEnrolled ? 'Enrolled' : 'Enroll'}
                           </Button>
@@ -404,7 +533,9 @@ export default function SectionDetailPage() {
             mode="enrollments"
             sectionId={id}
             onCompleted={() => {
-              void api.getSectionStudents(id!).then(setStudents)
+              void api.getSectionStudents(id!).then(setStudents).catch((error: unknown) => {
+                addNotification('error', 'Could not refresh students', describeMutationError(error))
+              })
             }}
           />
 
@@ -451,24 +582,15 @@ export default function SectionDetailPage() {
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {perm && !isExpired ? (
-                            <Button variant="outline" size="sm" className="min-h-11 text-red-500 border-red-500 text-xs md:min-h-0" onClick={async () => {
-                              await api.revokeSessionPermission(id, pres.studentId)
-                              applyPermissions(await api.getActiveSessionPermissions(id))
-                            }}>
+                            <Button variant="outline" size="sm" className="min-h-11 text-red-500 border-red-500 text-xs md:min-h-0" disabled={isPending('president:revoke')} onClick={() => handleRevokePermission(pres.studentId)}>
                               <XCircle className="w-3 h-3 mr-1" /> Revoke
                             </Button>
                           ) : (
-                            <Button variant="default" size="sm" className="min-h-11 text-xs md:min-h-0" onClick={async () => {
-                              await api.grantSessionPermission(id, pres.studentId)
-                              applyPermissions(await api.getActiveSessionPermissions(id))
-                            }}>
+                            <Button variant="default" size="sm" className="min-h-11 text-xs md:min-h-0" disabled={isPending('president:grant')} onClick={() => handleGrantPermission(pres.studentId)}>
                               <CheckCircle className="w-3 h-3 mr-1" /> Grant 24hr
                             </Button>
                           )}
-                          <Button variant="outline" size="sm" className="min-h-11 text-xs text-red-400 border-red-300 md:min-h-0" onClick={async () => {
-                            await api.removeSectionRole(id, pres.studentId, 'president')
-                            setSectionRoles(await api.getSectionRoles(id))
-                          }}>Remove</Button>
+                          <Button variant="outline" size="sm" className="min-h-11 text-xs text-red-400 border-red-300 md:min-h-0" disabled={isPending('president:remove')} onClick={() => handleRemovePresident(pres.studentId)}>Remove</Button>
                         </div>
                       </div>
                     )
@@ -483,11 +605,7 @@ export default function SectionDetailPage() {
                         {presidentSelectOpen && (
                           <div className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-lg z-10 max-h-48 overflow-y-auto">
                             {students.filter(s => !sectionRoles.find(r => r.studentId === s.id && r.role === 'president')).map((s) => (
-                              <button key={s.id} className="w-full text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center gap-2" onClick={async () => {
-                                await api.assignSectionRole(id, s.id, 'president')
-                                setSectionRoles(await api.getSectionRoles(id))
-                                setPresidentSelectOpen(false)
-                              }}>
+                              <button key={s.id} disabled={isPending('president:assign')} className="w-full text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center gap-2 disabled:opacity-60" onClick={() => handleAssignPresident(s.id)}>
                                 <span className="text-[10px] font-bold text-zinc-500">{s.studentId}</span>
                                 <span className="font-medium text-zinc-800 dark:text-zinc-200">{s.fullName}</span>
                               </button>
@@ -519,10 +637,7 @@ export default function SectionDetailPage() {
                           {qacs.map((qac) => (
                             <div key={qac.id} className="flex max-w-full items-center gap-2 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 border border-zinc-200 dark:border-zinc-800">
                               <span className="min-w-0 break-words text-sm font-medium text-zinc-800 dark:text-zinc-200">{qac.studentName}</span>
-                              <button className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-red-400 hover:text-red-600 md:min-h-0 md:min-w-0" onClick={async () => {
-                                await api.removeSectionRole(id, qac.studentId, 'qac')
-                                setSectionRoles(await api.getSectionRoles(id))
-                              }}>
+                              <button className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-red-400 hover:text-red-600 md:min-h-0 md:min-w-0" disabled={isPending(`qac:remove:${qac.studentId}`)} onClick={() => handleRemoveQac(qac.studentId)}>
                                 <XCircle className="w-3.5 h-3.5" />
                               </button>
                             </div>
@@ -538,11 +653,7 @@ export default function SectionDetailPage() {
                         {qacSelectOpen && (
                           <div className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-lg z-10 max-h-48 overflow-y-auto">
                             {students.filter(s => !sectionRoles.find(r => r.studentId === s.id && r.role === 'qac')).map((s) => (
-                              <button key={s.id} className="w-full text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center gap-2" onClick={async () => {
-                                await api.assignSectionRole(id, s.id, 'qac')
-                                setSectionRoles(await api.getSectionRoles(id))
-                                setQacSelectOpen(false)
-                              }}>
+                              <button key={s.id} disabled={isPending(`qac:assign:${s.id}`)} className="w-full text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center gap-2 disabled:opacity-60" onClick={() => handleAssignQac(s.id)}>
                                 <span className="text-[10px] font-bold text-zinc-500">{s.studentId}</span>
                                 <span className="font-medium text-zinc-800 dark:text-zinc-200">{s.fullName}</span>
                               </button>

@@ -14,7 +14,7 @@ import {
   ShieldPlus,
   UserCog,
 } from 'lucide-react'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
 import { canAccessUserAdmin } from '@polycheck/shared'
 import type { AdminUserPage, User } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -269,8 +269,9 @@ export default function UsersPage() {
   }
 
   const handleLogout = () => {
-    api.logout()
-    router.push('/')
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
   }
 
   const selectTab = (nextTab: UserRoleTab) => {

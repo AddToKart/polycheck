@@ -17,7 +17,8 @@ import { IosInstallCallout } from '@/components/pwa/IosInstallCallout'
 import { Button } from '@/components/ui/button'
 import { OfflineSyncPanel } from '@/components/OfflineSyncPanel'
 import { OfflineReadinessChip } from '@/components/offline/OfflineReadinessChip'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
+import { describeMutationError } from '@/lib/run-mutation'
 import {
   DISPUTE_DESCRIPTION_TOO_SHORT_MESSAGE,
   describeDisputeSubmitError,
@@ -58,6 +59,8 @@ function StudentDashboardContent() {
   const [enrollLoading, setEnrollLoading] = useState(false)
   const [enrollSuccess, setEnrollSuccess] = useState(false)
   const [enrollError, setEnrollError] = useState('')
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     const tab = searchParams.get('tab')
@@ -65,6 +68,7 @@ function StudentDashboardContent() {
   }, [searchParams])
 
   useEffect(() => {
+    let active = true
     const load = async () => {
       let currentUser = api.getCurrentUser()
       if (!currentUser) currentUser = await api.restoreSession()
@@ -75,6 +79,7 @@ function StudentDashboardContent() {
       const student = currentUser as Student
       setUser(student)
       if (!student.studentId) return
+      setLoadError(null)
       try {
         const [studentSections, studentRecords, allSessions, subjects] = await Promise.all([
           api.getStudentSections(student.id),
@@ -82,17 +87,23 @@ function StudentDashboardContent() {
           api.getSessions(),
           api.getSubjects(),
         ])
+        if (!active) return
         setSections(studentSections)
         setRecords(studentRecords)
         setSessions(allSessions)
         setAllSubjects(subjects)
-      } catch {
-        // The authenticated shell stays usable while the next navigation retries data loading.
+      } catch (error) {
+        if (active) {
+          setLoadError(describeMutationError(error, 'Unable to load your dashboard right now.'))
+        }
       }
       void api.refreshServerClockOffset().catch(() => undefined)
     }
     void load()
-  }, [router])
+    return () => {
+      active = false
+    }
+  }, [router, reloadKey])
 
   useEffect(() => setAttendancePage(0), [activeTab, attendanceFilter, attendanceSubjectId, attendanceFrom, attendanceTo])
 
@@ -176,9 +187,16 @@ function StudentDashboardContent() {
     if (!user) return
     try {
       setRecords(await api.getAttendanceForStudent(user.id))
-    } catch {
-      // Keep the current rows visible; retrying navigation reloads them.
+      setLoadError(null)
+    } catch (error) {
+      setLoadError(describeMutationError(error, 'Attendance could not be refreshed. Showing the last known rows.'))
     }
+  }
+
+  const closeScanner = async () => {
+    setIsScanModalOpen(false)
+    setScanSessionId(undefined)
+    await refreshAttendance()
   }
 
   const handleEnrollSubmit = async (event: React.FormEvent) => {
@@ -240,7 +258,7 @@ function StudentDashboardContent() {
 
   return (
     <div className="min-h-screen md:h-screen md:overflow-hidden flex flex-col md:flex-row bg-background selection:bg-golden selection:text-maroon">
-      <Sidebar user={{ ...user, email: user.email || '' } as any} onLogout={() => { api.logout(); router.push('/') }} />
+      <Sidebar user={{ ...user, email: user.email || '' }} onLogout={() => { void requestUserLogout().then((outcome) => { if (outcome.loggedOut) router.push('/') }) }} />
       <main className="flex-1 overflow-y-auto">
         <div className="p-8 max-w-6xl mx-auto">
           <div className="flex flex-col md:flex-row items-start md:items-end justify-between mb-12 border-b border-zinc-300 dark:border-zinc-800 pb-8">
@@ -250,6 +268,22 @@ function StudentDashboardContent() {
               <Button onClick={() => openScanner()} className="rounded-none bg-maroon text-white hover:bg-maroon-dark uppercase tracking-widest font-bold text-xs h-10 px-6"><QrCode className="w-4 h-4 mr-2" />Scan Attendance QR</Button>
             </div>
           </div>
+
+          {loadError ? (
+            <div
+              role="alert"
+              className="mb-6 flex flex-wrap items-center justify-between gap-3 border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/30 dark:text-red-300"
+            >
+              <p>{loadError}</p>
+              <button
+                type="button"
+                className="text-[10px] font-bold uppercase tracking-widest underline"
+                onClick={() => setReloadKey((key) => key + 1)}
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
 
           <StudentStandingBanner userId={user.id} />
 
@@ -275,7 +309,7 @@ function StudentDashboardContent() {
 
       {isScanModalOpen ? (
         <Suspense fallback={null}>
-          <ScanQrModal user={user} sessionId={scanSessionId} onClose={async () => { setIsScanModalOpen(false); setScanSessionId(undefined); setRecords(await api.getAttendanceForStudent(user.id)) }} />
+          <ScanQrModal user={user} sessionId={scanSessionId} onClose={closeScanner} />
         </Suspense>
       ) : null}
     </div>

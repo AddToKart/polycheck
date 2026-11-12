@@ -1,210 +1,159 @@
-import http from 'k6/http'
-import { check as k6Check, fail, sleep } from 'k6'
+/**
+ * Polycheck — attendance-domain load (flows: scan, sync_enqueue, sync_receipt,
+ * dispute, excuse, faculty_read, admin_read, proof_upload, session_lifecycle).
+ *
+ * `scan` is the bell rush across every section in the fixture (34 sections in
+ * the local topology). The other flows run concurrently at realistic small
+ * weights so the write path, offline replay, adjudication, cockpit reads and
+ * admin console are exercised in the same run.
+ *
+ * ── Invocation matrix ─────────────────────────────────────────────────────
+ *   K6_FIXTURE_FILE           required. performance/.local-fixture-<runId>.json
+ *   K6_SHAPE                  burst | arrival (default arrival)
+ *                               scan: arrival -> constant-arrival-rate
+ *                               scan: burst   -> per-vu-iterations (one scan/VU)
+ *   K6_RATE_PER_SECOND        scan arrivals/s. Default = fixture population/900
+ *                             (2,000 students / 15 min ≈ 2.22/s).
+ *   K6_PROFILE                smoke | full | burst (threshold set only)
+ *   K6_USER_COUNT             cap students used by the scan flow
+ *   K6_SCAN_VUS               burst-shape VU cap (default: student count)
+ *   K6_SYNC_COUNT             offline replay students (default ~3%, cap 200)
+ *   K6_DISPUTE_COUNT          disputing students (default ~1%, cap 100)
+ *   K6_DISPUTE_RESOLVE_SHARE  fraction the professor resolves (default 0.5)
+ *   K6_EXCUSE_COUNT           excused students (default ~1%, cap 100)
+ *   K6_ADMIN_READ_ITERATIONS  admin console reads (default 20)
+ *   K6_PROOF_UPLOAD_LIMIT     QAC proof uploads (default/cap 20)
+ *   K6_PROOF_CANDIDATES       students probed for QAC eligibility (default 60)
+ *   K6_LIFECYCLE_ITERATIONS   create/activate/end cycles (default 3, range 2-5)
+ *   K6_SYNC_DEADLINE_SECONDS  receipt deadline (default 30)
+ *   K6_SYNC_POLL_SECONDS      receipt poll interval (default 0.25)
+ *   K6_SUMMARY_EXPORT         path for k6's native summary JSON
+ *
+ * ── Running (k6 v2.3.0) ───────────────────────────────────────────────────
+ *   This build does not forward the process environment to __ENV, so pass
+ *   every variable with -e/--env. The fixture path may be absolute (most
+ *   robust) or repo-root relative (performance/.local-fixture-<runId>.json).
+ *   --summary-export writes the machine-readable per-flow JSON.
+ *
+ * Examples
+ *   K6_FIXTURE_FILE=performance/.local-fixture-x.json K6_USER_COUNT=10 \
+ *     K6_SYNC_COUNT=1 K6_DISPUTE_COUNT=1 K6_EXCUSE_COUNT=1 K6_PROOF_UPLOAD_LIMIT=1 \
+ *     K6_ADMIN_READ_ITERATIONS=1 K6_LIFECYCLE_ITERATIONS=2 \
+ *     k6 run --summary-export performance/results/smoke.json performance/attendance-load.js
+ *   K6_FIXTURE_FILE=... K6_SHAPE=burst K6_PROFILE=burst \
+ *     k6 run --summary-export performance/results/bell-rush-burst.json performance/attendance-load.js
+ *   K6_FIXTURE_FILE=... K6_SHAPE=arrival K6_RATE_PER_SECOND=2.22 \
+ *     k6 run --summary-export performance/results/bell-rush-paced.json performance/attendance-load.js
+ */
 import exec from 'k6/execution'
-import { SharedArray } from 'k6/data'
-import { Rate, Trend } from 'k6/metrics'
+import { loadFixture } from './lib/fixture.js'
+import {
+  measureClockOffset,
+  runAdminRead,
+  runDispute,
+  runExcuse,
+  runFacultyRead,
+  runProofUpload,
+  runScan,
+  runSessionLifecycle,
+  runSync,
+} from './lib/flows.js'
+import { shapeOf, profileOf } from './lib/metrics.js'
+import { fixedScenario, scanScenario, shareCount } from './lib/scenarios.js'
+import { buildThresholds } from './lib/thresholds.js'
+import { summarize } from './lib/summary.js'
 
-const profile = __ENV.K6_PROFILE || 'smoke'
-const fixture = __ENV.K6_FIXTURE_FILE ? JSON.parse(open(__ENV.K6_FIXTURE_FILE)) : {}
-const mode = __ENV.K6_MODE || 'online'
-if (!['online', 'offline'].includes(mode)) throw new Error('K6_MODE must be online or offline')
-const tokenPath = __ENV.K6_TOKENS_FILE || './tokens.example.json'
-const tokens = new SharedArray('student bearer tokens', () =>
-  fixture.tokens || JSON.parse(__ENV.K6_TOKENS_JSON || open(tokenPath)),
-)
-const acceptedAttendance = new Rate('accepted_attendance')
-const syncConfirmation = new Trend('sync_confirmation_ms', true)
+const fixture = loadFixture()
+const shape = shapeOf()
+const profile = profileOf()
 
-if (!['smoke', 'full'].includes(profile)) {
-  throw new Error('K6_PROFILE must be smoke or full')
-}
-
-const userCount = Number(__ENV.K6_USER_COUNT ?? (profile === 'full' ? 1000 : 2))
-const userStart = Number(__ENV.K6_USER_START ?? 0)
-if (!Number.isInteger(userCount) || userCount < 1 || userCount > 5000) {
-  throw new Error('K6_USER_COUNT must be an integer between 1 and 5000')
-}
-if (!Number.isInteger(userStart) || userStart < 0) {
-  throw new Error('K6_USER_START must be a non-negative integer')
-}
-
-const loadProfile = {
-  userCount,
-  userStart,
-  maxDuration: userCount > 1000 ? '5m' : '2m',
-}
-
-export const options = {
-  scenarios: {
-    ...(fixture.TEACHER_TOKEN ? { dashboard_reads: { executor: 'constant-vus', vus: 1, duration: '20s', exec: 'readDashboard' } } : {}),
-    attendance_bell_rush: {
-      executor: 'per-vu-iterations',
-      vus: loadProfile.userCount,
-      iterations: 1,
-      maxDuration: loadProfile.maxDuration,
-      gracefulStop: '15s',
-      exec: 'submitAttendanceScan',
-    },
-  },
-  thresholds: {
-    checks: ['rate>0.99'],
-    http_req_failed: ['rate<0.01'],
-    'iterations{scenario:attendance_bell_rush}': [`count==${loadProfile.userCount}`],
-    accepted_attendance: ['rate==1'],
-    ...(mode === 'online'
-      ? { 'http_req_duration{operation:scan}': ['p(95)<1000', 'p(99)<2000'] }
-      : { 'http_req_duration{operation:enqueue}': ['p(95)<1000', 'p(99)<2000'], sync_confirmation_ms: ['p(95)<30000', 'p(99)<60000'] }),
-  },
-  discardResponseBodies: false,
-  noConnectionReuse: false,
-  userAgent: `polycheck-k6/${profile}-${loadProfile.userCount}`,
-}
-
-const required = (name) => {
-  const value = __ENV[name] ?? fixture[name]
-  if (!value) fail(`${name} is required`)
+function intEnv(name, fallback, min, max) {
+  const raw = __ENV[name]
+  if (raw === undefined || raw === '') return fallback
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`${name} must be an integer in [${min}, ${max}], got ${raw}`)
+  }
   return value
 }
 
-const validateTarget = (baseUrl) => {
-  const parsed = /^(https?):\/\/(\[[^\]]+\]|[^/:]+)(?::\d+)?(?:\/|$)/i.exec(baseUrl)
-  if (!parsed) fail('BASE_URL must be an absolute http(s) URL')
-  const protocol = `${parsed[1].toLowerCase()}:`
-  const hostname = parsed[2].replace(/^\[|\]$/g, '').toLowerCase()
-
-  const localHosts = ['127.0.0.1', 'localhost', '::1', 'host.docker.internal']
-  if (!localHosts.includes(hostname) && __ENV.K6_ALLOW_REMOTE_TARGET !== 'I_ACKNOWLEDGE_THIS_WRITES_ATTENDANCE_DATA') {
-    fail('Remote targets require K6_ALLOW_REMOTE_TARGET=I_ACKNOWLEDGE_THIS_WRITES_ATTENDANCE_DATA')
-  }
-  if (profile === 'full' && __ENV.K6_CONFIRM_1000_USERS !== 'I_HAVE_AUTHORIZATION_FOR_1000_USERS') {
-    fail('The full profile requires K6_CONFIRM_1000_USERS=I_HAVE_AUTHORIZATION_FOR_1000_USERS')
-  }
-  if (loadProfile.userCount > 1000 && __ENV.K6_CONFIRM_5000_USERS !== 'I_HAVE_AUTHORIZATION_FOR_5000_USERS') {
-    fail('Runs above 1,000 users require K6_CONFIRM_5000_USERS=I_HAVE_AUTHORIZATION_FOR_5000_USERS')
-  }
-  if (protocol !== 'https:' && !localHosts.includes(hostname)) {
-    fail('Remote load tests must use HTTPS')
-  }
-
-  return baseUrl.replace(/\/$/, '')
+// One-shot fixed scenarios: one iteration per VU keeps the flow counts exact.
+function oneShot(flow, count, startTime) {
+  return fixedScenario(`${flow}_${shape}`, shape, { vus: count, iterations: 1, startTime })
 }
 
-export const setup = () => {
-  const baseUrl = validateTarget(__ENV.BASE_URL || fixture.BASE_URL || 'http://127.0.0.1:8080')
-  const sessionId = required('SESSION_ID')
-  const qrToken = required('QR_TOKEN')
-  const runId = required('K6_RUN_ID')
-  const latitude = Number(required('LATITUDE'))
-  const longitude = Number(required('LONGITUDE'))
-  const accuracyMeters = Number(__ENV.ACCURACY_METERS || '5')
+const scan = scanScenario(fixture, shape)
+const syncCount = shareCount(fixture, 'K6_SYNC_COUNT', 0.03, 200)
+const disputeCount = shareCount(fixture, 'K6_DISPUTE_COUNT', 0.01, 100)
+const excuseCount = shareCount(fixture, 'K6_EXCUSE_COUNT', 0.01, 100)
+const proofCount = Math.min(20, intEnv('K6_PROOF_UPLOAD_LIMIT', 20, 1, 20))
+const adminIterations = intEnv('K6_ADMIN_READ_ITERATIONS', 20, 1, 500)
+const adminVus = Math.min(5, adminIterations)
+const lifecycleIterations = intEnv('K6_LIFECYCLE_ITERATIONS', 3, 2, 5)
 
-  if (!/^[A-Za-z0-9._-]{1,64}$/.test(runId)) {
-    fail('K6_RUN_ID must be 1-64 letters, numbers, dots, underscores, or hyphens')
-  }
-  if (!Array.isArray(tokens) || tokens.length < loadProfile.userStart + loadProfile.userCount) {
-    fail(
-      `K6_TOKENS_FILE must contain at least ${loadProfile.userStart + loadProfile.userCount} unique bearer tokens (start ${loadProfile.userStart}, count ${loadProfile.userCount})`,
-    )
-  }
-  if (qrToken.length < 80) fail('QR_TOKEN does not meet the API minimum length')
-  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) fail('LATITUDE is invalid')
-  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) fail('LONGITUDE is invalid')
-  if (!Number.isFinite(accuracyMeters) || accuracyMeters < 0 || accuracyMeters > 50) {
-    fail('ACCURACY_METERS must be between 0 and 50')
-  }
-
-  const uniqueTokens = new Set()
-  for (let index = 0; index < loadProfile.userCount; index += 1) {
-    const token = tokens[loadProfile.userStart + index]?.token
-    if (typeof token !== 'string' || token.length < 16) {
-      fail(`Token fixture ${loadProfile.userStart + index + 1} must contain a bearer token of at least 16 characters`)
-    }
-    if (uniqueTokens.has(token)) fail(`Token fixture ${loadProfile.userStart + index + 1} reuses a bearer token`)
-    uniqueTokens.add(token)
-  }
-
-  return { baseUrl, sessionId, qrToken, runId, latitude, longitude, accuracyMeters, teacherToken: fixture.TEACHER_TOKEN }
+const scenarios = {
+  [scan.name]: scan.options,
+  [`faculty_read_${shape}`]: oneShot('faculty_read', fixture.sections.length, '2s').options,
+  [`admin_read_${shape}`]: fixedScenario(`admin_read_${shape}`, shape, {
+    vus: adminVus,
+    iterations: Math.ceil(adminIterations / adminVus),
+    startTime: '2s',
+  }).options,
+  [`sync_${shape}`]: oneShot('sync', syncCount, '5s').options,
+  [`dispute_${shape}`]: oneShot('dispute', disputeCount, '8s').options,
+  [`excuse_${shape}`]: oneShot('excuse', excuseCount, '12s').options,
+  [`proof_upload_${shape}`]: oneShot('proof_upload', proofCount, '15s').options,
+  [`session_lifecycle_${shape}`]: fixedScenario(`session_lifecycle_${shape}`, shape, {
+    vus: 1,
+    iterations: lifecycleIterations,
+    startTime: '20s',
+  }).options,
 }
 
-export function readDashboard(config) {
-  const response = http.get(`${config.baseUrl}/api/sessions/${config.sessionId}`, { headers: { Authorization: `Bearer ${config.teacherToken}` }, tags: { operation: 'dashboard' }, timeout: '10s' })
-  k6Check(response, { 'teacher session remains readable': (result) => result.status === 200 })
-  sleep(1)
+const handlers = {
+  scan: runScan,
+  sync: runSync,
+  dispute: runDispute,
+  excuse: runExcuse,
+  faculty_read: runFacultyRead,
+  admin_read: runAdminRead,
+  proof_upload: runProofUpload,
+  session_lifecycle: runSessionLifecycle,
 }
 
-const syncOffline = (config, payload, headers) => {
-  const startedAt = Date.now()
-  const response = http.post(`${config.baseUrl}/api/sync/attendance/batches`, JSON.stringify({ records: [payload] }), { headers, tags: { operation: 'enqueue' }, timeout: '10s' })
-  if (!k6Check(response, { 'sync receipt returned': (result) => result.status === 202 })) { acceptedAttendance.add(false); return }
-  const receipt = response.json()
-  if (!receipt.queued) { acceptedAttendance.add(['present', 'late'].includes(receipt.results?.[0]?.status)); return }
-  // Replay the exact submission, simulating loss of the first response.
-  const replay = http.post(`${config.baseUrl}/api/sync/attendance/batches`, JSON.stringify({ records: [payload] }), { headers, tags: { operation: 'enqueue-replay' }, timeout: '10s' })
-  k6Check(replay, { 'lost-response replay returns the same receipt': (result) => result.status === 202 && result.json('receiptId') === receipt.receiptId })
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const status = http.get(`${config.baseUrl}/api/sync/attendance/batches/${receipt.receiptId}`, { headers, tags: { operation: 'sync-status' }, timeout: '10s' })
-    if (status.status === 200 && status.json('state') === 'completed') {
-      const record = status.json('results')[0]
-      acceptedAttendance.add(Boolean(record.id) && ['present', 'late'].includes(record.status))
-      syncConfirmation.add(Date.now() - startedAt)
-      return
-    }
-    sleep(2)
-  }
-  acceptedAttendance.add(false)
-  syncConfirmation.add(Date.now() - startedAt)
+export const options = {
+  scenarios,
+  thresholds: buildThresholds(profile, shape, [
+    'scan',
+    'sync_enqueue',
+    'sync_receipt',
+    'dispute',
+    'excuse',
+    'faculty_read',
+    'admin_read',
+    'proof_upload',
+    'session_lifecycle',
+  ]),
+  tags: { harness: 'polycheck', script: 'attendance-load' },
 }
 
-export function submitAttendanceScan(config) {
-  const iterationIndex = exec.scenario.iterationInTest
-  if (iterationIndex >= loadProfile.userCount) fail('The scenario scheduled more iterations than token fixtures')
-  const studentIndex = loadProfile.userStart + iterationIndex
-
-  const capturedAt = new Date().toISOString()
-  const clientAttemptId = `k6:${config.runId}:${studentIndex}`
-  const payload = {
-    sessionId: config.sessionId,
-    lat: config.latitude,
-    lon: config.longitude,
-    deviceId: `k6-${config.runId}-${studentIndex}`,
-    qrToken: config.qrToken,
-    scannedAt: capturedAt,
-    clientAttemptId,
-    accuracyMeters: config.accuracyMeters,
-    locationCapturedAt: capturedAt,
-    mocked: false,
-    inputChannel: 'camera',
-  }
-  if (mode === 'offline') {
-    syncOffline(config, payload, { Authorization: `Bearer ${tokens[studentIndex].token}`, 'Content-Type': 'application/json' })
-    return
-  }
-  const response = http.post(`${config.baseUrl}/api/attendance/scan`, JSON.stringify(payload), {
-    headers: {
-      Authorization: `Bearer ${tokens[studentIndex].token}`,
-      'Content-Type': 'application/json',
-    },
-    tags: { operation: 'scan' },
-    timeout: '15s',
-  })
-  let responseBody = {}
-  try {
-    responseBody = response.json() || {}
-  } catch {
-    responseBody = {}
-  }
-  const acceptedWithoutReview = ['present', 'late'].includes(responseBody.status)
-  acceptedAttendance.add(acceptedWithoutReview)
-
-  k6Check(response, {
-    'attendance scan is recorded': (result) => result.status === 200 || result.status === 201,
-    'attendance scan returns a record id': () => Boolean(responseBody.id),
-    'attendance scan is accepted without review': () => acceptedWithoutReview,
-  })
+export function setup() {
+  return measureClockOffset(fixture)
 }
 
-export const handleSummary = (data) => {
-  const output = __ENV.K6_SUMMARY_EXPORT
-  if (!output) return { stdout: JSON.stringify(data.metrics, null, 2) }
-  return { stdout: JSON.stringify(data.metrics, null, 2), [output]: JSON.stringify(data, null, 2) }
+export default function run(data) {
+  const name = exec.scenario.name
+  const flow = name.replace(/_(burst|paced)$/, '')
+  const handler = handlers[flow]
+  if (!handler) throw new Error(`unknown scenario ${name}`)
+  const index = exec.scenario.iterationInTest
+  // Paced scan can overshoot by a tick or two; skip instead of double-scanning.
+  if (flow === 'scan' && index >= fixture.studentCount) return
+  handler(fixture, shape, data.clockOffsetMs, index)
+}
+
+export function handleSummary(data) {
+  return {
+    stdout: summarize(data, { label: 'attendance-load', profile, shape, fixture }),
+  }
 }

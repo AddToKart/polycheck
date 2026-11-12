@@ -460,7 +460,7 @@ describe('SessionsService', () => {
       expect(tx.attendanceRecord.createMany.mock.calls[0][0].data[0].status).toBe('absent')
       expect(tx.attendanceRecord.updateMany).toHaveBeenCalledWith({
         where: { sessionId: 'sess-1', status: 'pending' },
-        data: { status: 'absent', timestamp: expect.any(Date), manuallySet: false },
+        data: { status: 'absent', manuallySet: false },
       })
       expect(realtime.emitSessionState).toHaveBeenCalledWith(ended, 'ended')
       expect(redis.delete).toHaveBeenCalledWith('active-session:sess-1')
@@ -1413,7 +1413,7 @@ describe('SessionsService', () => {
 
       expect(tx.attendanceRecord.updateMany).toHaveBeenCalledWith({
         where: { sessionId: 'sess-1', status: 'pending' },
-        data: { status: 'absent', timestamp: expect.any(Date), manuallySet: false },
+        data: { status: 'absent', manuallySet: false },
       })
       expect(notifications.notifyAttendanceAbsent).toHaveBeenCalledWith('stu-1', {
         sessionId: 'sess-1',

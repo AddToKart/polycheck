@@ -145,6 +145,20 @@ describe('DisputesService', () => {
       )
     })
 
+    it('stamps the pre-dispute status so a rejection can restore it', async () => {
+      prisma.attendanceRecord.findUnique.mockResolvedValue({
+        ...baseRecord,
+        status: 'late',
+        disputeResolved: true,
+        disputePreviousStatus: null,
+      })
+      prisma.attendanceRecord.update.mockResolvedValue({ ...baseRecord, status: 'disputed' })
+
+      await service.submit(studentUser, { recordId: 'rec-1', reason: 'gps_inaccuracy', description: 'clock drift' })
+
+      expect(prisma.attendanceRecord.update.mock.calls[0][0].data.disputePreviousStatus).toBe('late')
+    })
+
     it('throws ForbiddenException when student disputes another student record', async () => {
       prisma.attendanceRecord.findUnique.mockResolvedValue({ ...baseRecord, studentId: 'stu-2' })
       await expect(
@@ -198,6 +212,34 @@ describe('DisputesService', () => {
       const args = prisma.attendanceRecord.update.mock.calls[0][0]
       expect(args.data.status).toBe('absent')
       expect(args.data.disputeResolved).toBe(true)
+    })
+
+    it('reject resolution restores the pre-dispute status instead of forcing absent', async () => {
+      prisma.attendanceRecord.findUnique.mockResolvedValue({
+        ...baseRecord,
+        session: { teacherId: 'teacher-1' },
+        disputePreviousStatus: 'late',
+      })
+      prisma.attendanceRecord.update.mockResolvedValue({ ...baseRecord, status: 'late', disputeResolved: true })
+
+      await service.resolve(teacherUser, 'rec-1', 'reject')
+
+      const args = prisma.attendanceRecord.update.mock.calls[0][0]
+      expect(args.data.status).toBe('late')
+      expect(args.data.disputeResolved).toBe(true)
+    })
+
+    it('reject resolution falls back to absent for legacy rows without a stored status', async () => {
+      prisma.attendanceRecord.findUnique.mockResolvedValue({
+        ...baseRecord,
+        session: { teacherId: 'teacher-1' },
+        disputePreviousStatus: null,
+      })
+      prisma.attendanceRecord.update.mockResolvedValue({ ...baseRecord, status: 'absent', disputeResolved: true })
+
+      await service.resolve(teacherUser, 'rec-1', 'reject')
+
+      expect(prisma.attendanceRecord.update.mock.calls[0][0].data.status).toBe('absent')
     })
 
     it('override resolution applies newStatus and sets manuallySet true', async () => {

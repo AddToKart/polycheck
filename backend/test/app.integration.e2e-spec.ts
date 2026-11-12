@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { createServer } from 'node:net'
 import request from 'supertest'
 import { PrismaService } from '../src/prisma/prisma.service'
-import { hash } from 'bcryptjs'
+import { hash } from '@node-rs/bcrypt'
 
 const AUTH_USER_ID = 'e2e-auth-user'
 const AUTH_STUDENT_ID = 'E2E-AUTH-001'
@@ -19,7 +19,7 @@ describe('Application integration (e2e)', () => {
     prisma = new PrismaService()
     await prisma.$connect()
     await prisma.user.deleteMany({ where: { id: AUTH_USER_ID } })
-    const password = await hash(AUTH_PASSWORD, 12)
+    const password = await hash(AUTH_PASSWORD, { cost: 12 })
     await prisma.user.create({
       data: {
         id: AUTH_USER_ID,

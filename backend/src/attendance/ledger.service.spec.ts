@@ -45,6 +45,8 @@ function makeDb(options: {
   anchors?: { id: string; metadata: unknown }[]
 }) {
   const { sessions, rowsBySession, anchors = [] } = options
+  const allRows = Object.values(rowsBySession).flat()
+  const hashedRows = allRows.filter((row) => row.recordHash !== null)
   return {
     session: {
       findMany: jest.fn().mockImplementation(async (args: { where?: { id?: { gt?: string } }; take?: number }) =>
@@ -61,6 +63,11 @@ function makeDb(options: {
           (rowsBySession[args.where.sessionId] ?? []).filter(
             (row: { recordHash: string | null }) => row.recordHash !== null,
           ),
+        ),
+      count: jest
+        .fn()
+        .mockImplementation(async (args?: { where?: { recordHash?: { not?: string | null } } }) =>
+          args?.where?.recordHash ? hashedRows.length : allRows.length,
         ),
     },
     auditLog: { findMany: jest.fn().mockResolvedValue(anchors) },
@@ -228,7 +235,13 @@ describe('LedgerService.verifyLedger', () => {
 
     const result = await service.verifyLedger(db as never)
 
-    expect(result).toEqual({ verified: true, recordsChecked: 3, sessionsChecked: 2 })
+    expect(result).toEqual({
+      status: 'verified',
+      verified: true,
+      recordsChecked: 3,
+      sessionsChecked: 2,
+      unhashedRecords: 0,
+    })
     expect(db.attendanceRecord.findMany).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ where: { sessionId: 'sess-a', recordHash: { not: null } } }),
@@ -246,6 +259,7 @@ describe('LedgerService.verifyLedger', () => {
 
     const result = await service.verifyLedger(db as never)
 
+    expect(result.status).toBe('broken')
     expect(result.verified).toBe(false)
     expect(result.brokenAt).toEqual({ sessionId: 'sess-a', recordId: 'a2', reason: 'hash_mismatch' })
     expect(result.recordsChecked).toBe(1)
@@ -258,6 +272,7 @@ describe('LedgerService.verifyLedger', () => {
 
     const result = await service.verifyLedger(db as never)
 
+    expect(result.status).toBe('broken')
     expect(result.verified).toBe(false)
     expect(result.brokenAt).toEqual({ sessionId: 'sess-a', recordId: 'a2', reason: 'link_mismatch' })
   })
@@ -271,18 +286,60 @@ describe('LedgerService.verifyLedger', () => {
 
     const result = await service.verifyLedger(db as never)
 
+    expect(result.status).toBe('verified')
     expect(result.verified).toBe(true)
     expect(result.recordsChecked).toBe(2)
   })
 
-  it('ignores rows that were never chained', async () => {
+  it('ignores unchained rows but reports them as off-chain', async () => {
     const unchained = makeRow({ id: 'seed' })
     const a1 = chained('a1', 1, null, 'sess-a', 'stu-1')
     const db = makeDb({ sessions: ['sess-a'], rowsBySession: { 'sess-a': [unchained, a1] } })
 
     const result = await service.verifyLedger(db as never)
 
-    expect(result).toEqual({ verified: true, recordsChecked: 1, sessionsChecked: 1 })
+    expect(result).toEqual({
+      status: 'verified',
+      verified: true,
+      recordsChecked: 1,
+      sessionsChecked: 1,
+      unhashedRecords: 1,
+    })
+  })
+
+  it('reports insufficient_data for an empty attendance table', async () => {
+    const db = makeDb({ sessions: [], rowsBySession: {} })
+
+    const result = await service.verifyLedger(db as never)
+
+    expect(result).toEqual({
+      status: 'insufficient_data',
+      verified: false,
+      recordsChecked: 0,
+      sessionsChecked: 0,
+      unhashedRecords: 0,
+    })
+    expect(db.attendanceRecord.findMany).not.toHaveBeenCalled()
+  })
+
+  it('reports insufficient_data when every attendance row is off-chain', async () => {
+    const unchainedA = makeRow({ id: 'a-001' })
+    const unchainedB = makeRow({ id: 'a-002', studentId: 'stu-2' })
+    const db = makeDb({
+      sessions: ['sess-a'],
+      rowsBySession: { 'sess-a': [unchainedA, unchainedB] },
+    })
+
+    const result = await service.verifyLedger(db as never)
+
+    expect(result).toEqual({
+      status: 'insufficient_data',
+      verified: false,
+      recordsChecked: 0,
+      sessionsChecked: 0,
+      unhashedRecords: 2,
+    })
+    expect(db.attendanceRecord.findMany).not.toHaveBeenCalled()
   })
 
   it('verifies against daily anchors: presence + non-shrinking count', async () => {
@@ -307,6 +364,7 @@ describe('LedgerService.verifyLedger', () => {
 
     const result = await service.verifyLedger(db as never)
 
+    expect(result.status).toBe('verified')
     expect(result.verified).toBe(true)
     expect(result.lastAnchorDate).toBe('2026-07-14')
   })
@@ -328,6 +386,7 @@ describe('LedgerService.verifyLedger', () => {
 
     const result = await service.verifyLedger(db as never)
 
+    expect(result.status).toBe('verified')
     expect(result.verified).toBe(true)
     expect(result.recordsChecked).toBe(3)
   })
@@ -354,6 +413,7 @@ describe('LedgerService.verifyLedger', () => {
 
     const result = await service.verifyLedger(db as never)
 
+    expect(result.status).toBe('broken')
     expect(result.verified).toBe(false)
     expect(result.brokenAt).toEqual({ sessionId: 'sess-a', recordId: 'a2', reason: 'anchor_mismatch' })
   })
@@ -371,23 +431,24 @@ describe('LedgerService.verifyLedger', () => {
 
     const result = await service.verifyLedger(db as never)
 
+    expect(result.status).toBe('broken')
     expect(result.verified).toBe(false)
     expect(result.brokenAt?.reason).toBe('anchor_mismatch')
   })
 
-  it('handles empty ledgers and days without anchors', async () => {
-    const db = makeDb({ sessions: ['sess-a'], rowsBySession: { 'sess-a': [] } })
-
-    const result = await service.verifyLedger(db as never)
-
-    expect(result).toEqual({ verified: true, recordsChecked: 0, sessionsChecked: 0 })
-
+  it('verifies a chain when no daily anchor has been published yet', async () => {
     const noAnchor = makeDb({
       sessions: ['sess-a'],
       rowsBySession: { 'sess-a': [chained('a1', 1, null, 'sess-a', 'stu-1')] },
     })
     const withoutAnchor = await service.verifyLedger(noAnchor as never)
-    expect(withoutAnchor).toEqual({ verified: true, recordsChecked: 1, sessionsChecked: 1 })
+    expect(withoutAnchor).toEqual({
+      status: 'verified',
+      verified: true,
+      recordsChecked: 1,
+      sessionsChecked: 1,
+      unhashedRecords: 0,
+    })
   })
 
   it('keeps checking every session page while streaming', async () => {
@@ -400,6 +461,7 @@ describe('LedgerService.verifyLedger', () => {
 
     const result = await service.verifyLedger(db as never)
 
+    expect(result.status).toBe('verified')
     expect(result.verified).toBe(true)
     expect(result.sessionsChecked).toBe(3)
     expect(db.attendanceRecord.findMany).toHaveBeenCalledTimes(3)

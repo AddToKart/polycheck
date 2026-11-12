@@ -13,7 +13,7 @@ import type {
 } from '@polycheck/shared'
 import { REPORT_CATEGORY_LABELS, REPORT_SEVERITY_LABELS, REPORT_STATUS_LABELS } from '@polycheck/shared'
 import { canAccessItOperations } from '@polycheck/shared'
-import { api, ApiHttpError } from '@/lib/api-client'
+import { api, ApiHttpError, requestUserLogout } from '@/lib/api-client'
 import { API_BASE } from '@/lib/api-config'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
@@ -144,8 +144,9 @@ export default function SystemReportsPage() {
       <Sidebar
         user={user}
         onLogout={() => {
-          void api.logout()
-          router.push('/')
+          void requestUserLogout().then((outcome) => {
+            if (outcome.loggedOut) router.push('/')
+          })
         }}
       />
       <main className="flex-1 overflow-y-auto">

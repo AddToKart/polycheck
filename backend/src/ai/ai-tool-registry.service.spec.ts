@@ -352,7 +352,9 @@ describe('AiToolRegistryService', () => {
     const { registry, prisma } = makeRegistry()
 
     await registry.execute('super_admin', departmentAdmin as never, 'find_sections', { query: 'math' })
-    expect(prisma.section.findMany.mock.calls[0][0].where.teacher).toEqual({ department: 'CCIS' })
+    expect(prisma.section.findMany.mock.calls[0][0].where.teacher).toEqual({
+      department: { equals: 'CCIS', mode: 'insensitive' },
+    })
 
     await registry.execute('super_admin', institutionAdmin as never, 'find_sections', { query: 'math' })
     expect(prisma.section.findMany.mock.calls[1][0].where.teacher).toBeUndefined()
@@ -394,7 +396,7 @@ describe('AiToolRegistryService', () => {
     ).rejects.toMatchObject({ outcome: 'denied' })
     expect(prisma.section.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'sec-1', teacher: { department: 'CCIS' } },
+        where: { id: 'sec-1', teacher: { department: { equals: 'CCIS', mode: 'insensitive' } } },
       }),
     )
     expect(audit.recordToolInvocation).toHaveBeenCalledWith(
@@ -669,7 +671,7 @@ describe('AiToolRegistryService', () => {
     expect(prisma.user.count.mock.calls[0][0].where).toMatchObject({
       role: 'teacher',
       isActive: true,
-      department: 'CCIS',
+      department: { equals: 'CCIS', mode: 'insensitive' },
     })
   })
 
@@ -700,7 +702,7 @@ describe('AiToolRegistryService', () => {
     expect(prisma.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          department: 'CCIS',
+          department: { equals: 'CCIS', mode: 'insensitive' },
           isActive: false,
           OR: expect.any(Array),
         }),

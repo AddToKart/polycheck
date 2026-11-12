@@ -6,7 +6,7 @@ import { Download, FileText, Filter, Loader2 } from 'lucide-react'
 import { PaginationBar } from '@/components/ui/pagination-bar'
 
 const REPORTS_PAGE_SIZE = 10
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
 import { pupColors } from '@/lib/colors'
 import { isInstitutionAdmin } from '@/lib/admin-users'
 import {
@@ -24,6 +24,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useNotifications } from '@/lib/notifications'
+import { ErrorDisplay } from '@/lib/hooks'
+import { describeMutationError, useRunMutation } from '@/lib/run-mutation'
 
 const { startDate: defaultStartDate, endDate: defaultEndDate } = getRecentCampusDateRange(30)
 
@@ -58,6 +60,12 @@ export default function ReportsPage() {
   const [dateFrom, setDateFrom] = useState(defaultStartDate)
   const [dateTo, setDateTo] = useState(defaultEndDate)
   const [page, setPage] = useState(1)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadRetry, setLoadRetry] = useState(0)
+  const [reportError, setReportError] = useState<string | null>(null)
+  const [reportRetry, setReportRetry] = useState(0)
+  const { run, isPending } = useRunMutation()
+  const exporting = isPending('export')
 
   useEffect(() => {
     setPage(1)
@@ -65,6 +73,7 @@ export default function ReportsPage() {
   const [report, setReport] = useState<AttendanceReport | null>(null)
 
   useEffect(() => {
+    let active = true
     const cu = api.getCurrentUser()
     if (!cu || !canAccessAcademicOversight(cu)) {
       router.push('/faculty')
@@ -72,23 +81,35 @@ export default function ReportsPage() {
     }
     setUser(cu)
     const fetchData = async () => {
-      // The teacher directory is registrar/super-admin only. Department heads
-      // rely on the server-side department pinning instead of a teacher filter.
-      const [subjectsData, sectionsData, teachersData] = await Promise.all([
-        api.getSubjects(),
-        api.getSections(),
-        cu.role === 'super_admin' ? api.getTeachers() : Promise.resolve([] as Teacher[]),
-      ])
-      setSubjects(subjectsData)
-      setTeachers(teachersData)
-      setSections(sectionsData)
+      setLoadError(null)
+      try {
+        // The teacher directory is registrar/super-admin only. Department heads
+        // rely on the server-side department pinning instead of a teacher filter.
+        const [subjectsData, sectionsData, teachersData] = await Promise.all([
+          api.getSubjects(),
+          api.getSections(),
+          cu.role === 'super_admin' ? api.getTeachers() : Promise.resolve([] as Teacher[]),
+        ])
+        if (!active) return
+        setSubjects(subjectsData)
+        setTeachers(teachersData)
+        setSections(sectionsData)
+      } catch (error) {
+        if (active) {
+          setLoadError(describeMutationError(error, 'Unable to load reports.'))
+        }
+      }
     }
-    fetchData()
-  }, [router])
+    void fetchData()
+    return () => {
+      active = false
+    }
+  }, [router, loadRetry])
 
   useEffect(() => {
     if (!user || !dateFrom || !dateTo) return
     let active = true
+    setReportError(null)
     void api.getAttendanceReport({
       startDate: dateFrom,
       endDate: dateTo,
@@ -96,9 +117,19 @@ export default function ReportsPage() {
       subjectId: selectedSubject || undefined,
       sectionId: selectedSection || undefined,
       department: selectedDepartment || undefined,
-    }).then((nextReport) => { if (active) setReport(nextReport) })
-    return () => { active = false }
-  }, [user, selectedSubject, selectedSection, selectedDepartment, selectedTeacher, dateFrom, dateTo])
+    })
+      .then((nextReport) => {
+        if (active) setReport(nextReport)
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setReportError(describeMutationError(error, 'Unable to load the attendance report.'))
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [user, selectedSubject, selectedSection, selectedDepartment, selectedTeacher, dateFrom, dateTo, reportRetry])
 
   const sectionOptions = useMemo(
     () =>
@@ -167,21 +198,30 @@ export default function ReportsPage() {
   const incompletePct = total.total > 0 ? Math.round((total.incomplete / total.total) * 100) : 0
 
   const handleExport = async () => {
-    const csv = await api.exportAttendanceCsv({
-      startDate: dateFrom,
-      endDate: dateTo,
-      teacherId: selectedTeacher || undefined,
-      subjectId: selectedSubject || undefined,
-      sectionId: selectedSection || undefined,
-      department: selectedDepartment || undefined,
-    })
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `attendance-report-${formatCampusDate()}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    await run(
+      'export',
+      () =>
+        api.exportAttendanceCsv({
+          startDate: dateFrom,
+          endDate: dateTo,
+          teacherId: selectedTeacher || undefined,
+          subjectId: selectedSubject || undefined,
+          sectionId: selectedSection || undefined,
+          department: selectedDepartment || undefined,
+        }),
+      {
+        errorTitle: 'Export failed',
+        onSuccess: (csv) => {
+          const blob = new Blob([csv], { type: 'text/csv' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `attendance-report-${formatCampusDate()}.csv`
+          a.click()
+          URL.revokeObjectURL(url)
+        },
+      },
+    )
   }
 
   // F4: the class record is only meaningful for one specific section.
@@ -220,11 +260,27 @@ export default function ReportsPage() {
   }
 
   const handleLogout = () => {
-    api.logout()
-    router.push('/')
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
   }
 
   if (!user) return null
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+        <Sidebar user={user} onLogout={handleLogout} />
+        <main className="flex flex-1 items-center justify-center p-6">
+          <Card className="w-full max-w-md">
+            <CardContent className="p-8">
+              <ErrorDisplay message={loadError} onRetry={() => setLoadRetry((key) => key + 1)} />
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
@@ -249,8 +305,8 @@ export default function ReportsPage() {
                   Class record
                 </Button>
               ) : null}
-              <Button onClick={handleExport}>
-                <Download className="w-4 h-4" />
+              <Button onClick={() => void handleExport()} disabled={exporting}>
+                {exporting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
                 Export
               </Button>
             </div>
@@ -268,6 +324,21 @@ export default function ReportsPage() {
                 Showing attendance for {user.department ?? 'your department'} only. The server pins every filter to your
                 assigned department.
               </p>
+            </div>
+          ) : null}
+
+          {reportError ? (
+            <div
+              role="alert"
+              className="mb-6 flex flex-wrap items-center justify-between gap-3 border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/30 dark:text-red-300"
+            >
+              <div>
+                <p className="font-bold">The report could not be loaded.</p>
+                <p className="mt-1 text-xs">{reportError}</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setReportRetry((key) => key + 1)}>
+                Retry
+              </Button>
             </div>
           ) : null}
 

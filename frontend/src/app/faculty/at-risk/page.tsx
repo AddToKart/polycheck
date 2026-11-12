@@ -8,7 +8,7 @@ import {
   type StudentAtRisk,
   type User,
 } from '@polycheck/shared'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
 import { PaginationBar } from '@/components/ui/pagination-bar'
@@ -208,8 +208,9 @@ export default function AtRiskStudentsPage() {
   }
 
   const handleLogout = () => {
-    void api.logout()
-    router.push('/')
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
   }
 
   if (!user) return null

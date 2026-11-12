@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
-import { hash } from 'bcryptjs'
+import { hash } from '@node-rs/bcrypt'
 import type { CreateStudentDto, CreateTeacherDto } from './dto/manage-user.dto'
 import type { CreateAdminDto, UpdateUserDto } from './dto/admin-user.dto'
 import type { EmergencyDeviceReleaseDto, TeacherResetStudentPasswordDto, UpdateContactsDto } from './dto/governance.dto'
@@ -249,7 +249,7 @@ export class UsersService {
     if (exists) throw new ConflictException('A user with this email already exists')
     const generated = dto.password === undefined
     const temporaryPassword = dto.password ?? generateTemporaryPassword()
-    const password = await hash(temporaryPassword, PASSWORD_HASH_COST)
+    const password = await hash(temporaryPassword, { cost: PASSWORD_HASH_COST })
     const id = randomUUID()
     const now = new Date()
     try {
@@ -316,7 +316,7 @@ export class UsersService {
 
     const generated = dto.password === undefined
     const temporaryPassword = dto.password ?? generateTemporaryPassword()
-    const password = await hash(temporaryPassword, PASSWORD_HASH_COST)
+    const password = await hash(temporaryPassword, { cost: PASSWORD_HASH_COST })
     const id = randomUUID()
     const now = new Date()
     try {
@@ -388,7 +388,7 @@ export class UsersService {
 
     const generated = password === undefined
     const temporaryPassword = password ?? generateTemporaryPassword()
-    const passwordHash = await hash(temporaryPassword, PASSWORD_HASH_COST)
+    const passwordHash = await hash(temporaryPassword, { cost: PASSWORD_HASH_COST })
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id },
@@ -452,7 +452,7 @@ export class UsersService {
     }
 
     const temporaryPassword = generateTemporaryPassword()
-    const passwordHash = await hash(temporaryPassword, PASSWORD_HASH_COST)
+    const passwordHash = await hash(temporaryPassword, { cost: PASSWORD_HASH_COST })
     const now = new Date()
     await this.prisma.$transaction(async (tx) => {
       await this.assertStudentInTeacherSection(tx, studentId, dto.sectionId, user.id)
@@ -1011,7 +1011,7 @@ export class UsersService {
     const exists = await this.prisma.user.findUnique({ where: { email }, select: { id: true } })
     if (exists) throw new ConflictException('A user with this email already exists')
 
-    const passwordHash = await hash(password, PASSWORD_HASH_COST)
+    const passwordHash = await hash(password, { cost: PASSWORD_HASH_COST })
     const id = randomUUID()
     const now = new Date()
     try {

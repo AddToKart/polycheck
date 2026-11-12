@@ -29,6 +29,38 @@ describe('SectionsService', () => {
     await expect(service.findOne('section-1', { id: 'teacher-2', role: 'teacher' })).rejects.toThrow(ForbiddenException)
   })
 
+  it('returns roster rows with the student role the shared contract expects', async () => {
+    const prisma = {
+      section: { findUnique: jest.fn().mockResolvedValue(section) },
+      enrollment: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            studentId: 'student-1',
+            student: {
+              id: 'student-1',
+              studentId: 'S-1',
+              fullName: 'Student One',
+              email: 's1@example.test',
+              program: 'BSIT',
+              yearLevel: 2,
+              photoUrl: null,
+            },
+          },
+        ]),
+      },
+      attendanceRecord: { groupBy: jest.fn().mockResolvedValue([]) },
+    }
+    const service = new SectionsService(prisma as never, settings as never)
+
+    const [row] = await service.getStudents('section-1', { id: 'teacher-1', role: 'teacher' })
+
+    expect(row).toMatchObject({
+      id: 'student-1',
+      role: 'student',
+      attendance: { present: 0, late: 0, absent: 0, disputed: 0 },
+    })
+  })
+
   it('does not disclose enrollment codes to students', async () => {
     const prisma = {
       section: { findUnique: jest.fn().mockResolvedValue(section) },
@@ -191,7 +223,7 @@ describe('SectionsService', () => {
     })
 
     expect(prisma.enrollment.findMany).toHaveBeenCalledWith({
-      where: { section: { teacher: { department: 'CCIS' } } },
+      where: { section: { teacher: { department: { equals: 'CCIS', mode: 'insensitive' } } } },
       orderBy: { enrolledAt: 'asc' },
     })
   })

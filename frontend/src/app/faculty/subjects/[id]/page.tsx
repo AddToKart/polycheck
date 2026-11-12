@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Users, CalendarDays, Copy, Plus } from 'lucide-react'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
+import { describeMutationError } from '@/lib/run-mutation'
+import { ErrorDisplay } from '@/lib/hooks'
 import type { User, Subject, Section } from '@polycheck/shared'
 import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -19,6 +21,8 @@ export default function SubjectDetailPage() {
   const [subject, setSubject] = useState<Subject | null>(null)
   const [sections, setSections] = useState<Section[]>([])
   const [copiedId, setCopiedId] = useState('')
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -31,28 +35,54 @@ export default function SubjectDetailPage() {
 
   useEffect(() => {
     if (!id) return
+    let active = true
     const fn = async () => {
-      const subj = await api.getSubject(id)
-      if (!subj) { router.push('/faculty/subjects'); return }
-      setSubject(subj)
-      let secs = (await api.getSections()).filter((s) => s.subjectId === id)
-      if (user && user.role === 'teacher') {
-        secs = secs.filter((s) => s.teacherId === user.id)
+      setLoadError(null)
+      try {
+        const subj = await api.getSubject(id)
+        if (!subj) { router.push('/faculty/subjects'); return }
+        if (!active) return
+        setSubject(subj)
+        let secs = (await api.getSections()).filter((s) => s.subjectId === id)
+        if (user && user.role === 'teacher') {
+          secs = secs.filter((s) => s.teacherId === user.id)
+        }
+        if (!active) return
+        setSections(secs)
+      } catch (error) {
+        if (active) {
+          setLoadError(describeMutationError(error, 'Unable to load this subject.'))
+        }
       }
-      setSections(secs)
     }
-    fn()
-  }, [id, router, user])
+    void fn()
+    return () => {
+      active = false
+    }
+  }, [id, router, user, reloadKey])
 
   const handleLogout = () => {
-    api.logout()
-    router.push('/')
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
   }
 
   const handleCopy = async (code: string, id: string) => {
     await navigator.clipboard.writeText(code)
     setCopiedId(id)
     setTimeout(() => setCopiedId(''), 2000)
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black p-6">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-8">
+            <ErrorDisplay message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   if (!user || !subject) return null

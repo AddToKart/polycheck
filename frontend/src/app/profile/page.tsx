@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { User } from '@polycheck/shared'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
 import { LoadingSpinner } from '@/lib/hooks'
 import { PendingPasswordChange } from '@/components/auth/PendingPasswordChange'
 import { ProfilePage } from '@/components/profile/ProfilePage'
@@ -52,8 +52,9 @@ export default function ProfileRoute() {
   }, [router])
 
   const logout = () => {
-    void api.logout()
-    router.push('/')
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
   }
 
   if (pendingUser) {

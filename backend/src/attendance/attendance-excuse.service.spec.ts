@@ -181,7 +181,9 @@ describe('AttendanceService excuse workflow', () => {
       await service.listExcuses(departmentAdmin)
 
       const where = prisma.attendanceRecord.findMany.mock.calls[0][0].where
-      expect(where.AND[0]).toEqual({ session: { section: { teacher: { department: 'CCIS' } } } })
+      expect(where.AND[0]).toEqual({
+        session: { section: { teacher: { department: { equals: 'CCIS', mode: 'insensitive' } } } },
+      })
     })
 
     it('forbids students from listing campus-wide excuses', async () => {

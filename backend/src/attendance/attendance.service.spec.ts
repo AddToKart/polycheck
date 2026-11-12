@@ -1035,6 +1035,28 @@ describe('AttendanceService', () => {
       expect(redis.delete).toHaveBeenCalledWith('active-session:sess-1')
     })
 
+    it('writes the autoEndAt deadline so the cron can sweep a scan-armed session', async () => {
+      const issuedAt = Date.now() - 2 * 60_000
+      const unactivated = makeSession({ isActive: false, endedAt: null, qrToken: null })
+      const activated = makeSession({ isActive: true, endedAt: null, qrToken: VALID_TOKEN })
+      prisma.session.findUnique.mockResolvedValueOnce(unactivated).mockResolvedValue(activated)
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      prisma.session.updateMany.mockResolvedValue({ count: 1 })
+      prisma.session.findUniqueOrThrow.mockResolvedValue(activated)
+      prisma.enrollment.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.createMany.mockResolvedValue({ count: 0 })
+      mockedVerifyQRToken.mockReturnValue(validPayload({ issuedAt, validityMinutes: 10, gracePeriodMinutes: 5 }))
+
+      const result = await (service as any).performOfflineActivation('sess-1', VALID_TOKEN, new Date(), true)
+
+      expect(result).toBe('activated')
+      const data = prisma.session.updateMany.mock.calls[0][0].data
+      expect(data.isActive).toBe(true)
+      // The cron filters on `autoEndAt: { not: null }`; a null deadline would
+      // leave the session live and every roster row pending forever (DD-B1).
+      expect(data.autoEndAt).toEqual(new Date(issuedAt + (10 + 5) * 60_000))
+    })
+
     it('rejects delayed offline scans that exceed the current timing caps', async () => {
       const issuedAt = Date.now() - 70 * 60_000
       const scannedAt = new Date(issuedAt + 2 * 60_000).toISOString()

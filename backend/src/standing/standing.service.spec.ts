@@ -85,6 +85,24 @@ describe('StandingService', () => {
     expect(standing.caveat).toBeUndefined()
   })
 
+  it('counts an incomplete session as not attended so it agrees with the at-risk row', async () => {
+    const prisma = createPrisma([
+      makeSection('sec-1', 'Software Engineering', 'COMP 20043', makeRecords(['present', 'incomplete'])),
+    ])
+    const service = new StandingService(prisma as never)
+
+    const [standing] = await service.forStudent(student)
+
+    expect(standing).toMatchObject({
+      present: 1,
+      incomplete: 1,
+      countedSessions: 2,
+      attendanceRate: 50,
+      status: 'below_threshold',
+      absencesBeforeBelowThreshold: 0,
+    })
+  })
+
   it('treats the exact threshold as at risk with zero absences remaining', async () => {
     const prisma = createPrisma([
       makeSection('sec-1', 'Software Engineering', 'COMP 20043', makeRecords(statuses(18, 0, 6))),

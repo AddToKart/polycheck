@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext } from '@playwright/test'
 import {
   API_BASE,
+  apiLoginFaculty,
   FACULTY_EMAIL,
   SEED_PASSWORD,
   assertNoErrors,
@@ -29,6 +30,9 @@ async function createTwoSlotSection(
   request: APIRequestContext,
   label: string,
 ): Promise<SectionSeed> {
+  // The `request` fixture has its own cookie jar: the browser-page login in
+  // beforeEach does not authenticate it.
+  await apiLoginFaculty(request)
   const res = await request.post(`${API_BASE}/sections`, {
     data: {
       subjectId: 'subj-001',
@@ -115,6 +119,9 @@ test.describe('Session class-meeting selector', () => {
     await page.getByRole('button', { name: /Create 4 Sessions/i }).click()
     await expect(page).toHaveURL(/\/faculty\/sessions$/, { timeout: 20_000 })
     // Both series were created with their own times, not one global pair.
+    // The list is paginated and sorted by date, so scope it to the section the
+    // spec just created (the 2027 rows do not land on page 1).
+    await page.goto(`/faculty/sessions?sectionId=${section.id}`)
     await expect(page.getByText('08:00 - 10:30').first()).toBeVisible({ timeout: 20_000 })
     await expect(page.getByText('09:00 - 12:30').first()).toBeVisible()
 

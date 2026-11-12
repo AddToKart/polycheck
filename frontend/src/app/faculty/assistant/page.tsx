@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import type { User } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { AssistantChat } from '@/components/Assistant/AssistantChat'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
 import { LoadingSpinner } from '@/lib/hooks'
 
 export default function FacultyAssistantPage() {
@@ -43,8 +43,9 @@ export default function FacultyAssistantPage() {
       <Sidebar
         user={user}
         onLogout={() => {
-          void api.logout()
-          router.push('/')
+          void requestUserLogout().then((outcome) => {
+            if (outcome.loggedOut) router.push('/')
+          })
         }}
       />
       <main className="min-h-0 flex-1 overflow-hidden">

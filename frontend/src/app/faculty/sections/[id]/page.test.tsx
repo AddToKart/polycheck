@@ -122,6 +122,21 @@ describe('Section detail page (F4 class record export)', () => {
     expect(screen.getAllByText('Introduction to Computing').length).toBeGreaterThan(0)
   })
 
+  it('renders a retryable error state when the section load fails', async () => {
+    apiMock.getSection.mockRejectedValueOnce(new Error('Backend unavailable'))
+
+    renderPage()
+
+    expect(await screen.findByText('Something went wrong')).toBeInTheDocument()
+    expect(screen.getByText('Backend unavailable')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try Again' }))
+
+    expect(
+      await screen.findByRole('button', { name: 'Class record (PUP)' }),
+    ).toBeEnabled()
+  })
+
   it('downloads the class record through the authenticated docs path', async () => {
     apiMock.downloadAssistantFile.mockResolvedValue(new Blob(['%PDF-fake']))
 

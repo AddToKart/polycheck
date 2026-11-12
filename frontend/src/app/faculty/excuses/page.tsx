@@ -10,7 +10,7 @@ import {
   RefreshCw,
   XCircle,
 } from 'lucide-react'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
 import type { AttendanceRecord, Section, Subject, User } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
@@ -234,7 +234,7 @@ function ExcusesContent() {
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-zinc-100 dark:bg-pup-black">
-      <Sidebar user={user} onLogout={() => { api.logout(); router.push('/') }} />
+      <Sidebar user={user} onLogout={() => { void requestUserLogout().then((outcome) => { if (outcome.loggedOut) router.push('/') }) }} />
       <main className="flex-1 overflow-y-auto">
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-300/80 dark:border-zinc-800">
           <div className="min-w-0">

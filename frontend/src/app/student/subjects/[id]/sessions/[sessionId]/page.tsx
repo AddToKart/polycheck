@@ -3,7 +3,10 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Camera, Upload } from 'lucide-react'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
+import { describeMutationError, useRunMutation } from '@/lib/run-mutation'
+import { ErrorDisplay } from '@/lib/hooks'
+import { SESSION_STATUS_LABELS, deriveSessionStatus } from '@/lib/session-status'
 import type { Student, Session, Section, ProofOfClass } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -25,51 +28,87 @@ export default function StudentSessionDetailPage() {
   const [photoDescription, setPhotoDescription] = useState('')
   const [uploadedPhoto, setUploadedPhoto] = useState<string | null>(null)
   const [subject, setSubject] = useState<{ name: string; code: string } | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+  const { run, isPending } = useRunMutation()
+  const uploading = isPending('upload')
 
   useEffect(() => {
+    let active = true
     const fn = async () => {
       const cu = api.getCurrentUser()
       if (!cu || cu.role !== 'student') { router.push('/'); return }
       const student = cu as Student
       setUser(student)
-      const roles = await api.getStudentRoles(student.id)
-      setIsQac(roles.some(r => r.sectionId === sectionId && r.role === 'qac'))
+      try {
+        const roles = await api.getStudentRoles(student.id)
+        if (active) setIsQac(roles.some(r => r.sectionId === sectionId && r.role === 'qac'))
+      } catch (error) {
+        if (active) {
+          setLoadError(describeMutationError(error, 'Unable to load your session role.'))
+        }
+      }
     }
-    fn()
-  }, [router, sectionId])
+    void fn()
+    return () => {
+      active = false
+    }
+  }, [router, sectionId, reloadKey])
 
   useEffect(() => {
     if (!sessionId || !sectionId) return
+    let active = true
     const fn = async () => {
-      const sess = await api.getSession(sessionId)
-      setSession(sess ?? null)
-      const sec = await api.getSection(sectionId)
-      setSection(sec ?? null)
-      if (sec) {
-        const subj = await api.getSubject(sec.subjectId)
+      try {
+        const sess = await api.getSession(sessionId)
+        const sec = await api.getSection(sectionId)
+        const subj = sec ? await api.getSubject(sec.subjectId) : null
+        const p = await api.getProofsOfClass(sessionId)
+        if (!active) return
+        setSession(sess ?? null)
+        setSection(sec ?? null)
         if (subj) setSubject({ name: subj.name, code: subj.code })
+        setProofs(p)
+      } catch (error) {
+        if (active) {
+          setLoadError(describeMutationError(error, 'Unable to load this session.'))
+        }
       }
-      const p = await api.getProofsOfClass(sessionId)
-      setProofs(p)
     }
-    fn()
-  }, [sessionId, sectionId])
+    void fn()
+    return () => {
+      active = false
+    }
+  }, [sessionId, sectionId, reloadKey])
 
   const handleUploadProof = async () => {
     if (!user || !session || !uploadedPhoto) return
-    await api.uploadProofOfClass({
-      sectionId: session.sectionId,
-      sessionId: session.id,
-      photoData: uploadedPhoto,
-      description: photoDescription || undefined,
-      uploadedBy: user.id,
-      uploadedByStudentName: user.fullName,
-    })
-    const updatedProofs = await api.getProofsOfClass(sessionId)
-    setProofs(updatedProofs)
-    setShowUpload(false)
-    setPhotoDescription('')
-    setUploadedPhoto(null)
+    setUploadError(null)
+    await run(
+      'upload',
+      async () => {
+        await api.uploadProofOfClass({
+          sectionId: session.sectionId,
+          sessionId: session.id,
+          photoData: uploadedPhoto,
+          description: photoDescription || undefined,
+          uploadedBy: user.id,
+          uploadedByStudentName: user.fullName,
+        })
+        const updatedProofs = await api.getProofsOfClass(sessionId)
+        setProofs(updatedProofs)
+        setShowUpload(false)
+        setPhotoDescription('')
+        setUploadedPhoto(null)
+      },
+      {
+        errorTitle: 'Proof upload failed',
+        onError: (error) => {
+          setUploadError(describeMutationError(error, 'The proof photo could not be uploaded.'))
+        },
+      },
+    )
   }
 
   const handlePhotoSelect = (file?: File) => {
@@ -88,7 +127,23 @@ export default function StudentSessionDetailPage() {
     reader.readAsDataURL(file)
   }
 
-  const handleLogout = () => { api.logout(); router.push('/') }
+  const handleLogout = () => {
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-6">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-8">
+            <ErrorDisplay message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   if (!session || !section) return null
 
@@ -118,7 +173,7 @@ export default function StudentSessionDetailPage() {
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Status</p>
                   <Badge className={session.isActive ? 'bg-green-500 text-white rounded-none' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-none'}>
-                    {session.isActive ? 'Active' : 'Completed'}
+                    {SESSION_STATUS_LABELS[deriveSessionStatus(session)]}
                   </Badge>
                 </div>
                 <div>
@@ -182,11 +237,14 @@ export default function StudentSessionDetailPage() {
                         className="mb-3 text-sm"
                       />
                       <div className="flex flex-wrap gap-2">
-                        <Button size="sm" onClick={handleUploadProof} disabled={!uploadedPhoto}>
-                          <Upload className="w-3.5 h-3.5 mr-1" /> Submit
+                        <Button size="sm" onClick={() => void handleUploadProof()} disabled={!uploadedPhoto || uploading}>
+                          <Upload className="w-3.5 h-3.5 mr-1" /> {uploading ? 'Uploading…' : 'Submit'}
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => setShowUpload(false)}>Cancel</Button>
+                        <Button variant="outline" size="sm" disabled={uploading} onClick={() => setShowUpload(false)}>Cancel</Button>
                       </div>
+                      {uploadError ? (
+                        <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">{uploadError}</p>
+                      ) : null}
                     </div>
                   )}
                 </div>

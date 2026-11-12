@@ -6,9 +6,9 @@ import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import { ArrowLeft, QrCode, Timer, Play, StopCircle, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2, Copy, Download, Check, School, Video, ShieldCheck, KeyRound, Radio, MonitorPlay } from 'lucide-react'
-import { api, isNetworkFailure, ApiHttpError } from '@/lib/api-client'
+import { api, isNetworkFailure, ApiHttpError, requestUserLogout } from '@/lib/api-client'
 import { randomMeetingPin } from '@polycheck/shared'
-import type { User, Session, AttendanceRecord, AttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
+import type { User, Session, AttendanceRecord, AttendanceStatus, EditableAttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { LoadingSpinner } from '@/lib/hooks'
 import { useNotifications } from '@/lib/notifications'
+import { useRunMutation } from '@/lib/run-mutation'
 import CampusMap from '@/components/CampusMap'
 import { subscribeToSession } from '@/lib/realtime'
 import { pupColors } from '@/lib/colors'
@@ -39,7 +40,7 @@ const GeofenceRadarModal = dynamic(
   },
 )
 
-const STATUS_CYCLE: AttendanceStatus[] = ['present', 'late', 'incomplete', 'absent']
+const STATUS_CYCLE: EditableAttendanceStatus[] = ['present', 'late', 'incomplete', 'absent']
 
 const STATUS_STYLES: Record<string, string> = {
   present: 'bg-golden text-maroon-dark',
@@ -95,6 +96,7 @@ export default function SessionDetailPage() {
   const [redirecting, setRedirecting] = useState(false)
   const [generatingQr, setGeneratingQr] = useState(false)
   const [endingSession, setEndingSession] = useState(false)
+  const { run, isPending } = useRunMutation()
   // F2 radar / F1 kiosk entry points.
   const [radarOpen, setRadarOpen] = useState(false)
   // V4 anti-ghost-professor: captured teacher fix + pending override dialog.
@@ -542,36 +544,48 @@ export default function SessionDetailPage() {
   }
 
   const handleManualOverride = async (studentId: string, currentStatus: AttendanceStatus) => {
-    const idx = STATUS_CYCLE.indexOf(currentStatus)
+    const idx = STATUS_CYCLE.findIndex((status) => status === currentStatus)
     const nextStatus = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]
     const existing = records.find((r) => r.studentId === studentId && r.sessionId === session.id)
-    if (existing) {
-      await api.updateAttendanceStatus(existing.id, nextStatus)
-      const updated = await api.getAttendanceRecords(session.id).then((rs) => rs.find((r) => r.id === existing.id))
-      if (updated) Object.assign(updated, { manuallySet: true })
-    } else {
-      const student = enrolledStudents.find((s) => s.id === studentId)
-      const now = new Date()
-      await api.addAttendanceRecord({
-        id: crypto.randomUUID(),
-        sessionId: session.id,
-        sectionId: session.sectionId,
-        studentId,
-        studentName: student?.fullName ?? 'Unknown',
-        timestamp: now.toISOString(),
-        status: nextStatus,
-        coordinates: onlineMode ? { latitude: null, longitude: null } : { latitude: 0, longitude: 0 },
-        deviceId: 'manual',
-        isSynced: true,
-        syncedAt: now.toISOString(),
-        manuallySet: true,
-      })
-    }
-    await refreshData()
-    addNotification('info', 'Status Updated', `Student marked as ${nextStatus}`)
+    const student = enrolledStudents.find((s) => s.id === studentId)
+    const now = new Date()
+    await run(
+      `override:${studentId}`,
+      async () => {
+        if (existing) {
+          await api.updateAttendanceStatus(existing.id, nextStatus)
+        } else {
+          await api.addAttendanceRecord({
+            id: crypto.randomUUID(),
+            sessionId: session.id,
+            sectionId: session.sectionId,
+            studentId,
+            studentName: student?.fullName ?? 'Unknown',
+            timestamp: now.toISOString(),
+            status: nextStatus,
+            coordinates: { latitude: null, longitude: null },
+            deviceId: 'manual',
+            isSynced: true,
+            syncedAt: now.toISOString(),
+            manuallySet: true,
+          })
+        }
+      },
+      {
+        errorTitle: 'Could not update the attendance status',
+        onSuccess: () => {
+          addNotification('info', 'Status Updated', `Student marked as ${nextStatus}`)
+          void refreshData()
+        },
+      },
+    )
   }
 
-  const handleLogout = () => { api.logout(); router.push('/') }
+  const handleLogout = () => {
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
+  }
 
   return (
     <div className="flex h-screen bg-zinc-100 dark:bg-pup-black">
@@ -579,9 +593,9 @@ export default function SessionDetailPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-200 dark:border-zinc-800">
           <div className="flex min-w-0 items-center gap-3">
-            <button onClick={() => router.back()} className="inline-flex min-h-11 min-w-11 items-center justify-center p-1 hover:opacity-70 md:min-h-0 md:min-w-0">
+            <Link href="/faculty/sessions" aria-label="Back to sessions" className="inline-flex min-h-11 min-w-11 items-center justify-center p-1 hover:opacity-70 md:min-h-0 md:min-w-0">
               <ArrowLeft className="w-5 h-5 text-maroon dark:text-golden" />
-            </button>
+            </Link>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="break-words text-xl font-heading font-bold text-maroon-dark dark:text-golden">{session.subjectName}</h1>
@@ -999,7 +1013,7 @@ export default function SessionDetailPage() {
                         key={student.id}
                         className={`w-full min-h-11 flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-b border-zinc-100 dark:border-zinc-800 text-left ${isTeacher ? 'hover:bg-zinc-50 dark:hover:bg-zinc-900' : 'cursor-default'}`}
                         onClick={() => { if (isTeacher) handleManualOverride(student.id, status) }}
-                        disabled={!isTeacher}
+                        disabled={!isTeacher || isPending(`override:${student.id}`)}
                       >
                         <div className="min-w-0">
                           <p className="break-words text-sm font-medium dark:text-white">{student.fullName}</p>

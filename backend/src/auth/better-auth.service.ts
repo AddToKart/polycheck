@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { compare, hash } from 'bcryptjs'
+import { compare, hash } from '@node-rs/bcrypt'
 import type { BetterAuthOptions } from 'better-auth'
 import { PrismaService } from '../prisma/prisma.service'
 import { PASSWORD_HASH_COST } from './password-policy'
@@ -114,7 +114,7 @@ export class BetterAuthService implements OnModuleInit {
         maxPasswordLength: 128,
         revokeSessionsOnPasswordReset: true,
         password: {
-          hash: (password) => hash(password, PASSWORD_HASH_COST),
+          hash: (password) => hash(password, { cost: PASSWORD_HASH_COST }),
           verify: ({ hash: passwordHash, password }) => compare(password, passwordHash),
         },
       },

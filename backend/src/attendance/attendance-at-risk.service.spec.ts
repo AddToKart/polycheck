@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common'
-import { AttendanceAtRiskService } from './attendance-at-risk.service'
+import { AttendanceAtRiskService, classifyAtRiskRow } from './attendance-at-risk.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 
 const teacher: RequestUser = { id: 'teacher-1', role: 'teacher' }
@@ -140,7 +140,9 @@ describe('AttendanceAtRiskService', () => {
     await service.list(departmentAdmin)
 
     expect(prisma.section.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { teacher: { department: 'CCIS' } } }),
+      expect.objectContaining({
+        where: { teacher: { department: { equals: 'CCIS', mode: 'insensitive' } } },
+      }),
     )
   })
 
@@ -202,6 +204,18 @@ describe('AttendanceAtRiskService', () => {
 
     prisma.attendanceRecord.groupBy.mockResolvedValue([{ status: 'present', _count: { _all: 19 } }])
     expect((await service.classifyStudent('sec-1', 'stu-2'))?.status).toBe('on_track')
+  })
+
+  it('counts an incomplete session as not attended so it agrees with /me/standing', () => {
+    const classification = classifyAtRiskRow({ present: 1, incomplete: 1 }, 75)
+
+    expect(classification).toMatchObject({
+      countedSessions: 2,
+      attendedSessions: 1,
+      attendanceRate: 50,
+      absencesBeforeBelowThreshold: 0,
+      status: 'below_threshold',
+    })
   })
 
   it('resolves null before any classification when the student has no records in the section', async () => {

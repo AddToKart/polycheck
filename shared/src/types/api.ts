@@ -61,6 +61,22 @@ import type {
 } from "./system-report";
 import type { PrivacyCenterSnapshot } from "./privacy";
 
+/**
+ * Statuses `UpdateAttendanceStatusDto` and `CreateManualAttendanceDto` accept.
+ * `excused` is only reachable through the excuse workflow, so a manual edit can
+ * never produce a backend 400.
+ */
+export type EditableAttendanceStatus = Exclude<AttendanceStatus, "excused">;
+
+/**
+ * Statuses `ResolveDisputeDto.newStatus` accepts. The dispute override is
+ * narrower than a manual edit: `excused` and `incomplete` are rejected.
+ */
+export type ResolvableAttendanceStatus = Exclude<
+  AttendanceStatus,
+  "excused" | "incomplete"
+>;
+
 export interface CreateSubjectInput {
   name: string;
   code: string;
@@ -501,10 +517,14 @@ export interface ApiClient {
     studentId: string,
     sectionId: string,
   ): Promise<AttendanceRecord[]>;
-  addAttendanceRecord(record: AttendanceRecord): Promise<AttendanceRecord>;
+  addAttendanceRecord(
+    record: Omit<AttendanceRecord, "status"> & {
+      status: EditableAttendanceStatus;
+    },
+  ): Promise<AttendanceRecord>;
   updateAttendanceStatus(
     recordId: string,
-    status: AttendanceStatus,
+    status: EditableAttendanceStatus,
   ): Promise<AttendanceRecord>;
   submitScan(
     sessionId: string,
@@ -535,7 +555,7 @@ export interface ApiClient {
   resolveDispute(
     recordId: string,
     resolution: "accept" | "reject" | "override",
-    newStatus?: AttendanceStatus,
+    newStatus?: ResolvableAttendanceStatus,
   ): Promise<AttendanceRecord>;
   submitDispute(data: DisputeInput): Promise<AttendanceRecord>;
 

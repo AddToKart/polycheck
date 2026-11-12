@@ -107,12 +107,32 @@ export class LedgerService {
    * day's chain and the day's recomputed row count must not shrink (chains may
    * grow beyond an anchor through late-arriving offline rows, never shrink
    * without tampering). Stops at the first inconsistency.
+   *
+   * The result never claims integrity it did not check: an empty table, or a
+   * table whose rows all lack a `recordHash` (a fresh seed before the ledger
+   * backfill), reports `insufficient_data` rather than `verified: true`.
    */
   async verifyLedger(db: LedgerDb): Promise<LedgerVerifyResult> {
     let cursor: string | undefined
     let recordsChecked = 0
     let sessionsChecked = 0
     const buckets = new Map<string, DateBucket>()
+
+    const [totalRecords, hashedRecords] = await Promise.all([
+      db.attendanceRecord.count(),
+      db.attendanceRecord.count({ where: { recordHash: { not: null } } }),
+    ])
+    const unhashedRecords = Math.max(0, totalRecords - hashedRecords)
+    if (hashedRecords === 0) {
+      this.logger.warn(`Ledger verification found nothing to check: ${totalRecords} attendance row(s), none chained`)
+      return {
+        status: 'insufficient_data',
+        verified: false,
+        recordsChecked: 0,
+        sessionsChecked: 0,
+        unhashedRecords,
+      }
+    }
 
     while (true) {
       const sessions = await db.session.findMany({
@@ -142,10 +162,10 @@ export class LedgerService {
             salt: row.salt ?? '',
           })
           if (recomputed !== row.recordHash) {
-            return this.broken(session.id, row.id, 'hash_mismatch', recordsChecked, sessionsChecked)
+            return this.broken(session.id, row.id, 'hash_mismatch', recordsChecked, sessionsChecked, unhashedRecords)
           }
           if (row.prevHash !== null && !chainedHashes.has(row.prevHash)) {
-            return this.broken(session.id, row.id, 'link_mismatch', recordsChecked, sessionsChecked)
+            return this.broken(session.id, row.id, 'link_mismatch', recordsChecked, sessionsChecked, unhashedRecords)
           }
           recordsChecked += 1
           this.collectBucket(buckets, session.id, row)
@@ -158,7 +178,7 @@ export class LedgerService {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: MAX_ANCHOR_ROWS,
     })
-    return this.checkAnchors(buckets, anchors, recordsChecked, sessionsChecked)
+    return this.checkAnchors(buckets, anchors, recordsChecked, sessionsChecked, unhashedRecords)
   }
 
   private collectBucket(
@@ -189,6 +209,7 @@ export class LedgerService {
     anchors: { id: string; metadata: Prisma.JsonValue | null }[],
     recordsChecked: number,
     sessionsChecked: number,
+    unhashedRecords: number,
   ): LedgerVerifyResult {
     const checkedDates: string[] = []
     const seenDates = new Set<string>()
@@ -208,6 +229,7 @@ export class LedgerService {
           'anchor_mismatch',
           recordsChecked,
           sessionsChecked,
+          unhashedRecords,
         )
       }
       if (bucket.count < expected || (meta?.lastRecordHash && !bucket.hashes.has(meta.lastRecordHash))) {
@@ -217,11 +239,21 @@ export class LedgerService {
           'anchor_mismatch',
           recordsChecked,
           sessionsChecked,
+          unhashedRecords,
         )
       }
     }
-    if (checkedDates.length === 0) return { verified: true, recordsChecked, sessionsChecked }
-    return { verified: true, recordsChecked, sessionsChecked, lastAnchorDate: checkedDates.sort().pop() }
+    if (checkedDates.length === 0) {
+      return { status: 'verified', verified: true, recordsChecked, sessionsChecked, unhashedRecords }
+    }
+    return {
+      status: 'verified',
+      verified: true,
+      recordsChecked,
+      sessionsChecked,
+      unhashedRecords,
+      lastAnchorDate: checkedDates.sort().pop(),
+    }
   }
 
   private broken(
@@ -230,8 +262,16 @@ export class LedgerService {
     reason: 'hash_mismatch' | 'link_mismatch' | 'anchor_mismatch',
     recordsChecked: number,
     sessionsChecked: number,
+    unhashedRecords: number,
   ): LedgerVerifyResult {
     this.logger.warn(`Ledger verification failed at ${reason} for record ${recordId} in session ${sessionId}`)
-    return { verified: false, recordsChecked, sessionsChecked, brokenAt: { sessionId, recordId, reason } }
+    return {
+      status: 'broken',
+      verified: false,
+      recordsChecked,
+      sessionsChecked,
+      unhashedRecords,
+      brokenAt: { sessionId, recordId, reason },
+    }
   }
 }

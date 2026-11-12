@@ -5,12 +5,15 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, BookOpen, CalendarDays, MapPin, User, GraduationCap, Clock, LogOut, Plus, Camera, Play, Crown } from 'lucide-react'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
+import { describeMutationError } from '@/lib/run-mutation'
+import { ErrorDisplay } from '@/lib/hooks'
 import type { Student, Section, Session, SectionRole } from '@polycheck/shared'
 import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Sidebar } from '@/components/layout/sidebar'
+import { SESSION_STATUS_LABELS, deriveSessionStatus } from '@/lib/session-status'
 
 export default function StudentSubjectDetailPage() {
   const params = useParams()
@@ -22,8 +25,11 @@ export default function StudentSubjectDetailPage() {
   const [roles, setRoles] = useState<SectionRole[]>([])
   const [hasPermission, setHasPermission] = useState(false)
   const [subject, setSubject] = useState<{ name: string; code: string } | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
+    let active = true
     const fn = async () => {
       const cu = api.getCurrentUser()
       if (!cu || cu.role !== 'student') {
@@ -32,40 +38,74 @@ export default function StudentSubjectDetailPage() {
       }
       const student = cu as Student
       setUser(student)
-      const studentRoles = await api.getStudentRoles(student.id)
-      setRoles(studentRoles)
-      if (studentRoles.find(r => r.sectionId === id && r.role === 'president')) {
-        const perm = await api.checkSessionPermission(id, student.id)
-        setHasPermission(perm)
+      try {
+        const studentRoles = await api.getStudentRoles(student.id)
+        if (!active) return
+        setRoles(studentRoles)
+        if (studentRoles.find(r => r.sectionId === id && r.role === 'president')) {
+          const perm = await api.checkSessionPermission(id, student.id)
+          if (active) setHasPermission(perm)
+        }
+      } catch (error) {
+        if (active) {
+          setLoadError(describeMutationError(error, 'Unable to load your subject details.'))
+        }
       }
     }
-    fn()
-  }, [router, id])
+    void fn()
+    return () => {
+      active = false
+    }
+  }, [router, id, reloadKey])
 
   useEffect(() => {
     if (!id) return
+    let active = true
     const fn = async () => {
-      const sec = await api.getSection(id)
-      if (sec) {
-        setSection(sec)
-        const subj = await api.getSubject(sec.subjectId)
-        if (subj) setSubject({ name: subj.name, code: subj.code })
+      try {
+        const sec = await api.getSection(id)
+        if (!active) return
+        if (sec) {
+          setSection(sec)
+          const subj = await api.getSubject(sec.subjectId)
+          if (active && subj) setSubject({ name: subj.name, code: subj.code })
+        }
+        const sess = await api.getSessions(id)
+        if (active) setSessions(sess)
+      } catch (error) {
+        if (active) {
+          setLoadError(describeMutationError(error, 'Unable to load this subject.'))
+        }
       }
-      const sess = await api.getSessions(id)
-      setSessions(sess)
     }
-    fn()
-  }, [id])
+    void fn()
+    return () => {
+      active = false
+    }
+  }, [id, reloadKey])
+
+  const handleLogout = () => {
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black p-6">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-8">
+            <ErrorDisplay message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   if (!user || !section) return null
   const studentRoles = roles.filter(r => r.sectionId === id)
   const isPresident = studentRoles.some(r => r.role === 'president')
   const isQac = studentRoles.some(r => r.role === 'qac')
-
-  const handleLogout = () => {
-    api.logout()
-    router.push('/')
-  }
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
@@ -199,7 +239,7 @@ export default function StudentSubjectDetailPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           {session.isActive && <span className="w-2 h-2 bg-green-500 rounded-full" />}
-                          <span className="text-[10px] text-zinc-400">{session.isActive ? 'Active' : 'Completed'}</span>
+                          <span className="text-[10px] text-zinc-400">{SESSION_STATUS_LABELS[deriveSessionStatus(session)]}</span>
                           {isQac && (
                             <span className="flex items-center gap-1 text-[10px] text-maroon dark:text-golden font-medium">
                               <Camera className="w-3 h-3" /> Upload

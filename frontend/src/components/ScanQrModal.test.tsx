@@ -649,6 +649,48 @@ describe("ScanQrModal", () => {
     });
   });
 
+  it("surfaces an unreadable image instead of an unhandled rejection (DD-W22)", async () => {
+    await act(async () => {
+      render(<ScanQrModal user={mockUser} onClose={vi.fn()} />);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Upload Screenshot"));
+    });
+
+    // Both upload call sites fire-and-forget the handler, so a rejected
+    // FileReader must be surfaced, never left as an unhandled rejection.
+    const original = globalThis.FileReader;
+    class FailingFileReader {
+      error = new DOMException("read failed", "NotReadableError");
+      onload: unknown = null;
+      onerror: (() => void) | null = null;
+      readAsDataURL() {
+        this.onerror?.();
+      }
+    }
+    globalThis.FileReader = FailingFileReader as unknown as typeof FileReader;
+
+    try {
+      const fileInput = document.querySelector(
+        'input[type="file"]',
+      ) as HTMLInputElement;
+      const file = new File(["not-an-image"], "broken.png", {
+        type: "image/png",
+      });
+      await act(async () => {
+        fireEvent.change(fileInput, { target: { files: [file] } });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText(/could not be read/i)).toBeTruthy();
+      });
+      expect(screen.queryByAltText("Uploaded QR")).toBeNull();
+    } finally {
+      globalThis.FileReader = original;
+    }
+  });
+
   it("sanitizes manual teacher token with whitespace and surrounding quotes", async () => {
     await act(async () => {
       render(<ScanQrModal user={mockUser} onClose={vi.fn()} />);

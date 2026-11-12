@@ -6,6 +6,7 @@ import type { Prisma } from '../prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { StandingService } from '../standing/standing.service'
 import { adminSectionWhere } from '../common/admin-scope'
+import { attendanceStandingFromRate, computeAttendanceRate } from '../common/utils/attendance-rate'
 import type { AtRiskQueryDto } from './dto/attendance.dto'
 import { REPORT_SECTION_LIMIT } from './types'
 
@@ -22,8 +23,9 @@ const STATUS_RANK: Record<AttendanceStandingStatus, number> = {
 /**
  * The deterministic at-risk classification shared by the at-risk list, the
  * F5 referral gate, and the CHED notice document (same math everywhere).
- * Counts follow the engine's rule: pending/disputed/excused rows are excluded
- * and incomplete (half-attended) rows do not count as attended sessions.
+ * Counts come from the shared attendance-rate helper: pending/disputed/excused
+ * rows are excluded and incomplete (half-attended) rows count toward the
+ * denominator but not as attended sessions.
  */
 export interface AtRiskClassification {
   thresholdPercent: number
@@ -41,34 +43,19 @@ export function classifyAtRiskRow(counts: Record<string, number>, thresholdPerce
   const present = counts.present ?? 0
   const late = counts.late ?? 0
   const absent = counts.absent ?? 0
-  // The at-risk engine counts exactly what the teacher sees: pending/disputed/
-  // excused rows are excluded, and a half-attended (incomplete) session does
-  // not count as attended. Mirrors the pre-referral list() math exactly.
-  const countedSessions = present + late + absent
-  const attendedSessions = present + late
-  const attendanceRate = countedSessions === 0 ? null : Math.round((attendedSessions / countedSessions) * 1000) / 10
-  const absencesBeforeBelowThreshold =
-    countedSessions === 0 || thresholdPercent <= 0
-      ? null
-      : Math.max(0, Math.floor((attendedSessions * 100) / thresholdPercent) - countedSessions)
-  const status: AttendanceStandingStatus =
-    countedSessions === 0
-      ? 'insufficient_data'
-      : attendanceRate! < thresholdPercent
-        ? 'below_threshold'
-        : absencesBeforeBelowThreshold === 0
-          ? 'at_risk'
-          : 'on_track'
+  const incomplete = counts.incomplete ?? 0
+  // Same denominator as `/me/standing` and the class record: pending/disputed/
+  // excused rows are excluded and a half-attended session counts as not
+  // attended. One incomplete can no longer flip a student between surfaces.
+  const rate = computeAttendanceRate({ present, late, absent, incomplete })
+  const standing = attendanceStandingFromRate(rate, thresholdPercent)
   return {
     thresholdPercent,
     present,
     late,
     absent,
-    countedSessions,
-    attendedSessions,
-    attendanceRate,
-    absencesBeforeBelowThreshold,
-    status,
+    ...rate,
+    ...standing,
   }
 }
 

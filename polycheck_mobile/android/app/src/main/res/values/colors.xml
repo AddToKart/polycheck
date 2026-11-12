@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#7B1113</color>
+    <!-- PUP maroon launch window (light theme) -->
+    <color name="launch_background">#7B1113</color>
+</resources>

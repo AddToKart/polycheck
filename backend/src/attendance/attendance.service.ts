@@ -599,6 +599,11 @@ export class AttendanceService {
     if (user.role !== 'teacher') {
       throw new ForbiddenException('Only teachers can update attendance statuses')
     }
+    // `pending` is reserved for system resolution; a manual pending row can
+    // never be resolved by the online closer (DD-B6).
+    if (status === 'pending') {
+      throw new BadRequestException('Pending is a system state and cannot be set manually')
+    }
     const record = await this.prisma.attendanceRecord.findUnique({
       where: { id },
       include: {
@@ -969,6 +974,10 @@ export class AttendanceService {
           qrTokenExpiresAt: expired ? null : expiresAt,
           qrValidityMinutes: payload.validityMinutes,
           gracePeriodMinutes: payload.gracePeriodMinutes,
+          // Mirrors activateInPerson: without a deadline the auto-end cron
+          // (filter `autoEndAt: { not: null }`) never sweeps this session and
+          // every seeded roster row stays `pending` forever (DD-B1).
+          autoEndAt: expired ? receivedAt : new Date(expiresAt.getTime() + payload.gracePeriodMinutes * 60_000),
         },
       })
       if (!claimed.count) return null

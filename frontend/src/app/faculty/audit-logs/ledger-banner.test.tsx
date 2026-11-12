@@ -28,17 +28,29 @@ const admin: User = {
 const emptyPage = { items: [], total: 0, page: 1, pageSize: 25, totalPages: 0 }
 
 const verifiedResult: LedgerVerifyResult = {
+  status: 'verified',
   verified: true,
   recordsChecked: 1204,
   sessionsChecked: 42,
+  unhashedRecords: 0,
   lastAnchorDate: '2026-11-01',
 }
 
 const brokenResult: LedgerVerifyResult = {
+  status: 'broken',
   verified: false,
   recordsChecked: 300,
   sessionsChecked: 9,
+  unhashedRecords: 0,
   brokenAt: { sessionId: 'sess-9', recordId: 'rec-77', reason: 'hash_mismatch' },
+}
+
+const unanchoredResult: LedgerVerifyResult = {
+  status: 'insufficient_data',
+  verified: false,
+  recordsChecked: 0,
+  sessionsChecked: 0,
+  unhashedRecords: 16,
 }
 
 describe('Ledger integrity verify (audit logs)', () => {
@@ -101,6 +113,23 @@ describe('Ledger integrity verify (audit logs)', () => {
     expect(banner).toHaveTextContent('stored hash no longer recomputes (row altered or removed)')
     expect(banner.className).toContain('red')
     expect(banner.className).not.toContain('emerald')
+  })
+
+  it('warns instead of claiming integrity when every row is off-chain', async () => {
+    apiMock.verifyLedger.mockResolvedValue(unanchoredResult)
+    render(<AuditLogsPage />)
+
+    await screen.findByText('No audited changes match these filters.')
+    fireEvent.click(screen.getByRole('button', { name: /verify ledger integrity/i }))
+
+    const banner = await screen.findByTestId('ledger-verify-result')
+    expect(banner).toHaveAttribute('role', 'status')
+    expect(banner).toHaveTextContent('⚠ Ledger not anchored — 16 records have no chain entry')
+    expect(banner).toHaveTextContent(/run the ledger backfill/i)
+    expect(banner).not.toHaveTextContent('✓ Ledger intact')
+    expect(banner.className).toContain('amber')
+    expect(banner.className).not.toContain('emerald')
+    expect(banner.className).not.toContain('red')
   })
 
   it('shows a retryable alert when verification fails', async () => {

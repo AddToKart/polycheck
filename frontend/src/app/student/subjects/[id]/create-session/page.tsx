@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, CalendarCheck, MapPin } from 'lucide-react'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
+import { describeMutationError } from '@/lib/run-mutation'
+import { ErrorDisplay } from '@/lib/hooks'
 import { formatCampusDate, formatSectionHeading, type User, type Section, type Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import MapPicker from '@/components/MapPicker'
@@ -30,6 +32,8 @@ export default function StudentCreateSessionPage() {
   const [radius, setRadius] = useState(40)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   // The load effect below initializes times from the schedule matching the date
   // that is current when the section loads. Read the latest date through a ref
@@ -50,11 +54,17 @@ export default function StudentCreateSessionPage() {
 
   useEffect(() => {
     if (!id) return
+    let active = true
     const fn = async () => {
-      const sec = await api.getSection(id)
-      if (sec) {
-        setSection(sec)
+      setLoadError(null)
+      try {
+        const sec = await api.getSection(id)
+        if (!sec) {
+          throw new Error('This section could not be found.')
+        }
         const subj = await api.getSubject(sec.subjectId)
+        if (!active) return
+        setSection(sec)
         setSubject(subj ?? null)
         setRoom(sec.room || '')
         if (sec.schedule.length > 0) {
@@ -66,10 +76,17 @@ export default function StudentCreateSessionPage() {
             setEndTime(matchedSched.endTime)
           }
         }
+      } catch (error) {
+        if (active) {
+          setLoadError(describeMutationError(error, 'Unable to load this section.'))
+        }
       }
     }
-    fn()
-  }, [id])
+    void fn()
+    return () => {
+      active = false
+    }
+  }, [id, reloadKey])
 
     const handleStartTimeChange = (newStartTime: string) => {
     setStartTime(newStartTime)
@@ -129,7 +146,23 @@ export default function StudentCreateSessionPage() {
     }
   }
 
-  const handleLogout = () => { api.logout(); router.push('/') }
+  const handleLogout = () => {
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black p-6">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-8">
+            <ErrorDisplay message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   if (!user || !section) return null
 

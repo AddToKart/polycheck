@@ -15,6 +15,8 @@ import {
   type AttendanceRecord,
   type AttendanceSummary,
   type AttendanceStatus,
+  type EditableAttendanceStatus,
+  type ResolvableAttendanceStatus,
   type Student,
   type Teacher,
   type Enrollment,
@@ -113,6 +115,7 @@ import {
   getCachedSessions,
   getCachedSubjects,
   getEnrolledSectionIds,
+  getPendingSyncCount,
   getServerClockOffset,
   initializeOfflineStore,
   persistOfflineStorage,
@@ -125,10 +128,43 @@ import {
   wipeOfflineStore,
 } from "./offline/store";
 import type { OfflineOperationKind } from "./offline/db";
+import { clearApiCache } from "./pwa/register-sw";
 
 const STORAGE_KEY = "polycheck-user";
 const REQUEST_TIMEOUT_MS = 15_000;
 const EXPORT_TIMEOUT_MS = 30_000;
+
+/**
+ * Mirrors the backend web scan policy (`MAX_WEB_LOCATION_ACCURACY_METERS`).
+ * The older 50 m client cap silently rejected every indoor scan the server
+ * would have accepted.
+ */
+const WEB_MAX_LOCATION_ACCURACY_METERS = 500;
+
+/** Shown before a user-initiated logout would discard unsynced check-ins. */
+export function formatPendingQueueLogoutWarning(pendingCount: number): string {
+  return pendingCount === 1
+    ? "1 check-in has not been synced to the server. Sign out and discard it?"
+    : `${pendingCount} check-ins have not been synced to the server. Sign out and discard them?`;
+}
+
+export interface LogoutOptions {
+  armDeviceCooldown?: boolean;
+  /**
+   * Set only after the user explicitly confirmed discarding unsynced evidence.
+   * Ignored for programmatic termination (`armDeviceCooldown: false`), which
+   * always keeps the queue so the next login can drain it.
+   */
+  discardOfflineQueue?: boolean;
+}
+
+export interface LogoutOutcome {
+  /** False only when a caller-supplied confirm declined the logout. */
+  loggedOut: boolean;
+  pendingSyncCount: number;
+  /** True when unsynced queue rows and their keys survived the logout. */
+  queuePreserved: boolean;
+}
 
 export class ApiHttpError extends Error {
   constructor(
@@ -464,6 +500,68 @@ export async function downloadAssistantFile(
   return res.blob();
 }
 
+/**
+ * Signs the browser out and reports what happened to the offline queue. Queued
+ * evidence is never destroyed silently: rows survive unless the user explicitly
+ * confirmed discarding them, and programmatic termination (a replaced/revoked
+ * session) always preserves them so the next login can drain.
+ */
+async function performLogout(options: LogoutOptions): Promise<{
+  pendingSyncCount: number;
+  queuePreserved: boolean;
+}> {
+  const armDeviceCooldown = options.armDeviceCooldown !== false;
+  // An unknown queue state counts as "may hold evidence": fail closed.
+  let pendingSyncCount = 0;
+  let queueStateKnown = true;
+  try {
+    pendingSyncCount = await getPendingSyncCount();
+  } catch (error) {
+    queueStateKnown = false;
+    console.warn(
+      "[offline] Pending check-ins could not be read; preserving the offline queue on logout.",
+      error,
+    );
+  }
+  const queuePreserved =
+    !armDeviceCooldown ||
+    !queueStateKnown ||
+    (pendingSyncCount > 0 && options.discardOfflineQueue !== true);
+
+  currentUser = null;
+  saveUser(null);
+  if (queuePreserved) {
+    // Release the in-memory owner so this signed-out tab cannot read the
+    // encrypted caches; the rows and their keys stay for the next login.
+    setOfflineOwner(null);
+  } else {
+    await wipeOfflineStore().catch((error: unknown) => {
+      console.warn("[offline] Offline storage wipe failed during logout.", error);
+    });
+  }
+  // The Cache API ignores the session cookie, so a cached API body would be
+  // served to the next account on this browser.
+  await clearApiCache();
+  try {
+    await fetchWithTimeout(`${API_BASE}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        armDeviceCooldown
+          ? {
+              deviceId: getOrCreateWebInstallationId(),
+              armDeviceCooldown: true,
+            }
+          : { armDeviceCooldown: false },
+      ),
+    });
+  } catch {
+    /* Local logout still succeeds when the server is unavailable. */
+  }
+  return { pendingSyncCount, queuePreserved };
+}
+
 const apiBase = {
   getPrivacyNotice(): Promise<PrivacyNotice> {
     return get("/auth/privacy-notice");
@@ -535,6 +633,9 @@ const apiBase = {
       const data = await res.json();
       currentUser = data.user as User;
       saveUser(currentUser);
+      // Account switch: drop any API body a previous account left in the
+      // service-worker cache before this session starts reading.
+      void clearApiCache();
       void initializeOfflineStore(currentUser.id).catch(() => undefined);
       return currentUser;
     } finally {
@@ -576,6 +677,9 @@ const apiBase = {
       const data = await res.json();
       currentUser = data.user as User;
       saveUser(currentUser);
+      // Account switch: drop any API body a previous account left in the
+      // service-worker cache before this session starts reading.
+      void clearApiCache();
       void initializeOfflineStore(currentUser.id).catch(() => undefined);
       return currentUser;
     } finally {
@@ -583,30 +687,29 @@ const apiBase = {
     }
   },
 
-  async logout(options: { armDeviceCooldown?: boolean } = {}) {
-    // Student logouts arm the server-side device cooldown and exempt this
-    // browser; programmatic terminations (replaced/revoked sessions) opt out
-    // so a server-driven kick never punishes another device.
-    const armDeviceCooldown = options.armDeviceCooldown !== false;
-    currentUser = null;
-    saveUser(null);
-    void wipeOfflineStore().catch(() => undefined);
+  /**
+   * Signs the browser out. The shared client contract types this as
+   * `Promise<void>`; callers that need the queue outcome use
+   * `requestUserLogout()`, which asks before discarding unsynced evidence.
+   */
+  async logout(options: LogoutOptions = {}): Promise<void> {
+    await performLogout(options);
+  },
+
+  /**
+   * Unsynced check-in count for the blocking logout confirmation. Degrades to
+   * 0 (with a log) when IndexedDB is unavailable; `logout()` still preserves
+   * the queue in that case because it re-reads the store and fails closed.
+   */
+  async pendingOfflineSyncCount(): Promise<number> {
     try {
-      await fetchWithTimeout(`${API_BASE}/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          armDeviceCooldown
-            ? {
-                deviceId: getOrCreateWebInstallationId(),
-                armDeviceCooldown: true,
-              }
-            : { armDeviceCooldown: false },
-        ),
-      });
-    } catch {
-      /* Local logout still succeeds when the server is unavailable. */
+      return await getPendingSyncCount();
+    } catch (error) {
+      console.warn(
+        "[offline] Pending check-ins could not be read; treating as none.",
+        error,
+      );
+      return 0;
     }
   },
 
@@ -651,6 +754,9 @@ const apiBase = {
     try {
       currentUser = await get<User>("/auth/me");
       saveUser(currentUser);
+      // Account switch: drop any API body a previous account left in the
+      // service-worker cache before this session starts reading.
+      void clearApiCache();
       void initializeOfflineStore(currentUser.id).catch(() => undefined);
       return currentUser;
     } catch (error) {
@@ -1187,7 +1293,9 @@ const apiBase = {
     }
   },
   async addAttendanceRecord(
-    record: AttendanceRecord,
+    record: Omit<AttendanceRecord, "status"> & {
+      status: EditableAttendanceStatus;
+    },
   ): Promise<AttendanceRecord> {
     const payload = {
       sessionId: record.sessionId,
@@ -1216,7 +1324,7 @@ const apiBase = {
   },
   async updateAttendanceStatus(
     recordId: string,
-    status: AttendanceStatus,
+    status: EditableAttendanceStatus,
   ): Promise<AttendanceRecord> {
     try {
       const updated = await patch<AttendanceRecord>(
@@ -1288,14 +1396,28 @@ const apiBase = {
       if (!isNetworkFailure(error)) throw error;
       if (!qrToken) return { error: "QR token is required" };
       const cachedSession = await getCachedSession(sessionId);
-      const tokenPayload = verifyQRToken(
-        qrToken,
-        cachedSession?.teacherPublicKey ?? "",
-      );
+      // The cached `/health` offset is part of the offline contract: token
+      // bounds are server-clock values and the raw device clock can be minutes
+      // off, so a missing session/key/offset fails closed with the not-synced
+      // message instead of reporting a misleading signature error.
+      const clockOffset = await getServerClockOffset();
+      if (
+        !cachedSession ||
+        !cachedSession.teacherPublicKey ||
+        clockOffset === null
+      ) {
+        return {
+          error:
+            "Session security time and class data are not available offline. Sync before class.",
+        };
+      }
+      const tokenPayload = verifyQRToken(qrToken, cachedSession.teacherPublicKey);
       if (!tokenPayload) return { error: "QR token signature is invalid" };
       const online = tokenPayload.mode === "online";
       const checkpoint = tokenPayload.checkpoint;
       const capturedAt = new Date(payload.scannedAt).getTime();
+      // Server-clock view of the scan (null offsets already failed closed).
+      const trustedCapturedAt = capturedAt + clockOffset;
       const validityMs =
         tokenPayload.validitySeconds !== undefined
           ? tokenPayload.validitySeconds * 1000
@@ -1306,11 +1428,6 @@ const apiBase = {
         (checkpoint === "end" ? 0 : tokenPayload.gracePeriodMinutes * 60_000);
       if (!online && evidence?.mocked === true)
         return { error: "Mocked locations are not accepted" };
-      if (!cachedSession) {
-        return {
-          error: "Session data is not available offline. Sync before class.",
-        };
-      }
       if (!online) {
         if (lat === null || lon === null || !cachedSession.geofence) {
           return { error: "Location is required for in-person attendance." };
@@ -1326,7 +1443,9 @@ const apiBase = {
             error: `You are outside the session geofence (${Math.round(distance)} m away, allowed ${cachedSession.geofence.radiusMeters} m).`,
           };
         }
-        if ((evidence?.accuracyMeters ?? 0) > 50)
+        if (
+          (evidence?.accuracyMeters ?? 0) > WEB_MAX_LOCATION_ACCURACY_METERS
+        )
           return {
             error: "Location accuracy is too poor to verify attendance",
           };
@@ -1345,8 +1464,8 @@ const apiBase = {
       }
       if (
         !Number.isFinite(capturedAt) ||
-        capturedAt < tokenPayload.issuedAt - 30_000 ||
-        capturedAt > graceEnd
+        trustedCapturedAt < tokenPayload.issuedAt - 30_000 ||
+        trustedCapturedAt > graceEnd
       ) {
         return { error: "The QR attendance window has expired" };
       }
@@ -1367,8 +1486,10 @@ const apiBase = {
         };
       }
       await enqueueOfflineOperation("attendance_scan", payload);
+      // Matches the server: `capturedAt <= validityEnd ? present : late`, using
+      // the offset-corrected capture time rather than the raw device clock.
       const legStatus: AttendanceStatus =
-        capturedAt <= validityEnd ? "present" : "late";
+        trustedCapturedAt <= validityEnd ? "present" : "late";
       const record: AttendanceRecord = {
         id: online
           ? `offline:${sessionId}:${studentId}:${checkpoint ?? "start"}`
@@ -1472,7 +1593,11 @@ const apiBase = {
           message: "You are outside the session geofence",
         };
       }
-      const capturedAt = new Date(scannedAt ?? Date.now()).getTime();
+      // The device clock is only a capture source; window/endedAt/status
+      // decisions all run on the `/health`-corrected time (a null offset
+      // already failed closed as `not_synced` above).
+      const capturedAt =
+        new Date(scannedAt ?? Date.now()).getTime() + clockOffset;
       if (session.endedAt && capturedAt > new Date(session.endedAt).getTime())
         return {
           success: false,
@@ -1535,7 +1660,7 @@ const apiBase = {
   resolveDispute(
     recordId: string,
     resolution: "accept" | "reject" | "override",
-    newStatus?: AttendanceStatus,
+    newStatus?: ResolvableAttendanceStatus,
   ): Promise<AttendanceRecord> {
     return post(`/disputes/${recordId}/resolve`, { resolution, newStatus });
   },
@@ -1942,9 +2067,20 @@ const apiBase = {
                 error: "Awaiting server confirmation",
               };
             if ("error" in result) {
-              return result.retryable === false
-                ? { outcome: "terminal", error: result.error }
-                : classifyAttendanceSyncError(result.error);
+              const classified =
+                result.retryable === false
+                  ? { outcome: "terminal" as const, error: result.error }
+                  : classifyAttendanceSyncError(result.error);
+              if (classified.outcome === "terminal") {
+                // Terminal evidence will never sync, so drop the optimistic
+                // cached row: keeping it would make the "already saved on this
+                // device" guard block every retry of that checkpoint (RN MP5).
+                await removeCachedAttendanceAttempt(
+                  String(payload.sessionId),
+                  user.id,
+                );
+              }
+              return classified;
             }
             await removeCachedAttendanceAttempt(
               String(payload.sessionId),
@@ -2190,5 +2326,27 @@ const apiBase = {
 };
 
 export const api = { ...apiBase, downloadAssistantFile };
+
+/**
+ * UI entry point for a user-initiated sign-out: consult the pending queue,
+ * ask before destroying evidence, and only then discard it. `confirm` receives
+ * the pending count so a page can render its own dialog instead of
+ * `window.confirm`.
+ */
+export async function requestUserLogout(
+  confirm: (pendingCount: number) => boolean = (pendingCount) =>
+    typeof window === "undefined"
+      ? true
+      : window.confirm(formatPendingQueueLogoutWarning(pendingCount)),
+): Promise<LogoutOutcome> {
+  const pendingSyncCount = await apiBase.pendingOfflineSyncCount();
+  if (pendingSyncCount > 0 && !confirm(pendingSyncCount)) {
+    return { loggedOut: false, pendingSyncCount, queuePreserved: true };
+  }
+  const outcome = await performLogout({
+    discardOfflineQueue: pendingSyncCount > 0,
+  });
+  return { loggedOut: true, ...outcome };
+}
 
 api satisfies ApiClient;

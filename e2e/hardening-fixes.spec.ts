@@ -186,10 +186,9 @@ test.describe('V3 — enrollment tombstone', () => {
     expect(blockedBody.code).toBe('student_blocked_from_section')
     expect(blockedBody.message ?? '').toContain('removed from this section by the instructor')
 
-    // Student logins are single-device now: the first device-less login leaves
-    // a live (legacy, null-device) session, and a second device-less login in
-    // the same API context would be rejected by the active-session gate.
-    // Revoke it non-armingly before switching the jar to the teacher.
+    // Student logins are single-device now. Revoke the student session
+    // non-armingly before switching this jar to the teacher, so no live session
+    // outlives the test and blocks a later unidentified login.
     expect((await apiLogout(request)).ok(), 'student session revoked before re-admission').toBeTruthy()
 
     // Explicit teacher re-admission clears the tombstone and enrolls.

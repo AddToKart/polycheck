@@ -62,12 +62,12 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
       <div className="min-h-screen flex flex-col md:flex-row bg-background selection:bg-golden selection:text-maroon overflow-y-auto md:overflow-hidden relative">
         
         {/* Global Floating Theme Toggle */}
-        <div className="absolute top-6 right-6 z-30">
+        <div className="absolute top-4 right-4 md:top-6 md:right-6 z-30">
           <ThemeToggle />
         </div>
         
         {/* Left Branding Panel */}
-        <div className={`relative flex flex-col justify-between p-8 md:p-12 lg:p-16 text-white border-b md:border-b-0 overflow-hidden transition-all duration-300 ease-in-out bg-maroon dark:bg-golden shrink-0 ${
+        <div className={`relative flex flex-col justify-between p-5 sm:p-8 md:p-12 lg:p-16 text-white border-b md:border-b-0 overflow-hidden transition-all duration-300 ease-in-out bg-maroon dark:bg-golden shrink-0 ${
           isLogin 
             ? 'left-panel-login border-zinc-800/50' 
             : 'left-panel-home border-zinc-200 dark:border-zinc-800/50'
@@ -159,32 +159,32 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
           </div>
 
           {/* Center: Branding Content (Transitions between Home & Login text) */}
-          <div className={`relative z-10 flex flex-col justify-center mt-24 mb-12 md:my-0 md:h-80 lg:h-96 shrink-0 transition-all duration-300 ${
-            isLogin ? 'h-40' : 'h-64'
+          <div className={`relative z-10 flex flex-col justify-center mt-16 mb-4 md:my-0 md:h-80 lg:h-96 shrink-0 transition-all duration-300 ${
+            isLogin ? 'h-28 md:h-40' : 'h-40 sm:h-52 md:h-64'
           }`}>
             
             {/* Home Branding Content */}
             <div className={`absolute inset-0 flex flex-col justify-center transition-all duration-300 ease-in-out ${
               !isLogin ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-4 scale-95 pointer-events-none'
             }`}>
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-10 h-[2px] bg-golden/70 dark:bg-maroon-dark/30" />
+              <div className="flex items-center gap-3 mb-2 md:gap-4 md:mb-6">
+                <div className="w-8 md:w-10 h-[2px] bg-golden/70 dark:bg-maroon-dark/30" />
                 <PupStar className={`origin-left animate-float transition-all duration-300 ${
                   hoveredIndex === 0 ? 'scale-[0.65]' : hoveredIndex === 1 ? 'scale-[0.45] opacity-50' : 'scale-[0.55]'
                 }`} darkColor />
               </div>
-              <h1 className="text-6xl md:text-7xl lg:text-8xl font-heading font-bold text-golden dark:text-maroon-dark leading-[0.95] tracking-tighter mb-6">
+              <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-heading font-bold text-golden dark:text-maroon-dark leading-[0.95] tracking-tighter mb-2 md:mb-6">
                 Polycheck.
               </h1>
-              <p className="text-base md:text-lg font-sans text-zinc-100/80 dark:text-maroon-dark/90 max-w-md leading-relaxed mb-8">
+              <p className="text-xs sm:text-sm md:text-lg font-sans text-zinc-100/80 dark:text-maroon-dark/90 max-w-md leading-relaxed mb-3 md:mb-8 line-clamp-2 md:line-clamp-none">
                 A premium, unified attendance system built for PUP. Digitized class tracking with secure geolocation and offline-first capabilities.
               </p>
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-[1px] bg-golden/30 dark:bg-maroon-dark/20" />
-                <span className="text-xs font-sans font-semibold text-golden dark:text-maroon-dark tracking-[0.3em] uppercase italic">
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className="w-6 md:w-8 h-[1px] bg-golden/30 dark:bg-maroon-dark/20" />
+                <span className="text-[10px] md:text-xs font-sans font-semibold text-golden dark:text-maroon-dark tracking-[0.25em] md:tracking-[0.3em] uppercase italic">
                   Iskolar ng Bayan
                 </span>
-                <div className="w-8 h-[1px] bg-golden/30 dark:bg-maroon-dark/20" />
+                <div className="w-6 md:w-8 h-[1px] bg-golden/30 dark:bg-maroon-dark/20" />
               </div>
             </div>
 
@@ -225,7 +225,7 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
           </div>
 
           {/* Bottom: Tagline + Year */}
-          <div className={`relative z-10 flex items-center justify-between text-xs font-sans uppercase tracking-[0.2em] text-white/50 dark:text-maroon-dark/60 animate-fade-in-up delay-500 ${
+          <div className={`relative z-10 flex items-center justify-between text-[10px] md:text-xs font-sans uppercase tracking-[0.15em] md:tracking-[0.2em] text-white/50 dark:text-maroon-dark/60 animate-fade-in-up delay-500 pt-2 md:pt-0 ${
             isLogin ? 'hidden md:flex' : 'flex'
           }`}>
             <span>PUP System</span>
@@ -239,7 +239,7 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
         </div>
 
         {/* Right Interaction Panel wrapper */}
-        <div className={`relative flex flex-col justify-center h-auto min-h-[60vh] md:min-h-screen bg-background transition-all duration-300 ease-in-out ${
+        <div className={`relative flex flex-col justify-center flex-1 py-6 sm:py-8 md:py-0 md:min-h-screen bg-background transition-all duration-300 ease-in-out ${
           isLogin ? 'right-panel-login' : 'right-panel-home'
         }`}>
           {children}

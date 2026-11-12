@@ -97,13 +97,22 @@ export default function ScanQrModal({
     }
     setUploadError("");
     setUploadFileName(file.name);
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-    setUploadPreview(dataUrl);
+    const { promise, resolve, reject } = Promise.withResolvers<string>();
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () =>
+      reject(reader.error ?? new Error("The selected image could not be read"));
+    reader.readAsDataURL(file);
+    try {
+      setUploadPreview(await promise);
+    } catch {
+      // DD-W22: both call sites fire-and-forget this handler, so a rejected
+      // FileReader (permissions, truncated file, memory pressure) used to become
+      // an unhandled rejection with no feedback. Surface it instead.
+      setUploadFileName("");
+      setUploadPreview(null);
+      setUploadError("That image could not be read. Choose a different file.");
+    }
   }, []);
 
   const handleDecodeUpload = useCallback(async () => {

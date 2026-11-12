@@ -4,7 +4,8 @@ import { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'rea
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Calendar, BookOpen, Clock, CalendarDays, MapPin } from 'lucide-react'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
+import { describeMutationError } from '@/lib/run-mutation'
 import type { Student, AttendanceRecord, Section, Session, Subject } from '@polycheck/shared'
 import { generateStudentCalendarEvents } from '@polycheck/shared/utils'
 import {
@@ -521,8 +522,11 @@ function StudentScheduleContent() {
   const [allSessions, setAllSessions] = useState<Session[]>([])
   const [allSubjects, setAllSubjects] = useState<Subject[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
+    let active = true
     const fn = async () => {
       const cu = api.getCurrentUser()
       if (!cu || cu.role !== 'student') {
@@ -530,25 +534,36 @@ function StudentScheduleContent() {
         return
       }
       setUser(cu as Student)
-      if (cu.studentId) {
+      if (!cu.studentId) return
+      setLoadError(null)
+      try {
         const [studentRecords, sections, sessions, subjects] = await Promise.all([
           api.getAttendanceForStudent(cu.id),
           api.getStudentSections(cu.id),
           api.getSessions(),
           api.getSubjects(),
         ])
+        if (!active) return
         setRecords(studentRecords)
         setAllSections(sections)
         setAllSessions(sessions)
         setAllSubjects(subjects)
+      } catch (error) {
+        if (active) {
+          setLoadError(describeMutationError(error, 'Unable to load your schedule right now.'))
+        }
       }
     }
-    fn()
-  }, [router])
+    void fn()
+    return () => {
+      active = false
+    }
+  }, [router, reloadKey])
 
   const handleLogout = useCallback(() => {
-    api.logout()
-    router.push('/')
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
   }, [router])
 
   const studentId = user?.id ?? ''
@@ -675,7 +690,15 @@ function StudentScheduleContent() {
           </div>
 
           <div className="flex-1 min-h-0 flex flex-col md:overflow-hidden">
-            {allSections.length === 0 ? (
+            {loadError ? (
+              <div role="alert" className="border border-dashed border-red-300 bg-red-50 p-12 text-center dark:border-red-800 dark:bg-red-950/30 shrink-0">
+                <p className="text-sm font-bold text-red-700 dark:text-red-300 mb-2">Your schedule could not be loaded.</p>
+                <p className="text-xs text-red-600 dark:text-red-400 mb-4">{loadError}</p>
+                <Button variant="outline" size="sm" onClick={() => setReloadKey((key) => key + 1)}>
+                  Retry
+                </Button>
+              </div>
+            ) : allSections.length === 0 ? (
               <div className="border border-dashed border-zinc-300 dark:border-zinc-700 p-16 text-center bg-zinc-50 dark:bg-zinc-900/20 shrink-0">
                 <BookOpen className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mx-auto mb-4" />
                 <p className="text-xl font-heading font-bold text-zinc-400 mb-2">NO ENROLLMENTS</p>

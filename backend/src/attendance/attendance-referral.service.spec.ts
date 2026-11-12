@@ -230,7 +230,9 @@ describe('AttendanceReferralService — F5 (WF-LD7)', () => {
       const { service, prisma } = makeService()
       await service.listReferrals(departmentAdmin)
       const where = prisma.atRiskReferral.findMany.mock.calls[0][0].where
-      expect(where.section).toEqual({ teacher: { department: 'COE' } })
+      expect(where.section).toEqual({
+        teacher: { department: { equals: 'COE', mode: 'insensitive' } },
+      })
     })
   })
 

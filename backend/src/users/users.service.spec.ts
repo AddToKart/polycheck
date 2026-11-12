@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common'
-import { compare } from 'bcryptjs'
+import { compare } from '@node-rs/bcrypt'
 import { UsersService } from './users.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 
@@ -258,7 +258,7 @@ describe('UsersService', () => {
       const where = prisma.user.findMany.mock.calls[0][0].where
       expect(where.AND).toEqual(
         expect.arrayContaining([
-          { department: 'CCIS' },
+          { department: { equals: 'CCIS', mode: 'insensitive' } },
           { department: { equals: 'CAF', mode: 'insensitive' } },
           { role: 'student' },
         ]),

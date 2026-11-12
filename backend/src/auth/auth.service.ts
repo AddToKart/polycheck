@@ -11,7 +11,7 @@ import {
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common'
-import { compare, hash } from 'bcryptjs'
+import { compare, hash } from '@node-rs/bcrypt'
 import { createHash } from 'crypto'
 import { randomUUID } from 'node:crypto'
 import { PrismaService } from '../prisma/prisma.service'
@@ -402,7 +402,7 @@ export class AuthService {
       throw new BadRequestException('Current password is required to change your password')
     }
 
-    const passwordHash = await hash(dto.newPassword, PASSWORD_HASH_COST)
+    const passwordHash = await hash(dto.newPassword, { cost: PASSWORD_HASH_COST })
     const now = new Date()
     await this.prisma.$transaction(async (tx) => {
       const updated = await tx.user.update({

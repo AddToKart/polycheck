@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { canAccessItOperations } from '@polycheck/shared'
 import type { User } from '@polycheck/shared'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
 import { subscribeToServerStatus } from '@/lib/realtime'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -225,7 +225,7 @@ export default function ServerStatusPage() {
   if (loading && !latest) {
     return (
       <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
-        <Sidebar user={user} onLogout={() => { api.logout(); router.push('/') }} />
+        <Sidebar user={user} onLogout={() => { void requestUserLogout().then((outcome) => { if (outcome.loggedOut) router.push('/') }) }} />
         <main className="flex flex-1 items-center justify-center">
           <div className="text-center">
             <LoadingSpinner size="lg" />
@@ -241,7 +241,7 @@ export default function ServerStatusPage() {
   if (error && !latest) {
     return (
       <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
-        <Sidebar user={user} onLogout={() => { api.logout(); router.push('/') }} />
+        <Sidebar user={user} onLogout={() => { void requestUserLogout().then((outcome) => { if (outcome.loggedOut) router.push('/') }) }} />
         <main className="flex flex-1 items-center justify-center p-6">
           <div
             role="alert"
@@ -268,7 +268,7 @@ export default function ServerStatusPage() {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
-      <Sidebar user={user} onLogout={() => { api.logout(); router.push('/') }} />
+      <Sidebar user={user} onLogout={() => { void requestUserLogout().then((outcome) => { if (outcome.loggedOut) router.push('/') }) }} />
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-7xl p-6 md:p-10">

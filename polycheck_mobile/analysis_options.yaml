@@ -1,0 +1,15 @@
+# This file configures the analyzer, which statically analyzes Dart code.
+#
+# The `invalid_annotation_target` suppression is the documented Freezed +
+# json_serializable pairing (the annotation is valid on factory constructors).
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    invalid_annotation_target: ignore
+
+linter:
+  rules:
+    prefer_single_quotes: true
+    always_declare_return_types: true
+    unawaited_futures: false

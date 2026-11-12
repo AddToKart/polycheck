@@ -45,3 +45,34 @@ export function applyServiceWorkerUpdate(): void {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
   navigator.serviceWorker.controller?.postMessage({ type: 'SKIP_WAITING' })
 }
+
+/** Cache names the worker owns end with this suffix (`polycheck-v2-api`). */
+const API_CACHE_SUFFIX = '-api'
+
+/**
+ * Drops every API body the service worker cached. Called on logout and account
+ * switch: the Cache API is keyed by URL only and ignores the session cookie, so
+ * a cached roster/attendance body would otherwise be served to the next account
+ * on this browser while offline.
+ *
+ * Best-effort and non-blocking by design — offline support must never block a
+ * sign-out. The worker handles `CLEAR_API_CACHE` for its own cache, and the
+ * page deletes the same Cache-API entries directly (the Cache API is shared
+ * with the worker) so caches left by an older worker version die immediately.
+ */
+export async function clearApiCache(): Promise<void> {
+  if (typeof window === 'undefined') return
+  try {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.controller?.postMessage({ type: 'CLEAR_API_CACHE' })
+    }
+    if (typeof caches === 'undefined') return
+    const keys = await caches.keys()
+    await Promise.all(
+      keys.filter((key) => key.endsWith(API_CACHE_SUFFIX)).map((key) => caches.delete(key)),
+    )
+  } catch (error) {
+    // Offline capability is best-effort; a failed purge must not block logout.
+    console.warn('[pwa] The cached API responses could not be cleared.', error)
+  }
+}

@@ -16,6 +16,7 @@ class ExportQueryDto {
   @IsOptional() @IsString() @MaxLength(128) sessionId?: string
   @IsOptional() @IsString() @MaxLength(128) teacherId?: string
   @IsOptional() @IsString() @MaxLength(128) subjectId?: string
+  @IsOptional() @IsString() @MaxLength(100) department?: string
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) startDate?: string
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) endDate?: string
 }
