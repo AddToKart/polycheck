@@ -74,11 +74,15 @@ const tooMany = (reply: FastifyReply, retryAfterSeconds = 5) =>
 export function buildServer(deps: IngestDeps): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 })
 
-  app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
+  const healthHandler = async () => ({ status: 'ok', timestamp: new Date().toISOString() })
+  app.get('/health', healthHandler)
+  app.get('/api/health', healthHandler)
 
-  app.get('/health/clock', async () => ({ timestamp: new Date().toISOString() }))
+  const clockHandler = async () => ({ timestamp: new Date().toISOString() })
+  app.get('/health/clock', clockHandler)
+  app.get('/api/health/clock', clockHandler)
 
-  app.get('/health/ready', async (_request, reply) => {
+  const readyHandler = async (_request: FastifyRequest, reply: FastifyReply) => {
     const checks: Record<string, string> = {}
     let ready = true
     try {
@@ -100,7 +104,9 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
     }
     const body = { status: ready ? 'ok' : 'degraded', timestamp: new Date().toISOString(), checks }
     return ready ? body : reply.code(503).send(body)
-  })
+  }
+  app.get('/health/ready', readyHandler)
+  app.get('/api/health/ready', readyHandler)
 
   app.get('/metrics', async (_request, reply) => {
     const [depth, lag] = await Promise.all([deps.bufferDepth(), deps.bufferLagSeconds()])
@@ -223,7 +229,9 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
   }
 
   app.post('/attendance/scan', submit)
+  app.post('/api/attendance/scan', submit)
   app.post('/attendance/check', submit)
+  app.post('/api/attendance/check', submit)
 
   /**
    * `/sync/attendance/*` is deliberately NOT served here.
@@ -237,6 +245,12 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
    * and the proxy sends it to NestJS, which owns the contract.
    */
   app.post('/sync/attendance/batches', async (_request, reply) =>
+    reply.code(404).send({
+      statusCode: 404,
+      message: 'Sync batches are served by the control plane, not the ingestion gateway',
+    }),
+  )
+  app.post('/api/sync/attendance/batches', async (_request, reply) =>
     reply.code(404).send({
       statusCode: 404,
       message: 'Sync batches are served by the control plane, not the ingestion gateway',
