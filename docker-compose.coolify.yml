@@ -29,6 +29,7 @@ services:
       retries: 20
 
   migrate:
+    image: polycheck-backend
     build:
       context: .
       dockerfile: Dockerfile.backend
@@ -37,11 +38,12 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      NODE_ENV: development
+      NODE_ENV: ${NODE_ENV:-development}
       DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public
     command: ["sh", "docker-entrypoint.sh", "migrate"]
 
   seed:
+    image: polycheck-backend
     build:
       context: .
       dockerfile: Dockerfile.backend
@@ -52,13 +54,14 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      NODE_ENV: development
+      NODE_ENV: ${NODE_ENV:-development}
       DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public
       SEED_PASSWORD: ${SEED_PASSWORD:-PolycheckSeed123!}
-      ALLOW_PRODUCTION_SEED: "false"
+      ALLOW_PRODUCTION_SEED: ${ALLOW_PRODUCTION_SEED:-true}
     command: ["node", "dist-seed/prisma/seed.js"]
 
   backend:
+    image: polycheck-backend
     build:
       context: .
       dockerfile: Dockerfile.backend
@@ -73,16 +76,20 @@ services:
       seed:
         condition: service_completed_successfully
     environment:
-      NODE_ENV: development
+      NODE_ENV: ${NODE_ENV:-development}
       PORT: 4000
+      # Native bcrypt runs on the libuv threadpool (default 4). Size it to the box so
+      # logins and student sync are parallelised across CPU cores.
+      UV_THREADPOOL_SIZE: ${UV_THREADPOOL_SIZE:-16}
       DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public&connection_limit=50
       REDIS_URL: redis://redis:6379/0
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-polycheck_super_secret_auth_key_2026}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://polycheck-api.addtokart.tech}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://your-frontend.vercel.app,http://localhost:3000,*}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://your-app.vercel.app,http://localhost:3000}
+      FRONTEND_URL: ${FRONTEND_URL:-https://your-app.vercel.app}
       TRUST_PROXY: "true"
       UPLOAD_DIR: /app/backend/uploads
+      MAX_PROOF_BYTES: ${MAX_PROOF_BYTES:-5000000}
       STORAGE_DRIVER: local
       LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-200}
       LOGIN_IP_RATE_LIMIT: ${LOGIN_IP_RATE_LIMIT:-1000}
