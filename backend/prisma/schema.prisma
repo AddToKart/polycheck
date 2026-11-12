@@ -421,6 +421,9 @@ model AttendanceRecord {
   salt                  String?
   disputeReason         String?
   disputeDescription    String?
+  // Pre-dispute status stamped when the student files. Rejecting the dispute
+  // restores it; legacy rows stay NULL and fall back to `absent` (DD-B2).
+  disputePreviousStatus AttendanceStatus?
   disputeResolved       Boolean          @default(false)
   manuallySet           Boolean          @default(false)
   notes                 String?

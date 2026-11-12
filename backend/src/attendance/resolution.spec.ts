@@ -27,7 +27,9 @@ describe('resolveSessionAttendance', () => {
     expect(tx.attendanceRecord.updateMany).toHaveBeenCalledTimes(1)
     expect(tx.attendanceRecord.updateMany).toHaveBeenCalledWith({
       where: { sessionId: 'sess-1', status: 'pending' },
-      data: { status: 'absent', timestamp: expect.any(Date), manuallySet: false },
+      // `timestamp` must NOT be rewritten: it is part of the ledger hash
+      // preimage and the chain append is a no-op once recordHash exists.
+      data: { status: 'absent', manuallySet: false },
     })
   })
 

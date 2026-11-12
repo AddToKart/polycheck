@@ -44,7 +44,11 @@ export async function resolveSessionAttendance(
     if (pending.length > 0) {
       await tx.attendanceRecord.updateMany({
         where: { sessionId: session.id, status: 'pending' },
-        data: { status: 'absent', timestamp: new Date(), manuallySet: false },
+        // Never rewrite `timestamp`: it is part of the hash-chain preimage
+        // (prevHash|studentId|timestampIso|sessionId|salt) and the chain append
+        // is a no-op once `recordHash` exists, so touching it silently breaks
+        // verification. The session's `endedAt` records when this ran.
+        data: { status: 'absent', manuallySet: false },
       })
     }
     return { absentStudentIds: pending.map((record) => record.studentId) }
@@ -89,7 +93,8 @@ export async function resolveSessionAttendance(
         checkInToken: null,
         checkOutToken: null,
       },
-      data: { status: 'absent', timestamp: new Date() },
+      // Same ledger invariant as the in-person branch: the timestamp is hashed.
+      data: { status: 'absent' },
     })
   }
   if (completedPresent.length > 0) {

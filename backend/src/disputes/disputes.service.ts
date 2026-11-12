@@ -77,6 +77,9 @@ export class DisputesService {
         where: { id: dto.recordId },
         data: {
           status: 'disputed',
+          // Keep what the student had before the dispute so a rejection can
+          // restore it (a `disputed` value is not restorable; keep the earlier one).
+          disputePreviousStatus: record.status === 'disputed' ? record.disputePreviousStatus : record.status,
           disputeReason: dto.reason,
           disputeDescription: dto.description.trim(),
           disputeResolved: false,
@@ -111,7 +114,13 @@ export class DisputesService {
     if (user.role === 'teacher' && record.session.teacherId !== user.id)
       throw new ForbiddenException('You can only resolve your own session disputes')
     const status: AttendanceStatus | undefined =
-      resolution === 'accept' ? 'present' : resolution === 'reject' ? 'absent' : newStatus
+      resolution === 'accept'
+        ? 'present'
+        : resolution === 'reject'
+          ? // Restore the status the student had before filing; legacy rows
+            // without a stamped value keep the old `absent` outcome.
+            (record.disputePreviousStatus ?? 'absent')
+          : newStatus
     if (!status) throw new ForbiddenException('An override status is required')
     if (status === 'pending' || status === 'disputed') {
       throw new ForbiddenException('Cannot override status to pending or disputed')

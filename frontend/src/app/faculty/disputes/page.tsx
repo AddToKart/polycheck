@@ -2,17 +2,10 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { 
-  Gavel, 
-  CheckCircle, 
-  XCircle, 
-  AlertTriangle, 
-  MapPin, 
-  Timer, 
-  Clock,
-  Copy, 
-  Fingerprint, 
-  Smartphone,
+import {
+  Gavel,
+  CheckCircle,
+  XCircle,
   BookOpen,
   Layers,
   Calendar,
@@ -20,11 +13,9 @@ import {
   ChevronUp,
   History,
   Search,
-  ShieldAlert,
-  Cpu,
 } from 'lucide-react'
-import { api } from '@/lib/api-client'
-import type { User, AttendanceRecord, DisputeReason, Subject, Section, Session } from '@polycheck/shared'
+import { api, requestUserLogout } from '@/lib/api-client'
+import type { User, AttendanceRecord, Subject, Section, Session } from '@polycheck/shared'
 import { formatCampusDate } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
@@ -33,7 +24,11 @@ import { Badge } from '@/components/ui/badge'
 import { FilterBar, FilterDateRange, FilterSelect } from '@/components/FilterBar'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useNotifications } from '@/lib/notifications'
+import { ErrorDisplay, LoadingSpinner } from '@/lib/hooks'
 import { useUrlFilters } from '@/lib/hooks/use-url-filters'
+import { useRunMutation } from '@/lib/run-mutation'
+import { describeMutationError } from '@/lib/run-mutation'
+import { disputeReasonIcon, disputeReasonLabel } from '@/lib/dispute-reasons'
 import { SecurityDisputeBadge } from './security-dispute-badge'
 import { DisputeTimeline } from '@/components/disputes/DisputeTimeline'
 
@@ -45,50 +40,6 @@ const FILTER_SCHEMA = {
   from: { defaultValue: '' },
   to: { defaultValue: '' },
 } as const
-
-const DISPUTE_LABELS: Record<DisputeReason, string> = {
-  outside_geofence: 'Outside Geofence',
-  expired_token: 'Expired Token',
-  duplicate_submission: 'Duplicate Submission',
-  invalid_signature: 'Invalid Signature',
-  device_mismatch: 'Device Mismatch',
-  other: 'Other',
-  suspicious_coordinates: 'Suspicious GPS',
-  delayed_offline_sync: 'Delayed Offline Sync',
-  invalid_timestamp: 'Invalid Timestamp',
-  token_mismatch: 'QR Token Mismatch',
-  session_inactive: 'Inactive Session',
-  not_enrolled: 'Not Enrolled',
-  qr_expired: 'QR Expired',
-  rate_limited: 'Rate Limited',
-  mocked_location: 'Mock GPS / Fake Location',
-  rooted_device: 'Rooted / Jailbroken Device',
-  hook_detected: 'Hooking Tool Detected',
-  emulator_detected: 'Android Emulator Detected',
-  concurrent_session_conflict: 'Concurrent Session',
-}
-
-const DISPUTE_ICONS: Record<DisputeReason, React.ElementType> = {
-  outside_geofence: MapPin,
-  expired_token: Timer,
-  duplicate_submission: Copy,
-  invalid_signature: Fingerprint,
-  device_mismatch: Smartphone,
-  other: AlertTriangle,
-  suspicious_coordinates: AlertTriangle,
-  delayed_offline_sync: Clock,
-  invalid_timestamp: Clock,
-  token_mismatch: Fingerprint,
-  session_inactive: Timer,
-  not_enrolled: AlertTriangle,
-  qr_expired: Timer,
-  rate_limited: AlertTriangle,
-  mocked_location: AlertTriangle,
-  rooted_device: ShieldAlert,
-  hook_detected: Cpu,
-  emulator_detected: Smartphone,
-  concurrent_session_conflict: Clock,
-}
 
 export default function DisputesPage() {
   return (
@@ -121,6 +72,11 @@ function DisputesContent() {
 
   // Forensic timeline collapsible — defaults open for every dispute drawer.
   const [timelineOpen, setTimelineOpen] = useState(true)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+  const { run, isPending } = useRunMutation()
+  const resolving = isPending('resolve')
 
   const openDispute = (record: AttendanceRecord) => {
     setSelectedRecord(record)
@@ -132,6 +88,7 @@ function DisputesContent() {
   }, [activeTab, searchQuery, selectedSubjectId, selectedSectionId, from, to])
 
   useEffect(() => {
+    let active = true
     const cu = api.getCurrentUser()
     if (!cu || (cu.role !== 'teacher' && cu.role !== 'super_admin')) {
       router.push('/')
@@ -139,43 +96,66 @@ function DisputesContent() {
     }
     setUser(cu)
     const fetchData = async () => {
-      const [subjectsData, sectionsData, sessionsData, disputesData] = await Promise.all([
-        api.getSubjects(),
-        api.getSections(),
-        api.getSessions(),
-        api.getDisputedRecords(),
-      ])
-      setSubjects(subjectsData)
-      setAllSections(sectionsData)
-      setAllSessions(sessionsData)
-      setAllDisputes(disputesData)
+      setLoading(true)
+      setLoadError(null)
+      try {
+        const [subjectsData, sectionsData, sessionsData, disputesData] = await Promise.all([
+          api.getSubjects(),
+          api.getSections(),
+          api.getSessions(),
+          api.getDisputedRecords(),
+        ])
+        if (!active) return
+        setSubjects(subjectsData)
+        setAllSections(sectionsData)
+        setAllSessions(sessionsData)
+        setAllDisputes(disputesData)
+      } catch (error) {
+        if (active) {
+          setLoadError(describeMutationError(error, 'Unable to load disputes'))
+        }
+      } finally {
+        if (active) setLoading(false)
+      }
     }
-    fetchData()
-  }, [router])
+    void fetchData()
+    return () => {
+      active = false
+    }
+  }, [router, reloadKey])
 
   const handleResolve = async (resolution: 'accept' | 'reject' | 'override', newStatus?: 'present' | 'late' | 'absent') => {
     if (!selectedRecord) return
-    await api.resolveDispute(selectedRecord.id, resolution, newStatus)
-    setAllDisputes(prev => prev.map(r =>
-      r.id === selectedRecord.id
-        ? { ...r, disputeResolved: true, status: newStatus || (resolution === 'accept' ? 'present' : 'absent') }
-        : r
-    ))
-    setSelectedRecord(null)
+    const record = selectedRecord
+    await run(
+      'resolve',
+      () => api.resolveDispute(record.id, resolution, newStatus),
+      {
+        errorTitle: 'Could not resolve dispute',
+        onSuccess: () => {
+          setAllDisputes(prev => prev.map(r =>
+            r.id === record.id
+              ? { ...r, disputeResolved: true, status: newStatus || (resolution === 'accept' ? 'present' : 'absent') }
+              : r
+          ))
+          setSelectedRecord(null)
 
-    if (resolution === 'accept') {
-      addNotification('success', 'Dispute Resolved', `${selectedRecord.studentName}'s record accepted as Present`)
-    } else if (resolution === 'reject') {
-      addNotification('info', 'Dispute Resolved', `${selectedRecord.studentName}'s record rejected as Absent`)
-    } else if (resolution === 'override' && newStatus) {
-      addNotification('info', 'Dispute Overridden', `${selectedRecord.studentName} set to ${newStatus}`)
-    }
+          if (resolution === 'accept') {
+            addNotification('success', 'Dispute Resolved', `${record.studentName}'s record accepted as Present`)
+          } else if (resolution === 'reject') {
+            addNotification('info', 'Dispute Resolved', `${record.studentName}'s record rejected as Absent`)
+          } else if (resolution === 'override' && newStatus) {
+            addNotification('info', 'Dispute Overridden', `${record.studentName} set to ${newStatus}`)
+          }
+        },
+      },
+    )
   }
 
   const confirmReject = () => {
-    if (!selectedRecord) return
+    if (!selectedRecord || resolving) return
     if (confirm(`Are you sure you want to reject ${selectedRecord.studentName}'s dispute? This will set their status to Absent.`)) {
-      handleResolve('reject')
+      void handleResolve('reject')
     }
   }
 
@@ -346,11 +326,40 @@ function DisputesContent() {
     }))
   }, [pagedRecords, sectionMap, subjectMap, sessionMap])
 
+  const handleLogout = () => {
+    void requestUserLogout().then((outcome) => {
+      if (outcome.loggedOut) router.push('/')
+    })
+  }
+
   if (!user) return null
+
+  if (loadError) {
+    return (
+      <div className="flex flex-col md:flex-row min-h-screen bg-zinc-100 dark:bg-pup-black">
+        <Sidebar user={user} onLogout={handleLogout} />
+        <div className="flex flex-1 items-center justify-center p-6">
+          <Card className="w-full max-w-md rounded-none dark:border-golden/15 dark:bg-surface-dark">
+            <CardContent className="p-8">
+              <ErrorDisplay message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-100 dark:bg-pup-black">
+        <LoadingSpinner size="lg" />
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-zinc-100 dark:bg-pup-black">
-      <Sidebar user={user} onLogout={() => { api.logout(); router.push('/') }} />
+      <Sidebar user={user} onLogout={handleLogout} />
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-300/80 dark:border-zinc-800">
           <div className="min-w-0">
@@ -546,7 +555,7 @@ function DisputesContent() {
                                       {/* Dispute Record Cards */}
                                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                         {sess.records.map((record) => {
-                                          const Icon = record.disputeReason ? DISPUTE_ICONS[record.disputeReason] : AlertTriangle
+                                          const Icon = disputeReasonIcon(record.disputeReason)
                                           return (
                                             <button
                                               type="button"
@@ -562,7 +571,7 @@ function DisputesContent() {
                                                     <h4 className="min-w-0 break-words text-xs font-bold dark:text-white">{record.studentName}</h4>
                                                   </div>
                                                   <span className="text-[10px] text-maroon dark:text-golden font-bold uppercase tracking-wider">
-                                                    {record.disputeReason ? DISPUTE_LABELS[record.disputeReason] : 'Unknown'}
+                                                    {disputeReasonLabel(record.disputeReason)}
                                                   </span>
                                                 </div>
                                                 <SecurityDisputeBadge reason={record.disputeReason} />
@@ -631,7 +640,7 @@ function DisputesContent() {
                   <div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:gap-2">
                     <span className="text-zinc-500 dark:text-zinc-400 shrink-0 sm:w-16 sm:pt-0.5">Reason:</span>
                     <div className="space-y-1">
-                      <span className="text-maroon dark:text-golden font-bold block">{selectedRecord.disputeReason ? DISPUTE_LABELS[selectedRecord.disputeReason] : 'Unknown'}</span>
+                      <span className="text-maroon dark:text-golden font-bold block">{disputeReasonLabel(selectedRecord.disputeReason)}</span>
                       <SecurityDisputeBadge reason={selectedRecord.disputeReason} />
                     </div>
                   </div>
@@ -688,18 +697,18 @@ function DisputesContent() {
               <>
                 <p className="text-xs uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-3">What would you like to do?</p>
 
-                <Button className="w-full bg-green-600 hover:bg-green-700 text-white flex items-center gap-2 mb-2 rounded-none" onClick={() => handleResolve('accept')}>
+                <Button className="w-full bg-green-600 hover:bg-green-700 text-white flex items-center gap-2 mb-2 rounded-none" disabled={resolving} onClick={() => handleResolve('accept')}>
                   <CheckCircle className="w-4 h-4" /> Accept — Keep as Present
                 </Button>
 
-                <Button className="w-full bg-red-500 hover:bg-red-600 text-white flex items-center gap-2 mb-4 rounded-none" onClick={confirmReject}>
+                <Button className="w-full bg-red-500 hover:bg-red-600 text-white flex items-center gap-2 mb-4 rounded-none" disabled={resolving} onClick={confirmReject}>
                   <XCircle className="w-4 h-4" /> Reject — Mark as Absent
                 </Button>
 
                 <p className="text-xs uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400 mb-2">Or override to:</p>
                 <div className="flex flex-wrap gap-2 mb-4">
                   {(['present', 'late', 'absent'] as const).map((s) => (
-                    <Button key={s} variant="outline" className="flex-1 rounded-none" onClick={() => handleResolve('override', s)}>
+                    <Button key={s} variant="outline" className="flex-1 rounded-none" disabled={resolving} onClick={() => handleResolve('override', s)}>
                       {s.charAt(0).toUpperCase() + s.slice(1)}
                     </Button>
                   ))}
