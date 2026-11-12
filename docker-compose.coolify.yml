@@ -78,6 +78,9 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       PORT: 4000
+      # Replays buffered gateway entries through the normal scan path when
+      # polycheck-ingest is unavailable. Off unless the operator opts in.
+      INGEST_FALLBACK_DRAIN: ${INGEST_FALLBACK_DRAIN:-false}
       # Native bcrypt runs on the libuv threadpool (default 4). Size it to the box so
       # logins and student sync are parallelised across CPU cores.
       UV_THREADPOOL_SIZE: ${UV_THREADPOOL_SIZE:-16}
@@ -102,8 +105,65 @@ services:
     labels:
       - "coolify.managed=true"
       - "coolify.port=4000"
+      - "traefik.enable=true"
+      - "traefik.http.routers.polycheck-backend.rule=Host(`${API_DOMAIN:-polycheck-api.addtokart.tech}`)"
+      - "traefik.http.routers.polycheck-backend.priority=1"
+      - "traefik.http.routers.polycheck-backend.tls=true"
+      - "traefik.http.services.polycheck-backend.loadbalancer.server.port=4000"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/api/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # Ingestion gateway (plan/fastify-ingestion-gateway-plan.md).
+  #
+  # Edge routing (configure in Coolify / the reverse proxy — this repo has no
+  # Traefik labels, Coolify manages them):
+  #   /api/attendance/scan            -> ingest:4001
+  #   /api/attendance/check           -> ingest:4001
+  #   /api/health                     -> ingest:4001
+  #   (do NOT route /api/sync/* — offline replay stays on NestJS backend:4000)
+  #   everything else /api/*          -> backend:4000        (unchanged)
+  #
+  # Rollback is deleting those rules: ingest stops receiving traffic and the
+  # backend serves the same paths exactly as it does today.
+  ingest:
+    image: polycheck-ingest
+    build:
+      context: .
+      dockerfile: Dockerfile.ingest
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4001
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public
+      CONTROL_PLANE_URL: http://backend:4000/api
+      INGEST_DRAINER_ENABLED: ${INGEST_DRAINER_ENABLED:-true}
+      INGEST_DB_POOL_SIZE: ${INGEST_DB_POOL_SIZE:-8}
+      INGEST_MAX_BUFFER: ${INGEST_MAX_BUFFER:-50000}
+      INGEST_MAX_LAG_SECONDS: ${INGEST_MAX_LAG_SECONDS:-30}
+      INGEST_AUTH_CACHE_TTL_SECONDS: ${INGEST_AUTH_CACHE_TTL_SECONDS:-900}
+    ports:
+      - "4001:4001"
+    labels:
+      - "coolify.managed=true"
+      - "coolify.port=4001"
+      - "traefik.enable=true"
+      - "traefik.http.routers.polycheck-ingest.rule=Host(`${API_DOMAIN:-polycheck-api.addtokart.tech}`) && (PathPrefix(`/api/attendance/scan`) || PathPrefix(`/api/attendance/check`) || PathPrefix(`/api/health`))"
+      - "traefik.http.routers.polycheck-ingest.priority=100"
+      - "traefik.http.routers.polycheck-ingest.tls=true"
+      - "traefik.http.services.polycheck-ingest.loadbalancer.server.port=4001"
+      - "traefik.http.services.polycheck-ingest.loadbalancer.healthcheck.path=/health/ready"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4001/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 12

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { AttendanceController } from './attendance.controller'
 import { AttendanceService } from './attendance.service'
+import { IngestFallbackService } from './ingest-fallback.service'
 import { AttendanceScopeService } from './attendance-scope.service'
 import { AttendanceReportService } from './attendance-report.service'
 import { AttendanceAtRiskService } from './attendance-at-risk.service'
@@ -28,6 +29,9 @@ import { UsersModule } from '../users/users.module'
     LedgerService,
     ScanValidatorService,
     AttendanceService,
+    // Off unless INGEST_FALLBACK_DRAIN=true: replays buffered gateway entries
+    // through the normal scan path when polycheck-ingest is unavailable.
+    IngestFallbackService,
   ],
   exports: [AttendanceService, LedgerService],
 })
