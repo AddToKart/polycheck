@@ -48,10 +48,37 @@ export function ledgerDateOf(timestamp: Date | string): string {
 export type LedgerBreakReason =
   "hash_mismatch" | "link_mismatch" | "anchor_mismatch";
 
+/**
+ * Outcome of a ledger re-scan.
+ *
+ * - `verified` — at least one record was recomputed and every chain, link and
+ *   anchor check passed.
+ * - `broken` — a hash, link or anchor check failed; `brokenAt` says where.
+ * - `insufficient_data` — there was nothing to verify: the table holds no
+ *   attendance rows at all, or every row still lacks a chain entry (a fresh
+ *   seed before the ledger backfill ran). This is never a pass: an unanchored
+ *   table must not be reported as an intact ledger.
+ */
+export type LedgerVerifyStatus = "verified" | "broken" | "insufficient_data";
+
 export interface LedgerVerifyResult {
+  /**
+   * Verdict of the re-scan. The backend always sends it; the field is optional
+   * only because the read-only Android-RN client still types its fixtures
+   * against this interface. A consumer that receives no `status` must treat it
+   * as a legacy response: `verified ? "verified" : "broken"`.
+   */
+  status?: LedgerVerifyStatus;
+  /** Derived from `status`; kept so existing clients keep working. */
   verified: boolean;
   recordsChecked: number;
   sessionsChecked: number;
+  /**
+   * Attendance rows that carry no `recordHash` and are therefore off-chain.
+   * Always sent by the backend; optional for the same compatibility reason as
+   * `status` (absent means 0).
+   */
+  unhashedRecords?: number;
   lastAnchorDate?: string;
   brokenAt?: {
     sessionId: string;

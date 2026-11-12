@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { FileClock, Loader2, RefreshCw, Search, ShieldCheck } from 'lucide-react'
 import { getRecentCampusDateRange, type AuditLogPage, type AuditOutcome, type LedgerVerifyResult, type User } from '@polycheck/shared'
-import { api } from '@/lib/api-client'
+import { api, requestUserLogout } from '@/lib/api-client'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -96,9 +96,16 @@ export default function AuditLogsPage() {
 
   if (!user) return null
 
+  // Older payloads (or the read-only Android client's fixtures) may omit the
+  // status; derive it from `verified` the same way those clients do.
+  const ledgerStatus: NonNullable<LedgerVerifyResult['status']> | null = ledgerResult
+    ? (ledgerResult.status ?? (ledgerResult.verified ? 'verified' : 'broken'))
+    : null
+  const unhashedRecords = ledgerResult?.unhashedRecords ?? 0
+
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
-      <Sidebar user={user} onLogout={() => { void api.logout(); router.push('/') }} />
+      <Sidebar user={user} onLogout={() => { void requestUserLogout().then((outcome) => { if (outcome.loggedOut) router.push('/') }) }} />
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-7xl p-6 md:p-10">
           <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -127,12 +134,24 @@ export default function AuditLogsPage() {
           </div>
 
           {ledgerResult ? (
-            ledgerResult.verified ? (
+            ledgerStatus === 'verified' ? (
               <div data-testid="ledger-verify-result" role="status" className="mb-5 rounded-none border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
                 <p>✓ Ledger intact — <span className="font-semibold tabular-nums">{ledgerResult.recordsChecked.toLocaleString()}</span> records across <span className="font-semibold tabular-nums">{ledgerResult.sessionsChecked.toLocaleString()}</span> sessions verified</p>
                 {ledgerResult.lastAnchorDate ? (
                   <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">Daily chain heads are published to the audit trail. Last anchor: {ledgerResult.lastAnchorDate}</p>
                 ) : null}
+              </div>
+            ) : ledgerStatus === 'insufficient_data' ? (
+              <div data-testid="ledger-verify-result" role="status" className="mb-5 rounded-none border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                <p>
+                  ⚠ Ledger not anchored —{' '}
+                  <span className="font-semibold tabular-nums">{unhashedRecords.toLocaleString()}</span>{' '}
+                  {unhashedRecords === 1 ? 'record has' : 'records have'} no chain entry
+                </p>
+                <p className="mt-1 text-xs text-amber-800 dark:text-amber-400">
+                  Nothing could be verified, so integrity is unproven. Run the ledger backfill (or re-run the seed) to chain the
+                  historical attendance rows.
+                </p>
               </div>
             ) : (
               <div data-testid="ledger-verify-result" role="status" className="mb-5 rounded-none border border-red-300 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">

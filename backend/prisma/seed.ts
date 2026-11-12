@@ -7,11 +7,16 @@ import {
   SectionRoleType,
   UserRole,
 } from '../src/prisma/client'
-import { compare, hash } from 'bcryptjs'
+import { compare, hash } from '@node-rs/bcrypt'
+import { backfillAttendanceLedger } from './backfills/ledger-backfill'
 
-const prisma = new PrismaClient({ adapter: createPrismaAdapter() })
-
-async function main() {
+/**
+ * Applies the full demo dataset and then chains every historical attendance
+ * row into the F9 hash ledger. Exported (and parameterized on the client) so
+ * the seed test can prove the ledger backfill runs; the CLI below is the only
+ * place that owns a PrismaClient.
+ */
+export async function seed(prisma: PrismaClient) {
   if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
     throw new Error('Production seeding is disabled. Set ALLOW_PRODUCTION_SEED=true only for an intentional bootstrap.')
   }
@@ -19,7 +24,7 @@ async function main() {
   if (!seedPassword || seedPassword.length < 12) {
     throw new Error('SEED_PASSWORD must be set to at least 12 characters')
   }
-  const password = await hash(seedPassword, 12)
+  const password = await hash(seedPassword, { cost: 12 })
   const privacyConsentVersion = process.env.PRIVACY_NOTICE_VERSION ?? '2026-09-05'
   const privacyConsentedAt = new Date()
 
@@ -593,16 +598,32 @@ async function main() {
     },
   })
 
+  // ── Attendance hash chain (F9, WF-LD11) ──
+  // The seed service runs only `node dist-seed/prisma/seed.js`, so the
+  // historical backfill must live here as well: a fresh volume otherwise
+  // leaves every seeded attendance row off-chain. Idempotent for re-runs.
+  const ledger = await backfillAttendanceLedger(prisma)
+  console.log(
+    `Attendance ledger backfill: ${ledger.sessionsInspected} sessions inspected, ${ledger.recordsChained} rows chained`,
+  )
+
   console.log(
     'Seed complete: users, subjects, sections, schedules, sessions, enrollments, attendance records, section roles',
   )
 }
 
-main()
-  .catch((e) => {
+async function main() {
+  const prisma = new PrismaClient({ adapter: createPrismaAdapter() })
+  try {
+    await seed(prisma)
+  } finally {
+    await prisma.$disconnect()
+  }
+}
+
+if (require.main === module) {
+  main().catch((e) => {
     console.error(e)
     process.exit(1)
   })
-  .finally(async () => {
-    await prisma.$disconnect()
-  })
+}

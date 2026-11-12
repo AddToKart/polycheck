@@ -6,14 +6,23 @@ import { computeRecordHash, generateLedgerSalt } from '@polycheck/shared/ledger'
 // (timestamp, id) order using the same canonical hash math as the live
 // appendLedger path. Idempotent: rows that already carry a recordHash are
 // skipped, so re-runs and partially-failed runs resume safely.
-// Run once after the 20261103120000_wow_attendance_hash_chain migration:
+//
+// The exported function is called at the end of `prisma/seed.ts` (the Docker
+// seed service only runs `node dist-seed/prisma/seed.js`) and from the
+// standalone CLI below, which remains available after applying the
+// 20261103120000_wow_attendance_hash_chain migration:
 //   pnpm exec ts-node prisma/backfills/ledger-backfill.ts
-const prisma = new PrismaClient({ adapter: createPrismaAdapter() })
+export interface LedgerBackfillResult {
+  sessionsInspected: number
+  recordsChained: number
+}
 
-async function main() {
+export type LedgerBackfillDb = Pick<PrismaClient, 'session' | 'attendanceRecord'>
+
+export async function backfillAttendanceLedger(prisma: LedgerBackfillDb): Promise<LedgerBackfillResult> {
   let cursor: string | undefined
-  let sessions = 0
-  let chained = 0
+  let sessionsInspected = 0
+  let recordsChained = 0
   while (true) {
     const batch = await prisma.session.findMany({
       where: cursor ? { id: { gt: cursor } } : undefined,
@@ -51,17 +60,29 @@ async function main() {
           data: { prevHash, recordHash, salt },
         })
         head = recordHash
-        chained += 1
+        recordsChained += 1
       }
-      sessions += 1
+      sessionsInspected += 1
     }
   }
-  console.log(`Ledger backfill complete: ${sessions} sessions inspected, ${chained} rows chained`)
+  return { sessionsInspected, recordsChained }
 }
 
-main()
-  .catch((error) => {
+async function main() {
+  const prisma = new PrismaClient({ adapter: createPrismaAdapter() })
+  try {
+    const result = await backfillAttendanceLedger(prisma)
+    console.log(
+      `Ledger backfill complete: ${result.sessionsInspected} sessions inspected, ${result.recordsChained} rows chained`,
+    )
+  } finally {
+    await prisma.$disconnect()
+  }
+}
+
+if (require.main === module) {
+  main().catch((error) => {
     console.error('Ledger backfill failed:', error)
     process.exitCode = 1
   })
-  .finally(() => prisma.$disconnect())
+}
