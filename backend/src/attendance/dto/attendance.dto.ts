@@ -51,17 +51,20 @@ export class ScanAttendanceDto extends ScanEvidenceDto {
   @IsOptional() @IsDateString() scannedAt?: string
 }
 
+// `pending` is a system pre-resolution state, never a teacher decision: a
+// manual pending row on an online session is excluded from the resolver
+// (`manuallySet: false`) and would stay pending forever (DD-B6).
 export class UpdateAttendanceStatusDto {
-  @IsIn(['present', 'late', 'absent', 'pending', 'disputed', 'incomplete']) status!:
-    'present' | 'late' | 'absent' | 'pending' | 'disputed' | 'incomplete'
+  @IsIn(['present', 'late', 'absent', 'disputed', 'incomplete']) status!:
+    'present' | 'late' | 'absent' | 'disputed' | 'incomplete'
 }
 
 export class CreateManualAttendanceDto {
   @IsString() @MaxLength(128) sessionId!: string
   @IsString() @MaxLength(128) sectionId!: string
   @IsString() @MaxLength(128) studentId!: string
-  @IsIn(['present', 'late', 'absent', 'pending', 'disputed', 'incomplete']) status!:
-    'present' | 'late' | 'absent' | 'pending' | 'disputed' | 'incomplete'
+  @IsIn(['present', 'late', 'absent', 'disputed', 'incomplete']) status!:
+    'present' | 'late' | 'absent' | 'disputed' | 'incomplete'
 }
 
 export class AttendanceListQueryDto {

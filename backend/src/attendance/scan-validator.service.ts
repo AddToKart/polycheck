@@ -170,29 +170,45 @@ export class ScanValidatorService {
       if (checkpoint === 'end' && payload.gracePeriodMinutes !== 0) {
         return failed('disputed', 'token_mismatch', 'End-of-class QR codes have no grace period')
       }
+    } else if (
+      !Number.isInteger(payload.validityMinutes) ||
+      payload.validityMinutes < 1 ||
+      payload.validityMinutes > MAX_QR_VALIDITY_MINUTES ||
+      !Number.isInteger(payload.gracePeriodMinutes) ||
+      payload.gracePeriodMinutes < 0 ||
+      payload.gracePeriodMinutes > MAX_QR_GRACE_MINUTES
+    ) {
+      return failed('disputed', 'token_mismatch', 'QR token timing is outside the allowed policy')
+    }
+
+    const validityMs = online ? (payload.validitySeconds ?? 0) * 1000 : payload.validityMinutes * 60_000
+    const validityEnd = payload.issuedAt + validityMs
+    const graceMs = online && checkpoint === 'end' ? 0 : payload.gracePeriodMinutes * 60_000
+    const graceEnd = validityEnd + graceMs
+
+    if (online) {
       const armedToken = checkpoint === 'start' ? session.startQrToken : session.endQrToken
+      const tokenMatchesSession =
+        payload.sessionId === session.id &&
+        payload.sectionId === session.sectionId &&
+        payload.teacherId === session.teacherId
+      // `end()` and the auto-end cron null the armed token columns. A live
+      // session keeps the strict armed-token gate; an offline replay whose
+      // class already closed falls through to the delayed_offline_sync branch
+      // below (DD-B4) so verified evidence is kept for teacher review instead
+      // of being discarded as `checkpoint_not_armed`.
       if (!armedToken) {
-        return failed('absent', 'checkpoint_not_armed', 'This checkpoint has not been opened yet')
-      }
-      if (
-        evidence.qrToken !== armedToken ||
-        payload.sessionId !== session.id ||
-        payload.sectionId !== session.sectionId ||
-        payload.teacherId !== session.teacherId
-      ) {
+        const replayedAfterClose = offline && (Boolean(session.endedAt) || receivedAt.getTime() > graceEnd)
+        if (!replayedAfterClose) {
+          return failed('absent', 'checkpoint_not_armed', 'This checkpoint has not been opened yet')
+        }
+        if (!tokenMatchesSession) {
+          return failed('disputed', 'token_mismatch', 'QR token does not match this session')
+        }
+      } else if (evidence.qrToken !== armedToken || !tokenMatchesSession) {
         return failed('disputed', 'token_mismatch', 'QR token does not match this session')
       }
     } else {
-      if (
-        !Number.isInteger(payload.validityMinutes) ||
-        payload.validityMinutes < 1 ||
-        payload.validityMinutes > MAX_QR_VALIDITY_MINUTES ||
-        !Number.isInteger(payload.gracePeriodMinutes) ||
-        payload.gracePeriodMinutes < 0 ||
-        payload.gracePeriodMinutes > MAX_QR_GRACE_MINUTES
-      ) {
-        return failed('disputed', 'token_mismatch', 'QR token timing is outside the allowed policy')
-      }
       if (
         (session.qrToken && evidence.qrToken !== session.qrToken) ||
         payload.sessionId !== session.id ||
@@ -203,15 +219,16 @@ export class ScanValidatorService {
       }
     }
 
-    const validityMs = online ? (payload.validitySeconds ?? 0) * 1000 : payload.validityMinutes * 60_000
-    const validityEnd = payload.issuedAt + validityMs
-    const graceMs = online && checkpoint === 'end' ? 0 : payload.gracePeriodMinutes * 60_000
-    const graceEnd = validityEnd + graceMs
-
     if (!session.isActive && !offline) return failed('absent', 'session_inactive', 'Session is not active')
     if (!session.isActive && offline && !session.endedAt)
       return failed('absent', 'session_inactive', 'Session was never activated')
-    if (scannedAt.getTime() < payload.issuedAt - 30_000 || scannedAt.getTime() > receivedAt.getTime() + 5 * 60_000)
+    // A device clock behind the QR issuance cannot be a real scan. A live scan
+    // stays a hard reject; an offline replay is evidence that must reach the
+    // teacher, so it is downgraded to success + disputed below (DD-3c).
+    const clockBehind = scannedAt.getTime() < payload.issuedAt - 30_000
+    if (clockBehind && !offline)
+      return failed('disputed', 'invalid_timestamp', 'Scan timestamp is invalid', ['implausible_client_timestamp'])
+    if (scannedAt.getTime() > receivedAt.getTime() + 5 * 60_000)
       return failed('disputed', 'invalid_timestamp', 'Scan timestamp is invalid', ['implausible_client_timestamp'])
 
     if (!online) {
@@ -295,6 +312,28 @@ export class ScanValidatorService {
     const deviceSecurityDispute = getPrimaryDeviceSecurityDispute(evidence.deviceSecurity)
     if (deviceSecurityDispute) {
       return failed('disputed', deviceSecurityDispute.reason, deviceSecurityDispute.message)
+    }
+    if (clockBehind) {
+      // Offline replay from a clock-behind device: the scan and its evidence
+      // were verified, but the client timestamp cannot be trusted. Keep the
+      // record as a dispute so the teacher sees it instead of a dead end.
+      return {
+        success: true,
+        status: 'disputed',
+        reason: 'implausible_client_timestamp',
+        scannedAt,
+        receivedAt,
+        mode,
+        checkpoint,
+        message: 'Scan timestamp is implausibly early; the record is flagged for teacher review.',
+        distanceMeters,
+        geofenceRadiusMeters,
+        riskSignals: [
+          ...riskSignals,
+          'implausible_client_timestamp',
+          ...(session.endedAt ? ['received_after_session_end'] : []),
+        ],
+      }
     }
     if (offline && (receivedAt.getTime() > graceEnd || session.endedAt)) {
       return {

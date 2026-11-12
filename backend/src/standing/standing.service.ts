@@ -1,9 +1,10 @@
 import { ForbiddenException, Injectable, Optional } from '@nestjs/common'
-import type { AttendanceStanding, AttendanceStandingStatus } from '@polycheck/shared'
+import type { AttendanceStanding } from '@polycheck/shared'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { Prisma } from '../prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { NotificationsService } from '../notifications/notifications.service'
+import { attendanceStandingFromRate, computeAttendanceRate } from '../common/utils/attendance-rate'
 
 const ATTENDANCE_THRESHOLD_KEY = 'attendance_min_rate_percent'
 const DEFAULT_THRESHOLD_PERCENT = 75
@@ -150,24 +151,13 @@ export class StandingService {
       if (!lastSessionDate || date > lastSessionDate) lastSessionDate = date
     }
 
-    // Half-attended sessions (one checkpoint only) count toward the denominator
-    // but not the numerator: they cannot inflate the rate, yet stay visible and
-    // excusable. Confirmed with the registrar policy question (OQ1).
-    const countedSessions = counts.present + counts.late + counts.absent + counts.incomplete
-    const attendedSessions = counts.present + counts.late
-    const attendanceRate = countedSessions === 0 ? null : roundOneDecimal((attendedSessions / countedSessions) * 100)
-    const absencesBeforeBelowThreshold =
-      countedSessions === 0 || thresholdPercent <= 0
-        ? null
-        : Math.max(0, Math.floor((attendedSessions * 100) / thresholdPercent) - countedSessions)
-    const status: AttendanceStandingStatus =
-      countedSessions === 0
-        ? 'insufficient_data'
-        : attendanceRate! < thresholdPercent
-          ? 'below_threshold'
-          : absencesBeforeBelowThreshold === 0
-            ? 'at_risk'
-            : 'on_track'
+    // Shared rate math: half-attended sessions count toward the denominator
+    // but not the numerator; pending/disputed/excused rows are excluded (DD-B3).
+    const { countedSessions, attendanceRate } = computeAttendanceRate(counts)
+    const { absencesBeforeBelowThreshold, status } = attendanceStandingFromRate(
+      { countedSessions, attendedSessions: counts.present + counts.late, attendanceRate },
+      thresholdPercent,
+    )
 
     const caveats: string[] = []
     if (counts.disputed > 0) {
@@ -214,8 +204,4 @@ export class StandingService {
       attendanceRate: standing.attendanceRate,
     })
   }
-}
-
-function roundOneDecimal(value: number): number {
-  return Math.round(value * 10) / 10
 }

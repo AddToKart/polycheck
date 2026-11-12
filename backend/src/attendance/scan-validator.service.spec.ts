@@ -210,6 +210,41 @@ describe('ScanValidatorService', () => {
       expect(result).toMatchObject({ success: true, status: 'disputed', reason: 'delayed_offline_sync' })
     })
 
+    it('keeps a clock-behind offline replay as a reviewable dispute instead of a dead end', async () => {
+      const scannedAt = ISSUED_AT - 60_000
+      const result = await service.validateScan(
+        studentUser,
+        makeEvidence({
+          scannedAt: new Date(scannedAt).toISOString(),
+          locationCapturedAt: new Date(scannedAt + 1_000).toISOString(),
+        }),
+        true,
+        new Date(),
+      )
+      expect(result).toMatchObject({ success: true, status: 'disputed', reason: 'implausible_client_timestamp' })
+      expect(result.riskSignals).toContain('implausible_client_timestamp')
+      expect(result.distanceMeters).toBe(5)
+    })
+
+    it('still rejects a clock-behind live scan', async () => {
+      mockedVerify.mockReturnValue(validPayload({ issuedAt: Date.now() + 60_000 }))
+
+      const result = await service.validateScan(studentUser, makeEvidence(), false, new Date())
+
+      expect(result).toMatchObject({ success: false, reason: 'invalid_timestamp' })
+    })
+
+    it('still rejects a future-dated offline scan', async () => {
+      const scannedAt = new Date(Date.now() + 10 * 60_000).toISOString()
+      const result = await service.validateScan(
+        studentUser,
+        makeEvidence({ scannedAt, locationCapturedAt: scannedAt }),
+        true,
+        new Date(),
+      )
+      expect(result).toMatchObject({ success: false, reason: 'invalid_timestamp' })
+    })
+
     it('rejects offline evidence when enrollment was removed before sync', async () => {
       prisma.enrollment.findUnique.mockResolvedValue(null)
       const result = await service.validateScan(studentUser, makeEvidence(), true, new Date(ISSUED_AT + 60_000))
@@ -485,6 +520,39 @@ describe('ScanValidatorService', () => {
       prisma.session.findUnique.mockResolvedValue(onlineSession({ startQrToken: null }))
 
       const result = await service.validateScan(studentUser, onlineEvidence(), false, new Date())
+
+      expect(result.success).toBe(false)
+      expect(result.reason).toBe('checkpoint_not_armed')
+    })
+
+    it('keeps a verified offline checkout when the class closed and nulled the armed token', async () => {
+      // end()/the auto-end cron null the token columns after closing the class.
+      mockedVerify.mockReturnValue(
+        onlinePayload({ checkpoint: 'end', gracePeriodMinutes: 0, pinRequired: false, pinHash: undefined }),
+      )
+      const closed = onlineSession({
+        isActive: false,
+        endedAt: new Date(ISSUED_AT + 20 * 60_000),
+        endQrToken: null,
+      })
+      redis.getJson.mockResolvedValue(closed)
+      prisma.session.findUnique.mockResolvedValue(closed)
+
+      const result = await service.validateScan(
+        studentUser,
+        onlineEvidence({ qrToken: 'end-token' }),
+        true,
+        new Date(ISSUED_AT + 25 * 60_000),
+      )
+
+      expect(result).toMatchObject({ success: true, status: 'disputed', reason: 'delayed_offline_sync' })
+      expect(result.riskSignals).toContain('received_after_session_end')
+    })
+
+    it('still rejects an offline checkpoint that was never armed while the class is live', async () => {
+      prisma.session.findUnique.mockResolvedValue(onlineSession({ startQrToken: null }))
+
+      const result = await service.validateScan(studentUser, onlineEvidence(), true, new Date())
 
       expect(result.success).toBe(false)
       expect(result.reason).toBe('checkpoint_not_armed')

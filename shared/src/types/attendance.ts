@@ -32,7 +32,9 @@ export type StudentDisputeReason =
 
 export type SystemDisputeReason =
   | "delayed_offline_sync"
+  | "missing_scan_evidence"
   | "invalid_timestamp"
+  | "implausible_client_timestamp"
   | "token_mismatch"
   | "session_inactive"
   | "not_enrolled"
