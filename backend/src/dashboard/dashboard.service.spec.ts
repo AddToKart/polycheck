@@ -78,7 +78,7 @@ describe('DashboardService', () => {
     await service.search({ id: 'admin-1', role: 'super_admin', scope: 'department', department: 'CCIS' }, 'student')
 
     expect(prisma.user.findMany.mock.calls[0][0].where).toEqual(
-      expect.objectContaining({ role: 'student', department: 'CCIS' }),
+      expect.objectContaining({ role: 'student', department: { equals: 'CCIS', mode: 'insensitive' } }),
     )
   })
 
@@ -341,7 +341,49 @@ describe('DashboardService', () => {
     expect(prisma.attendanceRecord.findMany).not.toHaveBeenCalled()
   })
 
-  it('rejects reversed calendar ranges', async () => {
+  it('scopes the export by department with the same rule as the reports list', async () => {
+    const prisma = {
+      attendanceRecord: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    }
+    const service = new DashboardService(prisma as never)
+
+    await service.exportCsv(institutionAdmin, {
+      startDate: '2026-11-01',
+      endDate: '2026-11-12',
+      department: 'computer studies',
+    })
+
+    const recordWhere = prisma.attendanceRecord.count.mock.calls[0][0].where
+    expect(recordWhere.AND[1].session.AND).toContainEqual({
+      section: { teacher: { department: { equals: 'computer studies', mode: 'insensitive' } } },
+    })
+  })
+
+  it('pins a department-scoped admin export to their own department', async () => {
+    const prisma = {
+      attendanceRecord: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    }
+    const service = new DashboardService(prisma as never)
+
+    await service.exportCsv(departmentAdmin, {
+      startDate: '2026-11-01',
+      endDate: '2026-11-12',
+      department: 'Computer Studies',
+    })
+
+    const recordWhere = prisma.attendanceRecord.count.mock.calls[0][0].where
+    expect(recordWhere.AND[1].session.AND).toContainEqual({
+      section: { teacher: { department: { equals: 'CCIS', mode: 'insensitive' } } },
+    })
+  })
+
+  it('rejects a reversed calendar range', async () => {
     const service = new DashboardService({} as never)
     await expect(service.events(teacher, '2026-02-01', '2026-01-01')).rejects.toThrow(BadRequestException)
   })
@@ -423,14 +465,17 @@ describe('DashboardService', () => {
       expect(result.scope).toBe('department')
       expect(result.department).toBe('CCIS')
       expect(prisma.user.count.mock.calls[0][0].where).toEqual({
-        AND: [{ department: 'CCIS' }, { role: 'teacher', isActive: true }],
+        AND: [{ department: { equals: 'CCIS', mode: 'insensitive' } }, { role: 'teacher', isActive: true }],
       })
       expect(prisma.session.count.mock.calls[0][0].where).toEqual({
-        AND: [{ section: { teacher: { department: 'CCIS' } } }, { isActive: true, endedAt: null }],
+        AND: [
+          { section: { teacher: { department: { equals: 'CCIS', mode: 'insensitive' } } } },
+          { isActive: true, endedAt: null },
+        ],
       })
       expect(prisma.attendanceRecord.count.mock.calls[0][0].where).toEqual({
         AND: [
-          { session: { section: { teacher: { department: 'CCIS' } } } },
+          { session: { section: { teacher: { department: { equals: 'CCIS', mode: 'insensitive' } } } } },
           { status: 'disputed', disputeResolved: false },
         ],
       })

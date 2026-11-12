@@ -187,7 +187,7 @@ describe('DocsService', () => {
 
       await expect(service.masterList(departmentAdmin, 'sec-1', 'pdf')).rejects.toBeInstanceOf(ForbiddenException)
       expect(prisma.section.findFirst).toHaveBeenCalledWith({
-        where: { id: 'sec-1', teacher: { department: 'CCIS' } },
+        where: { id: 'sec-1', teacher: { department: { equals: 'CCIS', mode: 'insensitive' } } },
         select: { id: true },
       })
     })
@@ -510,7 +510,7 @@ describe('DocsService', () => {
           ForbiddenException,
         )
         expect(denied.section.findFirst).toHaveBeenCalledWith({
-          where: { id: 'sec-1', teacher: { department: 'CCIS' } },
+          where: { id: 'sec-1', teacher: { department: { equals: 'CCIS', mode: 'insensitive' } } },
           select: { id: true },
         })
 
@@ -671,8 +671,9 @@ describe('DocsService', () => {
         atRiskReferral: { findUnique: jest.fn().mockResolvedValue(noticeReferral) },
         section: {
           findUnique: jest.fn(),
-          findFirst: jest.fn(async ({ where }: { where: { id: string; teacher: { department: string } } }) =>
-            where.teacher.department === 'CCIS' ? { id: where.id } : null,
+          findFirst: jest.fn(
+            async ({ where }: { where: { id: string; teacher: { department: { equals: string } } } }) =>
+              where.teacher.department.equals === 'CCIS' ? { id: where.id } : null,
           ),
         },
         institutionSetting: {
@@ -795,7 +796,7 @@ describe('DocsService', () => {
       const scopedAdmin: RequestUser = { id: 'admin-2', role: 'super_admin', scope: 'department', department: 'COE' }
       await expect(deniedService.atRiskNotice(scopedAdmin, 'ref-1', 'pdf')).rejects.toBeInstanceOf(ForbiddenException)
       expect(denied.section.findFirst).toHaveBeenCalledWith({
-        where: { id: 'sec-1', teacher: { department: 'COE' } },
+        where: { id: 'sec-1', teacher: { department: { equals: 'COE', mode: 'insensitive' } } },
         select: { id: true },
       })
     })

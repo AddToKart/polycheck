@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException } from '@nestjs/common'
-import { compare } from 'bcryptjs'
+import { compare } from '@node-rs/bcrypt'
 import { computeRowChecksum } from '@polycheck/shared'
 import { StudentImportService } from './student-import.service'
 import type { StudentImportRequestDto } from './dto/import-students.dto'

@@ -457,7 +457,10 @@ export class SessionsService {
       if (expired) {
         await tx.attendanceRecord.updateMany({
           where: { sessionId: session.id, status: 'pending' },
-          data: { status: 'absent', timestamp: receivedAt, manuallySet: false },
+          // The rows were just materialized with their scan-moment timestamp and
+          // that value is hashed, so never rewrite it here (ledger invariant).
+          // When `expired`, `createMany` already wrote them as `absent`.
+          data: { status: 'absent', manuallySet: false },
         })
       }
       return tx.session.findUniqueOrThrow({ where: { id: session.id } })

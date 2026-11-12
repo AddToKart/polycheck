@@ -23,6 +23,7 @@ import { adminSectionInScope } from '../common/admin-scope'
 import { academicOversightDepartment } from '../common/designations/department-pin'
 import { GEOLOCATION_RETENTION_DAYS_KEY } from '../common/constants/privacy'
 import { classifyAtRiskRow, type AtRiskClassification } from '../attendance/attendance-at-risk.service'
+import { computeAttendanceRate } from '../common/utils/attendance-rate'
 import { PrismaService } from '../prisma/prisma.service'
 
 export type MasterListFormat = 'pdf' | 'docx'
@@ -2116,16 +2117,19 @@ export function buildClassRecordGrid(
       }
       cells.push(symbols.length > 0 ? symbols.join('/') : NO_SESSION_SYMBOL)
     }
-    const counted = totals.present + totals.late + totals.absent + incomplete
-    const rate =
-      counted === 0 ? NO_SESSION_SYMBOL : `${Math.round(((totals.present + totals.late) / counted) * 1000) / 10}%`
+    const rate = computeAttendanceRate({
+      present: totals.present,
+      late: totals.late,
+      absent: totals.absent,
+      incomplete,
+    })
     return {
       index: index + 1,
       studentNumber: entry.studentNumber ?? '',
       fullName: entry.fullName,
       cells,
       totals,
-      rate,
+      rate: rate.attendanceRate === null ? NO_SESSION_SYMBOL : `${rate.attendanceRate}%`,
     }
   })
 

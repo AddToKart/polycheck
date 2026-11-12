@@ -15,6 +15,20 @@ import type { PrismaService } from '../prisma/prisma.service'
 
 type AdminScope = { kind: 'unrestricted' } | { kind: 'department'; department: string } | { kind: 'none' }
 
+/**
+ * Case-insensitive department filter. Every other scope path (department pins,
+ * attendance scope) uses `mode: 'insensitive'`; a raw `===` here let the same
+ * actor pass one check and fail another when departments differ only in case.
+ */
+function departmentFilter(department: string) {
+  return { equals: department, mode: 'insensitive' as const }
+}
+
+/** Case-insensitive department comparison for in-memory scope checks. */
+function sameDepartment(left: string, right: string): boolean {
+  return left.trim().toLowerCase() === right.trim().toLowerCase()
+}
+
 /** Resolves the admin's scope: unrestricted, department-limited, or none. */
 export function adminScope(user: RequestUser): AdminScope {
   if (user.role !== 'super_admin' || user.scope === 'institution') return { kind: 'unrestricted' }
@@ -31,7 +45,7 @@ export function adminDepartment(user: RequestUser): string | null {
 export function adminSectionWhere(user: RequestUser): Prisma.SectionWhereInput {
   const scope = adminScope(user)
   if (scope.kind === 'unrestricted') return {}
-  if (scope.kind === 'department') return { teacher: { department: scope.department } }
+  if (scope.kind === 'department') return { teacher: { department: departmentFilter(scope.department) } }
   return { id: { in: [] as string[] } }
 }
 
@@ -39,7 +53,7 @@ export function adminSectionWhere(user: RequestUser): Prisma.SectionWhereInput {
 export function adminSessionWhere(user: RequestUser): Prisma.SessionWhereInput {
   const scope = adminScope(user)
   if (scope.kind === 'unrestricted') return {}
-  if (scope.kind === 'department') return { section: { teacher: { department: scope.department } } }
+  if (scope.kind === 'department') return { section: { teacher: { department: departmentFilter(scope.department) } } }
   return { id: { in: [] as string[] } }
 }
 
@@ -48,7 +62,7 @@ export function adminRecordWhere(user: RequestUser): Prisma.AttendanceRecordWher
   const scope = adminScope(user)
   if (scope.kind === 'unrestricted') return {}
   if (scope.kind === 'department') {
-    return { session: { section: { teacher: { department: scope.department } } } }
+    return { session: { section: { teacher: { department: departmentFilter(scope.department) } } } }
   }
   return { id: { in: [] as string[] } }
 }
@@ -57,7 +71,7 @@ export function adminRecordWhere(user: RequestUser): Prisma.AttendanceRecordWher
 export function adminEnrollmentWhere(user: RequestUser): Prisma.EnrollmentWhereInput {
   const scope = adminScope(user)
   if (scope.kind === 'unrestricted') return {}
-  if (scope.kind === 'department') return { section: { teacher: { department: scope.department } } }
+  if (scope.kind === 'department') return { section: { teacher: { department: departmentFilter(scope.department) } } }
   return { id: { in: [] as string[] } }
 }
 
@@ -68,8 +82,8 @@ export function adminSubjectWhere(user: RequestUser): Prisma.SubjectWhereInput |
   if (scope.kind === 'department') {
     return {
       OR: [
-        { createdBy: { department: scope.department } },
-        { sections: { some: { teacher: { department: scope.department } } } },
+        { createdBy: { department: departmentFilter(scope.department) } },
+        { sections: { some: { teacher: { department: departmentFilter(scope.department) } } } },
       ],
     }
   }
@@ -80,7 +94,7 @@ export function adminSubjectWhere(user: RequestUser): Prisma.SubjectWhereInput |
 export function adminUserWhere(user: RequestUser): Prisma.UserWhereInput | undefined {
   const scope = adminScope(user)
   if (scope.kind === 'unrestricted') return undefined
-  if (scope.kind === 'department') return { department: scope.department }
+  if (scope.kind === 'department') return { department: departmentFilter(scope.department) }
   return { id: { in: [] as string[] } }
 }
 
@@ -88,13 +102,19 @@ export function adminUserWhere(user: RequestUser): Prisma.UserWhereInput | undef
 export function adminCanAccessUser(user: RequestUser, targetDepartment: string | null | undefined): boolean {
   if (user.role !== 'super_admin') return false
   const scope = adminScope(user)
-  return scope.kind === 'unrestricted' || (scope.kind === 'department' && targetDepartment === scope.department)
+  return (
+    scope.kind === 'unrestricted' ||
+    (scope.kind === 'department' && targetDepartment != null && sameDepartment(targetDepartment, scope.department))
+  )
 }
 
 /** True when the super admin may access a section in the given department. */
 export function adminCanAccessSection(user: RequestUser, sectionDepartment: string | null | undefined): boolean {
   const scope = adminScope(user)
-  return scope.kind === 'unrestricted' || (scope.kind === 'department' && sectionDepartment === scope.department)
+  return (
+    scope.kind === 'unrestricted' ||
+    (scope.kind === 'department' && sectionDepartment != null && sameDepartment(sectionDepartment, scope.department))
+  )
 }
 
 /** DB-backed check: is the section within the admin's scope? */
@@ -108,7 +128,9 @@ export async function adminSectionInScope(
   const section = await prisma.section.findFirst({
     where: {
       id: sectionId,
-      teacher: { department: scope.kind === 'department' ? scope.department : '__no_department__' },
+      teacher: {
+        department: departmentFilter(scope.kind === 'department' ? scope.department : '__no_department__'),
+      },
     },
     select: { id: true },
   })
@@ -140,7 +162,11 @@ export async function assertStudentInAdminScope(
     where: {
       studentId,
       ...(sectionId ? { sectionId } : {}),
-      section: { teacher: { department: scope.kind === 'department' ? scope.department : '__no_department__' } },
+      section: {
+        teacher: {
+          department: departmentFilter(scope.kind === 'department' ? scope.department : '__no_department__'),
+        },
+      },
     },
     select: { id: true },
   })
@@ -160,6 +186,9 @@ export async function adminDepartmentSectionIds(
   if (scope.kind === 'unrestricted') return null
   if (scope.kind === 'none') return []
   return (
-    await prisma.section.findMany({ where: { teacher: { department: scope.department } }, select: { id: true } })
+    await prisma.section.findMany({
+      where: { teacher: { department: departmentFilter(scope.department) } },
+      select: { id: true },
+    })
   ).map((section) => section.id)
 }

@@ -237,6 +237,8 @@ export class SectionsService {
 
     const result = enrollments.map((enrollment) => ({
       ...enrollment.student,
+      // Roster rows are always students; the shared `Student` contract needs it.
+      role: 'student' as const,
       attendance: attendanceMap.get(enrollment.studentId) ?? { present: 0, late: 0, absent: 0, disputed: 0 },
     }))
 

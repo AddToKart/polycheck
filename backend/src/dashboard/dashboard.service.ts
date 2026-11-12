@@ -4,12 +4,14 @@ import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { parseIsoDate } from '../common/utils/iso-date'
 import {
+  adminDepartment,
   adminRecordWhere,
   adminScope,
   adminSectionWhere,
   adminSessionWhere,
   adminUserWhere,
 } from '../common/admin-scope'
+import { academicOversightDepartment } from '../common/designations/department-pin'
 import type { Prisma } from '../prisma/client'
 import type { AuditLogsService } from '../audit-logs/audit-logs.service'
 import type { RedisService } from '../infrastructure/redis.service'
@@ -40,6 +42,7 @@ type ReportFilters = {
   subjectId?: string
   sectionId?: string
   sessionId?: string
+  department?: string
 }
 
 const calendarSessionSelect = {
@@ -444,6 +447,15 @@ export class DashboardService {
     if (user.role === 'teacher' && filters.teacherId && filters.teacherId !== user.id) {
       throw new ForbiddenException('Teachers can only export their own attendance')
     }
+    // Same scope rule as the reports list: a department-scoped admin is pinned
+    // to their own department, a designated department head to theirs, and only
+    // an institution-scoped admin may pick a department filter.
+    const department =
+      user.role === 'super_admin'
+        ? (adminDepartment(user) ?? filters.department)
+        : user.role === 'teacher'
+          ? (academicOversightDepartment(user) ?? undefined)
+          : undefined
     const sessionWhere: Prisma.SessionWhereInput = {
       AND: [
         this.sessionScope(user),
@@ -452,6 +464,9 @@ export class DashboardService {
         ...(filters.subjectId ? [{ section: { subjectId: filters.subjectId } }] : []),
         ...(filters.sectionId ? [{ sectionId: filters.sectionId }] : []),
         ...(filters.sessionId ? [{ id: filters.sessionId }] : []),
+        ...(department
+          ? [{ section: { teacher: { department: { equals: department, mode: 'insensitive' as const } } } }]
+          : []),
       ],
     }
     return {
