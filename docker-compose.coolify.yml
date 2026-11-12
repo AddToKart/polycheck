@@ -126,6 +126,9 @@ services:
   # backend serves the same paths exactly as it does today.
   ingest:
     image: polycheck-ingest
+    build:
+      context: .
+      dockerfile: Dockerfile.ingest
     restart: unless-stopped
     depends_on:
       redis:
@@ -136,7 +139,7 @@ services:
       NODE_ENV: production
       PORT: 4001
       REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/polycheck?schema=public
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public
       CONTROL_PLANE_URL: http://backend:4000/api
       INGEST_DRAINER_ENABLED: ${INGEST_DRAINER_ENABLED:-true}
       INGEST_DB_POOL_SIZE: ${INGEST_DB_POOL_SIZE:-8}
