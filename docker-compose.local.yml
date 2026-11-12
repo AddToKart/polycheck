@@ -52,6 +52,10 @@ services:
     environment:
       NODE_ENV: development
       PORT: 4000
+      # Native bcrypt runs on the libuv threadpool (default 4). Size it to the box so
+      # 2,000-student provisioning/logins are not serialized on one thread.
+      # See plan/load-simulation-plan.md Addendum 2 (Finding F2).
+      UV_THREADPOOL_SIZE: ${UV_THREADPOOL_SIZE:-16}
       # Local load-test headroom (see plan/load-simulation-plan.md LT3); production unchanged.
       DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-polycheck_local_db_2026}@postgres:5432/polycheck?schema=public&connection_limit=50
       REDIS_URL: redis://redis:6379/0

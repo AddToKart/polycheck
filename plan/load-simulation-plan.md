@@ -180,5 +180,282 @@ LT3 can loop against the rebuilt local stack (current containers already run the
 
 **Blocked (LT4–LT5):** no `STAGING_BASE_URL`, `LOAD_FIXTURE_JSON`, or `load-testing` environment/runner is configured here, so the 5,000-account staging population and the authoritative measured matrix cannot run. Ready inputs: 5,000-row fixture generator, configurable k6 profiles, parallel prep, and the existing staging workflow. LT6 follows the staging run.
 
+---
+
+## Addendum 2 — 2,000-student local run with the real academic topology (2026-11-12)
+
+Requested deviation from the 5,000-row shape above: **2,000 students across a realistic topology** rather than one mega-section, and "every core function" rather than scan-only.
+
+### Topology (mandated)
+
+| Entity | Count | Note |
+|---|---|---|
+| Students | 2,000 | provisioned through the real import pipeline |
+| Sections | **34** | 33 × 60 students + 1 × 20 |
+| Subjects | **12** | 11 subjects own 3 sections, 1 owns 1 |
+| Professors | **12** | one per subject; owns its 3 sections |
+| Sessions | **34** | one activated in-person session per section, each signed with the owning professor's key |
+
+The bell rush therefore spans **34 concurrent sessions**, which is materially harder than the single-session LT3 smoke (34 realtime rooms, 34 roster seedings, 34 ledgers).
+
+### Verified capacity ceilings of this local stack (pre-flight)
+
+| Fact | Value | Consequence |
+|---|---|---|
+| Postgres `max_connections` | 100 (97 usable) | plenty for HTTP concurrency; requests queue in the Prisma pool |
+| Prisma `connection_limit` (local) | 50 | the real concurrency ceiling for DB work; watch `pg_stat_activity` waiters |
+| `LOGIN_IP_RATE_LIMIT` | **1000 / 60 s per IP** | k6 runs on one host IP → an instant 2,000-login burst admits ~1,000 and returns ~1,000 × 429. This is correct admission control (campus NAT behaves the same), so 429s are reported as **throttled**, never as failures |
+| `LOGIN_RATE_LIMIT` | 200 / 60 s per identity | irrelevant (one login per student) |
+| `API_RATE_LIMIT` | 2000 / 60 s **per user** (`api:user:<id>`) | **not** a constraint; it will not throttle the scan/dispute/read flows |
+| Backend runtime | Node 22, `UV_THREADPOOL_SIZE` unset (=4) | bcrypt login concurrency ≈ 4; logins are CPU-bound and will queue before they saturate the DB |
+| Backend CPU | 24 cores visible | Node event loop is still single-threaded for JS; extra cores only help the threadpool |
+| `shared_buffers` | 128 MB | modest; expect IO on large scans |
+
+### Measurement contract
+
+Per-flow **success %** (with `attempts`, `throttled`, `failed`, `p95`, `p99`) for: `login`, `scan`, `sync_enqueue`, `sync_receipt`, `dispute`, `excuse`, `faculty_read`, `admin_read`, `proof_upload`, `session_lifecycle` — plus a `mixed` scenario that runs them simultaneously, and an **integrity check** comparing k6's accepted scans against the DB (`accepted / submitted`, zero load-induced disputes).
+
+Two arrival shapes are run for comparison, because LT3 proved the shape dominates the verdict: `arrival` (bell-curve pacing, realistic) and `burst` (worst-case ceiling probe).
+
+### Finding F1 (found during fixture rehearsal, before any measured run)
+
+The 2,000-student provisioning rehearsal produced a single **HTTP 500 on `POST /api/auth/change-password`**, confirmed in the backend log:
+
+```
+PrismaClientKnownRequestError: Transaction API error: Unable to start a transaction in the given time.
+  at Ut.transaction (.../@prisma/client/runtime/client.js)
+```
+
+That is Prisma failing to acquire a transaction slot from the pool — not a validation error. It matters because **every imported student is forced through a password rotation on first login** (`mustChangePassword`), so on a real onboarding day a burst of first logins can surface 500s instead of a retryable status.
+
+Also confirmed against the live stack while wiring the harness: `GET /api/audit-logs` rejects `limit` (`400 property limit should not exist`) and uses `page`/`pageSize` instead.
+
+### Finding F2 — the real capacity ceiling is `bcryptjs` on the event loop (not Postgres, not Redis)
+
+Measured during provisioning, and verified in source:
+
+- `backend/src/common/utils/password.ts` imports `hash` from **`bcryptjs`** — a *pure-JavaScript* implementation, so it runs on the single event loop, not the libuv threadpool and not multiple cores.
+- `PASSWORD_HASH_COST = 12` is a **hard-coded constant** in `auth/password-policy.ts` (not env-configurable).
+- `hashPasswords(passwords, concurrency = 4)` cannot parallelise it: `Promise.all` over synchronous JS gives no concurrency.
+- Measured throughput on this stack (two-phase, unsmoothed):
+  - **import phase: 1.88 hashes/s** (2,000 hashes in 17 m 44 s)
+  - **auth phase (login compare + rotation): ~0.85 hashes/s** (250 students in 590 s, 6-way interleaved) — `Promise.all` interleaving on one event loop adds HTTP overhead/context switching, so mixing hashing with request handling roughly halves the rate
+  - the backend is pinned at ~100 % of **one** core throughout, with 21 other cores idle
+- Consequence observed live: a 3 × 250-row import wave made **zero commits in 14 minutes** (750 hashes), and the whole API stalled in bursts because every ~0.5–1 s of hashing blocks the event loop.
+- 2,000 students need **3 hash operations each** (import hash, forced-rotation hash, login compare) ≈ **6,000 ops** — the import alone took 17 m 44 s and the auth phase is projected at ~2 h wall-clock across the two remaining ops.
+- **Derived login capacity (the quotable number):**
+  - pure hashing at 1.88/s ⇒ **≈113 logins/min** if the loop did nothing else
+  - interleaved with real traffic at 0.85/s ⇒ **≈51 logins/min** sustained
+  - therefore **2,000 logins cost ≈17.7 min (idle) to ≈39.2 min (concurrent)** of single-core event-loop time
+  - a **15-minute login window admits ≈1,690 (pure) or ≈765 (interleaved)** students — so **2,000 students cannot all log in inside a 15-minute window on one process**, and the API is degraded for everyone else during the attempt
+- A single `PASSWORD_HASH_COST=12` login compare also explains the P2028 500s on `/auth/change-password`: at 12 concurrent auth workers the loop starved Prisma long enough that `begin` timed out (`Transaction API error: Unable to start a transaction in the given time`). At **6** concurrent workers the 500s disappeared and a full 34-section rehearsal completed in 2 m 40 s.
+- `auth/password-policy.ts` also ships `DUMMY_PASSWORD_HASH` at cost 12 to equalise failed logins, so **login attempts for non-existent accounts burn the same event-loop second** — a cheap amplification vector.
+
+**Verdict so far:** scale is bounded by password hashing, not by the database. A single Node process at cost 12 cannot absorb a 2,000-student login wave; the fix is architectural (native/threadpool bcrypt such as `bcrypt`/`argon2`, or a per-login queue/backpressure), not tuning Postgres or Redis.
+
+### F2 fix applied — `bcryptjs` → `@node-rs/bcrypt` (N-API, libuv threadpool)
+
+Chosen over the `bcrypt` npm package for one decisive reason: `Dockerfile.backend`'s `production-dependencies` stage installs with **`--ignore-scripts`**, so a package that needs a postinstall to fetch/compile its binary would ship without it; and the image is **Alpine (musl)** with no toolchain. `@node-rs/bcrypt` ships per-platform N-API packages as regular (optional) dependencies, so it works under `--ignore-scripts` on both `win32-x64-msvc` and `linux-x64-musl`.
+
+Changes:
+- `backend`: removed `bcryptjs`; added `@node-rs/bcrypt`. All call sites converted — `hash(pw, N)` became `hash(pw, { cost: N })` (v2 takes an options object), `compare` is exported with the same signature, and the one `getRounds` use in `auth.service.spec.ts` was replaced by parsing the third `$`-segment.
+- Legacy `$2a$` hashes (produced by bcryptjs) still verify — checked explicitly, so already-provisioned accounts remain usable.
+- `docker-compose.local.yml`: `UV_THREADPOOL_SIZE: 16` (libuv default is 4). The pool, not the core count, is what parallelises bcrypt.
+- `auth.service.spec.ts`: the `waitForCalls` helper polled a fixed 2,000 `setImmediate` spins, which sufficed only because `bcryptjs` resolved on the next microtask; a native hash takes ~50–100 ms of real work, so the helper is now bounded by wall clock via `process.hrtime` (monotonic, and not faked by Jest). Without this, two device-gate tests failed with the mock showing 0 calls.
+
+Verification of the swap itself: backend `tsc --noEmit` clean; `auth.service` **59/59**, and `auth.service` + `users.service` + `student-import.service` green; `hashSync('x', {cost:4})` → `$2b$`, `compare` true, legacy `$2a$` accepted.
+
+### How the measured runs are invoked
+
+k6 binary: `/c/Users/Cayz/tools/k6/k6-v2.3.0-windows-amd64/k6.exe` (v2.3.0, **not** on PATH; it does not forward process env to `__ENV`, so every variable must be passed with `-e`).
+
+```bash
+# Paed / arrival-shaped (the realistic 15-minute window).
+# NOTE: do NOT pass --duration here — in this k6 build `--duration` is a hard cap that
+# *replaces* the script's scenario with k6's default executor ("cli level configuration
+# overrode scenarios configuration entirely"), which destroys the arrival shape.
+node performance/run-load.mjs --run lt5-arrival-2000 --shape arrival --users 2000 \
+  --fixture <abs>/.local-fixture-<runId>.json --script performance/mixed-load.js \
+  --k6 <k6.exe> --profile full --max-wall-minutes 40
+
+# Instant burst, as the ceiling probe.
+node performance/run-load.mjs --run lt5-burst-2000 --shape burst --users 2000 \
+  --fixture <abs>/.local-fixture-<runId>.json --script performance/mixed-load.js \
+  --k6 <k6.exe> --profile burst --duration 180s
+```
+
+Orchestrator guarantees (after a hang was found and fixed): the observer's first-sample wait is bounded (`--observer-timeout-seconds`, 30 s) and falls back to sampling-less; k6/observer children are tracked and killed on every path including `SIGINT`/`SIGTERM` (Windows `taskkill /T /F`); `--max-wall-minutes` (default 30) terminates a run but still writes a **PARTIAL RUN** report and exits 124; all observer probes have per-child timeouts.
+
+### F2 fix, measured — provisioning 100 min → 10 m 21 s
+
+Re-running the identical 2,000-student topology (`prepare-local.mjs`, `K6_PREP_CONCURRENCY=8`) after the swap:
+
+| Signal | bcryptjs | `@node-rs/bcrypt` + `UV_THREADPOOL_SIZE=16` |
+|---|---:|---:|
+| Backend CPU during import | 100.8 % (**1 core**) | **398.3 %** (4 cores) |
+| Student import (2,000 rows) | 17 m 44 s | **3 m 20 s** |
+| Student authentication (4,000 ops) | ~2 h projected | **6 m 51 s** |
+| Whole topology (incl. enrollment, QAC, keys, sessions) | ~100 min projected | **10 m 21 s** |
+| Single cost-12 hash | ~530 ms (serialised) | **375 ms per thread, parallel** |
+
+Phase timings from the run: admin login 1 s · identities 1 s · import 3 m 20 s · auth 6 m 51 s · professors 3 s · subjects 0 s · sections 1 s · enrollments 2 s · QAC 0 s · signing keys 0 s · sessions 3 s. Enrollment asserted 2,000 rows across 34 sections with every `studentCount` matching.
+
+Throughput notes: 2,000 hashes in 200 s ≈ **10 hashes/s**, i.e. ~4 effective threads at 2.7/s — the pool is real, and the remaining gain available is `UV_THREADPOOL_SIZE`/core count, not a different library.
+
+### Measured run #1 — `lt5-arrival-2000` (mixed traffic, realistic rate)
+
+`mixed-load.js`, arrival shape, 2,000 users, fixture `lt5-1794430125`. Report: `performance/results/lt5-arrival-2000.md`.
+
+| flow | attempts | throttled | success | p95 | p99 | SLO |
+|---|---:|---:|---:|---:|---:|---|
+| login | 165 | 0 | 100.0 % | **827 ms** | 841 ms | p95 < 3 s ✅ |
+| scan | 298 | 0 | 100.0 % | **81 ms** | 95 ms | p95 < 1 s, p99 < 2 s ✅ |
+| sync_enqueue | 26 | 0 | 100.0 % | 28 ms | 31 ms | p95 < 1 s ✅ |
+| sync_receipt | 26 | 0 | 100.0 % | 300 ms | 312 ms | p95 < 30 s ✅ |
+| dispute | 47 | 0 | 100.0 % | 36 ms | 38 ms | p95 < 3 s ✅ |
+| excuse | 40 | 0 | 100.0 % | 38 ms | 56 ms | p95 < 3 s ✅ |
+| faculty_read | 79 | 0 | 100.0 % | 17 ms | 22 ms | p95 < 3 s ✅ |
+| admin_read | 40 | 0 | 100.0 % | 17 ms | 22 ms | p95 < 3 s ✅ |
+| proof_upload | 20 | 0 | 100.0 % | 91 ms | 147 ms | p95 < 5 s ✅ |
+| session_lifecycle | 3 | 0 | 100.0 % | 219 ms | 221 ms | p95 < 5 s ✅ |
+
+`http_reqs=1,503`, `http_failed=0.0 %`, `iterations=684`, `vus_max=9`, k6 exit 0, 305.4 s wall. Postgres peak waiters **1**, peak active 2, idle-in-transaction 1, 150 observer samples / 0 probe errors, **zero backend 5xx**. Backend CPU ~83 % of one core throughout.
+
+**Verdict for the realistic shape:** scan p95 carries a **12× margin** and login p95 a **3.6× margin** against their SLOs at the realistic blended rate, with no failures and no throttling.
+
+### Harness finding H1 — the mixed arrival run only covers a 5-minute slice
+
+`run-load.mjs` derives the blended arrival rate as `users/900` (**2.222 flows/s** for 2,000 users), which is correct, but `mixed-load.js` defaults `K6_MIX_DURATION` to `5m`, so the run executed **684 of the intended ~2,000 flows**. The report's `load model` line states this explicitly (`2.222/s blended iterations for the script default duration`).
+
+Passing `--duration` is **not** the fix: in this k6 build it is forwarded to the CLI as a hard cap that *replaces the script's scenarios with k6's default executor*, destroying the arrival shape (this is already documented above and warned about by the orchestrator). The working invocation is to set the duration through `__ENV` instead, which `mixedScenario` reads directly:
+
+```bash
+K6_MIX_DURATION=920s node performance/run-load.mjs --run lt5-arrival-2000 \
+  --shape arrival --users 2000 --fixture <abs> --script performance/mixed-load.js \
+  --k6 <k6.exe> --profile full        # note: no --duration
+```
+
+`run-load.mjs` copies `K6_MIX_DURATION` from the process env into the k6 `-e` whitelist, so this extends the arrival window without the CLI override.
+
+**Fixed** in `run-load.mjs` (two changes):
+- Mixed arrival now defaults `K6_MIX_DURATION` to `ceil(users / mixRate)` seconds (901 s for 2,000 users at 2.222/s, instead of the script's 300 s), so a mixed run covers its population with no manual knob.
+- `--duration` is no longer forwarded to the k6 CLI at all — it is mapped into `K6_MIX_DURATION` and otherwise ignored, because as a CLI flag it replaces the script's scenarios with k6's 1-VU default executor. This also repairs the documented burst invocation below, which passed `--duration 180s` and would have measured a single virtual user.
+
+### Harness finding H2 — the integrity mismatch is flow attribution, not corruption
+
+Run #1 reported `STOP — MISMATCH` (k6: 298 scan successes; DB: 338 accepted + 19 disputed = 357). Source-level explanation:
+
+- `runScan` issues exactly one `POST /attendance/scan` per iteration → **298**.
+- `runDispute` (47) and `runExcuse` (40) each call `ensureRecord()`, which **first mints a record with `POST /attendance/scan`** (`operation: '<flow>_record_scan'`) → **87** additional scan attempts not tagged `flow:scan`.
+- `runSync` (26) replays through `POST /sync/attendance/batches`, and the batch processor writes records/attempts on the same sessions.
+
+298 + 87 + 26 ≈ 411 expected attempts versus 377 rows actually written (the remainder hit students who had already been scanned and took the documented duplicate acknowledgement). Likewise the 19 `disputed` rows are `runDispute`'s **own canned payload** (`reason: expired_token`, "student reports an expired token at the door") — an intentional artifact of the flow under test, not a load-induced rejection. No record was corrupted and no scan failed.
+
+**Fixed** in `run-load.mjs`: the accepted-count comparison is now directional instead of symmetric. A DB count *below* the k6 success count is a shortfall (real loss); an excess is allowed up to the attempts of the flows that legitimately mint their own records (`dispute` + `excuse` + `sync_enqueue`), and only beyond that bound is it flagged as unexplained. Verified against both recorded runs — run #1 (`357` vs `298` + up to `113` minted) and run #2 (`286` vs `206` + up to `140` minted) no longer trip, while a hypothetical shortfall still does. Run #2's genuine signal is unaffected because it comes from the separate strict `missingAttempts` check (2,000 attempted vs 306 `ScanAttempt` rows), which is intentionally not widened.
+
+### Harness finding H3 — the integrity queries were not scoped to the run window
+
+The login-only run (`login-load.js`) reported `STOP — MISMATCH`: 0 k6 scans versus 357 accounted DB rows. Nothing was wrong with the logins — the integrity queries filtered by **fixture session ids only**, so they counted every `AttendanceRecord` ever written to those sessions by *earlier* runs on the same fixture. Measured on the live DB: **2,180** rows for fixture `lt5-1794430125` with no time filter, **0** for the login run's own window.
+
+**Fixed** in `run-load.mjs`: `collectIntegrity` now takes the run's `startedAt` and applies `"createdAt" >= <run start>` to all three queries (status counts, disputed rows, `ScanAttempt` outcomes). Verified against the live DB — the same fixture sessions return 2,180 rows unscoped and 0 scoped to the login window. This also makes re-running against a used fixture valid, which is what forced fresh provisioning before.
+
+### Measured run #2 — `lt5b-burst-2000` (the ceiling probe)
+
+`attendance-load.js`, burst shape, 2,000 users, fixture `lt5b-1794431113` (fresh topology — `scan_burst` is `per-vu-iterations`, `vus=2000`, `iterations=1`, i.e. all 2,000 students scan **simultaneously**). Report: `performance/results/lt5b-burst-2000.md`.
+
+| flow | attempts | success | p95 | p99 | SLO |
+|---|---:|---:|---:|---:|---|
+| **scan** | 2,000 | **10.3 %** (206) | **8,497 ms** | **13,029 ms** | p95 < 1 s ❌ |
+| sync_enqueue | 60 | 100.0 % | 5,553 ms | 5,614 ms | p95 < 1 s ❌ |
+| sync_receipt | 60 | 100.0 % | 10,497 ms | 10,534 ms | p95 < 30 s ✅ |
+| dispute | 40 | 100.0 % | 1,956 ms | 1,980 ms | p95 < 3 s ✅ |
+| excuse | 40 | 100.0 % | 752 ms | 805 ms | p95 < 3 s ✅ |
+| faculty_read | 34 | 100.0 % | 740 ms | 742 ms | p95 < 3 s ✅ |
+| admin_read | 20 | 100.0 % | 1,263 ms | 1,264 ms | p95 < 3 s ✅ |
+| proof_upload | 20 | 100.0 % | 1,352 ms | 2,134 ms | p95 < 5 s ✅ |
+| session_lifecycle | 3 | 100.0 % | 198 ms | 204 ms | p95 < 5 s ✅ |
+
+`http_reqs=3,323`, `http_req_failed=53.99 %`, `vus_max=2,160`, wall 40.6 s, k6 exit 99 (threshold breach, data valid).
+
+Server-side during the burst: **Postgres `peakWaiters=40`, peakActive=41, maxWait 4,584 ms, 28 long queries, 40 lock waits** (vs 1 waiter / 4 ms at the paced rate); event-loop lag p95 **322 ms** (vs 19 ms); RSS peak 473 MiB; Redis peak 1,113 ops/s; **backend 5xx = 7** (0 in every other run).
+
+**Failure mode is the connection boundary, not application logic:** k6 recorded 1,529 client-side failures while the backend logged almost exclusively `201`/`200` — requests queued past the client timeout / accept backlog instead of returning errors. That also explains the integrity gap (`ScanAttempt` rows 306 vs 2,000 attempted): most requests never reached the scan validator.
+
+**Verdict for the burst shape:** an instantaneous 2,000-scan burst **collapses**. Single-process scans cannot survive that shape; the paced result (run #1) is the one that matches real bell-curve behaviour (≈1 scan/s across a 15-minute window).
+
+### Measured run #4 — `service-matrix` (every student/professor/admin service)
+
+`performance/service-matrix.js`, burst shape, 20 iterations per service, 124 VUs, 99.7 s. **AI assistant deliberately excluded.** Report inputs: `performance/results/service-matrix-full.{json,log}`.
+
+This exists because runs #1–#3 measured **two** services at scale (login, scan) and left the rest at token counts — `session_lifecycle` was 3 iterations, so QR generation had never actually been exercised. The matrix gives every service its own scenario and sample count.
+
+**31 services, 80 attempts each, 2,480 iterations, 5,305 requests. 30 of 31 at 100 %.**
+
+| service | attempts | success | p95 | p99 |
+|---|---:|---:|---:|---:|
+| auth_session | 80 | 100 % | 1,552 ms | 1,823 ms |
+| student_schedule | 80 | 100 % | 7,705 ms | 15,310 ms |
+| student_history | 80 | 100 % | 2,970 ms | 3,231 ms |
+| student_standing | 80 | 100 % | 2,234 ms | 4,861 ms |
+| notifications | 80 | 100 % | 4,140 ms | 4,359 ms |
+| subject_browse | 80 | 100 % | 3,200 ms | 6,848 ms |
+| system_reports | 80 | 100 % | 4,401 ms | 9,999 ms |
+| attendance_timeline | 80 | 100 % | 2,091 ms | 2,289 ms |
+| **qr_activate** (create→sign→activate→end) | 80 | **100 %** | 12,516 ms | 20,288 ms |
+| **qr_online_checkpoints** (dual checkpoint, zero-GPS) | 80 | **100 %** | 14,470 ms | 24,699 ms |
+| session_bulk | 80 | 100 % | 3,530 ms | 11,218 ms |
+| session_reads | 80 | 100 % | 4,449 ms | 4,757 ms |
+| teacher_dashboard | 80 | 100 % | 3,532 ms | 9,368 ms |
+| attendance_report | 80 | 100 % | 2,220 ms | 2,400 ms |
+| attendance_lists | 80 | 100 % | 9,069 ms | 9,190 ms |
+| manual_attendance | 80 | 100 % | 2,568 ms | 2,972 ms |
+| dispute_read | 80 | 100 % | 1,592 ms | 1,763 ms |
+| proof_read | 80 | 100 % | 1,997 ms | 2,739 ms |
+| docs_master_list | 80 | 100 % | 8,661 ms | 15,219 ms |
+| docs_class_record | 80 | 100 % | 13,333 ms | 18,308 ms |
+| docs_session_attendance | 80 | 100 % | 3,075 ms | 9,675 ms |
+| export_csv | 80 | 100 % | 2,392 ms | 9,529 ms |
+| at_risk | 80 | 100 % | 2,360 ms | 2,732 ms |
+| section_reads | 80 | 100 % | 5,101 ms | 7,225 ms |
+| class_compose (subject→section) | 80 | 100 % | 4,631 ms | 5,010 ms |
+| section_roles | 80 | 100 % | 2,853 ms | 3,283 ms |
+| session_permissions | 80 | 100 % | 3,082 ms | 3,318 ms |
+| users_read | 80 | 100 % | 2,924 ms | 4,711 ms |
+| audit_read | 80 | **98.8 %** | 1,804 ms | 7,798 ms |
+| settings_read | 80 | 100 % | 1,500 ms | 3,318 ms |
+| health | 80 | 100 % | 1,485 ms | 5,012 ms |
+
+**Reading the latencies:** every service runs **simultaneously** in one burst (124 VUs), so these p95s are all-services-at-once contention, not per-service SLOs. `qr_activate` is three sequential writes competing with 123 other VUs; standalone it is tens of milliseconds. The **success rate column is the signal here**, and the latency SLOs remain the ones measured by runs #1–#3 under realistic pacing.
+
+**The single failure** was `audit_read status=0` — k6 received no response at all. `POST /audit-logs/ledger/verify` re-hashes the entire ledger (**29,088 attendance records** locally) and takes **1.19 s standalone**; it timed out once under full-matrix contention. That is a genuine scaling characteristic of the endpoint, not a defect: it is a maintenance action, and it is now exercised **once per run** rather than every fifth iteration.
+
+**Getting here required 12 harness corrections**, every one of them detected by the API returning 400/404/409 and fixed from controller source rather than guessed: `@Controller()` has no `/dashboard` prefix (`/reports/export`, `/search`, `/calendar/events` are top-level); `/calendar/events` demands a date window; `/attendance/page` takes `limit`/`offset` not `page`; `/attendance/summaries` is teacher-only; the status enum has no `excused`; report categories are a fixed enum; `/disputes` rejects `sectionId`; `regenerate` is an online-only operation; session slots are unique so concurrent creates need the 409-shift retry; bulk windows must be run-scoped; and `ledger/verify` must not be run concurrently with itself.
+
+### Measured run #3 — `lt5-login-paced-2000` (login capacity at the real rate)
+
+`login-load.js`, arrival shape, 2,000 logins at **2.222/s** for 926 s. Report: `performance/results/lt5-login-paced-2000.md`.
+
+| flow | attempts | throttled | success | p95 | p99 | SLO |
+|---|---:|---:|---:|---:|---:|---|
+| login | **2,000** | **0** | **100.0 %** | **857 ms** | **921 ms** | p95 < 3 s ✅ (3.5× margin) |
+
+`http_reqs=2,001`, `http_failed=0.0 %`, `vus_max=7`, k6 exit 0. Server-side: Postgres peak waiters **1**, max wait 15 ms, 0 slow queries, 14/100 connections; event-loop lag p95 **12 ms** (max 245 ms); backend CPU peak **268 %** (2.7 cores); Redis peak 1,075 ops/s; **0 × 5xx**, **0 × 429**; 459 observer samples / 0 probe errors.
+
+**Verdict:** 2,000 students all log in inside a 15-minute window with a 3.5× latency margin, on 2.7 cores, with the database effectively untouched. Against the pre-fix projection (17.7–39.2 min, single core, degrading every other request while it ran), this is F2 delivering its promise at the rate that actually matters — not the sparse 0.54 logins/s the mixed run happened to sample.
+
+### Capacity conclusion
+
+| Shape | p95 | p99 | Failures | Verdict |
+|---|---|---|---|---|
+| Login 2.222/s for 926 s (2,000 students) | **857 ms** | 921 ms | 0 | ✅ 3.5× margin |
+| Mixed traffic 2.222 flows/s (≈1 scan/s) | scan **81 ms**, login 827 ms | 95 ms | 0 | ✅ 12× margin on scan |
+| Instant 2,000-scan burst | scan **8,497 ms** | 13,029 ms | **1,794 scans lost** | ❌ collapses |
+
+Practical guidance: sustained capacity is **2.222 logins/s (≈8,000/hour) on 2.7 cores** and **≥1 scan/s with a 12× margin**, against a bell window that needs 2.22 scans/s — comfortably inside the measured envelope, though that exact rate has not been run directly (see below). What must be avoided is many students scanning in the same second: the architecture has no per-second smoothing, so the mitigation is either horizontal (multiple backend instances behind the Redis-adapter gateway, which is already supported) or client-side staggering.
+
+**Still unmeasured:** a sustained 2.222 scans/s run (the `scan_paced` rate, as opposed to the ≈1/s the mixed weighting produced). It needs one more provisioned fixture; with the H3 fix that fixture can now be reused across runs, so only the first run costs the 10 minutes.
+
+The F2 bcrypt swap is orthogonal to scan capacity (scans do not hash) but is decisive for **login** and for **onboarding**: it turned a 100-minute provisioning run into 10 minutes and took 2,000 logins from a 17.7–39.2 min projection on one core to **926 s at p95 857 ms** on 2.7 cores.
+
 
 

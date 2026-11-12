@@ -1,39 +1,75 @@
-import http from 'k6/http'
-import { check, fail } from 'k6'
+/**
+ * Polycheck — student login capacity (flow: `login`).
+ *
+ * Measures POST /api/auth/mobile/login/student for every student in the
+ * fixture. The login path is deliberately isolated from attendance so bcrypt +
+ * session creation never contaminate the bell-rush numbers.
+ *
+ * ── Invocation matrix ─────────────────────────────────────────────────────
+ *   K6_FIXTURE_FILE            required. performance/.local-fixture-<runId>.json
+ *   K6_SHAPE                   burst | arrival (default arrival)
+ *                                arrival -> constant-arrival-rate @ K6_LOGIN_RATE_PER_SECOND
+ *                                burst   -> per-vu-iterations, one login per VU
+ *   K6_LOGIN_RATE_PER_SECOND   default 4 (logins/s). The backend admits 1,000
+ *                              logins per IP per 60 s; a burst above that is
+ *                              expected to throttle and is reported as such.
+ *   K6_PROFILE                 smoke | full | burst (threshold set only)
+ *   K6_USER_COUNT              cap students used (default: every student)
+ *   K6_LOGIN_VUS               burst VU cap (default: student count)
+ *   K6_SUMMARY_EXPORT          path for k6's native summary JSON
+ *                              (also accepted as the --summary-export flag)
+ *
+ * ── Running (k6 v2.3.0) ───────────────────────────────────────────────────
+ *   This build does not forward the process environment to __ENV, so pass
+ *   every variable with -e/--env. The fixture path may be absolute (most
+ *   robust) or repo-root relative (performance/.local-fixture-<runId>.json).
+ *   --summary-export writes the machine-readable per-flow JSON.
+ *
+ * ── 429 semantics ─────────────────────────────────────────────────────────
+ *   429 is admission control, not failure: it increments `flow_throttled`
+ *   only. `flow_success`, `login_admitted_duration` and the latency SLOs cover
+ *   admitted requests exclusively, so "paced" (all admitted) and "burst"
+ *   (throttle visible) runs are directly comparable.
+ *
+ * Examples
+ *   K6_FIXTURE_FILE=performance/.local-fixture-x.json K6_USER_COUNT=10 \
+ *     K6_SHAPE=arrival k6 run performance/login-load.js
+ *   K6_FIXTURE_FILE=... K6_SHAPE=burst K6_PROFILE=burst \
+ *     k6 run --summary-export performance/results/login-burst.json performance/login-load.js
+ */
 import exec from 'k6/execution'
-import { SharedArray } from 'k6/data'
+import { loadFixture } from './lib/fixture.js'
+import { measureClockOffset, runLogin } from './lib/flows.js'
+import { shapeOf, profileOf } from './lib/metrics.js'
+import { loginScenario } from './lib/scenarios.js'
+import { buildThresholds } from './lib/thresholds.js'
+import { summarize } from './lib/summary.js'
 
-const fixture = __ENV.K6_FIXTURE_FILE ? JSON.parse(open(__ENV.K6_FIXTURE_FILE)) : {}
-const credentials = new SharedArray('dedicated login credentials', () => fixture.credentials || [])
-const count = Number(__ENV.K6_USER_COUNT ?? (__ENV.K6_PROFILE === 'full' ? 1000 : 2))
-const start = Number(__ENV.K6_USER_START ?? 0)
-if (!Number.isInteger(count) || count < 1 || count > 5000) throw new Error('K6_USER_COUNT must be an integer between 1 and 5000')
-if (!Number.isInteger(start) || start < 0) throw new Error('K6_USER_START must be a non-negative integer')
+const fixture = loadFixture()
+const shape = shapeOf()
+const profile = profileOf()
+const scenario = loginScenario(fixture, shape)
+
 export const options = {
-  scenarios: { login_burst: { executor: 'per-vu-iterations', vus: count, iterations: 1, maxDuration: count > 1000 ? '5m' : '2m' } },
-  thresholds: {
-    checks: ['rate>0.99'],
-    http_req_failed: ['rate<0.01'],
-    http_req_duration: ['p(95)<3000', 'p(99)<5000'],
-    iterations: [`count==${count}`],
-  },
+  scenarios: { [scenario.name]: scenario.options },
+  thresholds: buildThresholds(profile, shape, ['login']),
+  tags: { harness: 'polycheck', script: 'login-load' },
 }
-export const setup = () => {
-  if (__ENV.K6_ALLOW_REMOTE_TARGET !== 'I_ACKNOWLEDGE_THIS_WRITES_ATTENDANCE_DATA') fail('Explicit staging authorization is required')
-  if ((__ENV.K6_PROFILE === 'full' || count >= 1000) && __ENV.K6_CONFIRM_1000_USERS !== 'I_HAVE_AUTHORIZATION_FOR_1000_USERS') fail('Full-profile authorization is required')
-  if (count > 1000 && __ENV.K6_CONFIRM_5000_USERS !== 'I_HAVE_AUTHORIZATION_FOR_5000_USERS') fail('Runs above 1,000 users require K6_CONFIRM_5000_USERS')
-  if (!fixture.BASE_URL?.startsWith('https://')) fail('HTTPS staging is required')
-  const selected = credentials.slice(start, start + count)
-  if (selected.length < count || new Set(selected.map((item) => item.studentId)).size < count) fail('Distinct dedicated accounts are required')
-  return { baseUrl: fixture.BASE_URL }
+
+export function setup() {
+  return measureClockOffset(fixture)
 }
-export default function login(config) {
-  const credential = credentials[start + exec.scenario.iterationInTest]
-  if (!credential) fail('The scenario scheduled more iterations than login fixtures')
-  const response = http.post(`${config.baseUrl}/api/auth/mobile/login/student`, JSON.stringify(credential), { headers: { 'Content-Type': 'application/json' }, timeout: '15s' })
-  check(response, { 'login issues an authenticated session': (result) => result.status === 201 && Boolean(result.json('token')) })
+
+export default function run(data) {
+  const index = exec.scenario.iterationInTest
+  // Arrival-rate executors can overshoot the scheduled iteration count by a
+  // few ticks; never log a student in twice in the same paced run.
+  if (index >= fixture.studentCount) return
+  runLogin(fixture, shape, data.clockOffsetMs, index)
 }
-export const handleSummary = (data) => ({
-  stdout: JSON.stringify(data.metrics, null, 2),
-  ...(__ENV.K6_SUMMARY_EXPORT ? { [__ENV.K6_SUMMARY_EXPORT]: JSON.stringify(data, null, 2) } : {}),
-})
+
+export function handleSummary(data) {
+  return {
+    stdout: summarize(data, { label: 'login-load', profile, shape, fixture }),
+  }
+}
