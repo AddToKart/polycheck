@@ -40,21 +40,21 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.3",
-    "@testing-library/jest-dom": "^7.0.0",
-    "@testing-library/react": "^16.3.2",
+    "@tailwindcss/postcss": "^4.3.5",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
     "@types/geojson": "^7946.0.16",
-    "@types/node": "^22.20.1",
+    "@types/node": "^26.6.6",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitest/coverage-v8": "4.1.11",
-    "eslint": "^9.39.4",
-    "eslint-config-next": "16.4.1",
-    "fake-indexeddb": "^6.2.6",
-    "jsdom": "^30.0.1",
+    "@vitest/coverage-v8": "5.1.0",
+    "eslint": "^10.14.0",
+    "eslint-config-next": "16.4.6",
+    "fake-indexeddb": "^6.2.8",
+    "jsdom": "^31.0.0",
     "tailwindcss": "^4.3.3",
-    "typescript": "~6.0.3",
-    "vitest": "^4.1.11"
+    "typescript": "~7.0.2",
+    "vitest": "^5.1.0"
   }
 }
