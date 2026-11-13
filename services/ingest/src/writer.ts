@@ -1,71 +1,173 @@
 /**
  * Postgres writer for buffered scans. Raw SQL on purpose: the drainer needs one
- * lock, four lookups and an insert — an ORM (and a second generated client)
- * would buy nothing and would add a build coupling between the two services.
+ * lock, four lookups and a batched write — an ORM (and a second generated
+ * client) would buy nothing and would add a build coupling between the two
+ * services.
  *
  * Contract with the request path: the gateway accepts optimistically and this
  * writer is the **authoritative** check. The teacher signing key is re-read here
  * (NestJS deliberately never trusts a cached key for verification), so a rotated
  * or revoked key cannot be honoured by the fast path. A signature that fails at
  * this point is still persisted — as a disputed record for teacher review.
+ *
+ * Ordering invariant: within a session, rows are chained in stream-arrival
+ * order. The whole batch is computed and written under one
+ * transaction-scoped advisory lock. The per-row round trips of the original
+ * writer made one 200-entry drain batch take seconds (≈4 ms/scan); the writer
+ * now emits **one multi-row INSERT and one batched claim UPDATE** per session,
+ * so a batch costs a constant number of queries no matter how many scans it
+ * carries. Ordering is unchanged: hashes are computed sequentially in arrival
+ * order, and the statements only store the values computed for each position.
  */
 import { randomUUID } from 'node:crypto'
 import type { Pool } from 'pg'
-import { verifyQRToken } from '@polycheck/shared'
+import { verifyQRTokenNative } from '@polycheck/shared/token-node'
 import { computeRecordHash, generateLedgerSalt } from '@polycheck/shared/ledger'
-import type { AttendanceWriter } from './queue'
+import type { AttendanceWriter, BufferedScan } from './queue'
 
-const INSERT_SQL = `
-INSERT INTO "AttendanceRecord" (
-  id, "sessionId", "sectionId", "studentId", "studentName",
+interface ExistingRow {
+  recordHash: string | null
+  status: string
+}
+
+interface PreparedRow {
+  scan: BufferedScan
+  mode: 'insert' | 'claim'
+  id: string
+  status: 'present' | 'late' | 'disputed' | 'incomplete'
+  prevHash: string | null
+  recordHash: string
+  salt: string
+  disputeReason: string | null
+  disputeDescription: string | null
+  disputePreviousStatus: string | null
+  notes: string | null
+  createdAt: string
+}
+
+const INSERT_COLUMNS = `id, "sessionId", "sectionId", "studentId", "studentName",
   timestamp, status, latitude, longitude, "deviceId", "tokenSnapshot",
   "isSynced", "syncedAt", "prevHash", "recordHash", salt,
   "disputeReason", "disputeDescription", "disputePreviousStatus",
-  notes, "manuallySet", "createdAt", "updatedAt"
-) VALUES ($1,$2,$3,$4,$5,
-  ($6::timestamptz AT TIME ZONE 'UTC'),
-  $7::"AttendanceStatus",$8,$9,$10,$11,$12,
-  ($13::timestamptz AT TIME ZONE 'UTC'),
-  $14,$15,$16,$17,$18,$19::"AttendanceStatus",$20,$21,
-  ($22::timestamptz AT TIME ZONE 'UTC'),
-  ($23::timestamptz AT TIME ZONE 'UTC'))
-ON CONFLICT ("sessionId", "studentId") DO NOTHING
-RETURNING id
-`
+  notes, "manuallySet", "createdAt", "updatedAt"`
+
+const INSERT_PARAMS_PER_ROW = 20
 
 /**
- * Activation pre-seeds a `pending` row for every enrolled student, so a scan
- * usually finds an existing row rather than inserting one. Claiming that row is
- * the difference between "attendance recorded" and "the scan was silently
- * dropped" — the original ON CONFLICT DO NOTHING treated the roster seed as a
- * duplicate and left the student pending forever.
- *
- * The guard is deliberately narrow: only a row that is still `pending` **and**
- * has no chain hash may be claimed. A teacher's manual decision or an
- * already-chained row wins (first arrival), and `timestamp` is never rewritten
- * because it is part of the hash preimage.
+ * Builds one `INSERT … VALUES (…), (…)` for every newly-seen scan. `isSynced`
+ * and `manuallySet` are literals; `updatedAt` reuses the row's `createdAt`
+ * parameter (Postgres allows one placeholder to appear twice).
  */
-const CLAIM_SQL = `
-UPDATE "AttendanceRecord" SET
-  status = $3::"AttendanceStatus",
-  timestamp = ($15::timestamptz AT TIME ZONE 'UTC'),
-  latitude = $4,
-  longitude = $5,
-  "deviceId" = $6,
-  "prevHash" = $7,
-  "recordHash" = $8,
-  salt = $9,
-  "disputeReason" = $10,
-  "disputeDescription" = $11,
-  "disputePreviousStatus" = CASE WHEN $12::text IS NULL THEN NULL ELSE $12::"AttendanceStatus" END,
-  notes = $13,
-  "isSynced" = true,
-  "syncedAt" = ($14::timestamptz AT TIME ZONE 'UTC'),
-  "updatedAt" = ($14::timestamptz AT TIME ZONE 'UTC')
-WHERE "sessionId" = $1 AND "studentId" = $2
-  AND status = 'pending' AND "recordHash" IS NULL
-RETURNING id
-`
+function buildInsert(sessionId: string, rows: PreparedRow[], nameById: Map<string, string>) {
+  const values: unknown[] = []
+  const tuples = rows.map((row, index) => {
+    const b = index * INSERT_PARAMS_PER_ROW
+    const p = (offset: number) => `$${b + offset}`
+    values.push(
+      row.id,
+      sessionId,
+      row.scan.sectionId,
+      row.scan.userId,
+      nameById.get(row.scan.userId) ?? '',
+      row.scan.scannedAt,
+      row.status,
+      row.scan.latitude ?? null,
+      row.scan.longitude ?? null,
+      row.scan.deviceId ?? null,
+      row.scan.qrToken,
+      row.createdAt,
+      row.prevHash,
+      row.recordHash,
+      row.salt,
+      row.disputeReason,
+      row.disputeDescription,
+      row.disputePreviousStatus,
+      row.notes,
+      row.createdAt,
+    )
+    return `(${p(1)},${p(2)},${p(3)},${p(4)},${p(5)},
+      (${p(6)}::timestamptz AT TIME ZONE 'UTC'),${p(7)}::"AttendanceStatus",
+      ${p(8)},${p(9)},${p(10)},${p(11)},true,
+      (${p(12)}::timestamptz AT TIME ZONE 'UTC'),${p(13)},${p(14)},${p(15)},
+      ${p(16)},${p(17)},
+      CASE WHEN ${p(18)}::text IS NULL THEN NULL ELSE ${p(18)}::text::"AttendanceStatus" END,
+      ${p(19)},false,
+      (${p(20)}::timestamptz AT TIME ZONE 'UTC'),(${p(20)}::timestamptz AT TIME ZONE 'UTC'))`
+  })
+  return {
+    sql: `INSERT INTO "AttendanceRecord" (${INSERT_COLUMNS}) VALUES ${tuples.join(',')}
+      ON CONFLICT ("sessionId", "studentId") DO NOTHING
+      RETURNING id`,
+    values,
+  }
+}
+
+const CLAIM_PARAMS_PER_ROW = 15
+
+/**
+ * One `UPDATE … FROM (VALUES …)` claims every pre-seeded `pending` row in the
+ * batch. The guard (`status = 'pending' AND recordHash IS NULL`) is unchanged
+ * from the per-row version: a teacher decision or an already-chained row wins
+ * and the caller treats that scan as a duplicate.
+ */
+function buildClaim(sessionId: string, rows: PreparedRow[]) {
+  const values: unknown[] = [sessionId]
+  const tuples = rows.map((row, index) => {
+    const b = 1 + index * CLAIM_PARAMS_PER_ROW
+    const p = (offset: number) => `$${b + offset}`
+    values.push(
+      row.scan.userId,
+      row.status,
+      row.scan.scannedAt,
+      row.scan.latitude ?? null,
+      row.scan.longitude ?? null,
+      row.scan.deviceId ?? null,
+      row.prevHash,
+      row.recordHash,
+      row.salt,
+      row.disputeReason,
+      row.disputeDescription,
+      row.disputePreviousStatus,
+      row.notes,
+      row.createdAt,
+      row.createdAt,
+    )
+    return `(${p(1)}::text,${p(2)}::"AttendanceStatus",
+      (${p(3)}::timestamptz AT TIME ZONE 'UTC'),${p(4)}::float8,${p(5)}::float8,
+      ${p(6)}::text,${p(7)}::text,${p(8)}::text,${p(9)}::text,
+      ${p(10)}::text,${p(11)}::text,
+      CASE WHEN ${p(12)}::text IS NULL THEN NULL ELSE ${p(12)}::text::"AttendanceStatus" END,
+      ${p(13)}::text,
+      (${p(14)}::timestamptz AT TIME ZONE 'UTC'),(${p(15)}::timestamptz AT TIME ZONE 'UTC'))`
+  })
+  return {
+    sql: `UPDATE "AttendanceRecord" AS r SET
+        status = v.status,
+        timestamp = v.timestamp,
+        latitude = v.latitude,
+        longitude = v.longitude,
+        "deviceId" = v."deviceId",
+        "prevHash" = v."prevHash",
+        "recordHash" = v."recordHash",
+        salt = v.salt,
+        "disputeReason" = v."disputeReason",
+        "disputeDescription" = v."disputeDescription",
+        "disputePreviousStatus" = v."disputePreviousStatus",
+        notes = v.notes,
+        "isSynced" = true,
+        "syncedAt" = v."syncedAt",
+        "updatedAt" = v."syncedAt",
+        "createdAt" = v."createdAt"
+      FROM (VALUES ${tuples.join(',')}) AS v(
+        "studentId", status, timestamp, latitude, longitude, "deviceId",
+        "prevHash", "recordHash", salt, "disputeReason", "disputeDescription",
+        "disputePreviousStatus", notes, "syncedAt", "createdAt")
+      WHERE r."sessionId" = $1 AND r."studentId" = v."studentId"
+        AND r.status = 'pending' AND r."recordHash" IS NULL
+      RETURNING r."studentId"`,
+    values,
+  }
+}
 
 export function createPgWriter(pool: Pool): AttendanceWriter {
   return {
@@ -81,8 +183,7 @@ export function createPgWriter(pool: Pool): AttendanceWriter {
         // cannot be silently ignored the way a pool option can.
         await client.query("SET LOCAL TIME ZONE 'UTC'")
         // Reads that do not depend on chain order happen BEFORE the lock, so the
-        // critical section below is only "read head + insert rows". This is the
-        // difference between a ~6-query lock hold and a ~2-query one per batch.
+        // critical section below is only "read head + write rows".
         const session = await client.query<{ teacherId: string }>(
           'SELECT "teacherId" FROM "Session" WHERE id = $1',
           [sessionId],
@@ -108,21 +209,53 @@ export function createPgWriter(pool: Pool): AttendanceWriter {
         // become ~40. Stream order is arrival order.
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [sessionId])
 
-        const last = await client.query<{ recordHash: string | null }>(
-          `SELECT "recordHash" FROM "AttendanceRecord"
+        // Partition against committed state *inside* the lock: a chained row is
+        // a duplicate (first arrival wins), an unchained `pending` seed is
+        // claimed, anything else is inserted.
+        const existing = await client.query<{ studentId: string } & ExistingRow>(
+          `SELECT "studentId", "recordHash", status FROM "AttendanceRecord"
+            WHERE "sessionId" = $1 AND "studentId" = ANY($2::text[])`,
+          [sessionId, studentIds],
+        )
+        const existingByStudent = new Map<string, ExistingRow>(
+          existing.rows.map((row) => [row.studentId, { recordHash: row.recordHash, status: row.status }]),
+        )
+
+        const head = await client.query<{ recordHash: string | null; createdAt: Date }>(
+          `SELECT "recordHash", "createdAt" FROM "AttendanceRecord"
             WHERE "sessionId" = $1 AND "recordHash" IS NOT NULL
             ORDER BY "createdAt" DESC LIMIT 1`,
           [sessionId],
         )
-        let prevHash = last.rows[0]?.recordHash ?? null
+        let prevHash = head.rows[0]?.recordHash ?? null
+        // Strictly increasing `createdAt` keeps the chain head unambiguous for
+        // the next batch even when several rows are written in one statement
+        // (ties would make `ORDER BY createdAt DESC` pick an arbitrary row).
+        let createdAtMs = Math.max(Date.now(), (head.rows[0]?.createdAt.getTime() ?? 0) + 1)
 
-        let written = 0
         let duplicates = 0
+        const insertRows: PreparedRow[] = []
+        const claimRows: PreparedRow[] = []
+        const seen = new Set<string>()
 
         for (const scan of scans) {
+          // Two scans for one student in one batch: the first in arrival order
+          // wins, the second is a duplicate, matching the per-row behaviour.
+          if (seen.has(scan.userId)) {
+            duplicates += 1
+            continue
+          }
+          seen.add(scan.userId)
+
+          const existingRow = existingByStudent.get(scan.userId)
+          if (existingRow && (existingRow.recordHash !== null || existingRow.status !== 'pending')) {
+            duplicates += 1
+            continue
+          }
+
           // Authoritative signature gate. A missing or rotated key fails closed.
           const signatureValid = teacherPublicKey
-            ? verifyQRToken(scan.qrToken, teacherPublicKey) !== null
+            ? verifyQRTokenNative(scan.qrToken, teacherPublicKey) !== null
             : false
 
           const status = signatureValid ? scan.status : 'disputed'
@@ -133,88 +266,65 @@ export function createPgWriter(pool: Pool): AttendanceWriter {
           const previousStatus = !signatureValid && scan.status === 'disputed' ? null : scan.status
 
           const salt = generateLedgerSalt()
+          const rowPrevHash = prevHash
           const recordHash = computeRecordHash({
-            prevHash,
+            prevHash: rowPrevHash,
             studentId: scan.userId,
             timestampIso: scan.scannedAt,
             sessionId,
             salt,
           })
-          // ISO strings, not Date objects: node-postgres serialises a Date for a
-          // `timestamp` column from the client's local clock and would bypass
-          // the UTC session timezone set above.
-          const now = new Date().toISOString()
+          prevHash = recordHash
+          createdAtMs += 1
 
           // Dispute columns are only meaningful for a disputed row.
           const disputeReason = status === 'disputed' ? (reason ?? null) : null
           const disputeDescription = status === 'disputed' ? (message ?? null) : null
           const notes = reason ? `[${reason}] ${message ?? ''}`.trim() : null
 
-          const insert = await client.query(INSERT_SQL, [
-            randomUUID(),
-            sessionId,
-            scan.sectionId,
-            scan.userId,
-            nameById.get(scan.userId) ?? '',
-            scan.scannedAt,
+          const row: PreparedRow = {
+            scan,
+            mode: existingRow ? 'claim' : 'insert',
+            id: randomUUID(),
             status,
-            scan.latitude ?? null,
-            scan.longitude ?? null,
-            scan.deviceId ?? null,
-            scan.qrToken,
-            true,
-            now,
-            prevHash,
+            prevHash: rowPrevHash,
             recordHash,
             salt,
             disputeReason,
             disputeDescription,
-            status === 'disputed' ? previousStatus : null,
+            // A disputed claim replaces a roster seed that was `pending`; an
+            // inserted row records the scan's own status as the pre-dispute state.
+            disputePreviousStatus: status === 'disputed' ? (existingRow ? 'pending' : previousStatus) : null,
             notes,
-            false,
-            now,
-            now,
-          ])
-
-          if (insert.rowCount === 1) {
-            prevHash = recordHash
-            written += 1
-            continue
+            createdAt: new Date(createdAtMs).toISOString(),
           }
+          if (row.mode === 'insert') insertRows.push(row)
+          else claimRows.push(row)
+        }
 
-          // The row already exists because activation pre-seeded the roster.
-          // Claim it only while it is still pending and unchained; otherwise the
-          // earlier decision wins and this scan is a duplicate.
-          const claim = await client.query(CLAIM_SQL, [
-            sessionId,
-            scan.userId,
-            status,
-            scan.latitude ?? null,
-            scan.longitude ?? null,
-            scan.deviceId ?? null,
-            prevHash,
-            recordHash,
-            salt,
-            disputeReason,
-            disputeDescription,
-            status === 'disputed' ? 'pending' : null,
-            notes,
-            now,
-            // The chain preimage uses this exact timestamp, so the claimed row
-            // must store the same value (the roster seed carried its own time,
-            // which no longer matches the hash once the scan claims it).
-            scan.scannedAt,
-          ])
-          if (claim.rowCount === 1) {
-            prevHash = recordHash
-            written += 1
-          } else {
-            duplicates += 1
+        if (insertRows.length > 0) {
+          const insert = buildInsert(sessionId, insertRows, nameById)
+          const result = await client.query(insert.sql, insert.values)
+          if (result.rowCount !== insertRows.length) {
+            // A concurrent writer changed the partition between the read and
+            // the write. Roll back and let the drainer retry: the chain must
+            // never record a hash that was not persisted.
+            throw new Error(`attendance batch insert wrote ${result.rowCount}/${insertRows.length} rows; retrying`)
+          }
+        }
+
+        if (claimRows.length > 0) {
+          const claim = buildClaim(sessionId, claimRows)
+          const result = await client.query(claim.sql, claim.values)
+          if (result.rowCount !== claimRows.length) {
+            // Same fail-closed rule: a row claimed elsewhere (manual override,
+            // backend write) means our computed chain included it wrongly.
+            throw new Error(`attendance batch claimed ${result.rowCount}/${claimRows.length} seed rows; retrying`)
           }
         }
 
         await client.query('COMMIT')
-        return { written, duplicates }
+        return { written: insertRows.length + claimRows.length, duplicates }
       } catch (error) {
         await client.query('ROLLBACK').catch(() => undefined)
         throw error

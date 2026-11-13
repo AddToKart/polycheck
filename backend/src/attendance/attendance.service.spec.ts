@@ -23,14 +23,18 @@ import {
 } from '../../test/test-fixtures'
 
 jest.mock('@polycheck/shared', () => ({
-  verifyQRToken: jest.fn(),
   verifyMeetingPin: jest.fn(),
   haversineDistance: jest.fn(),
 }))
 
-import { verifyQRToken, verifyMeetingPin, haversineDistance } from '@polycheck/shared'
+jest.mock('@polycheck/shared/token-node', () => ({
+  verifyQRTokenNative: jest.fn(),
+}))
 
-const mockedVerifyQRToken = verifyQRToken as jest.MockedFunction<typeof verifyQRToken>
+import { verifyMeetingPin, haversineDistance } from '@polycheck/shared'
+import { verifyQRTokenNative } from '@polycheck/shared/token-node'
+
+const mockedVerifyQRToken = verifyQRTokenNative as jest.MockedFunction<typeof verifyQRTokenNative>
 const mockedVerifyMeetingPin = verifyMeetingPin as jest.MockedFunction<typeof verifyMeetingPin>
 const mockedHaversineDistance = haversineDistance as jest.MockedFunction<typeof haversineDistance>
 
@@ -238,7 +242,7 @@ describe('AttendanceService', () => {
       expect(result.status).toBe('disputed')
     })
 
-    it('returns invalid_signature when verifyQRToken returns null', async () => {
+    it('returns invalid_signature when the token verifier returns null', async () => {
       redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(null)

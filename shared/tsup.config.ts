@@ -8,6 +8,7 @@ export default defineConfig({
     index: "src/index.ts",
     "utils/index": "src/utils/index.ts",
     "utils/ledger": "src/utils/ledger.ts",
+    "utils/token-node": "src/utils/token-node.ts",
     "map/index": "src/map/index.ts",
     "validation/index": "src/validation/index.ts",
   },

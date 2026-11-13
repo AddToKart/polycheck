@@ -4,13 +4,17 @@ import type { RequestUser } from '../auth/authenticated-principal'
 
 jest.mock('@polycheck/shared', () => ({
   decodeTokenPayload: jest.fn(),
-  verifyQRToken: jest.fn(),
 }))
 
-import { decodeTokenPayload, verifyQRToken } from '@polycheck/shared'
+jest.mock('@polycheck/shared/token-node', () => ({
+  verifyQRTokenNative: jest.fn(),
+}))
+
+import { decodeTokenPayload } from '@polycheck/shared'
+import { verifyQRTokenNative } from '@polycheck/shared/token-node'
 
 const mockedDecode = decodeTokenPayload as jest.MockedFunction<typeof decodeTokenPayload>
-const mockedVerify = verifyQRToken as jest.MockedFunction<typeof verifyQRToken>
+const mockedVerify = verifyQRTokenNative as jest.MockedFunction<typeof verifyQRTokenNative>
 
 const T0 = Date.parse('2026-07-14T01:00:00.000Z')
 const BASE_PAYLOAD = {

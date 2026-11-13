@@ -7,14 +7,18 @@ import type { RequestUser } from '../auth/authenticated-principal'
 import { ISSUED_AT, makeCachedSession, makeEvidence, validPayload } from '../../test/test-fixtures'
 
 jest.mock('@polycheck/shared', () => ({
-  verifyQRToken: jest.fn(),
   verifyMeetingPin: jest.fn(),
   haversineDistance: jest.fn(),
 }))
 
-import { verifyQRToken, verifyMeetingPin, haversineDistance } from '@polycheck/shared'
+jest.mock('@polycheck/shared/token-node', () => ({
+  verifyQRTokenNative: jest.fn(),
+}))
 
-const mockedVerify = verifyQRToken as jest.MockedFunction<typeof verifyQRToken>
+import { verifyMeetingPin, haversineDistance } from '@polycheck/shared'
+import { verifyQRTokenNative } from '@polycheck/shared/token-node'
+
+const mockedVerify = verifyQRTokenNative as jest.MockedFunction<typeof verifyQRTokenNative>
 const mockedVerifyPin = verifyMeetingPin as jest.MockedFunction<typeof verifyMeetingPin>
 const mockedHaversine = haversineDistance as jest.MockedFunction<typeof haversineDistance>
 

@@ -30,6 +30,11 @@
       "types": "./dist/validation/index.d.ts",
       "import": "./dist/validation/index.mjs",
       "require": "./dist/validation/index.js"
+    },
+    "./token-node": {
+      "types": "./dist/utils/token-node.d.ts",
+      "import": "./dist/utils/token-node.mjs",
+      "require": "./dist/utils/token-node.js"
     }
   },
   "scripts": {

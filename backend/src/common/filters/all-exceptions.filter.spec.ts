@@ -5,7 +5,7 @@ import { AllExceptionsFilter } from './all-exceptions.filter'
 
 describe('AllExceptionsFilter', () => {
   let filter: AllExceptionsFilter
-  let response: { status: jest.Mock; json: jest.Mock }
+  let response: { status: jest.Mock; json: jest.Mock; header: jest.Mock }
   let loggerErrorSpy: jest.SpyInstance
 
   const makeHost = (originalUrl = '/api/attendance/sessions'): ArgumentsHost => {
@@ -17,7 +17,7 @@ describe('AllExceptionsFilter', () => {
   }
 
   beforeEach(() => {
-    response = { status: jest.fn().mockReturnThis(), json: jest.fn() }
+    response = { status: jest.fn().mockReturnThis(), json: jest.fn(), header: jest.fn().mockReturnThis() }
     loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined)
     filter = new AllExceptionsFilter()
   })
@@ -203,6 +203,51 @@ describe('AllExceptionsFilter', () => {
       timestamp: expect.any(String),
     })
     expect(loggerErrorSpy).toHaveBeenCalledWith('Unhandled exception', error.stack)
+  })
+
+  it('maps connection-pool exhaustion to a retryable 503 so clients back off instead of failing', () => {
+    const poolTimeout = new Error('timeout exceeded when trying to connect')
+
+    filter.catch(poolTimeout, makeHost('/auth/mobile/login/student'))
+
+    expect(response.status).toHaveBeenCalledWith(503)
+    expect(response.header).toHaveBeenCalledWith('retry-after', '5')
+    expect(response.header).toHaveBeenCalledWith('retry-after', '5')
+    expect(response.json).toHaveBeenCalledWith({
+      statusCode: 503,
+      error: 'Service Unavailable',
+      message: 'The service is temporarily at capacity. Please retry shortly.',
+      code: 'database_busy',
+      retryAfterSeconds: 5,
+      path: '/auth/mobile/login/student',
+      timestamp: expect.any(String),
+    })
+    expect(loggerErrorSpy).toHaveBeenCalledWith('Database capacity exhausted', poolTimeout.stack)
+  })
+
+  it('maps an acquire-timeout that terminated an established connection to 503', () => {
+    filter.catch(new Error('Connection terminated due to connection timeout'), makeHost())
+
+    expect(response.status).toHaveBeenCalledWith(503)
+    expect(response.json.mock.calls[0][0]).toMatchObject({ code: 'database_busy', retryAfterSeconds: 5 })
+  })
+
+  it("maps Prisma's P2024 pool timeout to 503", () => {
+    const prismaTimeout = Object.assign(new Error('Timed out fetching a new connection from the pool'), {
+      code: 'P2024',
+    })
+
+    filter.catch(prismaTimeout, makeHost())
+
+    expect(response.status).toHaveBeenCalledWith(503)
+    expect(response.json.mock.calls[0][0]).toMatchObject({ code: 'database_busy' })
+  })
+
+  it('keeps a genuine connection outage a 500 instead of masking it as capacity', () => {
+    filter.catch(new Error('Connection terminated unexpectedly'), makeHost())
+
+    expect(response.status).toHaveBeenCalledWith(500)
+    expect(loggerErrorSpy).toHaveBeenCalledWith('Unhandled exception', expect.any(String))
   })
 
   it('returns a 500 response without crashing on non-Error exceptions', () => {

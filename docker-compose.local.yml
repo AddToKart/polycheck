@@ -4,6 +4,10 @@ x-backend-build: &backend-build
   context: .
   dockerfile: Dockerfile.backend
 
+x-ingest-build: &ingest-build
+  context: .
+  dockerfile: Dockerfile.ingest
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -54,12 +58,13 @@ services:
       PORT: 4000
       # Control-plane fallback drainer for the ingestion gateway (off by default).
       INGEST_FALLBACK_DRAIN: ${INGEST_FALLBACK_DRAIN:-false}
-      # Native bcrypt runs on the libuv threadpool (default 4). Size it to the box so
-      # 2,000-student provisioning/logins are not serialized on one thread.
-      # See plan/load-simulation-plan.md Addendum 2 (Finding F2).
-      UV_THREADPOOL_SIZE: ${UV_THREADPOOL_SIZE:-16}
-      # Local load-test headroom (see plan/load-simulation-plan.md LT3); production unchanged.
-      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-polycheck_local_db_2026}@postgres:5432/polycheck?schema=public&connection_limit=50
+      # Native bcrypt runs on the libuv threadpool. Sized for a 2-core server:
+      # more threads than cores is pure context-switch churn. Raise only if the
+      # host has more cores (see plan/load-simulation-plan.md Addendum 2).
+      UV_THREADPOOL_SIZE: ${UV_THREADPOOL_SIZE:-4}
+      # Pool sized to 2 cores; Postgres accepts 100 connections total and the
+      # migrate/seed/prisma clients share that ceiling.
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-polycheck_local_db_2026}@postgres:5432/polycheck?schema=public&connection_limit=12
       REDIS_URL: redis://redis:6379/0
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-polycheck-local-better-auth-secret-2026}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4000}
@@ -70,6 +75,9 @@ services:
       MAX_PROOF_BYTES: ${MAX_PROOF_BYTES:-5000000}
       STORAGE_DRIVER: local
       LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-200}
+      # NOTE: the default is per-IP. Behind one campus NAT every student shares
+      # the same address, so a low value throttles the whole campus; keep this
+      # generous (or set TRUST_PROXY and pass real client IPs).
       LOGIN_IP_RATE_LIMIT: ${LOGIN_IP_RATE_LIMIT:-1000}
       API_RATE_LIMIT: ${API_RATE_LIMIT:-2000}
       API_RATE_WINDOW_SECONDS: ${API_RATE_WINDOW_SECONDS:-60}
@@ -86,6 +94,9 @@ services:
       - local-proof-uploads:/app/backend/uploads
     ports:
       - "${BACKEND_PORT:-4000}:4000"
+    # 2-core server profile: cap every service so a runaway request or benchmark
+    # degrades itself instead of the host.
+    cpus: ${SERVICE_CPU_LIMIT:-1.0}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:4000/api/health/ready"]
       interval: 10s
@@ -131,16 +142,18 @@ services:
       retries: 12
       start_period: 10s
 
-  # Optional ingestion gateway (plan/fastify-ingestion-gateway-plan.md).
+  # Optional ingestion gateway (plan/fastify-ingestion-gateway-plan.md,
+  # plan/ingest-gateway-scaling-plan.md).
   #   docker compose --profile gateway up -d
   # Without the profile every request keeps going to NestJS — that is both the
   # default local developer experience and the operational rollback path.
+  #
+  # Role split: this service answers HTTP only (forking CPU workers with
+  # node:cluster); `ingest-drain` below owns the ordered micro-batch writer.
   ingest:
     image: polycheck-ingest-local
     profiles: ["gateway"]
-    build:
-      context: .
-      dockerfile: Dockerfile.ingest
+    build: *ingest-build
     restart: unless-stopped
     depends_on:
       redis:
@@ -150,16 +163,70 @@ services:
     environment:
       NODE_ENV: development
       PORT: 4001
+      # HTTP workers only — never drain here, or N workers would contend on the
+      # same per-session advisory locks.
+      INGEST_ROLE: http
+      # One worker, no cluster fork: the 2-core host shares cores with Postgres
+      # and Redis, and native token verification keeps a single loop far above a
+      # bell-rush rate. Raise only on a bigger box.
+      INGEST_CLUSTER_ENABLED: ${INGEST_CLUSTER_ENABLED:-false}
+      INGEST_HTTP_WORKERS: ${INGEST_HTTP_WORKERS:-1}
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-polycheck_local_db_2026}@postgres:5432/polycheck?schema=public
       CONTROL_PLANE_URL: http://backend:4000/api
-      INGEST_DRAINER_ENABLED: ${INGEST_DRAINER_ENABLED:-true}
-      INGEST_DB_POOL_SIZE: ${INGEST_DB_POOL_SIZE:-8}
+      INGEST_DRAINER_ENABLED: "false"
+      # The http role never opens Postgres; the drainer owns the only ingest pool.
+      INGEST_DB_POOL_SIZE: ${INGEST_DB_POOL_SIZE:-4}
+      # Backpressure now measures the *pending* backlog (XPENDING), not the
+      # retained stream length, so this sits just below the 50k trim cap: the
+      # gateway sheds with a retryable 503 before the backlog reaches the
+      # boundary where trimming history could matter.
+      INGEST_MAX_BUFFER: ${INGEST_MAX_BUFFER:-45000}
+      INGEST_STREAM_MAXLEN: ${INGEST_STREAM_MAXLEN:-50000}
       LOG_LEVEL: info
     ports:
       - "${INGEST_PORT:-4001}:4001"
+    cpus: ${SERVICE_CPU_LIMIT:-1.0}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4001/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # Exactly one drainer, on its own event loop. Single instance by service
+  # definition: the hash chain's per-session ordering invariant depends on only
+  # one process fleet-wide committing batches.
+  ingest-drain:
+    image: polycheck-ingest-local
+    profiles: ["gateway"]
+    build: *ingest-build
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      INGEST_ROLE: drain
+      INGEST_DRAINER_ENABLED: "true"
+      INGEST_DRAIN_PORT: 4002
+      # Stable consumer name so a restart replays this consumer's own pending
+      # entries (a pid-based name would strand them after a crash).
+      INGEST_CONSUMER_NAME: ingest-drain
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-polycheck_local_db_2026}@postgres:5432/polycheck?schema=public
+      INGEST_DB_POOL_SIZE: ${INGEST_DB_POOL_SIZE:-4}
+      # Backpressure now measures the *pending* backlog (XPENDING), not the
+      # retained stream length, so this sits just below the 50k trim cap: the
+      # gateway sheds with a retryable 503 before the backlog reaches the
+      # boundary where trimming history could matter.
+      INGEST_MAX_BUFFER: ${INGEST_MAX_BUFFER:-45000}
+      INGEST_STREAM_MAXLEN: ${INGEST_STREAM_MAXLEN:-50000}
+      LOG_LEVEL: info
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4002/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 12

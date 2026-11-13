@@ -1,3 +1,4 @@
+import { availableParallelism } from 'node:os'
 import { z } from 'zod'
 
 /**
@@ -5,6 +6,8 @@ import { z } from 'zod'
  * drainer, and every knob that affects correctness is bounded here rather than
  * read ad hoc at the call site.
  */
+const defaultHttpWorkers = Math.max(1, Math.min(32, availableParallelism() - 1))
+
 export const ingestConfigSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65_535).default(4001),
@@ -56,6 +59,40 @@ export const ingestConfigSchema = z.object({
 
   /** Drainer pool, intentionally much smaller than the control plane's. */
   INGEST_DB_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(8),
+
+  /**
+   * Process role:
+   *   `all`   — both surfaces in one process (the original behaviour)
+   *   `http`  — Fastify workers only; never drains
+   *   `drain` — the single ordered drainer + its own health/metrics port
+   */
+  INGEST_ROLE: z.enum(['all', 'http', 'drain']).default('all'),
+
+  /** Fork `INGEST_HTTP_WORKERS` workers with node:cluster (role `http`). */
+  INGEST_CLUSTER_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
+
+  /** HTTP workers to fork in cluster mode; defaults to available cores - 1. */
+  INGEST_HTTP_WORKERS: z.coerce.number().int().min(1).max(32).default(defaultHttpWorkers),
+
+  /** Drainer-role health/metrics port; 0 disables the internal server. */
+  INGEST_DRAIN_PORT: z.coerce.number().int().min(0).max(65_535).default(4002),
+
+  /** Cluster-primary aggregation port; 0 disables it. */
+  INGEST_METRICS_PORT: z.coerce.number().int().min(0).max(65_535).default(4003),
+
+  /**
+   * Approximate retained-entry cap, enforced by the drainer's XACK cycle.
+   * 0 disables trimming. Producers never trim: a backlog larger than this cap
+   * must be rejected by backpressure, not silently evicted from the stream.
+   */
+  INGEST_STREAM_MAXLEN: z.coerce.number().int().min(0).default(50_000),
+  INGEST_STREAM_TRIM_INTERVAL_SECONDS: z.coerce.number().int().min(1).max(3_600).default(30),
+
+  /** Drainer health: a tick older than this marks the drainer `stalled`. */
+  INGEST_DRAIN_HEALTH_STALE_SECONDS: z.coerce.number().int().min(1).default(30),
 })
 
 export type IngestConfig = z.infer<typeof ingestConfigSchema>

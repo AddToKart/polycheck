@@ -3,7 +3,8 @@ import type { AttendanceRecord, ScanAttempt } from '../prisma/client'
 import type { Prisma } from '../prisma/client'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { DisputeRecommendation, QRTokenPayload, RecordTimeline, RecordTimelineEvent } from '@polycheck/shared'
-import { decodeTokenPayload, verifyQRToken } from '@polycheck/shared'
+import { decodeTokenPayload } from '@polycheck/shared'
+import { verifyQRTokenNative } from '@polycheck/shared/token-node'
 import { AttendanceScopeService } from './attendance-scope.service'
 import { PrismaService } from '../prisma/prisma.service'
 
@@ -234,7 +235,7 @@ export class AttendanceForensicsService {
       return {
         token: candidate.token,
         payload,
-        signatureVerified: teacherKey ? verifyQRToken(candidate.token, teacherKey) !== null : null,
+        signatureVerified: teacherKey ? verifyQRTokenNative(candidate.token, teacherKey) !== null : null,
         sessionMatch: payload.sessionId === record.sessionId,
       }
     }

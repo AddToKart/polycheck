@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import type Redis from 'ioredis'
-import { drainOnce, type AttendanceWriter, type BufferedScan } from '../src/queue'
+import {
+  claimStale,
+  createTrimScheduler,
+  drainOnce,
+  pendingSummary,
+  summarizePending,
+  type AttendanceWriter,
+  type BufferedScan,
+} from '../src/queue'
 
 const scan = (overrides: Partial<BufferedScan> = {}): BufferedScan => ({
   userId: 'student-1',
@@ -62,6 +70,111 @@ describe('drainOnce', () => {
     expect(acked.sort()).toEqual(['1-0', '2-0', '3-0'])
   })
 
+  it('reports duplicates and failed sessions from the writer', async () => {
+    const { redis } = fakeRedis([
+      ['1-0', scan()],
+      ['2-0', scan({ sessionId: 'sess-2' })],
+    ])
+    drainerStub.writeBatch.mockReset()
+    drainerStub.writeBatch
+      .mockResolvedValueOnce({ written: 0, duplicates: 1 })
+      .mockRejectedValueOnce(new Error('db down'))
+    const writer = drainerStub as unknown as AttendanceWriter
+
+    const result = await drainOnce({ redis, writer, streamKey: 'ingest:scans', group: 'g', consumer: 'c', batchMax: 10 })
+
+    expect(result.duplicates).toBe(1)
+    expect(result.failed).toBe(1)
+  })
+
+  it('replays this consumer’s pending entries when startId is 0', async () => {
+    const { redis, spy } = fakeRedis([['1-0', scan()]])
+    const writer = makeWriter({ written: 1, duplicates: 0 })
+
+    await drainOnce({ redis, writer, streamKey: 'ingest:scans', group: 'g', consumer: 'c', batchMax: 10, startId: '0' })
+
+    expect(spy.xreadgroup.mock.calls[0]?.at(-1)).toBe('0')
+  })
+
+  it('reclaims stale pending entries with XAUTOCLAIM and acknowledges them', async () => {
+    const acked: string[] = []
+    const redis = {
+      xautoclaim: vi.fn().mockResolvedValue([
+        '0-0',
+        [['9-0', ['payload', JSON.stringify(scan({ sessionId: 'sess-9' }))]]],
+        [],
+      ]),
+      xack: vi.fn(async (_key: string, _group: string, ...ids: string[]) => {
+        acked.push(...ids)
+        return ids.length
+      }),
+    }
+    const writer = makeWriter({ written: 1, duplicates: 0 })
+
+    const result = await claimStale(
+      {
+        redis: redis as unknown as Redis,
+        writer,
+        streamKey: 'ingest:scans',
+        group: 'g',
+        consumer: 'c',
+        batchMax: 10,
+      },
+      30_000,
+    )
+
+    expect(redis.xautoclaim).toHaveBeenCalledWith('ingest:scans', 'g', 'c', 30_000, '0-0', 'COUNT', 10)
+    expect(drainerStub.writeBatch).toHaveBeenCalledWith('sess-9', expect.any(Array))
+    expect(result).toEqual({ read: 1, acked: 1, written: 1, duplicates: 0, failed: 0 })
+    expect(acked).toEqual(['9-0'])
+  })
+
+  it('is a no-op when the stale scan finds nothing', async () => {
+    const redis = {
+      xautoclaim: vi.fn().mockResolvedValue(['0-0', [], []]),
+      xack: vi.fn(),
+    }
+    const writer = makeWriter()
+
+    const result = await claimStale(
+      {
+        redis: redis as unknown as Redis,
+        writer,
+        streamKey: 'ingest:scans',
+        group: 'g',
+        consumer: 'c',
+        batchMax: 10,
+      },
+      30_000,
+    )
+
+    expect(result).toEqual({ read: 0, acked: 0, written: 0, duplicates: 0, failed: 0 })
+    expect(redis.xack).not.toHaveBeenCalled()
+  })
+
+  it('runs distinct sessions concurrently but keeps one write per session', async () => {
+    const { redis, acked } = fakeRedis([
+      ['1-0', scan()],
+      ['2-0', scan({ sessionId: 'sess-2' })],
+      ['3-0', scan({ sessionId: 'sess-3' })],
+    ])
+    const writer = makeWriter({ written: 1, duplicates: 0 })
+
+    const result = await drainOnce({
+      redis,
+      writer,
+      streamKey: 'ingest:scans',
+      group: 'g',
+      consumer: 'c',
+      batchMax: 10,
+      concurrency: 3,
+    })
+
+    expect(drainerStub.writeBatch).toHaveBeenCalledTimes(3)
+    expect(result.acked).toBe(3)
+    expect(acked.sort()).toEqual(['1-0', '2-0', '3-0'])
+  })
+
   it('drops malformed entries instead of poisoning the batch forever', async () => {
     const { redis, acked } = fakeRedis([
       ['1-0', null],
@@ -105,7 +218,129 @@ describe('drainOnce', () => {
       consumer: 'c',
       batchMax: 10,
     })
-    expect(result).toEqual({ read: 0, acked: 0, written: 0 })
+    expect(result).toEqual({ read: 0, acked: 0, written: 0, duplicates: 0, failed: 0 })
     expect(writer.writeBatch).not.toHaveBeenCalled()
+  })
+})
+
+describe('pending summary', () => {
+  it('parses count, oldest id and lag from the XPENDING summary', () => {
+    const raw = [2, '1700000000000-0', '1700000000500-0', [['c', '2']]]
+    const summary = summarizePending(raw, 1_700_000_030_000)
+    expect(summary.count).toBe(2)
+    expect(summary.oldestId).toBe('1700000000000-0')
+    expect(summary.lagSeconds).toBe(30)
+  })
+
+  it('treats an empty group as nothing pending', async () => {
+    const redis = { xpending: vi.fn().mockResolvedValue([0, null, null, null]) }
+    const summary = await pendingSummary(redis as unknown as Pick<Redis, 'xpending'>, 'k', 'g')
+    expect(summary).toEqual({ count: 0, oldestId: null, lagSeconds: 0 })
+  })
+
+  it('treats a missing consumer group (NOGROUP) as nothing pending', async () => {
+    const redis = { xpending: vi.fn().mockRejectedValue(new Error('NOGROUP No such consumer group')) }
+    const summary = await pendingSummary(redis as unknown as Pick<Redis, 'xpending'>, 'k', 'g')
+    expect(summary).toEqual({ count: 0, oldestId: null, lagSeconds: 0 })
+  })
+})
+
+describe('stream trimming', () => {
+  it('trims with MAXLEN when nothing is pending', async () => {
+    const redis = {
+      xpending: vi.fn().mockResolvedValue([0, null, null, null]),
+      // Approximate trims are chunked, so a converging pass is >1 call.
+      xtrim: vi.fn().mockResolvedValueOnce(12).mockResolvedValueOnce(0),
+    }
+    const trim = createTrimScheduler({
+      redis: redis as unknown as Pick<Redis, 'xpending' | 'xtrim'>,
+      streamKey: 'ingest:scans',
+      group: 'g',
+      maxlen: 50_000,
+      intervalMs: 1_000,
+      now: () => 100_000,
+    })
+
+    const result = await trim()
+
+    expect(redis.xtrim).toHaveBeenCalledWith('ingest:scans', 'MAXLEN', '~', 50_000)
+    expect(result).toEqual({ mode: 'maxlen', trimmed: 12 })
+  })
+
+  it('never trims below the oldest pending entry', async () => {
+    const redis = {
+      xpending: vi.fn().mockResolvedValue([1, '1700000000000-0', '1700000000000-0', [['c', '1']]]),
+      xtrim: vi.fn().mockResolvedValueOnce(4).mockResolvedValueOnce(0),
+    }
+    const trim = createTrimScheduler({
+      redis: redis as unknown as Pick<Redis, 'xpending' | 'xtrim'>,
+      streamKey: 'ingest:scans',
+      group: 'g',
+      maxlen: 50_000,
+      intervalMs: 1_000,
+      now: () => 100_000,
+    })
+
+    const result = await trim()
+
+    expect(redis.xtrim).toHaveBeenCalledWith('ingest:scans', 'MINID', '1700000000000-0')
+    expect(result).toEqual({ mode: 'minid', trimmed: 4 })
+  })
+
+  it('loops chunked trims until the backlog converges in one pass', async () => {
+    const redis = {
+      xpending: vi.fn().mockResolvedValue([0, null, null, null]),
+      xtrim: vi.fn().mockResolvedValueOnce(10_000).mockResolvedValueOnce(10_000).mockResolvedValueOnce(0),
+    }
+    const trim = createTrimScheduler({
+      redis: redis as unknown as Pick<Redis, 'xpending' | 'xtrim'>,
+      streamKey: 'ingest:scans',
+      group: 'g',
+      maxlen: 50_000,
+      intervalMs: 30_000,
+      now: () => 100_000,
+    })
+
+    expect(await trim()).toEqual({ mode: 'maxlen', trimmed: 20_000 })
+    expect(redis.xtrim).toHaveBeenCalledTimes(3)
+  })
+
+  it('is throttled to one run per interval', async () => {
+    let nowMs = 0
+    const redis = {
+      xpending: vi.fn().mockResolvedValue([0, null, null, null]),
+      xtrim: vi.fn().mockResolvedValue(0),
+    }
+    const trim = createTrimScheduler({
+      redis: redis as unknown as Pick<Redis, 'xpending' | 'xtrim'>,
+      streamKey: 'ingest:scans',
+      group: 'g',
+      maxlen: 50_000,
+      intervalMs: 30_000,
+      now: () => nowMs,
+    })
+
+    expect((await trim()).mode).toBe('maxlen')
+    nowMs = 10_000
+    expect((await trim()).mode).toBe('skipped')
+    nowMs = 30_000
+    expect((await trim()).mode).toBe('maxlen')
+    expect(redis.xtrim).toHaveBeenCalledTimes(2)
+  })
+
+  it('does nothing when trimming is disabled', async () => {
+    const redis = { xpending: vi.fn(), xtrim: vi.fn() }
+    const trim = createTrimScheduler({
+      redis: redis as unknown as Pick<Redis, 'xpending' | 'xtrim'>,
+      streamKey: 'ingest:scans',
+      group: 'g',
+      maxlen: 0,
+      intervalMs: 1_000,
+      now: () => 100_000,
+    })
+
+    expect(await trim()).toEqual({ mode: 'skipped', trimmed: 0 })
+    expect(redis.xpending).not.toHaveBeenCalled()
+    expect(redis.xtrim).not.toHaveBeenCalled()
   })
 })

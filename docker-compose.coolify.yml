@@ -143,13 +143,17 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4001
+      # HTTP workers only: the single-instance drainer is `ingest-drain`.
+      INGEST_ROLE: http
+      INGEST_HTTP_WORKERS: ${INGEST_HTTP_WORKERS:-4}
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public
       CONTROL_PLANE_URL: http://backend:4000/api
-      INGEST_DRAINER_ENABLED: ${INGEST_DRAINER_ENABLED:-true}
+      INGEST_DRAINER_ENABLED: "false"
       INGEST_DB_POOL_SIZE: ${INGEST_DB_POOL_SIZE:-8}
       INGEST_MAX_BUFFER: ${INGEST_MAX_BUFFER:-50000}
       INGEST_MAX_LAG_SECONDS: ${INGEST_MAX_LAG_SECONDS:-30}
+      INGEST_STREAM_MAXLEN: ${INGEST_STREAM_MAXLEN:-50000}
       INGEST_AUTH_CACHE_TTL_SECONDS: ${INGEST_AUTH_CACHE_TTL_SECONDS:-900}
     ports:
       - "4001:4001"
@@ -167,7 +171,41 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-      start_period: 20s
+      start_period: 10s
+
+  # Exactly one ordered drainer, on its own event loop. It receives no proxy
+  # traffic; keeping it separate guarantees the hash chain's per-session
+  # advisory lock is taken by a single process fleet-wide.
+  ingest-drain:
+    image: polycheck-ingest
+    build:
+      context: .
+      dockerfile: Dockerfile.ingest
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      INGEST_ROLE: drain
+      INGEST_DRAINER_ENABLED: "true"
+      INGEST_DRAIN_PORT: 4002
+      # Stable consumer name so a restart replays its own pending entries.
+      INGEST_CONSUMER_NAME: ingest-drain
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public
+      INGEST_DB_POOL_SIZE: ${INGEST_DB_POOL_SIZE:-8}
+      INGEST_MAX_BUFFER: ${INGEST_MAX_BUFFER:-50000}
+      INGEST_MAX_LAG_SECONDS: ${INGEST_MAX_LAG_SECONDS:-30}
+      INGEST_STREAM_MAXLEN: ${INGEST_STREAM_MAXLEN:-50000}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4002/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
 volumes:
   postgres-data:

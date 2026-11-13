@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
-import { verifyMeetingPin, verifyQRToken } from '@polycheck/shared'
+import { verifyMeetingPin } from '@polycheck/shared'
+import { verifyQRTokenNative } from '@polycheck/shared/token-node'
 import { createHash } from 'crypto'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
@@ -144,7 +145,7 @@ export class ScanValidatorService {
       await this.prisma.user.findUnique({ where: { id: session.teacherId }, select: { teacherPublicKey: true } })
     )?.teacherPublicKey
     if (!teacherPublicKey) return failed('disputed', 'invalid_signature', 'Teacher signing key is unavailable')
-    const payload = verifyQRToken(evidence.qrToken, teacherPublicKey)
+    const payload = verifyQRTokenNative(evidence.qrToken, teacherPublicKey)
     if (!payload) return failed('disputed', 'invalid_signature', 'QR token signature is invalid')
 
     // ── Mode parity ──

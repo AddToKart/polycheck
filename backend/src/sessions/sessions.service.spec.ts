@@ -8,14 +8,18 @@ import type { RequestUser } from '../auth/authenticated-principal'
 import type { ActivateSessionDto, CreateBulkSessionsDto, CreateSessionDto } from './dto/create-session.dto'
 
 jest.mock('@polycheck/shared', () => ({
-  verifyQRToken: jest.fn(),
   decodePinHashRecord: jest.fn(),
   haversineDistance: jest.fn(),
 }))
 
-import { verifyQRToken, decodePinHashRecord, haversineDistance } from '@polycheck/shared'
+jest.mock('@polycheck/shared/token-node', () => ({
+  verifyQRTokenNative: jest.fn(),
+}))
 
-const mockedVerifyQRToken = verifyQRToken as jest.MockedFunction<typeof verifyQRToken>
+import { decodePinHashRecord, haversineDistance } from '@polycheck/shared'
+import { verifyQRTokenNative } from '@polycheck/shared/token-node'
+
+const mockedVerifyQRToken = verifyQRTokenNative as jest.MockedFunction<typeof verifyQRTokenNative>
 const mockedDecodePinHash = decodePinHashRecord as jest.MockedFunction<typeof decodePinHashRecord>
 const mockedHaversineDistance = haversineDistance as jest.MockedFunction<typeof haversineDistance>
 

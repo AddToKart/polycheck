@@ -15,6 +15,7 @@ const ROOT = 'services/ingest/src'
 /** Symbols that MUST come from @polycheck/shared, never be redefined here. */
 const FORBIDDEN_DEFINITIONS = [
   'verifyQRToken',
+  'verifyQRTokenNative',
   'verifyMeetingPin',
   'haversineDistance',
   'computeRecordHash',
@@ -24,7 +25,7 @@ const FORBIDDEN_DEFINITIONS = [
 ]
 
 /** Symbols the gateway is expected to consume from the shared package. */
-const REQUIRED_IMPORTS = ['verifyQRToken', 'computeRecordHash']
+const REQUIRED_IMPORTS = ['verifyQRTokenNative', 'computeRecordHash']
 
 const files = []
 const walk = (dir) => {
@@ -54,7 +55,7 @@ for (const file of files) {
     problems.push(`${rel}: imports from the NestJS backend (services must stay decoupled)`)
   }
 
-  for (const match of source.matchAll(/import\s+\{([^}]+)\}\s+from\s+['"]@polycheck\/shared(?:\/[a-z]+)?['"]/g)) {
+  for (const match of source.matchAll(/import\s+\{([^}]+)\}\s+from\s+['"]@polycheck\/shared(?:\/[a-z-]+)?['"]/g)) {
     for (const part of match[1].split(',')) {
       const name = part.trim().split(/\s+as\s+/)[0]
       if (name) importedShared.add(name)

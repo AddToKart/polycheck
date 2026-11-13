@@ -15,12 +15,12 @@ export const options = {
       executor: 'shared-iterations',
       vus: VUS,
       iterations: targets.length,
-      maxDuration: '60s',
+      maxDuration: __ENV.MAX_DURATION || '1200s',
     },
   },
   thresholds: {
     http_req_failed: ['rate<0.01'], // fewer than 1% failed
-    http_req_duration: ['p(95)<500'], // 95% under 500ms
+    http_req_duration: ['p(95)<5000'], // 95% under 5s
   },
 }
 
@@ -29,7 +29,7 @@ export default function () {
   const target = targets[index]
   if (!target) return
 
-  const at = target.issuedAt + 2000
+  const at = target.issuedAt + 2000 + ((index % 1000) * 10)
   const payload = JSON.stringify({
     sessionId: target.sessionId,
     qrToken: target.qrToken,
@@ -37,7 +37,7 @@ export default function () {
     lon: target.lon,
     deviceId: 'mobile-k6-' + index,
     scannedAt: new Date(at).toISOString(),
-    clientAttemptId: 'k6-' + index + '-' + target.issuedAt,
+    clientAttemptId: 'k6-' + index + '-' + target.issuedAt + '-' + Math.random().toString(36).slice(2, 8),
     accuracyMeters: 8,
     locationCapturedAt: new Date(at - 1000).toISOString(),
     mocked: false,

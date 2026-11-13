@@ -11,7 +11,10 @@ import { z } from 'zod'
 import type { IngestConfig } from './config'
 import { validateScan, type ScanEvidenceInput, type SessionSnapshot } from './core/scan'
 import type { BufferedScan } from './queue'
-import { renderMetrics, type IngestMetrics } from './metrics'
+import { observeHttpDuration, renderMetrics, type IngestMetrics } from './metrics'
+
+/** Keep-alive must outlive every proxy's upstream idle window (nginx 65s). */
+const KEEP_ALIVE_TIMEOUT_MS = 72_000
 
 export const scanBodySchema = z.object({
   sessionId: z.string().min(1).max(128),
@@ -47,15 +50,27 @@ export interface AuthedUser {
  */
 export type AuthResolution = { user: AuthedUser } | { unavailable: true } | null
 
+export interface HotPathProbe {
+  /** Unacknowledged stream entries — the true backlog. */
+  depth: number
+  /** Age of the oldest unacknowledged entry, in seconds. */
+  lag: number
+  /** Missing means the snapshot is unpublished/unparsable: retryable 503. */
+  snapshot: { snapshot: SessionSnapshot; teacherPublicKey: string } | undefined
+}
+
 export interface IngestDeps {
   config: IngestConfig
-  redis: Redis
+  redis: Pick<Redis, 'ping'>
   appendScan: (scan: BufferedScan) => Promise<string>
+  /** Pending (unacked) entries — what backpressure and readiness gate on. */
   bufferDepth: () => Promise<number>
   bufferLagSeconds: () => Promise<number>
+  /** Retained entries (`XLEN`) — observability only, never backpressure. */
+  streamLength: () => Promise<number>
+  /** One pipelined round-trip: pending summary + session snapshot. */
+  probeHotPath: (sessionId: string) => Promise<HotPathProbe>
   resolveUser: (authorization: string | undefined) => Promise<AuthResolution>
-  /** Session snapshot + teacher key, both written by the control plane. */
-  readSnapshot: (sessionId: string) => Promise<{ snapshot: SessionSnapshot; teacherPublicKey: string } | undefined>
   consumePinAttempt: (key: string, limit: number, windowMs: number) => Promise<boolean>
   metrics: IngestMetrics
 }
@@ -72,7 +87,15 @@ const tooMany = (reply: FastifyReply, retryAfterSeconds = 5) =>
     .send({ statusCode: 503, error: 'ServiceUnavailable', message: 'Ingestion buffer is full', retryAfterSeconds })
 
 export function buildServer(deps: IngestDeps): FastifyInstance {
-  const app = Fastify({ logger: false, bodyLimit: 64 * 1024 })
+  const app = Fastify({ logger: false, bodyLimit: 64 * 1024, keepAliveTimeout: KEEP_ALIVE_TIMEOUT_MS })
+  // Fastify does not accept `headersTimeout` in its option schema, but Node
+  // requires it to stay above keepAliveTimeout: an idle keep-alive socket whose
+  // next request arrives late must not be closed mid-headers.
+  app.server.headersTimeout = KEEP_ALIVE_TIMEOUT_MS + 1_000
+
+  app.addHook('onResponse', async (_request, reply) => {
+    observeHttpDuration(deps.metrics, reply.elapsedTime)
+  })
 
   const healthHandler = async () => ({ status: 'ok', timestamp: new Date().toISOString() })
   app.get('/health', healthHandler)
@@ -109,9 +132,15 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
   app.get('/api/health/ready', readyHandler)
 
   app.get('/metrics', async (_request, reply) => {
-    const [depth, lag] = await Promise.all([deps.bufferDepth(), deps.bufferLagSeconds()])
+    const [depth, length, lag] = await Promise.all([
+      deps.bufferDepth(),
+      deps.streamLength(),
+      deps.bufferLagSeconds(),
+    ])
     const ready = depth <= deps.config.INGEST_MAX_BUFFER && lag <= deps.config.INGEST_MAX_LAG_SECONDS
-    return reply.type('text/plain; version=0.0.4; charset=utf-8').send(renderMetrics(deps.metrics, depth, lag, ready))
+    return reply
+      .type('text/plain; version=0.0.4; charset=utf-8')
+      .send(renderMetrics(deps.metrics, { bufferDepth: depth, streamLength: length, lagSeconds: lag, ready }))
   })
 
   /**
@@ -145,16 +174,16 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
     }
     const body = parsed.data
 
-    const [depth, lag] = await Promise.all([deps.bufferDepth(), deps.bufferLagSeconds()])
-    if (depth > deps.config.INGEST_MAX_BUFFER || lag > deps.config.INGEST_MAX_LAG_SECONDS) {
+    // Pending depth, lag and the session snapshot in one pipelined round-trip.
+    const probe = await deps.probeHotPath(body.sessionId)
+    if (probe.depth > deps.config.INGEST_MAX_BUFFER || probe.lag > deps.config.INGEST_MAX_LAG_SECONDS) {
       return tooMany(reply)
     }
-
-    const resolved = await deps.readSnapshot(body.sessionId)
-    if (!resolved) {
+    if (!probe.snapshot) {
       // Cannot validate without the snapshot: retryable, never a silent accept.
       return tooMany(reply, 2)
     }
+    const { snapshot, teacherPublicKey } = probe.snapshot
 
     const evidence: ScanEvidenceInput = {
       qrToken: body.qrToken,
@@ -172,8 +201,8 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
     }
 
     const validation = await validateScan({
-      snapshot: resolved.snapshot,
-      teacherPublicKey: resolved.teacherPublicKey,
+      snapshot,
+      teacherPublicKey,
       userId: user.id,
       evidence,
       offline: false,
@@ -187,8 +216,8 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
       deps.metrics.scansAccepted += 1
       await deps.appendScan({
         userId: user.id,
-        sessionId: resolved.snapshot.id,
-        sectionId: resolved.snapshot.sectionId,
+        sessionId: snapshot.id,
+        sectionId: snapshot.sectionId,
         status: validation.status === 'late' ? 'late' : validation.status === 'disputed' ? 'disputed' : 'present',
         reason: validation.reason,
         message: validation.message,

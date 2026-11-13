@@ -1,29 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import type Redis from 'ioredis'
 import { buildServer, type IngestDeps } from '../src/http'
-import type { IngestConfig } from '../src/config'
 import { createMetrics } from '../src/metrics'
+import { testConfig } from './config-fixture'
 
-const config: IngestConfig = {
-  NODE_ENV: 'test',
-  PORT: 4001,
-  HOST: '127.0.0.1',
-  REDIS_URL: 'redis://localhost:6379',
-  LOG_LEVEL: 'error',
-  INGEST_DRAINER_ENABLED: false,
-  INGEST_STREAM_KEY: 'ingest:scans',
-  INGEST_CONSUMER_GROUP: 'ingest-workers',
-  INGEST_CONSUMER_NAME: 'test',
-  INGEST_MAX_BUFFER: 2,
-  INGEST_MAX_LAG_SECONDS: 30,
-  INGEST_BATCH_MAX: 200,
-  INGEST_BATCH_WINDOW_MS: 30,
-  INGEST_SNAPSHOT_TTL_SECONDS: 120,
-  INGEST_AUTH_CACHE_TTL_SECONDS: 900,
-  CONTROL_PLANE_URL: 'http://backend:4000/api',
-  INGEST_AUTH_REFRESH_CONCURRENCY: 5,
-  INGEST_DB_POOL_SIZE: 8,
-}
+const config = testConfig
 
 const token = 'a'.repeat(90)
 
@@ -55,8 +36,13 @@ function makeDeps(overrides: Partial<IngestDeps> = {}) {
     }),
     bufferDepth: vi.fn().mockResolvedValue(0),
     bufferLagSeconds: vi.fn().mockResolvedValue(0),
+    streamLength: vi.fn().mockResolvedValue(0),
+    probeHotPath: vi.fn().mockResolvedValue({
+      depth: 0,
+      lag: 0,
+      snapshot: { snapshot, teacherPublicKey: 'unused' },
+    }),
     resolveUser: vi.fn().mockResolvedValue({ user: { id: 'student-1', role: 'student', privacyConsent: true } }),
-    readSnapshot: vi.fn().mockResolvedValue({ snapshot, teacherPublicKey: 'unused' }),
     consumePinAttempt: vi.fn().mockResolvedValue(true),
     metrics: createMetrics(),
     ...overrides,
@@ -76,6 +62,16 @@ describe('ingest HTTP surface', () => {
     const clock = await app.inject({ method: 'GET', url: '/health/clock' })
     expect(clock.statusCode).toBe(200)
     expect(JSON.parse(clock.body).timestamp).toBeTruthy()
+    await app.close()
+  })
+
+  it('keeps sockets alive past the proxy idle window and above headersTimeout', async () => {
+    const { deps } = makeDeps()
+    const app = buildServer(deps)
+    expect(app.server.keepAliveTimeout).toBe(72_000)
+    // Node closes an idle keep-alive socket whose headers arrive too late, so
+    // headersTimeout must sit above keepAliveTimeout.
+    expect(app.server.headersTimeout).toBe(73_000)
     await app.close()
   })
 
@@ -162,8 +158,14 @@ describe('ingest HTTP surface', () => {
     await app.close()
   })
 
-  it('answers 503 (retryable) when the buffer is full instead of accepting', async () => {
-    const { deps, appended } = makeDeps({ bufferDepth: vi.fn().mockResolvedValue(5) })
+  it('answers 503 (retryable) when pending depth is over the buffer cap', async () => {
+    const { deps, appended } = makeDeps({
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 5,
+        lag: 0,
+        snapshot: { snapshot, teacherPublicKey: 'unused' },
+      }),
+    })
     const app = buildServer(deps)
     const response = await app.inject({
       method: 'POST',
@@ -178,7 +180,9 @@ describe('ingest HTTP surface', () => {
   })
 
   it('answers 503 when the session snapshot is unavailable', async () => {
-    const { deps } = makeDeps({ readSnapshot: vi.fn().mockResolvedValue(undefined) })
+    const { deps } = makeDeps({
+      probeHotPath: vi.fn().mockResolvedValue({ depth: 0, lag: 0, snapshot: undefined }),
+    })
     const app = buildServer(deps)
     const response = await app.inject({
       method: 'POST',
@@ -234,7 +238,17 @@ describe('ingest HTTP surface', () => {
     expect(response.headers['content-type']).toContain('text/plain')
     expect(response.body).toContain('ingest_scans_accepted_total')
     expect(response.body).toContain('ingest_buffer_depth')
+    expect(response.body).toContain('ingest_stream_length')
     expect(response.body).toContain('ingest_ready 1')
+    await app.close()
+  })
+
+  it('records HTTP latency on the response hook', async () => {
+    const { deps } = makeDeps()
+    const app = buildServer(deps)
+    await app.inject({ method: 'GET', url: '/health' })
+    expect(deps.metrics.httpRequests).toBeGreaterThan(0)
+    expect(deps.metrics.httpDurationSumMs).toBeGreaterThanOrEqual(0)
     await app.close()
   })
 })
