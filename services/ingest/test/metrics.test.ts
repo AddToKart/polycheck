@@ -10,10 +10,12 @@ import {
 describe('http histogram', () => {
   it('keeps buckets cumulative and tracks count and sum', () => {
     const metrics = createMetrics()
-    observeHttpDuration(metrics, 60)
-    observeHttpDuration(metrics, 400)
+    observeHttpDuration(metrics, 60, 201)
+    observeHttpDuration(metrics, 400, 503)
 
     expect(metrics.httpRequests).toBe(2)
+    expect(metrics.httpRequestsByStatus[201]).toBe(1)
+    expect(metrics.httpRequestsByStatus[503]).toBe(1)
     expect(metrics.httpDurationSumMs).toBe(460)
     // 60ms lands in le=100 and every larger bucket; 400ms starts at le=500.
     const bucketAt = (bucket: number) =>
@@ -27,10 +29,11 @@ describe('http histogram', () => {
 
   it('renders the histogram and backlog gauges in Prometheus text', () => {
     const metrics = createMetrics()
-    observeHttpDuration(metrics, 12)
+    observeHttpDuration(metrics, 12, 200)
     const text = renderMetrics(metrics, { bufferDepth: 3, streamLength: 900, lagSeconds: 1.5, ready: true })
 
     expect(text).toContain('ingest_http_requests_total 1')
+    expect(text).toContain('ingest_http_responses_total{status="200"} 1')
     expect(text).toContain('ingest_http_duration_ms_bucket{le="10"} 0')
     expect(text).toContain('ingest_http_duration_ms_bucket{le="25"} 1')
     expect(text).toContain('ingest_http_duration_ms_bucket{le="+Inf"} 1')

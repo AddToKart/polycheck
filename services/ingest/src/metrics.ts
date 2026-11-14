@@ -25,6 +25,8 @@ export interface IngestMetrics {
   drainFailures: number
   streamTrimmed: number
   httpRequests: number
+  /** HTTP responses counted per status code (e.g. 200, 201, 503). */
+  httpRequestsByStatus: Record<number, number>
   httpDurationSumMs: number
   /** Cumulative bucket counts (Prometheus semantics); `+Inf` renders as httpRequests. */
   httpDurationBuckets: number[]
@@ -42,6 +44,7 @@ export function createMetrics(): IngestMetrics {
     drainFailures: 0,
     streamTrimmed: 0,
     httpRequests: 0,
+    httpRequestsByStatus: {},
     httpDurationSumMs: 0,
     httpDurationBuckets: new Array<number>(HTTP_DURATION_BUCKETS_MS.length).fill(0),
     startedAt: Date.now(),
@@ -49,12 +52,13 @@ export function createMetrics(): IngestMetrics {
 }
 
 /** Records one completed HTTP request. Histogram buckets stay cumulative. */
-export function observeHttpDuration(metrics: IngestMetrics, durationMs: number): void {
+export function observeHttpDuration(metrics: IngestMetrics, durationMs: number, statusCode = 200): void {
   metrics.httpRequests += 1
   metrics.httpDurationSumMs += durationMs
   for (let index = 0; index < HTTP_DURATION_BUCKETS_MS.length; index += 1) {
     if (durationMs <= HTTP_DURATION_BUCKETS_MS[index]!) metrics.httpDurationBuckets[index]! += 1
   }
+  metrics.httpRequestsByStatus[statusCode] = (metrics.httpRequestsByStatus[statusCode] ?? 0) + 1
 }
 
 /**
@@ -80,6 +84,10 @@ export function mergeIngestMetrics(snapshots: IngestMetrics[]): IngestMetrics {
     merged.httpDurationSumMs += snapshot.httpDurationSumMs
     for (let index = 0; index < merged.httpDurationBuckets.length; index += 1) {
       merged.httpDurationBuckets[index]! += snapshot.httpDurationBuckets[index] ?? 0
+    }
+    for (const [code, count] of Object.entries(snapshot.httpRequestsByStatus ?? {})) {
+      const numCode = Number(code)
+      merged.httpRequestsByStatus[numCode] = (merged.httpRequestsByStatus[numCode] ?? 0) + count
     }
   }
   return merged
@@ -138,6 +146,11 @@ export function renderMetrics(metrics: IngestMetrics, snapshot: RenderSnapshot):
     '# HELP ingest_http_requests_total HTTP requests answered by this process',
     '# TYPE ingest_http_requests_total counter',
     `ingest_http_requests_total ${metrics.httpRequests}`,
+    '# HELP ingest_http_responses_total HTTP responses answered by this process partitioned by status code',
+    '# TYPE ingest_http_responses_total counter',
+    ...Object.entries(metrics.httpRequestsByStatus ?? {}).map(
+      ([code, count]) => `ingest_http_responses_total{status="${code}"} ${count}`,
+    ),
     '# HELP ingest_http_duration_ms HTTP request duration in milliseconds',
     '# TYPE ingest_http_duration_ms histogram',
     `ingest_http_duration_ms_sum ${metrics.httpDurationSumMs}`,

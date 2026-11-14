@@ -174,7 +174,7 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
   app.server.headersTimeout = KEEP_ALIVE_TIMEOUT_MS + 1_000
 
   app.addHook('onResponse', async (_request, reply) => {
-    observeHttpDuration(deps.metrics, reply.elapsedTime)
+    observeHttpDuration(deps.metrics, reply.elapsedTime, reply.statusCode)
   })
 
   const healthHandler = async () => ({ status: 'ok', timestamp: new Date().toISOString() })

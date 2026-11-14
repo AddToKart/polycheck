@@ -118,10 +118,10 @@ groups:
           description: Oldest unacknowledged scan in ingest buffer is {{ $value }}s old. Shedding/rejection begins at 30 seconds.
 
       - alert: PolycheckIngestHigh503Rate
-        expr: sum(rate(polycheck_http_requests_total{status_code="503"}[5m])) / clamp_min(sum(rate(polycheck_http_requests_total[5m])), 0.001) > 0.05
+        expr: sum(rate(ingest_http_responses_total{status="503"}[5m])) / clamp_min(sum(rate(ingest_http_responses_total[5m])), 0.001) > 0.05
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: Elevated HTTP 503 Service Unavailable responses
-          description: More than 5 percent of HTTP requests returned 503 over the last 2 minutes due to buffer saturation or database backpressure.
+          summary: Elevated HTTP 503 Service Unavailable responses on gateway
+          description: More than 5 percent of gateway HTTP requests returned 503 over the last 2 minutes due to buffer saturation or lag backpressure.

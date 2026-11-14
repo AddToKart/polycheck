@@ -51,6 +51,7 @@ services:
       context: .
       dockerfile: Dockerfile.backend
     restart: "no"
+    profiles: ["bootstrap"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,8 +60,8 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
-      SEED_PASSWORD: ${SEED_PASSWORD:-PolycheckSeed123!}
-      ALLOW_PRODUCTION_SEED: ${ALLOW_PRODUCTION_SEED:-true}
+      SEED_PASSWORD: ${SEED_PASSWORD:?SEED_PASSWORD must be set in Coolify environment variables (min 12 chars)}
+      ALLOW_PRODUCTION_SEED: ${ALLOW_PRODUCTION_SEED:-false}
     command: ["node", "dist-seed/prisma/seed.js"]
 
   backend:
@@ -75,8 +76,6 @@ services:
       redis:
         condition: service_healthy
       migrate:
-        condition: service_completed_successfully
-      seed:
         condition: service_completed_successfully
     environment:
       NODE_ENV: ${NODE_ENV:-development}
