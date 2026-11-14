@@ -26,3 +26,13 @@ scrape_configs:
         type: A
         port: 4000
         refresh_interval: 15s
+
+  - job_name: polycheck-ingest
+    metrics_path: /metrics
+    scheme: http
+    dns_sd_configs:
+      - names:
+          - ingest
+        type: A
+        port: 4001
+        refresh_interval: 15s

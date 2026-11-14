@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: polycheck
       POSTGRES_USER: polycheck
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in Coolify environment variables}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -42,7 +42,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: ${NODE_ENV:-development}
-      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
     command: ["sh", "docker-entrypoint.sh", "migrate"]
 
   seed:
@@ -58,7 +58,7 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: ${NODE_ENV:-development}
-      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
       SEED_PASSWORD: ${SEED_PASSWORD:-PolycheckSeed123!}
       ALLOW_PRODUCTION_SEED: ${ALLOW_PRODUCTION_SEED:-true}
     command: ["node", "dist-seed/prisma/seed.js"]
@@ -87,9 +87,9 @@ services:
       # Native bcrypt runs on the libuv threadpool (default 4). Size it to the box so
       # logins and student sync are parallelised across CPU cores.
       UV_THREADPOOL_SIZE: ${UV_THREADPOOL_SIZE:-16}
-      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public&connection_limit=50
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public&connection_limit=50
       REDIS_URL: redis://redis:6379/0
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-polycheck_super_secret_auth_key_2026}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set in Coolify environment variables}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://polycheck-api.addtokart.tech}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://your-app.vercel.app,http://localhost:3000}
       FRONTEND_URL: ${FRONTEND_URL:-https://your-app.vercel.app}
@@ -149,7 +149,7 @@ services:
       INGEST_ROLE: http
       INGEST_HTTP_WORKERS: ${INGEST_HTTP_WORKERS:-4}
       REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
       CONTROL_PLANE_URL: http://backend:4000/api
       INGEST_DRAINER_ENABLED: "false"
       INGEST_DB_POOL_SIZE: ${INGEST_DB_POOL_SIZE:-8}
@@ -195,7 +195,7 @@ services:
       # Stable consumer name so a restart replays its own pending entries.
       INGEST_CONSUMER_NAME: ingest-drain
       REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
       INGEST_DB_POOL_SIZE: ${INGEST_DB_POOL_SIZE:-8}
       INGEST_MAX_BUFFER: ${INGEST_MAX_BUFFER:-50000}
       INGEST_MAX_LAG_SECONDS: ${INGEST_MAX_LAG_SECONDS:-30}
