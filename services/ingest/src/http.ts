@@ -73,13 +73,13 @@ export interface IngestDeps {
   resolveUser: (authorization: string | undefined) => Promise<AuthResolution>
   consumePinAttempt: (key: string, limit: number, windowMs: number) => Promise<boolean>
   /**
-   * Atomically claims `(sessionId, userId)` for the dedupe TTL. Returns false
+   * Atomically claims `(sessionId, userId, checkpoint)` for the dedupe TTL. Returns false
    * when another request already holds the claim — the second scan is a
    * duplicate and MUST NOT be buffered.
    */
-  reserveScan: (sessionId: string, userId: string, ttlSeconds: number) => Promise<boolean>
+  reserveScan: (sessionId: string, userId: string, ttlSeconds: number, checkpoint?: string) => Promise<boolean>
   /** Releases a claim when buffering failed, so a retry is not answered "duplicate". */
-  releaseScan?: (sessionId: string, userId: string) => Promise<void>
+  releaseScan?: (sessionId: string, userId: string, checkpoint?: string) => Promise<void>
   /** Dead-letter stream length — observability only, never backpressure. */
   dlqDepth: () => Promise<number>
   metrics: IngestMetrics
@@ -230,7 +230,19 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
       // NX claim is the only place the second request can be told the truth.
       let reserved: boolean
       try {
-        reserved = await deps.reserveScan(snapshot.id, user.id, deps.config.INGEST_DEDUPE_TTL_SECONDS)
+        reserved =
+          validation.checkpoint !== undefined
+            ? await deps.reserveScan(
+                snapshot.id,
+                user.id,
+                deps.config.INGEST_DEDUPE_TTL_SECONDS,
+                validation.checkpoint,
+              )
+            : await deps.reserveScan(
+                snapshot.id,
+                user.id,
+                deps.config.INGEST_DEDUPE_TTL_SECONDS,
+              )
       } catch {
         // Without the claim we cannot append (the second scan would be lost)
         // and must not count the request as accepted. Retryable, so 503.
@@ -289,7 +301,11 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
         // carries the same envelope and would be answered "duplicate" while
         // nothing was ever buffered. Release is best-effort — the original
         // failure is what the caller must see.
-        await deps.releaseScan?.(snapshot.id, user.id).catch(() => undefined)
+        if (validation.checkpoint !== undefined) {
+          await deps.releaseScan?.(snapshot.id, user.id, validation.checkpoint).catch(() => undefined)
+        } else {
+          await deps.releaseScan?.(snapshot.id, user.id).catch(() => undefined)
+        }
         throw error
       }
     }

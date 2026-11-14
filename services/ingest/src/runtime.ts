@@ -224,16 +224,26 @@ export async function bootstrapHttp(config: IngestConfig, metrics: IngestMetrics
     // SET NX is the atomic claim: two concurrent scans of the same session by
     // the same student cannot both see "not reserved". Release on a failed
     // append keeps a retry from being answered as a duplicate for the full TTL.
-    reserveScan: async (sessionId, userId, ttl) =>
+    reserveScan: async (sessionId, userId, ttl, checkpoint) =>
       (await redis.set(
-        `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}`,
+        checkpoint
+          ? `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}:${checkpoint}`
+          : `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}`,
         '1',
         'EX',
         ttl,
         'NX',
       )) === 'OK',
-    releaseScan: async (sessionId, userId) => {
-      await redis.del(`${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}`)
+    releaseScan: async (sessionId, userId, checkpoint) => {
+      const keys = [
+        `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}`,
+        `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}:start`,
+        `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}:end`,
+      ]
+      if (checkpoint) {
+        keys.unshift(`${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}:${checkpoint}`)
+      }
+      await redis.del(...keys)
     },
     dlqDepth: () => streamDepth(redis, config.INGEST_DLQ_STREAM_KEY),
     metrics,
@@ -337,6 +347,18 @@ export async function bootstrapDrain(
     batchMax: config.INGEST_BATCH_MAX,
     dlqKey: config.INGEST_DLQ_STREAM_KEY,
     maxDeliveryAttempts: config.INGEST_MAX_DELIVERY_ATTEMPTS,
+    dlqMaxAgeSeconds: config.INGEST_DLQ_MAX_AGE_SECONDS,
+    releaseDedupe: async (sessionId: string, userId: string, checkpoint?: string) => {
+      const keys = [
+        `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}`,
+        `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}:start`,
+        `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}:end`,
+      ]
+      if (checkpoint) {
+        keys.unshift(`${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}:${checkpoint}`)
+      }
+      await redis.del(...keys)
+    },
     retryState,
     // Distinct sessions commit in parallel; bounded well below the pool so the
     // drainer never queues connections behind itself.

@@ -278,6 +278,43 @@ describe('ingest HTTP surface', () => {
     await app.close()
   })
 
+  it('includes checkpoint in the dedupe key when claiming reservation', async () => {
+    const token = signToken({
+      mode: 'online',
+      checkpoint: 'start',
+      pinRequired: false,
+      validitySeconds: 300,
+    })
+    const onlineSnapshot = {
+      ...snapshot,
+      mode: 'online' as const,
+      checkpoint: 'start' as const,
+      checkpointArmedAt: new Date(Date.now() - 30_000).toISOString(),
+      checkpointWindowMinutes: 15,
+      startQrToken: token,
+    }
+    const { deps } = makeDeps({
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot: onlineSnapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/scan',
+      headers: { authorization: 'Bearer x' },
+      payload: {
+        ...acceptedScan(),
+        qrToken: token,
+      },
+    })
+    expect(response.statusCode).toBe(201)
+    expect(deps.reserveScan).toHaveBeenCalledWith('sess-1', 'student-1', config.INGEST_DEDUPE_TTL_SECONDS, 'start')
+    await app.close()
+  })
+
   it('answers the duplicate envelope for a second scan and buffers nothing', async () => {
     const reserveScan = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false)
     const { deps, appended } = makeDeps({

@@ -110,6 +110,12 @@ export const ingestConfigSchema = z.object({
   INGEST_DLQ_STREAM_KEY: z.string().default('polycheck:ingest:dead-letter'),
 
   /**
+   * Maximum age of an un-committable entry in seconds before it is quarantined to
+   * the DLQ regardless of error type. Default 1,800 s (30 min).
+   */
+  INGEST_DLQ_MAX_AGE_SECONDS: z.coerce.number().int().min(1).default(1800),
+
+  /**
    * Request-path dedupe reservation TTL. Fixed 24 h rather than "session
    * lifespan": the snapshot carries no lifespan fields, and deriving one would
    * add a lookup to the hot path. Covers the practical live-replay horizon.

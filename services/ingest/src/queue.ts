@@ -32,6 +32,44 @@ export class PermanentWriteError extends Error {
   }
 }
 
+/**
+ * Detects transient infrastructure failures that should not count against the
+ * delivery ceiling (ECONNREFUSED, ECONNRESET, ETIMEDOUT, 57P01, 57P03, 53300,
+ * 08xxx connection exceptions, 40001 serialization failure, 40P01 deadlock,
+ * or pool acquire timeouts).
+ */
+export function isInfrastructureError(error: unknown): boolean {
+  if (!error) return false
+  if (typeof error === 'object') {
+    const err = error as Record<string, unknown>
+    const code = typeof err.code === 'string' ? err.code : ''
+    if (
+      code === 'ECONNREFUSED' ||
+      code === 'ECONNRESET' ||
+      code === 'ETIMEDOUT' ||
+      code === '57P01' ||
+      code === '57P03' ||
+      code === '53300' ||
+      code === '40001' ||
+      code === '40P01' ||
+      code.startsWith('08')
+    ) {
+      return true
+    }
+    const message = typeof err.message === 'string' ? err.message : ''
+    if (
+      message.includes('timeout exceeded when trying to connect') ||
+      message.includes('ECONNREFUSED') ||
+      message.includes('ECONNRESET') ||
+      message.includes('ETIMEDOUT') ||
+      message.includes('Connection terminated')
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
 export interface BufferedScan {
   userId: string
   sessionId: string
@@ -102,12 +140,16 @@ export interface DrainerDeps {
    * entry has been delivered this many times; then it is dead-lettered.
    */
   maxDeliveryAttempts: number
+  /** Cutoff age in seconds above which any failing entry is quarantined to DLQ regardless of error. */
+  dlqMaxAgeSeconds?: number
   /**
    * Sessions awaiting a backoff retry, keyed by sessionId. Shared per drainer
    * process so pacing survives across ticks; the PEL delivery count remains the
    * durable attempt source of truth (it survives restarts), this only schedules.
    */
   retryState?: Map<string, { ids: string[]; nextAttemptAt: number }>
+  /** Releases the request-path dedupe reservation when an entry is dead-lettered. */
+  releaseDedupe?: (sessionId: string, userId: string, checkpoint?: string) => Promise<void>
 }
 
 export interface DrainResult {
@@ -412,6 +454,13 @@ async function quarantine(
     'attempts',
     String(attempts),
   )
+  if (deps.releaseDedupe) {
+    if (scan.checkpoint) {
+      await deps.releaseDedupe(sessionId, scan.userId, scan.checkpoint).catch(() => undefined)
+    } else {
+      await deps.releaseDedupe(sessionId, scan.userId).catch(() => undefined)
+    }
+  }
 }
 
 async function commitMessages(deps: DrainerDeps, messages: StreamMessage[]): Promise<DrainResult> {
@@ -436,6 +485,7 @@ async function commitMessages(deps: DrainerDeps, messages: StreamMessage[]): Pro
   // still a single advisory-locked transaction in stream order.
   const queue = [...bySession.entries()]
   const runSession = async ([sessionId, batch]: [string, StreamMessage[]]) => {
+    const nowMs = deps.now ? deps.now() : Date.now()
     try {
       const committed = await writer.writeBatch(
         sessionId,
@@ -447,10 +497,42 @@ async function commitMessages(deps: DrainerDeps, messages: StreamMessage[]): Pro
       retryState?.delete(sessionId)
       if (deps.publish) await deps.publish(sessionId, batch.map((message) => message.scan))
     } catch (error) {
-      // A missing session row or a constraint rejection is fatal on every retry;
-      // a transport/deadlock error is not. Either way the PEL delivery count
-      // decides how many times we are still willing to try.
+      // Requirement 2: On PermanentWriteError with batch.length > 1, retry each scan individually;
+      // quarantine only the scans that fail again.
+      if (error instanceof PermanentWriteError && batch.length > 1) {
+        const retryIds: string[] = []
+        for (const message of batch) {
+          try {
+            const single = await writer.writeBatch(sessionId, [message.scan])
+            result.written += single.written
+            result.duplicates += single.duplicates
+            acknowledged.push(message.id)
+            if (deps.publish) await deps.publish(sessionId, [message.scan])
+          } catch (indivError) {
+            if (isInfrastructureError(indivError)) {
+              retryIds.push(message.id)
+            } else {
+              await quarantine(deps, sessionId, message, indivError, 1)
+              acknowledged.push(message.id)
+              result.deadLettered += 1
+            }
+          }
+        }
+        if (retryIds.length > 0) {
+          result.failed += 1
+          retryState?.set(sessionId, { ids: retryIds, nextAttemptAt: nowMs + 500 })
+        } else {
+          retryState?.delete(sessionId)
+        }
+        return
+      }
+
+      // Requirement 1: Infrastructure errors never count toward INGEST_MAX_DELIVERY_ATTEMPTS:
+      // keep retrying with the 5 s backoff cap.
+      // Add INGEST_DLQ_MAX_AGE_SECONDS (default 1800) as the only age-based cutoff.
       const permanent = error instanceof PermanentWriteError
+      const infra = isInfrastructureError(error)
+      const dlqMaxAgeSeconds = deps.dlqMaxAgeSeconds ?? 1800
       const attemptsById = await deliveryCounts(
         deps,
         batch.map((message) => message.id),
@@ -460,7 +542,14 @@ async function commitMessages(deps: DrainerDeps, messages: StreamMessage[]): Pro
       for (const message of batch) {
         const attempts = Math.max(1, attemptsById.get(message.id) ?? 0)
         maxAttempts = Math.max(maxAttempts, attempts)
-        if (permanent || attempts >= deps.maxDeliveryAttempts) {
+        const enqueuedAt = Number(message.id.split('-')[0])
+        const isEpochTimestamp =
+          Number.isFinite(enqueuedAt) && (enqueuedAt > 1_000_000_000_000 || nowMs < 1_000_000_000_000)
+        const ageSeconds = isEpochTimestamp ? Math.max(0, (nowMs - enqueuedAt) / 1000) : 0
+        const expired = ageSeconds >= dlqMaxAgeSeconds
+
+        const shouldQuarantine = permanent || expired || (!infra && attempts >= deps.maxDeliveryAttempts)
+        if (shouldQuarantine) {
           await quarantine(deps, sessionId, message, error, attempts)
           // XACK removes it from the PEL, so its age stops feeding the
           // campus-wide 503 backpressure guard.
@@ -472,7 +561,7 @@ async function commitMessages(deps: DrainerDeps, messages: StreamMessage[]): Pro
       }
       if (retryIds.length > 0) {
         result.failed += 1
-        retryState?.set(sessionId, { ids: retryIds, nextAttemptAt: (deps.now ? deps.now() : Date.now()) + retryDelayMs(maxAttempts) })
+        retryState?.set(sessionId, { ids: retryIds, nextAttemptAt: nowMs + retryDelayMs(maxAttempts) })
       } else {
         retryState?.delete(sessionId)
       }

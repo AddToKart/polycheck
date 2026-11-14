@@ -7,6 +7,7 @@ import {
   pendingSummary,
   summarizePending,
   PermanentWriteError,
+  isInfrastructureError,
   type AttendanceWriter,
   type BufferedScan,
   type DrainerDeps,
@@ -388,6 +389,89 @@ describe('drainOnce', () => {
     expect(result.failed).toBe(0)
   })
 
+  it('survives a 15 s Postgres outage with 3 valid buffered scans: 0 dead-lettered, 3 records written after recovery', async () => {
+    const { redis, acked } = fakeRedis([
+      ['1700000000000-0', scan({ userId: 'u1' })],
+      ['1700000000001-0', scan({ userId: 'u2' })],
+      ['1700000000002-0', scan({ userId: 'u3' })],
+    ])
+    let nowMs = 1_700_000_000_000
+    const infraError = new Error('timeout exceeded when trying to connect')
+    ;(infraError as unknown as { code: string }).code = 'ECONNREFUSED'
+    drainerStub.writeBatch.mockReset()
+    drainerStub.writeBatch.mockRejectedValue(infraError)
+    const writer = drainerStub as unknown as AttendanceWriter
+    const retryState = new Map<string, { ids: string[]; nextAttemptAt: number }>()
+    const deps = baseDeps({
+      redis,
+      writer,
+      retryState,
+      now: () => nowMs,
+      maxDeliveryAttempts: 5,
+      dlqMaxAgeSeconds: 1800,
+    })
+
+    // During the 15s outage, multiple ticks occur (e.g. 6 delivery attempts)
+    for (let i = 0; i < 6; i++) {
+      const res = await drainOnce(deps)
+      expect(res.deadLettered).toBe(0)
+      nowMs += 2_500
+    }
+    // Still 0 dead-lettered, nothing acked during outage
+    expect(acked).toHaveLength(0)
+
+    // Recovery at 15s: Postgres recovers and next tick runs after backoff
+    nowMs += 5_000
+    drainerStub.writeBatch.mockReset()
+    drainerStub.writeBatch.mockResolvedValue({ written: 3, duplicates: 0 })
+    const recoveryResult = await drainOnce(deps)
+
+    expect(recoveryResult.written).toBe(3)
+    expect(recoveryResult.deadLettered).toBe(0)
+    expect(acked.sort()).toEqual(['1700000000000-0', '1700000000001-0', '1700000000002-0'])
+  })
+
+  it('retries individually on PermanentWriteError with batch.length > 1: 4 records written, 1 dead-lettered', async () => {
+    const { redis, acked } = fakeRedis([
+      ['1-0', scan({ userId: 'u1' })],
+      ['2-0', scan({ userId: 'u2' })],
+      ['3-0', scan({ userId: 'u3' })],
+      ['4-0', scan({ userId: 'u4' })],
+      ['5-0', scan({ userId: 'nonexistent-user' })],
+    ])
+    drainerStub.writeBatch.mockReset()
+    drainerStub.writeBatch.mockImplementation(async (_sessionId: string, scans: BufferedScan[]) => {
+      if (scans.some((s) => s.userId === 'nonexistent-user')) {
+        throw new PermanentWriteError('attendance batch rejected by Postgres (23503): foreign key violation')
+      }
+      return { written: scans.length, duplicates: 0 }
+    })
+    const writer = drainerStub as unknown as AttendanceWriter
+    const retryState = new Map<string, { ids: string[]; nextAttemptAt: number }>()
+    const deps = baseDeps({ redis, writer, retryState })
+
+    const result = await drainOnce(deps)
+
+    expect(result.written).toBe(4)
+    expect(result.deadLettered).toBe(1)
+    expect(acked.sort()).toEqual(['1-0', '2-0', '3-0', '4-0', '5-0'])
+  })
+
+  it('releases the dedupe key when a scan is dead-lettered', async () => {
+    const releaseDedupe = vi.fn().mockResolvedValue(undefined)
+    const { redis, acked } = fakeRedis([['1-0', scan({ userId: 'bad-user', checkpoint: 'start' })]])
+    drainerStub.writeBatch.mockReset()
+    drainerStub.writeBatch.mockRejectedValue(new PermanentWriteError('session sess-1 disappeared before commit'))
+    const writer = drainerStub as unknown as AttendanceWriter
+    const deps = baseDeps({ redis, writer, releaseDedupe })
+
+    const result = await drainOnce(deps)
+
+    expect(result.deadLettered).toBe(1)
+    expect(releaseDedupe).toHaveBeenCalledTimes(1)
+    expect(releaseDedupe).toHaveBeenCalledWith('sess-1', 'bad-user', 'start')
+  })
+
   it('does nothing when the stream is empty', async () => {
     const redis = {
       xreadgroup: vi.fn().mockResolvedValue(null),
@@ -519,5 +603,29 @@ describe('stream trimming', () => {
     expect(await trim()).toEqual({ mode: 'skipped', trimmed: 0 })
     expect(redis.xpending).not.toHaveBeenCalled()
     expect(redis.xtrim).not.toHaveBeenCalled()
+  })
+})
+
+describe('isInfrastructureError', () => {
+  it('identifies connection errors, timeouts, and deadlock codes', () => {
+    expect(isInfrastructureError({ code: 'ECONNREFUSED' })).toBe(true)
+    expect(isInfrastructureError({ code: 'ECONNRESET' })).toBe(true)
+    expect(isInfrastructureError({ code: 'ETIMEDOUT' })).toBe(true)
+    expect(isInfrastructureError({ code: '57P01' })).toBe(true)
+    expect(isInfrastructureError({ code: '57P03' })).toBe(true)
+    expect(isInfrastructureError({ code: '53300' })).toBe(true)
+    expect(isInfrastructureError({ code: '08006' })).toBe(true)
+    expect(isInfrastructureError({ code: '08P01' })).toBe(true)
+    expect(isInfrastructureError({ code: '40001' })).toBe(true)
+    expect(isInfrastructureError({ code: '40P01' })).toBe(true)
+    expect(isInfrastructureError(new Error('timeout exceeded when trying to connect'))).toBe(true)
+    expect(isInfrastructureError(new Error('Connection terminated unexpectedly'))).toBe(true)
+  })
+
+  it('does not classify business or constraint errors as infrastructure', () => {
+    expect(isInfrastructureError(new Error('session disappeared before commit'))).toBe(false)
+    expect(isInfrastructureError({ code: '23503' })).toBe(false)
+    expect(isInfrastructureError(null)).toBe(false)
+    expect(isInfrastructureError(undefined)).toBe(false)
   })
 })
