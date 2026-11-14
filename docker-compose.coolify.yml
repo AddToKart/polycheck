@@ -94,6 +94,7 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-https://your-app.vercel.app,http://localhost:3000}
       FRONTEND_URL: ${FRONTEND_URL:-https://your-app.vercel.app}
       TRUST_PROXY: "true"
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-2}
       UPLOAD_DIR: /app/backend/uploads
       MAX_PROOF_BYTES: ${MAX_PROOF_BYTES:-5000000}
       STORAGE_DRIVER: local

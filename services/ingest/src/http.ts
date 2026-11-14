@@ -112,11 +112,32 @@ async function forwardOnlineScan(deps: IngestDeps, request: FastifyRequest, repl
   if (typeof request.headers.cookie === 'string') {
     headers.cookie = request.headers.cookie
   }
+  const userAgent = request.headers['user-agent']
+  if (typeof userAgent === 'string') {
+    headers['user-agent'] = userAgent
+  }
+
+  // Forward client IP so control-plane audit logs observe the student device rather than gateway internal IP.
+  const incomingXff = request.headers['x-forwarded-for']
+  const remoteIp = request.ip || request.raw?.socket?.remoteAddress
+  if (typeof incomingXff === 'string' && incomingXff.length > 0) {
+    headers['x-forwarded-for'] = remoteIp && !incomingXff.includes(remoteIp)
+      ? `${incomingXff}, ${remoteIp}`
+      : incomingXff
+  } else if (remoteIp) {
+    headers['x-forwarded-for'] = remoteIp
+  }
+
+  if (typeof request.headers['x-forwarded-proto'] === 'string') {
+    headers['x-forwarded-proto'] = request.headers['x-forwarded-proto']
+  }
+
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(request.body),
+      signal: AbortSignal.timeout(10_000),
     })
     const text = await response.text()
     const contentType = response.headers.get('content-type') ?? 'application/json'
@@ -135,7 +156,12 @@ async function forwardOnlineScan(deps: IngestDeps, request: FastifyRequest, repl
 }
 
 export function buildServer(deps: IngestDeps): FastifyInstance {
-  const app = Fastify({ logger: false, bodyLimit: 64 * 1024, keepAliveTimeout: KEEP_ALIVE_TIMEOUT_MS })
+  const app = Fastify({
+    logger: false,
+    bodyLimit: 64 * 1024,
+    keepAliveTimeout: KEEP_ALIVE_TIMEOUT_MS,
+    trustProxy: true,
+  })
   // Fastify does not accept `headersTimeout` in its option schema, but Node
   // requires it to stay above keepAliveTimeout: an idle keep-alive socket whose
   // next request arrives late must not be closed mid-headers.
@@ -225,9 +251,6 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
 
     // Pending depth, lag and the session snapshot in one pipelined round-trip.
     const probe = await deps.probeHotPath(body.sessionId)
-    if (probe.depth > deps.config.INGEST_MAX_BUFFER || probe.lag > deps.config.INGEST_MAX_LAG_SECONDS) {
-      return tooMany(reply)
-    }
     if (!probe.snapshot) {
       // Cannot validate without the snapshot: retryable, never a silent accept.
       return tooMany(reply, 2)
@@ -236,8 +259,13 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
 
     if (snapshot.mode === 'online') {
       // Online windows are short and low-volume: the hot path isn't needed.
-      // Forward directly to NestJS which owns the dual-checkpoint contract.
+      // Bypass the buffer saturation/lag gate and forward directly to NestJS
+      // which owns the dual-checkpoint contract.
       return forwardOnlineScan(deps, request, reply)
+    }
+
+    if (probe.depth > deps.config.INGEST_MAX_BUFFER || probe.lag > deps.config.INGEST_MAX_LAG_SECONDS) {
+      return tooMany(reply)
     }
 
     const evidence: ScanEvidenceInput = {

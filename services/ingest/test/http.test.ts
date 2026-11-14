@@ -310,7 +310,37 @@ describe('ingest HTTP surface', () => {
     await app.close()
   })
 
-  it('forwards online-mode requests to NestJS /attendance/scan via fetch by default', async () => {
+  it('does not shed online-mode scans even when the buffer is saturated or behind', async () => {
+    const forwardOnlineScan = vi.fn().mockImplementation(async (_req, reply) => {
+      return reply.code(201).send({ success: true, mode: 'online', forwarded: true })
+    })
+    const onlineSnapshot = {
+      ...snapshot,
+      mode: 'online' as const,
+      checkpoint: 'start' as const,
+    }
+    const { deps, appended } = makeDeps({
+      forwardOnlineScan,
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: config.INGEST_MAX_BUFFER + 500, // Saturated!
+        lag: config.INGEST_MAX_LAG_SECONDS + 60, // Behind!
+        snapshot: { snapshot: onlineSnapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/scan',
+      headers: { authorization: 'Bearer x' },
+      payload: acceptedScan(),
+    })
+    expect(response.statusCode).toBe(201)
+    expect(forwardOnlineScan).toHaveBeenCalledTimes(1)
+    expect(appended).toHaveLength(0)
+    await app.close()
+  })
+
+  it('forwards online-mode requests to NestJS /attendance/scan via fetch by default with user-agent, client IP and timeout signal', async () => {
     const onlineSnapshot = {
       ...snapshot,
       mode: 'online' as const,
@@ -336,7 +366,11 @@ describe('ingest HTTP surface', () => {
       const response = await app.inject({
         method: 'POST',
         url: '/attendance/scan',
-        headers: { authorization: 'Bearer student-token' },
+        headers: {
+          authorization: 'Bearer student-token',
+          'user-agent': 'Polycheck-Android/1.0',
+          'x-forwarded-for': '203.0.113.195',
+        },
         payload: acceptedScan(),
       })
       expect(response.statusCode).toBe(201)
@@ -351,12 +385,54 @@ describe('ingest HTTP surface', () => {
           method: 'POST',
           headers: expect.objectContaining({
             authorization: 'Bearer student-token',
+            'user-agent': 'Polycheck-Android/1.0',
+            'x-forwarded-for': expect.stringContaining('203.0.113.195'),
             'content-type': 'application/json',
           }),
+          signal: expect.any(AbortSignal),
         }),
       )
       expect(appended).toHaveLength(0)
       expect(deps.reserveScan).not.toHaveBeenCalled()
+      await app.close()
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('answers 503 when the forward request to control plane times out', async () => {
+    const onlineSnapshot = {
+      ...snapshot,
+      mode: 'online' as const,
+      checkpoint: 'start' as const,
+    }
+    const originalFetch = globalThis.fetch
+    const mockFetch = vi.fn().mockRejectedValue(new DOMException('The operation was aborted due to timeout', 'TimeoutError'))
+    globalThis.fetch = mockFetch
+    try {
+      const { deps } = makeDeps({
+        probeHotPath: vi.fn().mockResolvedValue({
+          depth: 0,
+          lag: 0,
+          snapshot: { snapshot: onlineSnapshot, teacherPublicKey: keys.publicKey },
+        }),
+      })
+      const app = buildServer(deps)
+      const response = await app.inject({
+        method: 'POST',
+        url: '/attendance/scan',
+        headers: { authorization: 'Bearer student-token' },
+        payload: acceptedScan(),
+      })
+      expect(response.statusCode).toBe(503)
+      expect(JSON.parse(response.body)).toEqual(
+        expect.objectContaining({
+          statusCode: 503,
+          error: 'ServiceUnavailable',
+          message: 'Control plane temporarily unavailable',
+          retryAfterSeconds: 2,
+        }),
+      )
       await app.close()
     } finally {
       globalThis.fetch = originalFetch
