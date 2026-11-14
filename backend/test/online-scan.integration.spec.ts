@@ -144,6 +144,8 @@ describeDb('Online dual-checkpoint scans (real PostgreSQL database)', () => {
       getJson: jest.fn().mockResolvedValue(null),
       setJson: jest.fn().mockResolvedValue(undefined),
       del: jest.fn().mockResolvedValue(undefined),
+      acquireLock: jest.fn().mockResolvedValue('probe-lock-token'),
+      releaseLock: jest.fn().mockResolvedValue(undefined),
     }
     const mockRealtime = {
       emitAttendanceUpdated: jest.fn(),
@@ -193,6 +195,7 @@ describeDb('Online dual-checkpoint scans (real PostgreSQL database)', () => {
         gracePeriodMinutes: 15,
         mode: 'online',
         checkpoint: 'start',
+        validitySeconds: 300,
         pinRequired: false,
       },
       teacherKeys.secretKey,
@@ -211,6 +214,7 @@ describeDb('Online dual-checkpoint scans (real PostgreSQL database)', () => {
     const startScanResult = (await service.scan(studentUser, {
       sessionId: ids.session,
       deviceId: 'device-online-1',
+      clientAttemptId: randomUUID(),
       qrToken: startToken,
       inputChannel: 'camera',
     })) as any
@@ -243,6 +247,7 @@ describeDb('Online dual-checkpoint scans (real PostgreSQL database)', () => {
         gracePeriodMinutes: 0,
         mode: 'online',
         checkpoint: 'end',
+        validitySeconds: 300,
         pinRequired: false,
       },
       teacherKeys.secretKey,
@@ -262,6 +267,7 @@ describeDb('Online dual-checkpoint scans (real PostgreSQL database)', () => {
     const endScanResult = (await service.scan(studentUser, {
       sessionId: ids.session,
       deviceId: 'device-online-1',
+      clientAttemptId: randomUUID(),
       qrToken: endToken,
       inputChannel: 'camera',
     })) as any
