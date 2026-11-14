@@ -60,7 +60,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
-      SEED_PASSWORD: ${SEED_PASSWORD:?SEED_PASSWORD must be set in Coolify environment variables (min 12 chars)}
+      SEED_PASSWORD: ${SEED_PASSWORD:-}
       ALLOW_PRODUCTION_SEED: ${ALLOW_PRODUCTION_SEED:-false}
     command: ["node", "dist-seed/prisma/seed.js"]
 
@@ -103,6 +103,9 @@ services:
       API_RATE_WINDOW_SECONDS: ${API_RATE_WINDOW_SECONDS:-60}
     volumes:
       - backend-uploads:/app/backend/uploads
+    networks:
+      - default
+      - monitoring
     labels:
       - "coolify.managed=true"
       - "coolify.port=4000"
@@ -171,6 +174,9 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+    networks:
+      - default
+      - monitoring
 
   # Exactly one ordered drainer, on its own event loop. It receives no proxy
   # traffic; keeping it separate guarantees the hash chain's per-session
@@ -205,8 +211,52 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+    networks:
+      - default
+      - monitoring
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-15d}
+    ports:
+      - "${PROMETHEUS_BIND_ADDRESS:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./deployment/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deployment/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - default
+      - monitoring
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    command:
+      - --config.file=/etc/alertmanager/config.yml
+      - --storage.path=/alertmanager
+    ports:
+      - "${ALERTMANAGER_BIND_ADDRESS:-127.0.0.1}:${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ${ALERTMANAGER_CONFIG_PATH:-./deployment/monitoring/alertmanager.yml.example}:/etc/alertmanager/config.yml:ro
+      - alertmanager-data:/alertmanager
+    networks:
+      - default
+      - monitoring
 
 volumes:
   postgres-data:
   redis-data:
   backend-uploads:
+  prometheus-data:
+  alertmanager-data:
+
+networks:
+  default:
+  monitoring:
+    name: polycheck-monitoring
