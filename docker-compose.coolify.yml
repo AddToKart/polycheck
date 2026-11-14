@@ -104,8 +104,6 @@ services:
       API_RATE_WINDOW_SECONDS: ${API_RATE_WINDOW_SECONDS:-60}
     volumes:
       - backend-uploads:/app/backend/uploads
-    ports:
-      - "4000:4000"
     labels:
       - "coolify.managed=true"
       - "coolify.port=4000"
