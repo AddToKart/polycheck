@@ -457,6 +457,36 @@ describe('drainOnce', () => {
     expect(acked.sort()).toEqual(['1-0', '2-0', '3-0', '4-0', '5-0'])
   })
 
+  it('does not quarantine a transient row-count mismatch error when retrying individually in split-batch', async () => {
+    const { redis, acked } = fakeRedis([
+      ['1-0', scan({ userId: 'u1' })],
+      ['2-0', scan({ userId: 'u2' })],
+    ])
+    drainerStub.writeBatch.mockReset()
+    let firstCall = true
+    drainerStub.writeBatch.mockImplementation(async (_sessionId: string, scans: BufferedScan[]) => {
+      if (firstCall) {
+        firstCall = false
+        throw new PermanentWriteError('batch failed permanently')
+      }
+      if (scans.some((s) => s.userId === 'u2')) {
+        throw new Error('attendance batch insert wrote 0/1 rows; retrying')
+      }
+      return { written: scans.length, duplicates: 0 }
+    })
+    const writer = drainerStub as unknown as AttendanceWriter
+    const retryState = new Map<string, { ids: string[]; nextAttemptAt: number }>()
+    const deps = baseDeps({ redis, writer, retryState })
+
+    const result = await drainOnce(deps)
+
+    expect(result.written).toBe(1)
+    expect(result.deadLettered).toBe(0)
+    expect(result.failed).toBe(1)
+    expect(acked).toEqual(['1-0'])
+    expect(retryState.get('sess-1')?.ids).toEqual(['2-0'])
+  })
+
   it('releases the dedupe key when a scan is dead-lettered', async () => {
     const releaseDedupe = vi.fn().mockResolvedValue(undefined)
     const { redis, acked } = fakeRedis([['1-0', scan({ userId: 'bad-user', checkpoint: 'start' })]])

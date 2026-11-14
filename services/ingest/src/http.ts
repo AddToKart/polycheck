@@ -80,6 +80,8 @@ export interface IngestDeps {
   reserveScan: (sessionId: string, userId: string, ttlSeconds: number, checkpoint?: string) => Promise<boolean>
   /** Releases a claim when buffering failed, so a retry is not answered "duplicate". */
   releaseScan?: (sessionId: string, userId: string, checkpoint?: string) => Promise<void>
+  /** Forwards online-mode scans directly to NestJS (/attendance/scan). */
+  forwardOnlineScan?: (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>
   /** Dead-letter stream length — observability only, never backpressure. */
   dlqDepth: () => Promise<number>
   metrics: IngestMetrics
@@ -95,6 +97,42 @@ const tooMany = (reply: FastifyReply, retryAfterSeconds = 5) =>
     .code(503)
     .header('retry-after', String(retryAfterSeconds))
     .send({ statusCode: 503, error: 'ServiceUnavailable', message: 'Ingestion buffer is full', retryAfterSeconds })
+
+async function forwardOnlineScan(deps: IngestDeps, request: FastifyRequest, reply: FastifyReply): Promise<unknown> {
+  if (deps.forwardOnlineScan) {
+    return deps.forwardOnlineScan(request, reply)
+  }
+  const url = `${deps.config.CONTROL_PLANE_URL}/attendance/scan`
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+  }
+  if (typeof request.headers.authorization === 'string') {
+    headers.authorization = request.headers.authorization
+  }
+  if (typeof request.headers.cookie === 'string') {
+    headers.cookie = request.headers.cookie
+  }
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(request.body),
+    })
+    const text = await response.text()
+    const contentType = response.headers.get('content-type') ?? 'application/json'
+    return reply.code(response.status).type(contentType).send(text)
+  } catch {
+    return reply
+      .code(503)
+      .header('retry-after', '2')
+      .send({
+        statusCode: 503,
+        error: 'ServiceUnavailable',
+        message: 'Control plane temporarily unavailable',
+        retryAfterSeconds: 2,
+      })
+  }
+}
 
 export function buildServer(deps: IngestDeps): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024, keepAliveTimeout: KEEP_ALIVE_TIMEOUT_MS })
@@ -195,6 +233,12 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
       return tooMany(reply, 2)
     }
     const { snapshot, teacherPublicKey } = probe.snapshot
+
+    if (snapshot.mode === 'online') {
+      // Online windows are short and low-volume: the hot path isn't needed.
+      // Forward directly to NestJS which owns the dual-checkpoint contract.
+      return forwardOnlineScan(deps, request, reply)
+    }
 
     const evidence: ScanEvidenceInput = {
       qrToken: body.qrToken,

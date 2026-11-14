@@ -1200,6 +1200,70 @@ describe('AttendanceService', () => {
         expect(mockedVerifyMeetingPin).toHaveBeenCalledWith('83', PIN_HASH)
       })
 
+      it('records check-in time for online start scan and check-out time for online end scan', async () => {
+        // 1. Start checkpoint scan
+        prisma.attendanceRecord.findUnique.mockResolvedValue(
+          makeRosterRecord({ status: 'pending', latitude: null, longitude: null }),
+        )
+        prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+        prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(
+          makeRosterRecord({
+            status: 'pending',
+            latitude: null,
+            longitude: null,
+            checkInStatus: 'present',
+            checkInToken: VALID_TOKEN,
+          }),
+        )
+
+        const startResult = (await service.scan(studentUser, {
+          ...onlineArgs,
+          qrToken: VALID_TOKEN,
+        })) as any
+
+        expect(startResult).toBeDefined()
+        const startUpdate = prisma.attendanceRecord.updateMany.mock.calls[0][0].data
+        expect(startUpdate.checkInTime).toBeInstanceOf(Date)
+        expect(startUpdate.checkInStatus).toBe('present')
+        expect(startUpdate.checkInToken).toBe(VALID_TOKEN)
+
+        // 2. End checkpoint scan
+        const endPayload = validPayload({
+          mode: 'online',
+          checkpoint: 'end',
+          pinRequired: false,
+          validitySeconds: 90,
+          gracePeriodMinutes: 0,
+          validityMinutes: 2,
+        })
+        mockedVerifyQRToken.mockReturnValue(endPayload)
+        const END_TOKEN = 'end-qr-token-xyz'
+        prisma.session.findUnique.mockResolvedValue({
+          ...onlineSession(),
+          endQrToken: END_TOKEN,
+          endTokenExpiresAt: new Date(Date.now() + 60_000),
+          endGraceMinutes: 0,
+        })
+        redis.getJson.mockResolvedValue({
+          ...onlineSession(),
+          endQrToken: END_TOKEN,
+          endTokenExpiresAt: new Date(Date.now() + 60_000),
+          endGraceMinutes: 0,
+        })
+
+        const endResult = (await service.scan(studentUser, {
+          ...onlineArgs,
+          qrToken: END_TOKEN,
+          pin: undefined,
+        })) as any
+
+        expect(endResult).toBeDefined()
+        const endUpdate = prisma.attendanceRecord.updateMany.mock.calls[1][0].data
+        expect(endUpdate.checkOutTime).toBeInstanceOf(Date)
+        expect(endUpdate.checkOutStatus).toBe('present')
+        expect(endUpdate.checkOutToken).toBe(END_TOKEN)
+      })
+
       it('denies an incorrect meeting PIN without touching attendance', async () => {
         mockedVerifyMeetingPin.mockResolvedValue(false)
 

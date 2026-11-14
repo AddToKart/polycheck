@@ -278,22 +278,17 @@ describe('ingest HTTP surface', () => {
     await app.close()
   })
 
-  it('includes checkpoint in the dedupe key when claiming reservation', async () => {
-    const token = signToken({
-      mode: 'online',
-      checkpoint: 'start',
-      pinRequired: false,
-      validitySeconds: 300,
+  it('forwards online-mode requests to NestJS /attendance/scan via forwardOnlineScan hook', async () => {
+    const forwardOnlineScan = vi.fn().mockImplementation(async (_req, reply) => {
+      return reply.code(201).send({ success: true, mode: 'online', forwarded: true })
     })
     const onlineSnapshot = {
       ...snapshot,
       mode: 'online' as const,
       checkpoint: 'start' as const,
-      checkpointArmedAt: new Date(Date.now() - 30_000).toISOString(),
-      checkpointWindowMinutes: 15,
-      startQrToken: token,
     }
-    const { deps } = makeDeps({
+    const { deps, appended } = makeDeps({
+      forwardOnlineScan,
       probeHotPath: vi.fn().mockResolvedValue({
         depth: 0,
         lag: 0,
@@ -305,14 +300,67 @@ describe('ingest HTTP surface', () => {
       method: 'POST',
       url: '/attendance/scan',
       headers: { authorization: 'Bearer x' },
-      payload: {
-        ...acceptedScan(),
-        qrToken: token,
-      },
+      payload: acceptedScan(),
     })
     expect(response.statusCode).toBe(201)
-    expect(deps.reserveScan).toHaveBeenCalledWith('sess-1', 'student-1', config.INGEST_DEDUPE_TTL_SECONDS, 'start')
+    expect(JSON.parse(response.body)).toEqual({ success: true, mode: 'online', forwarded: true })
+    expect(forwardOnlineScan).toHaveBeenCalledTimes(1)
+    expect(appended).toHaveLength(0)
+    expect(deps.reserveScan).not.toHaveBeenCalled()
     await app.close()
+  })
+
+  it('forwards online-mode requests to NestJS /attendance/scan via fetch by default', async () => {
+    const onlineSnapshot = {
+      ...snapshot,
+      mode: 'online' as const,
+      checkpoint: 'start' as const,
+    }
+    const originalFetch = globalThis.fetch
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ success: true, mode: 'online', checkInTime: '2026-11-14T07:00:00Z' }), {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+    globalThis.fetch = mockFetch
+    try {
+      const { deps, appended } = makeDeps({
+        probeHotPath: vi.fn().mockResolvedValue({
+          depth: 0,
+          lag: 0,
+          snapshot: { snapshot: onlineSnapshot, teacherPublicKey: keys.publicKey },
+        }),
+      })
+      const app = buildServer(deps)
+      const response = await app.inject({
+        method: 'POST',
+        url: '/attendance/scan',
+        headers: { authorization: 'Bearer student-token' },
+        payload: acceptedScan(),
+      })
+      expect(response.statusCode).toBe(201)
+      expect(JSON.parse(response.body)).toEqual({
+        success: true,
+        mode: 'online',
+        checkInTime: '2026-11-14T07:00:00Z',
+      })
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${deps.config.CONTROL_PLANE_URL}/attendance/scan`,
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            authorization: 'Bearer student-token',
+            'content-type': 'application/json',
+          }),
+        }),
+      )
+      expect(appended).toHaveLength(0)
+      expect(deps.reserveScan).not.toHaveBeenCalled()
+      await app.close()
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 
   it('answers the duplicate envelope for a second scan and buffers nothing', async () => {

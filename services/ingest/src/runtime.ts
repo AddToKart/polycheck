@@ -235,15 +235,8 @@ export async function bootstrapHttp(config: IngestConfig, metrics: IngestMetrics
         'NX',
       )) === 'OK',
     releaseScan: async (sessionId, userId, checkpoint) => {
-      const keys = [
-        `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}`,
-        `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}:start`,
-        `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}:end`,
-      ]
-      if (checkpoint) {
-        keys.unshift(`${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}:${checkpoint}`)
-      }
-      await redis.del(...keys)
+      const key = `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}${checkpoint ? `:${checkpoint}` : ''}`
+      await redis.del(key)
     },
     dlqDepth: () => streamDepth(redis, config.INGEST_DLQ_STREAM_KEY),
     metrics,
@@ -349,15 +342,8 @@ export async function bootstrapDrain(
     maxDeliveryAttempts: config.INGEST_MAX_DELIVERY_ATTEMPTS,
     dlqMaxAgeSeconds: config.INGEST_DLQ_MAX_AGE_SECONDS,
     releaseDedupe: async (sessionId: string, userId: string, checkpoint?: string) => {
-      const keys = [
-        `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}`,
-        `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}:start`,
-        `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}:end`,
-      ]
-      if (checkpoint) {
-        keys.unshift(`${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}:${checkpoint}`)
-      }
-      await redis.del(...keys)
+      const key = `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}${checkpoint ? `:${checkpoint}` : ''}`
+      await redis.del(key)
     },
     retryState,
     // Distinct sessions commit in parallel; bounded well below the pool so the

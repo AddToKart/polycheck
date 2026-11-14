@@ -497,10 +497,18 @@ async function commitMessages(deps: DrainerDeps, messages: StreamMessage[]): Pro
       retryState?.delete(sessionId)
       if (deps.publish) await deps.publish(sessionId, batch.map((message) => message.scan))
     } catch (error) {
-      // Requirement 2: On PermanentWriteError with batch.length > 1, retry each scan individually;
-      // quarantine only the scans that fail again.
+      const dlqMaxAgeSeconds = deps.dlqMaxAgeSeconds ?? 1800
+      const attemptsById = await deliveryCounts(
+        deps,
+        batch.map((message) => message.id),
+      )
+
+      // On PermanentWriteError with batch.length > 1, retry each scan individually;
+      // quarantine only the scans that fail again with a permanent error (or exceed
+      // attempts / max age). Transient errors like row-count mismatch are retried.
       if (error instanceof PermanentWriteError && batch.length > 1) {
         const retryIds: string[] = []
+        let maxAttempts = 0
         for (const message of batch) {
           try {
             const single = await writer.writeBatch(sessionId, [message.scan])
@@ -509,34 +517,40 @@ async function commitMessages(deps: DrainerDeps, messages: StreamMessage[]): Pro
             acknowledged.push(message.id)
             if (deps.publish) await deps.publish(sessionId, [message.scan])
           } catch (indivError) {
-            if (isInfrastructureError(indivError)) {
-              retryIds.push(message.id)
-            } else {
-              await quarantine(deps, sessionId, message, indivError, 1)
+            const attempts = Math.max(1, attemptsById.get(message.id) ?? 0)
+            maxAttempts = Math.max(maxAttempts, attempts)
+            const isPermanent = indivError instanceof PermanentWriteError
+            const isInfra = isInfrastructureError(indivError)
+            const enqueuedAt = Number(message.id.split('-')[0])
+            const isEpoch =
+              Number.isFinite(enqueuedAt) && (enqueuedAt > 1_000_000_000_000 || nowMs < 1_000_000_000_000)
+            const ageSeconds = isEpoch ? Math.max(0, (nowMs - enqueuedAt) / 1000) : 0
+            const expired = ageSeconds >= dlqMaxAgeSeconds
+
+            const shouldQuarantine = isPermanent || expired || (!isInfra && attempts >= deps.maxDeliveryAttempts)
+            if (shouldQuarantine) {
+              await quarantine(deps, sessionId, message, indivError, attempts)
               acknowledged.push(message.id)
               result.deadLettered += 1
+            } else {
+              retryIds.push(message.id)
             }
           }
         }
         if (retryIds.length > 0) {
           result.failed += 1
-          retryState?.set(sessionId, { ids: retryIds, nextAttemptAt: nowMs + 500 })
+          retryState?.set(sessionId, { ids: retryIds, nextAttemptAt: nowMs + retryDelayMs(maxAttempts) })
         } else {
           retryState?.delete(sessionId)
         }
         return
       }
 
-      // Requirement 1: Infrastructure errors never count toward INGEST_MAX_DELIVERY_ATTEMPTS:
+      // Infrastructure errors never count toward INGEST_MAX_DELIVERY_ATTEMPTS:
       // keep retrying with the 5 s backoff cap.
       // Add INGEST_DLQ_MAX_AGE_SECONDS (default 1800) as the only age-based cutoff.
       const permanent = error instanceof PermanentWriteError
       const infra = isInfrastructureError(error)
-      const dlqMaxAgeSeconds = deps.dlqMaxAgeSeconds ?? 1800
-      const attemptsById = await deliveryCounts(
-        deps,
-        batch.map((message) => message.id),
-      )
       const retryIds: string[] = []
       let maxAttempts = 0
       for (const message of batch) {
