@@ -159,8 +159,6 @@ services:
       INGEST_MAX_LAG_SECONDS: ${INGEST_MAX_LAG_SECONDS:-30}
       INGEST_STREAM_MAXLEN: ${INGEST_STREAM_MAXLEN:-50000}
       INGEST_AUTH_CACHE_TTL_SECONDS: ${INGEST_AUTH_CACHE_TTL_SECONDS:-900}
-    ports:
-      - "4001:4001"
     labels:
       - "coolify.managed=true"
       - "coolify.port=4001"

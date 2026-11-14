@@ -439,6 +439,79 @@ describe('ingest HTTP surface', () => {
     }
   })
 
+  it('narrows trustProxy to configured hop count and ignores spoofed client IPs beyond the hop count', async () => {
+    let capturedReq: FastifyRequest | undefined
+    const forwardOnlineScan = vi.fn().mockImplementation(async (req, reply) => {
+      capturedReq = req
+      return reply.code(201).send({ success: true, mode: 'online' })
+    })
+    const onlineSnapshot = {
+      ...snapshot,
+      mode: 'online' as const,
+      checkpoint: 'start' as const,
+    }
+    const { deps } = makeDeps({
+      forwardOnlineScan,
+      config: { ...testConfig, INGEST_TRUST_PROXY: '1' },
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot: onlineSnapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/scan',
+      headers: {
+        authorization: 'Bearer x',
+        'x-forwarded-for': '10.99.99.99, 203.0.113.195',
+      },
+      payload: acceptedScan(),
+    })
+    expect(response.statusCode).toBe(201)
+    // With trustProxy: 1, only the immediate proxy hop is trusted, so 203.0.113.195 is the client IP, NOT 10.99.99.99.
+    expect(capturedReq?.ip).toBe('203.0.113.195')
+    await app.close()
+  })
+
+  it('rejects spoofed X-Forwarded-For when connected directly from an untrusted public IP with default subnet trust', async () => {
+    let capturedReq: FastifyRequest | undefined
+    const forwardOnlineScan = vi.fn().mockImplementation(async (req, reply) => {
+      capturedReq = req
+      return reply.code(201).send({ success: true, mode: 'online' })
+    })
+    const onlineSnapshot = {
+      ...snapshot,
+      mode: 'online' as const,
+      checkpoint: 'start' as const,
+    }
+    const { deps } = makeDeps({
+      forwardOnlineScan,
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot: onlineSnapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/scan',
+      remoteAddress: '198.51.100.20',
+      headers: {
+        authorization: 'Bearer x',
+        'x-forwarded-for': '10.99.99.99',
+      },
+      payload: acceptedScan(),
+    })
+    expect(response.statusCode).toBe(201)
+    // Direct public socket 198.51.100.20 is not in trusted subnets (127.0.0.1, 10/8, 172.16/12, 192.168/16),
+    // so Fastify refuses to believe the spoofed 10.99.99.99 header.
+    expect(capturedReq?.ip).toBe('198.51.100.20')
+    await app.close()
+  })
+
   it('answers the duplicate envelope for a second scan and buffers nothing', async () => {
     const reserveScan = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false)
     const { deps, appended } = makeDeps({

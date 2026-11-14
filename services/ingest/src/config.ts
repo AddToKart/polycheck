@@ -124,6 +124,15 @@ export const ingestConfigSchema = z.object({
 
   /** Reservation key namespace: `<prefix><sessionId>:<userId>`. */
   INGEST_DEDUPE_KEY_PREFIX: z.string().default('polycheck:ingest:dedupe:'),
+
+  /**
+   * Trusted proxy addresses, CIDR subnets, or hop count for Fastify client IP resolution.
+   * Defaults to loopback and private Docker subnets (127.0.0.1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16),
+   * preventing direct-client spoofing of X-Forwarded-For while trusting reverse proxies like Traefik/nginx.
+   */
+  INGEST_TRUST_PROXY: z
+    .string()
+    .default('127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'),
 })
 
 export type IngestConfig = z.infer<typeof ingestConfigSchema>

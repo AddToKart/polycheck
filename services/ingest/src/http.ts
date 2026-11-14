@@ -118,14 +118,13 @@ async function forwardOnlineScan(deps: IngestDeps, request: FastifyRequest, repl
   }
 
   // Forward client IP so control-plane audit logs observe the student device rather than gateway internal IP.
-  const incomingXff = request.headers['x-forwarded-for']
-  const remoteIp = request.ip || request.raw?.socket?.remoteAddress
-  if (typeof incomingXff === 'string' && incomingXff.length > 0) {
-    headers['x-forwarded-for'] = remoteIp && !incomingXff.includes(remoteIp)
-      ? `${incomingXff}, ${remoteIp}`
-      : incomingXff
-  } else if (remoteIp) {
-    headers['x-forwarded-for'] = remoteIp
+  // Fastify's trustProxy populates request.ips with the verified chain of trusted proxy IPs ending in the client IP.
+  // Reversing this array yields standard X-Forwarded-For order: client, proxy1, proxy2...
+  // Any untrusted or spoofed client-supplied headers beyond trusted proxies are stripped automatically.
+  const forwardedFor =
+    request.ips && request.ips.length > 0 ? [...request.ips].reverse().join(', ') : request.ip
+  if (forwardedFor) {
+    headers['x-forwarded-for'] = forwardedFor
   }
 
   if (typeof request.headers['x-forwarded-proto'] === 'string') {
@@ -156,11 +155,18 @@ async function forwardOnlineScan(deps: IngestDeps, request: FastifyRequest, repl
 }
 
 export function buildServer(deps: IngestDeps): FastifyInstance {
+  const rawTrust = deps.config.INGEST_TRUST_PROXY ?? '127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'
+  const asNumber = Number(rawTrust)
+  const trustProxy =
+    Number.isInteger(asNumber) && asNumber > 0
+      ? (addr: string, hop: number) => hop < asNumber
+      : rawTrust.split(',').map((s) => s.trim())
+
   const app = Fastify({
     logger: false,
     bodyLimit: 64 * 1024,
     keepAliveTimeout: KEEP_ALIVE_TIMEOUT_MS,
-    trustProxy: true,
+    trustProxy,
   })
   // Fastify does not accept `headersTimeout` in its option schema, but Node
   // requires it to stay above keepAliveTimeout: an idle keep-alive socket whose
