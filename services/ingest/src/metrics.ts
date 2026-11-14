@@ -16,6 +16,10 @@ export const HTTP_DURATION_BUCKETS_MS = [10, 25, 50, 100, 200, 500, 1_000, 2_000
 export interface IngestMetrics {
   scansAccepted: number
   scansRejected: number
+  /** Scans rejected at the request path as an already-submitted duplicate. */
+  scansDuplicate: number
+  /** Poison messages quarantined to the dead-letter stream. */
+  deadLetterTotal: number
   drainWritten: number
   drainDuplicates: number
   drainFailures: number
@@ -31,6 +35,8 @@ export function createMetrics(): IngestMetrics {
   return {
     scansAccepted: 0,
     scansRejected: 0,
+    scansDuplicate: 0,
+    deadLetterTotal: 0,
     drainWritten: 0,
     drainDuplicates: 0,
     drainFailures: 0,
@@ -64,6 +70,8 @@ export function mergeIngestMetrics(snapshots: IngestMetrics[]): IngestMetrics {
   for (const snapshot of snapshots) {
     merged.scansAccepted += snapshot.scansAccepted
     merged.scansRejected += snapshot.scansRejected
+    merged.scansDuplicate += snapshot.scansDuplicate
+    merged.deadLetterTotal += snapshot.deadLetterTotal
     merged.drainWritten += snapshot.drainWritten
     merged.drainDuplicates += snapshot.drainDuplicates
     merged.drainFailures += snapshot.drainFailures
@@ -84,6 +92,8 @@ export interface RenderSnapshot {
   streamLength: number
   /** Age of the oldest unacknowledged entry, in seconds. */
   lagSeconds: number
+  /** Dead-letter stream length (quarantined entries awaiting repair). */
+  dlqDepth?: number
   ready: boolean
 }
 
@@ -95,6 +105,12 @@ export function renderMetrics(metrics: IngestMetrics, snapshot: RenderSnapshot):
     '# HELP ingest_scans_rejected_total Scans rejected by validation',
     '# TYPE ingest_scans_rejected_total counter',
     `ingest_scans_rejected_total ${metrics.scansRejected}`,
+    '# HELP ingest_scans_duplicate_total Scans rejected as already-submitted duplicates',
+    '# TYPE ingest_scans_duplicate_total counter',
+    `ingest_scans_duplicate_total ${metrics.scansDuplicate}`,
+    '# HELP ingest_dead_letter_total Messages quarantined to the dead-letter stream',
+    '# TYPE ingest_dead_letter_total counter',
+    `ingest_dead_letter_total ${metrics.deadLetterTotal}`,
     '# HELP ingest_drain_written_total Attendance rows committed by the drainer',
     '# TYPE ingest_drain_written_total counter',
     `ingest_drain_written_total ${metrics.drainWritten}`,
@@ -116,6 +132,9 @@ export function renderMetrics(metrics: IngestMetrics, snapshot: RenderSnapshot):
     '# HELP ingest_buffer_lag_seconds Age of the oldest unacked entry',
     '# TYPE ingest_buffer_lag_seconds gauge',
     `ingest_buffer_lag_seconds ${snapshot.lagSeconds}`,
+    '# HELP ingest_dlq_depth Dead-letter stream length',
+    '# TYPE ingest_dlq_depth gauge',
+    `ingest_dlq_depth ${snapshot.dlqDepth ?? 0}`,
     '# HELP ingest_http_requests_total HTTP requests answered by this process',
     '# TYPE ingest_http_requests_total counter',
     `ingest_http_requests_total ${metrics.httpRequests}`,

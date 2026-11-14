@@ -18,6 +18,20 @@
  */
 import type Redis from 'ioredis'
 
+/**
+ * A write failure retrying cannot fix: the session vanished after accept, or
+ * Postgres rejected the row outright (FK/CHECK violation, unrepresentable enum).
+ * Left pending it would be redelivered forever, and once its age crosses the lag
+ * ceiling the request path answers 503 for *every* session. The drainer
+ * quarantines these to the dead-letter stream on the first delivery instead.
+ */
+export class PermanentWriteError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PermanentWriteError'
+  }
+}
+
 export interface BufferedScan {
   userId: string
   sessionId: string
@@ -81,6 +95,19 @@ export interface DrainerDeps {
    */
   concurrency?: number
   now?: () => number
+  /** Stream that receives entries which can never commit (quarantine). */
+  dlqKey: string
+  /**
+   * Delivery ceiling. A transient failure is retried with backoff until the
+   * entry has been delivered this many times; then it is dead-lettered.
+   */
+  maxDeliveryAttempts: number
+  /**
+   * Sessions awaiting a backoff retry, keyed by sessionId. Shared per drainer
+   * process so pacing survives across ticks; the PEL delivery count remains the
+   * durable attempt source of truth (it survives restarts), this only schedules.
+   */
+  retryState?: Map<string, { ids: string[]; nextAttemptAt: number }>
 }
 
 export interface DrainResult {
@@ -88,8 +115,10 @@ export interface DrainResult {
   acked: number
   written: number
   duplicates: number
-  /** Sessions whose commit threw and stayed pending (retried on the next tick). */
+  /** Sessions whose commit threw and stayed pending (retried on a later tick). */
   failed: number
+  /** Entries moved to the dead-letter stream and acknowledged out of the PEL. */
+  deadLettered: number
 }
 
 export interface PendingSummary {
@@ -245,9 +274,15 @@ function parseMessages(entries: unknown): StreamMessage[] {
 
 /**
  * Reads and commits one batch. Returns how many entries were acknowledged.
- * Failures leave entries pending so a retry replays them (at-least-once).
+ * Failures leave entries pending so a retry replays them (at-least-once), until
+ * the delivery ceiling is reached — then the entry is quarantined to the DLQ and
+ * acknowledged so a poison scan cannot stall the stream (and every session) with it.
  */
 export async function drainOnce(deps: DrainerDeps): Promise<DrainResult> {
+  // Retries scheduled by an earlier failure come first: they are already
+  // accounted for in the PEL, so leaving them behind new traffic would grow the
+  // oldest-pending age the request path uses for backpressure.
+  const retried = await processDueRetries(deps)
   const entries = await deps.redis.xreadgroup(
     'GROUP',
     deps.group,
@@ -259,7 +294,204 @@ export async function drainOnce(deps: DrainerDeps): Promise<DrainResult> {
     deps.startId ?? '>',
   )
   const messages = parseMessages(Array.isArray(entries) ? (entries[0] as unknown[])?.[1] : [])
-  return commitMessages(deps, messages)
+  const fresh = await commitMessages(deps, messages)
+  return {
+    read: retried.read + fresh.read,
+    acked: retried.acked + fresh.acked,
+    written: retried.written + fresh.written,
+    duplicates: retried.duplicates + fresh.duplicates,
+    failed: retried.failed + fresh.failed,
+    deadLettered: retried.deadLettered + fresh.deadLettered,
+  }
+}
+
+/**
+ * Exponential backoff between delivery attempts: 500 ms, 1 s, 2 s, 4 s, then a
+ * 5 s ceiling. The cap bounds how long a transient outage can hide a scan while
+ * still giving Postgres time to recover between attempts.
+ */
+function retryDelayMs(attempts: number): number {
+  return Math.min(500 * 2 ** Math.max(0, attempts - 1), 5_000)
+}
+
+/**
+ * Re-delivers this consumer's own scheduled retries whose backoff has elapsed,
+ * then commits them. Claiming rather than reading removes the need to remember
+ * payloads: XCLAIM also bumps the delivery count the quarantine decision uses,
+ * and entries trimmed or acknowledged elsewhere simply come back empty.
+ */
+async function processDueRetries(deps: DrainerDeps): Promise<DrainResult> {
+  const aggregate: DrainResult = { read: 0, acked: 0, written: 0, duplicates: 0, failed: 0, deadLettered: 0 }
+  const retryState = deps.retryState
+  if (!retryState || retryState.size === 0) return aggregate
+  const now = deps.now ? deps.now() : Date.now()
+  for (const [sessionId, state] of [...retryState]) {
+    if (state.nextAttemptAt > now) continue
+    if (state.ids.length === 0) {
+      retryState.delete(sessionId)
+      continue
+    }
+    // min-idle 0 is deliberate: the idle clock is not our schedule — a failed
+    // entry may be only milliseconds old when its backoff expires.
+    const reply = await deps.redis.xclaim(deps.streamKey, deps.group, deps.consumer, 0, ...state.ids)
+    const messages = parseMessages(reply)
+    if (messages.length === 0) {
+      retryState.delete(sessionId)
+      continue
+    }
+    const result = await commitMessages(deps, messages)
+    aggregate.read += result.read
+    aggregate.acked += result.acked
+    aggregate.written += result.written
+    aggregate.duplicates += result.duplicates
+    aggregate.failed += result.failed
+    aggregate.deadLettered += result.deadLettered
+  }
+  return aggregate
+}
+
+/**
+ * Reads each failed entry's PEL delivery count in ONE round trip. Redis keeps
+ * that count durably (it survives a restart, unlike an in-process counter), so
+ * it is the authoritative attempt number; the retry schedule is only a pacing
+ * hint layered on top.
+ */
+async function deliveryCounts(deps: DrainerDeps, ids: string[]): Promise<Map<string, number>> {
+  const counts = new Map<string, number>()
+  if (ids.length === 0) return counts
+  const pipeline = deps.redis.pipeline()
+  for (const id of ids) pipeline.xpending(deps.streamKey, deps.group, id, id, 1)
+  const replies = await pipeline.exec()
+  if (!replies) return counts
+  replies.forEach((reply, index) => {
+    const id = ids[index]
+    if (!id) return
+    const [commandError, result] = reply
+    if (commandError || !Array.isArray(result)) return
+    // Detail form: [[id, consumer, idleMs, deliveries]]; empty once the entry
+    // left the PEL (acked by another consumer), in which case 0 is correct.
+    const detail = result[0]
+    if (!Array.isArray(detail)) return
+    const deliveries = Number(detail[3])
+    if (Number.isFinite(deliveries)) counts.set(id, deliveries)
+  })
+  return counts
+}
+
+/**
+ * Quarantines never-committable entries to the dead-letter stream, one XADD per
+ * entry, then lets the caller acknowledge them. The entry is copied verbatim
+ * (`payload`) so an operator can re-enqueue a repaired scan; the rest is audit
+ * metadata — why it died, where it came from, and how many deliveries it took.
+ */
+async function quarantine(
+  deps: DrainerDeps,
+  sessionId: string,
+  message: StreamMessage,
+  error: unknown,
+  attempts: number,
+): Promise<void> {
+  const scan = message.scan
+  if (!scan) return
+  const reason = error instanceof Error ? error.message : String(error)
+  await deps.redis.xadd(
+    deps.dlqKey,
+    '*',
+    'payload',
+    JSON.stringify(scan),
+    'originalId',
+    message.id,
+    'sessionId',
+    sessionId,
+    'userId',
+    scan.userId,
+    'error',
+    reason,
+    'failedAt',
+    new Date(deps.now ? deps.now() : Date.now()).toISOString(),
+    'attempts',
+    String(attempts),
+  )
+}
+
+async function commitMessages(deps: DrainerDeps, messages: StreamMessage[]): Promise<DrainResult> {
+  const { writer, streamKey, group, retryState } = deps
+  const result: DrainResult = { read: 0, acked: 0, written: 0, duplicates: 0, failed: 0, deadLettered: 0 }
+  if (messages.length === 0) return result
+  result.read = messages.length
+
+  const malformed = messages.filter((message) => !message.scan).map((message) => message.id)
+  const bySession = new Map<string, StreamMessage[]>()
+  for (const message of messages) {
+    if (!message.scan) continue
+    const list = bySession.get(message.scan.sessionId) ?? []
+    list.push(message)
+    bySession.set(message.scan.sessionId, list)
+  }
+
+  const acknowledged: string[] = [...malformed]
+
+  // Distinct sessions are independent transactions; running a bounded number in
+  // parallel keeps the drainer ahead of ingest. Within one session the batch is
+  // still a single advisory-locked transaction in stream order.
+  const queue = [...bySession.entries()]
+  const runSession = async ([sessionId, batch]: [string, StreamMessage[]]) => {
+    try {
+      const committed = await writer.writeBatch(
+        sessionId,
+        batch.map((message) => message.scan),
+      )
+      result.written += committed.written
+      result.duplicates += committed.duplicates
+      for (const message of batch) acknowledged.push(message.id)
+      retryState?.delete(sessionId)
+      if (deps.publish) await deps.publish(sessionId, batch.map((message) => message.scan))
+    } catch (error) {
+      // A missing session row or a constraint rejection is fatal on every retry;
+      // a transport/deadlock error is not. Either way the PEL delivery count
+      // decides how many times we are still willing to try.
+      const permanent = error instanceof PermanentWriteError
+      const attemptsById = await deliveryCounts(
+        deps,
+        batch.map((message) => message.id),
+      )
+      const retryIds: string[] = []
+      let maxAttempts = 0
+      for (const message of batch) {
+        const attempts = Math.max(1, attemptsById.get(message.id) ?? 0)
+        maxAttempts = Math.max(maxAttempts, attempts)
+        if (permanent || attempts >= deps.maxDeliveryAttempts) {
+          await quarantine(deps, sessionId, message, error, attempts)
+          // XACK removes it from the PEL, so its age stops feeding the
+          // campus-wide 503 backpressure guard.
+          acknowledged.push(message.id)
+          result.deadLettered += 1
+        } else {
+          retryIds.push(message.id)
+        }
+      }
+      if (retryIds.length > 0) {
+        result.failed += 1
+        retryState?.set(sessionId, { ids: retryIds, nextAttemptAt: (deps.now ? deps.now() : Date.now()) + retryDelayMs(maxAttempts) })
+      } else {
+        retryState?.delete(sessionId)
+      }
+      // Never swallow this: a silent per-session failure looks exactly like
+      // "the drainer ran and found nothing", and the rows just stay pending.
+      console.error(
+        `[ingest] batch write failed for session ${sessionId}:`,
+        error instanceof Error ? error.message : error,
+      )
+    }
+  }
+  const workers = Array.from({ length: Math.min(deps.concurrency ?? 1, queue.length) }, async () => {
+    for (let next = queue.shift(); next !== undefined; next = queue.shift()) await runSession(next)
+  })
+  await Promise.all(workers)
+
+  if (acknowledged.length > 0) await deps.redis.xack(streamKey, group, ...acknowledged)
+  result.acked = acknowledged.length
+  return result
 }
 
 /**
@@ -284,53 +516,3 @@ export async function claimStale(deps: DrainerDeps, minIdleMs: number): Promise<
   return commitMessages(deps, messages)
 }
 
-async function commitMessages(deps: DrainerDeps, messages: StreamMessage[]): Promise<DrainResult> {
-  const { writer, streamKey, group } = deps
-  if (messages.length === 0) return { read: 0, acked: 0, written: 0, duplicates: 0, failed: 0 }
-
-  const malformed = messages.filter((message) => !message.scan).map((message) => message.id)
-  const bySession = new Map<string, StreamMessage[]>()
-  for (const message of messages) {
-    if (!message.scan) continue
-    const list = bySession.get(message.scan.sessionId) ?? []
-    list.push(message)
-    bySession.set(message.scan.sessionId, list)
-  }
-
-  let written = 0
-  let duplicates = 0
-  let failed = 0
-  const acknowledged: string[] = [...malformed]
-
-  // Distinct sessions are independent transactions; running a bounded number in
-  // parallel keeps the drainer ahead of ingest. Within one session the batch is
-  // still a single advisory-locked transaction in stream order.
-  const queue = [...bySession.entries()]
-  const runSession = async ([sessionId, batch]: [string, StreamMessage[]]) => {
-    try {
-      const result = await writer.writeBatch(
-        sessionId,
-        batch.map((message) => message.scan),
-      )
-      written += result.written
-      duplicates += result.duplicates
-      for (const message of batch) acknowledged.push(message.id)
-      if (deps.publish) await deps.publish(sessionId, batch.map((message) => message.scan))
-    } catch (error) {
-      failed += 1
-      // Never swallow this: a silent per-session failure looks exactly like
-      // "the drainer ran and found nothing", and the rows just stay pending.
-      console.error(
-        `[ingest] batch write failed for session ${sessionId}:`,
-        error instanceof Error ? error.message : error,
-      )
-    }
-  }
-  const workers = Array.from({ length: Math.min(deps.concurrency ?? 1, queue.length) }, async () => {
-    for (let next = queue.shift(); next !== undefined; next = queue.shift()) await runSession(next)
-  })
-  await Promise.all(workers)
-
-  if (acknowledged.length > 0) await deps.redis.xack(streamKey, group, ...acknowledged)
-  return { read: messages.length, acked: acknowledged.length, written, duplicates, failed }
-}

@@ -156,9 +156,9 @@ async function main() {
     body: { ...scanPayload, clientAttemptId: `e2e-dup-${randomUUID()}` },
   })
   check(
-    'duplicate replay is acknowledged, not a 5xx',
-    duplicate.status < 500,
-    `status=${duplicate.status} decision=${duplicate.json?.status}`,
+    'duplicate replay is rejected at the gateway with the duplicate envelope',
+    duplicate.status === 200 && duplicate.json?.reason === 'duplicate',
+    `status=${duplicate.status} reason=${duplicate.json?.reason ?? '-'}`,
   )
 
   // 6. Let the drainer commit, then assert the row + hash chain in Postgres.

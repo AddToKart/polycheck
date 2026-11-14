@@ -93,6 +93,31 @@ export const ingestConfigSchema = z.object({
 
   /** Drainer health: a tick older than this marks the drainer `stalled`. */
   INGEST_DRAIN_HEALTH_STALE_SECONDS: z.coerce.number().int().min(1).default(30),
+
+  /**
+   * Deliveries before a poison message is quarantined to the DLQ. A message
+   * that can never commit (deleted session, FK/enum violation) must not keep
+   * the request path in backpressure: after this many failed deliveries it is
+   * copied to the dead-letter stream and acked from the live stream.
+   */
+  INGEST_MAX_DELIVERY_ATTEMPTS: z.coerce.number().int().min(1).max(100).default(5),
+
+  /**
+   * Dead-letter stream. Ingest-only (the NestJS fallback drainer never reads
+   * it); entries are inspected with XRANGE and replayed manually after a fix.
+   * The `polycheck:ingest:` prefix keeps one namespace for every ingest key.
+   */
+  INGEST_DLQ_STREAM_KEY: z.string().default('polycheck:ingest:dead-letter'),
+
+  /**
+   * Request-path dedupe reservation TTL. Fixed 24 h rather than "session
+   * lifespan": the snapshot carries no lifespan fields, and deriving one would
+   * add a lookup to the hot path. Covers the practical live-replay horizon.
+   */
+  INGEST_DEDUPE_TTL_SECONDS: z.coerce.number().int().min(60).default(86_400),
+
+  /** Reservation key namespace: `<prefix><sessionId>:<userId>`. */
+  INGEST_DEDUPE_KEY_PREFIX: z.string().default('polycheck:ingest:dedupe:'),
 })
 
 export type IngestConfig = z.infer<typeof ingestConfigSchema>

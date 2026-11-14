@@ -19,7 +19,10 @@ services:
   redis:
     image: redis:7.4-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    # everysec leaves a ~1 s loss window on power loss; REDIS_AOF_FSYNC=always
+    # closes it at one fsync per write (measure on staging). A replicated
+    # standby covers instance loss and is the complementary layer.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "${REDIS_AOF_FSYNC:-everysec}"]
     volumes:
       - redis-data:/data
     healthcheck:

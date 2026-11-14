@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type Redis from 'ioredis'
+import { createSigningKeyPair, signQRToken } from '@polycheck/shared'
 import { buildServer, type IngestDeps } from '../src/http'
 import { createMetrics } from '../src/metrics'
 import { testConfig } from './config-fixture'
@@ -7,6 +8,8 @@ import { testConfig } from './config-fixture'
 const config = testConfig
 
 const token = 'a'.repeat(90)
+
+const keys = createSigningKeyPair(new Uint8Array(32).fill(21))
 
 const snapshot = {
   id: 'sess-1',
@@ -18,6 +21,39 @@ const snapshot = {
   geofenceLongitude: 120.9991,
   geofenceRadiusMeters: 100,
 }
+
+/** A token the route can actually validate: issued now, inside the window. */
+const signToken = (overrides: Record<string, unknown> = {}): string =>
+  signQRToken(
+    {
+      version: 1,
+      sessionId: 'sess-1',
+      sectionId: 'sec-1',
+      teacherId: 'teacher-1',
+      teacherName: 'Prof',
+      issuedAt: Date.now(),
+      validityMinutes: 15,
+      gracePeriodMinutes: 10,
+      mode: 'in_person',
+      pinRequired: false,
+      ...overrides,
+    } as never,
+    keys.secretKey,
+  )
+
+/** Envelope that passes every gate, so `validation.success` is reachable. */
+const acceptedScan = () => ({
+  sessionId: 'sess-1',
+  qrToken: signToken(),
+  lat: 14.86975,
+  lon: 120.99915,
+  accuracyMeters: 12,
+  locationCapturedAt: new Date().toISOString(),
+  deviceId: 'mobile-abc',
+  inputChannel: 'camera' as const,
+  clientAttemptId: 'attempt-1',
+  mocked: false,
+})
 
 function makeDeps(overrides: Partial<IngestDeps> = {}) {
   const redis = {
@@ -44,6 +80,9 @@ function makeDeps(overrides: Partial<IngestDeps> = {}) {
     }),
     resolveUser: vi.fn().mockResolvedValue({ user: { id: 'student-1', role: 'student', privacyConsent: true } }),
     consumePinAttempt: vi.fn().mockResolvedValue(true),
+    reserveScan: vi.fn().mockResolvedValue(true),
+    releaseScan: vi.fn().mockResolvedValue(undefined),
+    dlqDepth: vi.fn().mockResolvedValue(0),
     metrics: createMetrics(),
     ...overrides,
   }
@@ -209,6 +248,116 @@ describe('ingest HTTP surface', () => {
     expect(body).toHaveProperty('status')
     expect(body).toHaveProperty('success')
     expect(appended.length).toBe(body.success ? 1 : 0)
+    // Reservations gate buffering only: a rejected scan never touches the
+    // dedupe key, otherwise a bad token would lock the student out of retrying.
+    expect(deps.reserveScan).not.toHaveBeenCalled()
+    await app.close()
+  })
+
+  it('claims the dedupe key once and buffers the first accepted scan', async () => {
+    const { deps, appended } = makeDeps({
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/scan',
+      headers: { authorization: 'Bearer x' },
+      payload: acceptedScan(),
+    })
+    expect(response.statusCode).toBe(201)
+    expect(JSON.parse(response.body).success).toBe(true)
+    expect(appended).toHaveLength(1)
+    expect(deps.metrics.scansAccepted).toBe(1)
+    expect(deps.reserveScan).toHaveBeenCalledTimes(1)
+    expect(deps.reserveScan).toHaveBeenCalledWith('sess-1', 'student-1', config.INGEST_DEDUPE_TTL_SECONDS)
+    await app.close()
+  })
+
+  it('answers the duplicate envelope for a second scan and buffers nothing', async () => {
+    const reserveScan = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    const { deps, appended } = makeDeps({
+      reserveScan,
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const send = () =>
+      app.inject({
+        method: 'POST',
+        url: '/attendance/scan',
+        headers: { authorization: 'Bearer x' },
+        payload: acceptedScan(),
+      })
+
+    expect((await send()).statusCode).toBe(201)
+    const second = await send()
+
+    expect(second.statusCode).toBe(200)
+    expect(JSON.parse(second.body)).toEqual({
+      success: false,
+      reason: 'duplicate',
+      message: 'Attendance was already submitted for this session',
+    })
+    expect(appended).toHaveLength(1)
+    expect(deps.metrics.scansDuplicate).toBe(1)
+    // The duplicate is not an acceptance: only the first scan counted.
+    expect(deps.metrics.scansAccepted).toBe(1)
+    await app.close()
+  })
+
+  it('answers a retryable 503 without buffering when the dedupe key cannot be claimed', async () => {
+    const { deps, appended } = makeDeps({
+      reserveScan: vi.fn().mockRejectedValue(new Error('redis down')),
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/scan',
+      headers: { authorization: 'Bearer x' },
+      payload: acceptedScan(),
+    })
+    expect(response.statusCode).toBe(503)
+    expect(response.headers['retry-after']).toBe('2')
+    expect(JSON.parse(response.body)).toMatchObject({ message: 'Ingestion temporarily unavailable' })
+    expect(appended).toHaveLength(0)
+    // Not accepted and not rejected — the request has to be retried.
+    expect(deps.metrics.scansAccepted).toBe(0)
+    await app.close()
+  })
+
+  it('releases the reservation when buffering fails so the retry is not a false duplicate', async () => {
+    const { deps, appended } = makeDeps({
+      appendScan: vi.fn().mockRejectedValue(new Error('XADD failed')),
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/scan',
+      headers: { authorization: 'Bearer x' },
+      payload: acceptedScan(),
+    })
+    expect(response.statusCode).toBe(500)
+    expect(appended).toHaveLength(0)
+    expect(deps.releaseScan).toHaveBeenCalledTimes(1)
+    expect(deps.releaseScan).toHaveBeenCalledWith('sess-1', 'student-1')
     await app.close()
   })
 
@@ -231,7 +380,7 @@ describe('ingest HTTP surface', () => {
   })
 
   it('exposes Prometheus metrics with the ingest counters', async () => {
-    const { deps } = makeDeps()
+    const { deps } = makeDeps({ dlqDepth: vi.fn().mockResolvedValue(3) })
     const app = buildServer(deps)
     const response = await app.inject({ method: 'GET', url: '/metrics' })
     expect(response.statusCode).toBe(200)
@@ -239,6 +388,7 @@ describe('ingest HTTP surface', () => {
     expect(response.body).toContain('ingest_scans_accepted_total')
     expect(response.body).toContain('ingest_buffer_depth')
     expect(response.body).toContain('ingest_stream_length')
+    expect(response.body).toContain('ingest_dlq_depth 3')
     expect(response.body).toContain('ingest_ready 1')
     await app.close()
   })

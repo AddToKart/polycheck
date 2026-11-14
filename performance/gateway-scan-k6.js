@@ -1,6 +1,7 @@
 import http from 'k6/http'
 import { check } from 'k6'
 import { SharedArray } from 'k6/data'
+import exec from 'k6/execution'
 
 const targets = new SharedArray('targets', function () {
   return JSON.parse(open('./.gateway-k6-targets.json'))
@@ -25,7 +26,11 @@ export const options = {
 }
 
 export default function () {
-  const index = __ITER
+  // `__ITER` is VU-local: under `shared-iterations` every VU restarts at 0, so
+  // using it as the target index replayed the first N targets for the whole run
+  // and never exercised the remaining sessions. `scenario.iterationInTest` is
+  // unique across VUs, so each prepared target is scanned exactly once.
+  const index = exec.scenario.iterationInTest
   const target = targets[index]
   if (!target) return
 
@@ -54,10 +59,12 @@ export default function () {
 
   check(res, {
     'status is 201 or 200': (r) => r.status === 201 || r.status === 200,
+    // After dedupe a replayed scan is a deliberate 200 {success:false,
+    // reason:'duplicate'} acknowledgement, not a failure.
     'success is true': (r) => {
       try {
         const body = JSON.parse(r.body)
-        return body && body.success !== false
+        return Boolean(body) && (body.success !== false || body.reason === 'duplicate')
       } catch {
         return false
       }

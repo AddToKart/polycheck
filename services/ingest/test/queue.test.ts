@@ -6,8 +6,10 @@ import {
   drainOnce,
   pendingSummary,
   summarizePending,
+  PermanentWriteError,
   type AttendanceWriter,
   type BufferedScan,
+  type DrainerDeps,
 } from '../src/queue'
 
 const scan = (overrides: Partial<BufferedScan> = {}): BufferedScan => ({
@@ -23,18 +25,91 @@ const scan = (overrides: Partial<BufferedScan> = {}): BufferedScan => ({
   ...overrides,
 })
 
+interface FakeStreamEntry {
+  id: string
+  fields: string[]
+}
+
 function fakeRedis(entries: Array<[string, BufferedScan | null]>) {
   const acked: string[] = []
-  const fields = entries.map(([id, value]) => [id, ['payload', value === null ? '{bad' : JSON.stringify(value)]])
-  const redis = {
-    xreadgroup: vi.fn().mockResolvedValue([['ingest:scans', fields]]),
-    xack: vi.fn(async (_key: string, _group: string, ...ids: string[]) => {
-      acked.push(...ids)
-      return ids.length
-    }),
+  const added: Array<{ key: string; args: string[] }> = []
+  const claimed: string[][] = []
+  const stream: FakeStreamEntry[] = entries.map(([id, value]) => ({
+    id,
+    fields: ['payload', value === null ? '{bad' : JSON.stringify(value)],
+  }))
+  // Mirrors the parts of the PEL this code depends on: XREADGROUP inserts an
+  // entry with delivery count 1, XCLAIM bumps it, XACK removes it, and the
+  // detail form of XPENDING reports it.
+  const pending = new Map<string, number>()
+  let undelivered = [...stream]
+
+  const xpending = vi.fn(async (...args: unknown[]) => {
+    if (args.length <= 2) {
+      const ids = [...pending.keys()]
+      if (ids.length === 0) return [0, null, null, null]
+      return [ids.length, ids[0], ids[ids.length - 1], [['c', String(ids.length)]]]
+    }
+    const start = String(args[2])
+    const deliveries = pending.get(start)
+    return deliveries === undefined ? [] : [[start, 'c', 0, deliveries]]
+  })
+
+  const xreadgroup = vi.fn(async () => {
+    if (undelivered.length === 0) return null
+    const batch = undelivered
+    undelivered = []
+    for (const entry of batch) pending.set(entry.id, (pending.get(entry.id) ?? 0) + 1)
+    return [['ingest:scans', batch.map((entry) => [entry.id, entry.fields])]]
+  })
+
+  const xclaim = vi.fn(async (...args: unknown[]) => {
+    const ids = args.slice(4).map(String)
+    claimed.push(ids)
+    const found = stream.filter((entry) => ids.includes(entry.id) && pending.has(entry.id))
+    for (const entry of found) pending.set(entry.id, (pending.get(entry.id) ?? 0) + 1)
+    return found.map((entry) => [entry.id, entry.fields])
+  })
+
+  const xack = vi.fn(async (_key: string, _group: string, ...ids: string[]) => {
+    for (const id of ids) pending.delete(id)
+    acked.push(...ids)
+    return ids.length
+  })
+
+  const xadd = vi.fn(async (key: string, ...args: string[]) => {
+    added.push({ key, args })
+    return `${stream.length + 1}-0`
+  })
+
+  const buffered: Array<() => Promise<unknown>> = []
+  const pipelineApi = {
+    xpending: (...args: unknown[]) => {
+      buffered.push(() => xpending(...args))
+      return pipelineApi
+    },
+    exec: async () => {
+      const replies: Array<[Error | null, unknown]> = []
+      for (const command of buffered.splice(0)) {
+        try {
+          replies.push([null, await command()])
+        } catch (error) {
+          replies.push([error instanceof Error ? error : new Error(String(error)), null])
+        }
+      }
+      return replies
+    },
   }
-  // Test double: it implements only the two commands drainOnce touches.
-  return { redis: redis as unknown as Redis, acked, spy: redis }
+
+  const redis = {
+    xreadgroup,
+    xack,
+    xadd,
+    xclaim,
+    xpending,
+    pipeline: vi.fn(() => pipelineApi),
+  }
+  return { redis: redis as unknown as Redis, acked, added, claimed, spy: redis }
 }
 
 const drainerStub = { writeBatch: vi.fn() }
@@ -43,6 +118,18 @@ function makeWriter(result = { written: 0, duplicates: 0 }): AttendanceWriter {
   drainerStub.writeBatch.mockReset()
   drainerStub.writeBatch.mockResolvedValue(result)
   return drainerStub as unknown as AttendanceWriter
+}
+
+function baseDeps(overrides: Partial<DrainerDeps> & Pick<DrainerDeps, 'redis' | 'writer'>): DrainerDeps {
+  return {
+    streamKey: 'ingest:scans',
+    group: 'g',
+    consumer: 'c',
+    batchMax: 10,
+    dlqKey: 'ingest:dead-letter',
+    maxDeliveryAttempts: 5,
+    ...overrides,
+  }
 }
 
 describe('drainOnce', () => {
@@ -54,14 +141,7 @@ describe('drainOnce', () => {
     ])
     const writer = makeWriter({ written: 1, duplicates: 0 })
 
-    const result = await drainOnce({
-      redis,
-      writer,
-      streamKey: 'ingest:scans',
-      group: 'g',
-      consumer: 'c',
-      batchMax: 10,
-    })
+    const result = await drainOnce(baseDeps({ redis, writer }))
 
     expect(result.read).toBe(3)
     expect(result.written).toBe(2)
@@ -81,7 +161,7 @@ describe('drainOnce', () => {
       .mockRejectedValueOnce(new Error('db down'))
     const writer = drainerStub as unknown as AttendanceWriter
 
-    const result = await drainOnce({ redis, writer, streamKey: 'ingest:scans', group: 'g', consumer: 'c', batchMax: 10 })
+    const result = await drainOnce(baseDeps({ redis, writer }))
 
     expect(result.duplicates).toBe(1)
     expect(result.failed).toBe(1)
@@ -91,7 +171,7 @@ describe('drainOnce', () => {
     const { redis, spy } = fakeRedis([['1-0', scan()]])
     const writer = makeWriter({ written: 1, duplicates: 0 })
 
-    await drainOnce({ redis, writer, streamKey: 'ingest:scans', group: 'g', consumer: 'c', batchMax: 10, startId: '0' })
+    await drainOnce(baseDeps({ redis, writer, startId: '0' }))
 
     expect(spy.xreadgroup.mock.calls[0]?.at(-1)).toBe('0')
   })
@@ -111,21 +191,11 @@ describe('drainOnce', () => {
     }
     const writer = makeWriter({ written: 1, duplicates: 0 })
 
-    const result = await claimStale(
-      {
-        redis: redis as unknown as Redis,
-        writer,
-        streamKey: 'ingest:scans',
-        group: 'g',
-        consumer: 'c',
-        batchMax: 10,
-      },
-      30_000,
-    )
+    const result = await claimStale(baseDeps({ redis: redis as unknown as Redis, writer }), 30_000)
 
     expect(redis.xautoclaim).toHaveBeenCalledWith('ingest:scans', 'g', 'c', 30_000, '0-0', 'COUNT', 10)
     expect(drainerStub.writeBatch).toHaveBeenCalledWith('sess-9', expect.any(Array))
-    expect(result).toEqual({ read: 1, acked: 1, written: 1, duplicates: 0, failed: 0 })
+    expect(result).toEqual({ read: 1, acked: 1, written: 1, duplicates: 0, failed: 0, deadLettered: 0 })
     expect(acked).toEqual(['9-0'])
   })
 
@@ -136,19 +206,9 @@ describe('drainOnce', () => {
     }
     const writer = makeWriter()
 
-    const result = await claimStale(
-      {
-        redis: redis as unknown as Redis,
-        writer,
-        streamKey: 'ingest:scans',
-        group: 'g',
-        consumer: 'c',
-        batchMax: 10,
-      },
-      30_000,
-    )
+    const result = await claimStale(baseDeps({ redis: redis as unknown as Redis, writer }), 30_000)
 
-    expect(result).toEqual({ read: 0, acked: 0, written: 0, duplicates: 0, failed: 0 })
+    expect(result).toEqual({ read: 0, acked: 0, written: 0, duplicates: 0, failed: 0, deadLettered: 0 })
     expect(redis.xack).not.toHaveBeenCalled()
   })
 
@@ -160,15 +220,7 @@ describe('drainOnce', () => {
     ])
     const writer = makeWriter({ written: 1, duplicates: 0 })
 
-    const result = await drainOnce({
-      redis,
-      writer,
-      streamKey: 'ingest:scans',
-      group: 'g',
-      consumer: 'c',
-      batchMax: 10,
-      concurrency: 3,
-    })
+    const result = await drainOnce(baseDeps({ redis, writer, concurrency: 3 }))
 
     expect(drainerStub.writeBatch).toHaveBeenCalledTimes(3)
     expect(result.acked).toBe(3)
@@ -182,7 +234,7 @@ describe('drainOnce', () => {
     ])
     const writer = makeWriter({ written: 1, duplicates: 0 })
 
-    await drainOnce({ redis, writer, streamKey: 'ingest:scans', group: 'g', consumer: 'c', batchMax: 10 })
+    await drainOnce(baseDeps({ redis, writer }))
 
     expect(drainerStub.writeBatch).toHaveBeenCalledTimes(1)
     expect(acked).toContain('1-0')
@@ -197,10 +249,143 @@ describe('drainOnce', () => {
     drainerStub.writeBatch.mockRejectedValueOnce(new Error('db down')).mockResolvedValueOnce({ written: 1, duplicates: 0 })
     const writer = drainerStub as unknown as AttendanceWriter
 
-    await drainOnce({ redis, writer, streamKey: 'ingest:scans', group: 'g', consumer: 'c', batchMax: 10 })
+    await drainOnce(baseDeps({ redis, writer }))
 
     expect(acked).not.toContain('1-0')
     expect(acked).toContain('2-0')
+  })
+
+  it('quarantines a transient failure that outlives the delivery ceiling', async () => {
+    const { redis, acked, added } = fakeRedis([['1-0', scan()]])
+    let nowMs = 0
+    drainerStub.writeBatch.mockReset()
+    drainerStub.writeBatch.mockRejectedValue(new Error('db down'))
+    const writer = drainerStub as unknown as AttendanceWriter
+    const retryState = new Map<string, { ids: string[]; nextAttemptAt: number }>()
+    const deps = baseDeps({ redis, writer, retryState, now: () => nowMs })
+
+    // Attempts 1..4 are transient: the entry stays pending, unacknowledged.
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      const result = await drainOnce(deps)
+      expect(result.deadLettered).toBe(0)
+      expect(acked).not.toContain('1-0')
+      expect(retryState.get('sess-1')?.ids).toEqual(['1-0'])
+      nowMs = retryState.get('sess-1')!.nextAttemptAt
+    }
+    expect(added).toHaveLength(0)
+
+    const result = await drainOnce(deps)
+
+    expect(result.deadLettered).toBe(1)
+    expect(result.acked).toBe(1)
+    expect(retryState.has('sess-1')).toBe(false)
+    expect(acked).toContain('1-0')
+    expect(added).toEqual([
+      {
+        key: 'ingest:dead-letter',
+        args: [
+          '*',
+          'payload',
+          JSON.stringify(scan()),
+          'originalId',
+          '1-0',
+          'sessionId',
+          'sess-1',
+          'userId',
+          'student-1',
+          'error',
+          'db down',
+          'failedAt',
+          expect.any(String),
+          'attempts',
+          '5',
+        ],
+      },
+    ])
+  })
+
+  it('quarantines a permanent write failure on the first delivery', async () => {
+    const { redis, acked, added } = fakeRedis([['1-0', scan()]])
+    drainerStub.writeBatch.mockReset()
+    drainerStub.writeBatch.mockRejectedValue(new PermanentWriteError('session sess-1 disappeared before commit'))
+    const writer = drainerStub as unknown as AttendanceWriter
+    const retryState = new Map<string, { ids: string[]; nextAttemptAt: number }>()
+
+    const result = await drainOnce(baseDeps({ redis, writer, retryState }))
+
+    expect(result.deadLettered).toBe(1)
+    expect(result.failed).toBe(0)
+    expect(retryState.size).toBe(0)
+    expect(drainerStub.writeBatch).toHaveBeenCalledTimes(1)
+    expect(acked).toEqual(['1-0'])
+    expect(added[0]?.args).toContain('session sess-1 disappeared before commit')
+    expect(added[0]?.args.at(-1)).toBe('1')
+  })
+
+  it('drains a healthy session while another session is quarantined', async () => {
+    const { redis, acked } = fakeRedis([
+      ['1-0', scan()],
+      ['2-0', scan({ sessionId: 'sess-2' })],
+    ])
+    drainerStub.writeBatch.mockReset()
+    drainerStub.writeBatch.mockImplementation(async (sessionId: string) => {
+      if (sessionId === 'sess-2') throw new PermanentWriteError('session sess-2 disappeared before commit')
+      return { written: 1, duplicates: 0 }
+    })
+    const writer = drainerStub as unknown as AttendanceWriter
+
+    const result = await drainOnce(baseDeps({ redis, writer }))
+
+    expect(result.written).toBe(1)
+    expect(result.deadLettered).toBe(1)
+    expect(acked.sort()).toEqual(['1-0', '2-0'])
+    // The XACK that follows quarantine empties the PEL, so lag (and the 503
+    // backpressure guard that reads it) returns to zero.
+    expect(await pendingSummary(redis, 'ingest:scans', 'g', 0)).toEqual({ count: 0, oldestId: null, lagSeconds: 0 })
+  })
+
+  it('takes the delivery ceiling from deps', async () => {
+    const { redis, acked, added } = fakeRedis([['1-0', scan()]])
+    let nowMs = 0
+    drainerStub.writeBatch.mockReset()
+    drainerStub.writeBatch.mockRejectedValue(new Error('db down'))
+    const writer = drainerStub as unknown as AttendanceWriter
+    const retryState = new Map<string, { ids: string[]; nextAttemptAt: number }>()
+    const deps = baseDeps({ redis, writer, retryState, now: () => nowMs, maxDeliveryAttempts: 2 })
+
+    await drainOnce(deps)
+    expect(acked).toHaveLength(0)
+    nowMs = retryState.get('sess-1')!.nextAttemptAt
+
+    const result = await drainOnce(deps)
+
+    expect(result.deadLettered).toBe(1)
+    expect(acked).toEqual(['1-0'])
+    expect(added).toHaveLength(1)
+    expect(added[0]?.args.at(-1)).toBe('2')
+  })
+
+  it('does not reclaim a retry before its backoff elapses', async () => {
+    const { redis, acked, claimed } = fakeRedis([['1-0', scan()]])
+    let nowMs = 0
+    drainerStub.writeBatch.mockReset()
+    drainerStub.writeBatch.mockRejectedValue(new Error('db down'))
+    const writer = drainerStub as unknown as AttendanceWriter
+    const retryState = new Map<string, { ids: string[]; nextAttemptAt: number }>()
+    const deps = baseDeps({ redis, writer, retryState, now: () => nowMs })
+
+    await drainOnce(deps)
+    const scheduled = retryState.get('sess-1')!
+    expect(scheduled.nextAttemptAt).toBeGreaterThan(nowMs)
+    expect(claimed).toHaveLength(0)
+
+    nowMs = scheduled.nextAttemptAt - 1
+    const result = await drainOnce(deps)
+
+    expect(claimed).toHaveLength(0)
+    expect(acked).toHaveLength(0)
+    expect(result.read).toBe(0)
+    expect(result.failed).toBe(0)
   })
 
   it('does nothing when the stream is empty', async () => {
@@ -209,16 +394,8 @@ describe('drainOnce', () => {
       xack: vi.fn(),
     }
     const writer = makeWriter()
-    const result = await drainOnce({
-      // Test double: only xreadgroup/xack are reachable here.
-      redis: redis as unknown as Redis,
-      writer,
-      streamKey: 'ingest:scans',
-      group: 'g',
-      consumer: 'c',
-      batchMax: 10,
-    })
-    expect(result).toEqual({ read: 0, acked: 0, written: 0, duplicates: 0, failed: 0 })
+    const result = await drainOnce(baseDeps({ redis: redis as unknown as Redis, writer }))
+    expect(result).toEqual({ read: 0, acked: 0, written: 0, duplicates: 0, failed: 0, deadLettered: 0 })
     expect(writer.writeBatch).not.toHaveBeenCalled()
   })
 })

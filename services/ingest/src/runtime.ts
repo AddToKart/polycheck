@@ -221,6 +221,21 @@ export async function bootstrapHttp(config: IngestConfig, metrics: IngestMetrics
     probeHotPath: createHotPathProbe(redis, config),
     resolveUser: createAuthResolver(config, redis),
     consumePinAttempt: createPinAttemptConsumer(redis),
+    // SET NX is the atomic claim: two concurrent scans of the same session by
+    // the same student cannot both see "not reserved". Release on a failed
+    // append keeps a retry from being answered as a duplicate for the full TTL.
+    reserveScan: async (sessionId, userId, ttl) =>
+      (await redis.set(
+        `${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}`,
+        '1',
+        'EX',
+        ttl,
+        'NX',
+      )) === 'OK',
+    releaseScan: async (sessionId, userId) => {
+      await redis.del(`${config.INGEST_DEDUPE_KEY_PREFIX}${sessionId}:${userId}`)
+    },
+    dlqDepth: () => streamDepth(redis, config.INGEST_DLQ_STREAM_KEY),
     metrics,
   })
 
@@ -291,6 +306,7 @@ export async function bootstrapDrain(
     metrics.drainWritten += result.written
     metrics.drainDuplicates += result.duplicates
     metrics.drainFailures += result.failed
+    metrics.deadLetterTotal += result.deadLettered
     return result
   }
 
@@ -304,6 +320,14 @@ export async function bootstrapDrain(
     }
   }
 
+  /**
+   * Delivery bookkeeping for poison messages, keyed by stream entry id. ONE map
+   * per drainer process: a fresh map would reset every attempt counter on
+   * restart, so a message that kills the drainer would loop forever instead of
+   * eventually landing in the DLQ.
+   */
+  const retryState = new Map<string, { ids: string[]; nextAttemptAt: number }>()
+
   const drainerDeps = {
     redis,
     writer,
@@ -311,6 +335,9 @@ export async function bootstrapDrain(
     group,
     consumer,
     batchMax: config.INGEST_BATCH_MAX,
+    dlqKey: config.INGEST_DLQ_STREAM_KEY,
+    maxDeliveryAttempts: config.INGEST_MAX_DELIVERY_ATTEMPTS,
+    retryState,
     // Distinct sessions commit in parallel; bounded well below the pool so the
     // drainer never queues connections behind itself.
     concurrency: Math.max(1, Math.min(4, config.INGEST_DB_POOL_SIZE)),
@@ -406,9 +433,11 @@ export async function bootstrapDrain(
       metricsText: async () => {
         let pending = { count: 0, lagSeconds: 0 }
         let length = 0
+        let dlq = 0
         try {
           pending = await pendingSummary(redis, streamKey, group)
           length = await streamDepth(redis, streamKey)
+          dlq = await streamDepth(redis, config.INGEST_DLQ_STREAM_KEY)
         } catch (error) {
           console.error('[ingest] drain metrics: redis probe failed:', error instanceof Error ? error.message : error)
         }
@@ -416,6 +445,7 @@ export async function bootstrapDrain(
           bufferDepth: pending.count,
           streamLength: length,
           lagSeconds: pending.lagSeconds,
+          dlqDepth: dlq,
           ready: Date.now() - state.lastTickAt <= config.INGEST_DRAIN_HEALTH_STALE_SECONDS * 1_000,
         })
       },
@@ -468,9 +498,11 @@ async function runClusterPrimary(config: IngestConfig): Promise<void> {
       metricsText: async () => {
         let pending = { count: 0, lagSeconds: 0 }
         let length = 0
+        let dlq = 0
         try {
           pending = await pendingSummary(metricsRedisClient, config.INGEST_STREAM_KEY, config.INGEST_CONSUMER_GROUP)
           length = await streamDepth(metricsRedisClient, config.INGEST_STREAM_KEY)
+          dlq = await streamDepth(metricsRedisClient, config.INGEST_DLQ_STREAM_KEY)
         } catch (error) {
           console.error('[ingest] primary metrics: redis probe failed:', error instanceof Error ? error.message : error)
         }
@@ -478,6 +510,7 @@ async function runClusterPrimary(config: IngestConfig): Promise<void> {
           bufferDepth: pending.count,
           streamLength: length,
           lagSeconds: pending.lagSeconds,
+          dlqDepth: dlq,
           ready: liveCount() > 0,
         })
       },

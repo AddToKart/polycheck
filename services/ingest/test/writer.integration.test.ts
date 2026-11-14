@@ -18,6 +18,7 @@ import { createSigningKeyPair, signQRToken } from '@polycheck/shared'
 import { computeRecordHash } from '@polycheck/shared/ledger'
 import { createPgWriter } from '../src/writer'
 import type { AttendanceWriter, BufferedScan } from '../src/queue'
+import { PermanentWriteError } from '../src/queue'
 
 const databaseUrl = process.env.DATABASE_URL
 const describeDb = databaseUrl ? describe : describe.skip
@@ -256,5 +257,22 @@ describeDb('createPgWriter (Postgres integration)', () => {
     const [row] = await rowsForSession()
     expect(row!.status).toBe('absent')
     expect(row!.recordHash).toBeNull()
+  })
+
+  it('rejects with a permanent error when the session disappeared after accept', async () => {
+    // A session deleted between accept and commit can never succeed on replay;
+    // the drainer quarantines PermanentWriteError instead of retrying forever.
+    // Distinct date so the fixture session's unique (section, date, start, end)
+    // slot stays free for the rest of the suite.
+    const vanished = randomUUID()
+    await pool.query(
+      `INSERT INTO "Session"
+        (id, "sectionId", "teacherId", "subjectName", date, "startTime", "endTime", "qrValidityMinutes", "gracePeriodMinutes", "isActive")
+       VALUES ($1, $2, $3, 'Vanished Session', '2026-11-15', '09:00', '10:00', 15, 15, true)`,
+      [vanished, ids.section, ids.teacher],
+    )
+    await pool.query(`DELETE FROM "Session" WHERE id = $1`, [vanished])
+
+    await expect(writer.writeBatch(vanished, [scan(0, { sessionId: vanished })])).rejects.toBeInstanceOf(PermanentWriteError)
   })
 })

@@ -25,15 +25,23 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    # Memory caps model the 2-vCPU/8 GB staging box: each cap bounds a service's
+    # worst case so a leak OOM-kills the cgroup, not the host. They are ceilings,
+    # not reservations — steady-state usage sits far below them.
+    mem_limit: ${POSTGRES_MEM_LIMIT:-2g}
 
   redis:
     image: redis:7.4-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    # everysec leaves a ~1 s loss window on power loss; REDIS_AOF_FSYNC=always
+    # closes it at one fsync per write (measure on staging). A replicated
+    # standby covers instance loss and is the complementary layer.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "${REDIS_AOF_FSYNC:-everysec}"]
     volumes:
       - local-redis-data:/data
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    mem_limit: ${REDIS_MEM_LIMIT:-512m}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -97,6 +105,7 @@ services:
     # 2-core server profile: cap every service so a runaway request or benchmark
     # degrades itself instead of the host.
     cpus: ${SERVICE_CPU_LIMIT:-1.0}
+    mem_limit: ${SERVICE_MEM_LIMIT:-4g}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:4000/api/health/ready"]
       interval: 10s
@@ -187,6 +196,7 @@ services:
     ports:
       - "${INGEST_PORT:-4001}:4001"
     cpus: ${SERVICE_CPU_LIMIT:-1.0}
+    mem_limit: ${SERVICE_MEM_LIMIT:-4g}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4001/health/ready"]
       interval: 10s
@@ -225,6 +235,9 @@ services:
       INGEST_MAX_BUFFER: ${INGEST_MAX_BUFFER:-45000}
       INGEST_STREAM_MAXLEN: ${INGEST_STREAM_MAXLEN:-50000}
       LOG_LEVEL: info
+    # Same 2-vCPU/8 GB staging profile as the http role; the drainer's heap is
+    # dominated by micro-batch payloads, so cap it before the host notices.
+    mem_limit: ${SERVICE_MEM_LIMIT:-4g}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4002/health/ready"]
       interval: 10s

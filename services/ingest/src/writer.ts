@@ -24,6 +24,7 @@ import type { Pool } from 'pg'
 import { verifyQRTokenNative } from '@polycheck/shared/token-node'
 import { computeRecordHash, generateLedgerSalt } from '@polycheck/shared/ledger'
 import type { AttendanceWriter, BufferedScan } from './queue'
+import { PermanentWriteError } from './queue'
 
 interface ExistingRow {
   recordHash: string | null
@@ -189,7 +190,11 @@ export function createPgWriter(pool: Pool): AttendanceWriter {
           [sessionId],
         )
         const teacherId = session.rows[0]?.teacherId
-        if (!teacherId) throw new Error(`session ${sessionId} disappeared before commit`)
+        if (!teacherId) {
+          // The session was deleted after the gateway accepted the scan. No
+          // retry can recreate it, so quarantine rather than retry forever.
+          throw new PermanentWriteError(`session ${sessionId} disappeared before commit`)
+        }
 
         // Resolved once per batch, never per scan.
         const teacher = await client.query<{ teacherPublicKey: string | null }>(
@@ -327,6 +332,17 @@ export function createPgWriter(pool: Pool): AttendanceWriter {
         return { written: insertRows.length + claimRows.length, duplicates }
       } catch (error) {
         await client.query('ROLLBACK').catch(() => undefined)
+        const code = error !== null && typeof error === 'object' && 'code' in error ? error.code : undefined
+        // 23503 FK violation, 23514 CHECK violation, 22P02 invalid text/enum
+        // representation. Replaying the same rows cannot change any of them, so
+        // the whole batch is quarantined on the first delivery. A row-count
+        // mismatch is deliberately NOT in this list: it means a concurrent
+        // writer moved the partition, which a retry can fix.
+        if (typeof code === 'string' && (code === '23503' || code === '23514' || code === '22P02')) {
+          throw new PermanentWriteError(
+            `attendance batch rejected by Postgres (${code}): ${error instanceof Error ? error.message : String(error)}`,
+          )
+        }
         throw error
       } finally {
         client.release()

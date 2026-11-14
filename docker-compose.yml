@@ -139,10 +139,16 @@ services:
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       REDIS_MAXMEMORY: ${REDIS_MAXMEMORY:-768mb}
+      # The command below is expanded by the container shell ($$), so the value
+      # has to cross into the container env for the operator's .env to matter.
+      REDIS_AOF_FSYNC: ${REDIS_AOF_FSYNC:-everysec}
+    # everysec leaves a ~1 s loss window on power loss; REDIS_AOF_FSYNC=always
+    # closes it at one fsync per write (measure on staging). A replicated
+    # standby covers instance loss and is the complementary layer.
     command:
       - sh
       - -c
-      - exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}" --maxmemory "$${REDIS_MAXMEMORY}" --maxmemory-policy noeviction
+      - exec redis-server --appendonly yes --appendfsync "$${REDIS_AOF_FSYNC:-everysec}" --requirepass "$${REDIS_PASSWORD}" --maxmemory "$${REDIS_MAXMEMORY}" --maxmemory-policy noeviction
     volumes:
       - redis-data:/data
     networks:

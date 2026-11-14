@@ -72,6 +72,16 @@ export interface IngestDeps {
   probeHotPath: (sessionId: string) => Promise<HotPathProbe>
   resolveUser: (authorization: string | undefined) => Promise<AuthResolution>
   consumePinAttempt: (key: string, limit: number, windowMs: number) => Promise<boolean>
+  /**
+   * Atomically claims `(sessionId, userId)` for the dedupe TTL. Returns false
+   * when another request already holds the claim — the second scan is a
+   * duplicate and MUST NOT be buffered.
+   */
+  reserveScan: (sessionId: string, userId: string, ttlSeconds: number) => Promise<boolean>
+  /** Releases a claim when buffering failed, so a retry is not answered "duplicate". */
+  releaseScan?: (sessionId: string, userId: string) => Promise<void>
+  /** Dead-letter stream length — observability only, never backpressure. */
+  dlqDepth: () => Promise<number>
   metrics: IngestMetrics
 }
 
@@ -132,15 +142,16 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
   app.get('/api/health/ready', readyHandler)
 
   app.get('/metrics', async (_request, reply) => {
-    const [depth, length, lag] = await Promise.all([
+    const [depth, length, lag, dlqDepth] = await Promise.all([
       deps.bufferDepth(),
       deps.streamLength(),
       deps.bufferLagSeconds(),
+      deps.dlqDepth(),
     ])
     const ready = depth <= deps.config.INGEST_MAX_BUFFER && lag <= deps.config.INGEST_MAX_LAG_SECONDS
     return reply
       .type('text/plain; version=0.0.4; charset=utf-8')
-      .send(renderMetrics(deps.metrics, { bufferDepth: depth, streamLength: length, lagSeconds: lag, ready }))
+      .send(renderMetrics(deps.metrics, { bufferDepth: depth, streamLength: length, lagSeconds: lag, dlqDepth, ready }))
   })
 
   /**
@@ -213,34 +224,74 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
     const tokenHash = createHash('sha256').update(body.qrToken).digest('hex')
 
     if (validation.success) {
+      // Claim `(session, student)` before buffering. The writer is idempotent,
+      // but only after both requests already answered 201 — the second client
+      // was told "checked in" and its scan was silently discarded. An atomic
+      // NX claim is the only place the second request can be told the truth.
+      let reserved: boolean
+      try {
+        reserved = await deps.reserveScan(snapshot.id, user.id, deps.config.INGEST_DEDUPE_TTL_SECONDS)
+      } catch {
+        // Without the claim we cannot append (the second scan would be lost)
+        // and must not count the request as accepted. Retryable, so 503.
+        return reply
+          .code(503)
+          .header('retry-after', '2')
+          .send({
+            statusCode: 503,
+            error: 'ServiceUnavailable',
+            message: 'Ingestion temporarily unavailable',
+            retryAfterSeconds: 2,
+          })
+      }
+      if (!reserved) {
+        // Byte-for-byte the control-plane duplicate envelope: the client shows
+        // "already checked in" rather than an error, and nothing is buffered.
+        deps.metrics.scansDuplicate += 1
+        return reply.code(200).send({
+          success: false,
+          reason: 'duplicate',
+          message: 'Attendance was already submitted for this session',
+        })
+      }
+
       deps.metrics.scansAccepted += 1
-      await deps.appendScan({
-        userId: user.id,
-        sessionId: snapshot.id,
-        sectionId: snapshot.sectionId,
-        status: validation.status === 'late' ? 'late' : validation.status === 'disputed' ? 'disputed' : 'present',
-        reason: validation.reason,
-        message: validation.message,
-        scannedAt: validation.scannedAt.toISOString(),
-        receivedAt: validation.receivedAt.toISOString(),
-        mode: validation.mode,
-        checkpoint: validation.checkpoint,
-        distanceMeters: validation.distanceMeters,
-        geofenceRadiusMeters: validation.geofenceRadiusMeters,
-        riskSignals: validation.riskSignals,
-        pinVerified: validation.pinVerified,
-        tokenHash,
-        latitude: body.lat,
-        longitude: body.lon,
-        accuracyMeters: body.accuracyMeters,
-        locationCapturedAt: body.locationCapturedAt,
-        deviceId: body.deviceId,
-        clientAttemptId: body.clientAttemptId,
-        inputChannel: body.inputChannel,
-        mocked: body.mocked,
-        offline: false,
-        qrToken: body.qrToken,
-      })
+      try {
+        await deps.appendScan({
+          userId: user.id,
+          sessionId: snapshot.id,
+          sectionId: snapshot.sectionId,
+          status: validation.status === 'late' ? 'late' : validation.status === 'disputed' ? 'disputed' : 'present',
+          reason: validation.reason,
+          message: validation.message,
+          scannedAt: validation.scannedAt.toISOString(),
+          receivedAt: validation.receivedAt.toISOString(),
+          mode: validation.mode,
+          checkpoint: validation.checkpoint,
+          distanceMeters: validation.distanceMeters,
+          geofenceRadiusMeters: validation.geofenceRadiusMeters,
+          riskSignals: validation.riskSignals,
+          pinVerified: validation.pinVerified,
+          tokenHash,
+          latitude: body.lat,
+          longitude: body.lon,
+          accuracyMeters: body.accuracyMeters,
+          locationCapturedAt: body.locationCapturedAt,
+          deviceId: body.deviceId,
+          clientAttemptId: body.clientAttemptId,
+          inputChannel: body.inputChannel,
+          mocked: body.mocked,
+          offline: false,
+          qrToken: body.qrToken,
+        })
+      } catch (error) {
+        // A failed XADD must not strand the claim for the whole TTL: the retry
+        // carries the same envelope and would be answered "duplicate" while
+        // nothing was ever buffered. Release is best-effort — the original
+        // failure is what the caller must see.
+        await deps.releaseScan?.(snapshot.id, user.id).catch(() => undefined)
+        throw error
+      }
     }
 
     if (!validation.success) deps.metrics.scansRejected += 1

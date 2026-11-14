@@ -660,3 +660,44 @@ the levers are cost 10 (~4× faster) or more cores, not more replicas on 2 cores
 throttles everyone (leave it generous, or set `TRUST_PROXY` and forward real client IPs). Load
 tests belong on staging sized to the 2-core profile — not on a workstation, where an unbounded
 200-VU run saturates the machine.
+
+### 10.8 Benchmark harness bug and corrected numbers (2026-11-14)
+
+**The old k6 numbers were invalid.** `performance/gateway-scan-k6.js` used `__ITER` to index the
+prepared targets. In k6, `__ITER` is **VU-local**: under the `shared-iterations` executor every
+VU restarts it at 0, so all 5,000/50,000 requests were drawn from the first ~33–42 targets instead
+of walking the 2,000 prepared `(session, student)` pairs. Evidence: only 42 dedupe keys existed
+after both 5k runs, all in a single session with 42 distinct users (run 1 added 33, run 2 added 9
+as the fastest VU drifted further). Consequence: every previous run — including the 1.65 s p50 /
+13.11 % timeout baseline — measured the Redis dedupe fast path. 33 of the 34 armed sessions and
+the PostgreSQL write path were never exercised.
+
+**Fix:** `exec.scenario.iterationInTest` (scenario-global, unique across VUs), so each prepared
+target is scanned exactly once. Reproduced after the fix: 2,042 keys spread 60/60/… across 34
+fresh sessions; accepted/duplicate counts match the target composition exactly.
+
+**Corrected runs** on the 2-core deployment profile (1 HTTP worker, 1 CPU each, drainer separate):
+
+| Run | p50 | p95 | failed | rps | accepted | duplicates |
+|---|---|---|---|---|---|---|
+| 10k, 200 VUs | 96.9 ms | 167.3 ms | 0 % | 1,423 | 2,000 | 8,000 |
+| 50k, 200 VUs | **92.3 ms** | 138.3 ms | **0 %** | **1,920** | 2,000 | 48,000 |
+| 2,000 all-cold, 100 VUs | 501 ms | 740 ms | 0 % | ~190 | 2,000 | 0 |
+
+The all-cold run is the worst case: every request is an auth-cache miss **and** a buffered write.
+Its cost is one `/auth/me` per distinct token (2,000), single-flighted and capped at
+`INGEST_AUTH_REFRESH_CONCURRENCY`; the warm path is Redis-only. The 50k mix is only 4 % cold
+because a bell rush replays a bounded student set, so p50 stays at 92 ms — comfortably under the
+250 ms gate and ~18× better than the 1.65 s baseline on a *harder* workload than that baseline
+actually measured.
+
+**Integrity after the runs:** drainer committed **6,042 / 6,042** accepted rows across all runs,
+`ingest_drain_failures_total` 0, pending depth 0, stream trimmed to 50,002.
+`POST /audit-logs/ledger/verify` → `verified: true`, 82,996 records over 1,468 sessions, 0 broken.
+`unhashedRecords: 7,718` are pre-existing `Load lt5b-*` fixture history (720/session) inserted by
+the load-fixture seeder, not gateway writes — all 6,042 gateway accepts carry `recordHash`.
+
+**Lesson for future benchmarks:** a load test that replays the same target slice measures the
+dedupe/ack path, not ingestion. Assert `accepted ≈ distinct pairs` and `keys spread across
+sessions` before trusting any latency number.
+
