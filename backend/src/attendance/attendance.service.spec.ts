@@ -23,14 +23,18 @@ import {
 } from '../../test/test-fixtures'
 
 jest.mock('@polycheck/shared', () => ({
-  verifyQRToken: jest.fn(),
   verifyMeetingPin: jest.fn(),
   haversineDistance: jest.fn(),
 }))
 
-import { verifyQRToken, verifyMeetingPin, haversineDistance } from '@polycheck/shared'
+jest.mock('@polycheck/shared/token-node', () => ({
+  verifyQRTokenNative: jest.fn(),
+}))
 
-const mockedVerifyQRToken = verifyQRToken as jest.MockedFunction<typeof verifyQRToken>
+import { verifyMeetingPin, haversineDistance } from '@polycheck/shared'
+import { verifyQRTokenNative } from '@polycheck/shared/token-node'
+
+const mockedVerifyQRToken = verifyQRTokenNative as jest.MockedFunction<typeof verifyQRTokenNative>
 const mockedVerifyMeetingPin = verifyMeetingPin as jest.MockedFunction<typeof verifyMeetingPin>
 const mockedHaversineDistance = haversineDistance as jest.MockedFunction<typeof haversineDistance>
 
@@ -238,7 +242,7 @@ describe('AttendanceService', () => {
       expect(result.status).toBe('disputed')
     })
 
-    it('returns invalid_signature when verifyQRToken returns null', async () => {
+    it('returns invalid_signature when the token verifier returns null', async () => {
       redis.getJson.mockResolvedValue(makeCachedSession())
       prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
       mockedVerifyQRToken.mockReturnValue(null)
@@ -1194,6 +1198,70 @@ describe('AttendanceService', () => {
         expect(attempt.accuracyMeters).toBeUndefined()
         expect(attempt.mocked).toBeUndefined()
         expect(mockedVerifyMeetingPin).toHaveBeenCalledWith('83', PIN_HASH)
+      })
+
+      it('records check-in time for online start scan and check-out time for online end scan', async () => {
+        // 1. Start checkpoint scan
+        prisma.attendanceRecord.findUnique.mockResolvedValue(
+          makeRosterRecord({ status: 'pending', latitude: null, longitude: null }),
+        )
+        prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+        prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(
+          makeRosterRecord({
+            status: 'pending',
+            latitude: null,
+            longitude: null,
+            checkInStatus: 'present',
+            checkInToken: VALID_TOKEN,
+          }),
+        )
+
+        const startResult = (await service.scan(studentUser, {
+          ...onlineArgs,
+          qrToken: VALID_TOKEN,
+        })) as any
+
+        expect(startResult).toBeDefined()
+        const startUpdate = prisma.attendanceRecord.updateMany.mock.calls[0][0].data
+        expect(startUpdate.checkInTime).toBeInstanceOf(Date)
+        expect(startUpdate.checkInStatus).toBe('present')
+        expect(startUpdate.checkInToken).toBe(VALID_TOKEN)
+
+        // 2. End checkpoint scan
+        const endPayload = validPayload({
+          mode: 'online',
+          checkpoint: 'end',
+          pinRequired: false,
+          validitySeconds: 90,
+          gracePeriodMinutes: 0,
+          validityMinutes: 2,
+        })
+        mockedVerifyQRToken.mockReturnValue(endPayload)
+        const END_TOKEN = 'end-qr-token-xyz'
+        prisma.session.findUnique.mockResolvedValue({
+          ...onlineSession(),
+          endQrToken: END_TOKEN,
+          endTokenExpiresAt: new Date(Date.now() + 60_000),
+          endGraceMinutes: 0,
+        })
+        redis.getJson.mockResolvedValue({
+          ...onlineSession(),
+          endQrToken: END_TOKEN,
+          endTokenExpiresAt: new Date(Date.now() + 60_000),
+          endGraceMinutes: 0,
+        })
+
+        const endResult = (await service.scan(studentUser, {
+          ...onlineArgs,
+          qrToken: END_TOKEN,
+          pin: undefined,
+        })) as any
+
+        expect(endResult).toBeDefined()
+        const endUpdate = prisma.attendanceRecord.updateMany.mock.calls[1][0].data
+        expect(endUpdate.checkOutTime).toBeInstanceOf(Date)
+        expect(endUpdate.checkOutStatus).toBe('present')
+        expect(endUpdate.checkOutToken).toBe(END_TOKEN)
       })
 
       it('denies an incorrect meeting PIN without touching attendance', async () => {

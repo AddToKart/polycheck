@@ -8,7 +8,8 @@ import {
   Optional,
 } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
-import { decodePinHashRecord, verifyQRToken } from '@polycheck/shared'
+import { decodePinHashRecord } from '@polycheck/shared'
+import { verifyQRTokenNative } from '@polycheck/shared/token-node'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { ActivateSessionDto, CreateBulkSessionsDto, CreateSessionDto } from './dto/create-session.dto'
@@ -394,7 +395,7 @@ export class SessionsService {
     if (session.isActive || session.endedAt || session.qrToken) {
       throw new ConflictException('Session is already active or was already ended')
     }
-    const payload = verifyQRToken(dto.token, teacherPublicKey)
+    const payload = verifyQRTokenNative(dto.token, teacherPublicKey)
     if (!payload) throw new BadRequestException('QR token signature is invalid')
     if (payload.mode === 'online' || payload.checkpoint) {
       throw new BadRequestException('QR token does not belong to an in-person session')
@@ -477,7 +478,7 @@ export class SessionsService {
     teacherPublicKey: string,
   ) {
     const checkpoint = dto.checkpoint ?? 'start'
-    const payload = verifyQRToken(dto.token, teacherPublicKey)
+    const payload = verifyQRTokenNative(dto.token, teacherPublicKey)
     if (!payload) throw new BadRequestException('QR token signature is invalid')
     if (payload.mode !== 'online') throw new BadRequestException('QR token does not belong to an online session')
     if (payload.checkpoint !== checkpoint)

@@ -1,31 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import type Redis from 'ioredis'
+import { createSigningKeyPair, signQRToken } from '@polycheck/shared'
 import { buildServer, type IngestDeps } from '../src/http'
-import type { IngestConfig } from '../src/config'
 import { createMetrics } from '../src/metrics'
+import { testConfig } from './config-fixture'
 
-const config: IngestConfig = {
-  NODE_ENV: 'test',
-  PORT: 4001,
-  HOST: '127.0.0.1',
-  REDIS_URL: 'redis://localhost:6379',
-  LOG_LEVEL: 'error',
-  INGEST_DRAINER_ENABLED: false,
-  INGEST_STREAM_KEY: 'ingest:scans',
-  INGEST_CONSUMER_GROUP: 'ingest-workers',
-  INGEST_CONSUMER_NAME: 'test',
-  INGEST_MAX_BUFFER: 2,
-  INGEST_MAX_LAG_SECONDS: 30,
-  INGEST_BATCH_MAX: 200,
-  INGEST_BATCH_WINDOW_MS: 30,
-  INGEST_SNAPSHOT_TTL_SECONDS: 120,
-  INGEST_AUTH_CACHE_TTL_SECONDS: 900,
-  CONTROL_PLANE_URL: 'http://backend:4000/api',
-  INGEST_AUTH_REFRESH_CONCURRENCY: 5,
-  INGEST_DB_POOL_SIZE: 8,
-}
+const config = testConfig
 
 const token = 'a'.repeat(90)
+
+const keys = createSigningKeyPair(new Uint8Array(32).fill(21))
 
 const snapshot = {
   id: 'sess-1',
@@ -37,6 +21,39 @@ const snapshot = {
   geofenceLongitude: 120.9991,
   geofenceRadiusMeters: 100,
 }
+
+/** A token the route can actually validate: issued now, inside the window. */
+const signToken = (overrides: Record<string, unknown> = {}): string =>
+  signQRToken(
+    {
+      version: 1,
+      sessionId: 'sess-1',
+      sectionId: 'sec-1',
+      teacherId: 'teacher-1',
+      teacherName: 'Prof',
+      issuedAt: Date.now(),
+      validityMinutes: 15,
+      gracePeriodMinutes: 10,
+      mode: 'in_person',
+      pinRequired: false,
+      ...overrides,
+    } as never,
+    keys.secretKey,
+  )
+
+/** Envelope that passes every gate, so `validation.success` is reachable. */
+const acceptedScan = () => ({
+  sessionId: 'sess-1',
+  qrToken: signToken(),
+  lat: 14.86975,
+  lon: 120.99915,
+  accuracyMeters: 12,
+  locationCapturedAt: new Date().toISOString(),
+  deviceId: 'mobile-abc',
+  inputChannel: 'camera' as const,
+  clientAttemptId: 'attempt-1',
+  mocked: false,
+})
 
 function makeDeps(overrides: Partial<IngestDeps> = {}) {
   const redis = {
@@ -55,9 +72,17 @@ function makeDeps(overrides: Partial<IngestDeps> = {}) {
     }),
     bufferDepth: vi.fn().mockResolvedValue(0),
     bufferLagSeconds: vi.fn().mockResolvedValue(0),
+    streamLength: vi.fn().mockResolvedValue(0),
+    probeHotPath: vi.fn().mockResolvedValue({
+      depth: 0,
+      lag: 0,
+      snapshot: { snapshot, teacherPublicKey: 'unused' },
+    }),
     resolveUser: vi.fn().mockResolvedValue({ user: { id: 'student-1', role: 'student', privacyConsent: true } }),
-    readSnapshot: vi.fn().mockResolvedValue({ snapshot, teacherPublicKey: 'unused' }),
     consumePinAttempt: vi.fn().mockResolvedValue(true),
+    reserveScan: vi.fn().mockResolvedValue(true),
+    releaseScan: vi.fn().mockResolvedValue(undefined),
+    dlqDepth: vi.fn().mockResolvedValue(0),
     metrics: createMetrics(),
     ...overrides,
   }
@@ -76,6 +101,16 @@ describe('ingest HTTP surface', () => {
     const clock = await app.inject({ method: 'GET', url: '/health/clock' })
     expect(clock.statusCode).toBe(200)
     expect(JSON.parse(clock.body).timestamp).toBeTruthy()
+    await app.close()
+  })
+
+  it('keeps sockets alive past the proxy idle window and above headersTimeout', async () => {
+    const { deps } = makeDeps()
+    const app = buildServer(deps)
+    expect(app.server.keepAliveTimeout).toBe(72_000)
+    // Node closes an idle keep-alive socket whose headers arrive too late, so
+    // headersTimeout must sit above keepAliveTimeout.
+    expect(app.server.headersTimeout).toBe(73_000)
     await app.close()
   })
 
@@ -162,8 +197,14 @@ describe('ingest HTTP surface', () => {
     await app.close()
   })
 
-  it('answers 503 (retryable) when the buffer is full instead of accepting', async () => {
-    const { deps, appended } = makeDeps({ bufferDepth: vi.fn().mockResolvedValue(5) })
+  it('answers 503 (retryable) when pending depth is over the buffer cap', async () => {
+    const { deps, appended } = makeDeps({
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 5,
+        lag: 0,
+        snapshot: { snapshot, teacherPublicKey: 'unused' },
+      }),
+    })
     const app = buildServer(deps)
     const response = await app.inject({
       method: 'POST',
@@ -178,7 +219,9 @@ describe('ingest HTTP surface', () => {
   })
 
   it('answers 503 when the session snapshot is unavailable', async () => {
-    const { deps } = makeDeps({ readSnapshot: vi.fn().mockResolvedValue(undefined) })
+    const { deps } = makeDeps({
+      probeHotPath: vi.fn().mockResolvedValue({ depth: 0, lag: 0, snapshot: undefined }),
+    })
     const app = buildServer(deps)
     const response = await app.inject({
       method: 'POST',
@@ -205,6 +248,350 @@ describe('ingest HTTP surface', () => {
     expect(body).toHaveProperty('status')
     expect(body).toHaveProperty('success')
     expect(appended.length).toBe(body.success ? 1 : 0)
+    // Reservations gate buffering only: a rejected scan never touches the
+    // dedupe key, otherwise a bad token would lock the student out of retrying.
+    expect(deps.reserveScan).not.toHaveBeenCalled()
+    await app.close()
+  })
+
+  it('claims the dedupe key once and buffers the first accepted scan', async () => {
+    const { deps, appended } = makeDeps({
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/scan',
+      headers: { authorization: 'Bearer x' },
+      payload: acceptedScan(),
+    })
+    expect(response.statusCode).toBe(201)
+    expect(JSON.parse(response.body).success).toBe(true)
+    expect(appended).toHaveLength(1)
+    expect(deps.metrics.scansAccepted).toBe(1)
+    expect(deps.reserveScan).toHaveBeenCalledTimes(1)
+    expect(deps.reserveScan).toHaveBeenCalledWith('sess-1', 'student-1', config.INGEST_DEDUPE_TTL_SECONDS)
+    await app.close()
+  })
+
+  it('forwards online-mode requests to NestJS /attendance/scan via forwardOnlineScan hook', async () => {
+    const forwardOnlineScan = vi.fn().mockImplementation(async (_req, reply) => {
+      return reply.code(201).send({ success: true, mode: 'online', forwarded: true })
+    })
+    const onlineSnapshot = {
+      ...snapshot,
+      mode: 'online' as const,
+      checkpoint: 'start' as const,
+    }
+    const { deps, appended } = makeDeps({
+      forwardOnlineScan,
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot: onlineSnapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/scan',
+      headers: { authorization: 'Bearer x' },
+      payload: acceptedScan(),
+    })
+    expect(response.statusCode).toBe(201)
+    expect(JSON.parse(response.body)).toEqual({ success: true, mode: 'online', forwarded: true })
+    expect(forwardOnlineScan).toHaveBeenCalledTimes(1)
+    expect(appended).toHaveLength(0)
+    expect(deps.reserveScan).not.toHaveBeenCalled()
+    await app.close()
+  })
+
+  it('does not shed online-mode scans even when the buffer is saturated or behind', async () => {
+    const forwardOnlineScan = vi.fn().mockImplementation(async (_req, reply) => {
+      return reply.code(201).send({ success: true, mode: 'online', forwarded: true })
+    })
+    const onlineSnapshot = {
+      ...snapshot,
+      mode: 'online' as const,
+      checkpoint: 'start' as const,
+    }
+    const { deps, appended } = makeDeps({
+      forwardOnlineScan,
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: config.INGEST_MAX_BUFFER + 500, // Saturated!
+        lag: config.INGEST_MAX_LAG_SECONDS + 60, // Behind!
+        snapshot: { snapshot: onlineSnapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/scan',
+      headers: { authorization: 'Bearer x' },
+      payload: acceptedScan(),
+    })
+    expect(response.statusCode).toBe(201)
+    expect(forwardOnlineScan).toHaveBeenCalledTimes(1)
+    expect(appended).toHaveLength(0)
+    await app.close()
+  })
+
+  it('forwards online-mode requests to NestJS /attendance/scan via fetch by default with user-agent, client IP and timeout signal', async () => {
+    const onlineSnapshot = {
+      ...snapshot,
+      mode: 'online' as const,
+      checkpoint: 'start' as const,
+    }
+    const originalFetch = globalThis.fetch
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ success: true, mode: 'online', checkInTime: '2026-11-14T07:00:00Z' }), {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+    globalThis.fetch = mockFetch
+    try {
+      const { deps, appended } = makeDeps({
+        probeHotPath: vi.fn().mockResolvedValue({
+          depth: 0,
+          lag: 0,
+          snapshot: { snapshot: onlineSnapshot, teacherPublicKey: keys.publicKey },
+        }),
+      })
+      const app = buildServer(deps)
+      const response = await app.inject({
+        method: 'POST',
+        url: '/attendance/scan',
+        headers: {
+          authorization: 'Bearer student-token',
+          'user-agent': 'Polycheck-Android/1.0',
+          'x-forwarded-for': '203.0.113.195',
+        },
+        payload: acceptedScan(),
+      })
+      expect(response.statusCode).toBe(201)
+      expect(JSON.parse(response.body)).toEqual({
+        success: true,
+        mode: 'online',
+        checkInTime: '2026-11-14T07:00:00Z',
+      })
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${deps.config.CONTROL_PLANE_URL}/attendance/scan`,
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            authorization: 'Bearer student-token',
+            'user-agent': 'Polycheck-Android/1.0',
+            'x-forwarded-for': expect.stringContaining('203.0.113.195'),
+            'content-type': 'application/json',
+          }),
+          signal: expect.any(AbortSignal),
+        }),
+      )
+      expect(appended).toHaveLength(0)
+      expect(deps.reserveScan).not.toHaveBeenCalled()
+      await app.close()
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('answers 503 when the forward request to control plane times out', async () => {
+    const onlineSnapshot = {
+      ...snapshot,
+      mode: 'online' as const,
+      checkpoint: 'start' as const,
+    }
+    const originalFetch = globalThis.fetch
+    const mockFetch = vi.fn().mockRejectedValue(new DOMException('The operation was aborted due to timeout', 'TimeoutError'))
+    globalThis.fetch = mockFetch
+    try {
+      const { deps } = makeDeps({
+        probeHotPath: vi.fn().mockResolvedValue({
+          depth: 0,
+          lag: 0,
+          snapshot: { snapshot: onlineSnapshot, teacherPublicKey: keys.publicKey },
+        }),
+      })
+      const app = buildServer(deps)
+      const response = await app.inject({
+        method: 'POST',
+        url: '/attendance/scan',
+        headers: { authorization: 'Bearer student-token' },
+        payload: acceptedScan(),
+      })
+      expect(response.statusCode).toBe(503)
+      expect(JSON.parse(response.body)).toEqual(
+        expect.objectContaining({
+          statusCode: 503,
+          error: 'ServiceUnavailable',
+          message: 'Control plane temporarily unavailable',
+          retryAfterSeconds: 2,
+        }),
+      )
+      await app.close()
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('narrows trustProxy to configured hop count and ignores spoofed client IPs beyond the hop count', async () => {
+    let capturedReq: FastifyRequest | undefined
+    const forwardOnlineScan = vi.fn().mockImplementation(async (req, reply) => {
+      capturedReq = req
+      return reply.code(201).send({ success: true, mode: 'online' })
+    })
+    const onlineSnapshot = {
+      ...snapshot,
+      mode: 'online' as const,
+      checkpoint: 'start' as const,
+    }
+    const { deps } = makeDeps({
+      forwardOnlineScan,
+      config: { ...testConfig, INGEST_TRUST_PROXY: '1' },
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot: onlineSnapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/scan',
+      headers: {
+        authorization: 'Bearer x',
+        'x-forwarded-for': '10.99.99.99, 203.0.113.195',
+      },
+      payload: acceptedScan(),
+    })
+    expect(response.statusCode).toBe(201)
+    // With trustProxy: 1, only the immediate proxy hop is trusted, so 203.0.113.195 is the client IP, NOT 10.99.99.99.
+    expect(capturedReq?.ip).toBe('203.0.113.195')
+    await app.close()
+  })
+
+  it('rejects spoofed X-Forwarded-For when connected directly from an untrusted public IP with default subnet trust', async () => {
+    let capturedReq: FastifyRequest | undefined
+    const forwardOnlineScan = vi.fn().mockImplementation(async (req, reply) => {
+      capturedReq = req
+      return reply.code(201).send({ success: true, mode: 'online' })
+    })
+    const onlineSnapshot = {
+      ...snapshot,
+      mode: 'online' as const,
+      checkpoint: 'start' as const,
+    }
+    const { deps } = makeDeps({
+      forwardOnlineScan,
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot: onlineSnapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/scan',
+      remoteAddress: '198.51.100.20',
+      headers: {
+        authorization: 'Bearer x',
+        'x-forwarded-for': '10.99.99.99',
+      },
+      payload: acceptedScan(),
+    })
+    expect(response.statusCode).toBe(201)
+    // Direct public socket 198.51.100.20 is not in trusted subnets (127.0.0.1, 10/8, 172.16/12, 192.168/16),
+    // so Fastify refuses to believe the spoofed 10.99.99.99 header.
+    expect(capturedReq?.ip).toBe('198.51.100.20')
+    await app.close()
+  })
+
+  it('answers the duplicate envelope for a second scan and buffers nothing', async () => {
+    const reserveScan = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    const { deps, appended } = makeDeps({
+      reserveScan,
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const send = () =>
+      app.inject({
+        method: 'POST',
+        url: '/attendance/scan',
+        headers: { authorization: 'Bearer x' },
+        payload: acceptedScan(),
+      })
+
+    expect((await send()).statusCode).toBe(201)
+    const second = await send()
+
+    expect(second.statusCode).toBe(200)
+    expect(JSON.parse(second.body)).toEqual({
+      success: false,
+      reason: 'duplicate',
+      message: 'Attendance was already submitted for this session',
+    })
+    expect(appended).toHaveLength(1)
+    expect(deps.metrics.scansDuplicate).toBe(1)
+    // The duplicate is not an acceptance: only the first scan counted.
+    expect(deps.metrics.scansAccepted).toBe(1)
+    await app.close()
+  })
+
+  it('answers a retryable 503 without buffering when the dedupe key cannot be claimed', async () => {
+    const { deps, appended } = makeDeps({
+      reserveScan: vi.fn().mockRejectedValue(new Error('redis down')),
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/scan',
+      headers: { authorization: 'Bearer x' },
+      payload: acceptedScan(),
+    })
+    expect(response.statusCode).toBe(503)
+    expect(response.headers['retry-after']).toBe('2')
+    expect(JSON.parse(response.body)).toMatchObject({ message: 'Ingestion temporarily unavailable' })
+    expect(appended).toHaveLength(0)
+    // Not accepted and not rejected — the request has to be retried.
+    expect(deps.metrics.scansAccepted).toBe(0)
+    await app.close()
+  })
+
+  it('releases the reservation when buffering fails so the retry is not a false duplicate', async () => {
+    const { deps, appended } = makeDeps({
+      appendScan: vi.fn().mockRejectedValue(new Error('XADD failed')),
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/scan',
+      headers: { authorization: 'Bearer x' },
+      payload: acceptedScan(),
+    })
+    expect(response.statusCode).toBe(500)
+    expect(appended).toHaveLength(0)
+    expect(deps.releaseScan).toHaveBeenCalledTimes(1)
+    expect(deps.releaseScan).toHaveBeenCalledWith('sess-1', 'student-1')
     await app.close()
   })
 
@@ -227,14 +614,25 @@ describe('ingest HTTP surface', () => {
   })
 
   it('exposes Prometheus metrics with the ingest counters', async () => {
-    const { deps } = makeDeps()
+    const { deps } = makeDeps({ dlqDepth: vi.fn().mockResolvedValue(3) })
     const app = buildServer(deps)
     const response = await app.inject({ method: 'GET', url: '/metrics' })
     expect(response.statusCode).toBe(200)
     expect(response.headers['content-type']).toContain('text/plain')
     expect(response.body).toContain('ingest_scans_accepted_total')
     expect(response.body).toContain('ingest_buffer_depth')
+    expect(response.body).toContain('ingest_stream_length')
+    expect(response.body).toContain('ingest_dlq_depth 3')
     expect(response.body).toContain('ingest_ready 1')
+    await app.close()
+  })
+
+  it('records HTTP latency on the response hook', async () => {
+    const { deps } = makeDeps()
+    const app = buildServer(deps)
+    await app.inject({ method: 'GET', url: '/health' })
+    expect(deps.metrics.httpRequests).toBeGreaterThan(0)
+    expect(deps.metrics.httpDurationSumMs).toBeGreaterThanOrEqual(0)
     await app.close()
   })
 })

@@ -1,3 +1,4 @@
+import { availableParallelism } from 'node:os'
 import { z } from 'zod'
 
 /**
@@ -5,6 +6,8 @@ import { z } from 'zod'
  * drainer, and every knob that affects correctness is bounded here rather than
  * read ad hoc at the call site.
  */
+const defaultHttpWorkers = Math.max(1, Math.min(32, availableParallelism() - 1))
+
 export const ingestConfigSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65_535).default(4001),
@@ -56,6 +59,80 @@ export const ingestConfigSchema = z.object({
 
   /** Drainer pool, intentionally much smaller than the control plane's. */
   INGEST_DB_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(8),
+
+  /**
+   * Process role:
+   *   `all`   — both surfaces in one process (the original behaviour)
+   *   `http`  — Fastify workers only; never drains
+   *   `drain` — the single ordered drainer + its own health/metrics port
+   */
+  INGEST_ROLE: z.enum(['all', 'http', 'drain']).default('all'),
+
+  /** Fork `INGEST_HTTP_WORKERS` workers with node:cluster (role `http`). */
+  INGEST_CLUSTER_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
+
+  /** HTTP workers to fork in cluster mode; defaults to available cores - 1. */
+  INGEST_HTTP_WORKERS: z.coerce.number().int().min(1).max(32).default(defaultHttpWorkers),
+
+  /** Drainer-role health/metrics port; 0 disables the internal server. */
+  INGEST_DRAIN_PORT: z.coerce.number().int().min(0).max(65_535).default(4002),
+
+  /** Cluster-primary aggregation port; 0 disables it. */
+  INGEST_METRICS_PORT: z.coerce.number().int().min(0).max(65_535).default(4003),
+
+  /**
+   * Approximate retained-entry cap, enforced by the drainer's XACK cycle.
+   * 0 disables trimming. Producers never trim: a backlog larger than this cap
+   * must be rejected by backpressure, not silently evicted from the stream.
+   */
+  INGEST_STREAM_MAXLEN: z.coerce.number().int().min(0).default(50_000),
+  INGEST_STREAM_TRIM_INTERVAL_SECONDS: z.coerce.number().int().min(1).max(3_600).default(30),
+
+  /** Drainer health: a tick older than this marks the drainer `stalled`. */
+  INGEST_DRAIN_HEALTH_STALE_SECONDS: z.coerce.number().int().min(1).default(30),
+
+  /**
+   * Deliveries before a poison message is quarantined to the DLQ. A message
+   * that can never commit (deleted session, FK/enum violation) must not keep
+   * the request path in backpressure: after this many failed deliveries it is
+   * copied to the dead-letter stream and acked from the live stream.
+   */
+  INGEST_MAX_DELIVERY_ATTEMPTS: z.coerce.number().int().min(1).max(100).default(5),
+
+  /**
+   * Dead-letter stream. Ingest-only (the NestJS fallback drainer never reads
+   * it); entries are inspected with XRANGE and replayed manually after a fix.
+   * The `polycheck:ingest:` prefix keeps one namespace for every ingest key.
+   */
+  INGEST_DLQ_STREAM_KEY: z.string().default('polycheck:ingest:dead-letter'),
+
+  /**
+   * Maximum age of an un-committable entry in seconds before it is quarantined to
+   * the DLQ regardless of error type. Default 1,800 s (30 min).
+   */
+  INGEST_DLQ_MAX_AGE_SECONDS: z.coerce.number().int().min(1).default(1800),
+
+  /**
+   * Request-path dedupe reservation TTL. Fixed 24 h rather than "session
+   * lifespan": the snapshot carries no lifespan fields, and deriving one would
+   * add a lookup to the hot path. Covers the practical live-replay horizon.
+   */
+  INGEST_DEDUPE_TTL_SECONDS: z.coerce.number().int().min(60).default(86_400),
+
+  /** Reservation key namespace: `<prefix><sessionId>:<userId>`. */
+  INGEST_DEDUPE_KEY_PREFIX: z.string().default('polycheck:ingest:dedupe:'),
+
+  /**
+   * Trusted proxy addresses, CIDR subnets, or hop count for Fastify client IP resolution.
+   * Defaults to loopback and private Docker subnets (127.0.0.1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16),
+   * preventing direct-client spoofing of X-Forwarded-For while trusting reverse proxies like Traefik/nginx.
+   */
+  INGEST_TRUST_PROXY: z
+    .string()
+    .default('127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'),
 })
 
 export type IngestConfig = z.infer<typeof ingestConfigSchema>

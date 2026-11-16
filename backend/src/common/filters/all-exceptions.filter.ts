@@ -98,6 +98,30 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return
     }
 
+    if (isDatabaseCapacityError(exception)) {
+      // Resource exhaustion is retryable, not a server fault. Students' clients
+      // (and the offline sync classifier) treat 5xx as "try again later", while a
+      // 500 pollutes error budgets and looks like a bug. The stack is logged so
+      // the saturation is still diagnosable.
+      this.logger.error(
+        'Database capacity exhausted',
+        exception instanceof Error ? exception.stack : String(exception),
+      )
+      response
+        .status(HttpStatus.SERVICE_UNAVAILABLE)
+        .header('retry-after', String(DATABASE_BUSY_RETRY_AFTER_SECONDS))
+        .json({
+          statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+          error: 'Service Unavailable',
+          message: 'The service is temporarily at capacity. Please retry shortly.',
+          code: 'database_busy',
+          retryAfterSeconds: DATABASE_BUSY_RETRY_AFTER_SECONDS,
+          path: request.originalUrl,
+          timestamp: new Date().toISOString(),
+        })
+      return
+    }
+
     this.logger.error('Unhandled exception', exception instanceof Error ? exception.stack : String(exception))
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
@@ -107,4 +131,30 @@ export class AllExceptionsFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
     })
   }
+}
+
+/** Peer connection cap of the Postgres pool (see `prisma/client.ts`). */
+const DATABASE_BUSY_RETRY_AFTER_SECONDS = 5
+
+/**
+ * True for the connection-pool exhaustion shapes `pg`/`@prisma/adapter-pg`
+ * throw when every pooled connection is busy or dies mid-acquire:
+ *   - `timeout exceeded when trying to connect` (pg-pool acquire timeout)
+ *   - `Connection terminated due to connection timeout`
+ *   - Prisma's `P2024` (pool timeout) when the engine surfaces it instead
+ *
+ * Only these capacity signals map to 503. A plain `connection refused` or
+ * `terminated unexpectedly` is a real outage and stays a 500 so it alerts.
+ */
+const DATABASE_CAPACITY_PATTERNS = [
+  /timeout exceeded when trying to connect/i,
+  /connection terminated due to connection timeout/i,
+  /pool timeout/i,
+]
+
+function isDatabaseCapacityError(exception: unknown): boolean {
+  if (typeof exception !== 'object' || exception === null) return false
+  const candidate = exception as { code?: unknown; message?: unknown }
+  if (candidate.code === 'P2024') return true
+  return typeof candidate.message === 'string' && DATABASE_CAPACITY_PATTERNS.some((pattern) => pattern.test(candidate.message as string))
 }

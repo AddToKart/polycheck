@@ -111,7 +111,7 @@ describe('LedgerService.appendLedger', () => {
     )
   })
 
-  it('links to the current session head based on (timestamp, id) order', async () => {
+  it('links to the current session head based on (createdAt, id) write order', async () => {
     const tx = makeTx()
     tx.attendanceRecord.findUnique.mockResolvedValue({ recordHash: null })
     tx.attendanceRecord.findFirst.mockResolvedValue({ recordHash: 'head-hash' })
@@ -126,7 +126,7 @@ describe('LedgerService.appendLedger', () => {
     expect(tx.attendanceRecord.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { sessionId: 'sess-1', id: { not: 'rec-2' }, recordHash: { not: null } },
-        orderBy: [{ timestamp: 'desc' }, { id: 'desc' }],
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       }),
     )
     const data = tx.attendanceRecord.update.mock.calls[0][0].data

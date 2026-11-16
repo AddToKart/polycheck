@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: polycheck
       POSTGRES_USER: polycheck
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in Coolify environment variables}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -19,7 +19,10 @@ services:
   redis:
     image: redis:7.4-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    # everysec leaves a ~1 s loss window on power loss; REDIS_AOF_FSYNC=always
+    # closes it at one fsync per write (measure on staging). A replicated
+    # standby covers instance loss and is the complementary layer.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "${REDIS_AOF_FSYNC:-everysec}"]
     volumes:
       - redis-data:/data
     healthcheck:
@@ -39,7 +42,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: ${NODE_ENV:-development}
-      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
     command: ["sh", "docker-entrypoint.sh", "migrate"]
 
   seed:
@@ -48,6 +51,7 @@ services:
       context: .
       dockerfile: Dockerfile.backend
     restart: "no"
+    profiles: ["bootstrap"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,9 +59,9 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: ${NODE_ENV:-development}
-      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public
-      SEED_PASSWORD: ${SEED_PASSWORD:-PolycheckSeed123!}
-      ALLOW_PRODUCTION_SEED: ${ALLOW_PRODUCTION_SEED:-true}
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
+      SEED_PASSWORD: ${SEED_PASSWORD:-}
+      ALLOW_PRODUCTION_SEED: ${ALLOW_PRODUCTION_SEED:-false}
     command: ["node", "dist-seed/prisma/seed.js"]
 
   backend:
@@ -73,8 +77,6 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-      seed:
-        condition: service_completed_successfully
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       PORT: 4000
@@ -84,13 +86,14 @@ services:
       # Native bcrypt runs on the libuv threadpool (default 4). Size it to the box so
       # logins and student sync are parallelised across CPU cores.
       UV_THREADPOOL_SIZE: ${UV_THREADPOOL_SIZE:-16}
-      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public&connection_limit=50
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public&connection_limit=50
       REDIS_URL: redis://redis:6379/0
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-polycheck_super_secret_auth_key_2026}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set in Coolify environment variables}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://polycheck-api.addtokart.tech}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://your-app.vercel.app,http://localhost:3000}
       FRONTEND_URL: ${FRONTEND_URL:-https://your-app.vercel.app}
       TRUST_PROXY: "true"
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-2}
       UPLOAD_DIR: /app/backend/uploads
       MAX_PROOF_BYTES: ${MAX_PROOF_BYTES:-5000000}
       STORAGE_DRIVER: local
@@ -100,8 +103,9 @@ services:
       API_RATE_WINDOW_SECONDS: ${API_RATE_WINDOW_SECONDS:-60}
     volumes:
       - backend-uploads:/app/backend/uploads
-    ports:
-      - "4000:4000"
+    networks:
+      - default
+      - monitoring
     labels:
       - "coolify.managed=true"
       - "coolify.port=4000"
@@ -143,16 +147,18 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4001
+      # HTTP workers only: the single-instance drainer is `ingest-drain`.
+      INGEST_ROLE: http
+      INGEST_HTTP_WORKERS: ${INGEST_HTTP_WORKERS:-4}
       REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD:-PolycheckSecureDB2026!}@postgres:5432/polycheck?schema=public
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
       CONTROL_PLANE_URL: http://backend:4000/api
-      INGEST_DRAINER_ENABLED: ${INGEST_DRAINER_ENABLED:-true}
+      INGEST_DRAINER_ENABLED: "false"
       INGEST_DB_POOL_SIZE: ${INGEST_DB_POOL_SIZE:-8}
       INGEST_MAX_BUFFER: ${INGEST_MAX_BUFFER:-50000}
       INGEST_MAX_LAG_SECONDS: ${INGEST_MAX_LAG_SECONDS:-30}
+      INGEST_STREAM_MAXLEN: ${INGEST_STREAM_MAXLEN:-50000}
       INGEST_AUTH_CACHE_TTL_SECONDS: ${INGEST_AUTH_CACHE_TTL_SECONDS:-900}
-    ports:
-      - "4001:4001"
     labels:
       - "coolify.managed=true"
       - "coolify.port=4001"
@@ -167,9 +173,90 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-      start_period: 20s
+      start_period: 10s
+    networks:
+      - default
+      - monitoring
+
+  # Exactly one ordered drainer, on its own event loop. It receives no proxy
+  # traffic; keeping it separate guarantees the hash chain's per-session
+  # advisory lock is taken by a single process fleet-wide.
+  ingest-drain:
+    image: polycheck-ingest
+    build:
+      context: .
+      dockerfile: Dockerfile.ingest
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      INGEST_ROLE: drain
+      INGEST_DRAINER_ENABLED: "true"
+      INGEST_DRAIN_PORT: 4002
+      # Stable consumer name so a restart replays its own pending entries.
+      INGEST_CONSUMER_NAME: ingest-drain
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
+      INGEST_DB_POOL_SIZE: ${INGEST_DB_POOL_SIZE:-8}
+      INGEST_MAX_BUFFER: ${INGEST_MAX_BUFFER:-50000}
+      INGEST_MAX_LAG_SECONDS: ${INGEST_MAX_LAG_SECONDS:-30}
+      INGEST_STREAM_MAXLEN: ${INGEST_STREAM_MAXLEN:-50000}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4002/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - default
+      - monitoring
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-15d}
+    ports:
+      - "${PROMETHEUS_BIND_ADDRESS:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./deployment/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deployment/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - default
+      - monitoring
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    command:
+      - --config.file=/etc/alertmanager/config.yml
+      - --storage.path=/alertmanager
+    ports:
+      - "${ALERTMANAGER_BIND_ADDRESS:-127.0.0.1}:${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ${ALERTMANAGER_CONFIG_PATH:-./deployment/monitoring/alertmanager.yml.example}:/etc/alertmanager/config.yml:ro
+      - alertmanager-data:/alertmanager
+    networks:
+      - default
+      - monitoring
 
 volumes:
   postgres-data:
   redis-data:
   backend-uploads:
+  prometheus-data:
+  alertmanager-data:
+
+networks:
+  default:
+  monitoring:
+    name: polycheck-monitoring

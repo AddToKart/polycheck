@@ -30,7 +30,7 @@ import { ScanValidatorService } from './scan-validator.service'
 import { AttendanceScopeService } from './attendance-scope.service'
 import { AttendanceReportService } from './attendance-report.service'
 import { GeofenceService } from './geofence.service'
-import { verifyQRToken } from '@polycheck/shared'
+import { verifyQRTokenNative } from '@polycheck/shared/token-node'
 import { academicOversightDepartment } from '../common/designations/department-pin'
 import { RAW_ATTENDANCE_LIMIT, type ScanEvidence, type ScanValidation } from './types'
 import { assertStudentInAdminScope, adminRecordWhere } from '../common/admin-scope'
@@ -940,7 +940,7 @@ export class AttendanceService {
       select: { teacherPublicKey: true },
     })
     if (!teacher?.teacherPublicKey) return 'unchanged' as const
-    const payload = verifyQRToken(qrToken, teacher.teacherPublicKey)
+    const payload = verifyQRTokenNative(qrToken, teacher.teacherPublicKey)
     if (
       !payload ||
       payload.sessionId !== session.id ||

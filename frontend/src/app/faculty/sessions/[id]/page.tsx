@@ -23,6 +23,8 @@ import { subscribeToSession } from '@/lib/realtime'
 import { pupColors } from '@/lib/colors'
 import { SessionRequestCoordinator } from '@/lib/session-request-coordinator'
 import { OutageSimulator } from '@/components/dev/OutageSimulator'
+import { StudentGovernanceActions } from '@/components/faculty/StudentGovernanceActions'
+import { HologramOverlay } from '@/components/student/HologramOverlay'
 import QRCode from 'qrcode'
 
 // F2 radar opens as a cockpit dialog; maplibre and its worker chain load only
@@ -99,6 +101,9 @@ export default function SessionDetailPage() {
   const { run, isPending } = useRunMutation()
   // F2 radar / F1 kiosk entry points.
   const [radarOpen, setRadarOpen] = useState(false)
+  // Student detail & attendance management modal
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
+  const [cardFlipped, setCardFlipped] = useState(false)
   // V4 anti-ghost-professor: captured teacher fix + pending override dialog.
   const teacherFixRef = useRef<{ latitude: number; longitude: number } | null>(null)
   const teacherConflictEpochRef = useRef(0)
@@ -546,11 +551,16 @@ export default function SessionDetailPage() {
   const handleManualOverride = async (studentId: string, currentStatus: AttendanceStatus) => {
     const idx = STATUS_CYCLE.findIndex((status) => status === currentStatus)
     const nextStatus = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]
+    await handleSetStudentStatus(studentId, nextStatus)
+  }
+
+  const handleSetStudentStatus = async (studentId: string, nextStatus: EditableAttendanceStatus) => {
+    if (!session) return
     const existing = records.find((r) => r.studentId === studentId && r.sessionId === session.id)
     const student = enrolledStudents.find((s) => s.id === studentId)
     const now = new Date()
     await run(
-      `override:${studentId}`,
+      `status:${studentId}`,
       async () => {
         if (existing) {
           await api.updateAttendanceStatus(existing.id, nextStatus)
@@ -1011,9 +1021,14 @@ export default function SessionDetailPage() {
                     return (
                       <button
                         key={student.id}
-                        className={`w-full min-h-11 flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-b border-zinc-100 dark:border-zinc-800 text-left ${isTeacher ? 'hover:bg-zinc-50 dark:hover:bg-zinc-900' : 'cursor-default'}`}
-                        onClick={() => { if (isTeacher) handleManualOverride(student.id, status) }}
-                        disabled={!isTeacher || isPending(`override:${student.id}`)}
+                        type="button"
+                        className={`w-full min-h-11 flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-b border-zinc-100 dark:border-zinc-800 text-left ${isTeacher ? 'hover:bg-zinc-50 dark:hover:bg-zinc-900 cursor-pointer' : 'cursor-default'}`}
+                        onClick={() => {
+                          if (isTeacher) {
+                            setSelectedStudent(student)
+                            setCardFlipped(false)
+                          }
+                        }}
                       >
                         <div className="min-w-0">
                           <p className="break-words text-sm font-medium dark:text-white">{student.fullName}</p>
@@ -1337,6 +1352,264 @@ export default function SessionDetailPage() {
               {generatingQr ? 'Generating…' : regeneratingCheckpoint ? 'Regenerate' : 'Generate'}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Student detail & attendance management modal */}
+      <Dialog
+        open={Boolean(selectedStudent)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedStudent(null)
+            setCardFlipped(false)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto bg-white dark:bg-pup-black border border-zinc-200 dark:border-zinc-800 p-6">
+          {selectedStudent && (
+            <div className="space-y-5">
+              <DialogHeader className="text-left">
+                <DialogTitle className="text-xl font-heading font-bold text-maroon-dark dark:text-white flex items-center justify-between">
+                  <span>{selectedStudent.fullName}</span>
+                </DialogTitle>
+                <DialogDescription className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Student Profile & Session Attendance Control
+                </DialogDescription>
+              </DialogHeader>
+
+              {/* Flippable Virtual ID Card */}
+              <div className="flex flex-col items-center">
+                <div
+                  className="relative w-full max-w-md aspect-[1.586/1] cursor-pointer group perspective-[2000px] select-none"
+                  onClick={() => setCardFlipped(!cardFlipped)}
+                  title="Click card to flip"
+                >
+                  <div
+                    className={`w-full h-full relative transition-transform duration-700 [transform-style:preserve-3d] ${
+                      cardFlipped ? '[transform:rotateY(180deg)]' : ''
+                    }`}
+                  >
+                    {/* Front Face */}
+                    <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] bg-white dark:bg-id-paper-dark border-2 border-maroon dark:border-golden shadow-md overflow-hidden flex flex-col">
+                      {/* PUP Header */}
+                      <div className="bg-maroon px-4 py-2 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800">
+                        <div>
+                          <p className="text-[10px] font-bold text-golden tracking-wider leading-none">POLYTECHNIC UNIVERSITY</p>
+                          <p className="text-[8px] font-medium text-white/80 tracking-[2px] mt-0.5 leading-none">OF THE PHILIPPINES</p>
+                        </div>
+                        <div className="w-7 h-7 bg-white/15 rounded-full flex items-center justify-center">
+                          <School className="w-4 h-4 text-white" />
+                        </div>
+                      </div>
+
+                      {/* Body */}
+                      <div className="flex-1 flex p-3 items-center gap-4 relative bg-id-paper dark:bg-id-paper-dark">
+                        <div
+                          className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none"
+                          style={{
+                            backgroundImage: 'url(/pup-logo.png)',
+                            backgroundPosition: 'center',
+                            backgroundSize: 'contain',
+                            backgroundRepeat: 'no-repeat',
+                          }}
+                        />
+                        <div className="w-16 h-22 bg-maroon dark:bg-golden flex items-center justify-center shrink-0 border border-zinc-300 dark:border-zinc-800 shadow-sm">
+                          <span className="text-xl font-heading font-bold text-white dark:text-maroon-dark">
+                            {selectedStudent.fullName
+                              .split(' ')
+                              .map((w) => w[0])
+                              .join('')
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1 flex flex-col justify-center">
+                          <h3 className="truncate text-sm font-heading font-bold text-zinc-900 dark:text-white leading-tight uppercase">
+                            {selectedStudent.fullName}
+                          </h3>
+                          <p className="text-xs font-mono font-bold text-maroon dark:text-golden mt-0.5">
+                            {selectedStudent.studentId}
+                          </p>
+                          <hr className="my-2 border-zinc-200 dark:border-zinc-700" />
+                          <div className="grid grid-cols-2 gap-2 text-left">
+                            <div>
+                              <p className="text-[7px] uppercase tracking-widest text-zinc-500 font-bold">Program</p>
+                              <p className="text-[10px] font-bold text-zinc-900 dark:text-white truncate">
+                                {selectedStudent.program || 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[7px] uppercase tracking-widest text-zinc-500 font-bold">Year Level</p>
+                              <p className="text-[10px] font-bold text-zinc-900 dark:text-white">
+                                {selectedStudent.yearLevel ? `Year ${selectedStudent.yearLevel}` : 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[7px] uppercase tracking-widest text-zinc-500 font-bold">Validity</p>
+                              <p className="text-[10px] font-bold text-zinc-900 dark:text-white">2026-2027</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <HologramOverlay deviceId={selectedStudent.boundDeviceId} tone="light" />
+                    </div>
+
+                    {/* Back Face */}
+                    <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] bg-id-paper dark:bg-id-paper-dark border-2 border-maroon dark:border-golden shadow-md overflow-hidden flex flex-col">
+                      {/* Magnetic Stripe */}
+                      <div className="bg-zinc-950 h-8 w-full mt-3"></div>
+
+                      {/* Content */}
+                      <div className="flex-1 p-3 flex text-zinc-950 dark:text-zinc-50 gap-3 bg-id-paper dark:bg-id-paper-dark">
+                        <div className="w-2/3 flex flex-col justify-between">
+                          <div>
+                            <p className="text-[8px] font-bold text-maroon dark:text-golden uppercase tracking-wider mb-0.5">Conditions of Use</p>
+                            <p className="text-[7px] text-zinc-600 dark:text-zinc-400 leading-snug text-justify">
+                              This ID card is non-transferable and must be presented upon entry to university premises. Return found card to OSA.
+                            </p>
+                          </div>
+                          <div className="mt-auto">
+                            <p className="text-[7px] uppercase tracking-widest text-zinc-500 font-bold">In case of emergency:</p>
+                            <div className="border-b border-zinc-300 dark:border-zinc-700 h-3.5 mt-0.5"></div>
+                          </div>
+                        </div>
+
+                        <div className="w-1/3 flex flex-col items-center justify-center border-l border-dashed border-zinc-300 dark:border-zinc-700 pl-3">
+                          <div className="w-14 h-14 bg-white border border-zinc-300 dark:border-zinc-700 flex items-center justify-center p-1 shadow-sm">
+                            <div className="grid grid-cols-5 grid-rows-5 w-full h-full gap-[1px]" aria-hidden="true">
+                              {Array.from({ length: 25 }).map((_, i) => (
+                                <div key={i} className={`bg-zinc-950 ${(i * 17 + 5) % 3 === 0 ? 'opacity-100' : 'opacity-0'}`}></div>
+                              ))}
+                            </div>
+                          </div>
+                          <p className="text-[6px] font-mono mt-1 text-zinc-400 dark:text-zinc-500 text-center tracking-widest uppercase">SCAN TO VERIFY</p>
+                        </div>
+                      </div>
+                      <HologramOverlay deviceId={selectedStudent.boundDeviceId} tone="light" />
+                    </div>
+                  </div>
+                </div>
+                <p className="text-center text-[10px] text-zinc-500 dark:text-zinc-400 font-bold uppercase tracking-wider mt-2">
+                  Click card to flip
+                </p>
+              </div>
+
+              {/* Current Session Attendance Status Selector */}
+              {(() => {
+                const curRec = session
+                  ? records.find((r) => r.studentId === selectedStudent.id && r.sessionId === session.id)
+                  : null
+                const curStatus = (curRec?.status ?? 'pending') as AttendanceStatus
+                return (
+                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
+                          Current Session Status
+                        </span>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                          Set attendance status for this meeting
+                        </p>
+                      </div>
+                      <span className={`px-2.5 py-1 text-xs font-bold ${STATUS_STYLES[curStatus] || STATUS_STYLES.pending}`}>
+                        {curStatus.charAt(0).toUpperCase() + curStatus.slice(1)}
+                      </span>
+                    </div>
+
+                    {onlineMode && curRec ? (
+                      <div className="text-[11px] text-zinc-600 dark:text-zinc-400 bg-white dark:bg-zinc-800/80 p-2.5 rounded border border-zinc-200 dark:border-zinc-700/60 flex items-center justify-between">
+                        <span>
+                          <strong>Check-in:</strong> {curRec.checkInTime ? new Date(curRec.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'None'}
+                          {curRec.checkInStatus === 'late' ? ' (Late)' : ''}
+                        </span>
+                        <span>
+                          <strong>Check-out:</strong> {curRec.checkOutTime ? new Date(curRec.checkOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'None'}
+                        </span>
+                      </div>
+                    ) : null}
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                      {(['present', 'late', 'incomplete', 'absent'] as const).map((statusOption) => {
+                        const isCurrent = curStatus === statusOption
+                        const isBusy = isPending(`status:${selectedStudent.id}`)
+                        return (
+                          <Button
+                            key={statusOption}
+                            type="button"
+                            size="sm"
+                            variant={isCurrent ? 'default' : 'outline'}
+                            disabled={isBusy}
+                            onClick={() => void handleSetStudentStatus(selectedStudent.id, statusOption)}
+                            className={`h-9 capitalize font-bold text-xs transition-all ${
+                              isCurrent
+                                ? statusOption === 'present'
+                                  ? 'bg-golden text-maroon-dark hover:bg-golden-dark ring-2 ring-golden/50'
+                                  : statusOption === 'late'
+                                    ? 'bg-maroon text-white hover:bg-maroon-dark ring-2 ring-maroon/50'
+                                    : statusOption === 'incomplete'
+                                      ? 'bg-zinc-800 text-golden hover:bg-zinc-900 border border-golden ring-2 ring-golden/50'
+                                      : 'bg-maroon-dark text-white hover:bg-black ring-2 ring-maroon-dark/50'
+                                : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                            }`}
+                          >
+                            {isBusy && isCurrent ? 'Saving…' : statusOption}
+                          </Button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Administrative Controls */}
+              {isTeacher ? (
+                <div className="border-t border-zinc-200 dark:border-zinc-800 pt-4 space-y-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
+                    Administrative Controls
+                  </h4>
+                  <div className="flex flex-col items-center">
+                    <StudentGovernanceActions
+                      student={selectedStudent}
+                      sectionId={session?.sectionId || null}
+                      permissions={user?.delegatedPermissions}
+                      onChanged={async () => {
+                        if (selectedStudent) {
+                          const refreshed = await api.getStudent(selectedStudent.id)
+                          if (refreshed) setSelectedStudent(refreshed)
+                        }
+                        void refreshData()
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Footer */}
+              <div className="border-t border-zinc-200 dark:border-zinc-800 pt-4 flex items-center justify-between gap-3">
+                {session?.sectionId ? (
+                  <Link
+                    href={`/faculty/students/${selectedStudent.id}?sectionId=${session.sectionId}`}
+                    className="text-xs text-maroon dark:text-golden hover:underline font-semibold flex items-center gap-1"
+                  >
+                    Full profile & attendance history &rarr;
+                  </Link>
+                ) : (
+                  <div />
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedStudent(null)
+                    setCardFlipped(false)
+                  }}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

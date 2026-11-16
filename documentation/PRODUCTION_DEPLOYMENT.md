@@ -55,7 +55,7 @@ Copy `.env.production.example` to `.env.production`, replace every placeholder, 
 - `BACKEND_IMAGE` and `FRONTEND_IMAGE` are mandatory. The deployment validator accepts only immutable registry digest references (`@sha256:<64 hex>`); tags — including `:sha-<commit>` tags — are retargetable and rejected. Copy the digest values from the `deployment-images` release artifact. Production Compose has no application build contexts.
 - `POSTGRES_BACKUP_PATH` and `POSTGRES_WAL_ARCHIVE_PATH` must be different, existing absolute host paths on durable protected storage. Compose will not auto-create them. The directories must be writable by the PostgreSQL image uid/gid `70:70` and have mode `0700`.
 - `PITR_RPO_MINUTES` and `PITR_RTO_MINUTES` are required operator-approved objectives. Validation rejects an archive timeout longer than the declared RPO.
-- `TRUST_PROXY=true` and `TRUST_PROXY_HOPS=2` are required for the host TLS proxy -> nginx -> backend path. The host proxy must replace client-supplied `X-Forwarded-For` values before appending the real client address.
+- `TRUST_PROXY=true` and `TRUST_PROXY_HOPS=2` are required for the host TLS proxy -> nginx -> backend path (or `3` when the ingestion gateway forwards online scans between nginx and the backend; `2` in Traefik -> Ingest -> Backend topologies). The host proxy must replace client-supplied `X-Forwarded-For` values before appending the real client address.
 - Attendance sync batches use deterministic queue IDs and nginx allows a 15-second margin beyond the worker's 60-second result wait, so ambiguous client retries reuse the durable BullMQ job.
 
 Android release builds still require `EXPO_PUBLIC_API_URL` set to the public HTTPS `/api` URL during the Expo/EAS build.

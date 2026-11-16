@@ -70,7 +70,12 @@ export class LedgerService {
       } else {
         const head = await tx.attendanceRecord.findFirst({
           where: { sessionId: record.sessionId, id: { not: record.id }, recordHash: { not: null } },
-          orderBy: [{ timestamp: 'desc' }, { id: 'desc' }],
+          // Write order, not scan time: the ingestion drainer selects its head
+          // the same way, so both writers agree on the session head. Scan
+          // timestamps are payload data (they can arrive out of order via offline
+          // replay); createdAt is the closest available write-order proxy without
+          // a chain-position column.
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           select: { recordHash: true },
         })
         prevHash = head?.recordHash ?? null

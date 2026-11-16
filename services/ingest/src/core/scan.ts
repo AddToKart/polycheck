@@ -10,7 +10,8 @@
  *
  * Parity is enforced by `test/scan.test.ts`, which mirrors the NestJS cases.
  */
-import { verifyMeetingPin, verifyQRToken, type QRTokenPayload } from '@polycheck/shared'
+import { verifyMeetingPin, type QRTokenPayload } from '@polycheck/shared'
+import { verifyQRTokenNative } from '@polycheck/shared/token-node'
 import { haversineDistance } from '@polycheck/shared/utils'
 
 export const MAX_QR_VALIDITY_MINUTES = 15
@@ -182,7 +183,7 @@ export async function validateScan({
 
   mode = session.mode ?? 'in_person'
 
-  const payload: QRTokenPayload | null = verifyQRToken(evidence.qrToken, teacherPublicKey)
+  const payload: QRTokenPayload | null = verifyQRTokenNative(evidence.qrToken, teacherPublicKey)
   if (!payload) return failed('disputed', 'invalid_signature', 'QR token signature is invalid')
 
   // ── Mode parity ──

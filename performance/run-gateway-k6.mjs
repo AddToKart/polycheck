@@ -109,15 +109,26 @@ for (const [index, section] of fixture.sections.entries()) {
   }
 }
 
-console.log(`[k6-prep] armed ${fixture.sections.length} sessions, total ${targets.length} targets prepared`)
+const desiredCount = process.env.TARGET_COUNT ? parseInt(process.env.TARGET_COUNT, 10) : targets.length
+if (desiredCount > targets.length) {
+  const baseTargets = [...targets]
+  while (targets.length < desiredCount) {
+    const nextBatch = baseTargets.slice(0, desiredCount - targets.length)
+    targets.push(...nextBatch)
+  }
+}
+
+const vus = process.env.VUS ? process.env.VUS : '100'
+
+console.log(`[k6-prep] armed ${fixture.sections.length} sessions, total ${targets.length} targets prepared (target count: ${desiredCount})`)
 
 const targetFilePath = join('performance', '.gateway-k6-targets.json')
 writeFileSync(targetFilePath, JSON.stringify(targets, null, 2))
 console.log(`[k6-prep] wrote target payload file: ${targetFilePath}`)
 
-console.log(`[k6-run] executing k6 benchmark (${targets.length} VUs concurrent burst against ${INGEST})...`)
+console.log(`[k6-run] executing k6 benchmark (${targets.length} requests, ${vus} VUs burst against ${INGEST})...`)
 
-const child = spawn(k6Bin, ['run', 'performance/gateway-scan-k6.js', '-e', `INGEST_URL=${INGEST}`], {
+const child = spawn(k6Bin, ['run', 'performance/gateway-scan-k6.js', '-e', `INGEST_URL=${INGEST}`, '-e', `VUS=${vus}`], {
   stdio: 'inherit',
   shell: true,
 })

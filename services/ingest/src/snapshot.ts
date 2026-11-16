@@ -18,12 +18,13 @@ export interface ResolvedSnapshot {
   teacherPublicKey: string
 }
 
-export async function readSessionSnapshot(
-  redis: Pick<Redis, 'get'>,
-  sessionId: string,
-): Promise<ResolvedSnapshot | undefined> {
-  const raw = await redis.get(`${ACTIVE_SESSION_KEY_PREFIX}${sessionId}`)
-  if (!raw) return undefined
+/**
+ * Parses a raw `active-session:<id>` value. Exported separately so the hot-path
+ * probe can read the blob inside a Redis pipeline (one round-trip with the
+ * pending summary) and still share this one validation path.
+ */
+export function parseSessionSnapshot(raw: string | null | undefined): ResolvedSnapshot | undefined {
+  if (typeof raw !== 'string' || raw.length === 0) return undefined
 
   let snapshot: SessionSnapshot
   try {
@@ -39,4 +40,11 @@ export async function readSessionSnapshot(
   if (typeof teacherPublicKey !== 'string' || teacherPublicKey.length === 0) return undefined
 
   return { snapshot, teacherPublicKey }
+}
+
+export async function readSessionSnapshot(
+  redis: Pick<Redis, 'get'>,
+  sessionId: string,
+): Promise<ResolvedSnapshot | undefined> {
+  return parseSessionSnapshot(await redis.get(`${ACTIVE_SESSION_KEY_PREFIX}${sessionId}`))
 }

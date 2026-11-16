@@ -66,6 +66,7 @@ backend/src/generated/prisma/
 .windsurf/
 .cline/
 .codex/
+.opencode/
 skills-lock.json
 
 # Playwright (E2E)

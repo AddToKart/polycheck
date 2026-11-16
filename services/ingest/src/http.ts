@@ -11,7 +11,10 @@ import { z } from 'zod'
 import type { IngestConfig } from './config'
 import { validateScan, type ScanEvidenceInput, type SessionSnapshot } from './core/scan'
 import type { BufferedScan } from './queue'
-import { renderMetrics, type IngestMetrics } from './metrics'
+import { observeHttpDuration, renderMetrics, type IngestMetrics } from './metrics'
+
+/** Keep-alive must outlive every proxy's upstream idle window (nginx 65s). */
+const KEEP_ALIVE_TIMEOUT_MS = 72_000
 
 export const scanBodySchema = z.object({
   sessionId: z.string().min(1).max(128),
@@ -47,16 +50,40 @@ export interface AuthedUser {
  */
 export type AuthResolution = { user: AuthedUser } | { unavailable: true } | null
 
+export interface HotPathProbe {
+  /** Unacknowledged stream entries — the true backlog. */
+  depth: number
+  /** Age of the oldest unacknowledged entry, in seconds. */
+  lag: number
+  /** Missing means the snapshot is unpublished/unparsable: retryable 503. */
+  snapshot: { snapshot: SessionSnapshot; teacherPublicKey: string } | undefined
+}
+
 export interface IngestDeps {
   config: IngestConfig
-  redis: Redis
+  redis: Pick<Redis, 'ping'>
   appendScan: (scan: BufferedScan) => Promise<string>
+  /** Pending (unacked) entries — what backpressure and readiness gate on. */
   bufferDepth: () => Promise<number>
   bufferLagSeconds: () => Promise<number>
+  /** Retained entries (`XLEN`) — observability only, never backpressure. */
+  streamLength: () => Promise<number>
+  /** One pipelined round-trip: pending summary + session snapshot. */
+  probeHotPath: (sessionId: string) => Promise<HotPathProbe>
   resolveUser: (authorization: string | undefined) => Promise<AuthResolution>
-  /** Session snapshot + teacher key, both written by the control plane. */
-  readSnapshot: (sessionId: string) => Promise<{ snapshot: SessionSnapshot; teacherPublicKey: string } | undefined>
   consumePinAttempt: (key: string, limit: number, windowMs: number) => Promise<boolean>
+  /**
+   * Atomically claims `(sessionId, userId, checkpoint)` for the dedupe TTL. Returns false
+   * when another request already holds the claim — the second scan is a
+   * duplicate and MUST NOT be buffered.
+   */
+  reserveScan: (sessionId: string, userId: string, ttlSeconds: number, checkpoint?: string) => Promise<boolean>
+  /** Releases a claim when buffering failed, so a retry is not answered "duplicate". */
+  releaseScan?: (sessionId: string, userId: string, checkpoint?: string) => Promise<void>
+  /** Forwards online-mode scans directly to NestJS (/attendance/scan). */
+  forwardOnlineScan?: (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>
+  /** Dead-letter stream length — observability only, never backpressure. */
+  dlqDepth: () => Promise<number>
   metrics: IngestMetrics
 }
 
@@ -71,8 +98,84 @@ const tooMany = (reply: FastifyReply, retryAfterSeconds = 5) =>
     .header('retry-after', String(retryAfterSeconds))
     .send({ statusCode: 503, error: 'ServiceUnavailable', message: 'Ingestion buffer is full', retryAfterSeconds })
 
+async function forwardOnlineScan(deps: IngestDeps, request: FastifyRequest, reply: FastifyReply): Promise<unknown> {
+  if (deps.forwardOnlineScan) {
+    return deps.forwardOnlineScan(request, reply)
+  }
+  const url = `${deps.config.CONTROL_PLANE_URL}/attendance/scan`
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+  }
+  if (typeof request.headers.authorization === 'string') {
+    headers.authorization = request.headers.authorization
+  }
+  if (typeof request.headers.cookie === 'string') {
+    headers.cookie = request.headers.cookie
+  }
+  const userAgent = request.headers['user-agent']
+  if (typeof userAgent === 'string') {
+    headers['user-agent'] = userAgent
+  }
+
+  // Forward client IP so control-plane audit logs observe the student device rather than gateway internal IP.
+  // Fastify's trustProxy populates request.ips with the verified chain of trusted proxy IPs ending in the client IP.
+  // Reversing this array yields standard X-Forwarded-For order: client, proxy1, proxy2...
+  // Any untrusted or spoofed client-supplied headers beyond trusted proxies are stripped automatically.
+  const forwardedFor =
+    request.ips && request.ips.length > 0 ? [...request.ips].reverse().join(', ') : request.ip
+  if (forwardedFor) {
+    headers['x-forwarded-for'] = forwardedFor
+  }
+
+  if (typeof request.headers['x-forwarded-proto'] === 'string') {
+    headers['x-forwarded-proto'] = request.headers['x-forwarded-proto']
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(request.body),
+      signal: AbortSignal.timeout(10_000),
+    })
+    const text = await response.text()
+    const contentType = response.headers.get('content-type') ?? 'application/json'
+    return reply.code(response.status).type(contentType).send(text)
+  } catch {
+    return reply
+      .code(503)
+      .header('retry-after', '2')
+      .send({
+        statusCode: 503,
+        error: 'ServiceUnavailable',
+        message: 'Control plane temporarily unavailable',
+        retryAfterSeconds: 2,
+      })
+  }
+}
+
 export function buildServer(deps: IngestDeps): FastifyInstance {
-  const app = Fastify({ logger: false, bodyLimit: 64 * 1024 })
+  const rawTrust = deps.config.INGEST_TRUST_PROXY ?? '127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'
+  const asNumber = Number(rawTrust)
+  const trustProxy =
+    Number.isInteger(asNumber) && asNumber > 0
+      ? (addr: string, hop: number) => hop < asNumber
+      : rawTrust.split(',').map((s) => s.trim())
+
+  const app = Fastify({
+    logger: false,
+    bodyLimit: 64 * 1024,
+    keepAliveTimeout: KEEP_ALIVE_TIMEOUT_MS,
+    trustProxy,
+  })
+  // Fastify does not accept `headersTimeout` in its option schema, but Node
+  // requires it to stay above keepAliveTimeout: an idle keep-alive socket whose
+  // next request arrives late must not be closed mid-headers.
+  app.server.headersTimeout = KEEP_ALIVE_TIMEOUT_MS + 1_000
+
+  app.addHook('onResponse', async (_request, reply) => {
+    observeHttpDuration(deps.metrics, reply.elapsedTime, reply.statusCode)
+  })
 
   const healthHandler = async () => ({ status: 'ok', timestamp: new Date().toISOString() })
   app.get('/health', healthHandler)
@@ -109,9 +212,16 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
   app.get('/api/health/ready', readyHandler)
 
   app.get('/metrics', async (_request, reply) => {
-    const [depth, lag] = await Promise.all([deps.bufferDepth(), deps.bufferLagSeconds()])
+    const [depth, length, lag, dlqDepth] = await Promise.all([
+      deps.bufferDepth(),
+      deps.streamLength(),
+      deps.bufferLagSeconds(),
+      deps.dlqDepth(),
+    ])
     const ready = depth <= deps.config.INGEST_MAX_BUFFER && lag <= deps.config.INGEST_MAX_LAG_SECONDS
-    return reply.type('text/plain; version=0.0.4; charset=utf-8').send(renderMetrics(deps.metrics, depth, lag, ready))
+    return reply
+      .type('text/plain; version=0.0.4; charset=utf-8')
+      .send(renderMetrics(deps.metrics, { bufferDepth: depth, streamLength: length, lagSeconds: lag, dlqDepth, ready }))
   })
 
   /**
@@ -145,15 +255,23 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
     }
     const body = parsed.data
 
-    const [depth, lag] = await Promise.all([deps.bufferDepth(), deps.bufferLagSeconds()])
-    if (depth > deps.config.INGEST_MAX_BUFFER || lag > deps.config.INGEST_MAX_LAG_SECONDS) {
-      return tooMany(reply)
-    }
-
-    const resolved = await deps.readSnapshot(body.sessionId)
-    if (!resolved) {
+    // Pending depth, lag and the session snapshot in one pipelined round-trip.
+    const probe = await deps.probeHotPath(body.sessionId)
+    if (!probe.snapshot) {
       // Cannot validate without the snapshot: retryable, never a silent accept.
       return tooMany(reply, 2)
+    }
+    const { snapshot, teacherPublicKey } = probe.snapshot
+
+    if (snapshot.mode === 'online') {
+      // Online windows are short and low-volume: the hot path isn't needed.
+      // Bypass the buffer saturation/lag gate and forward directly to NestJS
+      // which owns the dual-checkpoint contract.
+      return forwardOnlineScan(deps, request, reply)
+    }
+
+    if (probe.depth > deps.config.INGEST_MAX_BUFFER || probe.lag > deps.config.INGEST_MAX_LAG_SECONDS) {
+      return tooMany(reply)
     }
 
     const evidence: ScanEvidenceInput = {
@@ -172,8 +290,8 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
     }
 
     const validation = await validateScan({
-      snapshot: resolved.snapshot,
-      teacherPublicKey: resolved.teacherPublicKey,
+      snapshot,
+      teacherPublicKey,
       userId: user.id,
       evidence,
       offline: false,
@@ -184,34 +302,90 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
     const tokenHash = createHash('sha256').update(body.qrToken).digest('hex')
 
     if (validation.success) {
+      // Claim `(session, student)` before buffering. The writer is idempotent,
+      // but only after both requests already answered 201 — the second client
+      // was told "checked in" and its scan was silently discarded. An atomic
+      // NX claim is the only place the second request can be told the truth.
+      let reserved: boolean
+      try {
+        reserved =
+          validation.checkpoint !== undefined
+            ? await deps.reserveScan(
+                snapshot.id,
+                user.id,
+                deps.config.INGEST_DEDUPE_TTL_SECONDS,
+                validation.checkpoint,
+              )
+            : await deps.reserveScan(
+                snapshot.id,
+                user.id,
+                deps.config.INGEST_DEDUPE_TTL_SECONDS,
+              )
+      } catch {
+        // Without the claim we cannot append (the second scan would be lost)
+        // and must not count the request as accepted. Retryable, so 503.
+        return reply
+          .code(503)
+          .header('retry-after', '2')
+          .send({
+            statusCode: 503,
+            error: 'ServiceUnavailable',
+            message: 'Ingestion temporarily unavailable',
+            retryAfterSeconds: 2,
+          })
+      }
+      if (!reserved) {
+        // Byte-for-byte the control-plane duplicate envelope: the client shows
+        // "already checked in" rather than an error, and nothing is buffered.
+        deps.metrics.scansDuplicate += 1
+        return reply.code(200).send({
+          success: false,
+          reason: 'duplicate',
+          message: 'Attendance was already submitted for this session',
+        })
+      }
+
       deps.metrics.scansAccepted += 1
-      await deps.appendScan({
-        userId: user.id,
-        sessionId: resolved.snapshot.id,
-        sectionId: resolved.snapshot.sectionId,
-        status: validation.status === 'late' ? 'late' : validation.status === 'disputed' ? 'disputed' : 'present',
-        reason: validation.reason,
-        message: validation.message,
-        scannedAt: validation.scannedAt.toISOString(),
-        receivedAt: validation.receivedAt.toISOString(),
-        mode: validation.mode,
-        checkpoint: validation.checkpoint,
-        distanceMeters: validation.distanceMeters,
-        geofenceRadiusMeters: validation.geofenceRadiusMeters,
-        riskSignals: validation.riskSignals,
-        pinVerified: validation.pinVerified,
-        tokenHash,
-        latitude: body.lat,
-        longitude: body.lon,
-        accuracyMeters: body.accuracyMeters,
-        locationCapturedAt: body.locationCapturedAt,
-        deviceId: body.deviceId,
-        clientAttemptId: body.clientAttemptId,
-        inputChannel: body.inputChannel,
-        mocked: body.mocked,
-        offline: false,
-        qrToken: body.qrToken,
-      })
+      try {
+        await deps.appendScan({
+          userId: user.id,
+          sessionId: snapshot.id,
+          sectionId: snapshot.sectionId,
+          status: validation.status === 'late' ? 'late' : validation.status === 'disputed' ? 'disputed' : 'present',
+          reason: validation.reason,
+          message: validation.message,
+          scannedAt: validation.scannedAt.toISOString(),
+          receivedAt: validation.receivedAt.toISOString(),
+          mode: validation.mode,
+          checkpoint: validation.checkpoint,
+          distanceMeters: validation.distanceMeters,
+          geofenceRadiusMeters: validation.geofenceRadiusMeters,
+          riskSignals: validation.riskSignals,
+          pinVerified: validation.pinVerified,
+          tokenHash,
+          latitude: body.lat,
+          longitude: body.lon,
+          accuracyMeters: body.accuracyMeters,
+          locationCapturedAt: body.locationCapturedAt,
+          deviceId: body.deviceId,
+          clientAttemptId: body.clientAttemptId,
+          inputChannel: body.inputChannel,
+          mocked: body.mocked,
+          offline: false,
+          qrToken: body.qrToken,
+        })
+      } catch (error) {
+        // A failed XADD must not strand the claim for the whole TTL: the retry
+        // carries the same envelope and would be answered "duplicate" while
+        // nothing was ever buffered. Release is best-effort — the original
+        // failure is what the caller must see.
+        if (validation.checkpoint !== undefined) {
+          await deps.releaseScan?.(snapshot.id, user.id, validation.checkpoint).catch(() => undefined)
+        } else {
+          await deps.releaseScan?.(snapshot.id, user.id).catch(() => undefined)
+        }
+        throw error
+      }
     }
 
     if (!validation.success) deps.metrics.scansRejected += 1
