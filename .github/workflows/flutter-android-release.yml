@@ -52,12 +52,12 @@ jobs:
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/polycheck-release.jks"
           SHA=$(sha256sum "$RUNNER_TEMP/polycheck-release.jks" | cut -d' ' -f1)
           echo "keystore sha256: $SHA"
-          cat > polycheck_mobile/android/key.properties <<EOF
-          storeFile=$RUNNER_TEMP/polycheck-release.jks
-          storePassword=$ANDROID_KEYSTORE_PASSWORD
-          keyAlias=$ANDROID_KEY_ALIAS
-          keyPassword=$ANDROID_KEY_PASSWORD
-          EOF
+          {
+            printf 'storeFile=%s\n' "$RUNNER_TEMP/polycheck-release.jks"
+            printf 'storePassword=%s\n' "$ANDROID_KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
+          } > polycheck_mobile/android/key.properties
 
       - name: Verify build files are not ignored (regression gate)
         run: node scripts/verify-tracked-build-files.mjs
