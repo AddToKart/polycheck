@@ -66,7 +66,7 @@ jobs:
         working-directory: polycheck_mobile
         run: flutter pub get
 
-      - name: Analyze (release gate: 0 issues)
+      - name: "Analyze (release gate: 0 issues)"
         working-directory: polycheck_mobile
         run: flutter analyze
 
@@ -104,9 +104,9 @@ jobs:
 
       - name: Read the release tag
         id: tag
-        run: echo "tag=$(sed -n 's/^version: \([0-9][0-9.]*\).*/apk-v\1/p' polycheck_mobile/pubspec.yaml)" >> "$GITHUB_OUTPUT"
+        run: 'echo "tag=$(sed -n ''s/^version: \([0-9][0-9.]*\).*/apk-v\1/p'' polycheck_mobile/pubspec.yaml)" >> "$GITHUB_OUTPUT"'
 
-      - name: Create/update the latest GitHub Release
+      - name: "Create/update the latest GitHub Release"
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
