@@ -1,0 +1,124 @@
+name: Flutter Android release APK
+
+# Builds the signed Flutter APK on every push to main/dev and attaches it to
+# a GitHub Release with a FIXED filename. The landing page's download button
+# points at the permanent permalink
+#   https://github.com/AddToKart/polycheck/releases/latest/download/polycheck-release.apk
+# so the "latest" release is always what visitors get — the landing page never
+# needs to change when a new build ships.
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "polycheck_mobile/**"
+      - ".github/workflows/flutter-android-release.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: flutter-android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # required to create the GitHub Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter (pinned)
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.2
+          channel: stable
+          cache: true
+
+      - name: Restore release keystore from base64 secret
+        id: keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/polycheck-release.jks"
+          SHA=$(sha256sum "$RUNNER_TEMP/polycheck-release.jks" | cut -d' ' -f1)
+          echo "keystore sha256: $SHA"
+          cat > polycheck_mobile/android/key.properties <<EOF
+          storeFile=$RUNNER_TEMP/polycheck-release.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Verify build files are not ignored (regression gate)
+        run: node scripts/verify-tracked-build-files.mjs
+
+      - name: Pub get
+        working-directory: polycheck_mobile
+        run: flutter pub get
+
+      - name: Analyze (release gate: 0 issues)
+        working-directory: polycheck_mobile
+        run: flutter analyze
+
+      - name: Run Flutter tests
+        working-directory: polycheck_mobile
+        run: flutter test
+
+      - name: Build release APK
+        working-directory: polycheck_mobile
+        run: flutter build apk --release
+
+      - name: Confirm the APK is release-signed (never debug-signed)
+        working-directory: polycheck_mobile
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -1)
+          "$BUILD_TOOLS/apksigner" verify --print-certs "$APK"
+          CERTS=$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK")
+          if echo "$CERTS" | grep -qi "Android Debug"; then
+            echo "::error::Release APK is debug-signed — refusing to publish"
+            exit 1
+          fi
+
+      - name: Stamp APK with the fixed download filename
+        working-directory: polycheck_mobile
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n 's/^version: \([0-9][0-9.]*\).*/\1/p' pubspec.yaml)
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/polycheck-release.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/polycheck-v${VERSION}.apk"
+          cd dist
+          sha256sum polycheck-release.apk polycheck-v"${VERSION}".apk > SHA256SUMS.txt
+
+      - name: Read the release tag
+        id: tag
+        run: echo "tag=$(sed -n 's/^version: \([0-9][0-9.]*\).*/apk-v\1/p' polycheck_mobile/pubspec.yaml)" >> "$GITHUB_OUTPUT"
+
+      - name: Create/update the latest GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "Polycheck Android ${{ steps.tag.outputs.tag }}"
+          make_latest: true
+          files: |
+            polycheck_mobile/dist/polycheck-release.apk
+            polycheck_mobile/dist/polycheck-v*.apk
+            polycheck_mobile/dist/SHA256SUMS.txt
+          body: |
+            Signed release build of the Polycheck Android app.
+
+            - **Download:** `polycheck-release.apk` (always the latest — this exact filename is what the landing page links to)
+            - Verify: `sha256sum -c SHA256SUMS.txt`
+            - Build: `${{ github.sha }}` on `${{ github.ref_name }}` via `flutter build apk --release`
