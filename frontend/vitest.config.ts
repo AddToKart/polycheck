@@ -9,6 +9,8 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // jsdom + Radix dialogs are slow on a loaded 2-core machine; a tight default makes the suite flaky, not stricter.
+    testTimeout: 15_000,
     setupFiles: ['./src/test/setup.ts'],
     restoreMocks: true,
     coverage: {

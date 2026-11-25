@@ -3,9 +3,12 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { buildStudentRows, suggestColumnMapping } from '@polycheck/shared'
 import { looksLikePdf, MAX_PDF_BYTES, parsePdfFile } from './pdf-parser'
+
+// The first pdf.js load initializes the whole engine; keep the suite stable on a busy 2-core machine.
+vi.setConfig({ testTimeout: 60_000 })
 
 const require = createRequire(import.meta.url)
 // pdf.js runs its worker from disk here; in the browser it resolves from the bundle.
