@@ -642,3 +642,12 @@ are not done.**
 2. Turn on **Institution Settings → Accounts & access → Email activation links**.
 3. Provide 2–3 **redacted** sample master lists (PDF + Excel source if it exists) — needed to build the text-PDF parser (M7) and to add the real header wording to the mapping synonyms.
 4. Confirm whether master-list emails are personal Gmail or `@iskolarngbayan.pup.edu.ph` (deliverability: ask students to check spam).
+
+### Follow-up (same day): M7, M8, M9 completed
+| Step | Commit | Result |
+|---|---|---|
+| M8 webhooks | `9c9b857` | `POST /api/webhooks/resend`: Svix signature (verified against Resend's docs: `svix-id`/`svix-timestamp`/`svix-signature`, HMAC-SHA256 over `id.timestamp.rawBody`, 5-minute window) with the raw body captured for `/webhooks/*` only, each event id processed once (Redis), status moves forward only (sent → delivered, sent/delivered → bounced with a short error code), 404 until `RESEND_WEBHOOK_SECRET` is set. The Users console now reads *Email delivered* / *Email bounced*. Live: 7/7 checks (valid, duplicate, bounce, no un-bounce, bad signature, stale timestamp, ignored events). |
+| M9 shared profiles | `8fb2acb` | `ImportMappingProfile` (header fingerprint → column positions, never student data, capped at 500); `GET/PUT /api/import-profiles` limited to who can run that import; the dialog checks this browser, then the shared profile (2.5 s ceiling), and shares after validation, all failures silent. |
+| M7 PDF | `bd90511` | Text-PDF reader (`pdfjs-dist` 5.7.284 legacy build, on demand, no server parsing): records anchored on the PUP student number, columns from the header row's x positions, wrapped names merged, repeated headers / page footers / signature blocks dropped, header-less tables fall back to unnamed columns with a warning, scanned/non-PDF/oversized/>50-page files refused with guidance. Tested on real synthetic PDFs (single page, 3 pages / 95 students, scan) and in Chromium, Firefox and WebKit against the production Next build. |
+
+Notes: pdf.js 5 no longer has `isEvalSupported` (it does not evaluate code at all). The header/column heuristics are validated on **synthetic** layouts; real PUP exports will differ, so the first real list should be checked against the preview (the dialog says so) and the header synonyms extended from it. `scripts/generate-pdf-fixtures.cjs` regenerates the fixtures.
