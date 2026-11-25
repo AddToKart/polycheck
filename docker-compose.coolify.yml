@@ -45,7 +45,13 @@ services:
       DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
     command: ["sh", "docker-entrypoint.sh", "migrate"]
 
-  seed:
+  # The system starts BLANK: there is deliberately no demo seed in this stack. The only data written outside
+  # migrations is the first institution super administrator, created once by this one-off service (or by running
+  # the same command in the backend container's terminal):
+  #   node dist-seed/prisma/bootstrap-admin.js
+  # It reads BOOTSTRAP_ADMIN_EMAIL / BOOTSTRAP_ADMIN_PASSWORD (/ BOOTSTRAP_ADMIN_NAME), never changes an existing
+  # user, and forces a password change at first sign-in, so the variables can be deleted afterwards.
+  bootstrap-admin:
     image: polycheck-backend
     build:
       context: .
@@ -60,9 +66,10 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       DATABASE_URL: postgresql://polycheck:${POSTGRES_PASSWORD}@postgres:5432/polycheck?schema=public
-      SEED_PASSWORD: ${SEED_PASSWORD:-}
-      ALLOW_PRODUCTION_SEED: ${ALLOW_PRODUCTION_SEED:-false}
-    command: ["node", "dist-seed/prisma/seed.js"]
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-System Administrator}
+    command: ["node", "dist-seed/prisma/bootstrap-admin.js"]
 
   backend:
     image: polycheck-backend

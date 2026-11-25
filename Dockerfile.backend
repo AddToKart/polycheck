@@ -32,7 +32,7 @@ RUN cd /app/backend \
       --outDir /app/backend/dist-seed \
       --module nodenext --moduleResolution nodenext \
       --target es2022 --esModuleInterop --skipLibCheck --resolveJsonModule \
-      prisma/seed.ts prisma/backfills/ledger-backfill.ts src/prisma/client.ts
+      prisma/seed.ts prisma/bootstrap-admin.ts prisma/backfills/ledger-backfill.ts src/prisma/client.ts src/auth/password-policy.ts
 
 FROM node:22-alpine AS production-dependencies
 WORKDIR /app
