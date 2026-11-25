@@ -7,10 +7,10 @@
 class ApiConfig {
   const ApiConfig._();
 
-  /// Staging API used by the released React Native app.
+  /// Production API. Override per build with `--dart-define=API_BASE_URL`.
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://polycheck-api.addtokart.tech/api',
+    defaultValue: 'https://api.polycheck.live/api',
   );
 
   /// Optional explicit Socket.IO namespace URL (`.../attendance`).

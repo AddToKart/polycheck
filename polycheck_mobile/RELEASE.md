@@ -44,8 +44,8 @@ staging API used by the React Native app):
 
 ```powershell
 flutter build appbundle --release `
-  --dart-define=API_BASE_URL=https://polycheck-api.addtokart.tech/api `
-  --dart-define=WS_BASE_URL=https://polycheck-api.addtokart.tech/attendance
+  --dart-define=API_BASE_URL=https://api.polycheck.live/api `
+  --dart-define=WS_BASE_URL=https://api.polycheck.live/attendance
 ```
 
 Optional release flags:
@@ -95,14 +95,14 @@ keyPassword=...
 ```powershell
 # Release bundle for Play
 flutter build appbundle --release `
-  --dart-define=API_BASE_URL=https://polycheck-api.addtokart.tech/api
+  --dart-define=API_BASE_URL=https://api.polycheck.live/api
 
 # Output:
 #   build/app/outputs/bundle/release/app-release.aab
 
 # Local release APK smoke test
 flutter build apk --release `
-  --dart-define=API_BASE_URL=https://polycheck-api.addtokart.tech/api
+  --dart-define=API_BASE_URL=https://api.polycheck.live/api
 
 # Output:
 #   build/app/outputs/flutter-apk/app-release.apk

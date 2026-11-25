@@ -255,7 +255,7 @@ const htmlContent = `
       <div>• <strong>Master Password:</strong> <span class="code-pill">PolycheckSeed123!</span> <em>(or <span class="code-pill">Polycheck@2026!</span> on local dev)</em></div>
       <div>• <strong>Faculty / Admin Login Portal:</strong> <span class="code-pill">/login/faculty</span> (Web) or Campus Faculty Screen (Mobile)</div>
       <div>• <strong>Student Login Portal:</strong> <span class="code-pill">/login/student</span> (Web) or Campus Student Screen (Mobile)</div>
-      <div>• <strong>Live Production API:</strong> <span class="code-pill">https://polycheck-api.addtokart.tech/api</span></div>
+      <div>• <strong>Live Production API:</strong> <span class="code-pill">https://api.polycheck.live/api</span></div>
     </div>
   </div>
 

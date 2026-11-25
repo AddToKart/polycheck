@@ -4,6 +4,34 @@ Topology: **Coolify** runs one stack from `docker-compose.coolify.yml` (PostgreS
 gateway). **Vercel** hosts the Next.js web app. A separate Vercel project hosts the landing/install page
 (`polycheck-landing-page` repo), whose download button points at the latest GitHub Release of this repo.
 
+## 0. Target hostnames (`polycheck.live`)
+
+| Host | Serves | Where it is hosted |
+|---|---|---|
+| `polycheck.live` (+ `www`) | Landing / install page (`polycheck-landing-page` repo) | Vercel (landing project) |
+| `app.polycheck.live` | Web dashboard (students, faculty, admins) | Vercel (web project) |
+| `api.polycheck.live` | NestJS API + Socket.IO + scan gateway | Coolify (Traefik) |
+
+`app.` and `api.` share the registrable domain `polycheck.live`, which is what the `SameSite=Strict` session cookie
+needs (see section 3). The code defaults now point at these hosts; **values already set in the Coolify or Vercel UI
+take precedence over code defaults, so they must be edited there too.**
+
+Set in **Coolify** (stack environment), then Redeploy:
+
+| Variable | Value |
+|---|---|
+| `API_DOMAIN` | `api.polycheck.live` |
+| `BETTER_AUTH_URL` | `https://api.polycheck.live` |
+| `CORS_ORIGINS` | `https://app.polycheck.live` |
+| `FRONTEND_URL` | `https://app.polycheck.live` |
+
+Set in **Vercel** (web project), then Redeploy: `NEXT_PUBLIC_API_URL` = `https://api.polycheck.live/api`.
+Set in **Vercel** (landing project): `NEXT_PUBLIC_WEB_APP_URL` = `https://app.polycheck.live`.
+
+DNS at your registrar: an `A` record `api` to the Coolify server's IP (Coolify then obtains the certificate), and for
+`app` / the apex the records Vercel shows when you add each domain to its project. Do these **before** publishing an
+APK or landing build that points at the new hosts: until `api.` resolves, an app built against it cannot sign in.
+
 ## 1. Redeploying an existing Coolify stack
 
 Every variable that already exists in Coolify keeps working: this change only **adds** variables and replaces the

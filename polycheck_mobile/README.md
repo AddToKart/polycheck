@@ -28,7 +28,7 @@ flutter build apk --debug
 
 # Point a device build at a backend
 flutter run `
-  --dart-define=API_BASE_URL=https://polycheck-api.addtokart.tech/api
+  --dart-define=API_BASE_URL=https://api.polycheck.live/api
 ```
 
 Release/signing steps live in [`RELEASE.md`](RELEASE.md).
@@ -37,7 +37,7 @@ Release/signing steps live in [`RELEASE.md`](RELEASE.md).
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `API_BASE_URL` | `https://polycheck-api.addtokart.tech/api` | NestJS base URL (must include `/api`) |
+| `API_BASE_URL` | `https://api.polycheck.live/api` | NestJS base URL (must include `/api`) |
 | `WS_BASE_URL` | derived from `API_BASE_URL` | Explicit Socket.IO namespace URL (`.../attendance`) |
 | `ALLOW_QR_FALLBACKS` | `false` | In-person screenshot/manual QR fallbacks; online sessions always allow them |
 | `ENABLE_OUTAGE_SIMULATOR` | `false` | Demo-only offline simulator (never ship enabled) |
