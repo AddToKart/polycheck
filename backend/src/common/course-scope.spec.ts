@@ -3,11 +3,14 @@ import {
   courseScopeMode,
   designeeCourseScope,
   hasOversightScope,
+  headCandidatesWhere,
+  headCoversSection,
   oversightCourseList,
   oversightRecordWhere,
   oversightSectionWhere,
   oversightSessionWhere,
   resetCourseScopeWarningForTests,
+  sectionInOversightScope,
   sectionCourseWhere,
 } from './course-scope'
 import { academicOversightDepartment } from './designations/department-pin'
@@ -200,5 +203,61 @@ describe('oversightCourseList', () => {
     expect(oversightCourseList(head())).toEqual([])
     expect(oversightCourseList({ role: 'teacher', isUserRegistrar: true, managesAllCourses: true })).toEqual([])
     expect(oversightCourseList(null)).toEqual([])
+  })
+})
+
+describe('sectionInOversightScope', () => {
+  const bsitSection = { course: 'bsit', teacher: { department: 'Unspecified' } }
+  const bshmSection = { course: 'BSHM', teacher: { department: 'CCIS' } }
+
+  it('legacy: matches on the section teacher department only', () => {
+    expect(sectionInOversightScope(head(), bshmSection, 'legacy')).toBe(true)
+    expect(sectionInOversightScope(head(), bsitSection, 'legacy')).toBe(false)
+    expect(sectionInOversightScope(head({ department: null }), bshmSection, 'legacy')).toBe(false)
+  })
+
+  it('course: matches on section.course (case-insensitive) and ignores departments', () => {
+    const courseHead = head({ department: 'Anything', managedCourses: ['BSIT'] })
+    expect(sectionInOversightScope(courseHead, bsitSection, 'course')).toBe(true)
+    expect(sectionInOversightScope(courseHead, bshmSection, 'course')).toBe(false)
+    expect(sectionInOversightScope(head({ managesAllCourses: true }), bshmSection, 'course')).toBe(true)
+    expect(sectionInOversightScope(head(), bsitSection, 'course')).toBe(false)
+  })
+
+  it('a section without a course is only visible to an all-courses head', () => {
+    expect(sectionInOversightScope(head({ managedCourses: ['BSIT'] }), { course: null }, 'course')).toBe(false)
+    expect(sectionInOversightScope(head({ managesAllCourses: true }), { course: null }, 'course')).toBe(true)
+  })
+
+  it('never applies to non-heads or missing data', () => {
+    expect(sectionInOversightScope({ role: 'teacher' }, bsitSection, 'course')).toBe(false)
+    expect(sectionInOversightScope(head(), null, 'course')).toBe(false)
+    expect(sectionInOversightScope(null, bsitSection, 'legacy')).toBe(false)
+  })
+})
+
+describe('headCandidatesWhere / headCoversSection', () => {
+  it('legacy keeps the previous department query exactly', () => {
+    expect(headCandidatesWhere({ teacherDepartment: 'CCIS' }, 'legacy')).toEqual({
+      role: 'teacher',
+      isActive: true,
+      isDepartmentHead: true,
+      department: { equals: 'CCIS', mode: 'insensitive' },
+    })
+    expect(headCandidatesWhere({ teacherDepartment: ' ' }, 'legacy')).toBeNull()
+  })
+
+  it('course mode loads every active head and narrows in memory', () => {
+    expect(headCandidatesWhere({ teacherDepartment: null }, 'course')).toEqual({
+      role: 'teacher',
+      isActive: true,
+      isDepartmentHead: true,
+    })
+    // Legacy trusts the SQL department filter, so any returned head qualifies.
+    expect(headCoversSection(head(), { course: 'x' }, 'legacy')).toBe(true)
+    const section = { course: 'BSIT' }
+    expect(headCoversSection(head({ managedCourses: ['bsit'] }), section, 'course')).toBe(true)
+    expect(headCoversSection(head({ managedCourses: ['BSHM'] }), section, 'course')).toBe(false)
+    expect(headCoversSection(head({ managesAllCourses: true }), section, 'course')).toBe(true)
   })
 })

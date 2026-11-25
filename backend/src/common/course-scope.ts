@@ -141,6 +141,69 @@ export function oversightRecordWhere(
   return section ? { session: { section } } : null
 }
 
+/** The slice of a section that scope predicates need (course + the owning teacher's department). */
+export interface ScopedSectionShape {
+  course?: string | null
+  teacher?: { department?: string | null } | null
+}
+
+/**
+ * In-memory twin of {@link oversightSectionWhere} for records that were already
+ * loaded: is this section inside the head's oversight scope? Never true for
+ * non-oversight actors.
+ */
+export function sectionInOversightScope(
+  user: ScopeCarrier | null | undefined,
+  section: ScopedSectionShape | null | undefined,
+  mode: CourseScopeMode = courseScopeMode(),
+): boolean {
+  if (!user || !section || user.role !== 'teacher' || user.isDepartmentHead !== true) return false
+  if (mode === 'legacy') {
+    const oversight = legacyOversightDepartment(user)
+    const target = section.teacher?.department?.trim()
+    return Boolean(oversight && target && target.toLowerCase() === oversight.toLowerCase())
+  }
+  return courseInScope(designeeCourseScope(user), section.course)
+}
+
+/**
+ * Candidate heads to notify for a section: in legacy mode the exact previous
+ * query (active heads of the section teacher's department); in course mode
+ * every active head, to be narrowed in memory with {@link headCoversSection}
+ * (a handful of rows, and `managedCourses` matching must be case-insensitive).
+ */
+export function headCandidatesWhere(
+  section: { teacherDepartment?: string | null },
+  mode: CourseScopeMode = courseScopeMode(),
+): Prisma.UserWhereInput | null {
+  if (mode === 'legacy') {
+    const department = section.teacherDepartment?.trim()
+    if (!department) return null
+    return {
+      role: 'teacher',
+      isActive: true,
+      isDepartmentHead: true,
+      department: { equals: department, mode: 'insensitive' },
+    }
+  }
+  return { role: 'teacher', isActive: true, isDepartmentHead: true }
+}
+
+/**
+ * True when a head returned by {@link headCandidatesWhere} covers the section.
+ * Legacy mode trusts the department query (it already filtered in SQL), so the
+ * result is unchanged from before; course mode narrows in memory because
+ * `managedCourses` matching must be case-insensitive.
+ */
+export function headCoversSection(
+  head: ScopeCarrier,
+  section: ScopedSectionShape,
+  mode: CourseScopeMode = courseScopeMode(),
+): boolean {
+  if (mode === 'legacy') return true
+  return sectionInOversightScope(head, section, mode)
+}
+
 /** Courses a head may filter by in the UI/queries; `null` = every course, `[]` = none. */
 export function oversightCourseList(user: ScopeCarrier | null | undefined): string[] | null {
   if (!user || user.role !== 'teacher' || user.isDepartmentHead !== true) return []

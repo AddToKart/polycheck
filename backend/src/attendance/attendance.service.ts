@@ -31,7 +31,7 @@ import { AttendanceScopeService } from './attendance-scope.service'
 import { AttendanceReportService } from './attendance-report.service'
 import { GeofenceService } from './geofence.service'
 import { verifyQRTokenNative } from '@polycheck/shared/token-node'
-import { academicOversightDepartment } from '../common/designations/department-pin'
+import { hasOversightScope, oversightRecordWhere, sectionInOversightScope } from '../common/course-scope'
 import { RAW_ATTENDANCE_LIMIT, type ScanEvidence, type ScanValidation } from './types'
 import { assertStudentInAdminScope, adminRecordWhere } from '../common/admin-scope'
 import { lockStudentSection } from '../common/student-section-lock'
@@ -811,12 +811,9 @@ export class AttendanceService {
     if (query.startDate && query.endDate && query.endDate < query.startDate) {
       throw new BadRequestException('endDate must be on or after startDate')
     }
-    const oversight = academicOversightDepartment(user)
     const scope: Prisma.AttendanceRecordWhereInput =
       user.role === 'teacher'
-        ? oversight
-          ? { session: { section: { teacher: { department: { equals: oversight, mode: 'insensitive' } } } } }
-          : { session: { teacherId: user.id } }
+        ? (oversightRecordWhere(user) ?? { session: { teacherId: user.id } })
         : adminRecordWhere(user)
     const where: Prisma.AttendanceRecordWhereInput = {
       AND: [
@@ -863,19 +860,17 @@ export class AttendanceService {
             teacherId: true,
             subjectName: true,
             date: true,
-            section: { select: { teacher: { select: { department: true } } } },
+            section: { select: { course: true, teacher: { select: { department: true } } } },
           },
         },
       },
     })
     if (!record) throw new NotFoundException('Attendance record not found')
-    const oversight = academicOversightDepartment(user)
-    const departmentMatch =
-      oversight !== null && record.session.section.teacher.department?.toLowerCase() === oversight.toLowerCase()
-    if (record.session.teacherId !== user.id && !departmentMatch) {
+    const oversightMatch = sectionInOversightScope(user, record.session.section)
+    if (record.session.teacherId !== user.id && !oversightMatch) {
       throw new ForbiddenException(
-        oversight
-          ? 'You can only decide excuses in your own sessions or within your department'
+        hasOversightScope(user)
+          ? 'You can only decide excuses in your own sessions or within your scope'
           : 'You can only decide excuses in your own sessions',
       )
     }

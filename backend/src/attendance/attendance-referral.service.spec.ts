@@ -354,3 +354,93 @@ describe('AttendanceReferralService — F5 (WF-LD7)', () => {
     })
   })
 })
+
+describe('AttendanceReferralService — course scope (COURSE_SCOPE_MODE=course)', () => {
+  const original = process.env.COURSE_SCOPE_MODE
+  const bsitHead: RequestUser = {
+    id: 'head-bsit',
+    role: 'teacher',
+    department: 'Unspecified',
+    isDepartmentHead: true,
+    managedCourses: ['BSIT'],
+  }
+  const bshmHead: RequestUser = {
+    id: 'head-bshm',
+    role: 'teacher',
+    department: 'CCIS',
+    isDepartmentHead: true,
+    managedCourses: ['BSHM'],
+  }
+  const programsHead: RequestUser = { id: 'head-all', role: 'teacher', isDepartmentHead: true, managesAllCourses: true }
+  // An irregular BSHM student sits in a BSIT section: the section's course decides who oversees it.
+  const bsitSection = {
+    ...referralSection,
+    course: 'BSIT',
+    teacher: { ...referralSection.teacher, department: 'CCIS' },
+  }
+  const bsitReferral = () => referralRow({ section: { ...referralRow().section, course: 'BSIT' } })
+
+  beforeEach(() => {
+    process.env.COURSE_SCOPE_MODE = 'course'
+  })
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.COURSE_SCOPE_MODE
+    else process.env.COURSE_SCOPE_MODE = original
+  })
+
+  it('lets the course head and the Head of Academic Programs generate for a section of their course', async () => {
+    for (const actor of [bsitHead, programsHead]) {
+      const { service, prisma, atRisk } = makeService()
+      prisma.section.findUnique.mockResolvedValue(bsitSection)
+      atRisk.classifyStudent.mockResolvedValue(classification('below_threshold'))
+      await expect(
+        service.generateReferral(actor, { sectionId: 'sec-1', studentId: 'stu-1' } as never),
+      ).resolves.toBeDefined()
+    }
+  })
+
+  it('blocks a head of another course even when the teacher shares their department', async () => {
+    const { service, prisma } = makeService()
+    prisma.section.findUnique.mockResolvedValue(bsitSection)
+    await expect(
+      service.generateReferral(bshmHead, { sectionId: 'sec-1', studentId: 'stu-1' } as never),
+    ).rejects.toBeInstanceOf(ForbiddenException)
+  })
+
+  it('lets only an in-scope head transition a referral', async () => {
+    const allowed = makeService()
+    allowed.prisma.atRiskReferral.findUnique.mockResolvedValue(bsitReferral())
+    await expect(
+      allowed.service.updateReferralStatus(bsitHead, 'ref-1', { status: 'acknowledged' }),
+    ).resolves.toBeDefined()
+
+    const denied = makeService()
+    denied.prisma.atRiskReferral.findUnique.mockResolvedValue(bsitReferral())
+    await expect(
+      denied.service.updateReferralStatus(bshmHead, 'ref-1', { status: 'acknowledged' }),
+    ).rejects.toBeInstanceOf(ForbiddenException)
+  })
+
+  it('queues the referral for the covering head only', async () => {
+    const { service, prisma, notifications } = makeService()
+    prisma.section.findUnique.mockResolvedValue(bsitSection)
+    prisma.user.findMany.mockResolvedValue([
+      { id: 'head-bsit', role: 'teacher', isDepartmentHead: true, managedCourses: ['BSIT'], managesAllCourses: false },
+      { id: 'head-bshm', role: 'teacher', isDepartmentHead: true, managedCourses: ['BSHM'], managesAllCourses: false },
+      { id: 'head-all', role: 'teacher', isDepartmentHead: true, managedCourses: [], managesAllCourses: true },
+    ])
+    await service.generateReferral(teacher, { sectionId: 'sec-1', studentId: 'stu-1' } as never)
+    const notified = notifications.notify.mock.calls.map((call: unknown[]) => call[0])
+    expect(notified).toEqual(expect.arrayContaining(['head-bsit', 'head-all']))
+    expect(notified).not.toContain('head-bshm')
+  })
+
+  it('scopes the referral queue of a course head to their courses (plus their own sections)', async () => {
+    const { service, prisma } = makeService()
+    await service.listReferrals(bsitHead)
+    expect(prisma.atRiskReferral.findMany.mock.calls[0][0].where.section).toEqual({
+      OR: [{ teacherId: 'head-bsit' }, { OR: [{ course: { equals: 'BSIT', mode: 'insensitive' } }] }],
+    })
+  })
+})

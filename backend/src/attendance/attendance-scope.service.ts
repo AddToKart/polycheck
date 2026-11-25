@@ -6,7 +6,7 @@ import { RAW_DATE_RANGE_DAYS } from './types'
 import type { Prisma } from '../prisma/client'
 import { formatCampusDate } from '@polycheck/shared'
 import { adminRecordWhere, adminDepartment, adminSessionWhere } from '../common/admin-scope'
-import { academicOversightDepartment } from '../common/designations/department-pin'
+import { oversightRecordWhere, oversightSectionWhere, oversightSessionWhere } from '../common/course-scope'
 
 @Injectable()
 export class AttendanceScopeService {
@@ -17,10 +17,7 @@ export class AttendanceScopeService {
       return { ...adminRecordWhere(user), ...(sessionId ? { sessionId } : {}) }
     }
     if (user.role === 'teacher') {
-      const oversight = academicOversightDepartment(user)
-      const scope = oversight
-        ? { session: { section: { teacher: { department: { equals: oversight, mode: 'insensitive' as const } } } } }
-        : { session: { teacherId: user.id } }
+      const scope = oversightRecordWhere(user) ?? { session: { teacherId: user.id } }
       return { ...scope, ...(sessionId ? { sessionId } : {}) }
     }
     return { studentId: user.id, ...(sessionId ? { sessionId } : {}) }
@@ -31,11 +28,7 @@ export class AttendanceScopeService {
       return adminSessionWhere(user)
     }
     if (user.role === 'teacher') {
-      const oversight = academicOversightDepartment(user)
-      if (oversight) {
-        return { section: { teacher: { department: { equals: oversight, mode: 'insensitive' as const } } } }
-      }
-      return { teacherId: user.id }
+      return oversightSessionWhere(user) ?? { teacherId: user.id }
     }
     const enrollments = await this.prisma.enrollment.findMany({
       where: { studentId: user.id },
@@ -74,16 +67,18 @@ export class AttendanceScopeService {
     query: AttendanceReportQueryDto,
     range: { startDate: string; endDate: string },
   ): Promise<Prisma.SessionWhereInput> {
-    const oversight = academicOversightDepartment(user)
+    const oversight = oversightSectionWhere(user)
     if (user.role === 'teacher' && query.teacherId && query.teacherId !== user.id && !oversight) {
       throw new ForbiddenException('Teachers can only report on their own attendance')
     }
     // Department filters are administrative. A department-scoped admin is
-    // always pinned to their own department, whatever the query asks for; a
-    // designated department head is pinned to their own department as well.
+    // always pinned to their own department, whatever the query asks for. A
+    // designated head is pinned to their oversight scope (their course(s) in
+    // course mode, their department in legacy mode) whatever the query asks.
     const requestedDepartment = user.role === 'super_admin' ? query.department : undefined
-    const department =
-      user.role === 'super_admin' ? (adminDepartment(user) ?? requestedDepartment) : (oversight ?? undefined)
+    const department = user.role === 'super_admin' ? (adminDepartment(user) ?? requestedDepartment) : undefined
+    // Optional course filter: narrows within the actor's scope, never widens it.
+    const course = query.course?.trim()
     return {
       AND: [
         await this.sessionScope(user),
@@ -95,6 +90,8 @@ export class AttendanceScopeService {
         ...(department
           ? [{ section: { teacher: { department: { equals: department, mode: 'insensitive' as const } } } }]
           : []),
+        ...(user.role !== 'super_admin' && oversight ? [{ section: oversight }] : []),
+        ...(course ? [{ section: { course: { equals: course, mode: 'insensitive' as const } } }] : []),
       ],
     }
   }

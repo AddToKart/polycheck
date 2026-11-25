@@ -224,3 +224,62 @@ describe('AttendanceAtRiskService', () => {
     expect(await service.classifyStudent('sec-1', 'stu-unknown')).toBeNull()
   })
 })
+
+describe('AttendanceAtRiskService — course scope (COURSE_SCOPE_MODE=course)', () => {
+  const original = process.env.COURSE_SCOPE_MODE
+  const bsitHead: RequestUser = {
+    id: 'head-bsit',
+    role: 'teacher',
+    department: 'Unspecified',
+    isDepartmentHead: true,
+    managedCourses: ['BSIT'],
+  }
+  const programsHead: RequestUser = { id: 'head-all', role: 'teacher', isDepartmentHead: true, managesAllCourses: true }
+  const emptyHead: RequestUser = { id: 'head-none', role: 'teacher', department: 'CCIS', isDepartmentHead: true }
+
+  beforeEach(() => {
+    process.env.COURSE_SCOPE_MODE = 'course'
+  })
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.COURSE_SCOPE_MODE
+    else process.env.COURSE_SCOPE_MODE = original
+  })
+
+  it('pins a course head to sections of their courses', async () => {
+    const { service, prisma } = makeService()
+    await service.list(bsitHead)
+    expect(prisma.section.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { OR: [{ course: { equals: 'BSIT', mode: 'insensitive' } }] } }),
+    )
+  })
+
+  it('lets the Head of Academic Programs see every course and narrow with the course filter', async () => {
+    const { service, prisma } = makeService()
+    await service.list(programsHead)
+    expect(prisma.section.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }))
+    await service.list(programsHead, { course: 'BSHM' })
+    expect(prisma.section.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { course: { equals: 'BSHM', mode: 'insensitive' } } }),
+    )
+  })
+
+  it('never widens a course head through the course filter', async () => {
+    const { service, prisma } = makeService()
+    await service.list(bsitHead, { course: 'BSHM' })
+    expect(prisma.section.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [{ course: { equals: 'BSIT', mode: 'insensitive' } }],
+          course: { equals: 'BSHM', mode: 'insensitive' },
+        },
+      }),
+    )
+  })
+
+  it('treats a head with no courses as a plain teacher (own sections only)', async () => {
+    const { service, prisma } = makeService()
+    await service.list(emptyHead)
+    expect(prisma.section.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { teacherId: 'head-none' } }))
+  })
+})

@@ -20,7 +20,7 @@ import {
 import { clampRetentionDays, consentCoveragePercent, PRIVACY_DATA_INVENTORY } from '@polycheck/shared'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { adminSectionInScope } from '../common/admin-scope'
-import { academicOversightDepartment } from '../common/designations/department-pin'
+import { sectionInOversightScope } from '../common/course-scope'
 import { GEOLOCATION_RETENTION_DAYS_KEY } from '../common/constants/privacy'
 import { classifyAtRiskRow, type AtRiskClassification } from '../attendance/attendance-at-risk.service'
 import { computeAttendanceRate } from '../common/utils/attendance-rate'
@@ -459,6 +459,7 @@ export class DocsService {
         id: true,
         teacherId: true,
         section: true,
+        course: true,
         room: true,
         semester: true,
         subject: { select: { name: true, code: true } },
@@ -478,6 +479,7 @@ export class DocsService {
       id: section.id,
       teacherId: section.teacherId,
       teacherDepartment: section.teacher.department,
+      course: section.course,
     })
 
     const records = await this.prisma.attendanceRecord.findMany({
@@ -529,6 +531,7 @@ export class DocsService {
         section: {
           select: {
             section: true,
+            course: true,
             semester: true,
             teacherId: true,
             subject: { select: { name: true, code: true } },
@@ -543,6 +546,7 @@ export class DocsService {
       id: referral.sectionId,
       teacherId: referral.section.teacherId,
       teacherDepartment: referral.section.teacher.department,
+      course: referral.section.course,
     })
 
     const [thresholdPercent, grouped, ledgerRaw] = await Promise.all([
@@ -1822,18 +1826,18 @@ export class DocsService {
     )
   }
 
-  /** Class-record scope: owning teacher, academic-oversight department head
-   * (department-pinned via the section teacher's department), or a super admin
-   * within `adminSectionInScope`.
+  /** Class-record scope: owning teacher, academic-oversight head (pinned to the
+   * section's course in course mode, or the section teacher's department in
+   * legacy mode), or a super admin within `adminSectionInScope`.
    */
   private async assertClassRecordAccess(
     user: RequestUser,
-    section: { id: string; teacherId: string; teacherDepartment: string | null },
+    section: { id: string; teacherId: string; teacherDepartment: string | null; course?: string | null },
   ): Promise<void> {
     if (user.role === 'teacher') {
       if (section.teacherId === user.id) return
-      const oversightDepartment = academicOversightDepartment(user)
-      if (oversightDepartment && departmentsMatch(section.teacherDepartment, oversightDepartment)) return
+      if (sectionInOversightScope(user, { course: section.course, teacher: { department: section.teacherDepartment } }))
+        return
       throw new ForbiddenException('You can only generate class records for your own sections')
     }
     if (user.role === 'super_admin') {
@@ -1852,12 +1856,12 @@ export class DocsService {
    */
   private async assertNoticeAccess(
     user: RequestUser,
-    section: { id: string; teacherId: string; teacherDepartment: string | null },
+    section: { id: string; teacherId: string; teacherDepartment: string | null; course?: string | null },
   ): Promise<void> {
     if (user.role === 'teacher') {
       if (section.teacherId === user.id) return
-      const oversightDepartment = academicOversightDepartment(user)
-      if (oversightDepartment && departmentsMatch(section.teacherDepartment, oversightDepartment)) return
+      if (sectionInOversightScope(user, { course: section.course, teacher: { department: section.teacherDepartment } }))
+        return
       throw new ForbiddenException('You can only generate at-risk notices for your own sections')
     }
     if (user.role === 'super_admin') {
@@ -1913,13 +1917,6 @@ function sanitizeFilenamePart(value: string): string {
     .slice(0, 64)
     .replace(/^[.-]+|[.-]+$/g, '')
   return sanitized || 'untitled'
-}
-
-/** Case-insensitive department equality for the academic-oversight widening. */
-function departmentsMatch(left: string | null | undefined, right: string | null | undefined): boolean {
-  const normalizedLeft = left?.trim().toLowerCase()
-  const normalizedRight = right?.trim().toLowerCase()
-  return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight)
 }
 
 function escapeCsv(value: unknown): string {

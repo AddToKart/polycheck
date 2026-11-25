@@ -84,6 +84,8 @@ export class AttendanceReportQueryDto {
   @IsOptional() @IsString() @MaxLength(128) sectionId?: string
   @IsOptional() @IsString() @MaxLength(128) sessionId?: string
   @IsOptional() @IsString() @MaxLength(100) department?: string
+  /** Course (program code) filter; narrows within the actor's scope, never widens it. */
+  @IsOptional() @IsString() @MaxLength(30) course?: string
 }
 
 const EXCUSE_REASONS: ExcuseReason[] = [
@@ -121,6 +123,8 @@ export class ListExcusesQueryDto {
 
 export class AtRiskQueryDto {
   @IsOptional() @IsString() @MaxLength(128) sectionId?: string
+  /** Course (program code) filter; narrows within the actor's scope, never widens it. */
+  @IsOptional() @IsString() @MaxLength(30) course?: string
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50) limit?: number
 }
 

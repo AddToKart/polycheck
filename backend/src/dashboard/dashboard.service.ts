@@ -11,7 +11,7 @@ import {
   adminSessionWhere,
   adminUserWhere,
 } from '../common/admin-scope'
-import { academicOversightDepartment } from '../common/designations/department-pin'
+import { oversightSectionWhere } from '../common/course-scope'
 import type { Prisma } from '../prisma/client'
 import type { AuditLogsService } from '../audit-logs/audit-logs.service'
 import type { RedisService } from '../infrastructure/redis.service'
@@ -450,12 +450,8 @@ export class DashboardService {
     // Same scope rule as the reports list: a department-scoped admin is pinned
     // to their own department, a designated department head to theirs, and only
     // an institution-scoped admin may pick a department filter.
-    const department =
-      user.role === 'super_admin'
-        ? (adminDepartment(user) ?? filters.department)
-        : user.role === 'teacher'
-          ? (academicOversightDepartment(user) ?? undefined)
-          : undefined
+    const department = user.role === 'super_admin' ? (adminDepartment(user) ?? filters.department) : undefined
+    const oversight = user.role === 'teacher' ? oversightSectionWhere(user) : null
     const sessionWhere: Prisma.SessionWhereInput = {
       AND: [
         this.sessionScope(user),
@@ -467,6 +463,7 @@ export class DashboardService {
         ...(department
           ? [{ section: { teacher: { department: { equals: department, mode: 'insensitive' as const } } } }]
           : []),
+        ...(oversight ? [{ section: oversight }] : []),
       ],
     }
     return {

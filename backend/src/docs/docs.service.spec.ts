@@ -502,6 +502,41 @@ describe('DocsService', () => {
         }
       })
 
+      describe('in course mode (COURSE_SCOPE_MODE=course)', () => {
+        const original = process.env.COURSE_SCOPE_MODE
+        beforeEach(() => {
+          process.env.COURSE_SCOPE_MODE = 'course'
+        })
+        afterEach(() => {
+          if (original === undefined) delete process.env.COURSE_SCOPE_MODE
+          else process.env.COURSE_SCOPE_MODE = original
+        })
+
+        it.each([
+          ['BSIT head', { managedCourses: ['BSIT'] }, true],
+          ['BSHM head', { managedCourses: ['BSHM'] }, false],
+          ['Head of Academic Programs', { managesAllCourses: true }, true],
+          ['head with no courses', {}, false],
+        ])('opens the class record of a BSIT section to the %s: %j', async (_label, scope, allowed) => {
+          // The section teacher's department is irrelevant in course mode.
+          const prisma = createClassRecordPrisma({
+            ...(classRecordSection as object),
+            course: 'BSIT',
+            teacher: { fullName: 'Prof. Cruz', department: 'Unspecified' },
+          })
+          const head: RequestUser = {
+            id: 'head-1',
+            role: 'teacher',
+            isDepartmentHead: true,
+            department: 'CCIS',
+            ...scope,
+          }
+          const result = new DocsService(prisma as never).classRecord(head, 'sec-1', 'pdf')
+          if (allowed) await expect(result).resolves.toMatchObject({ contentType: 'application/pdf' })
+          else await expect(result).rejects.toBeInstanceOf(ForbiddenException)
+        })
+      })
+
       it('keeps department admins behind adminSectionInScope and institution admins open', async () => {
         const denied = createClassRecordPrisma()
         const departmentAdminService = new DocsService(denied as never)
