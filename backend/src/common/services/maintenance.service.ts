@@ -127,6 +127,32 @@ export class MaintenanceService {
     )
   }
 
+  /**
+   * Activation tokens carry no secrets (hash only) but are pure churn once
+   * expired: drop them after 30 days. The mail outbox keeps delivery history
+   * for 90 days (no message body is ever stored).
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM, { waitForCompletion: true })
+  async pruneAccountActivation() {
+    await this.runLockedJob(
+      'maintenance:prune-account-activation',
+      DAILY_JOB_LOCK_TTL_SECONDS,
+      async () => {
+        const day = 86_400_000
+        const tokens = await this.prisma.accountActivationToken.deleteMany({
+          where: { createdAt: { lt: new Date(Date.now() - 30 * day) } },
+        })
+        const mails = await this.prisma.accountMail.deleteMany({
+          where: { queuedAt: { lt: new Date(Date.now() - 90 * day) }, status: { in: ['sent', 'failed', 'bounced'] } },
+        })
+        if (tokens.count > 0 || mails.count > 0) {
+          this.logger.log(`Pruned ${tokens.count} activation tokens and ${mails.count} mail rows past retention`)
+        }
+      },
+      'prune account activation',
+    )
+  }
+
   @Cron(CronExpression.EVERY_DAY_AT_2AM, { waitForCompletion: true })
   async anchorAttendanceLedger() {
     await this.runLockedJob(

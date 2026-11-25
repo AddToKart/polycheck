@@ -43,6 +43,7 @@ import { StandingModule } from './standing/standing.module'
 import { NotificationsModule } from './notifications/notifications.module'
 import { ReportsModule } from './reports/reports.module'
 import { AccountActivationModule } from './account-activation/account-activation.module'
+import { MailModule } from './mail/mail.module'
 
 @Module({
   imports: [
@@ -89,6 +90,7 @@ import { AccountActivationModule } from './account-activation/account-activation
     NotificationsModule,
     ReportsModule,
     AccountActivationModule,
+    MailModule,
     MaintenanceModule,
     MaintenanceModeModule,
   ],

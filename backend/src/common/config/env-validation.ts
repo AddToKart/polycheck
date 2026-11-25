@@ -48,9 +48,32 @@ export const envSchema = z
     // 'legacy' (default) scopes heads/registrars by department; 'course' scopes them by course.
     // Unknown values are tolerated here and degrade to 'legacy' with a startup warning (common/course-scope.ts).
     COURSE_SCOPE_MODE: z.string().max(32).optional().or(z.literal('')),
+    // Email delivery for account activation. 'disabled' (default) refuses every send; 'log' writes the
+    // message to the server log and is rejected in production; 'resend' needs a key and a sender.
+    MAIL_DRIVER: z.enum(['disabled', 'log', 'resend']).default('disabled'),
+    RESEND_API_KEY: z.string().optional().or(z.literal('')),
+    MAIL_FROM: z.string().max(300).optional().or(z.literal('')),
+    MAIL_REPLY_TO: z.string().max(300).optional().or(z.literal('')),
+    MAIL_RATE_PER_SECOND: z.coerce.number().int().min(1).max(10).default(2),
+    // Resend's free plan allows 100 emails/day (UTC); raise this on a paid plan.
+    MAIL_DAILY_CAP: z.coerce.number().int().min(1).max(100_000).default(100),
     EXPO_ACCESS_TOKEN: z.string().optional().or(z.literal('')),
   })
   .superRefine((env, ctx) => {
+    if (env.NODE_ENV === 'production' && env.MAIL_DRIVER === 'log') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MAIL_DRIVER'],
+        message: 'MAIL_DRIVER=log is not allowed in production (it would write activation links to the log)',
+      })
+    }
+    if (env.MAIL_DRIVER === 'resend' && (!env.RESEND_API_KEY || !env.MAIL_FROM)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['RESEND_API_KEY'],
+        message: 'MAIL_DRIVER=resend requires RESEND_API_KEY and MAIL_FROM',
+      })
+    }
     const productionOrigins = env.CORS_ORIGINS.split(',')
       .map((origin) => origin.trim())
       .filter(Boolean)

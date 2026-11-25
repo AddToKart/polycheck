@@ -113,6 +113,28 @@ describe('MaintenanceService', () => {
     expect(redis.releaseLock).toHaveBeenCalledWith('maintenance:prune-notifications', 'owner-token')
   })
 
+  it('prunes expired activation tokens after 30 days and settled mail rows after 90, never pending ones', async () => {
+    const prisma = {
+      accountActivationToken: { deleteMany: jest.fn().mockResolvedValue({ count: 4 }) },
+      accountMail: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
+    }
+    const redis = {
+      acquireLock: jest.fn().mockResolvedValue('owner-token'),
+      releaseLock: jest.fn().mockResolvedValue(true),
+    }
+    const service = new MaintenanceService(prisma as never, { expireStale: jest.fn() } as never, redis as never)
+
+    await service.pruneAccountActivation()
+
+    const day = 24 * 60 * 60 * 1000
+    const tokenCutoff = prisma.accountActivationToken.deleteMany.mock.calls[0][0].where.createdAt.lt as Date
+    expect(Date.now() - tokenCutoff.getTime()).toBeGreaterThanOrEqual(30 * day - 1000)
+    const mailWhere = prisma.accountMail.deleteMany.mock.calls[0][0].where
+    expect(Date.now() - (mailWhere.queuedAt.lt as Date).getTime()).toBeGreaterThanOrEqual(90 * day - 1000)
+    expect(mailWhere.status).toEqual({ in: ['sent', 'failed', 'bounced'] })
+    expect(redis.releaseLock).toHaveBeenCalledWith('maintenance:prune-account-activation', 'owner-token')
+  })
+
   it('does no maintenance work when another replica owns the job lock', async () => {
     const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
     try {
