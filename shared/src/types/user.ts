@@ -45,6 +45,10 @@ export interface User {
   managesAllCourses?: boolean
   /** Live head/registrar scoping rule reported by the server (`legacy` = department, `course` = course). */
   courseScopeMode?: 'legacy' | 'course'
+  /** True while an emailed activation link has not been used (the account cannot log in yet). */
+  activationPending?: boolean
+  /** Latest activation email delivery state (plain strings; only present for pending accounts). */
+  activationMail?: { status: string; sentAt?: string; errorCode?: string }
   /** Secondary contact channels owned by the user (never the login identity). */
   contactEmail?: string | null
   contactPhone?: string | null

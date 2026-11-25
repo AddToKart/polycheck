@@ -37,6 +37,8 @@ export interface AdminUserFilters {
   q?: string
   department?: string
   status?: AdminUserStatusFilter
+  /** `pending` lists students who have not yet activated their account. */
+  activation?: 'pending'
   limit?: number
   offset?: number
 }

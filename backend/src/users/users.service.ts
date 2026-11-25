@@ -39,6 +39,8 @@ import { SettingsService } from '../settings/settings.service'
 import { lockStudentSection } from '../common/student-section-lock'
 import { ErrorCode } from '../common/constants/error-codes'
 import { DeviceBindingService } from './device-binding.service'
+import { AccountActivationService } from '../account-activation/account-activation.service'
+import { MailService } from '../mail/mail.service'
 import { generateTemporaryPassword } from './password-generator'
 
 const SAFE_USER_SELECT = {
@@ -58,6 +60,7 @@ const SAFE_USER_SELECT = {
   isUserRegistrar: true,
   managedCourses: true,
   managesAllCourses: true,
+  activationPending: true,
   createdAt: true,
   updatedAt: true,
 } as const satisfies Prisma.UserSelect
@@ -77,6 +80,8 @@ const GOVERNANCE_USER_SELECT = {
 type SafeUser = Prisma.UserGetPayload<{ select: typeof SAFE_USER_SELECT }>
 
 const DEFAULT_LIST_LIMIT = 100
+// Upper bound for one bulk "re-send to everyone pending" request.
+const PENDING_RESEND_LIMIT = 2_000
 
 // Delegated classroom actions are rate limited per teacher so a compromised
 // account cannot mass-reset a roster. Limits are env-tunable like login limits.
@@ -108,6 +113,8 @@ export class UsersService {
     @Optional() private deviceBinding?: DeviceBindingService,
     @Optional() private settings?: SettingsService,
     @Optional() private redis?: RedisService,
+    @Optional() private activation?: AccountActivationService,
+    @Optional() private mail?: MailService,
   ) {}
 
   async findAll(user: RequestUser, filters: AdminUserFilters = {}, pagination?: PaginationParams) {
@@ -126,14 +133,36 @@ export class UsersService {
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
         where,
-        select: SAFE_USER_SELECT,
+        select: {
+          ...SAFE_USER_SELECT,
+          // Latest delivery state, only surfaced for accounts still waiting to activate.
+          accountMails: {
+            where: { kind: 'activation' },
+            orderBy: { queuedAt: 'desc' },
+            take: 1,
+            select: { status: true, sentAt: true, errorCode: true },
+          },
+        },
         orderBy: { fullName: 'asc' },
         take: params.limit,
         skip: params.offset,
       }),
       this.prisma.user.count({ where }),
     ])
-    return paginate(users, total, params)
+    const rows = users.map(({ accountMails, ...account }) => {
+      const latest = account.activationPending ? accountMails?.[0] : undefined
+      return latest
+        ? {
+            ...account,
+            activationMail: {
+              status: latest.status,
+              ...(latest.sentAt ? { sentAt: latest.sentAt.toISOString() } : {}),
+              ...(latest.errorCode ? { errorCode: latest.errorCode } : {}),
+            },
+          }
+        : account
+    })
+    return paginate(rows, total, params)
   }
 
   async findOne(id: string, user: RequestUser) {
@@ -409,8 +438,18 @@ export class UsersService {
       this.prisma.user.update({
         where: { id },
         // An admin reset issues a temporary credential: force rotation on the
-        // next login (the session revocation below also forces a fresh login).
-        data: { password: passwordHash, mustChangePassword: true, authVersion: { increment: 1 } },
+        // next login (the session revocation below also forces a fresh login). A reset also ends
+        // any pending email activation: the temporary password is now the way in.
+        data: {
+          password: passwordHash,
+          mustChangePassword: true,
+          activationPending: false,
+          authVersion: { increment: 1 },
+        },
+      }),
+      this.prisma.accountActivationToken.updateMany({
+        where: { userId: id, usedAt: null, revokedAt: null },
+        data: { revokedAt: new Date() },
       }),
       this.prisma.authAccount.upsert({
         where: { providerId_accountId: { providerId: 'credential', accountId: id } },
@@ -1144,6 +1183,92 @@ export class UsersService {
     }
   }
 
+  /**
+   * Re-send the activation email to one pending student. Uses the same account-admin scope as
+   * every other user-administration action (registrars stay inside their courses/department).
+   */
+  async resendActivation(id: string, user: RequestUser) {
+    this.assertAccountAdministrator(user)
+    await this.assertActivationEmailAvailable()
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        role: true,
+        department: true,
+        program: true,
+        email: true,
+        isActive: true,
+        activationPending: true,
+      },
+    })
+    if (!target) throw new NotFoundException('User not found')
+    if (target.role !== 'student') throw new BadRequestException('Only student accounts use email activation')
+    if (!this.canAdministrateAccount(user, target)) {
+      throw new ForbiddenException('This account is outside your administrative scope')
+    }
+    if (!target.activationPending) {
+      throw new BadRequestException({ code: 'not_pending', message: 'This account is not waiting for activation.' })
+    }
+    if (!target.isActive) {
+      throw new BadRequestException({ code: 'account_disabled', message: 'Enable this account before re-sending.' })
+    }
+    if (!target.email?.trim()) {
+      throw new BadRequestException({
+        code: 'no_email',
+        message: 'Add an email address to this account first, or reset its password instead.',
+      })
+    }
+    const queued = await this.activation!.queueActivationMail(id)
+    await this.recordAdminAudit(user, 'admin.user.activation_resent', id, { alreadyQueued: !queued.created })
+    return { queued: true, alreadyQueued: !queued.created }
+  }
+
+  /** Queue a fresh activation email for every pending student with an email in the caller's scope. */
+  async resendPendingActivation(user: RequestUser) {
+    this.assertAccountAdministrator(user)
+    await this.assertActivationEmailAvailable()
+    const scope = this.userListWhere(user, { role: 'student' })
+    const pending = await this.prisma.user.findMany({
+      where: { AND: [scope, { activationPending: true, isActive: true }] },
+      select: { id: true, email: true },
+      orderBy: { fullName: 'asc' },
+      take: PENDING_RESEND_LIMIT,
+    })
+    let queued = 0
+    let alreadyQueued = 0
+    let noEmail = 0
+    for (const account of pending) {
+      if (!account.email?.trim()) {
+        noEmail += 1
+        continue
+      }
+      const result = await this.activation!.queueActivationMail(account.id)
+      if (result.created) queued += 1
+      else alreadyQueued += 1
+    }
+    await this.recordAdminAudit(user, 'admin.user.activation_resent_bulk', user.id, {
+      pending: pending.length,
+      queued,
+      alreadyQueued,
+      noEmail,
+    })
+    return { pending: pending.length, queued, alreadyQueued, noEmail }
+  }
+
+  private async assertActivationEmailAvailable(): Promise<void> {
+    const enabled = (await this.settings?.getBoolean('activation_email_enabled', false)) ?? false
+    const configured = this.mail?.status().configured ?? false
+    if (!enabled || !configured || !this.activation) {
+      throw new BadRequestException({
+        code: 'activation_email_unavailable',
+        message: enabled
+          ? 'Email delivery is not configured on this server.'
+          : 'Email activation is switched off in Institution Settings.',
+      })
+    }
+  }
+
   private userListWhere(user: RequestUser, filters: AdminUserFilters): Prisma.UserWhereInput {
     const and: Prisma.UserWhereInput[] = []
     if (isRegistrar(user)) {
@@ -1172,6 +1297,7 @@ export class UsersService {
       and.push({ department: { equals: department, mode: 'insensitive' } })
     }
     if (filters.status) and.push({ isActive: filters.status === 'active' })
+    if (filters.activation === 'pending') and.push({ activationPending: true })
 
     return and.length > 0 ? { AND: and } : {}
   }

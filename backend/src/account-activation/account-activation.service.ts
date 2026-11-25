@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { hash } from '@node-rs/bcrypt'
-import { createHash, timingSafeEqual } from 'node:crypto'
+import { timingSafeEqual } from 'node:crypto'
 import { isStrongPassword, PASSWORD_HASH_COST } from '../auth/password-policy'
 import { RedisService } from '../infrastructure/redis.service'
 import { PrismaService } from '../prisma/prisma.service'
@@ -108,7 +108,7 @@ export class AccountActivationService {
    */
   async queueActivationMail(
     userId: string,
-    options: { batchId?: string | null; db?: DbClient } = {},
+    options: { batchId?: string | null; db?: DbClient; announce?: boolean } = {},
   ): Promise<{ id: string; created: boolean }> {
     const db = options.db ?? this.prisma
     const inFlight = await db.accountMail.findFirst({
@@ -121,8 +121,14 @@ export class AccountActivationService {
       select: { id: true },
     })
     // Fire-and-forget: the sweeper re-queues anything this notification misses.
-    if (!options.db || options.db === this.prisma) this.events?.emit(ACCOUNT_MAIL_QUEUED_EVENT, { id: row.id })
+    // Rows created inside a caller's transaction are announced by the caller after commit.
+    if (options.announce ?? !options.db) this.events?.emit(ACCOUNT_MAIL_QUEUED_EVENT, { id: row.id })
     return { id: row.id, created: true }
+  }
+
+  /** Tell the mail worker about rows created inside a caller's (now committed) transaction. */
+  announceQueued(ids: readonly string[]): void {
+    for (const id of ids) this.events?.emit(ACCOUNT_MAIL_QUEUED_EVENT, { id })
   }
 
   /** Does not consume the token. Anything unusable returns the same `{ valid: false }`. */
@@ -247,28 +253,27 @@ export class AccountActivationService {
     const studentId = normalizeStudentNumber(input.studentId)
     const email = input.email.trim().toLowerCase()
 
-    // Account limits are keyed by the submitted student number whether or not it
-    // exists, so hitting them is indistinguishable from a normal accepted request.
-    if (this.redis) {
-      const key = createHash('sha256').update(studentId).digest('hex').slice(0, 32)
-      const cooled = await this.redis.consumeRateLimit(
-        `activation:request:cooldown:${key}`,
-        1,
-        REQUEST_ACCOUNT_COOLDOWN_SECONDS,
-      )
-      const withinDaily = await this.redis.consumeRateLimit(
-        `activation:request:daily:${key}`,
-        REQUEST_ACCOUNT_LIMIT,
-        REQUEST_ACCOUNT_WINDOW_SECONDS,
-      )
-      if (!cooled || !withinDaily) return { ok: true }
-    }
-
     const user = await this.prisma.user.findFirst({
       where: { studentId, role: 'student', activationPending: true, isActive: true },
       select: { id: true, email: true },
     })
     if (!user?.email || user.email.trim().toLowerCase() !== email) return { ok: true }
+
+    // Per-account caps only count requests that would actually send mail, so a mistyped email
+    // cannot burn a student's cooldown. Hitting a cap is indistinguishable from a normal accept.
+    if (this.redis) {
+      const cooled = await this.redis.consumeRateLimit(
+        `activation:request:cooldown:${user.id}`,
+        1,
+        REQUEST_ACCOUNT_COOLDOWN_SECONDS,
+      )
+      const withinDaily = await this.redis.consumeRateLimit(
+        `activation:request:daily:${user.id}`,
+        REQUEST_ACCOUNT_LIMIT,
+        REQUEST_ACCOUNT_WINDOW_SECONDS,
+      )
+      if (!cooled || !withinDaily) return { ok: true }
+    }
 
     await this.queueActivationMail(user.id)
     await this.audit('account.activation_link_requested', user.id, { via: 'self_service' })

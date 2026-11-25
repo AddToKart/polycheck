@@ -156,6 +156,7 @@ describe('UsersService', () => {
       },
       authAccount: { upsert: jest.fn().mockResolvedValue({}) },
       authSession: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      accountActivationToken: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
     }
     const service = new UsersService(prisma as never)
@@ -168,6 +169,12 @@ describe('UsersService', () => {
     const updateData = prisma.user.update.mock.calls[0][0].data
     expect(updateData.authVersion).toEqual({ increment: 1 })
     expect(updateData.mustChangePassword).toBe(true)
+    // A reset ends any pending email activation: the temporary password is now the way in.
+    expect(updateData.activationPending).toBe(false)
+    expect(prisma.accountActivationToken.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'teacher-1', usedAt: null, revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    })
     expect(updateData.password).not.toBe('Replacement1!Secure')
     await expect(compare('Replacement1!Secure', updateData.password)).resolves.toBe(true)
     expect(prisma.authAccount.upsert).toHaveBeenCalledWith(
@@ -823,6 +830,7 @@ describe('UsersService', () => {
         },
         authAccount: { upsert: jest.fn() },
         authSession: { deleteMany: jest.fn() },
+        accountActivationToken: { updateMany: jest.fn() },
         $transaction: jest.fn().mockResolvedValue([]),
       }
       const notifications = { notify: jest.fn().mockResolvedValue(undefined) }

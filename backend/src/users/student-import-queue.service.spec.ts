@@ -29,7 +29,11 @@ function activeAccount(overrides: Record<string, unknown> = {}) {
 }
 
 describe('StudentImportQueueService', () => {
-  const importer = { importStudents: jest.fn(), assertChecksum: jest.fn() }
+  const importer = {
+    importStudents: jest.fn(),
+    assertChecksum: jest.fn(),
+    assertDeliveryModeAvailable: jest.fn().mockResolvedValue(undefined),
+  }
   const redis = {
     setJson: jest.fn().mockResolvedValue(true),
     getJson: jest.fn().mockResolvedValue(null),

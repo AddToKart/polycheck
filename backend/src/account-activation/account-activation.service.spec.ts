@@ -323,9 +323,33 @@ describe('AccountActivationService.requestLink', () => {
       const { service, prisma } = makeService({ limits })
       prisma.user.findFirst.mockResolvedValue(pendingUser)
       await expect(service.requestLink(request, '1.2.3.4')).resolves.toEqual({ ok: true })
-      expect(prisma.user.findFirst).not.toHaveBeenCalled()
       expect(prisma.accountMail.create).not.toHaveBeenCalled()
     }
+  })
+
+  it('does not let a mistyped email burn the per-account cooldown', async () => {
+    const { service, prisma, redis } = makeService()
+    prisma.user.findFirst.mockResolvedValue({ id: 'u-1', email: 'other@example.com' })
+    await service.requestLink(request, '1.2.3.4')
+    // Only the per-IP counter was consumed; the account cooldown/daily caps were not touched.
+    expect(redis.consumeRateLimit).toHaveBeenCalledTimes(1)
+    expect(redis.consumeRateLimit).toHaveBeenCalledWith(
+      expect.stringContaining('activation:request:ip:'),
+      expect.any(Number),
+      expect.any(Number),
+    )
+  })
+
+  it('keys the per-account caps by the matched account', async () => {
+    const { service, prisma, redis } = makeService()
+    prisma.user.findFirst.mockResolvedValue(pendingUser)
+    await service.requestLink(request, '1.2.3.4')
+    const keys = (redis.consumeRateLimit.mock.calls as unknown as string[][]).map((call) => call[0])
+    expect(keys).toEqual([
+      'activation:request:ip:1.2.3.4',
+      'activation:request:cooldown:u-1',
+      'activation:request:daily:u-1',
+    ])
   })
 
   it('rejects an abusive IP with a rate-limit error that reveals nothing about accounts', async () => {

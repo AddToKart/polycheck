@@ -39,6 +39,7 @@ export const StudentImportRequestSchema = z
   .object({
     mode: ImportModeSchema,
     conflictMode: ImportConflictModeSchema,
+    deliveryMode: z.enum(['temporary_password', 'activation_email']).optional(),
     rows: z.array(StudentImportRowSchema).min(1).max(IMPORT_CHUNK_SIZE),
     idempotencyKey: IdempotencyKeySchema,
     rowChecksum: RowChecksumSchema.optional(),

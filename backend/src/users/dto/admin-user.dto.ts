@@ -25,6 +25,7 @@ export class AdminUserQueryDto {
   @IsOptional() @IsString() @MaxLength(100) q?: string
   @IsOptional() @IsString() @MaxLength(100) department?: string
   @IsOptional() @IsIn(['active', 'inactive']) status?: AdminUserStatus
+  @IsOptional() @IsIn(['pending']) activation?: 'pending'
   @IsOptional() @IsString() @MaxLength(10) limit?: string
   @IsOptional() @IsString() @MaxLength(10) offset?: string
 }

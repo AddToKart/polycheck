@@ -1,4 +1,11 @@
-import { ConflictException, ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
 import {
   computeRowChecksum,
@@ -11,6 +18,9 @@ import {
 } from '@polycheck/shared'
 import { courseInScope } from '../common/course-scope'
 import { PrismaService } from '../prisma/prisma.service'
+import { AccountActivationService } from '../account-activation/account-activation.service'
+import { MailService } from '../mail/mail.service'
+import { SettingsService } from '../settings/settings.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { Prisma } from '../prisma/client'
 import { accountAdminScope } from '../common/designations/department-pin'
@@ -87,9 +97,32 @@ export class StudentImportService {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly metrics?: MetricsService,
+    @Optional() private readonly settings?: SettingsService,
+    @Optional() private readonly activation?: AccountActivationService,
+    @Optional() private readonly mail?: MailService,
   ) {}
 
+  /**
+   * `activation_email` is honored only when an administrator switched it on and a
+   * mail provider is configured; otherwise the request is refused up front (at
+   * validate time too) instead of silently falling back to a different mode.
+   */
+  async assertDeliveryModeAvailable(dto: Pick<StudentImportRequestDto, 'deliveryMode'>): Promise<void> {
+    if (dto.deliveryMode !== 'activation_email') return
+    const enabled = (await this.settings?.getBoolean('activation_email_enabled', false)) ?? false
+    const configured = this.mail?.status().configured ?? false
+    if (!enabled || !configured || !this.activation) {
+      throw new BadRequestException({
+        code: 'activation_email_unavailable',
+        message: !enabled
+          ? 'Email activation is switched off. Turn it on in Institution Settings, or import with temporary passwords.'
+          : 'Email delivery is not configured on this server. Import with temporary passwords instead.',
+      })
+    }
+  }
+
   async importStudents(dto: StudentImportRequestDto, user: RequestUser): Promise<StudentImportResult> {
+    await this.assertDeliveryModeAvailable(dto)
     if (dto.mode === 'validate') {
       const plan = await this.analyze(this.prisma, dto, user)
       return this.present(plan, dto.conflictMode, 'validate')
@@ -125,11 +158,19 @@ export class StudentImportService {
     const preliminary = await this.analyze(this.prisma, dto, user)
     const prepared = await this.prepareCredentials(preliminary.rows)
 
-    let committed: { plan: StudentImportPlan; credentials: ImportCredential[] }
+    const activationMode = dto.deliveryMode === 'activation_email'
+    let committed: {
+      plan: StudentImportPlan
+      credentials: ImportCredential[]
+      mailIds: string[]
+      fallbackTemporary: number
+    }
     try {
       committed = await this.prisma.$transaction(async (tx) => {
         const plan = await this.analyze(tx, dto, user)
         const credentials: ImportCredential[] = []
+        const mailIds: string[] = []
+        let fallbackTemporary = 0
         const authAccounts: Prisma.AuthAccountCreateManyInput[] = []
         const now = new Date()
 
@@ -140,6 +181,9 @@ export class StudentImportService {
           if (!preparedCredential) continue
 
           const id = randomUUID()
+          // Rows with an email get an activation link; the stored password is random and never
+          // revealed, so the account simply cannot be logged into until the student activates it.
+          const emailActivation = activationMode && Boolean(planned.row.email)
           const authEmail = `u-${randomUUID()}@auth.polycheck.invalid`
           await tx.user.create({
             data: {
@@ -154,6 +198,7 @@ export class StudentImportService {
               yearLevel: planned.row.yearLevel ?? DEFAULT_YEAR_LEVEL,
               department: planned.row.department || DEFAULT_DEPARTMENT,
               mustChangePassword: true,
+              activationPending: emailActivation,
             },
           })
           authAccounts.push({
@@ -165,11 +210,17 @@ export class StudentImportService {
             createdAt: now,
             updatedAt: now,
           })
-          credentials.push({
-            rowNumber: planned.row.rowNumber,
-            studentId: planned.row.studentId,
-            tempPassword: preparedCredential.password,
-          })
+          if (emailActivation && this.activation) {
+            const queued = await this.activation.queueActivationMail(id, { db: tx, announce: false })
+            mailIds.push(queued.id)
+          } else {
+            if (activationMode) fallbackTemporary += 1
+            credentials.push({
+              rowNumber: planned.row.rowNumber,
+              studentId: planned.row.studentId,
+              tempPassword: preparedCredential.password,
+            })
+          }
         }
 
         if (authAccounts.length > 0) {
@@ -191,7 +242,7 @@ export class StudentImportService {
           }
         }
 
-        return { plan, credentials }
+        return { plan, credentials, mailIds, fallbackTemporary }
       })
     } catch (error) {
       if (error instanceof Error && 'code' in error && (error as { code?: string }).code === 'P2002') {
@@ -200,11 +251,22 @@ export class StudentImportService {
       throw error
     }
 
-    const { plan, credentials } = committed
-    await this.recordImport(plan, dto, user)
+    const { plan, credentials, mailIds, fallbackTemporary } = committed
+    const batchId = await this.recordImport(plan, dto, user)
     this.recordMetrics(plan.summary)
+    if (mailIds.length > 0) {
+      // Tie the outbox rows to this import for the report, then wake the worker (the sweeper
+      // would also find them). Neither step may fail the import: the accounts already exist.
+      if (batchId) {
+        await this.prisma.accountMail
+          .updateMany({ where: { id: { in: mailIds } }, data: { batchId } })
+          .catch((error: unknown) => this.logger.warn(`Could not tag activation mail with the import batch: ${error}`))
+      }
+      this.activation?.announceQueued(mailIds)
+    }
 
-    const result = this.present(plan, dto.conflictMode, 'execute')
+    const base = this.present(plan, dto.conflictMode, 'execute')
+    const result = activationMode ? { ...base, activation: { queued: mailIds.length, fallbackTemporary } } : base
     return credentials.length > 0
       ? { ...result, credentials: credentials.sort((left, right) => left.rowNumber - right.rowNumber) }
       : result
@@ -334,7 +396,7 @@ export class StudentImportService {
       rows: planned,
       summary,
       ...this.capIssues(planned),
-      rowChecksum: computeRowChecksum(rows.map((row) => this.canonicalRow(row))),
+      rowChecksum: this.checksumFor(rows, dto.deliveryMode),
     }
   }
 
@@ -500,7 +562,18 @@ export class StudentImportService {
   }
 
   private computeChecksum(dto: StudentImportRequestDto, user: RequestUser): string {
-    return computeRowChecksum(this.normalizeRows(dto.rows, user).map((row) => this.canonicalRow(row)))
+    return this.checksumFor(this.normalizeRows(dto.rows, user), dto.deliveryMode)
+  }
+
+  /**
+   * Binds the delivery mode into the fingerprint so an execute cannot silently switch from
+   * temporary passwords to emails (or back) after validate. Omitted/temporary requests hash
+   * exactly as before.
+   */
+  private checksumFor(rows: NormalizedStudentRow[], deliveryMode: StudentImportRequestDto['deliveryMode']): string {
+    const canonical: Record<string, unknown>[] = rows.map((row) => this.canonicalRow(row))
+    if (deliveryMode === 'activation_email') canonical.push({ deliveryMode })
+    return computeRowChecksum(canonical)
   }
 
   private async prepareCredentials(rows: PlannedStudentRow[]): Promise<Map<string, PreparedCredential>> {
@@ -546,7 +619,11 @@ export class StudentImportService {
     this.metrics?.recordImportRows(IMPORT_BATCH_KIND, 'invalid', summary.invalid)
   }
 
-  private async recordImport(plan: StudentImportPlan, dto: StudentImportRequestDto, user: RequestUser) {
+  private async recordImport(
+    plan: StudentImportPlan,
+    dto: StudentImportRequestDto,
+    user: RequestUser,
+  ): Promise<string | null> {
     const scope = accountAdminScope(user)
     const issueCodes = [...new Set(plan.rows.flatMap((row) => row.row.issues.map((issue) => issue.code)))]
     const summaryJson = {
@@ -558,6 +635,7 @@ export class StudentImportService {
       update: plan.summary.update,
       skip: plan.summary.skip,
       invalid: plan.summary.invalid,
+      deliveryMode: dto.deliveryMode ?? 'temporary_password',
       issueCodes,
     }
 
@@ -621,6 +699,7 @@ export class StudentImportService {
     }
 
     await this.pruneOldBatches()
+    return batchId
   }
 
   /** Opportunistic 90-day retention sweep after a successful import. */

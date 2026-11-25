@@ -117,11 +117,13 @@ export class StudentImportQueueService implements OnModuleInit, OnModuleDestroy 
       throw new BadRequestException('Background imports only support execute mode')
     }
     this.importer.assertChecksum(dto, user)
+    await this.importer.assertDeliveryModeAvailable(dto)
     if (!this.queue) return this.importer.importStudents(dto, user)
 
     const request: StudentImportRequest = {
       mode: dto.mode,
       conflictMode: dto.conflictMode,
+      ...(dto.deliveryMode ? { deliveryMode: dto.deliveryMode } : {}),
       rows: dto.rows,
       ...(dto.idempotencyKey ? { idempotencyKey: dto.idempotencyKey } : {}),
       ...(dto.rowChecksum ? { rowChecksum: dto.rowChecksum } : {}),
