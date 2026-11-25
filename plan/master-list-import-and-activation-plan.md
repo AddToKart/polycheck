@@ -603,3 +603,42 @@ modules, `auth.controller.ts` login routes, `session-policy.ts`, `device-binding
 - No raw token, password, or provider payload appears in logs, audit rows, or `AccountMail`.
 - Attendance, ingest, sync, ledger and login behavior are byte-for-byte unchanged (verified by the unchanged
   suites and a before/after smoke).
+
+---
+
+## Addendum — execution record (2026-11-25)
+
+Executed M1–M6 in order, one commit per step. Everything ships **off by default**: `MAIL_DRIVER=disabled`,
+`activation_email_enabled=false`, and an import without `deliveryMode` is byte-identical to before (all
+pre-existing import/user specs pass unchanged). **M0 (Resend domain/plan/DPO), M7 (text-PDF) and M8/M9 (optional)
+are not done.**
+
+| Step | Commit | Result |
+|---|---|---|
+| M1 activation | `142ab90` | `User.activationPending`, `AccountActivationToken` (sha256 only), `AccountMail` outbox, idempotent migration; `POST /activation/validate\|complete\|request-link`; settings `activation_email_enabled` (off) / `activation_link_ttl_hours` (168). |
+| M2 mail | `e5ff2a1` | `MailService` (resend via plain `fetch` with `Idempotency-Key`, `log` dev-only, `disabled`), activation email template with no sensitive data, outbox processor (token minted at send time, UTC daily cap, retry classification), dedicated BullMQ queue (concurrency 1, rate-limited) with inline fallback, 5-minute sweeper, nightly pruning (tokens 30 d, settled mail 90 d). Env validation rejects `MAIL_DRIVER=log` in production. |
+| M3 import + admin | `b2d57be` | `deliveryMode` on student import (hybrid: email rows → pending account + outbox row in the same transaction; no-email rows → temporary password), mode bound into the row checksum, refused up front when off/unconfigured; admin resend (one / all pending) inside account scope; `activation=pending` filter; latest delivery state in the user list; reset-password ends a pending activation and revokes links. |
+| M4 web | `4538fdb`, `34e67af` | Public `/activate` page (fragment token, `no-referrer`, idempotent, retry-safe, live password rules, expired-link request form, reacts to link changes in an open tab, "use different details"); import dialog delivery choice + report; Invited chip, Awaiting activation filter, per-row/bulk resend; settings; login link; `GET /users/activation/status`. |
+| M5 Excel | `64cf851` | `.xlsx` upload (10 MB, magic-byte check, legacy `.xls`/renamed/PDF messages), on-demand `read-excel-file`, title-line skipping by scoring header rows, sheet picker, remembered mapping profiles per header layout (headers only). |
+| M6 section chain | `305cd48` | "Import the class list next" on section creation → roster import opens once on the section page; missing-account notice for teachers; cross-program wording. |
+
+### Deviations from the plan
+- **Resend limits verified against the docs (the plan's TO VERIFY):** default **10 requests/second** per team, **free plan 100 emails/day (UTC reset) and 3,000/month**, Pro has no daily cap; `POST /emails` supports an `Idempotency-Key` (24 h, ≤256 chars); retry only 429/5xx. Therefore `MAIL_DAILY_CAP` defaults to **100** (not the plan's 500) and counts from 00:00 UTC. A 150-student gathering on the free plan needs **two days**, or a paid plan.
+- **Per-account resend caps count only matching requests.** The first live run showed a mistyped email consumed the 3-minute cooldown, silently dropping the student's corrected retry. The caps now apply after the email matches (keyed by user id); a wrong email never touches them.
+- **`/activate` is a standalone route**, not inside the animated auth-landing group (lighter for weak connections; no shared animation state).
+- **`queueActivationMail` announces explicitly** (`announce` option) instead of inferring from object identity; imports announce after commit.
+- **Admin status endpoint** (`GET /users/activation/status`) added so the import dialog can offer email delivery only when it can actually send.
+- **PDF upload shows a clear "not supported yet" message** rather than failing; `.xls` and renamed files get specific messages.
+- A reset-password on a pending account now also clears `activationPending` (otherwise the account would read "Invited" forever after the temporary password took over).
+- Pre-existing and unrelated: `pnpm security:audit` reports 22 advisories on the previous lockfile as well (none from the new dependency or its `fflate`/`saxen` deps); the earlier "exit 0" predates their publication.
+
+### Verification
+- backend **1,322 / 95 suites** · web **648 / 87 files** · shared **232** · ingest **124** (real Postgres) · Flutter **863** (unchanged) · backend/web `tsc`, eslint clean.
+- **Live (rebuilt containers, real Postgres/Redis, `MAIL_DRIVER=log`): 33/33 checks** — feature off by default, enable, import (2 queued + 1 fallback), checksum bound to the mode, mails sent, hash-only storage, pending list + delivery state, pending account cannot log in, validate/complete/replay/wrong-number/weak-password, login with chosen password and **no forced rotation**, fallback student still forced to rotate, self-service resend (wrong email silent, matching email → new link, old link dead), admin single + bulk resend, reset ends pending.
+- **Browser E2E** `e2e/account-activation.spec.ts` (390 px viewport, no horizontal scroll, referrer meta, wrong/right student number, login, expired-link recovery) and the Excel upload in `e2e/import.spec.ts`: **Chromium, Firefox and WebKit all pass**; `e2e/designations-maintenance.spec.ts` (course labels) also passes.
+
+### Remaining before real use (owner actions)
+1. **M0:** verify `polycheck.live` at Resend (SPF/DKIM/DMARC), paste the key into `.env` (`MAIL_DRIVER=resend`, `RESEND_API_KEY`, `MAIL_FROM`), choose the plan (see the daily-cap note), brief the DPO / privacy-notice line.
+2. Turn on **Institution Settings → Accounts & access → Email activation links**.
+3. Provide 2–3 **redacted** sample master lists (PDF + Excel source if it exists) — needed to build the text-PDF parser (M7) and to add the real header wording to the mapping synonyms.
+4. Confirm whether master-list emails are personal Gmail or `@iskolarngbayan.pup.edu.ph` (deliverability: ask students to check spam).
