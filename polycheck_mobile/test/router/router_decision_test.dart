@@ -47,24 +47,153 @@ void main() {
       }
     });
 
-    test('restoring/authenticating never redirects', () {
-      for (final status in <SessionStatus>[
-        SessionStatus.unknown,
-        SessionStatus.restoring,
-        SessionStatus.authenticating,
+    test(
+      'restoring/authenticating parks protected routes on the boot splash',
+      () {
+        for (final status in <SessionStatus>[
+          SessionStatus.unknown,
+          SessionStatus.restoring,
+          SessionStatus.authenticating,
+        ]) {
+          final decision = decideRoute(
+            location: '/student/dashboard',
+            status: status,
+            user: null,
+            maintenanceActive: true,
+            hasExpiredSession: false,
+            lastRole: null,
+            officerPresident: false,
+            officerQac: false,
+          );
+          // FLR-02: a protected screen (which may render a signed QR) must not
+          // mount against an unverified session; it parks on `/boot` with the
+          // original target and resolves once the state is authoritative.
+          expect(decision.loading, isTrue, reason: status.name);
+          expect(
+            decision.redirect,
+            '/boot?redirect=%2Fstudent%2Fdashboard',
+            reason: status.name,
+          );
+          expect(decision.requestedLocation, '/student/dashboard');
+        }
+      },
+    );
+
+    test('auth surfaces stay mounted while the session settles', () {
+      for (final path in <String>[
+        AppRoutes.portal,
+        AppRoutes.studentLogin,
+        AppRoutes.facultyLogin,
+        AppRoutes.maintenance,
+        AppRoutes.boot,
       ]) {
+        for (final status in <SessionStatus>[
+          SessionStatus.unknown,
+          SessionStatus.restoring,
+          SessionStatus.authenticating,
+        ]) {
+          final decision = decideRoute(
+            location: path,
+            status: status,
+            user: null,
+            maintenanceActive: false,
+            hasExpiredSession: false,
+            lastRole: null,
+            officerPresident: false,
+            officerQac: false,
+          );
+          expect(decision.allowed, isTrue, reason: '$status $path');
+        }
+      }
+    });
+
+    test('a settled session resolves the parked deep-link target', () {
+      final decision = decideRoute(
+        location: '/boot?redirect=%2Fstudent%2Fdashboard',
+        status: SessionStatus.signedIn,
+        user: testStudent,
+        maintenanceActive: false,
+        hasExpiredSession: false,
+        lastRole: null,
+        officerPresident: false,
+        officerQac: false,
+      );
+      expect(decision.loading, isFalse);
+      expect(decision.redirect, '/student/dashboard');
+    });
+
+    test(
+      'a settled anonymous session sends the parked target to the portal',
+      () {
         final decision = decideRoute(
-          location: '/student/dashboard',
-          status: status,
+          location: '/boot?redirect=%2Fstudent%2Fdashboard',
+          status: SessionStatus.signedOut,
           user: null,
-          maintenanceActive: true,
+          maintenanceActive: false,
           hasExpiredSession: false,
           lastRole: null,
           officerPresident: false,
           officerQac: false,
         );
-        expect(decision.allowed, isTrue, reason: status.name);
-      }
+        expect(decision.redirect, '/?redirect=%2Fstudent%2Fdashboard');
+      },
+    );
+
+    test('the parked target keeps cross-role protection', () {
+      final decision = decideRoute(
+        location: '/boot?redirect=%2Ffaculty%2Fsections%2F1',
+        status: SessionStatus.signedIn,
+        user: testStudent,
+        maintenanceActive: false,
+        hasExpiredSession: false,
+        lastRole: null,
+        officerPresident: false,
+        officerQac: false,
+      );
+      expect(decision.redirect, AppRoutes.studentHome);
+    });
+
+    test('maintenance still wins over the parked target', () {
+      final decision = decideRoute(
+        location: '/boot?redirect=%2Fstudent%2Fdashboard',
+        status: SessionStatus.signedIn,
+        user: testStudent,
+        maintenanceActive: true,
+        hasExpiredSession: false,
+        lastRole: null,
+        officerPresident: false,
+        officerQac: false,
+      );
+      expect(decision.redirect, AppRoutes.maintenance);
+    });
+
+    test('a boot location without a target falls back to the role home', () {
+      final decision = decideRoute(
+        location: AppRoutes.boot,
+        status: SessionStatus.signedIn,
+        user: testStudent,
+        maintenanceActive: false,
+        hasExpiredSession: false,
+        lastRole: null,
+        officerPresident: false,
+        officerQac: false,
+      );
+      expect(decision.redirect, AppRoutes.studentHome);
+    });
+
+    test('a self-referential boot target cannot loop', () {
+      final decision = decideRoute(
+        location:
+            '/boot?redirect=%2Fboot%3Fredirect%3D%252Fstudent%252Fdashboard',
+        status: SessionStatus.signedIn,
+        user: testStudent,
+        maintenanceActive: false,
+        hasExpiredSession: false,
+        lastRole: null,
+        officerPresident: false,
+        officerQac: false,
+      );
+      expect(decision.redirect, AppRoutes.studentHome);
     });
   });
 

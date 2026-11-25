@@ -2,7 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common'
 import type { RequestUser } from '../auth/authenticated-principal'
 import {
   AT_RISK_NOTICE_ACTIONS,
-  AT_RISK_NOTICE_CITATION_LINES,
+  atRiskNoticeCitationLines,
   AT_RISK_NOTICE_SIGNOFFS,
   AT_RISK_NOTICE_TITLE,
   buildClassRecordGrid,
@@ -104,9 +104,17 @@ function createPrisma(section: unknown = masterSection, sessionFixture: unknown 
     },
     session: { findUnique: jest.fn().mockResolvedValue(sessionFixture) },
     institutionSetting: {
-      findUnique: jest.fn().mockResolvedValue({ value: 'Polytechnic University of the Philippines' }),
+      findUnique: jest.fn(settingLookup),
     },
   }
+}
+
+/** Per-key institution settings, as the service reads them one at a time. */
+const settingLookup = async ({ where }: { where: { key: string } }): Promise<{ value: string } | null> => {
+  if (where.key === 'institution_name') return { value: 'Example Polytechnic of the Province' }
+  if (where.key === 'institution_short_name') return { value: 'EPP' }
+  if (where.key === 'institution_campus') return { value: 'Santa Maria' }
+  return null
 }
 
 describe('DocsService', () => {
@@ -347,7 +355,7 @@ describe('DocsService', () => {
         },
         attendanceRecord: { findMany: jest.fn().mockResolvedValue(records) },
         institutionSetting: {
-          findUnique: jest.fn().mockResolvedValue({ value: 'Polytechnic University of the Philippines' }),
+          findUnique: jest.fn(settingLookup),
         },
       }
     }
@@ -428,7 +436,7 @@ describe('DocsService', () => {
 
       const document = await service.classRecord(teacher, 'sec-1', 'pdf')
 
-      expect(document.filename).toBe('PUP-ClassRecord-COMP-20043-BSIT-1-A-2026-2027-First-Semester.pdf')
+      expect(document.filename).toBe('EPP-ClassRecord-COMP-20043-BSIT-1-A-2026-2027-First-Semester.pdf')
       expect(document.contentType).toBe('application/pdf')
       expect(document.body.subarray(0, 4).toString()).toBe('%PDF')
       expect(document.body.length).toBeGreaterThan(1_000)
@@ -454,7 +462,7 @@ describe('DocsService', () => {
 
       const document = await service.classRecord(teacher, 'sec-1', 'docx')
 
-      expect(document.filename).toBe('PUP-ClassRecord-COMP-20043-BSIT-1-A-2026-2027-First-Semester.docx')
+      expect(document.filename).toBe('EPP-ClassRecord-COMP-20043-BSIT-1-A-2026-2027-First-Semester.docx')
       expect(document.contentType).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
       expect(document.body[0]).toBe(0x50)
       expect(document.body[1]).toBe(0x4b)
@@ -502,6 +510,41 @@ describe('DocsService', () => {
         }
       })
 
+      describe('in course mode (COURSE_SCOPE_MODE=course)', () => {
+        const original = process.env.COURSE_SCOPE_MODE
+        beforeEach(() => {
+          process.env.COURSE_SCOPE_MODE = 'course'
+        })
+        afterEach(() => {
+          if (original === undefined) delete process.env.COURSE_SCOPE_MODE
+          else process.env.COURSE_SCOPE_MODE = original
+        })
+
+        it.each([
+          ['BSIT head', { managedCourses: ['BSIT'] }, true],
+          ['BSHM head', { managedCourses: ['BSHM'] }, false],
+          ['Head of Academic Programs', { managesAllCourses: true }, true],
+          ['head with no courses', {}, false],
+        ])('opens the class record of a BSIT section to the %s: %j', async (_label, scope, allowed) => {
+          // The section teacher's department is irrelevant in course mode.
+          const prisma = createClassRecordPrisma({
+            ...(classRecordSection as object),
+            course: 'BSIT',
+            teacher: { fullName: 'Prof. Cruz', department: 'Unspecified' },
+          })
+          const head: RequestUser = {
+            id: 'head-1',
+            role: 'teacher',
+            isDepartmentHead: true,
+            department: 'CCIS',
+            ...scope,
+          }
+          const result = new DocsService(prisma as never).classRecord(head, 'sec-1', 'pdf')
+          if (allowed) await expect(result).resolves.toMatchObject({ contentType: 'application/pdf' })
+          else await expect(result).rejects.toBeInstanceOf(ForbiddenException)
+        })
+      })
+
       it('keeps department admins behind adminSectionInScope and institution admins open', async () => {
         const denied = createClassRecordPrisma()
         const departmentAdminService = new DocsService(denied as never)
@@ -544,7 +587,7 @@ describe('DocsService', () => {
           findUnique: jest.fn(async ({ where }: { where: { key: string } }) =>
             where.key === 'geolocation_retention_days' && options.retentionDays
               ? { value: options.retentionDays }
-              : { value: 'Polytechnic University of the Philippines' },
+              : settingLookup({ where }),
           ),
         },
         attendanceRecord: { count: jest.fn().mockResolvedValue(0) },
@@ -678,9 +721,7 @@ describe('DocsService', () => {
         },
         institutionSetting: {
           findUnique: jest.fn(async ({ where }: { where: { key: string } }) =>
-            where.key === 'attendance_min_rate_percent'
-              ? { value: '75' }
-              : { value: 'Polytechnic University of the Philippines' },
+            where.key === 'attendance_min_rate_percent' ? { value: '75' } : settingLookup({ where }),
           ),
         },
         attendanceRecord: {
@@ -706,10 +747,10 @@ describe('DocsService', () => {
 
     it('probes the directive-mandated content pieces', () => {
       expect(AT_RISK_NOTICE_TITLE).toBe('NOTICE OF IMPENDING DROP')
-      const citations = AT_RISK_NOTICE_CITATION_LINES.join(' ')
+      const citations = atRiskNoticeCitationLines('EPP').join(' ')
       expect(citations).toContain('CHED CMO No. 40')
       expect(citations).toContain('Article V, Section 21')
-      expect(citations).toContain('PUP Student Handbook')
+      expect(citations).toContain('EPP Student Handbook')
       expect(AT_RISK_NOTICE_ACTIONS).toEqual(['Guidance counseling', 'Chair consultation', 'Parental contact'])
       expect(AT_RISK_NOTICE_SIGNOFFS).toEqual(['Advisor', 'Guidance Counselor', 'Department Chairperson'])
       expect(noticeComputationLine(5, 20)).toBe(
@@ -747,7 +788,7 @@ describe('DocsService', () => {
 
       const document = await service.atRiskNotice(teacherNoticeOwner(), 'ref-1', 'pdf')
 
-      expect(document.filename).toBe('PUP-AtRiskNotice-2023-0001-BSIT-1-A.pdf')
+      expect(document.filename).toBe('EPP-AtRiskNotice-2023-0001-BSIT-1-A.pdf')
       expect(document.contentType).toBe('application/pdf')
       expect(document.body.subarray(0, 4).toString()).toBe('%PDF')
       expect(document.body.length).toBeGreaterThan(1_000)
@@ -769,7 +810,7 @@ describe('DocsService', () => {
 
       const document = await service.atRiskNotice(teacherNoticeOwner(), 'ref-1', 'docx')
 
-      expect(document.filename).toBe('PUP-AtRiskNotice-2023-0001-BSIT-1-A.docx')
+      expect(document.filename).toBe('EPP-AtRiskNotice-2023-0001-BSIT-1-A.docx')
       expect(document.contentType).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
       expect(document.body[0]).toBe(0x50)
       expect(document.body[1]).toBe(0x4b)

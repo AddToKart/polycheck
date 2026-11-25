@@ -167,7 +167,7 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return SafeArea(
       top: false,
       child: Column(
@@ -253,7 +253,7 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
   }
 
   Widget _inputStep(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -302,7 +302,7 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
 
   Widget _mapStep(BuildContext context) {
     final parsed = _parsed!;
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final fields = <({String key, String label, bool required, int? value})>[
       (
         key: 'studentId',
@@ -423,7 +423,7 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
 
   Widget _reviewStep(BuildContext context) {
     final validation = _validation!;
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -504,7 +504,7 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
 
   Widget _reportStep(BuildContext context) {
     final result = _result!;
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -585,7 +585,7 @@ Future<bool?> showSectionImportSheet(
   required String sectionLabel,
   VoidCallback? onCompleted,
 }) {
-  final tokens = PupTheme.of(context);
+  final tokens = BrandTheme.of(context);
   return showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,

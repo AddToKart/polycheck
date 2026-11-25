@@ -9,7 +9,7 @@ import '../../../core/models/dashboard.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/network/api_error.dart';
 import '../../../core/network/dio_client.dart';
-import '../../../core/theme/pup_theme.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../core/widgets/campus_card.dart';
 import '../domain/admin_access.dart';
 import '../domain/server_metrics.dart';
@@ -139,7 +139,7 @@ class _ServerStatusScreenState extends ConsumerState<ServerStatusScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final snapshot = _snapshot;
     return AdminScaffold(
       title: 'Server status',
@@ -365,7 +365,7 @@ class _SparklineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final segments = sparklineSegments(series);
     return CampusCard(
       child: Column(
@@ -493,7 +493,7 @@ class _FactRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(

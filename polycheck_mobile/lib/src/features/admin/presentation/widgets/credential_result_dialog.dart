@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../../core/theme/pup_theme.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/widgets/campus_button.dart';
 import '../../../../core/widgets/campus_dialog.dart';
 
@@ -40,7 +40,7 @@ class _CredentialResultDialogState extends State<CredentialResultDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusDialog(
       title: widget.title,
       description:

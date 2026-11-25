@@ -16,6 +16,7 @@ import { useNotifications } from '@/lib/notifications'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { CourseScopeEditor, type CourseScopeValue } from '@/components/admin/course-scope-editor'
 import { Label } from '@/components/ui/label'
 import { Check, Ban, ShieldCheck, Wrench, GraduationCap, ClipboardList } from 'lucide-react'
 
@@ -81,13 +82,13 @@ const DESIGNATION_FIELDS: Array<{
   },
   {
     key: 'isDepartmentHead',
-    label: 'Department Head',
+    label: 'Course Head',
     icon: GraduationCap,
-    badge: 'Academic Department Oversight',
-    description: 'Department-wide academic reports, campus excuse letter queue, and at-risk student monitoring.',
+    badge: 'Academic Course Oversight',
+    description: 'Course-wide academic reports, the excuse letter queue, and at-risk student monitoring for the assigned courses.',
     capabilities: [
-      { label: 'Department Attendance Analytics & Exports', allowed: true },
-      { label: 'Campus Excuse Decisions', allowed: true },
+      { label: 'Course Attendance Analytics & Exports', allowed: true },
+      { label: 'Course Excuse Decisions', allowed: true },
       { label: 'At-Risk Student Monitoring', allowed: true },
       { label: 'Server Maintenance & System Settings', allowed: false },
     ],
@@ -97,9 +98,9 @@ const DESIGNATION_FIELDS: Array<{
     label: 'Registrar',
     icon: ClipboardList,
     badge: 'Registrar Suite',
-    description: 'Department-scoped account administration, student/faculty creation, temporary password resets, and CSV roster imports.',
+    description: 'Campus-wide (or course-scoped) account administration, student creation, temporary password resets, and CSV roster imports.',
     capabilities: [
-      { label: 'Department Faculty & Student Accounts', allowed: true },
+      { label: 'Faculty & Student Accounts (by course scope)', allowed: true },
       { label: 'Delegated Password Resets', allowed: true },
       { label: 'Bulk CSV Roster Import', allowed: true },
       { label: 'Infrastructure & System Metrics', allowed: false },
@@ -123,6 +124,7 @@ export function UserProfileDialog({
     isDepartmentHead: false,
     isUserRegistrar: false,
   })
+  const [courseScope, setCourseScope] = useState<CourseScopeValue>({ managedCourses: [], managesAllCourses: false })
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -135,6 +137,10 @@ export function UserProfileDialog({
       isItCoordinator: target.isItCoordinator === true,
       isDepartmentHead: target.isDepartmentHead === true,
       isUserRegistrar: target.isUserRegistrar === true,
+    })
+    setCourseScope({
+      managedCourses: [...(target.managedCourses ?? [])],
+      managesAllCourses: target.managesAllCourses === true,
     })
     setError('')
   }, [open, target])
@@ -169,6 +175,16 @@ export function UserProfileDialog({
       }
       if (designations.isUserRegistrar !== (target.isUserRegistrar === true)) {
         input.isUserRegistrar = designations.isUserRegistrar
+      }
+      const scopeApplies = designations.isDepartmentHead || designations.isUserRegistrar
+      const currentCourses = [...(target.managedCourses ?? [])].sort().join('|')
+      if (scopeApplies || currentCourses || target.managesAllCourses) {
+        if ([...courseScope.managedCourses].sort().join('|') !== currentCourses) {
+          input.managedCourses = courseScope.managedCourses
+        }
+        if (courseScope.managesAllCourses !== (target.managesAllCourses === true)) {
+          input.managesAllCourses = courseScope.managesAllCourses
+        }
       }
     }
     if (!hasUserChanges(input)) {
@@ -234,7 +250,7 @@ export function UserProfileDialog({
 
             {fields.has('email') && isSuperAdmin ? (
               <div className="space-y-2">
-                <Label htmlFor="edit-user-email" className="text-xs uppercase tracking-wider text-zinc-500 font-bold">PUP email</Label>
+                <Label htmlFor="edit-user-email" className="text-xs uppercase tracking-wider text-zinc-500 font-bold">Institutional email</Label>
                 <Input
                   id="edit-user-email"
                   type="email"
@@ -355,6 +371,20 @@ export function UserProfileDialog({
                   )
                 })}
               </div>
+
+              {designations.isDepartmentHead || designations.isUserRegistrar ? (
+                <CourseScopeEditor
+                  value={courseScope}
+                  onChange={setCourseScope}
+                  subject={
+                    designations.isDepartmentHead && designations.isUserRegistrar
+                      ? 'both'
+                      : designations.isDepartmentHead
+                        ? 'head'
+                        : 'registrar'
+                  }
+                />
+              ) : null}
 
               <p className="text-[11px] text-zinc-400 mt-3 italic">
                 Note: Only Super Administrators can alter administrative designations. Changes are logged to the institutional audit log.

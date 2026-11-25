@@ -50,6 +50,13 @@ _User _$UserFromJson(Map<String, dynamic> json) => _User(
   isItCoordinator: json['isItCoordinator'] as bool? ?? false,
   isDepartmentHead: json['isDepartmentHead'] as bool? ?? false,
   isUserRegistrar: json['isUserRegistrar'] as bool? ?? false,
+  managedCourses:
+      (json['managedCourses'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ??
+      const <String>[],
+  managesAllCourses: json['managesAllCourses'] as bool? ?? false,
+  courseScopeMode: json['courseScopeMode'] as String?,
   contactEmail: json['contactEmail'] as String?,
   contactPhone: json['contactPhone'] as String?,
   enrolledSectionIds:
@@ -86,6 +93,9 @@ Map<String, dynamic> _$UserToJson(_User instance) => <String, dynamic>{
   'isItCoordinator': instance.isItCoordinator,
   'isDepartmentHead': instance.isDepartmentHead,
   'isUserRegistrar': instance.isUserRegistrar,
+  'managedCourses': instance.managedCourses,
+  'managesAllCourses': instance.managesAllCourses,
+  'courseScopeMode': instance.courseScopeMode,
   'contactEmail': instance.contactEmail,
   'contactPhone': instance.contactPhone,
   'enrolledSectionIds': instance.enrolledSectionIds,

@@ -11,7 +11,7 @@ const API_BASE = 'http://localhost:4000/api'
 const PASSWORD = 'E2eTemporaryPass1!'
 
 async function createTeacher(page: Page, suffix: number) {
-  const email = `e2e.admin.teacher.${suffix}@pup.edu.ph`
+  const email = `e2e.admin.teacher.${suffix}@example.edu.ph`
   const response = await page.request.post(`${API_BASE}/users/teachers`, {
     data: {
       fullName: `E2E Admin Teacher ${suffix}`,
@@ -34,7 +34,7 @@ async function createStudent(page: Page, suffix: number) {
       data: {
         fullName: `E2E Admin Student ${suffix}`,
         studentId,
-        email: `e2e.admin.student.${suffix}.${attempt}@iskolar.pup.edu.ph`,
+        email: `e2e.admin.student.${suffix}.${attempt}@student.example.edu.ph`,
         password: PASSWORD,
         program: 'BS Information Technology',
         yearLevel: 1,
@@ -133,7 +133,7 @@ test.describe('Super Admin user management', () => {
         body: JSON.stringify({
           id: 'department-admin',
           fullName: 'Department Administrator',
-          email: 'dept.admin@pup.edu.ph',
+          email: 'dept.admin@example.edu.ph',
           role: 'super_admin',
           scope: 'department',
           department: 'CCIS',

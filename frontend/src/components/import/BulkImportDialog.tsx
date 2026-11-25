@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, ArrowLeft, CheckCircle2, FileSpreadsheet, Upload } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileSpreadsheet, Mail, Upload } from 'lucide-react'
 import {
   buildEnrollRows,
   buildStudentRows,
@@ -16,15 +16,19 @@ import {
   type ImportConflictMode,
   type ImportCredential,
   type ImportIssue,
+  type StudentImportDeliveryMode,
   type StudentImportResult,
   type StudentImportRow,
 } from '@polycheck/shared'
-import { api } from '@/lib/api-client'
+import { api, type ActivationStatus } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { useNotifications } from '@/lib/notifications'
 import { downloadCsv } from '@/lib/import/csv-download'
+import { fingerprintHeaders, loadMappingProfile, saveMappingProfile } from '@/lib/import/mapping-profiles'
+import { parsePdfFile } from '@/lib/import/pdf-parser'
+import { parseSpreadsheetFile, SpreadsheetParseError, type SpreadsheetSheet } from '@/lib/import/spreadsheet-parser'
 
 type ImportMode = 'students' | 'enrollments'
 type Step = 'upload' | 'map' | 'validate' | 'confirm' | 'report'
@@ -114,9 +118,14 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   const [headers, setHeaders] = useState<string[]>([])
   const [rawRows, setRawRows] = useState<string[][]>([])
   const [fileName, setFileName] = useState('')
+  const [workbook, setWorkbook] = useState<{ file: File; sheets: SpreadsheetSheet[]; sheetName: string } | null>(null)
   const [mapping, setMapping] = useState<ImportColumnMapping>({})
   const [conflictMode, setConflictMode] = useState<ImportConflictMode>('skip_existing')
   const [validatedConflictMode, setValidatedConflictMode] = useState<ImportConflictMode>('skip_existing')
+  const [deliveryMode, setDeliveryMode] = useState<StudentImportDeliveryMode>('temporary_password')
+  const [validatedDeliveryMode, setValidatedDeliveryMode] = useState<StudentImportDeliveryMode>('temporary_password')
+  const [activationStatus, setActivationStatus] = useState<ActivationStatus | null>(null)
+  const [activationReport, setActivationReport] = useState<{ queued: number; fallbackTemporary: number } | null>(null)
   const [localIssues, setLocalIssues] = useState<ImportIssue[]>([])
   const [chunks, setChunks] = useState<ChunkPlan[]>([])
   const [serverIssues, setServerIssues] = useState<ImportIssue[]>([])
@@ -134,6 +143,8 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   const stopRequestedRef = useRef(false)
 
   const fields = mode === 'students' ? STUDENT_FIELDS : ENROLL_FIELDS
+  // Email delivery is offered only when an admin enabled it AND the server can actually send.
+  const activationAvailable = Boolean(activationStatus?.enabled && activationStatus.configured)
   const blockingIssues = useMemo(
     () => localIssues.filter((issue) => BLOCKING_CODES.has(issue.code)),
     [localIssues],
@@ -145,9 +156,13 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     setHeaders([])
     setRawRows([])
     setFileName('')
+    setWorkbook(null)
     setMapping({})
     setConflictMode('skip_existing')
     setValidatedConflictMode('skip_existing')
+    setDeliveryMode('temporary_password')
+    setValidatedDeliveryMode('temporary_password')
+    setActivationReport(null)
     setLocalIssues([])
     setChunks([])
     setServerIssues([])
@@ -171,44 +186,96 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     if (open) reset()
   }, [open, reset])
 
+  // Offer email delivery only when the server says it can actually send; any failure just hides it.
+  useEffect(() => {
+    if (!open || mode !== 'students') return
+    let active = true
+    api
+      .getActivationStatus()
+      .then((status) => {
+        if (active) setActivationStatus(status)
+      })
+      .catch(() => {
+        if (active) setActivationStatus(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [open, mode])
+
+  /** Shared by the CSV and Excel paths: validate size, pick the remembered or suggested mapping, move on. */
+  const applyTable = async (
+    name: string,
+    parsed: { headers: string[]; rows: string[][]; errors: string[] },
+    source: 'CSV' | 'Excel' | 'PDF',
+  ) => {
+    if (parsed.headers.length === 0 || parsed.rows.length === 0) {
+      setError(`No rows were found in that ${source === 'Excel' ? 'sheet' : source}. Export the master list again and retry.`)
+      return false
+    }
+    if (parsed.rows.length > IMPORT_MAX_ROWS) {
+      setError(`This file has ${parsed.rows.length} rows. The limit is ${IMPORT_MAX_ROWS.toLocaleString()} per import.`)
+      return false
+    }
+    // A layout confirmed before maps itself: this browser's memory first, then the shared profiles other
+    // administrators confirmed; anything new gets the heuristic suggestion. Never blocks on the network.
+    const nextMapping =
+      loadMappingProfile(parsed.headers) ??
+      (await loadSharedMapping(mode, parsed.headers)) ??
+      suggestColumnMapping(parsed.headers)
+    setFileName(name)
+    setHeaders(parsed.headers)
+    setRawRows(parsed.rows)
+    setMapping(nextMapping)
+    setStep('map')
+    if (parsed.errors.length > 0) {
+      addNotification('warning', `${source} parsed with warnings`, parsed.errors[0])
+    }
+    return true
+  }
+
+  const readWorkbook = async (file: File, sheetName?: string) => {
+    try {
+      const parsed = await parseSpreadsheetFile(file, sheetName)
+      if (await applyTable(file.name, parsed, 'Excel')) {
+        setWorkbook({ file, sheets: parsed.sheets, sheetName: parsed.sheetName })
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof SpreadsheetParseError
+          ? cause.message
+          : 'That Excel file could not be read. Re-save it from Excel as .xlsx or CSV and try again.',
+      )
+    }
+  }
+
   const handleFile = async (file: File) => {
     setError('')
+    const name = file.name.toLowerCase()
+    if (name.endsWith('.pdf') || file.type === 'application/pdf') {
+      try {
+        setWorkbook(null)
+        await applyTable(file.name, await parsePdfFile(file), 'PDF')
+      } catch (cause) {
+        setError(
+          cause instanceof SpreadsheetParseError
+            ? cause.message
+            : 'That PDF could not be read. Upload the Excel (.xlsx) or CSV version instead.',
+        )
+      }
+      return
+    }
+    if (name.endsWith('.xlsx') || name.endsWith('.xls') || file.type.includes('spreadsheetml') || file.type === 'application/vnd.ms-excel') {
+      await readWorkbook(file)
+      return
+    }
     if (file.size > MAX_FILE_BYTES) {
       setError('That file is larger than 5 MB. Split the master list and import it in batches.')
       return
     }
     try {
-      const text = await file.text()
-      const parsed = parseCsv(text)
-      if (parsed.headers.length === 0 || parsed.rows.length === 0) {
-        setError('No rows were found in that CSV. Export the master list again and retry.')
-        return
-      }
-      if (parsed.rows.length > IMPORT_MAX_ROWS) {
-        setError(`This file has ${parsed.rows.length} rows. The limit is ${IMPORT_MAX_ROWS.toLocaleString()} per import.`)
-        return
-      }
-      const suggested = suggestColumnMapping(parsed.headers)
-      let nextMapping = suggested
-      try {
-        const remembered = window.localStorage.getItem('polycheck-import-mapping')
-        if (remembered) {
-          const stored = JSON.parse(remembered) as { headers?: string[]; mapping?: ImportColumnMapping }
-          if (stored.headers && JSON.stringify(stored.headers) === JSON.stringify(parsed.headers) && stored.mapping) {
-            nextMapping = stored.mapping
-          }
-        }
-      } catch {
-        // Ignore unavailable localStorage and use the suggested mapping.
-      }
-      setFileName(file.name)
-      setHeaders(parsed.headers)
-      setRawRows(parsed.rows)
-      setMapping(nextMapping)
-      setStep('map')
-      if (parsed.errors.length > 0) {
-        addNotification('warning', 'CSV parsed with warnings', parsed.errors[0])
-      }
+      setWorkbook(null)
+      await applyTable(file.name, parseCsv(await file.text()), 'CSV')
     } catch {
       setError('That file could not be read as CSV.')
     }
@@ -262,15 +329,13 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
           message: 'More issues exist than are shown. Download the issues CSV for the full list.',
         })
       }
-      try {
-        window.localStorage.setItem('polycheck-import-mapping', JSON.stringify({ headers, mapping }))
-      } catch {
-        // Remembering the mapping is a convenience only.
-      }
+      saveMappingProfile(headers, mapping)
+      void saveSharedMapping(mode, headers, mapping)
       setChunks(plans)
       setServerIssues(issues)
       setSummary(mergeSummaries(summaries))
       setValidatedConflictMode(conflictMode)
+      setValidatedDeliveryMode(deliveryMode)
       setStep('validate')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Validation failed.')
@@ -287,6 +352,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
       return api.importStudents({
         mode: 'validate',
         conflictMode,
+        ...(deliveryMode === 'activation_email' ? { deliveryMode } : {}),
         rows: plan.rows as StudentImportRow[],
         idempotencyKey: `${runIdRef.current}-validate-${index}`,
       })
@@ -301,6 +367,8 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
       return api.importStudents({
         mode: 'execute',
         conflictMode,
+        // The checksum was minted for the validated mode, so execute must use exactly that one.
+        ...(validatedDeliveryMode === 'activation_email' ? { deliveryMode: validatedDeliveryMode } : {}),
         rows: plan.rows as StudentImportRow[],
         rowChecksum: plan.rowChecksum,
         idempotencyKey: `${runIdRef.current}-execute-${index}`,
@@ -325,6 +393,8 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     const collectedReports: ChunkReport[] = []
     let failure: string | null = null
 
+    const activationTotals = { queued: 0, fallbackTemporary: 0 }
+    let sawActivation = false
     for (let index = startIndex; index < plans.length; index += 1) {
       try {
         const result = await executeChunk(plans[index], index)
@@ -339,6 +409,11 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
         if ('credentials' in result && result.credentials) {
           collectedCredentials.push(...result.credentials)
         }
+        if ('activation' in result && result.activation) {
+          activationTotals.queued += result.activation.queued
+          activationTotals.fallbackTemporary += result.activation.fallbackTemporary
+          sawActivation = true
+        }
         setProgress(index + 1)
         if (stopRequestedRef.current) break
       } catch (cause) {
@@ -348,6 +423,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     }
 
     setCredentials(collectedCredentials)
+    setActivationReport(sawActivation ? activationTotals : null)
     setReports(collectedReports)
     setExecuting(false)
     if (failure) {
@@ -364,7 +440,9 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
       'Import completed',
       collectedCredentials.length > 0
         ? 'Download the credentials CSV now — temporary passwords are shown only once.'
-        : 'The roster was updated successfully.',
+        : sawActivation
+          ? 'Activation emails are on their way to the new students.'
+          : 'The roster was updated successfully.',
     )
     onCompleted?.()
   }
@@ -498,13 +576,13 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
             >
               <Upload className="h-8 w-8 text-maroon dark:text-golden" aria-hidden="true" />
               <div>
-                <p className="font-bold text-zinc-900 dark:text-zinc-100">Drop a CSV here or choose a file</p>
-                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Up to 5 MB and 5,000 rows. Excel files must be exported as CSV.</p>
+                <p className="font-bold text-zinc-900 dark:text-zinc-100">Drop a CSV, Excel or PDF file here, or choose a file</p>
+                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">CSV up to 5 MB, Excel (.xlsx) or text-based PDF up to 10 MB, 5,000 rows per import.</p>
               </div>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv,text/csv"
+                accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pdf,application/pdf"
                 className="hidden"
                 onChange={(event) => {
                   const file = event.target.files?.[0]
@@ -522,6 +600,35 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Found {rawRows.length.toLocaleString()} rows and {headers.length} columns in <span className="font-semibold">{fileName}</span>. Confirm the mapping:
             </p>
+            {fileName.toLowerCase().endsWith('.pdf') ? (
+              <p role="note" className="border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                Read from a PDF: columns are detected from the page layout. Compare a few rows with the original before
+                importing; if something looks off, upload the Excel or CSV version.
+              </p>
+            ) : null}
+            {workbook && workbook.sheets.filter((sheet) => sheet.rowCount > 0).length > 1 ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="import-sheet">Sheet</Label>
+                <select
+                  id="import-sheet"
+                  value={workbook.sheetName}
+                  onChange={(event) => void readWorkbook(workbook.file, event.target.value)}
+                  className="h-10 w-full border border-zinc-300 bg-white px-3 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                >
+                  {workbook.sheets
+                    .filter((sheet) => sheet.rowCount > 0)
+                    .map((sheet) => (
+                      <option key={sheet.name} value={sheet.name}>
+                        {sheet.name} ({Math.max(0, sheet.rowCount - 1).toLocaleString()} rows)
+                      </option>
+                    ))}
+                </select>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  This workbook has several sheets. Import one sheet at a time.
+                </p>
+              </div>
+            ) : null}
+
             <div className="grid gap-3 sm:grid-cols-2">
               {fields.map(({ key, required }) => (
                 <div key={key} className="space-y-1.5">
@@ -582,6 +689,26 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
               </fieldset>
             ) : null}
 
+            {mode === 'students' && activationAvailable ? (
+              <fieldset className="space-y-2 border border-zinc-200 p-3 dark:border-zinc-700">
+                <legend className="px-1 text-xs font-bold uppercase tracking-widest text-zinc-500">How new students get access</legend>
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="radio" checked={deliveryMode === 'temporary_password'} onChange={() => setDeliveryMode('temporary_password')} className="mt-1" />
+                  <span>Temporary passwords (shown once, hand them out in person).</span>
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="radio" checked={deliveryMode === 'activation_email'} onChange={() => setDeliveryMode('activation_email')} className="mt-1" />
+                  <span>
+                    Email an activation link. Students choose their own password. Rows without an email still get a
+                    temporary password.
+                  </span>
+                </label>
+                {deliveryMode !== validatedDeliveryMode ? (
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Re-validate to apply the new delivery method before continuing.</p>
+                ) : null}
+              </fieldset>
+            ) : null}
+
             {blockingIssues.length > 0 ? (
               <div className="border border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
                 <p className="flex items-center gap-2 font-bold">
@@ -596,6 +723,8 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
               </div>
             ) : null}
 
+            {mode === 'enrollments' ? <MissingAccountsNotice issues={allIssues} /> : null}
+
             <IssueTable issues={allIssues} onDownload={downloadIssues} />
 
             <div className="flex flex-wrap justify-between gap-3 pt-2">
@@ -608,7 +737,11 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
                 </Button>
                 <Button
                   onClick={() => setStep('confirm')}
-                  disabled={(blockingIssues.length > 0 && !skipInvalid) || conflictMode !== validatedConflictMode}
+                  disabled={
+                    (blockingIssues.length > 0 && !skipInvalid) ||
+                    conflictMode !== validatedConflictMode ||
+                    deliveryMode !== validatedDeliveryMode
+                  }
                 >
                   Continue
                 </Button>
@@ -626,7 +759,9 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
               </p>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-zinc-600 dark:text-zinc-400">
                 <li>Each chunk commits atomically; stopping after a chunk keeps earlier chunks.</li>
-                {mode === 'students' ? (
+                {mode === 'students' && validatedDeliveryMode === 'activation_email' ? (
+                  <li>Students with an email receive a single-use activation link; the others get a temporary password shown once in the report.</li>
+                ) : mode === 'students' ? (
                   <li>Temporary passwords are generated server-side and shown once in the report.</li>
                 ) : (
                   <li>Students without accounts are reported, not auto-created, unless the institution enables provisioning.</li>
@@ -692,6 +827,20 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
               <SummaryTile label="Failed" value={reports.reduce((total, item) => total + item.failed, 0) + localIssues.filter((issue) => BLOCKING_CODES.has(issue.code)).length} />
             </div>
 
+            {activationReport ? (
+              <div role="status" className="flex items-start gap-2 border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-200">
+                <Mail className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <p>
+                  <span className="font-bold">{activationReport.queued.toLocaleString()}</span> activation email
+                  {activationReport.queued === 1 ? '' : 's'} queued
+                  {activationReport.fallbackTemporary > 0
+                    ? `, and ${activationReport.fallbackTemporary.toLocaleString()} student${activationReport.fallbackTemporary === 1 ? '' : 's'} without an email got a temporary password below`
+                    : ''}
+                  . Delivery can take a few minutes; you can follow it in User Management under “Awaiting activation”.
+                </p>
+              </div>
+            ) : null}
+
             {credentials.length > 0 ? (
               <section className="space-y-2 border border-golden/50 bg-golden/10 p-4 dark:bg-golden/5">
                 <h3 className="text-sm font-bold text-maroon-dark dark:text-golden">Temporary credentials — display once</h3>
@@ -720,6 +869,8 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
               </section>
             ) : null}
 
+            {mode === 'enrollments' ? <MissingAccountsNotice issues={allIssues} /> : null}
+
             <div className="flex flex-wrap gap-2">
               {allIssues.length > 0 ? <Button variant="outline" onClick={downloadIssues}>Download issues CSV</Button> : null}
               {allIssues.length > 0 ? <Button variant="outline" onClick={downloadFailedRows}>Download failed rows CSV</Button> : null}
@@ -732,6 +883,54 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
         ) : null}
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** The shared profile for this layout, or null (offline, not allowed, unknown layout, slow server). */
+async function loadSharedMapping(
+  mode: 'students' | 'enrollments',
+  headers: string[],
+): Promise<ImportColumnMapping | null> {
+  try {
+    const result = await Promise.race([
+      api.getImportMappingProfile(mode, fingerprintHeaders(headers)),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_500)),
+    ])
+    return (result?.mapping as ImportColumnMapping | null | undefined) ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Share a confirmed layout with the other administrators. Best effort: a failure is invisible. */
+async function saveSharedMapping(
+  mode: 'students' | 'enrollments',
+  headers: string[],
+  mapping: ImportColumnMapping,
+): Promise<void> {
+  try {
+    await api.saveImportMappingProfile({ mode, fingerprint: fingerprintHeaders(headers), headers, mapping })
+  } catch {
+    // Sharing is a convenience; the local profile already saved.
+  }
+}
+
+/**
+ * Teachers can only enroll students who already have an account (the registrar creates
+ * accounts). Say so plainly, with the count, instead of leaving a column of "not found" rows.
+ */
+function MissingAccountsNotice({ issues }: { issues: ImportIssue[] }) {
+  const missing = new Set(issues.filter((issue) => issue.code === 'STUDENT_NOT_FOUND').map((issue) => issue.rowNumber)).size
+  if (missing === 0) return null
+  return (
+    <div role="status" className="flex items-start gap-2 border border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <p>
+        <span className="font-bold">{missing.toLocaleString()}</span> student{missing === 1 ? ' has' : 's have'} no Polycheck
+        account yet. Ask the registrar to import the master list first (accounts and activation emails), then run this
+        import again — students who are already enrolled are skipped.
+      </p>
+    </div>
   )
 }
 

@@ -1,9 +1,9 @@
 'use client'
 
-import Image from 'next/image'
 import { Lock, PartyPopper } from 'lucide-react'
 import type { FinaleCountStatus, SessionFinaleSummary } from '@polycheck/shared'
-import { pupColors } from '@/lib/colors'
+import { brandColors } from '@/lib/colors'
+import { BrandLogo, useBranding } from '@/components/branding/BrandingProvider'
 
 /**
  * F1 projector kiosk — the end-of-class finale.
@@ -11,7 +11,7 @@ import { pupColors } from '@/lib/colors'
  * On `session:finale` the QR freezes into a lock, CSS confetti (gold/maroon
  * rectangles; hidden entirely under prefers-reduced-motion so the "static
  * breakdown" carries the moment) rains past the stage, and the finalized
- * counts card renders beside the PUP seal. Confetti placement is a pure,
+ * counts card renders beside the institution seal. Confetti placement is a pure,
  * index-seeded function so tests and renders stay deterministic.
  */
 
@@ -26,7 +26,7 @@ export interface ConfettiPiece {
   color: string
 }
 
-const CONFETTI_PALETTE = [pupColors.golden, pupColors.white, pupColors.goldenDark]
+const CONFETTI_PALETTE = [brandColors.golden, brandColors.white, brandColors.goldenDark]
 
 /** Deterministic scatter: nth piece always lands identically. */
 export function confettiPiece(index: number, total = FINALE_CONFETTI_COUNT): ConfettiPiece {
@@ -74,6 +74,7 @@ const COUNT_ROWS: Array<{ key: FinaleCountStatus; label: string; tone: string }>
 ]
 
 export default function KioskFinale({ summary, subjectName, sectionLabel }: KioskFinaleProps) {
+  const branding = useBranding()
   const rate = finaleAttendancePercent(summary.counts)
   const rateLabel = rate === null ? '—' : `${rate}%`
 
@@ -103,10 +104,10 @@ export default function KioskFinale({ summary, subjectName, sectionLabel }: Kios
       <section className="relative z-10 w-[92vw] max-w-2xl border-2 border-golden bg-white p-8 text-maroon-dark shadow-2xl">
         <header className="flex items-center justify-between gap-4 border-b-4 border-maroon pb-4">
           <div className="flex items-center gap-3">
-            <Image src="/pup-logo.png" width={52} height={52} unoptimized alt="" />
+            <BrandLogo size={52} alt="" />
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-maroon">
-                Polytechnic University of the Philippines
+                {branding.name}
               </p>
               <h2 className="font-heading text-2xl font-bold leading-tight text-maroon-dark">
                 {subjectName}

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Maroon PUP app bar: title, optional subtitle, actions, optional tab bar.
+/// Maroon app bar: title, optional subtitle, actions, optional tab bar.
 ///
 /// Colors come from the app-bar theme so light/dark stay consistent.
 class CampusHeader extends StatelessWidget implements PreferredSizeWidget {

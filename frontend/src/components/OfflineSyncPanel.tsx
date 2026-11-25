@@ -73,15 +73,31 @@ export function OfflineSyncPanel({ className = '' }: { className?: string }) {
    * One drain attempt. Resolves true only when the queue is empty or the attempt
    * made measurable progress, so a failing endpoint backs off instead of being
    * hammered every tick.
+   *
+   * WEB-11: a `SYNC_REQUEST_EVENT` fires right after an enqueue. Reusing the
+   * cached `pendingRef` (still 0 from before that enqueue) no-oped the drain
+   * because no `SYNC_STATE_EVENT` had refreshed the count yet, so the first
+   * check-in of an empty queue waited for the 30 s tick. The event path awaits
+   * the live store count; the periodic tick keeps its cheap cached check.
    */
-  const drain = useCallback(async (): Promise<boolean> => {
+  const drain = useCallback(async (options: { live?: boolean } = {}): Promise<boolean> => {
     if (syncingRef.current) return true
-    if (pendingRef.current === 0) return true
+    let pendingNow = pendingRef.current
+    if (options.live) {
+      try {
+        pendingNow = await getPendingSyncCount()
+        pendingRef.current = pendingNow
+        setPending(pendingNow)
+      } catch {
+        pendingNow = pendingRef.current
+      }
+    }
+    if (pendingNow === 0) return true
     if (typeof navigator !== 'undefined' && !navigator.onLine) return false
     if (!api.getCurrentUser()) return false
     syncingRef.current = true
     setSyncing(true)
-    const before = pendingRef.current
+    const before = pendingNow
     let completed = false
     try {
       await api.syncOfflineQueue()
@@ -99,8 +115,8 @@ export function OfflineSyncPanel({ className = '' }: { className?: string }) {
   }, [refresh])
 
   /** Drains, then arms the next attempt: base cadence on success, exponential backoff on failure. */
-  const runScheduledDrain = useCallback(async () => {
-    const progressed = await drain()
+  const runScheduledDrain = useCallback(async (options: { live?: boolean } = {}) => {
+    const progressed = await drain(options)
     backoffRef.current = progressed
       ? 0
       : Math.min(backoffRef.current + 1, MAX_BACKOFF_STEP)
@@ -114,7 +130,8 @@ export function OfflineSyncPanel({ className = '' }: { className?: string }) {
   const drainNow = useCallback(async () => {
     backoffRef.current = 0
     nextAttemptAtRef.current = 0
-    await runScheduledDrain()
+    // Event-driven: read the live count so a just-enqueued row is not missed.
+    await runScheduledDrain({ live: true })
   }, [runScheduledDrain])
 
   useEffect(() => {

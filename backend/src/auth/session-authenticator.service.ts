@@ -38,6 +38,8 @@ export class SessionAuthenticator {
       isItCoordinator: user.isItCoordinator === true,
       isDepartmentHead: user.isDepartmentHead === true,
       isUserRegistrar: user.isUserRegistrar === true,
+      managedCourses: Array.isArray(user.managedCourses) ? user.managedCourses : [],
+      managesAllCourses: user.managesAllCourses === true,
     }
   }
 }

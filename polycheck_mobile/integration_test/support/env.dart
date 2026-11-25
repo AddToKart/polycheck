@@ -13,16 +13,16 @@ abstract final class IntegrationEnv {
   /// device or a CI runner with `adb reverse tcp:4000 tcp:4000`, override it:
   ///
   /// ```
-  /// --dart-define=PUP_API_BASE_URL=http://localhost:4000/api
+  /// --dart-define=API_BASE_URL=http://localhost:4000/api
   /// ```
   static const String baseUrl = String.fromEnvironment(
-    'PUP_API_BASE_URL',
+    'API_BASE_URL',
     defaultValue: 'http://10.0.2.2:4000/api',
   );
 
   /// Seeded super admin — the only account allowed to mint disposable students
   /// (`POST /users/students` needs `teacher`/`super_admin` + `user_admin`).
-  static const String superAdminEmail = 'mcreyes@pup.edu.ph';
+  static const String superAdminEmail = 'mcreyes@example.edu.ph';
 
   /// Password of every seeded account in the local Docker stack.
   static const String seedPassword = 'PolycheckLocal1!';
@@ -60,7 +60,7 @@ abstract final class IntegrationEnv {
       throw StateError(
         'The app client is pointed at "${ApiConfig.baseUrl}" but the harness '
         'is pointed at "$baseUrl". Pass '
-        '--dart-define=PUP_API_BASE_URL=$baseUrl so both agree.',
+        '--dart-define=API_BASE_URL=$baseUrl so both agree.',
       );
     }
   }

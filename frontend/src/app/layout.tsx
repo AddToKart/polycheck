@@ -6,12 +6,14 @@ import { RuntimeErrorGuard } from "@/components/RuntimeErrorGuard";
 import { PwaBoot } from "@/components/pwa/PwaBoot";
 import { MaintenanceProvider } from "@/components/maintenance/MaintenanceProvider";
 import { headers } from "next/headers";
+import { BrandingProvider } from "@/components/branding/BrandingProvider";
+import { fetchServerBranding } from "@/lib/server-branding";
 import { PrivacyConsentGate } from "@/components/PrivacyConsentGate";
 
 export const metadata: Metadata = {
   title: "Polycheck",
-  description: "PUP Attendance Management System",
-  icons: [{ rel: "icon", url: "/pup-logo.png" }],
+  description: "Attendance Management System",
+  icons: [{ rel: "icon", url: "/brand-mark.png" }],
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -52,6 +54,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const nonce = (await headers()).get('x-nonce') ?? undefined;
+  const branding = await fetchServerBranding();
 
   return (
     <html lang="en" className="h-full antialiased" suppressHydrationWarning>
@@ -64,7 +67,9 @@ export default async function RootLayout({
           <RuntimeErrorGuard />
           <AuthSessionMonitor />
           <PrivacyConsentGate />
-          <MaintenanceProvider>{children}</MaintenanceProvider>
+          <BrandingProvider initial={branding}>
+            <MaintenanceProvider>{children}</MaintenanceProvider>
+          </BrandingProvider>
         </NotificationProvider>
       </body>
     </html>

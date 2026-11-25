@@ -37,6 +37,8 @@ export interface AdminUserFilters {
   q?: string
   department?: string
   status?: AdminUserStatusFilter
+  /** `pending` lists students who have not yet activated their account. */
+  activation?: 'pending'
   limit?: number
   offset?: number
 }
@@ -67,6 +69,12 @@ export interface UpdateUserInput {
   isItCoordinator?: boolean
   isDepartmentHead?: boolean
   isUserRegistrar?: boolean
+  /**
+   * Course scope of a head/registrar designee (catalog codes; super-admin-only, like the
+   * designation flags). `managesAllCourses` wins over the list (Head of Academic Programs).
+   */
+  managedCourses?: string[]
+  managesAllCourses?: boolean
 }
 
 /** Only student <-> teacher transitions are allowed (Locked Decision 6). */

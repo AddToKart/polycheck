@@ -65,7 +65,7 @@ describe('HologramOverlay', () => {
     const text = textOf(container)
     expect(text).toContain(HOLOGRAM_WATERMARK_TEXT)
     expect(text).toContain(
-      `PUP-ID-VERIFIED • LIVE UTC: ${SETTLED_STAMP} • DEVICE-BOUND •·•·d4e5`,
+      `POLYCHECK-ID-VERIFIED • LIVE UTC: ${SETTLED_STAMP} • DEVICE-BOUND •·•·d4e5`,
     )
     expect(storeMock.getServerClockOffset).toHaveBeenCalledTimes(1)
   })

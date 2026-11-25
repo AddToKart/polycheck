@@ -21,7 +21,7 @@ export const registerApiDocs = (
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Polycheck API')
-    .setDescription('Unified web and mobile attendance management system for PUP')
+    .setDescription('Unified web and mobile attendance management system')
     .setVersion('1.0')
     .addBearerAuth()
     .build()

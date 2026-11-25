@@ -1,6 +1,6 @@
 'use client'
 
-import { pupColors } from '@/lib/colors'
+import { brandColors } from '@/lib/colors'
 
 /**
  * F1 projector kiosk — the class-capacity ring: verified check-ins against
@@ -40,7 +40,7 @@ export default function KioskCapacityRing({ verified, capacity }: KioskCapacityR
           cy="50"
           r={RADIUS}
           fill="none"
-          stroke={pupColors.maroonDark}
+          stroke={brandColors.maroonDark}
           strokeWidth={9}
         />
         <circle
@@ -49,7 +49,7 @@ export default function KioskCapacityRing({ verified, capacity }: KioskCapacityR
           cy="50"
           r={RADIUS}
           fill="none"
-          stroke={pupColors.golden}
+          stroke={brandColors.golden}
           strokeWidth={9}
           strokeLinecap="round"
           strokeDasharray={CIRCUMFERENCE}

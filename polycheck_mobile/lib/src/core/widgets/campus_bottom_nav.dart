@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/pup_theme.dart';
+import '../theme/brand_theme.dart';
 
 /// One destination of a [CampusBottomNav].
 class CampusBottomNavItem {
@@ -36,7 +36,7 @@ class CampusBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Material(
       color: tokens.surface,
       child: SafeArea(
@@ -66,7 +66,7 @@ class _CampusBottomNavItemCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final color = item.selected
         ? (tokens.isDark ? tokens.gold : tokens.maroon)
         : tokens.muted;

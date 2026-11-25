@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/polycheck_core.dart';
 
-/// Faculty-local flippable PUP ID card.
+/// Faculty-local flippable ID card.
 ///
 /// The student feature owns the canonical holographic card; this variant is a
 /// deliberately local copy so the faculty wave never edits the student
@@ -98,7 +98,7 @@ class _IdFront extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Container(
       decoration: BoxDecoration(
         color: tokens.surface,
@@ -122,7 +122,7 @@ class _IdFront extends StatelessWidget {
                   ),
                   alignment: Alignment.center,
                   child: Text(
-                    'PUP',
+                    BrandingScope.of(context).monogram,
                     style: TextStyle(
                       color: tokens.deepMaroon,
                       fontWeight: FontWeight.w800,
@@ -253,7 +253,7 @@ class _IdBack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Container(
       decoration: BoxDecoration(
         color: tokens.surface,
@@ -305,7 +305,7 @@ class _IdBack extends StatelessWidget {
                 ),
                 const Spacer(),
                 Text(
-                  'PUP Santa Maria · Bulacan',
+                  BrandingScope.of(context).label,
                   style: TextStyle(
                     color: tokens.maroon,
                     fontWeight: FontWeight.w700,
@@ -329,7 +329,7 @@ class _BackRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1.5),
       child: Row(

@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/models/user.dart';
 import '../../../../core/providers/session_provider.dart';
-import '../../../../core/theme/pup_theme.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/widgets/campus_badge.dart';
 import '../../../../core/widgets/campus_card.dart';
 import '../../../../core/widgets/campus_empty_state.dart';
@@ -137,8 +137,8 @@ class AdminScaffold extends ConsumerWidget {
                           _sectionIcon(entry),
                           size: 18,
                           color: entry == section
-                              ? PupTheme.of(context).muted
-                              : PupTheme.of(context).maroon,
+                              ? BrandTheme.of(context).muted
+                              : BrandTheme.of(context).maroon,
                         ),
                         const SizedBox(width: 10),
                         Text(entry.label),
@@ -214,7 +214,7 @@ class AdminErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -272,7 +272,7 @@ class AdminStatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusCard(
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -362,7 +362,7 @@ class AdminSectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Row(
       children: <Widget>[
         Expanded(
@@ -395,7 +395,7 @@ class AdminFilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -427,7 +427,7 @@ class AdminStatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final background = active
         ? (positive ? tokens.gold : tokens.deepMaroon)
         : tokens.campus;
@@ -460,7 +460,7 @@ class AdminInfoBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final (background, border, foreground) = switch (tone) {
       AdminInfoTone.info => (
         tokens.campus,

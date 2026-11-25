@@ -76,7 +76,7 @@ export function CreateAdminDialog({ open, onOpenChange, onCreated }: CreateAdmin
         return
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        setError('Enter a valid PUP email address.')
+        setError('Enter a valid email address.')
         return
       }
       if (password.length < 12) {
@@ -189,7 +189,7 @@ export function CreateAdminDialog({ open, onOpenChange, onCreated }: CreateAdmin
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="admin-email">PUP email</Label>
+                <Label htmlFor="admin-email">Institutional email</Label>
                 <Input
                   id="admin-email"
                   type="email"

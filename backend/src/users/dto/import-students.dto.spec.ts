@@ -12,7 +12,7 @@ function request(overrides: Record<string, unknown> = {}) {
         rowNumber: '2',
         fullName: '  Dela Cruz, Juan M.  ',
         studentId: ' 2024-00001-mn-0 ',
-        email: ' JUAN@PUP.EDU.PH ',
+        email: ' JUAN@EXAMPLE.EDU.PH ',
         program: ' BSIT ',
         yearLevel: '2',
         department: ' CCIS ',
@@ -30,7 +30,7 @@ describe('StudentImportRequestDto', () => {
     expect(dto.rows[0].rowNumber).toBe(2)
     expect(dto.rows[0].studentId).toBe('2024-00001-MN-0')
     expect(dto.rows[0].fullName).toBe('Dela Cruz, Juan M.')
-    expect(dto.rows[0].email).toBe('juan@pup.edu.ph')
+    expect(dto.rows[0].email).toBe('juan@example.edu.ph')
     expect(dto.rows[0].yearLevel).toBe(2)
     expect(dto.rows[0].department).toBe('CCIS')
   })

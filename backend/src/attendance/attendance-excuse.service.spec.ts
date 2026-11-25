@@ -267,3 +267,65 @@ describe('AttendanceService excuse workflow', () => {
     })
   })
 })
+
+describe('AttendanceService excuse scope — course mode (COURSE_SCOPE_MODE=course)', () => {
+  const original = process.env.COURSE_SCOPE_MODE
+  const bsitHead: RequestUser = {
+    id: 'head-bsit',
+    role: 'teacher',
+    department: 'Unspecified',
+    isDepartmentHead: true,
+    managedCourses: ['BSIT'],
+  }
+  const bshmHead: RequestUser = {
+    id: 'head-bshm',
+    role: 'teacher',
+    department: 'CCIS',
+    isDepartmentHead: true,
+    managedCourses: ['BSHM'],
+  }
+
+  beforeEach(() => {
+    process.env.COURSE_SCOPE_MODE = 'course'
+  })
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.COURSE_SCOPE_MODE
+    else process.env.COURSE_SCOPE_MODE = original
+  })
+
+  it('lists excuses of the head’s courses only', async () => {
+    const { service, prisma } = makeService()
+    await service.listExcuses(bsitHead)
+    const where = prisma.attendanceRecord.findMany.mock.calls[0][0].where
+    expect(where.AND[0]).toEqual({
+      session: { section: { OR: [{ course: { equals: 'BSIT', mode: 'insensitive' } }] } },
+    })
+  })
+
+  it('lets a course head decide an excuse inside their course but not another course', async () => {
+    const inScope = baseRecord({
+      excuseStatus: 'requested',
+      excuseReason: 'medical',
+      session: {
+        teacherId: 'teacher-1',
+        subjectName: 'CS 101',
+        date: '2026-10-27',
+        section: { course: 'BSIT', teacher: { department: 'CCIS' } },
+      },
+    })
+    const allowed = makeService()
+    allowed.prisma.attendanceRecord.findUnique.mockResolvedValue(inScope)
+    allowed.prisma.attendanceRecord.update.mockResolvedValue(
+      baseRecord({ status: 'excused', excuseStatus: 'approved' }),
+    )
+    await expect(allowed.service.decideExcuse(bsitHead, 'rec-1', { decision: 'approve' })).resolves.toBeDefined()
+
+    const denied = makeService()
+    denied.prisma.attendanceRecord.findUnique.mockResolvedValue(inScope)
+    await expect(denied.service.decideExcuse(bshmHead, 'rec-1', { decision: 'approve' })).rejects.toThrow(
+      ForbiddenException,
+    )
+    expect(denied.prisma.attendanceRecord.update).not.toHaveBeenCalled()
+  })
+})

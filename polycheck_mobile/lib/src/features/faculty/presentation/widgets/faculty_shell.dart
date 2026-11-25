@@ -122,7 +122,7 @@ class FacultyShell extends ConsumerWidget {
       );
     }
     return Scaffold(
-      backgroundColor: PupTheme.of(context).campus,
+      backgroundColor: BrandTheme.of(context).campus,
       body: child,
       bottomNavigationBar: CampusBottomNav(
         items: [
@@ -165,7 +165,7 @@ class FacultyScaffold extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      backgroundColor: PupTheme.of(context).campus,
+      backgroundColor: BrandTheme.of(context).campus,
       appBar: CampusHeader(
         title: title,
         subtitle: subtitle,
@@ -280,7 +280,7 @@ class FacultyStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -368,7 +368,7 @@ class FacultySectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -405,7 +405,7 @@ class FacultyRateBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final ratio = ((value ?? 0) / 100).clamp(0.0, 1.0);
     return ClipRRect(
       borderRadius: BorderRadius.zero,
@@ -444,7 +444,7 @@ class FacultyPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusBadge(
       label: label,
       background: background ?? tokens.campus,
@@ -498,7 +498,7 @@ class FacultyTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -562,7 +562,7 @@ class FacultyDropdown<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -715,7 +715,7 @@ Future<void> showFacultyMoreSheet(BuildContext context, WidgetRef ref) async {
             label: 'User management',
             value: '/admin/users',
           ),
-        Divider(height: 18, color: PupTheme.of(context).borderSubtle),
+        Divider(height: 18, color: BrandTheme.of(context).borderSubtle),
         const _FacultyMoreItem(
           key: ValueKey<String>('faculty-more-sign-out'),
           icon: Icons.logout,
@@ -759,7 +759,7 @@ class _FacultyMoreItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final accent = destructive
         ? Theme.of(context).colorScheme.error
         : (tokens.isDark ? tokens.gold : tokens.maroon);

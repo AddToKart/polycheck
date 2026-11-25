@@ -5,7 +5,7 @@ import '../../../../core/api/api_providers.dart';
 import '../../../../core/models/api.dart';
 import '../../../../core/models/dashboard.dart';
 import '../../../../core/models/user.dart';
-import '../../../../core/theme/pup_theme.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/widgets/campus_bottom_sheet.dart';
 import '../../../../core/widgets/campus_button.dart';
 import '../../../../core/widgets/campus_card.dart';
@@ -159,7 +159,7 @@ class _CreateAccountSheetState extends ConsumerState<CreateAccountSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -200,7 +200,9 @@ class _CreateAccountSheetState extends ConsumerState<CreateAccountSheet> {
         const SizedBox(height: 12),
         CampusTextField(
           controller: _email,
-          label: _isTeacher ? 'PUP email' : 'PUP email (optional)',
+          label: _isTeacher
+              ? 'Institutional email'
+              : 'Institutional email (optional)',
           keyboardType: TextInputType.emailAddress,
           enabled: !_busy,
         ),
@@ -410,7 +412,7 @@ class _AddAdminSheetState extends ConsumerState<AddAdminSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final teachers = _teachers;
     final query = _search.text.trim().toLowerCase();
     final filtered = teachers
@@ -571,7 +573,7 @@ class _AddAdminSheetState extends ConsumerState<AddAdminSheet> {
           const SizedBox(height: 12),
           CampusTextField(
             controller: _email,
-            label: 'PUP email',
+            label: 'Institutional email',
             keyboardType: TextInputType.emailAddress,
             enabled: !_busy,
           ),

@@ -13,7 +13,7 @@ export interface WeekDay {
 const DAY_NAMES_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const DAY_NAMES_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-const PUP_TIMEZONE_OFFSET_MS = 8 * 60 * 60 * 1000
+const CAMPUS_TIMEZONE_OFFSET_MS = 8 * 60 * 60 * 1000
 
 const DAY_OF_WEEK_MAP: Record<DayOfWeek, number> = {
   Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
@@ -28,17 +28,17 @@ export function formatDate(date: Date): string {
 }
 
 /**
- * Returns the civil calendar date used by PUP (Asia/Manila, UTC+08:00).
+ * Returns the civil calendar date used by the campus (Asia/Manila, UTC+08:00).
  * The Philippines does not observe daylight-saving time, so a fixed offset
  * avoids depending on partial Intl time-zone support in React Native.
  */
 export function formatCampusDate(date = new Date()): string {
-  return new Date(date.getTime() + PUP_TIMEZONE_OFFSET_MS).toISOString().slice(0, 10)
+  return new Date(date.getTime() + CAMPUS_TIMEZONE_OFFSET_MS).toISOString().slice(0, 10)
 }
 
 export function getRecentCampusDateRange(days = 30, date = new Date()) {
   const normalizedDays = Math.max(1, Math.trunc(days))
-  const campusDate = new Date(date.getTime() + PUP_TIMEZONE_OFFSET_MS)
+  const campusDate = new Date(date.getTime() + CAMPUS_TIMEZONE_OFFSET_MS)
   const endDate = campusDate.toISOString().slice(0, 10)
   campusDate.setUTCDate(campusDate.getUTCDate() - (normalizedDays - 1))
   return { startDate: campusDate.toISOString().slice(0, 10), endDate }

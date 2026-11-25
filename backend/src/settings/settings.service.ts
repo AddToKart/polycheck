@@ -3,6 +3,10 @@ import { ConfigService } from '@nestjs/config'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import {
   DEFAULT_MAINTENANCE_MESSAGE,
+  INSTITUTION_CAMPUS_KEY,
+  INSTITUTION_LOGO_KEY,
+  INSTITUTION_NAME_KEY,
+  INSTITUTION_SHORT_NAME_KEY,
   MAINTENANCE_SETTINGS_CHANGED_EVENT,
   MAINTENANCE_SETTING_KEYS,
   clampRetentionDays,
@@ -19,6 +23,7 @@ import {
   type PrivacyShredRecord,
 } from '../common/constants/privacy'
 import { RedisService } from '../infrastructure/redis.service'
+import { BrandingService } from './branding.service'
 import { PrismaService } from '../prisma/prisma.service'
 
 const INTEGER_SETTING_RANGES = {
@@ -29,6 +34,7 @@ const INTEGER_SETTING_RANGES = {
   attendance_min_rate_percent: { min: 0, max: 100 },
   device_cooldown_hours: { min: 1, max: 24 },
   geolocation_retention_days: { min: 7, max: 90 },
+  activation_link_ttl_hours: { min: 24, max: 336 },
 } as const
 
 const BOOLEAN_SETTING_KEYS = [
@@ -39,6 +45,7 @@ const BOOLEAN_SETTING_KEYS = [
   'ai_assistant_teacher_enabled',
   'ai_assistant_student_enabled',
   'maintenance_mode_enabled',
+  'activation_email_enabled',
 ] as const
 
 const OPTIONAL_STRING_SETTING_KEYS = ['ai_base_url', 'ai_model'] as const
@@ -49,10 +56,32 @@ const OPTIONAL_TEXT_SETTING_KEYS = ['maintenance_message'] as const
 /** ISO-8601 datetime settings stored as strings; an empty value clears them. */
 const OPTIONAL_DATETIME_SETTING_KEYS = ['maintenance_until'] as const
 
+/** True for actors allowed to read the administrative settings surface. */
+function canReadAdministrativeSettings(actor: { role: string; isItCoordinator?: boolean }): boolean {
+  return actor.role === 'super_admin' || (actor.role === 'teacher' && actor.isItCoordinator === true)
+}
+
 export const AI_API_KEY_SETTING = 'ai_api_key'
+
+/**
+ * Keys a plain teacher legitimately needs. `GET /settings` is reachable by
+ * every teacher because the session composer reads the classroom defaults
+ * (`frontend/.../faculty/sessions/create/page.tsx`,
+ * `polycheck_mobile/.../session_create_screen.dart`). Everything else —
+ * AI configuration, the maintenance trio, governance/availability toggles,
+ * retention policy, and the institution name — is administrative and is
+ * redacted for non-IT/non-super-admin actors.
+ */
+export const TEACHER_VISIBLE_SETTING_KEYS = [
+  'default_geofence_radius_meters',
+  'default_qr_validity_minutes',
+  'default_grace_period_minutes',
+] as const
 
 export const INSTITUTION_SETTING_KEYS = [
   'institution_name',
+  INSTITUTION_SHORT_NAME_KEY,
+  INSTITUTION_CAMPUS_KEY,
   ...BOOLEAN_SETTING_KEYS,
   ...OPTIONAL_STRING_SETTING_KEYS,
   ...OPTIONAL_TEXT_SETTING_KEYS,
@@ -88,11 +117,28 @@ export class SettingsService {
     // globally provided event emitter; production always injects it.
     @Optional() private readonly events?: EventEmitter2,
     @Optional() private readonly redis?: RedisService,
+    @Optional() private readonly branding?: BrandingService,
   ) {}
 
-  list() {
+  /**
+   * Institution settings for an authenticated actor.
+   *
+   * Administrative keys are only returned to actors that may change them
+   * (institution super admins and IT coordinators). Plain teachers get an
+   * **allowlist** (the classroom defaults their session composer reads) and
+   * nothing else — a default-deny allowlist so a future setting can never leak
+   * by being forgotten here. The AI API key is excluded for everyone; its value
+   * is never returned.
+   *
+   * `undefined` preserves the pre-existing (unrestricted) behavior for callers
+   * that are not request-scoped, such as internal tooling and unit tests.
+   */
+  list(actor?: { role: string; isItCoordinator?: boolean }) {
+    const restricted = actor !== undefined && !canReadAdministrativeSettings(actor)
     return this.prisma.institutionSetting.findMany({
-      where: { key: { not: AI_API_KEY_SETTING } },
+      where: restricted
+        ? { key: { in: [...TEACHER_VISIBLE_SETTING_KEYS] } }
+        : { key: { notIn: [AI_API_KEY_SETTING, INSTITUTION_LOGO_KEY] } },
       orderBy: { key: 'asc' },
     })
   }
@@ -265,6 +311,9 @@ export class SettingsService {
       return { ...saved, value: '' }
     }
     const maintenanceKey = isMaintenanceSettingKey(key)
+    if (key === INSTITUTION_NAME_KEY || key === INSTITUTION_SHORT_NAME_KEY || key === INSTITUTION_CAMPUS_KEY) {
+      this.branding?.invalidate()
+    }
     const previous = maintenanceKey ? await this.readValue(key) : null
     const saved = await this.prisma.institutionSetting.upsert({
       where: { key },
@@ -350,6 +399,15 @@ export class SettingsService {
       if (trimmed.length < 2 || trimmed.length > 150) {
         throw new BadRequestException('Institution name must be 2-150 characters')
       }
+      return trimmed
+    }
+    if (key === INSTITUTION_SHORT_NAME_KEY) {
+      // Empty clears the override so the short name is derived from the full name again.
+      if (trimmed.length > 12) throw new BadRequestException('Short name must be at most 12 characters')
+      return trimmed
+    }
+    if (key === INSTITUTION_CAMPUS_KEY) {
+      if (trimmed.length > 80) throw new BadRequestException('Campus must be at most 80 characters')
       return trimmed
     }
     if (BOOLEAN_SETTING_KEYS.includes(key as BooleanInstitutionSettingKey)) {

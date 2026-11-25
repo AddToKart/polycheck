@@ -1,7 +1,7 @@
 import 'api_base.dart';
 import 'api_models.dart';
 
-/// PUP document exports (`backend/src/docs/docs.controller.ts`).
+/// Document exports (`backend/src/docs/docs.controller.ts`).
 ///
 /// Every method returns the raw bytes plus the server filename/content type so
 /// the UI can hand them to the platform share sheet (share_plus lands with the

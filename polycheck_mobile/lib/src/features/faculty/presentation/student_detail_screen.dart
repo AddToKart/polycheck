@@ -126,6 +126,21 @@ class _FacultyStudentDetailScreenState
     final section = _section;
     if (student == null || section == null || _busy != null) return;
     final record = _recordFor(session.id);
+    // FLF-08: disputed/excused rows belong to their queues; a tap here used to
+    // rewrite them without the student ever seeing the decision.
+    if (record != null && !isManualCycleStatus(record.status)) {
+      final queue = record.status == AttendanceStatus.disputed
+          ? 'dispute'
+          : 'excuse';
+      CampusToast.showIn(
+        context,
+        'This record is '
+        '${attendanceStatusLabels[record.status]!.toLowerCase()} — resolve it '
+        'through the $queue queue.',
+        tone: CampusToastTone.warning,
+      );
+      return;
+    }
     final next = nextAttendanceStatus(
       record?.status ?? AttendanceStatus.pending,
     );
@@ -336,7 +351,7 @@ class _FacultyStudentDetailScreenState
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final student = _student;
     final section = _section;
     final totalPages = _sessions.isEmpty
@@ -577,7 +592,7 @@ class _SessionAttendanceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final status = record?.status ?? AttendanceStatus.pending;
     return CampusCard(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -650,7 +665,7 @@ class _ReleaseFormState extends State<_ReleaseForm> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

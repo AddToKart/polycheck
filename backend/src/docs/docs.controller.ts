@@ -63,7 +63,7 @@ export class DocsController {
   }
 
   /**
-   * F4: official PUP class record. Owning teacher, academic-oversight
+   * F4: official class record. Owning teacher, academic-oversight
    * department head (department-pinned), or a scoped super admin.
    */
   @Get('class-record/:sectionId')

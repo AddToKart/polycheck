@@ -152,16 +152,16 @@ test.describe('Wow-factor suite (F1–F9)', () => {
     assertNoErrors(errors)
   })
 
-  test('F4: section detail downloads the official PUP class record PDF', async ({ page }) => {
+  test('F4: section detail downloads the official class record PDF', async ({ page }) => {
     const errors = trackErrors(page)
     await loginFaculty(page)
     // The section detail h1 carries the parent subject name.
     await page.goto('/faculty/sections/sec-001')
     await expect(page.getByRole('heading', { name: 'Software Engineering' })).toBeVisible({ timeout: 20_000 })
     const downloadPromise = page.waitForEvent('download')
-    await page.getByRole('button', { name: /Class record \(PUP\)/i }).click()
+    await page.getByRole('button', { name: /Class record/i }).click()
     const download = await downloadPromise
-    expect(download.suggestedFilename()).toMatch(/^PUP-Class-Record-.*\.pdf$/)
+    expect(download.suggestedFilename()).toMatch(/^Class-Record-.*\.pdf$/)
     assertNoErrors(errors)
   })
 
@@ -212,7 +212,7 @@ test.describe('Wow-factor suite (F1–F9)', () => {
     const downloadPromise = page.waitForEvent('download')
     await dialog.getByRole('button', { name: /Generate notice/i }).click()
     const download = await downloadPromise
-    expect(download.suggestedFilename()).toMatch(/^PUP-CHED-Drop-Notice\.pdf$/)
+    expect(download.suggestedFilename()).toMatch(/^CHED-Drop-Notice\.pdf$/)
 
     // The referral lands in the guidance queue with the generated status pill.
     await page.getByRole('tab', { name: 'Referrals' }).click()
@@ -265,7 +265,7 @@ test.describe('Wow-factor suite (F1–F9)', () => {
     const downloadPromise = page.waitForEvent('download')
     await page.getByRole('button', { name: 'DPO summary (PDF)' }).click()
     const download = await downloadPromise
-    expect(download.suggestedFilename()).toMatch(/^PUP-DPO-Summary\.pdf$/)
+    expect(download.suggestedFilename()).toMatch(/^DPO-Summary\.pdf$/)
     assertNoErrors(errors)
   })
 
@@ -292,14 +292,24 @@ test.describe('Wow-factor suite (F1–F9)', () => {
 
     try {
       // The faculty cockpit has no student-scan surface, so the manual
-      // attendance flow is the cockpit roster tap: the write fails with the
-      // simulated outage and lands in the encrypted local queue.
+      // attendance flow is the roster tap → student dialog → status write
+      // (9e5c6a0): the write fails with the simulated outage and lands in the
+      // encrypted local queue.
       const firstStudentRow = page.locator('button.w-full.border-b').first()
       await firstStudentRow.click()
+      await page
+        .getByRole('dialog')
+        .getByRole('button', { name: 'present', exact: true })
+        .click()
       await expect(page.getByTestId('outage-receipt')).toContainText(/Receipt #\d+ · [0-9a-f]{8}/, {
         timeout: 20_000,
       })
       await expect(panel).toContainText(/1 evidence item queued/)
+
+      // Close the student dialog first: its overlay (z-50) sits above the
+      // outage panel (z-45), so Restore & Replay is not clickable underneath.
+      await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
+      await expect(page.getByRole('dialog')).toHaveCount(0)
 
       // Restore & Replay: disarm → drain → server commit → realtime reconcile.
       await panel.getByRole('button', { name: /Restore & Replay/i }).click()

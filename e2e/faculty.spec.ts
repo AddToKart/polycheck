@@ -127,7 +127,7 @@ test.describe('Faculty (Teacher) Flows', () => {
     const sectionName = `E2E-${Date.now() % 100000}`
     await page.goto('/faculty/sections/create?subjectId=subj-001')
     await expect(page.getByRole('heading', { name: 'Create Section' })).toBeVisible()
-    await page.getByLabel('Section').fill(sectionName)
+    await page.getByLabel('Section', { exact: true }).fill(sectionName)
     await page.getByLabel('Course').selectOption('BSIT')
     await page.getByLabel('Room').fill('E2E Room')
     // Add one schedule entry
@@ -171,11 +171,14 @@ test.describe('Faculty (Teacher) Flows', () => {
     await page.getByLabel('Grace Period').fill('10')
     await page.getByRole('dialog').getByRole('button', { name: 'Generate', exact: true }).click()
     await expect(page.getByAltText('Scannable session QR code').first()).toBeVisible({ timeout: 20_000 })
-    // Fresh session → all students pending; tap first roster row: pending → present → late
+    // Fresh session → all students pending. Since 9e5c6a0 the roster tap opens
+    // the student dialog; manual status control lives on its status buttons.
     const firstStudentRow = page.locator('button.w-full.border-b').first()
+    const studentDialog = page.getByRole('dialog')
     await firstStudentRow.click()
+    await studentDialog.getByRole('button', { name: 'present', exact: true }).click()
     await expect(firstStudentRow.getByText('Present')).toBeVisible({ timeout: 20_000 })
-    await firstStudentRow.click()
+    await studentDialog.getByRole('button', { name: 'late', exact: true }).click()
     await expect(firstStudentRow.getByText('Late')).toBeVisible({ timeout: 20_000 })
     assertNoErrors(errors)
   })

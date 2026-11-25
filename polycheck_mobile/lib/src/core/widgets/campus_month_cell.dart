@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../theme/pup_theme.dart';
-import '../theme/pup_tokens.dart';
+import '../theme/brand_theme.dart';
+import '../theme/brand_tokens.dart';
 
 /// One status/event dot plotted on a [CampusMonthCell].
 ///
 /// Callers own the palette: the faculty calendar passes its active/inactive
-/// event colors, the student calendar passes the PUP attendance status colors
+/// event colors, the student calendar passes the attendance status colors
 /// (`studentMonthDotStyle`). `border` defaults to [fill] so borderless
 /// palettes render identically to a plain filled dot.
 @immutable
@@ -78,11 +78,11 @@ class CampusMonthCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final numberColor = !inMonth
         ? tokens.muted
         : today
-        ? PupColors.white
+        ? BrandColors.white
         : tokens.onSurface;
     final overflow =
         badge ?? (dots.length > maxDots ? '+${dots.length - maxDots}' : null);
@@ -144,7 +144,7 @@ class CampusMonthCell extends StatelessWidget {
                       Text(
                         overflow,
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: today ? PupColors.white : tokens.muted,
+                          color: today ? BrandColors.white : tokens.muted,
                           fontSize: 8,
                         ),
                       ),

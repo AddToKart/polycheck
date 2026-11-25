@@ -89,7 +89,7 @@ const maxAttempts = Math.min(20, Math.max(1, Number(process.env.K6_PREP_RETRIES 
 const loginRatePerMinute = Math.min(1000, Math.max(1, Number(process.env.K6_LOGIN_RATE_PER_MINUTE ?? 800)))
 const loginIntervalMs = 60_000 / loginRatePerMinute
 
-const adminEmail = process.env.LOAD_ADMIN_EMAIL || 'mcreyes@pup.edu.ph'
+const adminEmail = process.env.LOAD_ADMIN_EMAIL || 'mcreyes@example.edu.ph'
 const adminPassword = process.env.LOAD_ADMIN_PASSWORD || 'PolycheckLocal1!'
 
 const GEO = { latitude: 14.5995, longitude: 120.9842, radiusMeters: 100 }

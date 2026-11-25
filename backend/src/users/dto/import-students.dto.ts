@@ -78,6 +78,11 @@ export class StudentImportRequestDto {
   @IsIn(['skip_existing', 'update_existing'])
   conflictMode!: 'skip_existing' | 'update_existing'
 
+  /** Omitted = temporary passwords (today's behavior). */
+  @IsOptional()
+  @IsIn(['temporary_password', 'activation_email'])
+  deliveryMode?: 'temporary_password' | 'activation_email'
+
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(250)

@@ -40,8 +40,28 @@ export const SETTING_FIELDS: readonly SettingFieldDefinition[] = [
     tab: 'institution',
     label: 'Institution name',
     type: 'text',
-    defaultValue: 'Polytechnic University of the Philippines',
-    caption: 'Used as the header on generated master-list exports.',
+    defaultValue: 'Your Institution',
+    caption: 'Shown on the login screen, ID cards and the header of generated documents.',
+  },
+  {
+    key: 'institution_short_name',
+    tab: 'institution',
+    label: 'Short name',
+    type: 'text',
+    defaultValue: '',
+    optional: true,
+    placeholder: 'e.g. ABC',
+    caption: 'Used in tight spaces and the document seal. Leave empty to derive it from the institution name.',
+  },
+  {
+    key: 'institution_campus',
+    tab: 'institution',
+    label: 'Campus',
+    type: 'text',
+    defaultValue: '',
+    optional: true,
+    placeholder: 'e.g. Main Campus',
+    caption: 'Printed under the institution name on documents. Leave empty for a single-site institution.',
   },
   {
     key: 'default_geofence_radius_meters',
@@ -103,6 +123,17 @@ export const SETTING_FIELDS: readonly SettingFieldDefinition[] = [
     max: 24,
     caption:
       'After a student unregisters their mobile device, mobile logins stay locked for this many hours. Instructors can release a student sooner.',
+  },
+  {
+    key: 'activation_link_ttl_hours',
+    tab: 'accounts',
+    label: 'Activation link lifetime (hours)',
+    type: 'number',
+    defaultValue: '168',
+    min: 24,
+    max: 336,
+    caption:
+      'How long an emailed activation link stays valid (default 7 days). Students on mobile data may open the email late; an expired link can be re-requested from the activation page.',
   },
   {
     key: 'ai_base_url',
@@ -173,6 +204,14 @@ export const SETTING_SWITCHES: readonly SettingSwitchDefinition[] = [
     label: 'Allow teacher student provisioning',
     caption:
       'Let teachers auto-provision inactive student accounts when importing an enrollment list for a student without an account.',
+    defaultValue: 'false',
+  },
+  {
+    key: 'activation_email_enabled',
+    tab: 'accounts',
+    label: 'Email activation links for imported students',
+    caption:
+      'Lets registrars and super admins choose "Email an activation link" when importing students. Requires the mail provider to be configured on the server; turn it off to go back to temporary passwords only.',
     defaultValue: 'false',
   },
   {

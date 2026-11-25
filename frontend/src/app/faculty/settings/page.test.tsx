@@ -41,7 +41,7 @@ import InstitutionSettingsPage from './page'
 const admin: SuperAdmin = {
   id: 'admin-1',
   fullName: 'Dr. Test Admin',
-  email: 'admin@pup.edu.ph',
+  email: 'admin@example.edu.ph',
   role: 'super_admin',
   scope: 'institution',
   isActive: true,
@@ -58,7 +58,7 @@ const departmentAdmin: SuperAdmin = {
 const itCoordinator: User = {
   id: 't-003',
   fullName: 'Prof. Bryan M. Salazar',
-  email: 'bry.mis@pup.edu.ph',
+  email: 'bry.mis@example.edu.ph',
   role: 'teacher',
   department: 'CCIS',
   isItCoordinator: true,
@@ -70,7 +70,7 @@ const itCoordinator: User = {
 const plainTeacher: User = {
   id: 't-001',
   fullName: 'Prof. Juan Miguel Dela Cruz',
-  email: 'jmdelacruz@pup.edu.ph',
+  email: 'jmdelacruz@example.edu.ph',
   role: 'teacher',
   department: 'CCIS',
   isActive: true,
@@ -79,7 +79,7 @@ const plainTeacher: User = {
 }
 
 const SETTING_VALUES: Record<string, string> = {
-  institution_name: 'PUP Santa Maria Campus',
+  institution_name: 'Example Campus',
   default_geofence_radius_meters: '40',
   default_qr_validity_minutes: '5',
   default_grace_period_minutes: '15',
@@ -104,7 +104,7 @@ function settingsRows(overrides: Record<string, string> = {}) {
 async function renderLoaded() {
   render(<InstitutionSettingsPage />)
   await waitFor(() =>
-    expect(screen.getByLabelText('Institution name')).toHaveValue('PUP Santa Maria Campus'),
+    expect(screen.getByLabelText('Institution name')).toHaveValue('Example Campus'),
   )
 }
 

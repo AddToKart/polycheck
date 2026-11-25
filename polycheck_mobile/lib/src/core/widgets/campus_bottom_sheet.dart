@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/pup_theme.dart';
+import '../theme/brand_theme.dart';
 
 /// Zero-radius bottom-sheet body with a drag handle and optional title.
 ///
@@ -28,7 +28,7 @@ class CampusBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final cap =
         maxHeight ?? MediaQuery.sizeOf(context).height * _defaultMaxHeightRatio;
     return SafeArea(
@@ -73,7 +73,7 @@ class CampusBottomSheet extends StatelessWidget {
   static const double _defaultMaxHeightRatio = 0.65;
 }
 
-/// Presents a modal bottom sheet with the PUP square treatment and keyboard
+/// Presents a modal bottom sheet with the square treatment and keyboard
 /// inset handling (Android 15 edge-to-edge friendly).
 ///
 /// [maxHeight] caps the scrollable body (default 65% of the screen height);
@@ -86,7 +86,7 @@ Future<T?> showCampusBottomSheet<T>(
   bool isDismissible = true,
   double? maxHeight,
 }) {
-  final tokens = PupTheme.of(context);
+  final tokens = BrandTheme.of(context);
   return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: isScrollControlled,

@@ -10,7 +10,6 @@ import {
   KIOSK_JOINED_EVENT,
   KIOSK_LEAVE_EVENT,
   SESSION_FINALE_EVENT,
-  FINALE_COUNT_STATUSES,
   type AttendanceRecord,
   type FinaleCountStatus,
   type Session,
@@ -21,13 +20,15 @@ import {
 import { api, isNetworkFailure } from '@/lib/api-client'
 import { API_BASE } from '@/lib/api-config'
 import QRCode from 'qrcode'
-import { pupColors } from '@/lib/colors'
+import { brandColors } from '@/lib/colors'
 import { LoadingSpinner } from '@/lib/hooks'
+import { useTrustedNow } from '@/lib/hooks/use-trusted-now'
 import KioskQrRing from '@/components/kiosk/KioskQrRing'
 import KioskTicker, { addTickerEntry, pruneTicker } from '@/components/kiosk/KioskTicker'
 import KioskCapacityRing from '@/components/kiosk/KioskCapacityRing'
 import KioskFinale from '@/components/kiosk/KioskFinale'
 import { isCheckedInStatus, verifiedDelta } from '@/components/kiosk/kiosk-verified'
+import { finaleCountsForFallback } from '@/components/kiosk/kiosk-finale-counts'
 
 /** Seeded ticker chips die ~6 s after load so the projector feels live. */
 const TICKER_SEED_LIFETIME_MS = 6_000
@@ -93,24 +94,6 @@ function countdownLabel(remainingMs: number): string {
   if (remainingMs <= 0) return 'GRACE'
   const totalSeconds = Math.floor(remainingMs / 1000)
   return `${pad2(Math.floor(totalSeconds / 60))}:${pad2(totalSeconds % 60)}`
-}
-
-function recordsToCounts(records: AttendanceRecord[]): Record<FinaleCountStatus, number> {
-  const totals: Record<FinaleCountStatus, number> = {
-    present: 0,
-    late: 0,
-    absent: 0,
-    excused: 0,
-    incomplete: 0,
-    disputed: 0,
-    pending: 0,
-  }
-  for (const record of records) {
-    if ((FINALE_COUNT_STATUSES as readonly string[]).includes(record.status)) {
-      totals[record.status as FinaleCountStatus] += 1
-    }
-  }
-  return totals
 }
 
 function recordsToVerified(records: AttendanceRecord[]): number {
@@ -223,7 +206,10 @@ export default function SessionKioskPage() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [qrError, setQrError] = useState<string | null>(null)
-  const [nowTick, setNowTick] = useState(() => Date.now())
+  // WEB-03: ring countdown + token liveness use the `/health`-corrected clock
+  // so a projector whose device clock is off never shows a stale window.
+  const { nowMs: deviceNowTick, offsetMs } = useTrustedNow()
+  const nowTick = deviceNowTick + (offsetMs ?? 0)
 
   const stageRef = useRef<HTMLElement | null>(null)
   // Last observed status per record id. A cockpit override must move the
@@ -248,26 +234,34 @@ export default function SessionKioskPage() {
     [],
   )
 
-  const refetchRecords = useCallback(async (sessionId: string): Promise<AttendanceRecord[]> => {
+  // Fallback counts from the last authoritative record status map, used only
+  // when the final refetch fails (WEB-06) - never blank the projector.
+  // (`finaleCountsForFallback` owns the math so the degraded path is testable.)
+
+  const refetchRecords = useCallback(async (sessionId: string): Promise<AttendanceRecord[] | null> => {
       try {
         const nextRecords = await api.getAttendanceRecords(sessionId)
         setVerified(recordsToVerified(nextRecords))
         recordStatusRef.current = new Map(nextRecords.map((record) => [record.id, record.status]))
         return nextRecords
       } catch {
-        // Documented degraded mode: the finale broadcast still lands, so a
-        // failed reconcile keeps the last known counts instead of blanking
-        // the projector. The next refetch (cutover/finale) repairs them.
-        return []
+        // WEB-06: a failed reconcile must not blank the projector. Return null
+        // (not []) so callers fall back to the last known status map instead of
+        // computing all-zero counts; the next refetch (cutover/finale) repairs.
+        return null
       }
   }, [])
 
   const endedFallback = useCallback(async () => {
     const finalRecords = await refetchRecords(id)
+    // WEB-06: reuse the last known per-record statuses when the refetch failed.
+    // The live socket deltas keep that map current, so it is the best truth we
+    // have; zero rows only when no record was ever seen.
+    const counts = finaleCountsForFallback(finalRecords, recordStatusRef.current)
     finalizeFromSummary(
       {
         endedAt: new Date().toISOString(),
-        counts: recordsToCounts(finalRecords),
+        counts,
         capacity: studentsRef.current.length,
       },
       'ended',
@@ -389,11 +383,10 @@ export default function SessionKioskPage() {
     })
   }, [id, loading, redirecting, user, handleCheckInEvent, endedFallback, finalizeFromSummary, refetchRecords])
 
-  // ── One-second clock: ring countdown + ticker expiry ──────────────────
+  // ── One-second clock: ticker expiry (ring countdown uses the trusted tick) ──
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setNowTick(Date.now())
       setTickerEntries((previous) => pruneTicker(previous, Date.now()))
     }, 1_000)
     return () => window.clearInterval(timer)
@@ -419,7 +412,7 @@ export default function SessionKioskPage() {
       width: 1024,
       margin: 3,
       errorCorrectionLevel: 'M',
-      color: { dark: pupColors.black, light: pupColors.white },
+      color: { dark: brandColors.black, light: brandColors.white },
     })
       .then((dataUrl) => {
         if (active) setQrDataUrl(dataUrl)

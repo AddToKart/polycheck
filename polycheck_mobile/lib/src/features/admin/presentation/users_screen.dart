@@ -7,7 +7,7 @@ import '../../../core/api/api_providers.dart';
 import '../../../core/models/dashboard.dart';
 import '../../../core/models/user.dart';
 import '../../../core/providers/session_provider.dart';
-import '../../../core/theme/pup_theme.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/designations.dart';
 import '../../../core/widgets/campus_badge.dart';
 import '../../../core/widgets/campus_card.dart';
@@ -170,7 +170,7 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
         ),
       ],
       body: RefreshIndicator(
-        color: PupTheme.of(context).maroon,
+        color: BrandTheme.of(context).maroon,
         onRefresh: _load,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -246,7 +246,7 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
                   child: Text(
                     page == null ? 'Loading accounts…' : userRangeLabel(page),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: PupTheme.of(context).muted,
+                      color: BrandTheme.of(context).muted,
                     ),
                   ),
                 ),
@@ -362,7 +362,7 @@ class _UserRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusCard(
       onTap: onTap,
       padding: const EdgeInsets.all(12),

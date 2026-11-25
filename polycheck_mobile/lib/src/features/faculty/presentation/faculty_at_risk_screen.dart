@@ -71,7 +71,7 @@ class _FacultyAtRiskScreenState extends ConsumerState<FacultyAtRiskScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final query = _search.trim().toLowerCase();
     final searched = query.isEmpty
         ? _rows
@@ -176,7 +176,7 @@ class _FacultyAtRiskScreenState extends ConsumerState<FacultyAtRiskScreen> {
     );
   }
 
-  Widget _referralsTabView(BuildContext context, PupTokens tokens) {
+  Widget _referralsTabView(BuildContext context, BrandTokens tokens) {
     if (_referrals.isEmpty) {
       return FacultyEmptyState(
         icon: Icons.description_outlined,
@@ -418,7 +418,7 @@ class _AtRiskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final below = row.status == AttendanceStandingStatus.belowThreshold;
     final atRisk = row.status == AttendanceStandingStatus.atRisk;
     return CampusCard(

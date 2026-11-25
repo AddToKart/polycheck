@@ -5,8 +5,9 @@ import '../../../../core/api/api_providers.dart';
 import '../../../../core/models/dashboard.dart';
 import '../../../../core/models/user.dart';
 import '../../../../core/providers/session_provider.dart';
-import '../../../../core/theme/pup_theme.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/designations.dart';
+import '../../../../core/utils/campus_courses.dart';
 import '../../../../core/widgets/campus_badge.dart';
 import '../../../../core/widgets/campus_bottom_sheet.dart';
 import '../../../../core/widgets/campus_button.dart';
@@ -62,6 +63,8 @@ class _UserRecordSheetState extends ConsumerState<UserRecordSheet> {
   late bool _isItCoordinator = widget.account.isItCoordinator;
   late bool _isDepartmentHead = widget.account.isDepartmentHead;
   late bool _isUserRegistrar = widget.account.isUserRegistrar;
+  late List<String> _managedCourses = [...widget.account.managedCourses];
+  late bool _managesAllCourses = widget.account.managesAllCourses;
 
   bool _busy = false;
   String? _error;
@@ -93,6 +96,12 @@ class _UserRecordSheetState extends ConsumerState<UserRecordSheet> {
       isItCoordinator: isTeacher ? _isItCoordinator : null,
       isDepartmentHead: isTeacher ? _isDepartmentHead : null,
       isUserRegistrar: isTeacher ? _isUserRegistrar : null,
+      managedCourses: isTeacher && (_isDepartmentHead || _isUserRegistrar)
+          ? _managedCourses
+          : null,
+      managesAllCourses: isTeacher && (_isDepartmentHead || _isUserRegistrar)
+          ? _managesAllCourses
+          : null,
     );
     if (!hasUserChanges(payload)) {
       CampusToast.showIn(context, 'No changes to save.');
@@ -276,7 +285,7 @@ class _UserRecordSheetState extends ConsumerState<UserRecordSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final target = widget.account;
     final actor = ref.watch(sessionProvider).user;
     final access = adminAccessFor(actor);
@@ -402,7 +411,7 @@ class _UserRecordSheetState extends ConsumerState<UserRecordSheet> {
             const SizedBox(height: 12),
             CampusTextField(
               controller: _controllers[EditableUserField.email],
-              label: 'PUP email',
+              label: 'Institutional email',
               keyboardType: TextInputType.emailAddress,
               enabled: !_busy && !registrar,
               helperText: registrar ? 'Registrars cannot change emails.' : null,
@@ -477,9 +486,9 @@ class _UserRecordSheetState extends ConsumerState<UserRecordSheet> {
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
               value: _isDepartmentHead,
-              title: const Text('Department Head'),
+              title: const Text('Course Head'),
               subtitle: const Text(
-                'Department-wide reports, excuses, and at-risk oversight.',
+                'Course-wide reports, excuses, and at-risk oversight.',
               ),
               onChanged: _busy
                   ? null
@@ -490,13 +499,23 @@ class _UserRecordSheetState extends ConsumerState<UserRecordSheet> {
               value: _isUserRegistrar,
               title: const Text('Registrar'),
               subtitle: const Text(
-                'Department-scoped account creation, resets, and roster '
-                'imports.',
+                'Campus-wide or course-scoped account creation, resets, and '
+                'roster imports.',
               ),
               onChanged: _busy
                   ? null
                   : (value) => setState(() => _isUserRegistrar = value),
             ),
+            if (_isDepartmentHead || _isUserRegistrar)
+              _CourseScopeEditor(
+                managedCourses: _managedCourses,
+                managesAllCourses: _managesAllCourses,
+                enabled: !_busy,
+                onChanged: (courses, all) => setState(() {
+                  _managedCourses = courses;
+                  _managesAllCourses = all;
+                }),
+              ),
           ],
           if (target.contactEmail != null || target.contactPhone != null) ...[
             const SizedBox(height: 12),
@@ -601,7 +620,7 @@ class _CapabilityPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -634,6 +653,84 @@ class _CapabilityPicker extends StatelessWidget {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Course multi-select for head/registrar designees. "All courses" is the
+/// Head of Academic Programs (and the campus-wide registrar); with nothing
+/// selected the designation is fail-closed and sees no data.
+class _CourseScopeEditor extends StatelessWidget {
+  const _CourseScopeEditor({
+    required this.managedCourses,
+    required this.managesAllCourses,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final List<String> managedCourses;
+  final bool managesAllCourses;
+  final bool enabled;
+  final void Function(List<String> courses, bool all) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BrandTheme.of(context);
+    final empty = !managesAllCourses && managedCourses.isEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const SizedBox(height: 12),
+        const AdminSectionLabel('Course scope'),
+        SwitchListTile.adaptive(
+          key: const ValueKey('course-scope-all'),
+          contentPadding: EdgeInsets.zero,
+          value: managesAllCourses,
+          title: const Text('All courses'),
+          subtitle: const Text(
+            'Head of Academic Programs: every course, no classroom write '
+            'access.',
+          ),
+          onChanged: enabled
+              ? (value) => onChanged(managedCourses, value)
+              : null,
+        ),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: <Widget>[
+            for (final course in campusCourses)
+              FilterChip(
+                key: ValueKey('course-scope-${course.code}'),
+                label: Text(course.code),
+                tooltip: course.name,
+                selected:
+                    managesAllCourses || managedCourses.contains(course.code),
+                onSelected: enabled && !managesAllCourses
+                    ? (selected) => onChanged(
+                        selected
+                            ? <String>[...managedCourses, course.code]
+                            : managedCourses
+                                  .where((entry) => entry != course.code)
+                                  .toList(),
+                        managesAllCourses,
+                      )
+                    : null,
+              ),
+          ],
+        ),
+        if (empty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'No courses selected: this designation will see no data until at '
+              'least one course is assigned.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: tokens.muted),
+            ),
+          ),
       ],
     );
   }

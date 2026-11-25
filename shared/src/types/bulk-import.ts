@@ -80,6 +80,8 @@ export interface StudentImportResult {
   hasMoreIssues: boolean
   /** Execute-only, returned exactly once. Never persisted or resendable. */
   credentials?: ImportCredential[]
+  /** Present only for `activation_email` imports. */
+  activation?: { queued: number; fallbackTemporary: number }
 }
 
 export interface EnrollImportResult {
@@ -98,10 +100,18 @@ export interface ImportChunkResult {
   failed: number
 }
 
+/**
+ * How new student accounts receive their first credential. Omitted = `temporary_password`
+ * (today's behavior). `activation_email` emails a single-use activation link to rows that
+ * have an email; rows without one fall back to a temporary password.
+ */
+export type StudentImportDeliveryMode = 'temporary_password' | 'activation_email'
+
 export interface StudentImportRequest {
   mode: ImportMode
   conflictMode: ImportConflictMode
   rows: StudentImportRow[]
+  deliveryMode?: StudentImportDeliveryMode
   idempotencyKey?: string
   /** Required for execute; must equal the value returned by validate. */
   rowChecksum?: string

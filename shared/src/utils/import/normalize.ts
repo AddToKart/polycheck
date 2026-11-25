@@ -13,7 +13,7 @@ export function normalizeFullName(raw: string): NormalizedValue<string> {
 }
 
 /**
- * PUP student numbers are `YYYY-NNNNN-XX-N`. Excel silently mangles
+ * Student numbers are `YYYY-NNNNN-XX-N`. Excel silently mangles
  * leading-zero/numeric columns, so detect those shapes explicitly and tell the
  * user to re-export with the SN column formatted as text.
  */

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const apiMock = vi.hoisted(() => ({
   getCurrentUser: vi.fn(() => ({
     id: 'admin-1',
-    email: 'admin@pup.edu.ph',
+    email: 'admin@example.edu.ph',
     fullName: 'System Administrator',
     role: 'super_admin' as const,
     scope: 'institution' as const,
@@ -42,7 +42,7 @@ describe('Super Admin monitoring pages', () => {
     searchParamsMock.current = new URLSearchParams()
     apiMock.getCurrentUser.mockReturnValue({
       id: 'admin-1',
-      email: 'admin@pup.edu.ph',
+      email: 'admin@example.edu.ph',
       fullName: 'System Administrator',
       role: 'super_admin',
       scope: 'institution',

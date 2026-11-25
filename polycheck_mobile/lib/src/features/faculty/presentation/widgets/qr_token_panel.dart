@@ -52,13 +52,13 @@ class _TokenCountdownState extends State<TokenCountdown> {
         'No live expiry recorded',
         style: Theme.of(
           context,
-        ).textTheme.bodySmall?.copyWith(color: PupTheme.of(context).muted),
+        ).textTheme.bodySmall?.copyWith(color: BrandTheme.of(context).muted),
       );
     }
     final remaining = expires.toUtc().difference(
       widget.clock.now(deviceNow: widget.deviceNow),
     );
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     if (remaining.isNegative && remaining.inSeconds < 0) {
       return Text(
         'Expired — regenerate to keep attendance open',
@@ -119,7 +119,7 @@ class QrTokenPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final armed = token != null && token!.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -293,9 +293,9 @@ Future<void> showTokenFullscreen(
       return Directionality(
         textDirection: Directionality.of(context),
         child: Scaffold(
-          backgroundColor: PupColors.pupDeepMaroon,
+          backgroundColor: BrandColors.brandDeepMaroon,
           appBar: AppBar(
-            backgroundColor: PupColors.pupDeepMaroon,
+            backgroundColor: BrandColors.brandDeepMaroon,
             foregroundColor: Colors.white,
             title: Text(title),
             leading: IconButton(
@@ -313,7 +313,7 @@ Future<void> showTokenFullscreen(
                   const Text(
                     'SIGNED ATTENDANCE QR',
                     style: TextStyle(
-                      color: PupColors.pupGold,
+                      color: BrandColors.brandGold,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1.2,
                       fontSize: 12,
@@ -352,7 +352,7 @@ Future<void> showTokenFullscreen(
                           const Text(
                             'MANUAL ENTRY TOKEN',
                             style: TextStyle(
-                              color: PupColors.pupGold,
+                              color: BrandColors.brandGold,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 1,
                               fontSize: 10,
@@ -380,7 +380,7 @@ Future<void> showTokenFullscreen(
                         'MEETING PIN: $pin — announce aloud',
                         textAlign: TextAlign.center,
                         style: const TextStyle(
-                          color: PupColors.pupGold,
+                          color: BrandColors.brandGold,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 1,
                         ),
@@ -418,8 +418,8 @@ Future<void> showTokenFullscreen(
                           icon: const Icon(Icons.share_outlined, size: 16),
                           label: const Text('Share'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: PupColors.pupGold,
-                            foregroundColor: PupColors.pupDeepMaroon,
+                            backgroundColor: BrandColors.brandGold,
+                            foregroundColor: BrandColors.brandDeepMaroon,
                             minimumSize: const Size(0, 46),
                             shape: const RoundedRectangleBorder(
                               borderRadius: BorderRadius.zero,

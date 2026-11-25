@@ -1,1 +1,1 @@
-export * from './pup-campus'
+export * from './campus-map'

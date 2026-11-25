@@ -7,11 +7,14 @@ import { PaginationBar } from '@/components/ui/pagination-bar'
 
 const REPORTS_PAGE_SIZE = 10
 import { api, requestUserLogout } from '@/lib/api-client'
-import { pupColors } from '@/lib/colors'
+import { brandColors } from '@/lib/colors'
 import { isInstitutionAdmin } from '@/lib/admin-users'
 import {
   canAccessAcademicOversight,
   formatCampusDate,
+  oversightCourses,
+  campusCourseCodes,
+  campusCourseName,
   getRecentCampusDateRange,
   type User,
   type Subject,
@@ -29,7 +32,7 @@ import { describeMutationError, useRunMutation } from '@/lib/run-mutation'
 
 const { startDate: defaultStartDate, endDate: defaultEndDate } = getRecentCampusDateRange(30)
 
-/** F4 (WF-LD1): the official PUP class record is generated server-side (pdfkit). */
+/** F4 (WF-LD1): the official class record is generated server-side (pdfkit). */
 function triggerBrowserDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
@@ -56,6 +59,7 @@ export default function ReportsPage() {
   const [selectedSubject, setSelectedSubject] = useState('')
   const [selectedSection, setSelectedSection] = useState('')
   const [selectedDepartment, setSelectedDepartment] = useState('')
+  const [selectedCourse, setSelectedCourse] = useState('')
   const [selectedTeacher, setSelectedTeacher] = useState('')
   const [dateFrom, setDateFrom] = useState(defaultStartDate)
   const [dateTo, setDateTo] = useState(defaultEndDate)
@@ -69,7 +73,7 @@ export default function ReportsPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [selectedSubject, selectedSection, selectedDepartment, selectedTeacher, dateFrom, dateTo])
+  }, [selectedSubject, selectedSection, selectedDepartment, selectedCourse, selectedTeacher, dateFrom, dateTo])
   const [report, setReport] = useState<AttendanceReport | null>(null)
 
   useEffect(() => {
@@ -117,6 +121,7 @@ export default function ReportsPage() {
       subjectId: selectedSubject || undefined,
       sectionId: selectedSection || undefined,
       department: selectedDepartment || undefined,
+      course: selectedCourse || undefined,
     })
       .then((nextReport) => {
         if (active) setReport(nextReport)
@@ -129,7 +134,17 @@ export default function ReportsPage() {
     return () => {
       active = false
     }
-  }, [user, selectedSubject, selectedSection, selectedDepartment, selectedTeacher, dateFrom, dateTo, reportRetry])
+  }, [
+    user,
+    selectedSubject,
+    selectedSection,
+    selectedDepartment,
+    selectedCourse,
+    selectedTeacher,
+    dateFrom,
+    dateTo,
+    reportRetry,
+  ])
 
   const sectionOptions = useMemo(
     () =>
@@ -153,12 +168,30 @@ export default function ReportsPage() {
     return [...values].sort((left, right) => left.localeCompare(right))
   }, [teachers, user])
 
+  // Course filter: institution admins and an all-courses head pick any catalog course (plus any
+  // off-catalog course on a visible section); a course head only their own. It narrows the
+  // server-side scope and can never widen it.
+  const courseScopeActive = user?.courseScopeMode === 'course'
+  const courseOptions = useMemo(() => {
+    if (!user) return []
+    const scoped = user.role === 'teacher' ? oversightCourses(user) : null
+    if (scoped !== null && scoped.length === 0) return []
+    const values = new Set<string>(scoped ?? campusCourseCodes())
+    if (scoped === null) {
+      for (const section of sections) if (section.course?.trim()) values.add(section.course.trim())
+    }
+    return [...values].sort((left, right) => left.localeCompare(right))
+  }, [sections, user])
+  const canFilterCourse = Boolean(
+    user && (user.role === 'super_admin' || user.isDepartmentHead) && courseOptions.length > 0,
+  )
+
   const canFilterDepartment = user
     ? isInstitutionAdmin({ role: user.role, scope: (user as User & { scope?: string | null }).scope })
     : false
 
   const hasFilters =
-    Boolean(selectedSubject || selectedSection || selectedDepartment || selectedTeacher) ||
+    Boolean(selectedSubject || selectedSection || selectedDepartment || selectedCourse || selectedTeacher) ||
     dateFrom !== defaultStartDate ||
     dateTo !== defaultEndDate
 
@@ -166,6 +199,7 @@ export default function ReportsPage() {
     setSelectedSubject('')
     setSelectedSection('')
     setSelectedDepartment('')
+    setSelectedCourse('')
     setSelectedTeacher('')
     setDateFrom(defaultStartDate)
     setDateTo(defaultEndDate)
@@ -208,6 +242,7 @@ export default function ReportsPage() {
           subjectId: selectedSubject || undefined,
           sectionId: selectedSection || undefined,
           department: selectedDepartment || undefined,
+          course: selectedCourse || undefined,
         }),
       {
         errorTitle: 'Export failed',
@@ -240,13 +275,13 @@ export default function ReportsPage() {
       )
       const filename =
         filenameSegments.filter(Boolean).length > 0
-          ? `PUP-Class-Record-${filenameSegments.filter(Boolean).join('-')}.pdf`
-          : 'PUP-Class-Record.pdf'
+          ? `Class-Record-${filenameSegments.filter(Boolean).join('-')}.pdf`
+          : 'Class-Record.pdf'
       triggerBrowserDownload(blob, filename)
       addNotification(
         'success',
         'Class record downloaded',
-        'The official PUP class record PDF has been saved.',
+        'The official class record PDF has been saved.',
       )
     } catch (error) {
       addNotification(
@@ -269,7 +304,7 @@ export default function ReportsPage() {
 
   if (loadError) {
     return (
-      <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+      <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
         <Sidebar user={user} onLogout={handleLogout} />
         <main className="flex flex-1 items-center justify-center p-6">
           <Card className="w-full max-w-md">
@@ -283,7 +318,7 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
       <Sidebar user={user} onLogout={handleLogout} />
 
       <main className="flex-1 overflow-y-auto">
@@ -318,11 +353,18 @@ export default function ReportsPage() {
               className="mb-6 border-l-4 border-maroon bg-white px-4 py-3 text-sm text-zinc-700 shadow-sm dark:border-golden dark:bg-zinc-900 dark:text-zinc-300"
             >
               <span className="font-bold uppercase tracking-widest text-[10px] text-maroon dark:text-golden">
-                Department oversight
+                {courseScopeActive ? 'Course oversight' : 'Department oversight'}
               </span>
               <p className="mt-1">
-                Showing attendance for {user.department ?? 'your department'} only. The server pins every filter to your
-                assigned department.
+                {courseScopeActive
+                  ? `Showing attendance for ${
+                      user.managesAllCourses
+                        ? 'every course'
+                        : (user.managedCourses ?? []).length > 0
+                          ? `sections of ${(user.managedCourses ?? []).join(', ')}`
+                          : 'your own sections (no courses are assigned to you yet)'
+                    } only. The server pins every filter to your assigned courses.`
+                  : `Showing attendance for ${user.department ?? 'your department'} only. The server pins every filter to your assigned department.`}
               </p>
             </div>
           ) : null}
@@ -379,6 +421,22 @@ export default function ReportsPage() {
                     ))}
                   </select>
                 </div>
+                {canFilterCourse ? (
+                  <div>
+                    <label htmlFor="report-course" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Course</label>
+                    <select
+                      id="report-course"
+                      value={selectedCourse}
+                      onChange={(e) => setSelectedCourse(e.target.value)}
+                      className="w-full h-10 rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors"
+                    >
+                      <option value="">All Courses</option>
+                      {courseOptions.map((course) => (
+                        <option key={course} value={course}>{course} — {campusCourseName(course)}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
                 {canFilterDepartment && departmentOptions.length > 0 ? (
                   <div>
                     <label htmlFor="report-department" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Department</label>
@@ -483,43 +541,43 @@ export default function ReportsPage() {
                     <circle cx="70" cy="70" r="60" fill="none" strokeWidth="20" className="stroke-zinc-200 dark:stroke-zinc-800" />
                     {total.total > 0 && (
                       <>
-                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.golden} strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={brandColors.golden} strokeWidth="20"
                           strokeDasharray={`${(total.present / total.total) * 377} 377`}
                           strokeDashoffset="0"
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.maroon} strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={brandColors.maroon} strokeWidth="20"
                           strokeDasharray={`${(total.late / total.total) * 377} 377`}
                           strokeDashoffset={-((total.present / total.total) * 377)}
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.maroonDark} strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={brandColors.maroonDark} strokeWidth="20"
                           strokeDasharray={`${(total.absent / total.total) * 377} 377`}
                           strokeDashoffset={-(((total.present + total.late) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.chartIncomplete} strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={brandColors.chartIncomplete} strokeWidth="20"
                           strokeDasharray={`${(total.incomplete / total.total) * 377} 377`}
                           strokeDashoffset={-(((total.present + total.late + total.absent) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.chartPending} strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={brandColors.chartPending} strokeWidth="20"
                           strokeDasharray={`${(total.pending / total.total) * 377} 377`}
                           strokeDashoffset={-(((total.present + total.late + total.absent + total.incomplete) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.chartDisputed} strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={brandColors.chartDisputed} strokeWidth="20"
                           strokeDasharray={`${(total.disputed / total.total) * 377} 377`}
                           strokeDashoffset={-(((total.present + total.late + total.absent + total.incomplete + total.pending) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.goldenDark} strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={brandColors.goldenDark} strokeWidth="20"
                           strokeDasharray={`${(total.excused / total.total) * 377} 377`}
                           strokeDashoffset={-(((total.present + total.late + total.absent + total.incomplete + total.pending + total.disputed) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
@@ -532,13 +590,13 @@ export default function ReportsPage() {
                   </svg>
                   <div className="space-y-3">
                     {[
-                      { label: 'Present', count: total.present, pct: presentPct, color: pupColors.golden, textColor: 'text-golden' },
-                      { label: 'Late', count: total.late, pct: latePct, color: pupColors.maroon, textColor: 'text-maroon dark:text-red-300' },
-                      { label: 'Incomplete', count: total.incomplete, pct: incompletePct, color: pupColors.chartIncomplete, textColor: 'text-maroon-dark dark:text-golden' },
-                      { label: 'Absent', count: total.absent, pct: absentPct, color: pupColors.maroonDark, textColor: 'text-maroon-dark dark:text-red-400' },
-                      { label: 'Pending', count: total.pending, pct: pendingPct, color: pupColors.chartPending, textColor: 'text-zinc-500 dark:text-zinc-400' },
-                      { label: 'Disputed', count: total.disputed, pct: disputedPct, color: pupColors.chartDisputed, textColor: 'text-amber-600 dark:text-amber-400' },
-                      { label: 'Excused', count: total.excused, pct: excusedPct, color: pupColors.goldenDark, textColor: 'text-golden-dark' },
+                      { label: 'Present', count: total.present, pct: presentPct, color: brandColors.golden, textColor: 'text-golden' },
+                      { label: 'Late', count: total.late, pct: latePct, color: brandColors.maroon, textColor: 'text-maroon dark:text-red-300' },
+                      { label: 'Incomplete', count: total.incomplete, pct: incompletePct, color: brandColors.chartIncomplete, textColor: 'text-maroon-dark dark:text-golden' },
+                      { label: 'Absent', count: total.absent, pct: absentPct, color: brandColors.maroonDark, textColor: 'text-maroon-dark dark:text-red-400' },
+                      { label: 'Pending', count: total.pending, pct: pendingPct, color: brandColors.chartPending, textColor: 'text-zinc-500 dark:text-zinc-400' },
+                      { label: 'Disputed', count: total.disputed, pct: disputedPct, color: brandColors.chartDisputed, textColor: 'text-amber-600 dark:text-amber-400' },
+                      { label: 'Excused', count: total.excused, pct: excusedPct, color: brandColors.goldenDark, textColor: 'text-golden-dark' },
                     ].map((item) => (
                       <div key={item.label} className="flex items-center gap-3">
                         <div className="w-3 h-3 shrink-0" style={{ backgroundColor: item.color }} />

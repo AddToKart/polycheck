@@ -46,7 +46,7 @@ void main() {
           trustedClockProvider.overrideWith(_SilentClock.new),
         ],
         child: MaterialApp(
-          theme: PupTheme.light,
+          theme: BrandTheme.light,
           home: const Scaffold(body: OutageRestoreReplayButton()),
         ),
       ),
@@ -86,7 +86,7 @@ void main() {
           trustedClockProvider.overrideWith(_SilentClock.new),
         ],
         child: MaterialApp(
-          theme: PupTheme.light,
+          theme: BrandTheme.light,
           home: const Scaffold(body: OutageRestoreReplayButton()),
         ),
       ),

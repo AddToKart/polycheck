@@ -110,7 +110,7 @@ describe('UsersService administrative designations', () => {
     const prisma = buildPrisma()
     const service = new UsersService(prisma as never)
 
-    await expect(service.updateUser('t-9', { email: 'new@pup.edu.ph' }, registrar)).rejects.toBeInstanceOf(
+    await expect(service.updateUser('t-9', { email: 'new@example.edu.ph' }, registrar)).rejects.toBeInstanceOf(
       ForbiddenException,
     )
     await expect(service.updateUser('t-9', { canResetStudentPasswords: false }, registrar)).rejects.toBeInstanceOf(

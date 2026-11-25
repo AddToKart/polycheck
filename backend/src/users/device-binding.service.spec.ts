@@ -415,9 +415,69 @@ describe('DeviceBindingService', () => {
         actorId: 'student-1',
         action: 'student.device_unregister',
         entityId: 'student-1',
-        metadata: expect.objectContaining({ deviceId: 'mobile-abcd1234', cooldownHours: 2, ipAddress: '203.0.113.9' }),
+        metadata: expect.objectContaining({
+          deviceId: 'mobile-abcd1234',
+          cooldownArmed: true,
+          cooldownHours: 2,
+          ipAddress: '203.0.113.9',
+        }),
       }),
     })
+  })
+
+  it('clears the binding and revokes sessions without arming when no device id is supplied (BE-07)', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-30T10:00:00.000Z'))
+    const prisma = makePrisma({
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'student-1',
+          role: 'student',
+          deviceCooldownUntil: null,
+          cooldownDeviceId: null,
+        }),
+      },
+    })
+    const service = new DeviceBindingService(prisma as never, settings as never)
+
+    const result = await service.unregisterStudentDevice('student-1', undefined, '203.0.113.9')
+
+    // No cooldown fields are written at all: a null exempt device would lock
+    // every future login out of the account.
+    const data = prisma.user.update.mock.calls[0][0].data as Record<string, unknown>
+    expect(data).toEqual({ boundDeviceId: null, deviceBoundAt: null })
+    expect(data).not.toHaveProperty('deviceCooldownUntil')
+    expect(data).not.toHaveProperty('cooldownDeviceId')
+    expect(result.cooldownHours).toBe(0)
+    expect(prisma.authSession.deleteMany).toHaveBeenCalledWith({ where: { userId: 'student-1' } })
+    expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        metadata: expect.objectContaining({ deviceId: null, cooldownArmed: false, cooldownUntil: null }),
+      }),
+    })
+  })
+
+  it('leaves an existing cooldown untouched when the unregister carries no device id', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-30T10:00:00.000Z'))
+    const prisma = makePrisma({
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'student-1',
+          role: 'student',
+          deviceCooldownUntil: new Date('2026-10-30T15:00:00.000Z'),
+          cooldownDeviceId: 'mobile-other',
+        }),
+      },
+    })
+    const service = new DeviceBindingService(prisma as never, settings as never)
+
+    const result = await service.unregisterStudentDevice('student-1', undefined)
+
+    const data = prisma.user.update.mock.calls[0][0].data as Record<string, unknown>
+    expect(data).not.toHaveProperty('deviceCooldownUntil')
+    expect(data).not.toHaveProperty('cooldownDeviceId')
+    // The pre-existing lock is reported, not replaced or extended.
+    expect(result.cooldownHours).toBe(5)
+    expect(result.cooldownUntil.toISOString()).toBe('2026-10-30T15:00:00.000Z')
   })
 
   it('extends but never shortens an existing cooldown', async () => {
@@ -428,16 +488,19 @@ describe('DeviceBindingService', () => {
           id: 'student-1',
           role: 'student',
           deviceCooldownUntil: new Date('2026-10-30T15:00:00.000Z'),
+          cooldownDeviceId: null,
         }),
       },
     })
     const service = new DeviceBindingService(prisma as never, settings as never)
 
-    const result = await service.unregisterStudentDevice('student-1', undefined)
+    // A device-identifying unregister re-arms with the exempt device while
+    // keeping the later of the two deadlines.
+    const result = await service.unregisterStudentDevice('student-1', 'mobile-abcd1234')
     expect(result.cooldownUntil.toISOString()).toBe('2026-10-30T15:00:00.000Z')
     expect(prisma.user.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ cooldownDeviceId: null }),
+        data: expect.objectContaining({ cooldownDeviceId: 'mobile-abcd1234' }),
       }),
     )
   })

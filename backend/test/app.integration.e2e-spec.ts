@@ -26,7 +26,7 @@ describe('Application integration (e2e)', () => {
         studentId: AUTH_STUDENT_ID,
         fullName: 'E2E Auth Student',
         authEmail: 'u-e2e-auth@auth.polycheck.invalid',
-        email: 'e2e-auth@iskolar.pup.edu.ph',
+        email: 'e2e-auth@student.example.edu.ph',
         password,
         role: 'student',
         program: 'BS Computer Science',

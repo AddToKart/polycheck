@@ -10,7 +10,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Polycheck',
     short_name: 'Polycheck',
-    description: 'PUP Attendance Management System',
+    description: 'Attendance Management System',
     start_url: '/',
     scope: '/',
     display: 'standalone',

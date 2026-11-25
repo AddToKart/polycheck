@@ -97,11 +97,23 @@ enum ExcuseReason {
   static ExcuseReason? tryParse(String value) => byWire[value];
 }
 
+/// Wire decode for [ExcuseReason].
+///
+/// **Documented degraded mode (FLR-01):** an unknown reason decodes to
+/// [ExcuseReason.other] instead of throwing [UnknownApiValue]. The excuse
+/// reason is stored server-side and the union may grow; a strict decode failed
+/// the *whole* `AttendanceRecord`, which both blanks attendance screens and
+/// (worse) makes the sync engine unable to decode an excused sync receipt, so
+/// the row is re-claimed and re-uploaded forever. The snake_case wire values
+/// (`family_emergency`, `school_activity`, ...) must be decoded through this
+/// converter - the generated `$enumDecodeNullable` used camelCase names and
+/// never matched them. [excuseReasonLabel] already degrades to a generic label.
 class ExcuseReasonConverter extends JsonConverter<ExcuseReason, String> {
   const ExcuseReasonConverter();
 
   @override
-  ExcuseReason fromJson(String json) => ExcuseReason.fromWire(json);
+  ExcuseReason fromJson(String json) =>
+      ExcuseReason.tryParse(json) ?? ExcuseReason.other;
 
   @override
   String toJson(ExcuseReason object) => object.wire;
@@ -255,6 +267,7 @@ abstract class AttendanceRecord with _$AttendanceRecord {
       SessionModeConverter(),
       DisputeReasonConverter(),
       ExcuseStatusConverter(),
+      ExcuseReasonConverter(),
     ],
   )
   const factory AttendanceRecord({

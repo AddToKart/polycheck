@@ -9,7 +9,7 @@ import 'timetable_card.dart';
 /// parity). Data comes from the enrolled sections' weekly schedules, the
 /// session cache, and the student's own attendance records.
 ///
-/// Dot coloring follows the PUP status palette (work-order spec):
+/// Dot coloring follows the status palette (work-order spec):
 /// present = gold, late = maroon, absent = deep maroon, disputed = gold
 /// border, and a plain scheduled meeting gets the muted event dot.
 
@@ -139,7 +139,7 @@ Map<String, List<StudentMonthEvent>> buildStudentMonthEvents({
 /// Month-view calendar card. Uses `getMonthDays` (never a trailing all-null
 /// week) and renders every day through the shared [CampusMonthCell] faculty
 /// geometry (54px bordered cells, maroon today fill, 6px dots + `+N`
-/// overflow) with the PUP status-dot palette.
+/// overflow) with the status-dot palette.
 class StudentMonthCalendar extends StatelessWidget {
   const StudentMonthCalendar({
     super.key,
@@ -161,7 +161,7 @@ class StudentMonthCalendar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final weeks = getMonthDays(year, month);
     final todayDate = formatDate(today);
     return CampusCard(
@@ -212,7 +212,7 @@ class StudentMonthCalendar extends StatelessWidget {
 }
 
 /// Student adapter for the shared [CampusMonthCell]: maps the day's events to
-/// the PUP status-dot palette and forwards selection/tap semantics.
+/// the status-dot palette and forwards selection/tap semantics.
 class _MonthDayCell extends StatelessWidget {
   const _MonthDayCell({
     required this.date,
@@ -251,7 +251,7 @@ class _MonthDayCell extends StatelessWidget {
   }
 }
 
-/// Maps one month event to the shared dot type via the PUP status palette.
+/// Maps one month event to the shared dot type via the status palette.
 CampusMonthDot _studentDot(StudentMonthEvent event, {required bool dark}) {
   final style = studentMonthDotStyle(event.record?.status, isDark: dark);
   return CampusMonthDot(fill: style.fill, border: style.border);
@@ -265,8 +265,8 @@ StudentMonthDotStyle studentMonthDotStyle(
 }) {
   if (status == null) {
     return const StudentMonthDotStyle(
-      fill: PupColors.muted,
-      border: PupColors.muted,
+      fill: BrandColors.muted,
+      border: BrandColors.muted,
     );
   }
   final style = attendanceStatusStyle(status, isDark: isDark);

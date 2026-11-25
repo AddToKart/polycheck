@@ -8,6 +8,22 @@ import '../../../core/polycheck_core.dart';
 
 const int enrollImportMaxRows = 250;
 
+/// Backend `EnrollImportRowDto` caps (`studentName`/`expectedProgram` are both
+/// `@MaxLength(150)` in `backend/src/sections/dto/import-enrollments.dto.ts`).
+const int enrollImportMaxNameLength = 150;
+const int enrollImportMaxProgramLength = 150;
+
+/// Collapses internal whitespace and trims, matching the shared normalizer
+/// (`shared/src/utils/import/normalize.ts` + `rows.ts`).
+String _collapseImportWhitespace(String raw) =>
+    raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+/// 150-char cap after whitespace collapse (FLF-05). The web normalizer slices
+/// rather than rejects, so a 300-character cell imports truncated instead of
+/// 400-ing the whole batch.
+String _capImportField(String value, int maxLength) =>
+    value.length > maxLength ? value.substring(0, maxLength) : value;
+
 class ParsedCsv {
   const ParsedCsv({
     required this.headers,
@@ -138,7 +154,7 @@ const Map<String, List<String>> _headerAliases = {
 String _canonicalHeader(String value) =>
     value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
 
-/// Suggests the automatic mapping for known PUP SIS headers.
+/// Suggests the automatic mapping for known registrar SIS headers.
 ImportColumnMapping suggestImportMapping(List<String> headers) {
   final canonical = headers.map(_canonicalHeader).toList(growable: false);
   final used = <int>{};
@@ -172,7 +188,7 @@ ImportColumnMapping suggestImportMapping(List<String> headers) {
   );
 }
 
-final RegExp pupStudentIdPattern = RegExp(r'^\d{4}-\d{5}-[A-Z]{2}-\d$');
+final RegExp campusStudentIdPattern = RegExp(r'^\d{4}-\d{5}-[A-Z]{2}-\d$');
 
 enum NormalizedIdIssue { missing, excelMangled, invalid }
 
@@ -187,7 +203,7 @@ enum NormalizedIdIssue { missing, excelMangled, invalid }
       RegExp(r'^\d{5,}$').hasMatch(value)) {
     return (value: null, issue: NormalizedIdIssue.excelMangled);
   }
-  if (!pupStudentIdPattern.hasMatch(value)) {
+  if (!campusStudentIdPattern.hasMatch(value)) {
     return (value: null, issue: NormalizedIdIssue.invalid);
   }
   return (value: value, issue: null);
@@ -240,7 +256,7 @@ BuiltEnrollRows buildEnrollImportRows(
           message: id.issue == NormalizedIdIssue.excelMangled
               ? 'Student number looks mangled by Excel. Re-export the CSV with '
                     'the SN column formatted as text.'
-              : 'Enter a valid PUP student number (e.g. 2024-00001-MN-0).',
+              : 'Enter a valid student number (e.g. 2024-00001-MN-0).',
         ),
       );
       continue;
@@ -259,14 +275,14 @@ BuiltEnrollRows buildEnrollImportRows(
     }
     seen[id.value!] = rowNumber;
 
-    final name = importCell(
-      raw,
-      mapping.fullName,
-    ).replaceAll(RegExp(r'\s+'), ' ');
-    final program = importCell(
-      raw,
-      mapping.program,
-    ).replaceAll(RegExp(r'\s+'), ' ');
+    final name = _capImportField(
+      _collapseImportWhitespace(importCell(raw, mapping.fullName)),
+      enrollImportMaxNameLength,
+    );
+    final program = _capImportField(
+      _collapseImportWhitespace(importCell(raw, mapping.program)),
+      enrollImportMaxProgramLength,
+    );
     final year = normalizeYearLevel(importCell(raw, mapping.yearLevel));
     rows.add(
       EnrollImportRow(

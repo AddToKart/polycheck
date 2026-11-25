@@ -42,6 +42,9 @@ import { DocsModule } from './docs/docs.module'
 import { StandingModule } from './standing/standing.module'
 import { NotificationsModule } from './notifications/notifications.module'
 import { ReportsModule } from './reports/reports.module'
+import { AccountActivationModule } from './account-activation/account-activation.module'
+import { MailModule } from './mail/mail.module'
+import { ImportProfilesModule } from './import-profiles/import-profiles.module'
 
 @Module({
   imports: [
@@ -87,6 +90,9 @@ import { ReportsModule } from './reports/reports.module'
     StandingModule,
     NotificationsModule,
     ReportsModule,
+    AccountActivationModule,
+    MailModule,
+    ImportProfilesModule,
     MaintenanceModule,
     MaintenanceModeModule,
   ],

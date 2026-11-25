@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/auth/presentation/widgets/privacy_consent_gate.dart';
 import '../providers/maintenance_provider.dart';
 import '../providers/session_provider.dart';
-import '../theme/pup_theme.dart';
+import '../theme/brand_theme.dart';
 import '../utils/designations.dart';
 import '../widgets/campus_toast.dart';
 import 'routes/app_routes.dart';
@@ -60,7 +60,7 @@ class _ExemptBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Material(
       color: tokens.gold,
       child: Padding(

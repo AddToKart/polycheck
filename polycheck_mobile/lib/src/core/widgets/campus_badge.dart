@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/attendance.dart';
-import '../theme/pup_theme.dart';
+import '../theme/brand_theme.dart';
 import 'status_colors.dart';
 
 /// Square, 1px-bordered label chip.
@@ -74,7 +74,7 @@ class CampusStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = PupTheme.of(context).isDark;
+    final isDark = BrandTheme.of(context).isDark;
     final style = attendanceStatusStyle(status, isDark: isDark);
     return CampusBadge(
       label: label ?? style.label,

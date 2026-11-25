@@ -11,7 +11,7 @@ import type { CreateSectionDto } from './dto/create-section.dto'
 import type { UpdateSectionDto } from './dto/update-section.dto'
 import { DayOfWeek, Prisma } from '../prisma/client'
 import { ErrorCode } from '../common/constants/error-codes'
-import { randomInt } from 'crypto'
+import { randomInt, timingSafeEqual } from 'crypto'
 import { adminCanAccessSection, adminEnrollmentWhere, adminSectionWhere } from '../common/admin-scope'
 import { lockSection, lockStudentSection } from '../common/student-section-lock'
 import { SettingsService } from '../settings/settings.service'
@@ -249,7 +249,7 @@ export class SectionsService {
     const section = await this.prisma.section.findUnique({ where: { id: sectionId } })
     if (!section) throw new NotFoundException('Section not found')
 
-    if (!section.enrollmentCode || section.enrollmentCode !== enrollmentCode.trim().toUpperCase()) {
+    if (!this.enrollmentCodesMatch(section.enrollmentCode, enrollmentCode)) {
       throw new BadRequestException('Invalid enrollment code')
     }
 
@@ -257,6 +257,8 @@ export class SectionsService {
       throw new BadRequestException('Enrollment code has expired')
     }
 
+    // Fast-path rejection with 403 precedence over the membership conflict.
+    // `createEnrollment` re-checks inside its locked transaction (V3 TOCTOU).
     await this.assertNotTombstoned(sectionId, studentId)
 
     // Check if already enrolled
@@ -272,9 +274,17 @@ export class SectionsService {
    * V3 anti-zombie gate: a student the instructor removed cannot re-enter an
    * unexpired enrollment code. Only an explicit teacher action (section
    * enrollment of that student, bulk import) lifts the block.
+   *
+   * The authoritative check runs inside `createEnrollment`'s locked
+   * transaction; the callers' pre-check only exists so the 403 keeps
+   * precedence over the enrollment-code errors/409 for an unblocked path.
    */
-  private async assertNotTombstoned(sectionId: string, studentId: string) {
-    const tombstone = await this.prisma.enrollmentTombstone.findFirst({
+  private async assertNotTombstoned(
+    sectionId: string,
+    studentId: string,
+    db: Pick<Prisma.TransactionClient, 'enrollmentTombstone'> = this.prisma,
+  ) {
+    const tombstone = await db.enrollmentTombstone.findFirst({
       where: { sectionId, studentId },
       select: { id: true },
     })
@@ -284,6 +294,21 @@ export class SectionsService {
         code: ErrorCode.STUDENT_BLOCKED_FROM_SECTION,
       })
     }
+  }
+
+  /**
+   * Constant-time enrollment-code comparison. The stored code is normalized
+   * exactly like the submitted one so the hash comparison never leaks
+   * length-independent equality through timing; a length mismatch short
+   * circuits `timingSafeEqual` (which throws on differing lengths) while
+   * still producing the identical error.
+   */
+  private enrollmentCodesMatch(stored: string | null, submitted: string): boolean {
+    if (!stored) return false
+    const expected = Buffer.from(stored.trim().toUpperCase(), 'utf8')
+    const received = Buffer.from(submitted.trim().toUpperCase(), 'utf8')
+    if (expected.length !== received.length) return false
+    return timingSafeEqual(expected, received)
   }
 
   async enrollByCode(studentId: string, enrollmentCode: string) {
@@ -446,6 +471,12 @@ export class SectionsService {
           // The instructor explicitly re-admitted this student: lift the
           // enrollment-code block inside the guarded transaction.
           await tx.enrollmentTombstone.deleteMany({ where: { sectionId, studentId } })
+        } else {
+          // V3 TOCTOU: the caller's pre-check ran before either lock, so a
+          // removal that committed in between would let a tombstoned student
+          // back in. Re-check under both locks, in the same order as
+          // removeStudent, so the two cannot interleave.
+          await this.assertNotTombstoned(sectionId, studentId, tx)
         }
 
         const enrollment = await tx.enrollment.create({ data: { studentId, sectionId } })

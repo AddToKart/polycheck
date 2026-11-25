@@ -131,7 +131,7 @@ class _GateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return ListView(
       padding: const EdgeInsets.all(16),
       children: <Widget>[
@@ -275,12 +275,16 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
   }
 
   Future<void> _pickDate() async {
-    final initial =
-        DateTime.tryParse(_dateController.text.trim()) ?? DateTime.now();
+    final parsed = DateTime.tryParse(_dateController.text.trim());
+    // FLF-06: the picker must never open before today — a 2020 firstDate let a
+    // student create a class meeting in the past.
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final initial = parsed == null || parsed.isBefore(today) ? today : parsed;
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
-      firstDate: DateTime(2020),
+      firstDate: today,
       lastDate: DateTime(2035),
     );
     if (picked == null || !mounted) return;
@@ -311,9 +315,10 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
     }
     final start = _startController.text.trim();
     final end = _endController.text.trim();
-    final timePattern = RegExp(r'^\d{2}:\d{2}$');
-    if (!timePattern.hasMatch(start) || !timePattern.hasMatch(end)) {
-      return 'Enter start and end times (HH:MM).';
+    // FLF-06: the backend rejects a bad clock with its TIME_OF_DAY regex
+    // `([01]\d|2[0-3]):[0-5]\d`; `99:99` used to pass this check and 400.
+    if (!isValidCampusTime(start) || !isValidCampusTime(end)) {
+      return 'Enter start and end times in 24-hour HH:mm form.';
     }
     if (end.compareTo(start) <= 0) {
       return 'End time must be after the start time.';
@@ -406,7 +411,7 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final section = widget.detail.section;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
@@ -691,7 +696,7 @@ class _ModeOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Semantics(
       selected: selected,
       button: true,

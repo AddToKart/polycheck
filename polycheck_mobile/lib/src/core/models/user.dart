@@ -51,6 +51,11 @@ abstract interface class PolyUser {
   bool? get isDepartmentHead;
 
   bool? get isUserRegistrar;
+
+  /// Course scope of a head/registrar designee (catalog codes).
+  List<String>? get managedCourses;
+
+  bool? get managesAllCourses;
 }
 
 @freezed
@@ -101,6 +106,10 @@ abstract class User with _$User implements PolyUser {
     @Default(false) bool isItCoordinator,
     @Default(false) bool isDepartmentHead,
     @Default(false) bool isUserRegistrar,
+    @Default(<String>[]) List<String> managedCourses,
+    @Default(false) bool managesAllCourses,
+    // Live head/registrar scoping rule reported by the server: 'legacy' | 'course'.
+    String? courseScopeMode,
     String? contactEmail,
     String? contactPhone,
     @Default(<String>[]) List<String> enrolledSectionIds,

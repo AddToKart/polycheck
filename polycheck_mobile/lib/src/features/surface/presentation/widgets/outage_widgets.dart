@@ -5,26 +5,37 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../../core/network/dio_client.dart';
 import '../../../../core/providers/trusted_clock.dart';
 import '../../../../core/sync/sync_engine.dart';
-import '../../../../core/theme/pup_theme.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/widgets/campus_button.dart';
 import '../../../../core/widgets/campus_toast.dart';
 import '../../data/outage_demo.dart';
 
 /// Installs the demo interceptor once per process when the flag is on.
 ///
-/// The core Dio client does not know about the dev simulator (core is owned
-/// by the foundation wave), so the surface attaches its own guard: while
-/// armed every request rejects with a connection-shaped failure, which makes
-/// the real offline queues and error classifiers run exactly as in a campus
-/// outage.
+/// The core Dio client does not know about the dev simulator, so the surface
+/// attaches its own guard: while armed every request rejects with a
+/// connection-shaped failure, which makes the real offline queues and error
+/// classifiers run exactly as in a campus outage.
+///
+/// **FLR-11:** [install] runs from the app bootstrap (`main.dart`) so the guard
+/// is present before the first request of the process. It used to run from the
+/// profile dev section's `initState`, which meant an armed simulator only took
+/// effect after that screen had been visited once - and not at all on a
+/// cold-start demo that never opened the profile. The profile section keeps the
+/// arm/disarm UI only.
 abstract final class SurfaceOutageInterceptor {
   static bool _installed = false;
 
-  static void install(Dio dio) {
-    if (!OutageDemo.enabled || _installed) return;
+  /// True once a guard has been attached (test/diagnostic seam).
+  static bool get isInstalled => _installed;
+
+  /// [enabled] defaults to the build flag; tests pass an explicit value
+  /// because `OutageDemo.enabled` is a compile-time constant.
+  static void install(Dio dio, {bool? enabled}) {
+    final active = enabled ?? OutageDemo.enabled;
+    if (!active || _installed) return;
     _installed = true;
     dio.interceptors.insert(
       0,
@@ -44,6 +55,11 @@ abstract final class SurfaceOutageInterceptor {
         },
       ),
     );
+  }
+
+  /// Test seam: forget the process-static install so a spec can re-install.
+  static void resetForTests() {
+    _installed = false;
   }
 }
 
@@ -82,7 +98,7 @@ class _OutagePillState extends State<OutagePill> {
   @override
   Widget build(BuildContext context) {
     if (!OutageDemo.enabled || !_armed) return const SizedBox.shrink();
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Material(
       color: tokens.deepMaroon,
       shape: RoundedRectangleBorder(
@@ -217,9 +233,9 @@ class _OutageDevSectionState extends ConsumerState<OutageDevSection> {
   @override
   void initState() {
     super.initState();
-    if (OutageDemo.enabled) {
-      SurfaceOutageInterceptor.install(ref.read(dioProvider));
-    }
+    // FLR-11: the guard itself is installed by the app bootstrap
+    // (`main.dart`), before the first request. This section is arm/disarm UI
+    // only; installing here would have no effect on a cold start anyway.
     _unsubscribe = OutageDemo.subscribe((armed) {
       if (mounted) setState(() => _armed = armed);
     });
@@ -259,21 +275,21 @@ class _OutageDevSectionState extends ConsumerState<OutageDevSection> {
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: PupTheme.of(context).surface,
-          border: Border.all(color: PupTheme.of(context).borderSubtle),
+          color: BrandTheme.of(context).surface,
+          border: Border.all(color: BrandTheme.of(context).borderSubtle),
         ),
         child: Text(
           'The outage simulator is disabled in this build. Enable it with '
           '--dart-define=ENABLE_OUTAGE_SIMULATOR=true for demos.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: PupTheme.of(context).muted,
+            color: BrandTheme.of(context).muted,
             height: 1.4,
           ),
         ),
       );
     }
 
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(

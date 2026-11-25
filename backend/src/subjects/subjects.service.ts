@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import type { CreateSubjectDto } from './dto/create-subject.dto'
 import type { UpdateSubjectDto } from './dto/update-subject.dto'
 import type { RequestUser } from '../auth/authenticated-principal'
-import { adminSubjectWhere } from '../common/admin-scope'
+import { adminSectionWhere, adminSubjectWhere } from '../common/admin-scope'
 
 @Injectable()
 export class SubjectsService {
@@ -22,12 +22,7 @@ export class SubjectsService {
       where: { id, ...this.subjectScope(user) },
       include: {
         sections: {
-          where:
-            user.role === 'teacher'
-              ? { teacherId: user.id }
-              : user.role === 'student'
-                ? { enrollments: { some: { studentId: user.id } } }
-                : undefined,
+          where: this.sectionScope(user),
           include: {
             teacher: { select: { id: true, fullName: true, email: true } },
             _count: { select: { enrollments: true } },
@@ -50,7 +45,16 @@ export class SubjectsService {
 
   async create(dto: CreateSubjectDto, user: RequestUser) {
     if (user.role !== 'teacher') throw new ForbiddenException('Only teachers can create subjects')
-    return this.prisma.subject.create({ data: { ...dto, createdById: user.id } })
+    try {
+      return await this.prisma.subject.create({ data: { ...dto, createdById: user.id } })
+    } catch (error) {
+      // Subject codes are institution-wide and unique; a duplicate is a
+      // client-fixable conflict, not a 500.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('A subject with this code already exists')
+      }
+      throw error
+    }
   }
 
   async update(id: string, dto: UpdateSubjectDto, user: RequestUser) {
@@ -95,5 +99,25 @@ export class SubjectsService {
       }
     }
     return { sections: { some: { enrollments: { some: { studentId: user.id } } } } }
+  }
+
+  /**
+   * Scope for the subject's included sections.
+   *
+   * A department-scoped super admin must not learn about another department's
+   * sections — nor read their teachers' emails — through a subject they can
+   * legitimately open (a subject may be shared across departments). Institution
+   * admins stay unscoped; teachers and students keep their own filters, so this
+   * only widens the pre-existing `where` shape for the non-admin branches.
+   */
+  private sectionScope(user: RequestUser): Prisma.SectionWhereInput | undefined {
+    if (user.role === 'super_admin') {
+      // `undefined` for an institution admin keeps every section (including
+      // legacy rows whose teacher has no department).
+      const scoped = adminSectionWhere(user)
+      return Object.keys(scoped).length > 0 ? scoped : undefined
+    }
+    if (user.role === 'teacher') return { teacherId: user.id }
+    return { enrollments: { some: { studentId: user.id } } }
   }
 }

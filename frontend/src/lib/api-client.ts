@@ -1,6 +1,7 @@
 import {
   classifyAttendanceSyncError,
   createSimulatedNetworkOutage,
+  decodeTokenPayload,
   getRecentCampusDateRange,
   haversineDistance,
   isOutageArmed,
@@ -40,6 +41,7 @@ import {
   type AttendanceReportFilters,
   type DashboardOverview,
   type ApiClient,
+  type InstitutionBranding,
   type PrivacyNotice,
   type AuditLogFilters,
   type AuditLogPage,
@@ -119,7 +121,7 @@ import {
   getServerClockOffset,
   initializeOfflineStore,
   persistOfflineStorage,
-  removeCachedAttendanceAttempt,
+  removeCachedAttendanceLeg,
   removeCachedRecord,
   replaceCachedAttendanceForStudent,
   setEnrolledSectionIds,
@@ -203,6 +205,35 @@ function loadUser(): User | null {
   }
 }
 
+/**
+ * WEB-13: `restoreSession` polls every 60 s (SessionGuard). It used to persist
+ * and dispatch `polycheck-auth-changed` on every poll, handing every listener a
+ * brand-new object identity - which refetched the fully paginated users
+ * console once a minute. An identical revalidation reuses the cached object and
+ * emits nothing.
+ *
+ * The comparison is a stable (key-sorted) deep equality rather than a
+ * hand-picked field list: any field whose value actually changed must reach
+ * consumers (department/scope changes gate navigation, delegated permissions
+ * gate buttons, consent fields gate the consent wall), while a byte-identical
+ * profile - the normal 60 s poll - must not.
+ */
+function stableProfileKey(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(stableProfileKey).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  return `{${keys
+    .map((key) => `${JSON.stringify(key)}:${stableProfileKey(record[key])}`)
+    .join(",")}}`;
+}
+
+export function isSameProfile(a: User | null, b: User | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return stableProfileKey(a) === stableProfileKey(b);
+}
+
 function saveUser(user: User | null) {
   if (typeof window === "undefined") return;
   try {
@@ -218,6 +249,16 @@ function saveUser(user: User | null) {
     window.dispatchEvent(new Event("polycheck-auth-changed"));
   } catch {
     /* A non-browser test shim may not implement dispatchEvent. */
+  }
+}
+
+/** Persist refreshed fields without telling listeners (no identity change). */
+function persistProfileSilently(user: User): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+  } catch {
+    /* Storage may be blocked; the cached object still serves this tab. */
   }
 }
 
@@ -475,6 +516,29 @@ const RECEIPT_POLL_DELAY_MS = 600;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * WEB-12 helpers: the optimistic record a queued scan stands for. Neither the
+ * attendance_scan nor the legacy scan_attempt payload carries a checkpoint
+ * (both must stay byte-safe against the backend's `forbidNonWhitelisted` DTO),
+ * so online legs are identified from the signed token the scan already queued.
+ */
+function scanCheckpoint(payload: Record<string, unknown>): "start" | "end" | null {
+  const checkpoint = payload.checkpoint;
+  if (checkpoint === "start" || checkpoint === "end") return checkpoint;
+  const recordId = typeof payload.recordId === "string" ? payload.recordId : "";
+  const match = /:(start|end)$/.exec(recordId);
+  if (match) return match[1] as "start" | "end";
+  const token = typeof payload.qrToken === "string" ? payload.qrToken : "";
+  if (!token) return null;
+  return decodeTokenPayload(token)?.checkpoint ?? null;
+}
+
+function optimisticRecordId(payload: Record<string, unknown>): string | null {
+  return typeof payload.recordId === "string" && payload.recordId
+    ? payload.recordId
+    : null;
 }
 
 /**
@@ -752,7 +816,19 @@ const apiBase = {
       return cached;
     }
     try {
-      currentUser = await get<User>("/auth/me");
+      const fetched = await get<User>("/auth/me");
+      if (isSameProfile(currentUser, fetched)) {
+        // WEB-13: keep the cached identity (no event, no users-page refetch);
+        // refresh the persisted copy quietly in case a secondary field moved.
+        persistProfileSilently(fetched);
+        // The offline owner is module state, not persisted identity: a reload
+        // starts with `activeOwnerId === null`, so skipping the bind here would
+        // make every cached read return [] and every queue write throw until a
+        // later login. Binding is idempotent, so it runs on every revalidation.
+        void initializeOfflineStore(fetched.id).catch(() => undefined);
+        return currentUser;
+      }
+      currentUser = fetched;
       saveUser(currentUser);
       // Account switch: drop any API body a previous account left in the
       // service-worker cache before this session starts reading.
@@ -1650,8 +1726,10 @@ const apiBase = {
     let path = "/disputes";
     const params = new URLSearchParams();
     if (sessionId) params.set("sessionId", sessionId);
-    if (filters?.status && filters.status !== "all")
-      params.set("status", filters.status);
+    // WEB-04: the backend defaults to `pending` when `status` is absent, so
+    // `all` must be forwarded explicitly - omitting it silently kept the
+    // Resolved History tab empty.
+    if (filters?.status) params.set("status", filters.status);
     if (filters?.search) params.set("search", filters.search);
     const qs = params.toString();
     if (qs) path += `?${qs}`;
@@ -1715,7 +1793,7 @@ const apiBase = {
     );
   },
   getAtRiskStudents(
-    filters: { sectionId?: string; limit?: number } = {},
+    filters: { sectionId?: string; course?: string; limit?: number } = {},
   ): Promise<StudentAtRisk[]> {
     return get(queryPath("/attendance/at-risk", { ...filters }));
   },
@@ -1781,6 +1859,7 @@ const apiBase = {
         q: filters.q,
         department: filters.department,
         status: filters.status,
+        activation: filters.activation,
         limit:
           filters.limit === undefined
             ? undefined
@@ -1813,6 +1892,52 @@ const apiBase = {
       `/users/${id}/password`,
       password === undefined ? {} : { password },
     );
+  },
+  // ── Shared import column-mapping profiles (headers and positions only) ──
+  getImportMappingProfile(
+    mode: "students" | "enrollments",
+    fingerprint: string,
+  ): Promise<{ mapping: Record<string, number> | null }> {
+    return get(
+      queryPath("/import-profiles", { mode, fingerprint }),
+    );
+  },
+  saveImportMappingProfile(input: {
+    mode: "students" | "enrollments";
+    fingerprint: string;
+    headers: string[];
+    mapping: object;
+  }): Promise<{ saved: true }> {
+    return put("/import-profiles", input);
+  },
+
+  // ── Email activation (web-only: the link opens in any phone browser) ──
+  activationValidate(token: string): Promise<ActivationValidateResult> {
+    return post("/activation/validate", { token });
+  },
+  activationComplete(input: {
+    token: string;
+    studentId: string;
+    password: string;
+  }): Promise<ActivationCompleteResult> {
+    return post("/activation/complete", input);
+  },
+  activationRequestLink(input: {
+    studentId: string;
+    email: string;
+  }): Promise<{ ok: true }> {
+    return post("/activation/request-link", input);
+  },
+  getActivationStatus(): Promise<ActivationStatus> {
+    return get("/users/activation/status");
+  },
+  resendActivation(
+    id: string,
+  ): Promise<{ queued: boolean; alreadyQueued: boolean }> {
+    return post(`/users/${encodeURIComponent(id)}/activation/resend`);
+  },
+  resendPendingActivation(): Promise<ResendPendingActivationResult> {
+    return post("/users/activation/resend-pending");
   },
   setUserStatus(id: string, isActive: boolean): Promise<User> {
     return patch(`/users/${id}/status`, { isActive });
@@ -1912,6 +2037,20 @@ const apiBase = {
     value: string,
   ): Promise<{ key: string; value: string; updatedAt: string }> {
     return put(`/settings/${encodeURIComponent(key)}`, { value });
+  },
+  /** Public institution identity; a failure never breaks a page, callers keep their last-known branding. */
+  async getBranding(): Promise<InstitutionBranding | null> {
+    try {
+      return await get("/branding");
+    } catch {
+      return null;
+    }
+  },
+  setBrandingLogo(dataUrl: string): Promise<InstitutionBranding> {
+    return put("/branding/logo", { dataUrl });
+  },
+  clearBrandingLogo(): Promise<InstitutionBranding> {
+    return del("/branding/logo");
   },
   async getMaintenanceStatus(): Promise<MaintenanceStatus> {
     try {
@@ -2075,32 +2214,55 @@ const apiBase = {
                 // Terminal evidence will never sync, so drop the optimistic
                 // cached row: keeping it would make the "already saved on this
                 // device" guard block every retry of that checkpoint (RN MP5).
-                await removeCachedAttendanceAttempt(
+                // WEB-12: only this checkpoint's leg is dropped — the other
+                // leg may still be queued and must stay visible.
+                await removeCachedAttendanceLeg(
                   String(payload.sessionId),
                   user.id,
+                  {
+                    checkpoint: scanCheckpoint(payload),
+                    recordId: optimisticRecordId(payload),
+                  },
                 );
               }
               return classified;
             }
-            await removeCachedAttendanceAttempt(
+            await removeCachedAttendanceLeg(
               String(payload.sessionId),
               user.id,
+              {
+                checkpoint: scanCheckpoint(payload),
+                recordId: optimisticRecordId(payload),
+              },
             );
             await cacheAttendanceRecords([{ ...result, isSynced: true }]);
             return { outcome: "synced" };
           }
           if (kind === "scan_attempt") {
-            const result = await post<SubmitAttendanceResult>(
-              "/attendance/check",
+            // WEB-02 (with ING-04): `/attendance/check` is validate-only on the
+            // control plane, so replaying a queued check-in there could lose
+            // it. Both processes commit `/attendance/scan`, and the queued
+            // payload is already the live scan body — submit it unchanged.
+            const result = await post<AttendanceRecord | { error: string }>(
+              "/attendance/scan",
               payload,
               operationId,
             );
-            if (!result.success) {
+            if (result && typeof result === "object" && "error" in result) {
               return {
                 outcome: "terminal",
-                error: result.message || result.reason || "Check-in rejected",
+                error: String(result.error || "Check-in rejected"),
               };
             }
+            await removeCachedAttendanceLeg(
+              String(payload.sessionId),
+              user.id,
+              {
+                checkpoint: scanCheckpoint(payload),
+                recordId: optimisticRecordId(payload),
+              },
+            );
+            if (result) await cacheAttendanceRecords([{ ...result, isSynced: true }]);
             return;
           }
           if (kind === "session_activation") {
@@ -2324,6 +2486,25 @@ const apiBase = {
     return get("/settings/privacy-center");
   },
 };
+
+export interface ActivationStatus {
+  enabled: boolean;
+  configured: boolean;
+  driver: string;
+}
+export type ActivationValidateResult =
+  | { valid: true; expiresAt: string }
+  | { valid: false };
+export interface ActivationCompleteResult {
+  ok: true;
+  alreadyActivated?: true;
+}
+export interface ResendPendingActivationResult {
+  pending: number;
+  queued: number;
+  alreadyQueued: number;
+  noEmail: number;
+}
 
 export const api = { ...apiBase, downloadAssistantFile };
 

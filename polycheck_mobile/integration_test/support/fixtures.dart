@@ -91,7 +91,7 @@ class AttendanceFixture {
       password: IntegrationEnv.seedPassword,
     );
 
-    final teacherEmail = 'e2e.teacher.$runId@pup.edu.ph';
+    final teacherEmail = 'e2e.teacher.$runId@example.edu.ph';
     final teacherProfile = await client.createTeacher(
       token: superAdmin.token,
       fullName: 'E2E Teacher $runId',

@@ -9,12 +9,14 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { Queue, QueueEvents, Worker } from 'bullmq'
+import { Queue, QueueEvents, UnrecoverableError, Worker } from 'bullmq'
 import type { Job } from 'bullmq'
 import IORedis from 'ioredis'
 import { createHash } from 'node:crypto'
 import type { ImportCredential, ImportJobStatus, StudentImportRequest, StudentImportResult } from '@polycheck/shared'
 import type { RequestUser } from '../auth/authenticated-principal'
+import { accountAdminScope } from '../common/designations/department-pin'
+import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import { ErrorCode } from '../common/constants/error-codes'
 import { StudentImportService } from './student-import.service'
@@ -48,6 +50,7 @@ export class StudentImportQueueService implements OnModuleInit, OnModuleDestroy 
 
   constructor(
     private readonly importer: StudentImportService,
+    private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     @Optional() private readonly config?: ConfigService,
   ) {}
@@ -114,11 +117,13 @@ export class StudentImportQueueService implements OnModuleInit, OnModuleDestroy 
       throw new BadRequestException('Background imports only support execute mode')
     }
     this.importer.assertChecksum(dto, user)
+    await this.importer.assertDeliveryModeAvailable(dto)
     if (!this.queue) return this.importer.importStudents(dto, user)
 
     const request: StudentImportRequest = {
       mode: dto.mode,
       conflictMode: dto.conflictMode,
+      ...(dto.deliveryMode ? { deliveryMode: dto.deliveryMode } : {}),
       rows: dto.rows,
       ...(dto.idempotencyKey ? { idempotencyKey: dto.idempotencyKey } : {}),
       ...(dto.rowChecksum ? { rowChecksum: dto.rowChecksum } : {}),
@@ -197,12 +202,11 @@ export class StudentImportQueueService implements OnModuleInit, OnModuleDestroy 
 
   private async processJob(job: Job<UsersImportJobData, StudentImportResult>) {
     await job.updateProgress({ chunksDone: 0, chunksTotal: 1 })
-    const result = await this.importer.importStudents(job.data.request as StudentImportRequestDto, {
-      id: job.data.user.id,
-      role: job.data.user.role,
-      scope: job.data.user.scope,
-      department: job.data.user.department,
-    })
+    // Jobs can sit queued for minutes. The payload's actor snapshot was
+    // validated by the controller, so a disabled/demoted administrator must be
+    // re-checked here or a queued import would run with revoked privileges.
+    const actor = await this.resolveJobActor(job)
+    const result = await this.importer.importStudents(job.data.request as StudentImportRequestDto, actor)
 
     if (result.credentials?.length) {
       const stored = await this.redis
@@ -215,6 +219,76 @@ export class StudentImportQueueService implements OnModuleInit, OnModuleDestroy 
     await job.updateProgress({ chunksDone: 1, chunksTotal: 1 })
     const { credentials: _credentials, ...summary } = result
     return summary
+  }
+
+  /**
+   * Fresh privilege snapshot for a queued import. Mirrors the foreground
+   * `@Roles + @RequireDesignation('user_admin')` gate and the
+   * `accountAdminScope` check `StudentImportService` applies per row.
+   * Refusals are unrecoverable: retrying cannot restore a revoked privilege,
+   * so the job fails immediately with the reason surfaced to the requester.
+   */
+  private async resolveJobActor(job: Job<UsersImportJobData, StudentImportResult>): Promise<RequestUser> {
+    const userId = job.data.user.id
+    const account = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        role: true,
+        scope: true,
+        department: true,
+        isActive: true,
+        isItCoordinator: true,
+        isDepartmentHead: true,
+        isUserRegistrar: true,
+        managedCourses: true,
+        managesAllCourses: true,
+      },
+    })
+    if (!account || !account.isActive) {
+      await this.auditRefusal(userId, job.id, account ? 'account_disabled' : 'account_missing')
+      throw new UnrecoverableError('The account that queued this import is no longer active')
+    }
+
+    const allowedRole = account.role === 'super_admin' || account.role === 'teacher'
+    const actor: RequestUser = {
+      id: account.id,
+      role: account.role,
+      scope: account.scope,
+      department: account.department,
+      isItCoordinator: account.isItCoordinator,
+      isDepartmentHead: account.isDepartmentHead,
+      isUserRegistrar: account.isUserRegistrar,
+      managedCourses: account.managedCourses,
+      managesAllCourses: account.managesAllCourses,
+    }
+    if (!allowedRole || accountAdminScope(actor).kind === 'none') {
+      await this.auditRefusal(userId, job.id, 'privileges_revoked')
+      throw new UnrecoverableError('The account that queued this import is no longer allowed to import students')
+    }
+    return actor
+  }
+
+  /** Best-effort refusal audit; job control flow never depends on it. */
+  private async auditRefusal(userId: string, jobId: string | undefined, reason: string) {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          actorId: userId,
+          actorRole: 'system',
+          action: 'admin.user.import_refused',
+          entityType: 'import_batch',
+          entityId: jobId ?? null,
+          metadata: { reason },
+        },
+      })
+    } catch (error) {
+      this.logger.error(
+        `Could not write import refusal audit for actor ${userId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    }
   }
 
   private async attachOneTimeCredentials(jobId: string, result: StudentImportResult): Promise<StudentImportResult> {

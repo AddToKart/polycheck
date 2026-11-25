@@ -1,5 +1,5 @@
 import type { IDBPDatabase } from 'idb'
-import type { EncryptedEnvelope, PolycheckOfflineDB } from './db'
+import { getOfflineDatabase, type EncryptedEnvelope, type PolycheckOfflineDB } from './db'
 
 /**
  * Web equivalent of the mobile encrypted offline store's crypto layer:
@@ -7,6 +7,35 @@ import type { EncryptedEnvelope, PolycheckOfflineDB } from './db'
  * CryptoKey objects in IndexedDB. Legacy/partial implementations fall back to
  * storing raw key bytes, which preserves at-rest encryption across reloads.
  */
+
+/**
+ * WEB-01: `getOrCreateUserKey` is get→generate→put. Two cache groups written
+ * concurrently on a cold start both observed "no key" and generated separate
+ * AES keys; the last writer won, so the losing group's ciphertext became
+ * permanently undecryptable. One in-flight creation promise per owner removes
+ * the race (and a failed attempt is evicted so a later write can retry).
+ */
+const userKeyPromises = new Map<string, Promise<CryptoKey>>()
+
+/** Drops an owner's memoized key: its persisted key row is being deleted. */
+export function forgetUserKey(ownerId: string): void {
+  userKeyPromises.delete(ownerId)
+}
+
+/** Drops every memoized key after the encrypted stores were wiped. */
+export function resetUserKeyCache(): void {
+  userKeyPromises.clear()
+}
+
+/**
+ * Seeds the per-account key before any cache write so the first write of a
+ * fresh account cannot race another one. Safe to call repeatedly: an existing
+ * key (CryptoKey or raw fallback) is reused, never regenerated.
+ */
+export async function seedUserKey(ownerId: string): Promise<void> {
+  const db = await getOfflineDatabase()
+  await getOrCreateUserKey(db, ownerId)
+}
 
 function toBase64(bytes: Uint8Array): string {
   let binary = ''
@@ -28,7 +57,22 @@ async function importRawKey(rawKey: string): Promise<CryptoKey> {
   ])
 }
 
-export async function getOrCreateUserKey(
+export function getOrCreateUserKey(
+  db: IDBPDatabase<PolycheckOfflineDB>,
+  ownerId: string,
+): Promise<CryptoKey> {
+  const inFlight = userKeyPromises.get(ownerId)
+  if (inFlight) return inFlight
+  const creation = createOrLoadUserKey(db, ownerId).catch((error: unknown) => {
+    // Never memoize a failure: the next write may succeed (transient IDB error).
+    userKeyPromises.delete(ownerId)
+    throw error
+  })
+  userKeyPromises.set(ownerId, creation)
+  return creation
+}
+
+async function createOrLoadUserKey(
   db: IDBPDatabase<PolycheckOfflineDB>,
   ownerId: string,
 ): Promise<CryptoKey> {

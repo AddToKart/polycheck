@@ -33,7 +33,7 @@ import { NotificationProvider } from '@/lib/notifications'
 const superAdmin = {
   id: 'admin-1',
   fullName: 'System Administrator',
-  email: 'admin@pup.edu.ph',
+  email: 'admin@example.edu.ph',
   role: 'super_admin' as const,
   scope: 'institution' as const,
   isActive: true,
@@ -127,7 +127,7 @@ describe('Reports page (F4 class record export)', () => {
     expect(screen.queryByRole('button', { name: 'Class record' })).not.toBeInTheDocument()
   })
 
-  it('exports the official PUP class record when a section is selected', async () => {
+  it('exports the official class record when a section is selected', async () => {
     apiMock.downloadAssistantFile.mockResolvedValue(new Blob(['%PDF-fake']))
 
     renderPage()
@@ -170,5 +170,66 @@ describe('Reports page (F4 class record export)', () => {
 
     expect(await screen.findByText('Download failed')).toBeInTheDocument()
     expect(screen.getByText('Not authorized for this section')).toBeInTheDocument()
+  })
+})
+
+describe('Reports page course filter and scope banner', () => {
+  const head = (extra: Record<string, unknown> = {}) => ({
+    id: 'head-1',
+    fullName: 'Dr. Head',
+    email: 'head@example.edu.ph',
+    role: 'teacher' as const,
+    isActive: true,
+    isDepartmentHead: true,
+    department: 'CCIS',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...extra,
+  })
+
+  it('lets an institution admin filter by any catalog course and sends it to the report API', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: 'Reports' })
+
+    const select = screen.getByLabelText('Course')
+    expect(Array.from(select.querySelectorAll('option')).map((option) => option.value)).toEqual(
+      expect.arrayContaining(['', 'BSIT', 'BSHM', 'BSA', 'DOMTLOM']),
+    )
+    fireEvent.change(select, { target: { value: 'BSHM' } })
+
+    await waitFor(() =>
+      expect(apiMock.getAttendanceReport).toHaveBeenLastCalledWith(expect.objectContaining({ course: 'BSHM' })),
+    )
+  })
+
+  it('limits a course head to their own courses and explains the pinned scope', async () => {
+    apiMock.getCurrentUser.mockReturnValue(
+      head({ managedCourses: ['BSIT', 'BSHM'], courseScopeMode: 'course' }),
+    )
+    renderPage()
+    await screen.findByRole('heading', { name: 'Reports' })
+
+    const select = screen.getByLabelText('Course')
+    expect(Array.from(select.querySelectorAll('option')).map((option) => option.value)).toEqual(['', 'BSHM', 'BSIT'])
+    expect(screen.getByText('Course oversight')).toBeInTheDocument()
+    expect(screen.getByText(/sections of BSIT, BSHM/)).toBeInTheDocument()
+  })
+
+  it('shows an all-courses head every course', async () => {
+    apiMock.getCurrentUser.mockReturnValue(head({ managesAllCourses: true, courseScopeMode: 'course' }))
+    renderPage()
+    await screen.findByRole('heading', { name: 'Reports' })
+
+    expect(screen.getByLabelText('Course').querySelectorAll('option').length).toBeGreaterThan(8)
+    expect(screen.getByText(/every course/)).toBeInTheDocument()
+  })
+
+  it('keeps the department wording and hides the course filter while the server is in legacy mode', async () => {
+    apiMock.getCurrentUser.mockReturnValue(head({ courseScopeMode: 'legacy' }))
+    renderPage()
+    await screen.findByRole('heading', { name: 'Reports' })
+
+    expect(screen.getByText('Department oversight')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Course')).not.toBeInTheDocument()
   })
 })

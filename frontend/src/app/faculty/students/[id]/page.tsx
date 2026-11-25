@@ -188,7 +188,7 @@ export default function StudentDetailPage() {
 
   if (loadError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black p-6">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-brand-black p-6">
         <Card className="w-full max-w-md">
           <CardContent className="p-8">
             <ErrorDisplay message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
@@ -199,7 +199,7 @@ export default function StudentDetailPage() {
   }
   if (!ready) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-brand-black">
         <LoadingSpinner size="lg" />
       </div>
     )
@@ -208,7 +208,7 @@ export default function StudentDetailPage() {
   const isTeacher = user.role === 'teacher'
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
       <Sidebar
         user={user}
         onLogout={handleLogout}
@@ -236,7 +236,7 @@ export default function StudentDetailPage() {
                 
                 {/* Front Face */}
                 <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] bg-white dark:bg-id-paper-dark border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
-                  {/* PUP Header */}
+                  {/* Institution header */}
                   <div className="bg-maroon px-5 py-3 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800">
                     <div>
                       <p className="text-xs font-bold text-golden tracking-wider">POLYTECHNIC UNIVERSITY</p>
@@ -249,7 +249,7 @@ export default function StudentDetailPage() {
 
                   {/* Body */}
                   <div className="flex-1 flex flex-wrap p-5 items-center gap-6 relative bg-id-paper dark:bg-id-paper-dark">
-                    <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]" style={{ backgroundImage: 'url(/pup-logo.png)', backgroundPosition: 'center', backgroundSize: 'contain', backgroundRepeat: 'no-repeat' }}></div>
+                    <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]" style={{ backgroundImage: 'url(/brand-mark.png)', backgroundPosition: 'center', backgroundSize: 'contain', backgroundRepeat: 'no-repeat' }}></div>
                     <div className="w-24 h-32 bg-maroon dark:bg-golden flex items-center justify-center shrink-0 border-2 border-zinc-300 dark:border-zinc-800 shadow-md">
                       <span className="text-2xl font-heading font-bold text-white dark:text-maroon-dark">
                         {student.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}

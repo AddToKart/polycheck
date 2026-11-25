@@ -42,7 +42,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        theme: PupTheme.light,
+        theme: BrandTheme.light,
         home: Scaffold(
           body: SingleChildScrollView(
             child: QrTokenPanel(

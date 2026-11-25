@@ -73,12 +73,12 @@ class StudentDashboardScreen extends ConsumerWidget {
       appBar: CampusHeader(
         title: '${dashboardGreeting(now)}, ${firstNameOf(user.fullName)}',
         subtitle:
-            '${user.program?.trim().isNotEmpty == true ? user.program : 'PUP Student'}'
+            '${user.program?.trim().isNotEmpty == true ? user.program : 'Student'}'
             ' · Year ${user.yearLevel ?? 1}',
         actions: StudentAppBarActions.build(context),
       ),
       body: RefreshIndicator(
-        color: PupTheme.of(context).maroon,
+        color: BrandTheme.of(context).maroon,
         onRefresh: () => _refresh(ref),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -87,8 +87,8 @@ class StudentDashboardScreen extends ConsumerWidget {
             if (isLoading) ...<Widget>[
               LinearProgressIndicator(
                 minHeight: 2,
-                color: PupTheme.of(context).maroon,
-                backgroundColor: PupTheme.of(context).borderSubtle,
+                color: BrandTheme.of(context).maroon,
+                backgroundColor: BrandTheme.of(context).borderSubtle,
               ),
               const SizedBox(height: 10),
             ],
@@ -152,7 +152,7 @@ class StudentDashboardScreen extends ConsumerWidget {
                       Text(
                         'TODAY',
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: PupTheme.of(context).muted,
+                          color: BrandTheme.of(context).muted,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 1.6,
                         ),
@@ -162,7 +162,7 @@ class StudentDashboardScreen extends ConsumerWidget {
                         'Your class schedule',
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(
-                              color: PupTheme.of(context).onSurface,
+                              color: BrandTheme.of(context).onSurface,
                               fontWeight: FontWeight.w700,
                             ),
                       ),
@@ -221,7 +221,7 @@ class _ErrorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusCard(
       borderColor: tokens.gold,
       color: tokens.gold.withValues(alpha: 0.08),
@@ -263,7 +263,7 @@ class _CredentialCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusCard(
       onTap: onViewId,
       semanticLabel: 'Open digital student ID card',
@@ -295,7 +295,7 @@ class _CredentialCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Verified PUP account',
+                      'Verified account',
                       style: Theme.of(
                         context,
                       ).textTheme.bodySmall?.copyWith(color: tokens.muted),
@@ -346,7 +346,7 @@ class _AttendanceSnapshot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final items = <(AttendanceStatus, int)>[
       (AttendanceStatus.present, totals[AttendanceStatus.present] ?? 0),
       (AttendanceStatus.late, totals[AttendanceStatus.late] ?? 0),
@@ -439,7 +439,7 @@ class _OfficerHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final labels = <String>[
       if (isPresident) 'Section president',
       if (isQac) 'QAC officer',
@@ -484,7 +484,7 @@ class _MyClassesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final preview = cards.take(previewLimit).toList(growable: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -597,7 +597,7 @@ class _QuickAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusCard(
       onTap: onTap,
       semanticLabel: label,
@@ -630,7 +630,7 @@ class _TodayClassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusCard(
       onTap: onTap,
       semanticLabel: 'Open ${item.subjectName} details',
@@ -744,7 +744,7 @@ class _SessionStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final (background, foreground, border) = switch (status) {
       TodayClassStatus.active => (tokens.gold, tokens.deepMaroon, tokens.gold),
       TodayClassStatus.completed => (

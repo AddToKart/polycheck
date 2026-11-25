@@ -1,6 +1,7 @@
 import type { RequestUser } from '../../auth/authenticated-principal'
 import type { Prisma } from '../../prisma/client'
 import { adminScope } from '../admin-scope'
+import { courseInScope, courseScopeMode, designeeCourseScope, type CourseScope } from '../course-scope'
 
 /**
  * Separation-of-duties helpers for the registrar designation.
@@ -9,6 +10,11 @@ import { adminScope } from '../admin-scope'
  * load-bearing for twelve modules and must not shift. Registrars are teacher
  * accounts pinned to their own `department`, and only account-administration
  * surfaces consult these helpers.
+ *
+ * Registrar scope follows `COURSE_SCOPE_MODE`: `legacy` pins registrars to their
+ * own `User.department` (the original behavior, unchanged); `course` makes a
+ * registrar campus-wide (`managesAllCourses`) or pinned to the students whose
+ * `program` is in `managedCourses` (teacher accounts then stay out of reach).
  */
 
 export function isRegistrar(user: RequestUser | null | undefined): boolean {
@@ -44,12 +50,65 @@ export function registrarCanAccessDepartment(user: RequestUser, targetDepartment
 
 /** Prisma user clause pinning a registrar's account queries to their department. */
 export function registrarUserWhere(user: RequestUser): Prisma.UserWhereInput {
+  if (courseScopeMode() === 'course') return registrarCourseUserWhere(user)
   const department = registrarDepartment(user)
   if (!department) return { id: { in: [] as string[] } }
   return { department: { equals: department, mode: 'insensitive' } }
 }
 
-export type AccountAdminScope = { kind: 'unrestricted' } | { kind: 'department'; department: string } | { kind: 'none' }
+export type AccountAdminScope =
+  | { kind: 'unrestricted' }
+  | { kind: 'department'; department: string }
+  | { kind: 'courses'; courses: string[] }
+  | { kind: 'none' }
+
+/** Course scope of a registrar (empty/non-registrar = none, fail-closed). */
+export function registrarCourseScope(user: RequestUser | null | undefined): CourseScope {
+  return isRegistrar(user) ? designeeCourseScope(user) : { kind: 'none' }
+}
+
+/** Prisma user clause for a registrar in course mode: campus-wide, or only students of the pinned courses. */
+function registrarCourseUserWhere(user: RequestUser): Prisma.UserWhereInput {
+  const scope = registrarCourseScope(user)
+  if (scope.kind === 'all') return {}
+  if (scope.kind === 'none') return { id: { in: [] as string[] } }
+  return {
+    role: 'student',
+    OR: scope.courses.map((course) => ({ program: { equals: course, mode: 'insensitive' as const } })),
+  }
+}
+
+/** A target account as far as registrar scoping is concerned. */
+export interface AccountTarget {
+  role?: string | null
+  department?: string | null
+  program?: string | null
+}
+
+/**
+ * Can this registrar administer the target? Legacy: same department. Course
+ * mode: an all-courses registrar may administer any non-super-admin account; a
+ * course-pinned registrar only students whose program is in scope. Super-admin
+ * targets are excluded by every caller.
+ */
+export function registrarCanAdminister(user: RequestUser, target: AccountTarget): boolean {
+  if (courseScopeMode() !== 'course') return registrarCanAccessDepartment(user, target.department)
+  const scope = registrarCourseScope(user)
+  if (scope.kind === 'all') return true
+  if (scope.kind === 'courses') return target.role === 'student' && courseInScope(scope, target.program)
+  return false
+}
+
+/**
+ * Department stored on a registrar-created account. Legacy forces the
+ * registrar's own department; course mode keeps whatever the caller supplied
+ * (students get the course code auto-filled by the service).
+ */
+export function registrarForcedDepartment(user: RequestUser, supplied?: string | null): string | null {
+  if (courseScopeMode() !== 'course') return registrarDepartment(user)
+  const value = supplied?.trim()
+  return value ? value : null
+}
 
 /**
  * Scope for account-administration surfaces: identical to `adminScope` for
@@ -65,6 +124,12 @@ export function accountAdminScope(user: RequestUser): AccountAdminScope {
     return { kind: 'none' }
   }
   if (!isRegistrar(user)) return { kind: 'none' }
+  if (courseScopeMode() === 'course') {
+    const scope = registrarCourseScope(user)
+    if (scope.kind === 'all') return { kind: 'unrestricted' }
+    if (scope.kind === 'courses') return { kind: 'courses', courses: scope.courses }
+    return { kind: 'none' }
+  }
   const department = registrarDepartment(user)
   return department ? { kind: 'department', department } : { kind: 'none' }
 }
@@ -74,8 +139,16 @@ export function isDesignationWriteRequest(dto: {
   isItCoordinator?: boolean
   isDepartmentHead?: boolean
   isUserRegistrar?: boolean
+  managedCourses?: string[]
+  managesAllCourses?: boolean
 }): boolean {
-  return dto.isItCoordinator !== undefined || dto.isDepartmentHead !== undefined || dto.isUserRegistrar !== undefined
+  return (
+    dto.isItCoordinator !== undefined ||
+    dto.isDepartmentHead !== undefined ||
+    dto.isUserRegistrar !== undefined ||
+    dto.managedCourses !== undefined ||
+    dto.managesAllCourses !== undefined
+  )
 }
 
 export type FacultyDesignationField = 'isItCoordinator' | 'isDepartmentHead' | 'isUserRegistrar'

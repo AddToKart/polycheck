@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { User } from '@polycheck/shared'
 
 vi.mock('./api-config', () => ({ API_BASE: 'https://api.polycheck.test/api' }))
 vi.mock('./signing-key', () => ({
@@ -16,7 +17,7 @@ const student = {
 
 const teacher = {
   id: 'teacher-1',
-  email: 'teacher@pup.edu',
+  email: 'teacher@example.edu',
   fullName: 'Prof. Test',
   role: 'teacher',
 }
@@ -294,6 +295,87 @@ describe('real API client', () => {
       'https://api.polycheck.test/api/subjects',
       expect.objectContaining({ credentials: 'include' }),
     )
+  })
+
+  // ── WEB-13: an unchanged revalidation must not emit or refetch ───────────
+
+  it('restoreSession does not re-emit polycheck-auth-changed for an identical profile', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(teacher))
+    const { api } = await import('./api-client')
+    await api.restoreSession()
+
+    const seen: User[] = []
+    const listener = () => {
+      const current = api.getCurrentUser()
+      if (current) seen.push(current)
+    }
+    window.addEventListener('polycheck-auth-changed', listener)
+    try {
+      const events: number[] = []
+      const counter = () => events.push(1)
+      window.addEventListener('polycheck-auth-changed', counter)
+
+      // The 60 s poll returns the same profile, key order changed on purpose:
+      // JSON.stringify equality would wrongly report a change here.
+      vi.mocked(fetch).mockResolvedValue(
+        jsonResponse({ ...teacher, role: 'teacher', fullName: teacher.fullName }),
+      )
+      const again = await api.restoreSession()
+
+      // Same object identity -> listeners see no new object and no refetch.
+      expect(again).toBe(api.getCurrentUser())
+      expect(seen[seen.length - 1]).toBe(seen[0])
+      expect(events).toHaveLength(0)
+    } finally {
+      window.removeEventListener('polycheck-auth-changed', listener)
+    }
+  })
+
+  it('restoreSession emits when a profile field actually changed', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(teacher))
+    const { api } = await import('./api-client')
+    await api.restoreSession()
+
+    const events: number[] = []
+    const counter = () => events.push(1)
+    window.addEventListener('polycheck-auth-changed', counter)
+    try {
+      // A delegated permission / department change must reach every consumer.
+      vi.mocked(fetch).mockResolvedValue(
+        jsonResponse({ ...teacher, department: 'CCIS' }),
+      )
+      const updated = await api.restoreSession()
+
+      expect(events).toHaveLength(1)
+      expect(updated).toEqual(expect.objectContaining({ department: 'CCIS' }))
+      expect(api.getCurrentUser()).toEqual(expect.objectContaining({ department: 'CCIS' }))
+    } finally {
+      window.removeEventListener('polycheck-auth-changed', counter)
+    }
+  })
+
+  it('restoreSession re-binds the offline owner even for an unchanged profile', async () => {
+    // A page reload starts with the offline owner unset: the bind is module
+    // state and is NOT part of the persisted profile. Skipping it on the
+    // unchanged-profile path would silently disable cached reads and queueing.
+    const store = await import('./offline/store')
+    const bindSpy = vi.spyOn(store, 'initializeOfflineStore').mockResolvedValue(undefined)
+    try {
+      vi.mocked(fetch).mockImplementation(async () => jsonResponse(student))
+      const { api } = await import('./api-client')
+
+      await api.restoreSession()
+      await vi.waitFor(() => expect(bindSpy).toHaveBeenCalledWith('student-1'))
+
+      // The second (unchanged) revalidation keeps it bound.
+      bindSpy.mockClear()
+      const before = api.getCurrentUser()
+      await api.restoreSession()
+      await vi.waitFor(() => expect(bindSpy).toHaveBeenCalledWith('student-1'))
+      expect(api.getCurrentUser()).toBe(before)
+    } finally {
+      bindSpy.mockRestore()
+    }
   })
 
   it('aborts browser API requests that exceed the production timeout', async () => {

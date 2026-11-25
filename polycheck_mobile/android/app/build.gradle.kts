@@ -18,7 +18,7 @@ if (hasReleaseKeystore) {
 }
 
 android {
-    namespace = "edu.pup.polycheck.mobile"
+    namespace = "app.polycheck.mobile"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -28,9 +28,9 @@ android {
     }
 
     defaultConfig {
-        // Kept beside the React Native app (`edu.pup.polycheck`) so both
+        // Kept beside the React Native app (its original package id) so both
         // applications can be installed side-by-side on the same device.
-        applicationId = "edu.pup.polycheck.mobile"
+        applicationId = "app.polycheck.mobile"
         // Plan K8: Android 8+ (adaptive icons, modern WebView/keystore APIs).
         minSdk = 26
         targetSdk = flutter.targetSdkVersion

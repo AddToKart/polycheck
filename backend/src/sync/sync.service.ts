@@ -18,6 +18,8 @@ import type { RequestUser } from '../auth/authenticated-principal'
 import { MetricsService } from '../observability/metrics.service'
 
 const QUEUE_NAME = 'attendance-sync'
+const DEFAULT_WORKER_CONCURRENCY = 20
+const MAX_WORKER_CONCURRENCY = 100
 type SyncResult = Awaited<ReturnType<AttendanceService['syncScan']>>
 interface SyncJobData {
   user: Pick<RequestUser, 'id' | 'role'>
@@ -33,6 +35,8 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
   private events?: QueueEvents
   private worker?: Worker<SyncJobData, SyncResult[]>
   private metricsRefreshTimer?: ReturnType<typeof setInterval>
+  /** True when this process only produces jobs and a separate process consumes them. */
+  private workerExternal = false
 
   constructor(
     private readonly attendance: AttendanceService,
@@ -66,27 +70,36 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       await this.producerConnection.connect()
       this.queue = new Queue<SyncJobData, SyncResult[]>(QUEUE_NAME, { connection: this.producerConnection })
       this.events = new QueueEvents(QUEUE_NAME, { connection: this.connection })
-      this.worker = new Worker<SyncJobData, SyncResult[]>(QUEUE_NAME, (job) => this.processJob(job), {
-        connection: this.connection,
-        concurrency: 20,
-      })
+      this.workerExternal = this.config?.get<string>('SYNC_WORKER_ENABLED') === 'false'
+      if (!this.workerExternal) {
+        this.worker = new Worker<SyncJobData, SyncResult[]>(QUEUE_NAME, (job) => this.processJob(job), {
+          connection: this.connection,
+          concurrency: this.workerConcurrency(),
+        })
+      }
       this.queue.on('error', () => this.metrics?.setBullMqComponentReady('producer', false))
       this.events.on('error', () => this.metrics?.setBullMqComponentReady('events', false))
-      this.worker.on('ready', () => this.metrics?.setBullMqComponentReady('worker', true))
-      this.worker.on('error', () => this.metrics?.setBullMqComponentReady('worker', false))
-      this.worker.on('closed', () => this.metrics?.setBullMqComponentReady('worker', false))
-      this.worker.on('failed', (job, error) => {
+      this.worker?.on('ready', () => this.metrics?.setBullMqComponentReady('worker', true))
+      this.worker?.on('error', () => this.metrics?.setBullMqComponentReady('worker', false))
+      this.worker?.on('closed', () => this.metrics?.setBullMqComponentReady('worker', false))
+      this.worker?.on('failed', (job, error) => {
         this.metrics?.recordBullMqFailure()
         this.logger.error(`Attendance sync job ${job?.id ?? 'unknown'} failed: ${error.message}`)
       })
-      await Promise.all([this.queue.waitUntilReady(), this.events.waitUntilReady(), this.worker.waitUntilReady()])
+      await Promise.all([this.queue.waitUntilReady(), this.events.waitUntilReady(), this.worker?.waitUntilReady()])
       this.metrics?.setBullMqComponentReady('producer', true)
       this.metrics?.setBullMqComponentReady('events', true)
+      // With the worker in another process there is nothing local to be unready; queue depth and age metrics
+      // are what flag a stalled consumer.
       this.metrics?.setBullMqComponentReady('worker', true)
       await this.refreshQueueMetrics()
       this.metricsRefreshTimer = setInterval(() => void this.refreshQueueMetrics(), 15_000)
       this.metricsRefreshTimer.unref()
-      this.logger.log('BullMQ attendance sync worker connected')
+      this.logger.log(
+        this.workerExternal
+          ? 'BullMQ attendance sync producer connected (worker runs in another process)'
+          : `BullMQ attendance sync worker connected (concurrency ${this.workerConcurrency()})`,
+      )
     } catch (error) {
       await this.closeQueue()
       const message = error instanceof Error ? error.message : 'unknown connection error'
@@ -95,26 +108,36 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Jobs processed concurrently by this process's worker. Defaults to 20 (the long-standing value). On the
+   * 2-core profile the Prisma pool is smaller than this, so extra jobs simply wait for a connection; lowering it
+   * (or moving the worker to its own process with SYNC_WORKER_ENABLED=false on the API) keeps a sync flood from
+   * competing with HTTP requests for the same pool.
+   */
+  private workerConcurrency(): number {
+    const raw = Number(this.config?.get<string>('SYNC_WORKER_CONCURRENCY'))
+    if (!Number.isFinite(raw) || raw < 1) return DEFAULT_WORKER_CONCURRENCY
+    return Math.min(MAX_WORKER_CONCURRENCY, Math.floor(raw))
+  }
+
+  /**
+   * Legacy `POST /sync/attendance` contract.
+   *
+   * It used to block the request on `job.waitUntilFinished(..., 5_000)` while
+   * the worker processed up to 100 records sequentially, so a normal batch
+   * routinely timed out and the client could neither see a receipt nor retry
+   * safely. It now joins the receipt pipeline: the caller gets
+   * `{ queued: true, jobId, receiptId }` immediately and polls
+   * `GET /sync/attendance/batches/:receiptId` for the authoritative results.
+   * The inline `results` shape survives only for the no-Redis development path.
+   */
   async submit(user: RequestUser, records: ScanAttendanceDto[]) {
     if (!this.queue || !this.events) {
       return { queued: false as const, results: await this.processRecords(user, records) }
     }
-    const job = await this.queue.add(
-      'process-batch',
-      { user: { id: user.id, role: user.role }, records },
-      {
-        attempts: 5,
-        backoff: { type: 'exponential', delay: 1_000 },
-        removeOnComplete: { age: 3_600, count: 10_000 },
-        removeOnFail: { age: 86_400, count: 10_000 },
-      },
-    )
-    this.metrics?.setBullMqComponentReady('producer', true)
-    void this.refreshQueueMetrics()
-    // The job is durable before waiting, but SQLite records are acknowledged only after
-    // the worker returns authoritative per-record results.
-    const results = await job.waitUntilFinished(this.events, 5_000)
-    return { queued: false as const, results }
+    const receipt = await this.enqueue(user, records)
+    if (!receipt.queued) return receipt
+    return { queued: true as const, jobId: receipt.receiptId, receiptId: receipt.receiptId }
   }
 
   // A receipt is not an attendance acknowledgment. Clients retain evidence until
@@ -192,7 +215,10 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     ])
     this.metrics?.setBullMqComponentReady('producer', producer)
     this.metrics?.setBullMqComponentReady('events', events)
-    this.metrics?.setBullMqComponentReady('worker', worker && Boolean(this.worker?.isRunning()))
+    this.metrics?.setBullMqComponentReady(
+      'worker',
+      this.workerExternal ? producer : worker && Boolean(this.worker?.isRunning()),
+    )
     if (!producer || !this.queue) return
 
     try {

@@ -90,13 +90,39 @@ String? rolePrefix(AppRole? role) => switch (role) {
 };
 
 /// Pure guard result. A null [redirect] means "stay where you are".
+///
+/// [loading] marks the cold-start gate: the app is parked on
+/// [AppRoutes.boot] while the session state is not yet authoritative, so no
+/// protected screen (or the QR it renders) mounts against an unverified
+/// session. [requestedLocation] carries the original target so it can be
+/// resolved once the state settles.
 @immutable
 class RouteDecision {
-  const RouteDecision.allow() : redirect = null;
+  const RouteDecision.allow()
+    : redirect = null,
+      loading = false,
+      requestedLocation = null;
 
-  const RouteDecision.redirect(this.redirect);
+  const RouteDecision.redirect(this.redirect)
+    : loading = false,
+      requestedLocation = null;
+
+  /// Cold-start gate: render [AppRoutes.boot] and re-evaluate
+  /// [requestedLocation] after the session is restored.
+  RouteDecision.boot(String this.requestedLocation)
+    : redirect = Uri(
+        path: AppRoutes.boot,
+        queryParameters: <String, String>{'redirect': requestedLocation},
+      ).toString(),
+      loading = true;
 
   final String? redirect;
+
+  /// True while the destination is a boot/loading surface, not the real page.
+  final bool loading;
+
+  /// The location the guard wants to resolve after restore ([loading] only).
+  final String? requestedLocation;
 
   bool get allowed => redirect == null;
 }
@@ -104,8 +130,9 @@ class RouteDecision {
 /// The complete guard ladder, independent of GoRouter and Riverpod so it can
 /// be unit-tested as a pure function.
 ///
-/// Order: restore/auth-in-flight -> anonymous -> role -> forced password
-/// rotation -> maintenance -> auth screens -> shared routes -> role section.
+/// Order: restore gate -> auth-in-flight (splash) -> anonymous -> role ->
+/// forced password rotation -> maintenance -> auth screens -> shared routes ->
+/// role section.
 RouteDecision decideRoute({
   required String location,
   required SessionStatus status,
@@ -120,10 +147,42 @@ RouteDecision decideRoute({
   final path = _normalizePath(uri.path);
   final query = uri.queryParameters;
 
+  // Cold-start gate (FLR-02). `restoring`/`authenticating` means the session
+  // is not authoritative yet: protected screens (which may render a signed
+  // QR) must not mount, so they park on the splash with their target. Public
+  // auth surfaces stay live - the login screen is *mounted during*
+  // `authenticating` and must not be torn down mid-submit.
   if (status == SessionStatus.unknown ||
       status == SessionStatus.restoring ||
       status == SessionStatus.authenticating) {
-    return const RouteDecision.allow();
+    if (AppRoutes.authPaths.contains(path) || path == AppRoutes.boot) {
+      return const RouteDecision.allow();
+    }
+    return RouteDecision.boot(location);
+  }
+  if (path == AppRoutes.boot) {
+    // Reached only after restore: run the settled ladder against the parked
+    // target so anonymous/expired/role/maintenance semantics all apply to it.
+    // `allow()` means "the target itself is valid", which must become an
+    // explicit navigation away from the splash.
+    final parked = query['redirect']?.trim();
+    final resumed =
+        parked != null &&
+            parked.isNotEmpty &&
+            _normalizePath(_parseLocation(parked).path) != AppRoutes.boot
+        ? parked
+        : AppRoutes.portal;
+    final settled = decideRoute(
+      location: resumed,
+      status: status,
+      user: user,
+      maintenanceActive: maintenanceActive,
+      hasExpiredSession: hasExpiredSession,
+      lastRole: lastRole,
+      officerPresident: officerPresident,
+      officerQac: officerQac,
+    );
+    return settled.redirect == null ? RouteDecision.redirect(resumed) : settled;
   }
 
   final signedIn = status == SessionStatus.signedIn && user != null;

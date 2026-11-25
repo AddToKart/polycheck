@@ -246,7 +246,9 @@ describe('MaintenanceService ephemeral telemetry shredding (F6)', () => {
 
     await service.shredEphemeralTelemetry()
 
-    expect(redis.acquireLock).toHaveBeenCalledWith('maintenance:shred-ephemeral-telemetry', 25 * 60 * 60)
+    // Re-pinned for BE-10: the daily-job lease dropped from 25h (which could
+    // silently skip the next day's run after a replica crash) to 2h.
+    expect(redis.acquireLock).toHaveBeenCalledWith('maintenance:shred-ephemeral-telemetry', 2 * 60 * 60)
     expect(redis.releaseLock).toHaveBeenCalledWith('maintenance:shred-ephemeral-telemetry', 'owner-token')
   })
 

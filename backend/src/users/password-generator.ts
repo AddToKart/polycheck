@@ -12,14 +12,14 @@ function take(length: number, alphabet: string): string {
 
 /**
  * Generates a human-readable temporary credential that always satisfies the
- * 12-character PUP password policy. The format is
- * `PUP-<6 upper/digit><2 digit>-<2 lower><1 symbol>` (16 chars): the fixed
+ * 12-character password policy. The format is
+ * `PCK-<6 upper/digit><2 digit>-<2 lower><1 symbol>` (16 chars): the fixed
  * segments guarantee upper, lower, digit, and symbol classes while remaining
  * easy to read aloud or write on a classroom slip. Ambiguous glyphs
  * (I, L, O, 0, 1) are excluded from the random alphabets.
  */
 export function generateTemporaryPassword(): string {
-  const candidate = `PUP-${take(6, UPPER + DIGITS)}${take(2, DIGITS)}-${take(2, LOWER)}${
+  const candidate = `PCK-${take(6, UPPER + DIGITS)}${take(2, DIGITS)}-${take(2, LOWER)}${
     SYMBOLS[randomInt(0, SYMBOLS.length)]
   }`
   if (!isStrongPassword(candidate)) {

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/pup_theme.dart';
+import '../theme/brand_theme.dart';
 
 /// Square label/error/helper text field with an obscure toggle.
 ///
@@ -28,6 +28,7 @@ class CampusTextField extends StatefulWidget {
     this.autofillHints,
     this.focusNode,
     this.readOnly = false,
+    this.maxLength,
   });
 
   final TextEditingController? controller;
@@ -53,6 +54,10 @@ class CampusTextField extends StatefulWidget {
   final FocusNode? focusNode;
   final bool readOnly;
 
+  /// Hard input cap (optional). Mirrors the backend `@MaxLength` so an
+  /// over-length value can never be typed, let alone submitted.
+  final int? maxLength;
+
   @override
   State<CampusTextField> createState() => _CampusTextFieldState();
 }
@@ -70,7 +75,7 @@ class _CampusTextFieldState extends State<CampusTextField> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final label = widget.label;
 
     return Column(
@@ -97,6 +102,16 @@ class _CampusTextFieldState extends State<CampusTextField> {
           textCapitalization: widget.textCapitalization,
           onChanged: widget.onChanged,
           onSubmitted: widget.onSubmitted,
+          maxLength: widget.maxLength,
+          // The cap is enforced silently; the field's helper/error slot already
+          // carries the guidance, so the Flutter counter would only add height.
+          buildCounter:
+              (
+                context, {
+                required currentLength,
+                required isFocused,
+                required maxLength,
+              }) => null,
           maxLines: widget.obscure ? 1 : widget.maxLines,
           minLines: widget.obscure ? null : widget.minLines,
           autofillHints: widget.autofillHints,

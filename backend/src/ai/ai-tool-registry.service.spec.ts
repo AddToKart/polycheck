@@ -19,7 +19,7 @@ const sectionRow = {
   semester: '2026-1',
   room: 'Room 101',
   subject: { name: 'Software Engineering', code: 'SE101' },
-  teacher: { fullName: 'Prof. Cruz', email: 'cruz@pup.edu.ph' },
+  teacher: { fullName: 'Prof. Cruz', email: 'cruz@example.edu.ph' },
   schedule: [
     { day: 'Wed', startTime: '10:00', endTime: '11:30' },
     { day: 'Mon', startTime: '09:00', endTime: '10:00' },
@@ -31,7 +31,7 @@ const studentSectionRow = {
   section: '1',
   room: 'Room 101',
   subject: { name: 'Software Engineering', code: 'SE101' },
-  teacher: { fullName: 'Prof. Cruz', email: 'cruz@pup.edu.ph' },
+  teacher: { fullName: 'Prof. Cruz', email: 'cruz@example.edu.ph' },
 }
 
 const standingRow = {
@@ -682,7 +682,7 @@ describe('AiToolRegistryService', () => {
         id: 'student-1',
         fullName: 'Juan Dela Cruz',
         role: 'student',
-        email: 'juan@pup.edu.ph',
+        email: 'juan@example.edu.ph',
         studentId: '2024-00001-MN-0',
         department: 'CCIS',
         isActive: false,

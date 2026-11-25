@@ -7,10 +7,10 @@ export const WEB_INSTALLATION_ID_KEY = 'polycheck.installation-id.v1'
 
 export const SEED_PASSWORD = 'PolycheckLocal1!'
 
-export const FACULTY_EMAIL = 'jmdelacruz@pup.edu.ph'
-export const ADMIN_EMAIL = 'mcreyes@pup.edu.ph'
+export const FACULTY_EMAIL = 'jmdelacruz@example.edu.ph'
+export const ADMIN_EMAIL = 'mcreyes@example.edu.ph'
 export const STUDENT_ID = '2024-00001-MN-0'
-export const STUDENT_EMAIL = 'amreyes@iskolar.pup.edu.ph'
+export const STUDENT_EMAIL = 'amreyes@student.example.edu.ph'
 /** Internal user id and owning section of the seeded student (release target). */
 export const STUDENT_USER_ID = 's-001'
 export const STUDENT_SECTION_ID = 'sec-001'
@@ -25,12 +25,12 @@ export const STUDENT_SECTION_ID = 'sec-001'
  */
 export const STUDENT_API_DEVICE_ID = 'web-e2e-api-context'
 
-// PUP Santa Maria dual-hat seed accounts (seeded with administrative designations).
-export const IT_COORDINATOR_EMAIL = 'bry.mis@pup.edu.ph'
-export const DEPARTMENT_HEAD_EMAIL = 'chair.ccis@pup.edu.ph'
-export const REGISTRAR_EMAIL = 'reg.campus@pup.edu.ph'
+// Dual-hat seed accounts (seeded with administrative designations).
+export const IT_COORDINATOR_EMAIL = 'bry.mis@example.edu.ph'
+export const DEPARTMENT_HEAD_EMAIL = 'chair.ccis@example.edu.ph'
+export const REGISTRAR_EMAIL = 'reg.campus@example.edu.ph'
 
-/** PUP campus (Asia/Manila, UTC+8) calendar date, matching shared `formatCampusDate`. */
+/** Campus (Asia/Manila, UTC+8) calendar date, matching shared `formatCampusDate`. */
 export function campusDate(daysAgo = 0): string {
   const date = new Date(Date.now() + 8 * 60 * 60 * 1000)
   date.setUTCDate(date.getUTCDate() - daysAgo)

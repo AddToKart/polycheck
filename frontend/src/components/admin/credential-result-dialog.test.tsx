@@ -18,13 +18,13 @@ describe('CredentialResultDialog', () => {
           role: 'student',
           name: 'Juan Dela Cruz',
           identifier: '2024-00001-MN-0',
-          password: 'PUP-K7W2M4Q8-tx!',
+          password: 'PCK-K7W2M4Q8-tx!',
         }}
         onOpenChange={() => undefined}
       />,
     )
 
-    expect(await screen.findByText('PUP-K7W2M4Q8-tx!')).toBeInTheDocument()
+    expect(await screen.findByText('PCK-K7W2M4Q8-tx!')).toBeInTheDocument()
     expect(screen.getByText('2024-00001-MN-0')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /copy credentials/i }))
@@ -35,7 +35,7 @@ describe('CredentialResultDialog', () => {
     expect(copied).toContain('Role: student')
     expect(copied).toContain('Juan Dela Cruz')
     expect(copied).toContain('2024-00001-MN-0')
-    expect(copied).toContain('PUP-K7W2M4Q8-tx!')
+    expect(copied).toContain('PCK-K7W2M4Q8-tx!')
     expect(await screen.findByText('Copied')).toBeInTheDocument()
   })
 

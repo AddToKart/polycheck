@@ -7,7 +7,7 @@ import '../../../core/api/api_providers.dart';
 import '../../../core/models/privacy.dart';
 import '../../../core/network/api_error.dart';
 import '../../../core/providers/session_provider.dart';
-import '../../../core/theme/pup_theme.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/designations.dart';
 import '../../../core/widgets/campus_button.dart';
 import '../../../core/widgets/campus_loading.dart';
@@ -76,7 +76,7 @@ class _PrivacyPanelState extends ConsumerState<PrivacyPanel> {
         bytes: document.bytes,
         filename: document.filename,
         mimeType: document.contentType,
-        title: 'PUP Polycheck DPO summary',
+        title: 'Polycheck DPO summary',
       );
       if (!mounted) return;
       setState(() => _exporting = false);
@@ -95,7 +95,7 @@ class _PrivacyPanelState extends ConsumerState<PrivacyPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final privileged = _privileged;
     final inventory = _snapshot?.dataInventory.isNotEmpty == true
         ? _snapshot!.dataInventory
@@ -237,7 +237,7 @@ class _PrivacyPanelState extends ConsumerState<PrivacyPanel> {
             _NoticeSection(
               title: 'Who to contact',
               body:
-                  'PUP Santa Maria Data Protection Officer, through the Office '
+                  'The Data Protection Officer of your institution, through the Office '
                   'of the Registrar. Include your student number and the '
                   'specific record you are asking about.',
             ),
@@ -267,7 +267,7 @@ class PrivacySnapshotView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final percent = consentCoveragePercent(
       snapshot.consent.covered,
       snapshot.consent.totalActive,
@@ -380,7 +380,7 @@ class _MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -429,7 +429,7 @@ class _NoticeSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -467,7 +467,7 @@ class _InventoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),

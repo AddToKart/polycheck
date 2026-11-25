@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/pup_theme.dart';
+import '../theme/brand_theme.dart';
 
 /// Centered maroon spinner with a caption.
 class CampusLoading extends StatelessWidget {
@@ -15,7 +15,7 @@ class CampusLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [

@@ -33,6 +33,12 @@ import 'dio_client.dart';
 /// event can beat the login's HTTP response on the wire — the probe is
 /// authoritative, so termination happens only when it confirms. Network
 /// failures are never proof of revocation in either direction.
+///
+/// Self-heal (FLR-03): the namespace socket gives up after its own bounded
+/// reconnect burst. Without a replacement the monitor would stay "running"
+/// over a dead socket and missed the next `auth:session-replaced`. On a
+/// reconnect failure the channel is torn down, `_channel` is nulled, and
+/// `start()` re-arms on a capped backoff while a token exists.
 
 /// Exact wire event (`android/services/realtime.ts:152`).
 const String authSessionReplacedEvent = 'auth:session-replaced';
@@ -90,8 +96,39 @@ class SessionProbe {
 abstract interface class SessionReplacementChannel {
   void listen(void Function() onSessionReplaced);
 
+  /// The socket's own bounded reconnect burst is exhausted: the manager will
+  /// never retry by itself, so the monitor must replace it (FLR-03).
+  void onReconnectFailed(void Function() handler);
+
+  /// An engine open succeeded (initial connect or a reconnect). Used to reset
+  /// the self-heal backoff so a healthy gateway is not throttled by a past
+  /// outage.
+  void onConnected(void Function() handler);
+
   void close();
 }
+
+/// Backoff between self-heal burst restarts, capped at 5 minutes.
+///
+/// Bounded (the last entry repeats) so a long outage never hammers the
+/// gateway, but never exhausted: the monitor keeps trying for as long as a
+/// token exists. The socket's own burst is
+/// [sessionReplacementSocketReconnectAttempts] × 1 s, so a dead gateway costs
+/// one burst per backoff step instead of one dead socket forever (FLR-03).
+const List<Duration> sessionReplacementReconnectBackoff = <Duration>[
+  Duration(seconds: 1),
+  Duration(seconds: 2),
+  Duration(seconds: 4),
+  Duration(seconds: 8),
+  Duration(seconds: 15),
+  Duration(seconds: 30),
+  Duration(minutes: 1),
+  Duration(minutes: 2),
+  Duration(minutes: 5),
+];
+
+/// Socket.IO's own burst before it gives up (`setReconnectionAttempts`).
+const int sessionReplacementSocketReconnectAttempts = 8;
 
 typedef SessionReplacementChannelFactory =
     SessionReplacementChannel Function({
@@ -116,6 +153,7 @@ class SessionReplacementMonitor {
     required this.isOwnLoginInFlight,
     required this.onTerminate,
     this.channelFactory = openSessionReplacementSocket,
+    this.backoff = sessionReplacementReconnectBackoff,
   });
 
   final Future<String?> Function() readToken;
@@ -123,10 +161,14 @@ class SessionReplacementMonitor {
   final bool Function() isOwnLoginInFlight;
   final Future<void> Function() onTerminate;
   final SessionReplacementChannelFactory channelFactory;
+  final List<Duration> backoff;
 
   SessionReplacementChannel? _channel;
   bool _starting = false;
   bool _handling = false;
+  bool _stopped = true;
+  Timer? _retryTimer;
+  int _burstRestarts = 0;
 
   bool get isRunning => _channel != null;
   int get generations => _generation;
@@ -134,16 +176,21 @@ class SessionReplacementMonitor {
 
   /// Idempotent start: one channel per live session; retries on re-login.
   Future<void> start() async {
+    _stopped = false;
     if (_channel != null || _starting) return;
     _starting = true;
     try {
       final token = await readToken();
-      if (token == null || token.isEmpty) return;
+      if (_stopped || token == null || token.isEmpty) return;
       final channel = channelFactory(
         socketUrl: ApiConfig.socketUrl,
         readToken: readToken,
         onSessionReplaced: onSessionReplacedRequested,
       );
+      if (_stopped) {
+        channel.close();
+        return;
+      }
       if (_channel != null) {
         // A newer session started while authenticating; drop this stale one.
         channel.close();
@@ -152,6 +199,8 @@ class SessionReplacementMonitor {
       _channel = channel;
       _generation++;
       channel.listen(onSessionReplacedRequested);
+      channel.onConnected(_onConnected);
+      channel.onReconnectFailed(_onReconnectFailed);
     } catch (_) {
       // Realtime is best-effort: the next 401 still terminates.
     } finally {
@@ -160,8 +209,54 @@ class SessionReplacementMonitor {
   }
 
   void stop() {
+    _stopped = true;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _burstRestarts = 0;
     _channel?.close();
     _channel = null;
+  }
+
+  void _onConnected() {
+    // A healthy engine open resets the ladder so a recovered network is not
+    // throttled by the backoff earned during the outage.
+    _burstRestarts = 0;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+  }
+
+  /// Self-heal (FLR-03): the socket's bounded burst is exhausted, so the
+  /// channel is dead and will never reconnect on its own. Tear it down, null
+  /// `_channel` (so `start()` is no longer a no-op) and re-arm on the bounded
+  /// backoff while a token still exists.
+  void _onReconnectFailed() {
+    if (_stopped) return;
+    _teardownChannel();
+    _scheduleRestart();
+  }
+
+  void _scheduleRestart() {
+    if (_stopped || _retryTimer != null) return;
+    final delay = backoff[_burstRestarts.clamp(0, backoff.length - 1)];
+    _burstRestarts += 1;
+    _retryTimer = Timer(delay, () {
+      _retryTimer = null;
+      if (_stopped) return;
+      // `start()` re-reads the token: a signed-out device simply does not
+      // re-arm, and a rotated bearer is picked up by the auth function.
+      unawaited(start());
+    });
+  }
+
+  void _teardownChannel() {
+    final channel = _channel;
+    _channel = null;
+    if (channel == null) return;
+    try {
+      channel.close();
+    } catch (_) {
+      // Already closed (the manager disposed it after the burst).
+    }
   }
 
   /// Event handler; also the seam unit tests drive directly.
@@ -209,7 +304,7 @@ class SocketIoSessionReplacementChannel implements SessionReplacementChannel {
               callback(<String, dynamic>{'token': token});
             }());
           })
-          .setReconnectionAttempts(8)
+          .setReconnectionAttempts(sessionReplacementSocketReconnectAttempts)
           .setReconnectionDelay(1000)
           .setTimeout(8000)
           .disableAutoConnect()
@@ -226,6 +321,17 @@ class SocketIoSessionReplacementChannel implements SessionReplacementChannel {
   @override
   void listen(void Function() onSessionReplaced) {
     // Events are attached at construction; kept for API completeness.
+  }
+
+  @override
+  void onReconnectFailed(void Function() handler) {
+    // Manager-level: the namespace socket has exhausted its own burst.
+    socket.onReconnectFailed((_) => handler());
+  }
+
+  @override
+  void onConnected(void Function() handler) {
+    socket.onConnect((_) => handler());
   }
 
   @override

@@ -6,7 +6,7 @@ import 'package:polycheck_mobile/src/features/admin/domain/admin_users.dart';
 const teacher = User(
   id: 'teacher-1',
   fullName: 'Prof. Juan Dela Cruz',
-  email: 'juan@pup.edu.ph',
+  email: 'juan@example.edu.ph',
   role: UserRole.teacher,
   department: 'CCIS',
   canResetStudentPasswords: true,
@@ -138,6 +138,51 @@ void main() {
       },
     );
 
+    test(
+      'course scope writes only include a changed list or all-courses flag',
+      () {
+        final scoped = teacher.copyWith(
+          isDepartmentHead: true,
+          managedCourses: const ['BSIT'],
+        );
+        final unchanged = buildUserUpdatePayload(
+          scoped,
+          editableValuesForUser(scoped),
+          managedCourses: const ['BSIT'],
+          managesAllCourses: false,
+        );
+        expect(unchanged, isEmpty);
+
+        final reordered = buildUserUpdatePayload(
+          scoped.copyWith(managedCourses: const ['BSIT', 'BSHM']),
+          editableValuesForUser(scoped),
+          managedCourses: const ['BSHM', 'BSIT'],
+        );
+        expect(reordered, isEmpty);
+
+        final changed = buildUserUpdatePayload(
+          scoped,
+          editableValuesForUser(scoped),
+          managedCourses: const ['BSIT', 'BSHM'],
+          managesAllCourses: true,
+        );
+        expect(changed, <String, dynamic>{
+          'managedCourses': ['BSIT', 'BSHM'],
+          'managesAllCourses': true,
+        });
+      },
+    );
+
+    test('students never receive course scope fields', () {
+      final payload = buildUserUpdatePayload(
+        student,
+        editableValuesForUser(student),
+        managedCourses: const ['BSIT'],
+        managesAllCourses: true,
+      );
+      expect(payload, isEmpty);
+    });
+
     test('designation writes only include changed flags', () {
       final payload = buildUserUpdatePayload(
         teacher,
@@ -171,7 +216,7 @@ void main() {
     test('student number and password policy', () {
       expect(studentIdPattern.hasMatch('2024-00001-MN-0'), isTrue);
       expect(studentIdPattern.hasMatch('2024-1-MN-0'), isFalse);
-      expect(meetsPasswordPolicy('Pup@2026Secure!'), isTrue);
+      expect(meetsPasswordPolicy('Brand@2026Secure!'), isTrue);
       expect(meetsPasswordPolicy('weakpassword'), isFalse);
     });
 
@@ -190,7 +235,7 @@ void main() {
       expect(
         validateCreateAdminForm(
           fullName: 'New Admin',
-          email: 'admin@pup.edu.ph',
+          email: 'admin@example.edu.ph',
           department: 'CCIS',
           password: 'short',
         ),

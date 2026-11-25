@@ -7,6 +7,7 @@ import {
   GraduationCap,
   Info,
   KeyRound,
+  Mail,
   Pencil,
   Plus,
   RefreshCw,
@@ -45,6 +46,8 @@ import {
   userPageCount,
   userPageNumber,
   userRangeLabel,
+  userStatusLabel,
+  activationMailLabel,
   type UserRoleTab,
   type UserStatusFilter,
 } from '@/lib/admin-users'
@@ -81,6 +84,7 @@ function UserRowActions({
   onChangeRole,
   onResetPassword,
   onToggleStatus,
+  onResendActivation,
 }: {
   row: User
   actorRole: User['role']
@@ -90,6 +94,7 @@ function UserRowActions({
   onChangeRole: (target: User) => void
   onResetPassword: (target: User) => void
   onToggleStatus: (target: User) => void
+  onResendActivation?: (target: User) => void
 }) {
   if (!canManageUser(row)) {
     return (
@@ -114,6 +119,17 @@ function UserRowActions({
           onClick={() => onChangeRole(row)}
         >
           Change role
+        </Button>
+      ) : null}
+      {row.activationPending && onResendActivation ? (
+        <Button
+          variant="outline"
+          size="sm"
+          className={touchClass}
+          disabled={busy}
+          onClick={() => onResendActivation(row)}
+        >
+          <Mail className="h-3.5 w-3.5" /> Resend activation
         </Button>
       ) : null}
       <Button
@@ -153,6 +169,7 @@ export default function UsersPage() {
   const [refreshToken, setRefreshToken] = useState(0)
   const [inactiveStudents, setInactiveStudents] = useState(0)
   const [activatingAll, setActivatingAll] = useState(false)
+  const [resendingAll, setResendingAll] = useState(false)
   const [busyUserId, setBusyUserId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [showCreateTeacher, setShowCreateTeacher] = useState(false)
@@ -182,8 +199,16 @@ export default function UsersPage() {
     ? isDepartmentScopedAdmin({ role: user.role, scope: (user as User & { scope?: string | null }).scope })
     : false
   const registrar = Boolean(user?.role === 'teacher' && user.isUserRegistrar)
-  const effectiveDepartment =
-    departmentScoped || registrar ? (user?.department ?? '') : filters.department
+  // A registrar with a course scope (campus-wide or pinned courses) is not pinned to a department.
+  const courseScopedRegistrar = Boolean(
+    registrar && (user?.managesAllCourses === true || (user?.managedCourses?.length ?? 0) > 0),
+  )
+  const departmentPinned = departmentScoped || (registrar && !courseScopedRegistrar)
+  const effectiveDepartment = departmentPinned ? (user?.department ?? '') : filters.department
+  // WEB-13: the fetch effects key on the account id, not the profile object —
+  // `polycheck-auth-changed` can hand back an equivalent profile (same id) and
+  // must not refetch the paginated table.
+  const userId = user?.id ?? null
 
   useEffect(() => {
     const syncUser = () => {
@@ -219,7 +244,7 @@ export default function UsersPage() {
   }, [searchInput, departmentInput])
 
   useEffect(() => {
-    if (!user) return
+    if (!userId) return
     const controller = new AbortController()
     let active = true
     setLoading(true)
@@ -243,10 +268,10 @@ export default function UsersPage() {
       active = false
       controller.abort()
     }
-  }, [effectiveDepartment, filters.department, filters.q, offset, refreshToken, status, tab, user])
+  }, [effectiveDepartment, filters.department, filters.q, offset, refreshToken, status, tab, userId])
 
   useEffect(() => {
-    if (!user) return
+    if (!userId) return
     let active = true
     api
       .getUsers({ role: 'student', status: 'inactive', limit: 1, offset: 0 })
@@ -257,7 +282,7 @@ export default function UsersPage() {
     return () => {
       active = false
     }
-  }, [refreshToken, user])
+  }, [refreshToken, userId])
 
   if (!user) return null
 
@@ -324,7 +349,7 @@ export default function UsersPage() {
         email: studentForm.email.trim() || undefined,
         program: studentForm.program,
         yearLevel: Number(studentForm.yearLevel),
-        department: studentForm.department,
+        department: studentForm.department.trim() || undefined,
       })
       setStudentForm({ fullName: '', studentId: '', email: '', program: '', yearLevel: '1', department: '' })
       setShowCreateStudent(false)
@@ -400,6 +425,45 @@ export default function UsersPage() {
     void handleSetStatus(target)
   }
 
+  const handleResendActivation = async (target: User) => {
+    setBusyUserId(target.id)
+    setError('')
+    try {
+      const result = await api.resendActivation(target.id)
+      refresh()
+      addNotification(
+        'success',
+        result.alreadyQueued ? 'Already queued' : 'Activation email queued',
+        result.alreadyQueued
+          ? `An activation email for ${target.fullName} is already on its way.`
+          : `${target.fullName} will receive a new activation link shortly.`,
+      )
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to re-send the activation email')
+    } finally {
+      setBusyUserId(null)
+    }
+  }
+
+  const handleResendAllPending = async () => {
+    setResendingAll(true)
+    setError('')
+    try {
+      const result = await api.resendPendingActivation()
+      refresh()
+      const parts = [
+        `${result.queued} queued`,
+        ...(result.alreadyQueued > 0 ? [`${result.alreadyQueued} already on the way`] : []),
+        ...(result.noEmail > 0 ? [`${result.noEmail} have no email (reset their password instead)`] : []),
+      ]
+      addNotification('success', 'Activation emails', parts.join(' · '))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to re-send activation emails')
+    } finally {
+      setResendingAll(false)
+    }
+  }
+
   const fetchInactiveStudents = async () => {
     const collected: User[] = []
     let nextOffset = 0
@@ -445,10 +509,16 @@ export default function UsersPage() {
   const openCreateDialog = () => {
     setError('')
     if (tab === 'teacher') {
-      setTeacherForm((form) => ({ ...form, department: form.department || user.department || '' }))
+      setTeacherForm((form) => ({
+        ...form,
+        department: form.department || (courseScopedRegistrar ? '' : (user.department ?? '')),
+      }))
       setShowCreateTeacher(true)
     } else if (tab === 'student') {
-      setStudentForm((form) => ({ ...form, department: form.department || user.department || '' }))
+      setStudentForm((form) => ({
+        ...form,
+        department: form.department || (courseScopedRegistrar ? '' : (user.department ?? '')),
+      }))
       setShowCreateStudent(true)
     }
   }
@@ -456,7 +526,7 @@ export default function UsersPage() {
   const tabs: UserRoleTab[] = institutionAdmin ? ['teacher', 'student', 'super_admin'] : ['teacher', 'student']
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
       <Sidebar user={user} onLogout={handleLogout} />
 
       <main className="flex-1 overflow-y-auto">
@@ -493,11 +563,21 @@ export default function UsersPage() {
           {departmentScoped || registrar ? (
             <div className="mb-4 flex items-start gap-3 border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
               <Info className="mt-0.5 h-4 w-4 shrink-0" />
-              <p>
-                <span className="font-bold">{registrar ? 'Registrar scope' : 'Department scope'}</span> - this
-                console only lists and manages accounts in {user.department ?? 'your department'}.
-                Institution-wide actions are hidden.
-              </p>
+              {courseScopedRegistrar ? (
+                <p>
+                  <span className="font-bold">Registrar scope</span> -{' '}
+                  {user.managesAllCourses
+                    ? 'you can manage student and faculty accounts across every course.'
+                    : `you can manage students enrolled in ${(user.managedCourses ?? []).join(', ')}.`}{' '}
+                  Institution-wide actions are hidden.
+                </p>
+              ) : (
+                <p>
+                  <span className="font-bold">{registrar ? 'Registrar scope' : 'Department scope'}</span> - this
+                  console only lists and manages accounts in {user.department ?? 'your department'}.
+                  Institution-wide actions are hidden.
+                </p>
+              )}
             </div>
           ) : null}
 
@@ -540,7 +620,7 @@ export default function UsersPage() {
                 </div>
               </div>
               <div>
-                {departmentScoped || registrar ? (
+                {departmentPinned ? (
                   <>
                     <p className="text-sm font-medium leading-none">Department</p>
                     <div className="mt-2 flex h-10 items-center border border-dashed border-zinc-300 px-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
@@ -574,6 +654,7 @@ export default function UsersPage() {
                   <option value="">All statuses</option>
                   <option value="active">Active</option>
                   <option value="inactive">Inactive (provisioned)</option>
+                  {tab === 'student' ? <option value="pending">Awaiting activation</option> : null}
                 </select>
               </div>
             </CardContent>
@@ -592,6 +673,17 @@ export default function UsersPage() {
                   onClick={() => void handleActivateAllInactive()}
                 >
                   {activatingAll ? 'Activating…' : `Activate all inactive (${inactiveStudents})`}
+                </Button>
+              ) : null}
+              {tab === 'student' && status === 'pending' && page.total > 0 ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={resendingAll}
+                  onClick={() => void handleResendAllPending()}
+                >
+                  <Mail className="h-3.5 w-3.5" />
+                  {resendingAll ? 'Queuing…' : `Resend to all pending (${page.total})`}
                 </Button>
               ) : null}
               <Button size="sm" variant="outline" onClick={refresh} disabled={loading}>
@@ -653,9 +745,12 @@ export default function UsersPage() {
                             <Badge variant="default">{roleLabel(row.role)}</Badge>
                           </td>
                           <td className="px-5 py-3">
-                            <Badge variant={row.isActive ? 'active' : 'inactive'}>
-                              {row.isActive ? 'Active' : 'Inactive'}
+                            <Badge variant={row.activationPending ? 'pending' : row.isActive ? 'active' : 'inactive'}>
+                              {userStatusLabel(row)}
                             </Badge>
+                            {activationMailLabel(row) ? (
+                              <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">{activationMailLabel(row)}</p>
+                            ) : null}
                           </td>
                           <td className="px-5 py-3 text-right">
                             <UserRowActions
@@ -666,6 +761,7 @@ export default function UsersPage() {
                               onChangeRole={setRoleTarget}
                               onResetPassword={openResetPassword}
                               onToggleStatus={toggleStatus}
+                              onResendActivation={(target) => void handleResendActivation(target)}
                             />
                           </td>
                         </tr>
@@ -683,10 +779,13 @@ export default function UsersPage() {
                         </p>
                         <div className="flex shrink-0 flex-wrap gap-1.5">
                           <Badge variant="default">{roleLabel(row.role)}</Badge>
-                          <Badge variant={row.isActive ? 'active' : 'inactive'}>
-                            {row.isActive ? 'Active' : 'Inactive'}
+                          <Badge variant={row.activationPending ? 'pending' : row.isActive ? 'active' : 'inactive'}>
+                            {userStatusLabel(row)}
                           </Badge>
                         </div>
+                        {activationMailLabel(row) ? (
+                          <p className="basis-full text-[11px] text-zinc-500 dark:text-zinc-400">{activationMailLabel(row)}</p>
+                        ) : null}
                       </div>
                       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                         {tab === 'student' ? (
@@ -730,6 +829,7 @@ export default function UsersPage() {
                         onChangeRole={setRoleTarget}
                         onResetPassword={openResetPassword}
                         onToggleStatus={toggleStatus}
+                        onResendActivation={(target) => void handleResendActivation(target)}
                       />
                     </div>
                   ))}
@@ -778,7 +878,7 @@ export default function UsersPage() {
               <Input id="teacher-name" value={teacherForm.fullName} onChange={(e) => setTeacherForm((form) => ({ ...form, fullName: e.target.value }))} minLength={2} required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="teacher-email">PUP email</Label>
+              <Label htmlFor="teacher-email">Institutional email</Label>
               <Input id="teacher-email" type="email" value={teacherForm.email} onChange={(e) => setTeacherForm((form) => ({ ...form, email: e.target.value }))} required />
             </div>
             <div className="space-y-2">
@@ -815,7 +915,7 @@ export default function UsersPage() {
               <Input id="student-number" value={studentForm.studentId} onChange={(e) => setStudentForm((form) => ({ ...form, studentId: e.target.value.toUpperCase() }))} pattern="[0-9]{4}-[0-9]{5}-[A-Z]{2}-[0-9]" placeholder="2024-00001-MN-0" required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="student-email">PUP email (optional)</Label>
+              <Label htmlFor="student-email">Institutional email (optional)</Label>
               <Input id="student-email" type="email" value={studentForm.email} onChange={(e) => setStudentForm((form) => ({ ...form, email: e.target.value }))} />
             </div>
             <div className="space-y-2">
@@ -827,8 +927,8 @@ export default function UsersPage() {
               <Input id="student-year" type="number" min={1} max={8} value={studentForm.yearLevel} onChange={(e) => setStudentForm((form) => ({ ...form, yearLevel: e.target.value }))} required />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="student-department">Department</Label>
-              <Input id="student-department" value={studentForm.department} onChange={(e) => setStudentForm((form) => ({ ...form, department: e.target.value }))} minLength={2} required />
+              <Label htmlFor="student-department">Department (optional)</Label>
+              <Input id="student-department" value={studentForm.department} onChange={(e) => setStudentForm((form) => ({ ...form, department: e.target.value }))} minLength={2} placeholder="Defaults to the course code" />
             </div>
             <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 sm:col-span-2 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
               Share the generated temporary password in person. The student must change it on first sign-in.

@@ -7,7 +7,7 @@ import { BookOpen, GraduationCap, MapPin, CalendarDays, Plus, X } from 'lucide-r
 import { api, requestUserLogout } from '@/lib/api-client'
 import { describeMutationError, useRunMutation } from '@/lib/run-mutation'
 import { ErrorDisplay } from '@/lib/hooks'
-import { pupCourseName, pupCoursesByDepartment } from '@polycheck/shared'
+import { CAMPUS_COURSES, campusCourseName } from '@polycheck/shared'
 import type { User, Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -24,7 +24,6 @@ const SEMESTERS = [
 
 /** Sentinel option that swaps the catalog select for a free-text course code. */
 const CUSTOM_COURSE_OPTION = '__custom__'
-const COURSE_GROUPS = pupCoursesByDepartment()
 const SELECT_CLASS =
   'flex h-10 w-full rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon/30 focus-visible:border-maroon'
 
@@ -52,6 +51,8 @@ function CreateSectionForm() {
   const [room, setRoom] = useState('')
   const [courseSelection, setCourseSelection] = useState('')
   const [customCourse, setCustomCourse] = useState('')
+  // Continue straight into the class-list import once the section exists.
+  const [importRoster, setImportRoster] = useState(false)
   const [semester, setSemester] = useState(`1st Semester AY ${getCurrentAY()}`)
   const [schedule, setSchedule] = useState<ScheduleEntry[]>([])
   const [currentDay, setCurrentDay] = useState('Mon')
@@ -102,7 +103,7 @@ function CreateSectionForm() {
 
   if (loadError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black p-6">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-brand-black p-6">
         <Card className="w-full max-w-md">
           <CardContent className="p-8">
             <ErrorDisplay message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
@@ -116,7 +117,7 @@ function CreateSectionForm() {
 
   const isCustomCourse = courseSelection === CUSTOM_COURSE_OPTION
   const resolvedCourse = (isCustomCourse ? customCourse : courseSelection).trim()
-  const selectedCourseName = pupCourseName(resolvedCourse)
+  const selectedCourseName = campusCourseName(resolvedCourse)
 
   const handleAddSchedule = () => {
     if (!currentDay || !currentStartTime || !currentEndTime) return
@@ -161,8 +162,13 @@ function CreateSectionForm() {
         onError: (error) => {
           setFormError(describeMutationError(error, 'Unable to create the section. Please check the details.'))
         },
-        onSuccess: () => {
-          router.push('/faculty/subjects/' + subject.id)
+        onSuccess: (created) => {
+          // Optionally continue straight into the class-list import for the new section.
+          router.push(
+            importRoster && created?.id
+              ? `/faculty/sections/${created.id}?importRoster=1`
+              : '/faculty/subjects/' + subject.id,
+          )
         },
       },
     )
@@ -175,7 +181,7 @@ function CreateSectionForm() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
       <Sidebar
         user={user}
         onLogout={handleLogout}
@@ -227,14 +233,10 @@ function CreateSectionForm() {
                     required
                   >
                     <option value="">Select a course...</option>
-                    {COURSE_GROUPS.map((group) => (
-                      <optgroup key={group.department} label={group.department}>
-                        {group.courses.map((course) => (
-                          <option key={course.code} value={course.code}>
-                            {course.code} — {course.name}
-                          </option>
-                        ))}
-                      </optgroup>
+                    {CAMPUS_COURSES.map((course) => (
+                      <option key={course.code} value={course.code}>
+                        {course.code} — {course.name}
+                      </option>
                     ))}
                     <option value={CUSTOM_COURSE_OPTION}>Other — specify manually</option>
                   </select>
@@ -252,7 +254,8 @@ function CreateSectionForm() {
                       required
                     />
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                      Stored exactly as typed (trimmed), up to 30 characters.
+                      Stored exactly as typed (trimmed), up to 30 characters. Course heads cannot be
+                      assigned to a course that is not in the list above.
                     </p>
                   </div>
                 ) : courseSelection ? (
@@ -397,6 +400,22 @@ function CreateSectionForm() {
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
               A secure enrollment code will be generated by the server and shown on the new section page.
             </p>
+
+            <label className="flex items-start gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 accent-maroon"
+                checked={importRoster}
+                onChange={(event) => setImportRoster(event.target.checked)}
+              />
+              <span>
+                Import the class list next
+                <span className="block text-xs text-zinc-500 dark:text-zinc-400">
+                  Upload the master list (Excel or CSV) for this section right after it is created. Students need an
+                  account first — the registrar imports those.
+                </span>
+              </span>
+            </label>
 
             {formError ? (
               <div role="alert" className="border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/30 dark:text-red-300">

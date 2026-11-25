@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session } from '@polycheck/shared'
 
@@ -13,6 +13,7 @@ const apiMock = vi.hoisted(() => ({
   endSession: vi.fn(),
   updateAttendanceStatus: vi.fn(),
   addAttendanceRecord: vi.fn(),
+  deleteProofOfClass: vi.fn(),
   getStudent: vi.fn(),
   logout: vi.fn(),
 }))
@@ -47,6 +48,10 @@ vi.mock('@/components/CampusMap', () => ({ default: () => <div>Campus map</div> 
 vi.mock('@/lib/notifications', () => ({ useNotifications: () => ({ addNotification: addNotificationMock }) }))
 vi.mock('@/lib/realtime', () => ({ subscribeToSession: subscribeMock }))
 vi.mock('qrcode', () => ({ default: { toDataURL: qrMock } }))
+// WEB-03: the countdown reads the `/health`-corrected clock. The harness pins
+// the device/corrected pair so a fake-timer run is deterministic.
+const trustedNowMock = vi.hoisted(() => ({ nowMs: 0, offsetMs: null as number | null }))
+vi.mock('@/lib/hooks/use-trusted-now', () => ({ useTrustedNow: () => trustedNowMock }))
 
 import SessionDetailPage from './page'
 
@@ -91,9 +96,12 @@ describe('faculty session cockpit', () => {
     apiMock.updateAttendanceStatus.mockResolvedValue({ id: 'rec-1', status: 'present' })
     apiMock.addAttendanceRecord.mockResolvedValue({ id: 'rec-1', status: 'present' })
     apiMock.getStudent.mockResolvedValue(null)
+    apiMock.deleteProofOfClass.mockResolvedValue(true)
     qrMock.mockResolvedValue('data:image/png;base64,qr')
     routerMock.push.mockReset()
     subscribeMock.mockClear()
+    trustedNowMock.nowMs = Date.parse('2026-08-06T08:00:00.000Z')
+    trustedNowMock.offsetMs = null
   })
 
   afterEach(() => {
@@ -324,5 +332,117 @@ describe('faculty session cockpit', () => {
         manuallySet: true,
       }),
     )
+  })
+
+  // ── WEB-03: the QR countdown uses the `/health`-corrected clock ──────────
+
+  it('shows the remaining window from the corrected clock, not the device clock', async () => {
+    // Device clock reads 4 h ahead; a token that expires 2 min (server time)
+    // from now must still show a live countdown, not "Grace ended".
+    const deviceNow = Date.parse('2026-08-06T12:00:00.000Z')
+    const offsetMs = -4 * 60 * 60_000
+    trustedNowMock.nowMs = deviceNow
+    trustedNowMock.offsetMs = offsetMs
+    const serverNow = deviceNow + offsetMs
+    apiMock.getSession.mockResolvedValue({
+      ...session,
+      isActive: true,
+      qrGeneratedAt: new Date(serverNow - 60_000).toISOString(),
+      qrTokenExpiresAt: new Date(serverNow + 2 * 60_000).toISOString(),
+    })
+
+    render(<SessionDetailPage />)
+
+    expect(await screen.findByText(/Expires in: 02:00/)).toBeInTheDocument()
+    expect(screen.queryByText(/Grace ended/)).not.toBeInTheDocument()
+  })
+
+  it('reports the grace window once the corrected clock passes expiry', async () => {
+    const deviceNow = Date.parse('2026-08-06T04:00:00.000Z')
+    const offsetMs = 4 * 60 * 60_000
+    trustedNowMock.nowMs = deviceNow
+    trustedNowMock.offsetMs = offsetMs
+    const serverNow = deviceNow + offsetMs
+    apiMock.getSession.mockResolvedValue({
+      ...session,
+      isActive: true,
+      qrGeneratedAt: new Date(serverNow - 12 * 60_000).toISOString(),
+      qrTokenExpiresAt: new Date(serverNow - 2 * 60_000).toISOString(),
+    })
+
+    render(<SessionDetailPage />)
+
+    expect(await screen.findByText(/Grace: 13:/)).toBeInTheDocument()
+  })
+
+  // ── WEB-07: proof deletion is confirmed, deduped, and surfaces failures ──
+
+  const proof = {
+    id: 'proof-1',
+    sectionId: 'section-1',
+    sessionId: 'session-1',
+    uploadedBy: 'student-1',
+    uploadedByStudentName: 'Alexandra Marie Reyes',
+    photoData: 'data:image/png;base64,proof',
+    uploadedAt: '2026-08-06T08:30:00.000Z',
+  }
+
+  it('deletes a proof only after the destructive confirmation', async () => {
+    apiMock.getProofsOfClass.mockResolvedValue([proof])
+    apiMock.deleteProofOfClass = vi.fn().mockResolvedValue(true)
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    render(<SessionDetailPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /^Delete$/ }))
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Delete the proof-of-class photo from Alexandra Marie Reyes'),
+    )
+    expect(apiMock.deleteProofOfClass).not.toHaveBeenCalled()
+  })
+
+  it('deletes a proof once on a double click and refreshes the list', async () => {
+    apiMock.getProofsOfClass.mockResolvedValue([proof])
+    const gate = Promise.withResolvers<boolean>()
+    const deleteMock = vi.fn(() => gate.promise)
+    apiMock.deleteProofOfClass = deleteMock
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    render(<SessionDetailPage />)
+    const deleteButton = await screen.findByRole('button', { name: /^Delete$/ })
+    fireEvent.click(deleteButton)
+    fireEvent.click(deleteButton)
+
+    expect(deleteMock).toHaveBeenCalledTimes(1)
+    expect(deleteMock).toHaveBeenCalledWith('proof-1')
+
+    await act(async () => {
+      gate.resolve(true)
+      await Promise.resolve()
+    })
+    // The list is refetched from the server after the delete resolves.
+    expect(apiMock.getProofsOfClass).toHaveBeenCalledTimes(2)
+  })
+
+  it('surfaces a proof-delete failure as a notification and keeps the photo', async () => {
+    apiMock.getProofsOfClass.mockResolvedValue([proof])
+    apiMock.deleteProofOfClass = vi.fn().mockRejectedValue(new Error('Proof storage unavailable'))
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    render(<SessionDetailPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /^Delete$/ }))
+
+    // `useNotifications` is mocked to a spy in this harness, so assert the
+    // exact emitted notification instead of rendered toast text.
+    await waitFor(() =>
+      expect(addNotificationMock).toHaveBeenCalledWith(
+        'error',
+        'Could not delete proof',
+        'Proof storage unavailable',
+      ),
+    )
+    // The failed delete must not drop the proof from the visible list.
+    expect(screen.getByText('Alexandra Marie Reyes')).toBeInTheDocument()
+    expect(apiMock.getProofsOfClass).toHaveBeenCalledTimes(1)
   })
 })

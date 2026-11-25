@@ -38,7 +38,9 @@ const teacher: User = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 }
 
-function dispute(overrides: Partial<AttendanceRecord>): AttendanceRecord {
+function dispute(
+  overrides: Partial<AttendanceRecord> & { disputePreviousStatus?: AttendanceRecord['status'] | null },
+): AttendanceRecord {
   return {
     id: 'rec-1',
     sessionId: 'sess-1',
@@ -93,7 +95,9 @@ describe('Disputes page', () => {
     await expandGroups()
 
     expect(await screen.findByText('Missing Scan Evidence')).toBeInTheDocument()
-    expect(screen.getByText('Unknown')).toBeInTheDocument()
+    // ING-07 re-pin: an unknown wire value used to render the bare word
+    // "Unknown"; it now renders a humanized label. (Never crashes either way.)
+    expect(screen.getByText('Quantum Anomaly')).toBeInTheDocument()
     expect(screen.getByText('Ada Student')).toBeInTheDocument()
     expect(screen.getByText('Grace Future')).toBeInTheDocument()
   })
@@ -139,5 +143,98 @@ describe('Disputes page', () => {
     expect(await screen.findByText('Could not resolve dispute')).toBeInTheDocument()
     expect(screen.getByText('Dispute already resolved')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Accept — Keep as Present/ })).toBeEnabled()
+  })
+
+  // ── WEB-04: the Resolved tab reads the same fetch ────────────────────────
+
+  it('fetches both buckets so a resolved dispute appears in Resolved History', async () => {
+    apiMock.getDisputedRecords.mockResolvedValue([
+      dispute({ id: 'rec-1', studentName: 'Ada Student' }),
+      dispute({
+        id: 'rec-old',
+        studentName: 'Rita Settled',
+        disputeResolved: true,
+        status: 'present',
+        timestamp: '2026-11-09T08:00:00.000Z',
+      }),
+    ])
+
+    renderPage()
+    await expandGroups()
+
+    expect(apiMock.getDisputedRecords).toHaveBeenCalledWith(undefined, { status: 'all' })
+
+    // Header counts include the resolved record.
+    expect(await screen.findByText('1 pending, 1 resolved')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pending Disputes (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Resolved History (1)' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resolved History (1)' }))
+    await expandGroups()
+    expect(screen.getByText('Rita Settled')).toBeInTheDocument()
+    expect(screen.queryByText('Ada Student')).not.toBeInTheDocument()
+  })
+
+  // ── WEB-08: reject restores the authoritative pre-dispute status ─────────
+
+  it('reject patches state from the server response (late, not absent) and copies it', async () => {
+    const pending = dispute({
+      id: 'rec-late',
+      studentName: 'Late Larry',
+      timestamp: '2026-11-10T08:10:00.000Z',
+      disputePreviousStatus: 'late',
+    })
+    apiMock.getDisputedRecords.mockResolvedValue([pending])
+    apiMock.resolveDispute.mockResolvedValue({
+      ...pending,
+      status: 'late',
+      disputeResolved: true,
+    })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    renderPage()
+    await expandGroups()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Review dispute from Late Larry/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Reject — Mark as Absent/ }))
+
+    // The confirmation describes the restored status, not a hardcoded Absent.
+    expect(confirmSpy).toHaveBeenCalledWith(
+      expect.stringContaining('restore their status to Late'),
+    )
+    expect(apiMock.resolveDispute).toHaveBeenCalledWith('rec-late', 'reject', undefined)
+
+    // The toast derives from the authoritative returned status.
+    expect(await screen.findByText(/rejected as Late/)).toBeInTheDocument()
+
+    // The row moved to Resolved History showing `late` (not absent).
+    expect(await screen.findByRole('button', { name: 'Resolved History (1)' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Resolved History (1)' }))
+    await expandGroups()
+    fireEvent.click(screen.getByRole('button', { name: /View dispute from Late Larry/ }))
+    expect(await screen.findByText('RESOLVED AS LATE')).toBeInTheDocument()
+    confirmSpy.mockRestore()
+  })
+
+  it('reject falls back to absent for a legacy row without a stamped previous status', async () => {
+    const pending = dispute({ id: 'rec-legacy', studentName: 'Old Timer' })
+    apiMock.getDisputedRecords.mockResolvedValue([pending])
+    apiMock.resolveDispute.mockResolvedValue({
+      ...pending,
+      status: 'absent',
+      disputeResolved: true,
+    })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    renderPage()
+    await expandGroups()
+    fireEvent.click(await screen.findByRole('button', { name: /Review dispute from Old Timer/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Reject — Mark as Absent/ }))
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      expect.stringContaining('restore their status to Absent'),
+    )
+    expect(await screen.findByText(/rejected as Absent/)).toBeInTheDocument()
+    confirmSpy.mockRestore()
   })
 })

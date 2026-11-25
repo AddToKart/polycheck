@@ -79,6 +79,15 @@ class BulkSlotRow extends SessionSlot {
 /// Select value that means "the chosen date is not a scheduled class day".
 const String customSlotValue = 'custom';
 
+/// Backend `TIME_OF_DAY` (`backend/src/sessions/dto/create-session.dto.ts`):
+/// `([01]\d|2[0-3]):[0-5]\d`. Any looser client pattern lets `99:99` through to
+/// a 400 (FLF-06).
+final RegExp campusTimePattern = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
+
+/// True when [value] is a 24-hour `HH:mm` inside the backend's accepted range.
+bool isValidCampusTime(String value) =>
+    campusTimePattern.hasMatch(value.trim());
+
 const List<String> _dayNames = [
   'Sun',
   'Mon',
@@ -231,12 +240,13 @@ int countSlotOccurrences(
   return count;
 }
 
-/// First selected row whose end time is not after its start time.
+/// First selected row whose end time is not after its start time, or whose
+/// clock is outside the backend `HH:mm` range.
 BulkSlotRow? firstInvalidSlotRow(List<BulkSlotRow> rows) {
   for (final row in rows) {
     if (!row.selected) continue;
-    if (row.startTime.isEmpty ||
-        row.endTime.isEmpty ||
+    if (!isValidCampusTime(row.startTime) ||
+        !isValidCampusTime(row.endTime) ||
         row.endTime.compareTo(row.startTime) <= 0) {
       return row;
     }

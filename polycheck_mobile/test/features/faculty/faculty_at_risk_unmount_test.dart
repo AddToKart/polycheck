@@ -86,7 +86,7 @@ void main() {
           docsApiProvider.overrideWithValue(docs),
         ],
         child: MaterialApp(
-          theme: PupTheme.light,
+          theme: BrandTheme.light,
           home: const FacultyAtRiskScreen(),
         ),
       ),

@@ -1,5 +1,5 @@
 /**
- * Deterministic load-test topology (PUP CCIS attendance, local disposable stack).
+ * Deterministic load-test topology (CCIS attendance, local disposable stack).
  *
  * Mandated shape:
  *   - 2000 students split over 34 sections: 33 sections x 60 students + 1 x 20.
@@ -78,7 +78,7 @@ export function buildTopology({ runId, studentCount = TOPOLOGY.studentCount }) {
     return {
       index,
       tag,
-      email: `load.${slugify(runId, 40, 'run')}.${tag.toLowerCase()}@pup.edu.ph`,
+      email: `load.${slugify(runId, 40, 'run')}.${tag.toLowerCase()}@example.edu.ph`,
       fullName: `Load Professor ${runId} ${tag}`.slice(0, 150),
       password: buildPassword({ runId, tag }),
       department: 'CCIS',

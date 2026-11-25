@@ -35,6 +35,8 @@ interface BetterAuthRuntime {
         isItCoordinator: boolean
         isDepartmentHead: boolean
         isUserRegistrar: boolean
+        managedCourses: string[]
+        managesAllCourses: boolean
       }
     } | null>
   }
@@ -139,6 +141,8 @@ export class BetterAuthService implements OnModuleInit {
           isItCoordinator: { type: 'boolean', input: false, returned: true },
           isDepartmentHead: { type: 'boolean', input: false, returned: true },
           isUserRegistrar: { type: 'boolean', input: false, returned: true },
+          managedCourses: { type: 'string[]', input: false, returned: true },
+          managesAllCourses: { type: 'boolean', input: false, returned: true },
         },
       },
       account: { modelName: 'AuthAccount' },

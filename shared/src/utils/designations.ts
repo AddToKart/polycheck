@@ -3,7 +3,7 @@ import type { UserRole } from '../types/user'
 /**
  * Pure administrative-designation helpers shared by web, mobile, and backend.
  *
- * PUP Santa Maria "dual-hat" model: teachers keep their classroom identity and
+ * Campus "dual-hat" model: teachers keep their classroom identity and
  * may additionally hold one or more administrative designations. Super admins
  * implicitly hold every suite, so the helpers always short-circuit on
  * `role === 'super_admin'` without requiring flags on the account.
@@ -25,14 +25,14 @@ export const DESIGNATION_FLAGS = {
 
 export const DESIGNATION_LABELS: Record<FacultyDesignation, string> = {
   it_operations: 'IT Coordinator',
-  academic_oversight: 'Department Head',
+  academic_oversight: 'Course Head',
   user_admin: 'Registrar',
 }
 
 export const DESIGNATION_DESCRIPTIONS: Record<FacultyDesignation, string> = {
   it_operations: 'Server status, issue triage, and maintenance controls.',
-  academic_oversight: 'Department-wide reports, excuses, and at-risk oversight.',
-  user_admin: 'Department-scoped account creation, resets, and roster imports.',
+  academic_oversight: 'Course-wide reports, excuses, and at-risk oversight.',
+  user_admin: 'Campus-wide or course-scoped account creation, resets, and roster imports.',
 }
 
 export interface DesignationCarrier {
@@ -41,6 +41,8 @@ export interface DesignationCarrier {
   isItCoordinator?: boolean
   isDepartmentHead?: boolean
   isUserRegistrar?: boolean
+  managedCourses?: readonly string[] | null
+  managesAllCourses?: boolean | null
 }
 
 type DesignationFlag = (typeof DESIGNATION_FLAGS)[FacultyDesignation]

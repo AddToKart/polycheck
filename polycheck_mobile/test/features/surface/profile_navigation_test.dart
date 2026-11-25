@@ -9,7 +9,7 @@ import 'package:polycheck_mobile/src/core/api/api_providers.dart';
 import 'package:polycheck_mobile/src/core/models/ai.dart';
 import 'package:polycheck_mobile/src/core/models/user.dart';
 import 'package:polycheck_mobile/src/core/providers/session_provider.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/core/widgets/campus_button.dart';
 import 'package:polycheck_mobile/src/features/surface/data/notification_inbox_controller.dart';
 import 'package:polycheck_mobile/src/features/surface/data/surface_paths.dart';
@@ -90,7 +90,7 @@ Future<GoRouter> _pumpProfileApp(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp.router(theme: PupTheme.light, routerConfig: router),
+      child: MaterialApp.router(theme: BrandTheme.light, routerConfig: router),
     ),
   );
   await tester.pumpAndSettle();

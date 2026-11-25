@@ -18,7 +18,7 @@ import AuditLogsPage from './page'
 const admin: User = {
   id: 'admin-1',
   fullName: 'Super Admin',
-  email: 'admin@pup.edu.ph',
+  email: 'admin@example.edu.ph',
   role: 'super_admin',
   isActive: true,
   createdAt: '2026-01-01T00:00:00.000Z',

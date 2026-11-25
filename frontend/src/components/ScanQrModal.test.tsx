@@ -854,4 +854,89 @@ describe("ScanQrModal", () => {
       );
     });
   });
+
+  // ── WEB-10: PIN phase only for PIN-classified failures ────────────────────
+
+  function pinProtectedToken() {
+    (decodeTokenPayload as any).mockReturnValue({
+      sessionId: "sess-1",
+      sectionId: "sec-1",
+      teacherId: "teacher-1",
+      issuedAt: Date.now() - 5000,
+      validityMinutes: 2,
+      gracePeriodMinutes: 10,
+      validitySeconds: 90,
+      mode: "online",
+      checkpoint: "start",
+      pinRequired: true,
+      pinHash: "pin-hash",
+    });
+  }
+
+  async function submitPinToken(pinOverride?: string) {
+    await act(async () => {
+      render(<ScanQrModal user={mockUser} onClose={vi.fn()} />);
+    });
+    switchToManualMode();
+    const input = screen.getByPlaceholderText(/paste or type.*token/i);
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "online-token" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /check in/i }));
+    });
+    if (pinOverride !== undefined) {
+      const pinInput = screen.getByTestId("scan-pin-input");
+      await act(async () => {
+        fireEvent.change(pinInput, { target: { value: pinOverride } });
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /verify/i }));
+      });
+    }
+  }
+
+  it("returns to the PIN form for an incorrect meeting PIN", async () => {
+    pinProtectedToken();
+    (api.submitScan as any).mockResolvedValue({
+      error: "The meeting PIN is incorrect",
+    });
+
+    await submitPinToken("11");
+
+    await waitFor(() => {
+      expect(screen.getByText("Enter Meeting PIN")).toBeTruthy();
+    });
+    expect(screen.getByText(/meeting PIN is incorrect/i)).toBeTruthy();
+  });
+
+  it("shows the error phase for a PIN-protected token that expired", async () => {
+    pinProtectedToken();
+    (api.submitScan as any).mockResolvedValue({
+      error: "The QR attendance window has expired",
+    });
+
+    await submitPinToken("22");
+
+    await waitFor(() => {
+      expect(screen.getByText(/attendance window has expired/i)).toBeTruthy();
+    });
+    // The PIN form must not be offered: a PIN cannot reopen an expired window.
+    expect(screen.queryByText("Enter Meeting PIN")).toBeNull();
+    expect(screen.queryByTestId("scan-pin-input")).toBeNull();
+  });
+
+  it("shows the error phase for a PIN-protected token whose check-in duplicate", async () => {
+    pinProtectedToken();
+    (api.submitScan as any).mockResolvedValue({
+      error: "Attendance was already submitted for this session",
+    });
+
+    await submitPinToken("33");
+
+    await waitFor(() => {
+      expect(screen.getByText(/already submitted/i)).toBeTruthy();
+    });
+    expect(screen.queryByText("Enter Meeting PIN")).toBeNull();
+  });
 });

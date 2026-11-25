@@ -3,8 +3,10 @@
 import { useRouter } from 'next/navigation'
 import { GraduationCap, BookOpen, ArrowRight } from 'lucide-react'
 import { useLanding } from './layout'
+import { useBranding } from '@/components/branding/BrandingProvider'
 
 export default function HomePage() {
+  const branding = useBranding()
   const router = useRouter()
   const { hoveredIndex, setHoveredIndex, exitingRoute, setExitingRoute } = useLanding()
 
@@ -107,7 +109,7 @@ export default function HomePage() {
 
       <div className="mt-4 sm:mt-8 md:mt-12 text-center md:text-left animate-fade-in-up delay-300">
         <p className="text-[10px] font-sans font-bold uppercase tracking-[0.25em] text-zinc-400/75 dark:text-zinc-500/75 leading-relaxed">
-          Polytechnic University of the Philippines &bull; Attendance System
+          {branding.name} &bull; Attendance System
         </p>
       </div>
       

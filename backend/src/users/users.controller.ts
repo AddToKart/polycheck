@@ -26,8 +26,8 @@ export class UsersController {
   @Roles('teacher', 'super_admin')
   @RequireDesignation('user_admin')
   findAll(@Request() req: AuthenticatedRequest, @Query() query: AdminUserQueryDto) {
-    const { limit, offset, role, q, department, status } = query
-    return this.users.findAll(req.user, { role, q, department, status }, parsePagination(limit, offset))
+    const { limit, offset, role, q, department, status, activation } = query
+    return this.users.findAll(req.user, { role, q, department, status, activation }, parsePagination(limit, offset))
   }
 
   @Get('teachers')
@@ -59,6 +59,29 @@ export class UsersController {
   @RequireDesignation('user_admin')
   importJobStatus(@Param('id') jobId: string, @Request() req: AuthenticatedRequest) {
     return this.importQueue.status(req.user, jobId)
+  }
+
+  /** Whether email activation can be used right now (setting on + mail provider configured). */
+  @Get('activation/status')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('user_admin')
+  activationStatus() {
+    return this.users.activationStatus()
+  }
+
+  /** Queue a fresh activation email for every pending student in the caller's scope. */
+  @Post('activation/resend-pending')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('user_admin')
+  resendPendingActivation(@Request() req: AuthenticatedRequest) {
+    return this.users.resendPendingActivation(req.user)
+  }
+
+  @Post(':id/activation/resend')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('user_admin')
+  resendActivation(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+    return this.users.resendActivation(id, req.user)
   }
 
   @Get(':id')

@@ -1,9 +1,12 @@
 import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:polycheck_mobile/src/core/api/session_api.dart';
 import 'package:polycheck_mobile/src/core/models/session.dart';
 import 'package:polycheck_mobile/src/core/models/user.dart';
+import 'package:polycheck_mobile/src/core/network/api_error.dart';
 import 'package:polycheck_mobile/src/core/utils/pin_hash.dart';
 import 'package:polycheck_mobile/src/core/utils/token_crypto.dart';
 import 'package:polycheck_mobile/src/features/faculty/data/teacher_signing_key.dart';
@@ -39,6 +42,24 @@ const _teacher = User(
   role: UserRole.teacher,
 );
 
+/// Records uploads so the provisioner's skip/upload decision is observable
+/// without a network stack.
+class _RecordingProvisionApi extends SessionApi {
+  _RecordingProvisionApi({this.failure}) : super(Dio());
+
+  final ApiRequestError? failure;
+  final List<String> uploaded = <String>[];
+
+  int get uploads => uploaded.length;
+
+  @override
+  Future<void> provisionKey(String publicKey) async {
+    final thrown = failure;
+    if (thrown != null) throw thrown;
+    uploaded.add(publicKey);
+  }
+}
+
 void main() {
   group('secure storage contract', () {
     test('sanitizes account ids and mirrors the RN SecureStore keys', () {
@@ -46,14 +67,16 @@ void main() {
         TeacherSigningKeyService.sanitizeAccount('teacher/1 a'),
         'teacher_1_a',
       );
-      final keys = TeacherSigningKeyService.storageKeys('prof.cruz@pup.edu.ph');
+      final keys = TeacherSigningKeyService.storageKeys(
+        'prof.cruz@example.edu.ph',
+      );
       expect(
         keys.secret,
-        'polycheck.teacher-signing-secret.prof.cruz_pup.edu.ph',
+        'polycheck.teacher-signing-secret.prof.cruz_example.edu.ph',
       );
       expect(
         keys.public,
-        'polycheck.teacher-signing-public.prof.cruz_pup.edu.ph',
+        'polycheck.teacher-signing-public.prof.cruz_example.edu.ph',
       );
       expect(
         () => TeacherSigningKeyService.storageKeys(''),
@@ -285,6 +308,136 @@ void main() {
           validitySeconds: 301,
         ),
         throwsArgumentError,
+      );
+    });
+  });
+
+  group('TeacherKeyProvisioner (FLR-07)', () {
+    Session sessionWithKey(String? publicKey) => Session(
+      id: 'sess-1',
+      sectionId: 'sec-1',
+      subjectName: 'Software Engineering',
+      date: '2026-11-13',
+      startTime: '09:00',
+      endTime: '10:30',
+      teacherId: 'teacher-1',
+      teacherPublicKey: publicKey,
+    );
+
+    test('skips the upload when the session already carries the key', () async {
+      final api = _RecordingProvisionApi();
+      final provisioner = TeacherKeyProvisioner(api);
+      const key = TeacherSigningKey(publicKey: 'pub-A', secretKey: 'seed');
+
+      await provisioner.ensure(
+        user: _teacher,
+        session: sessionWithKey('pub-A'),
+        key: key,
+      );
+      await provisioner.ensure(
+        user: _teacher,
+        session: sessionWithKey('pub-A'),
+        key: key,
+      );
+
+      expect(api.uploads, 0);
+    });
+
+    test(
+      'uploads when the session carries a different key (rotation)',
+      () async {
+        final api = _RecordingProvisionApi();
+        final provisioner = TeacherKeyProvisioner(api);
+        const key = TeacherSigningKey(publicKey: 'pub-B', secretKey: 'seed');
+
+        await provisioner.ensure(
+          user: _teacher,
+          session: sessionWithKey('pub-A'),
+          key: key,
+        );
+
+        expect(api.uploaded, <String>['pub-B']);
+      },
+    );
+
+    test('a revoked server key re-uploads without a process restart', () async {
+      final api = _RecordingProvisionApi();
+      final provisioner = TeacherKeyProvisioner(api);
+      const key = TeacherSigningKey(publicKey: 'pub-A', secretKey: 'seed');
+
+      // First activation: the server already has the key.
+      await provisioner.ensure(
+        user: _teacher,
+        session: sessionWithKey('pub-A'),
+        key: key,
+      );
+      expect(api.uploads, 0);
+
+      // POST /auth/revoke-key nulls the server key. The old process-static
+      // set still claimed "provisioned", so nothing was re-uploaded and
+      // every scan failed verification until an app restart.
+      await provisioner.ensure(
+        user: _teacher,
+        session: sessionWithKey(null),
+        key: key,
+      );
+      expect(api.uploaded, <String>['pub-A']);
+    });
+
+    test('force always uploads even with a matching key', () async {
+      final api = _RecordingProvisionApi();
+      final provisioner = TeacherKeyProvisioner(api);
+      const key = TeacherSigningKey(publicKey: 'pub-A', secretKey: 'seed');
+
+      await provisioner.ensure(
+        user: _teacher,
+        session: sessionWithKey('pub-A'),
+        key: key,
+        force: true,
+      );
+
+      expect(api.uploaded, <String>['pub-A']);
+    });
+
+    test('an offline upload fails closed with a typed 4xx', () async {
+      final api = _RecordingProvisionApi(
+        failure: const ApiRequestError(message: 'unreachable', status: 0),
+      );
+      final provisioner = TeacherKeyProvisioner(api);
+
+      await expectLater(
+        provisioner.ensure(
+          user: _teacher,
+          session: sessionWithKey(null),
+          key: const TeacherSigningKey(publicKey: 'pub-A', secretKey: 'seed'),
+        ),
+        throwsA(
+          isA<ApiRequestError>()
+              .having((error) => error.status, 'status', 400)
+              .having(
+                (error) => error.isNetworkFailure,
+                'isNetworkFailure',
+                isFalse,
+              ),
+        ),
+      );
+    });
+
+    test('a non-network rejection propagates unchanged', () async {
+      final api = _RecordingProvisionApi(
+        failure: const ApiRequestError(message: 'rate limited', status: 429),
+      );
+      final provisioner = TeacherKeyProvisioner(api);
+
+      await expectLater(
+        provisioner.ensure(
+          user: _teacher,
+          session: sessionWithKey(null),
+          key: const TeacherSigningKey(publicKey: 'pub-A', secretKey: 'seed'),
+        ),
+        throwsA(
+          isA<ApiRequestError>().having((error) => error.status, 'status', 429),
+        ),
       );
     });
   });

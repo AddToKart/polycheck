@@ -18,6 +18,7 @@ import { ProofStorageService } from '../proofs/proof-storage.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import type { SystemReport, SystemReportStats } from '@polycheck/shared'
 import type { Prisma } from '../prisma/client'
+import { adminScope, adminUserWhere } from '../common/admin-scope'
 import { paginate, parsePagination, type PaginatedResult, type PaginationParams } from '../common/utils/pagination'
 import { parseIsoDate } from '../common/utils/iso-date'
 import { ErrorCode } from '../common/constants/error-codes'
@@ -137,15 +138,21 @@ export class ReportsService {
 
   async stats(actor: ReportAccessUser): Promise<SystemReportStats> {
     this.assertTriageAccess(actor)
+    // Department-scoped admins only count reports whose submitter is in their
+    // department (same join shape as the audit-log scope). IT coordinators are
+    // plain teachers, so this resolves to `{}` for them.
+    const scope = this.scopeWhere(actor)
     const monthStart = new Date()
     monthStart.setUTCDate(1)
     monthStart.setUTCHours(0, 0, 0, 0)
     const [total, statusRows, scannerAndGps, resolvedThisMonth, critical] = await Promise.all([
-      this.prisma.systemReport.count(),
-      this.prisma.systemReport.groupBy({ by: ['status'], _count: { _all: true } }),
-      this.prisma.systemReport.count({ where: { category: { in: ['scanner_camera', 'geofence_gps'] } } }),
-      this.prisma.systemReport.count({ where: { resolvedAt: { gte: monthStart } } }),
-      this.prisma.systemReport.count({ where: { severity: 'critical' } }),
+      this.prisma.systemReport.count({ where: scope }),
+      this.prisma.systemReport.groupBy({ by: ['status'], where: scope, _count: { _all: true } }),
+      this.prisma.systemReport.count({
+        where: { ...scope, category: { in: ['scanner_camera', 'geofence_gps'] } },
+      }),
+      this.prisma.systemReport.count({ where: { ...scope, resolvedAt: { gte: monthStart } } }),
+      this.prisma.systemReport.count({ where: { ...scope, severity: 'critical' } }),
     ])
     const byStatus = new Map(statusRows.map((row) => [row.status, row._count._all]))
     const statusCount = (status: 'open' | 'in_review' | 'resolved' | 'dismissed') => byStatus.get(status) ?? 0
@@ -164,7 +171,7 @@ export class ReportsService {
   async list(actor: ReportAccessUser, query: SystemReportQueryDto, pagination?: PaginationParams) {
     this.assertTriageAccess(actor)
     const params = pagination ?? parsePagination(query.limit, query.offset)
-    const where = this.buildWhere(query)
+    const where = this.buildWhere(query, actor)
     const [rows, total] = await Promise.all([
       this.prisma.systemReport.findMany({
         where,
@@ -186,6 +193,9 @@ export class ReportsService {
       include: { user: { select: REPORT_USER_SELECT } },
     })
     if (!row) throw new NotFoundException('Report not found')
+    // Out-of-department reports are indistinguishable from missing ones so a
+    // scoped admin cannot probe for other departments' report ids.
+    if (!this.coversSubmitter(actor, row.user.department)) throw new NotFoundException('Report not found')
     return this.present(row)
   }
 
@@ -193,10 +203,16 @@ export class ReportsService {
   async screenshot(actor: ReportAccessUser, id: string) {
     const row = await this.prisma.systemReport.findUnique({
       where: { id },
-      select: { userId: true, screenshotUrl: true },
+      select: { userId: true, screenshotUrl: true, user: { select: { department: true } } },
     })
     if (!row || !row.screenshotUrl) throw new NotFoundException('Screenshot not found')
-    if (!this.isTriageActor(actor) && actor.id !== row.userId) {
+    if (this.isTriageActor(actor)) {
+      // Department-scoped admins inherit the list scope; 404 (not 403) keeps
+      // other departments' attachments unenumerable.
+      if (!this.coversSubmitter(actor, row.user?.department ?? null)) {
+        throw new NotFoundException('Screenshot not found')
+      }
+    } else if (actor.id !== row.userId) {
       throw new ForbiddenException('You can only access your own report attachments')
     }
     return this.storage.read(row.screenshotUrl)
@@ -263,8 +279,36 @@ export class ReportsService {
 
   // ── internals ──
 
-  private buildWhere(query: SystemReportQueryDto): Prisma.SystemReportWhereInput {
+  /**
+   * Department scope for the triage reads. Institution super admins and IT
+   * coordinators are unrestricted; a department-scoped super admin only sees
+   * reports whose submitter belongs to their department (the same
+   * `adminUserWhere` join the audit log uses).
+   */
+  private scopeWhere(actor: ReportAccessUser): Prisma.SystemReportWhereInput {
+    if (actor.role !== 'super_admin') return {}
+    const userWhere = adminUserWhere(actor)
+    if (!userWhere) return {}
+    return { user: { is: userWhere } }
+  }
+
+  /** In-memory mirror of `scopeWhere` for single-row lookups. */
+  private coversSubmitter(actor: ReportAccessUser, submitterDepartment: string | null | undefined): boolean {
+    if (actor.role !== 'super_admin') return true
+    const scope = adminScope(actor)
+    if (scope.kind === 'unrestricted') return true
+    if (scope.kind === 'none') return false
+    const department = submitterDepartment?.trim()
+    if (!department) return false
+    return department.toLowerCase() === scope.department.trim().toLowerCase()
+  }
+
+  private buildWhere(query: SystemReportQueryDto, actor?: ReportAccessUser): Prisma.SystemReportWhereInput {
     const and: Prisma.SystemReportWhereInput[] = []
+    if (actor) {
+      const scope = this.scopeWhere(actor)
+      if (Object.keys(scope).length > 0) and.push(scope)
+    }
     if (query.category) and.push({ category: query.category })
     if (query.severity) and.push({ severity: query.severity })
     if (query.status) and.push({ status: query.status })

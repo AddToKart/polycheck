@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { pupColors } from '@/lib/colors'
+import { brandColors } from '@/lib/colors'
 
 /**
  * F1 projector kiosk — the countdown ring around the session QR.
@@ -49,7 +49,7 @@ export default function KioskQrRing({
 }: KioskQrRingProps) {
   const progress = totalMs === null || remainingMs === null ? 0 : qrRingProgress(remainingMs, totalMs)
   const dashOffset = qrRingDashOffset(remainingMs ?? 0, totalMs ?? 0)
-  const stroke = progress < 0.2 ? pupColors.maroon : pupColors.golden
+  const stroke = progress < 0.2 ? brandColors.maroon : brandColors.golden
 
   return (
     <figure
@@ -69,7 +69,7 @@ export default function KioskQrRing({
           cy="50"
           r={QR_RING_RADIUS}
           fill="none"
-          stroke={pupColors.white}
+          stroke={brandColors.white}
           strokeOpacity={0.35}
           strokeWidth={2.5}
         />
@@ -79,7 +79,7 @@ export default function KioskQrRing({
           cy="50"
           r={QR_RING_RADIUS}
           fill="none"
-          stroke={pupColors.maroonDark}
+          stroke={brandColors.maroonDark}
           strokeOpacity={0.9}
           strokeWidth={6}
         />

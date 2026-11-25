@@ -36,7 +36,7 @@ Future<void> _pumpScanner(
         offlineBannerProvider.overrideWith(banner),
       ],
       child: MaterialApp(
-        theme: PupTheme.light,
+        theme: BrandTheme.light,
         home: const StudentScanScreen(),
       ),
     ),

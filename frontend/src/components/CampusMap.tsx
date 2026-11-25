@@ -3,18 +3,18 @@
 import { useEffect, useId } from 'react'
 import { Map, useMap, MapMarker, MarkerContent, MarkerPopup } from '@/components/ui/map'
 import GeofenceCircle from '@/components/GeofenceCircle'
-import { pupSantaMaria, type CampusConfig } from '@polycheck/shared/map'
+import { defaultCampus, type CampusConfig } from '@polycheck/shared/map'
 import type { Session, AttendanceRecord, AttendanceStatus } from '@polycheck/shared'
 import { MapPin } from 'lucide-react'
-import { pupColors } from '@/lib/colors'
+import { brandColors } from '@/lib/colors'
 
 const STATUS_MARKER_COLORS: Record<string, string> = {
-  present: pupColors.present,
-  late: pupColors.golden,
-  absent: pupColors.absent,
-  excused: pupColors.goldenDark,
-  pending: pupColors.pending,
-  disputed: pupColors.disputed,
+  present: brandColors.present,
+  late: brandColors.golden,
+  absent: brandColors.absent,
+  excused: brandColors.goldenDark,
+  pending: brandColors.pending,
+  disputed: brandColors.disputed,
 }
 
 const STATUS_TEXT_CLASSES: Record<string, string> = {
@@ -64,7 +64,7 @@ function CampusBuildingsLayer({ campus }: { campus: CampusConfig }) {
       type: 'fill',
       source: polygonSourceId,
       paint: {
-        'fill-color': pupColors.maroon,
+        'fill-color': brandColors.maroon,
         'fill-opacity': 0.08,
       },
     })
@@ -75,7 +75,7 @@ function CampusBuildingsLayer({ campus }: { campus: CampusConfig }) {
       source: polygonSourceId,
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: {
-        'line-color': pupColors.maroon,
+        'line-color': brandColors.maroon,
         'line-width': 1.5,
         'line-opacity': 0.4,
       },
@@ -94,8 +94,8 @@ function CampusBuildingsLayer({ campus }: { campus: CampusConfig }) {
         'text-allow-overlap': false,
       },
       paint: {
-        'text-color': pupColors.maroon,
-        'text-halo-color': pupColors.white,
+        'text-color': brandColors.maroon,
+        'text-halo-color': brandColors.white,
         'text-halo-width': 2,
         'text-opacity': 0.85,
       },
@@ -208,7 +208,7 @@ export default function CampusMap({ session, records, isActive, refreshLabel }: 
           zoom={17}
           className="w-full h-full"
         >
-          <CampusBuildingsLayer campus={pupSantaMaria} />
+          <CampusBuildingsLayer campus={defaultCampus} />
           <GeofenceCircle
             latitude={geofence.latitude}
             longitude={geofence.longitude}

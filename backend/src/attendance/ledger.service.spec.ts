@@ -1,5 +1,5 @@
 import { createHash } from 'crypto'
-import { LedgerService } from './ledger.service'
+import { LedgerService, acquireSessionLedgerLock } from './ledger.service'
 import { computeRecordHash } from '@polycheck/shared/ledger'
 
 function hashOf(prev: string | null, studentId: string, timestampIso: string, sessionId: string, salt: string) {
@@ -167,6 +167,29 @@ describe('LedgerService.appendLedger', () => {
     expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
       tx.attendanceRecord.findUnique.mock.invocationCallOrder[0],
     )
+  })
+
+  it('is re-entrancy safe when the caller already acquired the session lock', async () => {
+    // Control-plane commits take the advisory lock before any row lock; the
+    // append re-takes it. pg advisory xact locks are re-entrant per session, so
+    // the second acquisition is free rather than a self-deadlock.
+    const tx = makeTx()
+    tx.attendanceRecord.findUnique.mockResolvedValue({ recordHash: null })
+
+    await acquireSessionLedgerLock(tx as never, 'sess-1')
+    const appendOrder = tx.$executeRaw.mock.calls.length
+
+    await service.appendLedger(tx as never, record)
+
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(appendOrder + 1)
+    expect(tx.attendanceRecord.update).toHaveBeenCalledTimes(1)
+  })
+
+  it('exposes the lock helper so every writer shares one acquisition point', async () => {
+    const tx = makeTx()
+    await acquireSessionLedgerLock(tx as never, 'sess-1')
+    expect(String(tx.$executeRaw.mock.calls[0][0])).toContain('pg_advisory_xact_lock')
+    expect(Array.from(tx.$executeRaw.mock.calls[0].slice(1))).toContain('sess-1')
   })
 
   it('fails closed when the committed row is not visible to the transaction', async () => {

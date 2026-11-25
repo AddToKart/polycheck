@@ -37,8 +37,8 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: router == null
-            ? MaterialApp(theme: PupTheme.light, home: shell)
-            : MaterialApp.router(theme: PupTheme.light, routerConfig: router),
+            ? MaterialApp(theme: BrandTheme.light, home: shell)
+            : MaterialApp.router(theme: BrandTheme.light, routerConfig: router),
       ),
     );
     await tester.pump();

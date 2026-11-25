@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:polycheck_mobile/src/core/models/user.dart';
 import 'package:polycheck_mobile/src/core/providers/session_provider.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/features/faculty/presentation/widgets/faculty_shell.dart';
 
 import '../../helpers/auth_harness.dart';
@@ -72,7 +72,7 @@ Future<GoRouter> _pumpFacultyApp(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp.router(theme: PupTheme.light, routerConfig: router),
+      child: MaterialApp.router(theme: BrandTheme.light, routerConfig: router),
     ),
   );
   await tester.pumpAndSettle();

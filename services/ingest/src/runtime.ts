@@ -148,11 +148,18 @@ export function createAuthResolver(config: IngestConfig, redis: Redis) {
   }
 }
 
-/** Redis-backed attempt counter, identical key shape to the control plane. */
+/**
+ * Redis-backed attempt counter, identical key shape and unit to the control
+ * plane's `RedisService.consumeRateLimit` (window in seconds).
+ *
+ * `PEXPIRE` takes milliseconds, so the window must be converted. Passing the
+ * raw seconds expired the counter in 600 ms instead of 10 minutes, which made
+ * the PIN lockout unreachable.
+ */
 export function createPinAttemptConsumer(redis: Redis) {
-  return async function consumePinAttempt(key: string, limit: number, windowMs: number): Promise<boolean> {
+  return async function consumePinAttempt(key: string, limit: number, windowSeconds: number): Promise<boolean> {
     const value = await redis.incr(key)
-    if (value === 1) await redis.pexpire(key, windowMs)
+    if (value === 1) await redis.pexpire(key, windowSeconds * 1_000)
     return value <= limit
   }
 }
@@ -290,7 +297,7 @@ export async function bootstrapDrain(
     options: '-c TimeZone=UTC',
   })
   const redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: 2, enableOfflineQueue: true })
-  const writer = createPgWriter(pool)
+  const writer = createPgWriter(pool, { persistScanAttempts: config.INGEST_PERSIST_SCAN_ATTEMPTS })
 
   await ensureConsumerGroup(redis, streamKey, group)
 

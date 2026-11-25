@@ -10,10 +10,11 @@ import '../../../core/providers/session_provider.dart';
 import '../../../core/providers/trusted_clock.dart';
 import '../../../core/router/router_decision.dart';
 import '../../../core/router/routes/app_routes.dart';
-import '../../../core/theme/pup_theme.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/designations.dart';
 import '../../../core/utils/maintenance_time.dart';
 import '../../../core/widgets/campus_card.dart';
+import '../../../core/branding/branding.dart';
 
 /// Branded maintenance surface (route, portal replacement, and login embed).
 ///
@@ -74,7 +75,7 @@ class _MaintenanceScreenState extends ConsumerState<MaintenanceScreen> {
       }
     });
 
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final textTheme = Theme.of(context).textTheme;
     final exempt = session.isSignedIn && isMaintenanceExempt(session.user);
     final active = state.enabled || widget.message != null;
@@ -106,7 +107,7 @@ class _MaintenanceScreenState extends ConsumerState<MaintenanceScreen> {
                         border: Border.all(color: tokens.gold, width: 2),
                       ),
                       child: Text(
-                        'PUP',
+                        BrandingScope.of(context).monogram,
                         style: textTheme.titleSmall?.copyWith(
                           color: tokens.gold,
                           fontWeight: FontWeight.w800,
@@ -398,7 +399,7 @@ class _MaintenanceAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final foreground = filled ? tokens.deepMaroon : tokens.gold;
     final enabled = !loading && onPressed != null;
     final child = loading

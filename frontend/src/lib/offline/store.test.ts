@@ -8,6 +8,7 @@ import {
   cacheSubjects,
   drainOfflineQueue,
   enqueueOfflineOperation,
+  getCachedAttendanceForSession,
   getCachedAttendanceRecords,
   getCachedRoster,
   getCachedSections,
@@ -18,12 +19,14 @@ import {
   getPendingSyncCount,
   getServerClockOffset,
   initializeOfflineStore,
+  removeCachedAttendanceLeg,
   replaceCachedAttendanceForStudent,
   retryOfflineOperation,
   setEnrolledSectionIds,
   setServerClockOffset,
   wipeOfflineStore,
 } from './store'
+import { decryptValue, encryptValue } from './crypto'
 import { getOfflineDatabase } from './db'
 
 const subject: Subject = {
@@ -187,5 +190,159 @@ describe('offline store', () => {
     expect(issues).toHaveLength(1)
     expect(issues[0].error).toBe('Service unavailable')
     expect(issues[0].failed).toBe(false)
+  })
+})
+
+// ── WEB-01: one AES key per account even under concurrent first writes ───────
+
+describe('offline store per-account key (WEB-01)', () => {
+  beforeEach(async () => {
+    await wipeOfflineStore()
+    await initializeOfflineStore('user-1')
+  })
+
+  it('encrypts 20 concurrent values with a single key that decrypts them all', async () => {
+    const db = await getOfflineDatabase()
+    const envelopes = await Promise.all(
+      Array.from({ length: 20 }, (_, index) =>
+        encryptValue(db, 'user-1', { index, seed: `value-${index}` }),
+      ),
+    )
+
+    const decrypted = await Promise.all(
+      envelopes.map((envelope) => decryptValue<{ index: number }>(db, 'user-1', envelope)),
+    )
+    expect(decrypted.map((value) => value.index)).toEqual(Array.from({ length: 20 }, (_, i) => i))
+
+    // A single persisted key row and no raw-key fallback row flip-flopping.
+    const stored = await db.getAll('crypto_keys')
+    expect(stored).toHaveLength(1)
+    expect(stored[0].ownerId).toBe('user-1')
+  })
+
+  it('shares one key creation across cache groups written in the same tick', async () => {
+    const db = await getOfflineDatabase()
+    const before = await db.getAll('crypto_keys')
+    expect(before).toHaveLength(1)
+
+    // Two different cache groups encrypt concurrently right after a fresh
+    // owner init; both must use the key `initializeOfflineStore` already
+    // seeded (no second generation path).
+    const [subjectEnvelope, recordEnvelope] = await Promise.all([
+      encryptValue(db, 'user-1', subject),
+      encryptValue(db, 'user-1', record),
+    ])
+
+    const after = await db.getAll('crypto_keys')
+    expect(after).toHaveLength(1)
+    expect(after[0].createdAt).toBe(before[0].createdAt)
+    await expect(decryptValue(db, 'user-1', subjectEnvelope)).resolves.toEqual(subject)
+    await expect(decryptValue(db, 'user-1', recordEnvelope)).resolves.toEqual(record)
+  })
+
+  it('reuses an existing persisted raw-key fallback instead of regenerating', async () => {
+    const db = await getOfflineDatabase()
+    // Simulate an engine that had to persist raw bytes (legacy / partial impl).
+    const raw = crypto.getRandomValues(new Uint8Array(32))
+    const base64 = btoa(String.fromCharCode(...raw))
+    await db.put('crypto_keys', { ownerId: 'user-raw', rawKey: base64, createdAt: '2026-01-01' })
+
+    const first = await encryptValue(db, 'user-raw', { ok: true })
+    const rows = await db.getAll('crypto_keys')
+    expect(rows.filter((row) => row.ownerId === 'user-raw')).toHaveLength(1)
+    expect(rows.find((row) => row.ownerId === 'user-raw')?.rawKey).toBe(base64)
+    await expect(decryptValue(db, 'user-raw', first)).resolves.toEqual({ ok: true })
+  })
+
+  /**
+   * The seed-on-init guard alone is not the fix: a brand-new owner (an account
+   * whose `initializeOfflineStore` bind was lost to a reload, or a second tab)
+   * can reach `encryptValue` with no persisted key at all. Without the
+   * module-level in-flight map, both callers run generate→put and the loser's
+   * ciphertext is permanently undecryptable.
+   */
+  it('creates exactly one key when two unseeded callers encrypt concurrently', async () => {
+    const db = await getOfflineDatabase()
+    await expect(db.getAll('crypto_keys')).resolves.toEqual(
+      expect.not.arrayContaining([expect.objectContaining({ ownerId: 'fresh-owner' })]),
+    )
+
+    const [first, second] = await Promise.all([
+      encryptValue(db, 'fresh-owner', { which: 'first' }),
+      encryptValue(db, 'fresh-owner', { which: 'second' }),
+    ])
+
+    // One key row, and BOTH envelopes decrypt: the second caller must not have
+    // replaced the key the first caller encrypted under.
+    const rows = (await db.getAll('crypto_keys')).filter((row) => row.ownerId === 'fresh-owner')
+    expect(rows).toHaveLength(1)
+    await expect(decryptValue(db, 'fresh-owner', first)).resolves.toEqual({ which: 'first' })
+    await expect(decryptValue(db, 'fresh-owner', second)).resolves.toEqual({ which: 'second' })
+  })
+
+  it('reuses one key across twenty unseeded concurrent writers', async () => {
+    const db = await getOfflineDatabase()
+    const envelopes = await Promise.all(
+      Array.from({ length: 20 }, (_, index) =>
+        encryptValue(db, 'fresh-burst', { index }),
+      ),
+    )
+
+    const rows = (await db.getAll('crypto_keys')).filter((row) => row.ownerId === 'fresh-burst')
+    expect(rows).toHaveLength(1)
+    const decrypted = await Promise.all(
+      envelopes.map((envelope) => decryptValue<{ index: number }>(db, 'fresh-burst', envelope)),
+    )
+    expect(decrypted.map((value) => value.index)).toEqual(
+      Array.from({ length: 20 }, (_, index) => index),
+    )
+  })
+})
+
+// ── WEB-12: leg-scoped optimistic row deletion ───────────────────────────────
+
+describe('removeCachedAttendanceLeg (WEB-12)', () => {
+  beforeEach(async () => {
+    await wipeOfflineStore()
+    await initializeOfflineStore('student-1')
+  })
+
+  const startLeg: AttendanceRecord = {
+    ...record,
+    id: 'offline:sess-1:student-1:start',
+    checkInTime: '2026-10-26T01:00:00.000Z',
+    checkInStatus: 'present',
+  }
+  const endLeg: AttendanceRecord = {
+    ...record,
+    id: 'offline:sess-1:student-1:end',
+    checkOutTime: '2026-10-26T03:00:00.000Z',
+    checkOutStatus: 'present',
+  }
+
+  it('deletes only the drained checkpoint and leaves the sibling leg visible', async () => {
+    await cacheAttendanceRecords([startLeg, endLeg])
+
+    await removeCachedAttendanceLeg('sess-1', 'student-1', { checkpoint: 'start' })
+
+    const remaining = await getCachedAttendanceForSession('sess-1')
+    expect(remaining.map((entry) => entry.id)).toEqual(['offline:sess-1:student-1:end'])
+  })
+
+  it('uses the record id from the queue payload when present', async () => {
+    await cacheAttendanceRecords([startLeg, endLeg])
+
+    await removeCachedAttendanceLeg('sess-1', 'student-1', { recordId: endLeg.id })
+
+    const remaining = await getCachedAttendanceForSession('sess-1')
+    expect(remaining.map((entry) => entry.id)).toEqual([startLeg.id])
+  })
+
+  it('deletes the single-leg (in-person) optimistic row when no checkpoint applies', async () => {
+    await cacheAttendanceRecords([record])
+
+    await removeCachedAttendanceLeg('sess-1', 'student-1')
+
+    await expect(getCachedAttendanceForSession('sess-1')).resolves.toEqual([])
   })
 })

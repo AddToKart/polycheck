@@ -10,7 +10,13 @@ import {
 import type { AtRiskReferral, ReferralStatus } from '@polycheck/shared'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { adminSectionWhere, adminSectionInScope } from '../common/admin-scope'
-import { academicOversightDepartment } from '../common/designations/department-pin'
+import {
+  hasOversightScope,
+  headCandidatesWhere,
+  headCoversSection,
+  oversightSectionWhere,
+  sectionInOversightScope,
+} from '../common/course-scope'
 import { ErrorCode } from '../common/constants/error-codes'
 import { lockStudentSection } from '../common/student-section-lock'
 import type { Prisma } from '../prisma/client'
@@ -27,6 +33,7 @@ type ReferralRow = Prisma.AtRiskReferralGetPayload<{
     section: {
       select: {
         section: true
+        course: true
         subject: { select: { name: true } }
         teacher: { select: { id: true; fullName: true; department: true } }
       }
@@ -63,6 +70,7 @@ export class AttendanceReferralService {
       select: {
         id: true,
         section: true,
+        course: true,
         subject: { select: { name: true } },
         teacher: { select: { id: true, fullName: true, department: true } },
       },
@@ -117,7 +125,13 @@ export class AttendanceReferralService {
     })
 
     const presented = presentReferral(created)
-    await this.notifyReferralCreated(user, presented, section.teacher.id, section.teacher.department)
+    await this.notifyReferralCreated(
+      user,
+      presented,
+      section.teacher.id,
+      section.teacher.department,
+      section.course ?? null,
+    )
     await this.recordReferralAudit(user, 'attendance.referral_created', created.id, {
       studentId: dto.studentId,
       sectionId: section.id,
@@ -170,8 +184,7 @@ export class AttendanceReferralService {
     if (!referral) throw new NotFoundException('Referral not found')
 
     if (user.role === 'teacher') {
-      const oversight = academicOversightDepartment(user)
-      const allowed = oversight !== null && departmentsMatch(referral.section?.teacher?.department, oversight)
+      const allowed = sectionInOversightScope(user, referral.section)
       if (!allowed) {
         throw new ForbiddenException('Only department heads and administrators can update referrals')
       }
@@ -222,12 +235,11 @@ export class AttendanceReferralService {
 
   private async assertGenerateScope(
     user: RequestUser,
-    section: { id: string; teacher: { id: string; department: string | null } },
+    section: { id: string; course?: string | null; teacher: { id: string; department: string | null } },
   ): Promise<void> {
     if (user.role === 'teacher') {
       if (section.teacher.id === user.id) return
-      const oversight = academicOversightDepartment(user)
-      if (oversight && departmentsMatch(section.teacher.department, oversight)) return
+      if (sectionInOversightScope(user, section)) return
       throw new ForbiddenException('You can only generate referrals for your own sections')
     }
     if (!(await adminSectionInScope(user, section.id, this.prisma))) {
@@ -237,11 +249,9 @@ export class AttendanceReferralService {
 
   /** Referral sections a teacher may see: own sections, widened to their department for heads. */
   private teacherSectionWhere(user: RequestUser): Prisma.SectionWhereInput {
-    const oversight = academicOversightDepartment(user)
+    const oversight = oversightSectionWhere(user)
     if (!oversight) return { teacherId: user.id }
-    return {
-      OR: [{ teacherId: user.id }, { teacher: { department: { equals: oversight, mode: 'insensitive' as const } } }],
-    }
+    return { OR: [{ teacherId: user.id }, oversight] }
   }
 
   // ── Private: notifications + audit (fail-open) ──
@@ -251,6 +261,7 @@ export class AttendanceReferralService {
     referral: AtRiskReferral,
     sectionTeacherId: string,
     sectionTeacherDepartment: string | null,
+    sectionCourse: string | null = null,
   ): Promise<void> {
     if (!this.notifications) return
     const body = `${referral.studentName} was referred for the CHED notice of impending drop in ${referral.subjectName} (${referral.sectionName}).`
@@ -259,19 +270,29 @@ export class AttendanceReferralService {
     if (sectionTeacherId && sectionTeacherId !== actor.id) {
       recipients.push(sectionTeacherId)
     }
-    // When the actor is NOT a department head of that department, the head(s)
-    // get the queue entry too; heads already own the queue they file into.
-    if (academicOversightDepartment(actor) === null && sectionTeacherDepartment) {
+    // When the actor is NOT an oversight head, the head(s) covering that
+    // section (its course, or the teacher's department in legacy mode) get the
+    // queue entry too; heads already own the queue they file into.
+    const candidates = headCandidatesWhere({ teacherDepartment: sectionTeacherDepartment })
+    if (!hasOversightScope(actor) && candidates) {
       const heads = await this.prisma.user.findMany({
-        where: {
-          role: 'teacher',
-          isActive: true,
+        where: candidates,
+        select: {
+          id: true,
+          role: true,
+          department: true,
           isDepartmentHead: true,
-          department: { equals: sectionTeacherDepartment, mode: 'insensitive' },
+          managedCourses: true,
+          managesAllCourses: true,
         },
-        select: { id: true },
       })
-      recipients.push(...heads.map((head) => head.id).filter((id) => id !== actor.id))
+      const section = { course: sectionCourse, teacher: { department: sectionTeacherDepartment } }
+      recipients.push(
+        ...heads
+          .filter((head) => headCoversSection(head as never, section))
+          .map((head) => head.id)
+          .filter((id) => id !== actor.id),
+      )
     }
     const unique = [...new Set(recipients)]
     if (unique.length === 0) return
@@ -315,6 +336,7 @@ const REFERRAL_INCLUDE = {
   section: {
     select: {
       section: true,
+      course: true,
       subject: { select: { name: true } },
       teacher: { select: { id: true, fullName: true, department: true } },
     },

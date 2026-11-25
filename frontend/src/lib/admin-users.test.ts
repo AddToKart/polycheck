@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AdminUserPage, User } from '@polycheck/shared'
 import {
+  activationMailLabel,
   assignableRoleFor,
   buildUserFilters,
   buildUserUpdateInput,
@@ -15,6 +16,7 @@ import {
   userPageCount,
   userPageNumber,
   userRangeLabel,
+  userStatusLabel,
   validateUserUpdate,
 } from './admin-users'
 
@@ -23,7 +25,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     id: 'user-1',
     fullName: 'Test User',
     role: 'teacher',
-    email: 'test@pup.edu.ph',
+    email: 'test@example.edu.ph',
     department: 'CCIS',
     isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -90,13 +92,13 @@ describe('admin user helpers', () => {
     const changed = {
       ...values,
       fullName: '  Updated Name ',
-      email: 'updated@pup.edu.ph',
+      email: 'updated@example.edu.ph',
       program: 'Should be ignored',
       yearLevel: '4',
     }
     expect(buildUserUpdateInput(teacher, changed)).toEqual({
       fullName: 'Updated Name',
-      email: 'updated@pup.edu.ph',
+      email: 'updated@example.edu.ph',
     })
 
     const student = makeUser({
@@ -104,14 +106,14 @@ describe('admin user helpers', () => {
       studentId: '2024-00001-MN-0',
       program: 'BSIT',
       yearLevel: 2,
-      email: 'student@pup.edu.ph',
+      email: 'student@example.edu.ph',
     })
     expect(
       buildUserUpdateInput(student, {
         ...editableValuesForUser(student),
         program: 'BSCS',
         yearLevel: '3',
-        email: 'ignored@pup.edu.ph',
+        email: 'ignored@example.edu.ph',
       }),
     ).toEqual({ program: 'BSCS', yearLevel: 3 })
   })
@@ -121,7 +123,7 @@ describe('admin user helpers', () => {
     const base = editableValuesForUser(teacher)
     expect(validateUserUpdate(teacher, base)).toBeNull()
     expect(validateUserUpdate(teacher, { ...base, fullName: 'A' })).toContain('at least 2')
-    expect(validateUserUpdate(teacher, { ...base, email: 'not-an-email' })).toContain('valid PUP email')
+    expect(validateUserUpdate(teacher, { ...base, email: 'not-an-email' })).toContain('valid email')
 
     const student = makeUser({ role: 'student', program: 'BSIT', yearLevel: 2 })
     const studentValues = editableValuesForUser(student)
@@ -153,5 +155,38 @@ describe('admin user helpers', () => {
     expect(userPageCount(populated)).toBe(3)
     expect(userPageNumber(populated)).toBe(2)
     expect(userRangeLabel(populated)).toBe('21–40 of 45')
+  })
+})
+
+describe('email activation helpers', () => {
+  it('maps the pending filter to the activation query, never to an account status', () => {
+    expect(buildUserFilters('student', { q: '', department: '', status: 'pending' })).toMatchObject({
+      role: 'student',
+      activation: 'pending',
+    })
+    expect(buildUserFilters('student', { q: '', department: '', status: 'pending' })).not.toHaveProperty('status')
+    expect(buildUserFilters('student', { q: '', department: '', status: 'inactive' })).toMatchObject({
+      status: 'inactive',
+    })
+    expect(buildUserFilters('student', { q: '', department: '', status: '' })).not.toHaveProperty('activation')
+  })
+
+  it('labels pending accounts Invited and others by their status', () => {
+    expect(userStatusLabel({ isActive: true, activationPending: true })).toBe('Invited')
+    expect(userStatusLabel({ isActive: true })).toBe('Active')
+    expect(userStatusLabel({ isActive: false })).toBe('Inactive')
+  })
+
+  it('describes the latest delivery state in plain words, only for pending accounts', () => {
+    const pending = { activationPending: true, email: 'a@b.ph' }
+    expect(activationMailLabel({ activationPending: false, email: 'a@b.ph' })).toBeNull()
+    expect(activationMailLabel({ ...pending, email: undefined })).toBe('No email on file')
+    expect(activationMailLabel(pending)).toBe('Email not sent yet')
+    expect(activationMailLabel({ ...pending, activationMail: { status: 'sent' } })).toBe('Email sent')
+    expect(activationMailLabel({ ...pending, activationMail: { status: 'delivered' } })).toBe('Email delivered')
+    expect(activationMailLabel({ ...pending, activationMail: { status: 'queued' } })).toBe('Email queued')
+    expect(activationMailLabel({ ...pending, activationMail: { status: 'sending' } })).toBe('Email queued')
+    expect(activationMailLabel({ ...pending, activationMail: { status: 'bounced' } })).toBe('Email bounced')
+    expect(activationMailLabel({ ...pending, activationMail: { status: 'failed' } })).toBe('Email failed')
   })
 })

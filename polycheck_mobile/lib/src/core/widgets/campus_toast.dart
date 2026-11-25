@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../theme/pup_theme.dart';
+import '../theme/brand_theme.dart';
 
 enum CampusToastTone { success, error, info, warning }
 
@@ -163,7 +163,7 @@ class _CampusToastCardState extends State<_CampusToastCard> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final (background, foreground, icon) = switch (widget.tone) {
       CampusToastTone.success => (
         tokens.gold,

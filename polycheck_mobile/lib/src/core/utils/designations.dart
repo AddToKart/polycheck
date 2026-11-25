@@ -1,18 +1,15 @@
 import '../models/user.dart';
+import 'campus_courses.dart';
 
 /// Mirrors `shared/src/utils/designations.ts`.
 ///
-/// PUP Santa Maria "dual-hat" model: teachers keep their classroom identity
+/// Campus "dual-hat" model: teachers keep their classroom identity
 /// and may additionally hold one or more administrative designations. Super
 /// admins implicitly hold every suite, so the helpers always short-circuit on
 /// `role == super_admin` without requiring flags on the account.
 enum FacultyDesignation {
   itOperations('it_operations', 'isItCoordinator', 'IT Coordinator'),
-  academicOversight(
-    'academic_oversight',
-    'isDepartmentHead',
-    'Department Head',
-  ),
+  academicOversight('academic_oversight', 'isDepartmentHead', 'Course Head'),
   userAdmin('user_admin', 'isUserRegistrar', 'Registrar');
 
   const FacultyDesignation(this.wire, this.flag, this.label);
@@ -28,9 +25,9 @@ const Map<FacultyDesignation, String> designationDescriptions = {
   FacultyDesignation.itOperations:
       'Server status, issue triage, and maintenance controls.',
   FacultyDesignation.academicOversight:
-      'Department-wide reports, excuses, and at-risk oversight.',
+      'Course-wide reports, excuses, and at-risk oversight.',
   FacultyDesignation.userAdmin:
-      'Department-scoped account creation, resets, and roster imports.',
+      'Campus-wide or course-scoped account creation, resets, and roster imports.',
 };
 
 bool _teacherHasFlag(PolyUser? user, bool? Function(PolyUser) flag) {
@@ -82,4 +79,30 @@ String? oversightDepartment(PolyUser? user) {
   if (user.isDepartmentHead != true) return null;
   final department = user.department?.trim();
   return department == null || department.isEmpty ? null : department;
+}
+
+/// Courses an academic-oversight head may inspect: `null` = every course,
+/// empty = none (fail-closed). Mirrors `oversightCourses` in shared.
+List<String>? oversightCourses(PolyUser? user) {
+  if (user == null ||
+      user.role != UserRole.teacher ||
+      user.isDepartmentHead != true) {
+    return const <String>[];
+  }
+  if (user.managesAllCourses == true) return null;
+  final seen = <String>{};
+  final out = <String>[];
+  for (final entry in user.managedCourses ?? const <String>[]) {
+    final code = normalizeCourse(entry).code;
+    if (code != null && seen.add(code)) out.add(code);
+  }
+  return out;
+}
+
+/// Display label for a head: "Head of Academic Programs" for an all-courses
+/// head, "Course Head (BSIT, BSHM)" otherwise.
+String courseHeadLabel(PolyUser? user) {
+  final scope = oversightCourses(user);
+  if (scope == null) return 'Head of Academic Programs';
+  return scope.isEmpty ? 'Course Head' : 'Course Head (${scope.join(', ')})';
 }

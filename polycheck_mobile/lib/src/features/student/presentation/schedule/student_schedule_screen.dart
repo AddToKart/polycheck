@@ -85,7 +85,7 @@ class _StudentScheduleScreenState extends ConsumerState<StudentScheduleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final sectionsAsync = ref.watch(studentSectionsProvider);
     final subjectsAsync = ref.watch(studentSubjectsProvider);
     final sections = sectionsAsync.value ?? const <Section>[];
@@ -223,7 +223,7 @@ class _StudentScheduleScreenState extends ConsumerState<StudentScheduleScreen> {
   }
 }
 
-/// Month/Week segmented control (square PUP pill styling).
+/// Month/Week segmented control (square pill styling).
 class _ViewTabs extends StatelessWidget {
   const _ViewTabs({required this.view, required this.onSelect});
 
@@ -232,7 +232,7 @@ class _ViewTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Row(
       children: <Widget>[
         for (final candidate in StudentScheduleView.values)
@@ -290,7 +290,7 @@ class _WeekBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final week = getWeekDays(anchor, today: DateTime.now());
     final dayCode = dayOfWeek(selectedDate);
     final entries = <TimetableEntry>[];
@@ -432,7 +432,7 @@ class _MonthBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final year = monthAnchor.year;
     final month = monthAnchor.month - 1;
     final now = DateTime.now();
@@ -523,7 +523,7 @@ class _MonthFetchNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusCard(
       key: const ValueKey('month-sessions-error'),
       borderColor: tokens.gold,
@@ -577,7 +577,7 @@ class _DayChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final background = selected
         ? (tokens.isDark ? tokens.gold : tokens.maroon)
         : tokens.surface;

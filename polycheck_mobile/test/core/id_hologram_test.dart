@@ -91,7 +91,7 @@ void main() {
         '${hologramDeviceChipPrefix}1234',
       );
       expect(
-        maskDeviceChip('device:PuP_9f2a'),
+        maskDeviceChip('device:Dev_9f2a'),
         '${hologramDeviceChipPrefix}9f2a',
       );
     });
@@ -116,7 +116,7 @@ void main() {
           '2026-11-02 08:01:14',
           'DEVICE-BOUND \u2022\u00B7\u2022\u00B74F2A',
         ),
-        'PUP-ID-VERIFIED \u2022 LIVE UTC: 2026-11-02 08:01:14 \u2022 '
+        'POLYCHECK-ID-VERIFIED \u2022 LIVE UTC: 2026-11-02 08:01:14 \u2022 '
         'DEVICE-BOUND \u2022\u00B7\u2022\u00B74F2A',
       );
     });
@@ -136,14 +136,14 @@ void main() {
     test('keeps the web-session chip inline for unbound cards', () {
       expect(
         buildWatermarkLine('2026-11-02 08:01:14', hologramWebSessionChip),
-        'PUP-ID-VERIFIED \u2022 LIVE UTC: 2026-11-02 08:01:14 \u2022 WEB-SESSION',
+        'POLYCHECK-ID-VERIFIED \u2022 LIVE UTC: 2026-11-02 08:01:14 \u2022 WEB-SESSION',
       );
     });
   });
 
   group('hologram constants', () {
     test('keeps the watermark lead text stable across platforms', () {
-      expect(hologramWatermarkText, 'PUP-ID-VERIFIED');
+      expect(hologramWatermarkText, 'POLYCHECK-ID-VERIFIED');
       expect(hologramDeviceChipPrefix, 'DEVICE-BOUND \u2022\u00B7\u2022\u00B7');
       expect(
         hologramDeviceChipFullMask,

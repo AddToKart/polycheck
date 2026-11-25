@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/providers/session_provider.dart';
-import '../../../../core/theme/pup_theme.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/widgets/campus_bottom_nav.dart';
 import '../../domain/admin_access.dart';
 import 'admin_common.dart';
@@ -81,7 +81,7 @@ class AdminShell extends ConsumerWidget {
     final sections = adminBarSectionsFor(user);
     final active = adminTabFor(location, sections);
     return Scaffold(
-      backgroundColor: PupTheme.of(context).campus,
+      backgroundColor: BrandTheme.of(context).campus,
       body: child,
       bottomNavigationBar: CampusBottomNav(
         items: <CampusBottomNavItem>[

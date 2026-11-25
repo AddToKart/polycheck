@@ -2,6 +2,14 @@ import { ForbiddenException, Injectable, NotFoundException, Optional } from '@ne
 import { ConfigService } from '@nestjs/config'
 import PDFDocument from 'pdfkit'
 import {
+  DEFAULT_BRANDING,
+  INSTITUTION_CAMPUS_KEY,
+  INSTITUTION_SHORT_NAME_KEY,
+  brandingMonogram,
+  resolveBranding,
+  type InstitutionBranding,
+} from '@polycheck/shared'
+import {
   AlignmentType,
   BorderStyle,
   Document,
@@ -20,7 +28,7 @@ import {
 import { clampRetentionDays, consentCoveragePercent, PRIVACY_DATA_INVENTORY } from '@polycheck/shared'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { adminSectionInScope } from '../common/admin-scope'
-import { academicOversightDepartment } from '../common/designations/department-pin'
+import { sectionInOversightScope } from '../common/course-scope'
 import { GEOLOCATION_RETENTION_DAYS_KEY } from '../common/constants/privacy'
 import { classifyAtRiskRow, type AtRiskClassification } from '../attendance/attendance-at-risk.service'
 import { computeAttendanceRate } from '../common/utils/attendance-rate'
@@ -43,7 +51,6 @@ interface PdfColumn {
   readonly width: number
 }
 
-const DEFAULT_INSTITUTION_NAME = 'Polytechnic University of the Philippines'
 const INSTITUTION_NAME_KEY = 'institution_name'
 const GEOLOCATION_RETENTION_FALLBACK_DAYS = 30
 const MASTER_LIST_TITLE = 'CLASS MASTER LIST'
@@ -52,9 +59,10 @@ const DPO_SUMMARY_TITLE = 'DATA PROTECTION OFFICER — COMPLIANCE SUMMARY (RA 10
 /** PDF Info-dictionary title stays ASCII: pdfkit hex-escapes non-Latin1 glyphs (—). */
 const DPO_SUMMARY_INFO_TITLE = 'DATA PROTECTION OFFICER - COMPLIANCE SUMMARY (RA 10173)'
 const CLASS_RECORD_TITLE = 'OFFICIAL CLASS RECORD'
-const CAMPUS_LINE = 'Santa Maria Campus'
+/** "Santa Maria" -> "Santa Maria Campus"; empty when the institution has a single site. */
+const campusLine = (campus: string) => (campus ? `${campus} Campus` : '')
 const MS_PER_DAY = 24 * 60 * 60 * 1000
-/** Official PUP grading sheet covers an 18-week semester (WF-LD6 / F4). */
+/** The official grading sheet covers an 18-week semester (WF-LD6 / F4). */
 export const CLASS_RECORD_WEEKS = 18
 /**
  * Footer sign-off of the official class record; one boxed area each with
@@ -74,7 +82,7 @@ const PDF_BODY_TOP = 118
 const PDF_BOTTOM = 56
 const PDF_TABLE_HEADER_HEIGHT = 18
 const PDF_TABLE_ROW_HEIGHT = 16
-const PUP_MAROON = '#7B1113'
+const BRAND_MAROON = '#7B1113'
 const ZEBRA_FILL = '#F3EDED'
 const LANDSCAPE_MARGIN_X = 50
 const LANDSCAPE_CONTENT_WIDTH = 742
@@ -98,11 +106,12 @@ const NOTICE_HEADING_HEIGHT = 14
 export const AT_RISK_NOTICE_TITLE = 'NOTICE OF IMPENDING DROP'
 /** PDF Info-dictionary title stays ASCII (pdfkit hex-escapes non-Latin1 glyphs). */
 const AT_RISK_NOTICE_INFO_TITLE = AT_RISK_NOTICE_TITLE
-export const AT_RISK_NOTICE_CITATION_LINES = [
-  'Pursuant to CHED CMO No. 40 and Article V, Section 21 of the PUP',
-  'Student Handbook: a student whose unexcused absences reach twenty percent (20%)',
-  'of the scheduled class sessions may be issued this notice of impending drop.',
-] as const
+export const atRiskNoticeCitationLines = (shortName: string) =>
+  [
+    `Pursuant to CHED CMO No. 40 and Article V, Section 21 of the ${shortName}`,
+    'Student Handbook: a student whose unexcused absences reach twenty percent (20%)',
+    'of the scheduled class sessions may be issued this notice of impending drop.',
+  ] as const
 export const AT_RISK_NOTICE_ACTIONS = ['Guidance counseling', 'Chair consultation', 'Parental contact'] as const
 export const AT_RISK_NOTICE_SIGNOFFS = ['Advisor', 'Guidance Counselor', 'Department Chairperson'] as const
 const ATTENDANCE_THRESHOLD_FALLBACK_PERCENT = 75
@@ -234,6 +243,8 @@ interface DpoSummaryMeta {
 
 interface ClassRecordMeta {
   institutionName: string
+  shortName: string
+  campus: string
   subjectName: string
   subjectCode: string
   sectionName: string
@@ -245,6 +256,8 @@ interface ClassRecordMeta {
 
 interface AtRiskNoticeMeta {
   institutionName: string
+  shortName: string
+  campus: string
   studentName: string
   studentNumber: string
   program: string
@@ -443,7 +456,7 @@ export class DocsService {
   }
 
   /**
-   * F4 (WF-LD6): the 1-click official PUP class record. Scoped like the master
+   * F4 (WF-LD6): the 1-click official class record. Scoped like the master
    * list with one widening — the academic-oversight department head may read
    * the class record of any section taught by a colleague in their department.
    */
@@ -459,6 +472,7 @@ export class DocsService {
         id: true,
         teacherId: true,
         section: true,
+        course: true,
         room: true,
         semester: true,
         subject: { select: { name: true, code: true } },
@@ -478,6 +492,7 @@ export class DocsService {
       id: section.id,
       teacherId: section.teacherId,
       teacherDepartment: section.teacher.department,
+      course: section.course,
     })
 
     const records = await this.prisma.attendanceRecord.findMany({
@@ -496,7 +511,7 @@ export class DocsService {
       fromOverride ?? undefined,
     )
     const meta: ClassRecordMeta = {
-      institutionName: await this.institutionName(),
+      ...(await this.brandingMeta()),
       subjectName: section.subject.name,
       subjectCode: section.subject.code,
       sectionName: section.section,
@@ -505,7 +520,7 @@ export class DocsService {
       professorName: section.teacher.fullName,
       department: section.teacher.department ?? '',
     }
-    const filename = `PUP-ClassRecord-${sanitizeFilenamePart(section.subject.code)}-${sanitizeFilenamePart(
+    const filename = `${sanitizeFilenamePart(meta.shortName)}-ClassRecord-${sanitizeFilenamePart(section.subject.code)}-${sanitizeFilenamePart(
       section.section,
     )}-${sanitizeFilenamePart(section.semester)}.${format}`
     if (format === 'docx') {
@@ -529,6 +544,7 @@ export class DocsService {
         section: {
           select: {
             section: true,
+            course: true,
             semester: true,
             teacherId: true,
             subject: { select: { name: true, code: true } },
@@ -543,6 +559,7 @@ export class DocsService {
       id: referral.sectionId,
       teacherId: referral.section.teacherId,
       teacherDepartment: referral.section.teacher.department,
+      course: referral.section.course,
     })
 
     const [thresholdPercent, grouped, ledgerRaw] = await Promise.all([
@@ -566,7 +583,7 @@ export class DocsService {
     const classification = classifyAtRiskRow(counts, thresholdPercent)
     const ledger = buildNoticeLedgerRows(ledgerRaw)
     const meta: AtRiskNoticeMeta = {
-      institutionName: await this.institutionName(),
+      ...(await this.brandingMeta()),
       studentName: referral.student.fullName,
       studentNumber: referral.student.studentId ?? '',
       program: referral.student.program ?? '',
@@ -579,7 +596,7 @@ export class DocsService {
       generatedAt: referral.createdAt.toISOString(),
       note: referral.note ?? undefined,
     }
-    const filename = `PUP-AtRiskNotice-${sanitizeFilenamePart(meta.studentNumber || 'STUDENT')}-${sanitizeFilenamePart(
+    const filename = `${sanitizeFilenamePart(meta.shortName)}-AtRiskNotice-${sanitizeFilenamePart(meta.studentNumber || 'STUDENT')}-${sanitizeFilenamePart(
       referral.section.section,
     )}.${format}`
     if (format === 'docx') {
@@ -766,7 +783,7 @@ export class DocsService {
   }
 
   private drawPdfSectionHeading(doc: PDFKit.PDFDocument, heading: string, y: number): number {
-    doc.font(PDF_FONT_BOLD).fontSize(8).fillColor(PUP_MAROON).text(heading.toUpperCase(), PDF_MARGIN_X, y, {
+    doc.font(PDF_FONT_BOLD).fontSize(8).fillColor(BRAND_MAROON).text(heading.toUpperCase(), PDF_MARGIN_X, y, {
       width: PDF_CONTENT_WIDTH,
       lineBreak: false,
       ellipsis: true,
@@ -1109,11 +1126,11 @@ export class DocsService {
         .text(text, LANDSCAPE_MARGIN_X, y, { width: contentWidth, align: 'center', lineBreak: false, ellipsis: true })
     }
     centered('Republic of the Philippines', 16, 9, false, '#333333')
-    // Vector PUP seal: maroon monogram medallion (no bitmap asset is embedded).
-    doc.circle(centerX, 42, 14).lineWidth(1.25).strokeColor(PUP_MAROON).stroke()
-    centered('PUP', 37.5, 8, true, PUP_MAROON)
-    centered(meta.institutionName, 58, 12, true, PUP_MAROON)
-    centered(CAMPUS_LINE, 71, 9, false, '#333333')
+    // Vector seal: maroon monogram medallion of the institution's short name (no bitmap asset is embedded).
+    doc.circle(centerX, 42, 14).lineWidth(1.25).strokeColor(BRAND_MAROON).stroke()
+    centered(brandingMonogram(meta.shortName), 37.5, 8, true, BRAND_MAROON)
+    centered(meta.institutionName, 58, 12, true, BRAND_MAROON)
+    centered(campusLine(meta.campus), 71, 9, false, '#333333')
     centered(CLASS_RECORD_TITLE, 82, 13, true, '#111111')
     centered(`Course: ${meta.subjectCode} — ${meta.subjectName}`, 97, 8.5, false, '#111111')
     centered(
@@ -1143,7 +1160,7 @@ export class DocsService {
       .moveTo(LANDSCAPE_MARGIN_X, 138)
       .lineTo(LANDSCAPE_MARGIN_X + contentWidth, 138)
       .lineWidth(0.75)
-      .strokeColor(PUP_MAROON)
+      .strokeColor(BRAND_MAROON)
       .stroke()
   }
 
@@ -1215,10 +1232,10 @@ export class DocsService {
         `Deterministic standing: ${classification.status}.`,
       ]) + 10
 
-    // Citation (CHED CMO No. 40 / Article V Section 21 / PUP Student Handbook)
+    // Citation (CHED CMO No. 40 / Article V Section 21 / institution Student Handbook)
     ensureSpace(48)
     y = this.drawPdfSectionHeading(doc, 'Legal basis', y)
-    y = this.drawPdfLines(doc, y, AT_RISK_NOTICE_CITATION_LINES) + 8
+    y = this.drawPdfLines(doc, y, atRiskNoticeCitationLines(meta.shortName)) + 8
 
     // Action checkboxes
     const actionLine = AT_RISK_NOTICE_ACTIONS.map((action) => `[  ] ${action}`).join('     ')
@@ -1240,9 +1257,9 @@ export class DocsService {
       title: AT_RISK_NOTICE_TITLE,
       metaLines: [
         'Republic of the Philippines',
-        'Santa Maria Campus',
+        campusLine(meta.campus),
         'CHED CMO No. 40 — Article V, Section 21',
-        'PUP Student Handbook',
+        `${meta.shortName} Student Handbook`,
       ],
     })
     doc.end()
@@ -1297,8 +1314,14 @@ export class DocsService {
               children: [
                 centered(meta.institutionName, 20, true, '7B1113'),
                 centered(AT_RISK_NOTICE_TITLE, 24, true),
-                centered('Republic of the Philippines — Santa Maria Campus', 15, false),
-                centered('CHED CMO No. 40 — Article V, Section 21 — PUP Student Handbook', 15, false),
+                centered(
+                  meta.campus
+                    ? `Republic of the Philippines — ${campusLine(meta.campus)}`
+                    : 'Republic of the Philippines',
+                  15,
+                  false,
+                ),
+                centered(`CHED CMO No. 40 — Article V, Section 21 — ${meta.shortName} Student Handbook`, 15, false),
               ],
             }),
           },
@@ -1322,7 +1345,7 @@ export class DocsService {
             ),
             body(`Deterministic standing: ${classification.status}.`),
             heading('LEGAL BASIS'),
-            ...AT_RISK_NOTICE_CITATION_LINES.map((line) => body(line)),
+            ...atRiskNoticeCitationLines(meta.shortName).map((line) => body(line)),
             heading('RECOMMENDED ACTIONS'),
             body(AT_RISK_NOTICE_ACTIONS.map((action) => `[  ] ${action}`).join('     ')),
             heading('SIGN-OFF'),
@@ -1371,7 +1394,7 @@ export class DocsService {
               children: [
                 centered('Republic of the Philippines', 16, false),
                 centered(meta.institutionName, 22, true, '7B1113'),
-                centered(CAMPUS_LINE, 16, false),
+                centered(campusLine(meta.campus), 16, false),
                 centered(CLASS_RECORD_TITLE, 24, true),
                 centered(`Course: ${meta.subjectCode} — ${meta.subjectName}`, 15, false),
                 centered(`Section: ${meta.sectionName}   Semester: ${meta.semester}   Room: ${meta.room}`, 15, false),
@@ -1627,7 +1650,7 @@ export class DocsService {
       const bottomMargin = doc.page.margins.bottom
       doc.page.margins.bottom = 0
 
-      doc.font(PDF_FONT_BOLD).fontSize(10).fillColor(PUP_MAROON).text(options.institutionName, PDF_MARGIN_X, 24, {
+      doc.font(PDF_FONT_BOLD).fontSize(10).fillColor(BRAND_MAROON).text(options.institutionName, PDF_MARGIN_X, 24, {
         width: PDF_CONTENT_WIDTH,
         align: 'center',
         lineBreak: false,
@@ -1652,7 +1675,7 @@ export class DocsService {
         .moveTo(PDF_MARGIN_X, 108)
         .lineTo(PDF_MARGIN_X + PDF_CONTENT_WIDTH, 108)
         .lineWidth(0.75)
-        .strokeColor(PUP_MAROON)
+        .strokeColor(BRAND_MAROON)
         .stroke()
       doc
         .font(PDF_FONT)
@@ -1822,18 +1845,18 @@ export class DocsService {
     )
   }
 
-  /** Class-record scope: owning teacher, academic-oversight department head
-   * (department-pinned via the section teacher's department), or a super admin
-   * within `adminSectionInScope`.
+  /** Class-record scope: owning teacher, academic-oversight head (pinned to the
+   * section's course in course mode, or the section teacher's department in
+   * legacy mode), or a super admin within `adminSectionInScope`.
    */
   private async assertClassRecordAccess(
     user: RequestUser,
-    section: { id: string; teacherId: string; teacherDepartment: string | null },
+    section: { id: string; teacherId: string; teacherDepartment: string | null; course?: string | null },
   ): Promise<void> {
     if (user.role === 'teacher') {
       if (section.teacherId === user.id) return
-      const oversightDepartment = academicOversightDepartment(user)
-      if (oversightDepartment && departmentsMatch(section.teacherDepartment, oversightDepartment)) return
+      if (sectionInOversightScope(user, { course: section.course, teacher: { department: section.teacherDepartment } }))
+        return
       throw new ForbiddenException('You can only generate class records for your own sections')
     }
     if (user.role === 'super_admin') {
@@ -1852,12 +1875,12 @@ export class DocsService {
    */
   private async assertNoticeAccess(
     user: RequestUser,
-    section: { id: string; teacherId: string; teacherDepartment: string | null },
+    section: { id: string; teacherId: string; teacherDepartment: string | null; course?: string | null },
   ): Promise<void> {
     if (user.role === 'teacher') {
       if (section.teacherId === user.id) return
-      const oversightDepartment = academicOversightDepartment(user)
-      if (oversightDepartment && departmentsMatch(section.teacherDepartment, oversightDepartment)) return
+      if (sectionInOversightScope(user, { course: section.course, teacher: { department: section.teacherDepartment } }))
+        return
       throw new ForbiddenException('You can only generate at-risk notices for your own sections')
     }
     if (user.role === 'super_admin') {
@@ -1880,12 +1903,26 @@ export class DocsService {
     return Math.min(100, Math.max(0, Math.round(parsed)))
   }
 
+  private async readInstitutionSetting(key: string): Promise<string | undefined> {
+    const setting = await this.prisma.institutionSetting.findUnique({ where: { key }, select: { value: true } })
+    return setting?.value?.trim() || undefined
+  }
+
   private async institutionName(): Promise<string> {
-    const setting = await this.prisma.institutionSetting.findUnique({
-      where: { key: INSTITUTION_NAME_KEY },
-      select: { value: true },
-    })
-    return setting?.value?.trim() || DEFAULT_INSTITUTION_NAME
+    return (await this.readInstitutionSetting(INSTITUTION_NAME_KEY)) ?? DEFAULT_BRANDING.name
+  }
+
+  /** Name, short name and campus for documents; the short name is derived from the name when unset. */
+  private async brandingMeta(): Promise<
+    Pick<InstitutionBranding, 'shortName' | 'campus'> & { institutionName: string }
+  > {
+    const [name, shortName, campus] = await Promise.all([
+      this.readInstitutionSetting(INSTITUTION_NAME_KEY),
+      this.readInstitutionSetting(INSTITUTION_SHORT_NAME_KEY),
+      this.readInstitutionSetting(INSTITUTION_CAMPUS_KEY),
+    ])
+    const branding = resolveBranding({ name, shortName, campus })
+    return { institutionName: branding.name, shortName: branding.shortName, campus: branding.campus }
   }
 
   private privacyNoticeVersion(): string {
@@ -1913,13 +1950,6 @@ function sanitizeFilenamePart(value: string): string {
     .slice(0, 64)
     .replace(/^[.-]+|[.-]+$/g, '')
   return sanitized || 'untitled'
-}
-
-/** Case-insensitive department equality for the academic-oversight widening. */
-function departmentsMatch(left: string | null | undefined, right: string | null | undefined): boolean {
-  const normalizedLeft = left?.trim().toLowerCase()
-  const normalizedRight = right?.trim().toLowerCase()
-  return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight)
 }
 
 function escapeCsv(value: unknown): string {

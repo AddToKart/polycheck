@@ -35,7 +35,7 @@ class _StudentSectionDetailScreenState
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final detailAsync = ref.watch(
       studentSectionDetailProvider(widget.sectionId),
     );
@@ -127,7 +127,7 @@ class _SectionBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final section = detail.section;
     final sessions = <Session>[...detail.sessions]
       ..sort((a, b) => b.date.compareTo(a.date));
@@ -410,7 +410,7 @@ class _InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final section = detail.section;
     return CampusCard(
       child: Column(
@@ -511,7 +511,7 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -557,7 +557,7 @@ class _MiniStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       children: <Widget>[
         Text(
@@ -594,7 +594,7 @@ class _SessionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final active = session.isActive && (session.endedAt?.isNotEmpty != true);
     final completed = session.endedAt?.isNotEmpty == true;
     final label = completed

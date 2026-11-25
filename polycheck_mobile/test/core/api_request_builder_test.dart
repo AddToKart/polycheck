@@ -53,13 +53,13 @@ void main() {
     test('faculty login includes email, password, and deviceId', () async {
       final api = SessionApi(dio);
       await api.loginFaculty(
-        email: 'teacher1@pup.edu.ph',
+        email: 'teacher1@example.edu.ph',
         password: 'Secret123!',
         deviceId: 'mobile-test-device',
       );
 
       expect(bodyOf(adapter.requests.single), {
-        'email': 'teacher1@pup.edu.ph',
+        'email': 'teacher1@example.edu.ph',
         'password': 'Secret123!',
         'deviceId': 'mobile-test-device',
       });

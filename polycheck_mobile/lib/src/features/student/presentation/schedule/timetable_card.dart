@@ -34,7 +34,7 @@ class TimetableCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final section = entry.section;
     return CampusCard(
       onTap: () => context.push(StudentPaths.subject(section.id)),

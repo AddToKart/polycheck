@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:polycheck_mobile/src/core/api/notifications_api.dart';
 import 'package:polycheck_mobile/src/core/models/models.dart';
 import 'package:polycheck_mobile/src/core/models/support/unknown_api_value.dart';
 
@@ -82,7 +83,7 @@ void main() {
         'id': 'u-1',
         'studentId': '2023-00001-MN-0',
         'fullName': 'Maria Clara',
-        'email': 'maria@pup.edu.ph',
+        'email': 'maria@example.edu.ph',
         'role': 'student',
         'program': 'BSIT',
         'yearLevel': 3,
@@ -105,7 +106,7 @@ void main() {
         'isItCoordinator': false,
         'isDepartmentHead': false,
         'isUserRegistrar': false,
-        'contactEmail': 'maria.alt@pup.edu.ph',
+        'contactEmail': 'maria.alt@example.edu.ph',
         'contactPhone': '+639000000000',
         'enrolledSectionIds': ['sec-1', 'sec-2'],
         'createdAt': '2026-01-01T00:00:00Z',
@@ -140,6 +141,29 @@ void main() {
       expect(user.isDepartmentHead, isFalse);
       expect(user.isUserRegistrar, isFalse);
       expect(user.mustChangePassword, isFalse);
+      // Course scope fields are additive: legacy payloads decode to an empty (fail-closed) scope.
+      expect(user.managedCourses, isEmpty);
+      expect(user.managesAllCourses, isFalse);
+      expect(user.courseScopeMode, isNull);
+    });
+
+    test('course scope fields decode from the /auth/me shape', () {
+      final user = User.fromJson({
+        'id': 'u-3',
+        'fullName': 'Course Head',
+        'role': 'teacher',
+        'isActive': true,
+        'isDepartmentHead': true,
+        'managedCourses': ['BSIT', 'BSHM'],
+        'managesAllCourses': false,
+        'courseScopeMode': 'course',
+        'createdAt': '2026-01-01T00:00:00Z',
+        'updatedAt': '2026-01-01T00:00:00Z',
+      });
+      expect(user.managedCourses, ['BSIT', 'BSHM']);
+      expect(user.managesAllCourses, isFalse);
+      expect(user.courseScopeMode, 'course');
+      expect(User.fromJson(user.toJson()), user);
     });
 
     test('Section carries the course and nested schedule', () {
@@ -160,7 +184,7 @@ void main() {
         'semester': '1st Sem 2026-2027',
         'teacherId': 'tch-1',
         'teacherName': 'Dr. Ada Lovelace',
-        'enrollmentCode': 'PUP1234',
+        'enrollmentCode': 'ENR1234',
         'studentCount': 40,
         'createdAt': '2026-06-01T00:00:00Z',
         'updatedAt': '2026-06-01T00:00:00Z',
@@ -393,6 +417,132 @@ void main() {
         'message': 'provider unavailable',
       });
       expect(error, isA<AiStreamError>());
+    });
+  });
+
+  group('FLR-01 excuseReason wire decode', () {
+    // `AttendanceRecord.excuseReason` is serialized by the backend as the
+    // snake_case `ExcuseReason` enum (`shared/src/types/attendance.ts`). The
+    // converter was missing from the freezed converter list, so the generated
+    // code called `$enumDecodeNullable` with camelCase member names and threw
+    // on every excused row - which also broke the sync receipt decode.
+    Map<String, dynamic> recordJson(Object? excuseReason) => <String, dynamic>{
+      'id': 'rec-1',
+      'sessionId': 'ses-1',
+      'sectionId': 'sec-1',
+      'studentId': 'u-1',
+      'timestamp': '2026-11-10T00:05:00Z',
+      'status': 'excused',
+      'coordinates': <String, dynamic>{'latitude': null, 'longitude': null},
+      'isSynced': true,
+      'excuseStatus': 'approved',
+      'excuseReason': excuseReason,
+    };
+
+    test('every snake_case reason decodes to its exact member', () {
+      const expected = <String, ExcuseReason>{
+        'medical': ExcuseReason.medical,
+        'family_emergency': ExcuseReason.familyEmergency,
+        'school_activity': ExcuseReason.schoolActivity,
+        'transportation': ExcuseReason.transportation,
+        'bereavement': ExcuseReason.bereavement,
+        'other': ExcuseReason.other,
+      };
+
+      for (final entry in expected.entries) {
+        final record = AttendanceRecord.fromJson(recordJson(entry.key));
+        expect(record.excuseReason, entry.value, reason: entry.key);
+        expect(record.toJson()['excuseReason'], entry.key, reason: entry.key);
+        expect(
+          AttendanceRecord.fromJson(record.toJson()),
+          record,
+          reason: '${entry.key} round trip',
+        );
+      }
+    });
+
+    test('an unknown reason degrades to Other instead of throwing', () {
+      final record = AttendanceRecord.fromJson(recordJson('family_vacation'));
+      expect(record.excuseReason, ExcuseReason.other);
+      expect(ExcuseReason.tryParse('family_vacation'), isNull);
+    });
+
+    test('an absent reason stays null', () {
+      final json = recordJson(null)..remove('excuseReason');
+      expect(AttendanceRecord.fromJson(json).excuseReason, isNull);
+    });
+  });
+
+  group('FLR-05 notification inbox decode', () {
+    // The backend union (`shared/src/types/notification.ts`) is append-only.
+    // Before FLR-05 an unrecognized type threw for the row and the inbox was
+    // decoded with `map`, so one new server-side type blanked the whole list.
+    const knownTypes = <String, NotificationType>{
+      'dispute_filed': NotificationType.disputeFiled,
+      'dispute_resolved': NotificationType.disputeResolved,
+      'excuse_requested': NotificationType.excuseRequested,
+      'excuse_decided': NotificationType.excuseDecided,
+      'attendance_absent': NotificationType.attendanceAbsent,
+      'standing_below_threshold': NotificationType.standingBelowThreshold,
+      'account_status_changed': NotificationType.accountStatusChanged,
+      'password_reset': NotificationType.passwordReset,
+      'role_changed': NotificationType.roleChanged,
+      'key_provisioned': NotificationType.keyProvisioned,
+      'device_released': NotificationType.deviceReleased,
+      'system_report_resolved': NotificationType.systemReportResolved,
+      'at_risk_referral': NotificationType.atRiskReferral,
+    };
+
+    Map<String, dynamic> row(String type, {String id = 'n1'}) =>
+        <String, dynamic>{
+          'id': id,
+          'type': type,
+          'title': 'Title',
+          'body': 'Body',
+          'createdAt': '2026-11-10T08:00:00.000Z',
+        };
+
+    test('every one of the 13 known types decodes exactly', () {
+      expect(knownTypes, hasLength(13));
+      expect(knownTypes, hasLength(NotificationType.values.length - 1));
+      for (final entry in knownTypes.entries) {
+        final notification = AppNotification.fromJson(row(entry.key));
+        expect(notification.type, entry.value, reason: entry.key);
+        expect(
+          notification.toJson()['type'],
+          entry.key,
+          reason: '${entry.key} round trip',
+        );
+      }
+    });
+
+    test('an unknown type degrades to the sentinel instead of throwing', () {
+      final notification = AppNotification.fromJson(row('campus_announcement'));
+      expect(notification.type, NotificationType.unknown);
+      expect(notification.title, 'Title');
+      expect(NotificationType.tryParse('campus_announcement'), isNull);
+      // The sentinel is not a legitimate wire type.
+      expect(NotificationType.tryParse('unknown'), isNull);
+    });
+
+    test('the inbox skips only undecodable rows', () {
+      final payload = <dynamic>[
+        row('dispute_filed', id: 'n1'),
+        row('campus_announcement', id: 'n2'),
+        <String, dynamic>{'type': 'dispute_filed'}, // missing required `id`
+        'not-a-map',
+        row('at_risk_referral', id: 'n5'),
+      ];
+
+      final parsed = parseNotificationInbox(payload);
+
+      expect(parsed.map((n) => n.id), <String>['n1', 'n2', 'n5']);
+      expect(parsed[1].type, NotificationType.unknown);
+    });
+
+    test('a non-list payload yields an empty inbox, never a throw', () {
+      expect(parseNotificationInbox(null), isEmpty);
+      expect(parseNotificationInbox(<String, dynamic>{'rows': 1}), isEmpty);
     });
   });
 }

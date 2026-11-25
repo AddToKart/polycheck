@@ -7,7 +7,7 @@ import 'package:polycheck_mobile/src/core/api/dashboard_api.dart';
 import 'package:polycheck_mobile/src/core/models/dashboard.dart';
 import 'package:polycheck_mobile/src/core/models/user.dart';
 import 'package:polycheck_mobile/src/core/providers/session_provider.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/features/admin/presentation/admin_dashboard_screen.dart';
 
 import '../../helpers/auth_harness.dart';
@@ -60,7 +60,7 @@ Future<void> pumpDashboard(
         ),
       ],
       child: MaterialApp(
-        theme: PupTheme.light,
+        theme: BrandTheme.light,
         home: const AdminDashboardScreen(),
       ),
     ),

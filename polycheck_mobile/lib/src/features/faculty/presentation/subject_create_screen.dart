@@ -74,7 +74,7 @@ class _SubjectCreateScreenState extends ConsumerState<SubjectCreateScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return FacultyScaffold(
       title: 'New subject',
       subtitle: 'Parent course — sections are added afterwards',

@@ -92,7 +92,7 @@ export default function StudentSubjectDetailPage() {
 
   if (loadError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black p-6">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-brand-black p-6">
         <Card className="w-full max-w-md">
           <CardContent className="p-8">
             <ErrorDisplay message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />

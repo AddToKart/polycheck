@@ -188,7 +188,7 @@ String? validateUserUpdate(User target, Map<EditableUserField, String> values) {
   }
   if (fields.contains(EditableUserField.email) &&
       !_emailPattern.hasMatch((values[EditableUserField.email] ?? '').trim())) {
-    return 'Enter a valid PUP email address.';
+    return 'Enter a valid email address.';
   }
   if (fields.contains(EditableUserField.program) &&
       (values[EditableUserField.program] ?? '').trim().length < 2) {
@@ -218,6 +218,8 @@ Map<String, dynamic> buildUserUpdatePayload(
   bool? isItCoordinator,
   bool? isDepartmentHead,
   bool? isUserRegistrar,
+  List<String>? managedCourses,
+  bool? managesAllCourses,
 }) {
   final fields = editableFieldsForRole(target.role).toSet();
   final payload = <String, dynamic>{};
@@ -280,9 +282,27 @@ Map<String, dynamic> buildUserUpdatePayload(
     if (isUserRegistrar != null && isUserRegistrar != target.isUserRegistrar) {
       payload['isUserRegistrar'] = isUserRegistrar;
     }
+    if (managedCourses != null &&
+        !_sameCourses(managedCourses, target.managedCourses)) {
+      payload['managedCourses'] = managedCourses;
+    }
+    if (managesAllCourses != null &&
+        managesAllCourses != target.managesAllCourses) {
+      payload['managesAllCourses'] = managesAllCourses;
+    }
   }
 
   return payload;
+}
+
+bool _sameCourses(List<String> next, List<String> current) {
+  final left = [...next]..sort();
+  final right = [...current]..sort();
+  if (left.length != right.length) return false;
+  for (var index = 0; index < left.length; index++) {
+    if (left[index] != right[index]) return false;
+  }
+  return true;
 }
 
 bool hasUserChanges(Map<String, dynamic> payload) => payload.isNotEmpty;
@@ -337,7 +357,7 @@ String? validateCreateTeacherForm({
   required String email,
 }) {
   if (fullName.trim().length < 2) return 'Enter the full name.';
-  if (!_emailPattern.hasMatch(email.trim())) return 'Enter a valid PUP email.';
+  if (!_emailPattern.hasMatch(email.trim())) return 'Enter a valid email.';
   return null;
 }
 
@@ -355,7 +375,7 @@ String? validateCreateStudentForm({
   }
   final trimmedEmail = email.trim();
   if (trimmedEmail.isNotEmpty && !_emailPattern.hasMatch(trimmedEmail)) {
-    return 'Enter a valid PUP email or leave it blank.';
+    return 'Enter a valid email or leave it blank.';
   }
   if (program.trim().length < 2) return 'Enter the program.';
   final year = int.tryParse(yearLevel.trim());
@@ -373,7 +393,7 @@ String? validateCreateAdminForm({
   required String password,
 }) {
   if (fullName.trim().length < 2) return 'Enter the full name.';
-  if (!_emailPattern.hasMatch(email.trim())) return 'Enter a valid PUP email.';
+  if (!_emailPattern.hasMatch(email.trim())) return 'Enter a valid email.';
   if (department.trim().length < 2) return 'Enter the department.';
   if (!meetsPasswordPolicy(password)) {
     return 'Password must be 12+ characters with uppercase, lowercase, a '

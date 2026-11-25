@@ -15,7 +15,7 @@ import 'package:polycheck_mobile/src/core/models/standing.dart';
 import 'package:polycheck_mobile/src/core/models/subject.dart';
 import 'package:polycheck_mobile/src/core/models/user.dart';
 import 'package:polycheck_mobile/src/core/providers/session_provider.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/features/faculty/presentation/faculty_dashboard_screen.dart';
 
 const _teacher = User(
@@ -155,7 +155,7 @@ void main() {
           attendanceApiProvider.overrideWithValue(_FakeAttendanceApi()),
         ],
         child: MaterialApp(
-          theme: PupTheme.light,
+          theme: BrandTheme.light,
           home: const FacultyDashboardScreen(),
         ),
       ),

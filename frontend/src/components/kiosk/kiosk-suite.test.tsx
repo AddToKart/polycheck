@@ -192,7 +192,7 @@ describe('KioskFinale', () => {
     expect(finaleAttendancePercent({ ...summary.counts, present: 0, late: 0, incomplete: 0, absent: 0 })).toBeNull()
   })
 
-  it('renders the finalized counts card with the PUP seal from the summary', () => {
+  it('renders the finalized counts card with the institution seal from the summary', () => {
     render(<KioskFinale summary={summary} subjectName="Software Engineering" sectionLabel="BSCS 3-1" />)
 
     expect(screen.getByText('Software Engineering')).toBeInTheDocument()
@@ -203,7 +203,7 @@ describe('KioskFinale', () => {
     expect(counts.find((n) => n.dataset.status === 'late')?.textContent).toContain('6')
     expect(counts.find((n) => n.dataset.status === 'excused')?.textContent).toContain('Excused (E)')
     expect(screen.getByText('93%')).toBeInTheDocument()
-    expect(screen.getByAltText('')?.getAttribute('src')).toContain('pup-logo')
+    expect(screen.getByAltText('')?.getAttribute('src')).toContain('brand-mark')
   })
 
   it('shows the static breakdown under reduced motion and confetti otherwise', () => {

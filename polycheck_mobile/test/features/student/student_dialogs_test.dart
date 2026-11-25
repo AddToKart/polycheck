@@ -27,7 +27,7 @@ class FakeSectionsApi extends SectionsApi {
 Future<void> pumpDialog(WidgetTester tester, Widget dialog) async {
   await tester.pumpWidget(
     MaterialApp(
-      theme: PupTheme.light,
+      theme: BrandTheme.light,
       home: Scaffold(
         body: Builder(
           builder: (context) => Center(
@@ -194,7 +194,7 @@ void main() {
           ),
         ],
         child: MaterialApp(
-          theme: PupTheme.light,
+          theme: BrandTheme.light,
           home: Scaffold(
             body: Builder(
               builder: (context) => Center(

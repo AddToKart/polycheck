@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../theme/pup_theme.dart';
+import '../theme/brand_theme.dart';
 
-/// Square PUP card: 1px border, flat surface, zero radius.
+/// Square card: 1px border, flat surface, zero radius.
 class CampusCard extends StatelessWidget {
   const CampusCard({
     super.key,
@@ -23,7 +23,7 @@ class CampusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.zero,
       side: BorderSide(color: borderColor ?? tokens.borderSubtle),

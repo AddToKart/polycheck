@@ -39,7 +39,7 @@ class _StudentHistoryScreenState extends ConsumerState<StudentHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final attendanceAsync = ref.watch(myAttendanceProvider);
     final sectionsAsync = ref.watch(studentSectionsProvider);
     final subjectsAsync = ref.watch(studentSubjectsProvider);
@@ -197,7 +197,7 @@ class _StudentHistoryScreenState extends ConsumerState<StudentHistoryScreen> {
     String subjectName,
     Section? section,
   ) async {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     await showCampusBottomSheet<void>(
       context,
       title: subjectName,
@@ -394,7 +394,7 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Semantics(
       selected: selected,
       button: true,
@@ -450,7 +450,7 @@ class _HistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final style = attendanceStatusStyle(record.status, isDark: tokens.isDark);
     return CampusCard(
       onTap: onTap,

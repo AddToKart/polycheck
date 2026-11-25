@@ -8,7 +8,7 @@ import 'package:polycheck_mobile/src/core/polycheck_core.dart';
 void main() {
   Widget harness(WidgetBuilderCallback onOpen) {
     return MaterialApp(
-      theme: PupTheme.light,
+      theme: BrandTheme.light,
       home: Scaffold(
         body: Builder(
           builder: (context) => Center(

@@ -31,12 +31,24 @@ export interface User {
     canEmergencyUnbindDevices: boolean
   }
   /**
-   * Concurrent administrative designations (PUP Santa Maria dual-hat model).
+   * Concurrent administrative designations (dual-hat model).
    * Teacher accounts only; super admins hold all three suites implicitly.
    */
   isItCoordinator?: boolean
   isDepartmentHead?: boolean
   isUserRegistrar?: boolean
+  /**
+   * Course scope of a head/registrar designee (catalog codes). Ignored for everyone else;
+   * `managesAllCourses` wins. Empty scope is fail-closed.
+   */
+  managedCourses?: string[]
+  managesAllCourses?: boolean
+  /** Live head/registrar scoping rule reported by the server (`legacy` = department, `course` = course). */
+  courseScopeMode?: 'legacy' | 'course'
+  /** True while an emailed activation link has not been used (the account cannot log in yet). */
+  activationPending?: boolean
+  /** Latest activation email delivery state (plain strings; only present for pending accounts). */
+  activationMail?: { status: string; sentAt?: string; errorCode?: string }
   /** Secondary contact channels owned by the user (never the login identity). */
   contactEmail?: string | null
   contactPhone?: string | null

@@ -24,7 +24,7 @@ const student: User = {
   id: 'student-1',
   studentId: '2026-00001-MN-0',
   fullName: 'Test Student',
-  email: 'student@pup.edu.ph',
+  email: 'student@example.edu.ph',
   role: 'student',
   isActive: true,
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -34,7 +34,7 @@ const student: User = {
 const teacher: User = {
   id: 'teacher-1',
   fullName: 'Prof. Test',
-  email: 'teacher@pup.edu.ph',
+  email: 'teacher@example.edu.ph',
   role: 'teacher',
   isActive: true,
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -44,7 +44,7 @@ const teacher: User = {
 const admin: User = {
   id: 'admin-1',
   fullName: 'Dr. Test Admin',
-  email: 'admin@pup.edu.ph',
+  email: 'admin@example.edu.ph',
   role: 'super_admin',
   isActive: true,
   createdAt: '2026-01-01T00:00:00.000Z',

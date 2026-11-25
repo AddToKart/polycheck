@@ -8,7 +8,7 @@ import '../data/faculty_logic.dart';
 import 'widgets/attendance_donut.dart';
 import 'widgets/faculty_shell.dart';
 
-/// Reports and exports: analytics, per-section comparison, CSV, and the PUP
+/// Reports and exports: analytics, per-section comparison, CSV, and the official
 /// document downloads (master list, class record, session attendance).
 class FacultyReportsScreen extends ConsumerStatefulWidget {
   const FacultyReportsScreen({super.key});
@@ -24,6 +24,7 @@ class _FacultyReportsScreenState extends ConsumerState<FacultyReportsScreen> {
   late String _endDate = _initialRange.endDate;
   String _subjectId = '';
   String _sectionId = '';
+  String _course = '';
 
   bool _loading = true;
   String? _error;
@@ -46,7 +47,18 @@ class _FacultyReportsScreenState extends ConsumerState<FacultyReportsScreen> {
     endDate: _endDate,
     subjectId: _subjectId.isEmpty ? null : _subjectId,
     sectionId: _sectionId.isEmpty ? null : _sectionId,
+    course: _course.isEmpty ? null : _course,
   );
+
+  /// Course filter options: admins and an all-courses head may pick any catalog
+  /// course; a course head only their own. Empty hides the filter.
+  List<String> _courseOptions() {
+    final user = ref.read(sessionProvider).user;
+    if (user == null) return const <String>[];
+    if (user.role == UserRole.superAdmin) return campusCourseCodes();
+    final scoped = oversightCourses(user);
+    return scoped ?? campusCourseCodes();
+  }
 
   Future<void> _load() async {
     setState(() {
@@ -222,7 +234,7 @@ class _FacultyReportsScreenState extends ConsumerState<FacultyReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final report = _report;
     final totals = report?.totals;
     final segments = totals == null
@@ -345,6 +357,28 @@ class _FacultyReportsScreenState extends ConsumerState<FacultyReportsScreen> {
                             ),
                           ],
                         ),
+                        if (_courseOptions().isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 10),
+                          FacultyDropdown<String>(
+                            label: 'Course',
+                            hint: 'All courses',
+                            value: _course.isEmpty ? null : _course,
+                            items: [
+                              for (final code in _courseOptions())
+                                DropdownMenuItem<String>(
+                                  value: code,
+                                  child: Text(
+                                    '$code — ${campusCourseName(code)}',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                            onChanged: (value) {
+                              setState(() => _course = value ?? '');
+                              _load();
+                            },
+                          ),
+                        ],
                         const SizedBox(height: 10),
                         FacultyDropdown<String>(
                           label: 'Subject',

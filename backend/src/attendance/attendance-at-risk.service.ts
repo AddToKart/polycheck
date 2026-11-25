@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common'
 import type { AttendanceStandingStatus, StudentAtRisk } from '@polycheck/shared'
-import { academicOversightDepartment } from '../common/designations/department-pin'
+import { oversightSectionWhere } from '../common/course-scope'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { Prisma } from '../prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
@@ -98,14 +98,13 @@ export class AttendanceAtRiskService {
       throw new ForbiddenException('At-risk oversight is only available to teachers and administrators')
     }
     const limit = Math.min(Math.max(1, Math.floor(query.limit ?? DEFAULT_LIMIT)), MAX_LIMIT)
-    const oversight = academicOversightDepartment(user)
+    const oversight = oversightSectionWhere(user)
+    const course = query.course?.trim()
     const sectionWhere: Prisma.SectionWhereInput = {
-      ...(user.role === 'teacher'
-        ? oversight
-          ? { teacher: { department: { equals: oversight, mode: 'insensitive' as const } } }
-          : { teacherId: user.id }
-        : adminSectionWhere(user)),
+      ...(user.role === 'teacher' ? (oversight ?? { teacherId: user.id }) : adminSectionWhere(user)),
       ...(query.sectionId ? { id: query.sectionId } : {}),
+      // Optional course filter: narrows within the actor's scope, never widens it.
+      ...(course ? { course: { equals: course, mode: 'insensitive' as const } } : {}),
     }
     if (query.sectionId) {
       const allowed = await this.prisma.section.findFirst({ where: sectionWhere, select: { id: true } })

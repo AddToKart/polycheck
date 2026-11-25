@@ -311,6 +311,22 @@ class _StudentScanScreenState extends ConsumerState<StudentScanScreen> {
       _promptOpen = false;
     }
     if (token == null || token.trim().isEmpty || !mounted) return;
+    // FLF-03: manual entry is a fallback channel, so it obeys the same policy
+    // as image upload (`shouldShowScanFallbacks`, RN `scan.tsx:1036` gating).
+    // Without this an in-person token could be pasted in even with fallbacks
+    // pinned off in production.
+    final payload = decodeTokenPayload(token.trim());
+    if (payload != null && !shouldShowScanFallbacks(payload.mode)) {
+      _showTransientOutcome(
+        const StudentScanOutcome(
+          kind: ScanOutcomeKind.rejected,
+          title: 'MANUAL ENTRY DISABLED',
+          message:
+              'Entering a code is disabled for in-person check-in. Scan the live QR.',
+        ),
+      );
+      return;
+    }
     // Give the dialog one frame of teardown before this screen flips into its
     // submitting state; the dialog (not this State) owns the controller.
     await WidgetsBinding.instance.endOfFrame;
@@ -334,13 +350,13 @@ class _StudentScanScreenState extends ConsumerState<StudentScanScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final outcome = _outcome;
     // The boot offline strip is an overlay above the Navigator; this screen
     // has no AppBar, so reserve its height at the top of the header (SW-7).
     final offlineBannerVisible = ref.watch(offlineBannerProvider);
     return Scaffold(
-      backgroundColor: PupColors.surfaceDark,
+      backgroundColor: BrandColors.surfaceDark,
       body: SafeArea(
         child: Stack(
           children: <Widget>[
@@ -373,7 +389,7 @@ class _StudentScanScreenState extends ConsumerState<StudentScanScreen> {
                     return CustomPaint(
                       painter: _ScannerOverlayPainter(
                         hole: hole,
-                        gold: PupColors.pupGold,
+                        gold: BrandColors.brandGold,
                       ),
                     );
                   },
@@ -392,7 +408,7 @@ class _StudentScanScreenState extends ConsumerState<StudentScanScreen> {
                   8,
                   10,
                 ),
-                color: PupColors.surfaceDark.withValues(alpha: 0.82),
+                color: BrandColors.surfaceDark.withValues(alpha: 0.82),
                 child: Row(
                   children: <Widget>[
                     IconButton(
@@ -410,7 +426,7 @@ class _StudentScanScreenState extends ConsumerState<StudentScanScreen> {
                             'POLYCHECK SCANNER',
                             style: Theme.of(context).textTheme.labelSmall
                                 ?.copyWith(
-                                  color: PupColors.pupGold,
+                                  color: BrandColors.brandGold,
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: 1.4,
                                 ),
@@ -431,7 +447,7 @@ class _StudentScanScreenState extends ConsumerState<StudentScanScreen> {
                       tooltip: _torchState == TorchState.on
                           ? 'Turn flashlight off'
                           : 'Turn flashlight on',
-                      color: PupColors.pupGold,
+                      color: BrandColors.brandGold,
                       onPressed: _toggleTorch,
                       icon: Icon(
                         _torchState == TorchState.on
@@ -450,7 +466,7 @@ class _StudentScanScreenState extends ConsumerState<StudentScanScreen> {
               child: Container(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 decoration: BoxDecoration(
-                  color: PupColors.surfaceDark.withValues(alpha: 0.9),
+                  color: BrandColors.surfaceDark.withValues(alpha: 0.9),
                   border: Border(
                     top: BorderSide(
                       color: Colors.white.withValues(alpha: 0.14),
@@ -540,7 +556,7 @@ class _StudentScanScreenState extends ConsumerState<StudentScanScreen> {
                       horizontal: 14,
                       vertical: 8,
                     ),
-                    color: PupColors.surfaceDark.withValues(alpha: 0.9),
+                    color: BrandColors.surfaceDark.withValues(alpha: 0.9),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
@@ -592,8 +608,10 @@ class _ResultCard extends StatelessWidget {
         outcome.kind == ScanOutcomeKind.success ||
         outcome.kind == ScanOutcomeKind.offlineQueued ||
         outcome.kind == ScanOutcomeKind.pinRequired;
-    final background = positive ? PupColors.pupGold : PupColors.pupDeepMaroon;
-    final foreground = positive ? PupColors.pupDeepMaroon : Colors.white;
+    final background = positive
+        ? BrandColors.brandGold
+        : BrandColors.brandDeepMaroon;
+    final foreground = positive ? BrandColors.brandDeepMaroon : Colors.white;
     return Semantics(
       liveRegion: true,
       child: Container(
@@ -602,7 +620,7 @@ class _ResultCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: background,
           border: Border.all(
-            color: positive ? PupColors.pupGold : PupColors.pupGold,
+            color: positive ? BrandColors.brandGold : BrandColors.brandGold,
             width: 1.5,
           ),
         ),
@@ -679,7 +697,7 @@ class _CameraError extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: PupColors.surfaceDark,
+      color: BrandColors.surfaceDark,
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -689,7 +707,7 @@ class _CameraError extends StatelessWidget {
               const Icon(
                 Icons.camera_alt_outlined,
                 size: 34,
-                color: PupColors.pupGold,
+                color: BrandColors.brandGold,
               ),
               const SizedBox(height: 12),
               Text(

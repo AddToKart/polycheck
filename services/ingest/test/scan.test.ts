@@ -180,6 +180,74 @@ describe('validateScan — in-person parity', () => {
   })
 })
 
+describe('validateScan — scannedAt provenance', () => {
+  it('times a live scan by the receive clock so a forged in-window scannedAt cannot dodge lateness', async () => {
+    // Received at issuedAt+16min: past the 15-minute validity, inside grace.
+    const receivedAt = new Date(issuedAt + 16 * 60_000)
+    const forgedScannedAt = new Date(issuedAt + 60_000)
+
+    const result = await validateScan({
+      snapshot: inPersonSnapshot(),
+      teacherPublicKey: keys.publicKey,
+      userId: 'student-1',
+      evidence: completeEvidence({
+        scannedAt: forgedScannedAt.toISOString(),
+        locationCapturedAt: new Date(forgedScannedAt.getTime() - 5_000).toISOString(),
+      }),
+      offline: false,
+      receivedAt,
+      consumePinAttempt: allowPin,
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.status).toBe('late')
+    expect(result.scannedAt).toEqual(receivedAt)
+  })
+
+  it('keeps the recorded scannedAt for an offline replay', async () => {
+    const receivedAt = new Date(issuedAt + 16 * 60_000)
+    const recordedScannedAt = new Date(issuedAt + 60_000)
+
+    const result = await validateScan({
+      snapshot: inPersonSnapshot(),
+      teacherPublicKey: keys.publicKey,
+      userId: 'student-1',
+      evidence: completeEvidence({
+        scannedAt: recordedScannedAt.toISOString(),
+        locationCapturedAt: new Date(recordedScannedAt.getTime() - 5_000).toISOString(),
+      }),
+      offline: true,
+      receivedAt,
+      consumePinAttempt: allowPin,
+    })
+
+    // Recorded inside the validity window: Present, not Late.
+    expect(result.success).toBe(true)
+    expect(result.status).toBe('present')
+    expect(result.scannedAt).toEqual(recordedScannedAt)
+  })
+
+  it('still falls back to the receive clock for an offline replay without a recorded timestamp', async () => {
+    const receivedAt = new Date(issuedAt + 16 * 60_000)
+
+    const result = await validateScan({
+      snapshot: inPersonSnapshot(),
+      teacherPublicKey: keys.publicKey,
+      userId: 'student-1',
+      evidence: completeEvidence({
+        scannedAt: undefined,
+        locationCapturedAt: new Date(receivedAt.getTime() - 5_000).toISOString(),
+      }),
+      offline: true,
+      receivedAt,
+      consumePinAttempt: allowPin,
+    })
+
+    expect(result.scannedAt).toEqual(receivedAt)
+    expect(result.status).toBe('late')
+  })
+})
+
 describe('validateScan — offline replay', () => {
   it('keeps verified evidence as disputed when the class already ended', async () => {
     const result = await run(

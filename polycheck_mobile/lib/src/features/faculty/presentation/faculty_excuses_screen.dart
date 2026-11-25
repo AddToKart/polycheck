@@ -66,7 +66,7 @@ class _FacultyExcusesScreenState extends ConsumerState<FacultyExcusesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final sectionsById = <String, Section>{
       for (final section in _sections) section.id: section,
     };
@@ -251,7 +251,7 @@ class _FacultyExcusesScreenState extends ConsumerState<FacultyExcusesScreen> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: PupTheme.of(context).surface,
+      backgroundColor: BrandTheme.of(context).surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       builder: (sheetContext) => SizedBox(
         height: MediaQuery.sizeOf(sheetContext).height * 0.88,
@@ -318,7 +318,7 @@ class _ExcuseDetailSheetState extends ConsumerState<_ExcuseDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final record = widget.record;
     final pending =
         record.excuseStatus == ExcuseStatus.requested ||
@@ -512,7 +512,7 @@ class _ExcuseEvidenceState extends ConsumerState<_ExcuseEvidence> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     if (widget.path == null || widget.path!.trim().isEmpty) {
       return Text(
         'No evidence attached.',

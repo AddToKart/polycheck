@@ -8,7 +8,7 @@ import 'package:polycheck_mobile/src/core/providers/maintenance_provider.dart';
 import '../../helpers/auth_harness.dart';
 
 void main() {
-  testWidgets('portal renders the PUP landing and role cards', (tester) async {
+  testWidgets('portal renders the landing and role cards', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [

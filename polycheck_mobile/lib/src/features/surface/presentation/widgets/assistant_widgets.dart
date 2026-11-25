@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/models/ai.dart';
-import '../../../../core/theme/pup_theme.dart';
-import '../../../../core/theme/pup_tokens.dart';
+import '../../../../core/theme/brand_theme.dart';
+import '../../../../core/theme/brand_tokens.dart';
 import '../../../../core/widgets/campus_button.dart';
 import '../../../../core/widgets/campus_toast.dart';
 import '../../data/assistant_copy.dart';
@@ -13,7 +13,7 @@ class AssistantTypingDots extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Semantics(
       liveRegion: true,
       label: 'Assistant is typing',
@@ -59,7 +59,7 @@ class _AssistantToolActivityState extends State<AssistantToolActivity> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final count = widget.invocations.length;
     if (count == 0) return const SizedBox.shrink();
 
@@ -114,7 +114,7 @@ class _ToolChip extends StatelessWidget {
   const _ToolChip({required this.invocation, required this.tokens});
 
   final AiToolInvocationSummary invocation;
-  final PupTokens tokens;
+  final BrandTokens tokens;
 
   @override
   Widget build(BuildContext context) {
@@ -175,7 +175,7 @@ class AssistantAttachmentCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (attachments.isEmpty) return const SizedBox.shrink();
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -253,7 +253,7 @@ class _AttachmentStateIcon extends StatelessWidget {
   const _AttachmentStateIcon({required this.state, required this.tokens});
 
   final AttachmentDownloadState state;
-  final PupTokens tokens;
+  final BrandTokens tokens;
 
   @override
   Widget build(BuildContext context) {
@@ -297,7 +297,7 @@ class AssistantMessageActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Wrap(
       spacing: 2,
       children: [
@@ -362,7 +362,7 @@ class AssistantEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final copy = assistantRoleCopy[role]!;
     final theme = Theme.of(context).textTheme;
 
@@ -485,7 +485,7 @@ class _CapabilityList extends StatelessWidget {
   final String title;
   final List<String> items;
   final bool positive;
-  final PupTokens tokens;
+  final BrandTokens tokens;
 
   @override
   Widget build(BuildContext context) {
@@ -563,7 +563,7 @@ class AssistantErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Semantics(
       liveRegion: true,
       child: Container(
@@ -630,7 +630,7 @@ class AssistantUnavailablePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),

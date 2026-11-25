@@ -3,11 +3,11 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../../../core/theme/pup_theme.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/widgets/campus_toast.dart';
 
 /// One-shot geofence picker: tap or drag the pin, adjust the radius, or snap to
-/// the current GPS fix. Defaults to PUP Santa Maria, Bulacan
+/// the current GPS fix. Defaults to Santa Maria, Bulacan
 /// (`frontend/src/components/MapPicker.tsx` parity).
 class GeofenceMapPicker extends StatefulWidget {
   const GeofenceMapPicker({
@@ -94,7 +94,7 @@ class _GeofenceMapPickerState extends State<GeofenceMapPicker> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final center = LatLng(widget.latitude, widget.longitude);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -118,7 +118,7 @@ class _GeofenceMapPickerState extends State<GeofenceMapPicker> {
               children: [
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'edu.pup.polycheck',
+                  userAgentPackageName: 'app.polycheck.mobile',
                 ),
                 CircleLayer(
                   circles: [

@@ -13,7 +13,7 @@ export const ImportConflictModeSchema = z.enum(['skip_existing', 'update_existin
 export const StudentImportRowSchema = z.object({
   rowNumber: z.number().int().min(1),
   fullName: z.string().trim().min(2).max(150),
-  studentId: z.string().trim().toUpperCase().regex(STUDENT_ID_PATTERN, 'Invalid PUP student number'),
+  studentId: z.string().trim().toUpperCase().regex(STUDENT_ID_PATTERN, 'Invalid student number'),
   email: z.string().trim().email().max(254).optional(),
   program: z.string().trim().min(2).max(150).optional(),
   yearLevel: z.number().int().min(1).max(8).optional(),
@@ -22,7 +22,7 @@ export const StudentImportRowSchema = z.object({
 
 export const EnrollImportRowSchema = z.object({
   rowNumber: z.number().int().min(1),
-  studentId: z.string().trim().toUpperCase().regex(STUDENT_ID_PATTERN, 'Invalid PUP student number'),
+  studentId: z.string().trim().toUpperCase().regex(STUDENT_ID_PATTERN, 'Invalid student number'),
   studentName: z.string().trim().min(1).max(150).optional(),
   expectedProgram: z.string().trim().min(1).max(150).optional(),
   expectedYearLevel: z.number().int().min(1).max(8).optional(),
@@ -39,6 +39,7 @@ export const StudentImportRequestSchema = z
   .object({
     mode: ImportModeSchema,
     conflictMode: ImportConflictModeSchema,
+    deliveryMode: z.enum(['temporary_password', 'activation_email']).optional(),
     rows: z.array(StudentImportRowSchema).min(1).max(IMPORT_CHUNK_SIZE),
     idempotencyKey: IdempotencyKeySchema,
     rowChecksum: RowChecksumSchema.optional(),

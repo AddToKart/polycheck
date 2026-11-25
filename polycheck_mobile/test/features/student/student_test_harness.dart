@@ -187,7 +187,7 @@ Future<void> pumpStudentScreen(
         ...overrides,
       ],
       child: MaterialApp(
-        theme: PupTheme.light,
+        theme: BrandTheme.light,
         home: MediaQuery(
           data: MediaQueryData(disableAnimations: reduceMotion),
           child: screen,
@@ -217,7 +217,7 @@ Future<GoRouter> pumpStudentRoutedScreen(
         ...studentShellOverrides(user: user),
         ...overrides,
       ],
-      child: MaterialApp.router(theme: PupTheme.light, routerConfig: router),
+      child: MaterialApp.router(theme: BrandTheme.light, routerConfig: router),
     ),
   );
   await tester.pump();

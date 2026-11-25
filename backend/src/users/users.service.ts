@@ -24,18 +24,23 @@ import {
   isDesignationWriteRequest,
   isRegistrar,
   registrarCanAccessDepartment,
-  registrarDepartment,
+  registrarCanAdminister,
+  registrarForcedDepartment,
   registrarUserWhere,
+  type AccountTarget,
 } from '../common/designations/department-pin'
+import { courseScopeMode } from '../common/course-scope'
 import { isStrongPassword, PASSWORD_HASH_COST } from '../auth/password-policy'
 import { paginate, type PaginationParams } from '../common/utils/pagination'
-import type { AdminUserFilters } from '@polycheck/shared'
+import { MAX_MANAGED_COURSES, normalizeCourse, normalizeCourseList, type AdminUserFilters } from '@polycheck/shared'
 import { NotificationsService } from '../notifications/notifications.service'
 import { RedisService } from '../infrastructure/redis.service'
 import { SettingsService } from '../settings/settings.service'
 import { lockStudentSection } from '../common/student-section-lock'
 import { ErrorCode } from '../common/constants/error-codes'
 import { DeviceBindingService } from './device-binding.service'
+import { AccountActivationService } from '../account-activation/account-activation.service'
+import { MailService } from '../mail/mail.service'
 import { generateTemporaryPassword } from './password-generator'
 
 const SAFE_USER_SELECT = {
@@ -53,6 +58,9 @@ const SAFE_USER_SELECT = {
   isItCoordinator: true,
   isDepartmentHead: true,
   isUserRegistrar: true,
+  managedCourses: true,
+  managesAllCourses: true,
+  activationPending: true,
   createdAt: true,
   updatedAt: true,
 } as const satisfies Prisma.UserSelect
@@ -72,6 +80,8 @@ const GOVERNANCE_USER_SELECT = {
 type SafeUser = Prisma.UserGetPayload<{ select: typeof SAFE_USER_SELECT }>
 
 const DEFAULT_LIST_LIMIT = 100
+// Upper bound for one bulk "re-send to everyone pending" request.
+const PENDING_RESEND_LIMIT = 2_000
 
 // Delegated classroom actions are rate limited per teacher so a compromised
 // account cannot mass-reset a roster. Limits are env-tunable like login limits.
@@ -103,6 +113,8 @@ export class UsersService {
     @Optional() private deviceBinding?: DeviceBindingService,
     @Optional() private settings?: SettingsService,
     @Optional() private redis?: RedisService,
+    @Optional() private activation?: AccountActivationService,
+    @Optional() private mail?: MailService,
   ) {}
 
   async findAll(user: RequestUser, filters: AdminUserFilters = {}, pagination?: PaginationParams) {
@@ -121,14 +133,36 @@ export class UsersService {
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
         where,
-        select: SAFE_USER_SELECT,
+        select: {
+          ...SAFE_USER_SELECT,
+          // Latest delivery state, only surfaced for accounts still waiting to activate.
+          accountMails: {
+            where: { kind: 'activation' },
+            orderBy: { queuedAt: 'desc' },
+            take: 1,
+            select: { status: true, sentAt: true, errorCode: true },
+          },
+        },
         orderBy: { fullName: 'asc' },
         take: params.limit,
         skip: params.offset,
       }),
       this.prisma.user.count({ where }),
     ])
-    return paginate(users, total, params)
+    const rows = users.map(({ accountMails, ...account }) => {
+      const latest = account.activationPending ? accountMails?.[0] : undefined
+      return latest
+        ? {
+            ...account,
+            activationMail: {
+              status: latest.status,
+              ...(latest.sentAt ? { sentAt: latest.sentAt.toISOString() } : {}),
+              ...(latest.errorCode ? { errorCode: latest.errorCode } : {}),
+            },
+          }
+        : account
+    })
+    return paginate(rows, total, params)
   }
 
   async findOne(id: string, user: RequestUser) {
@@ -141,7 +175,7 @@ export class UsersService {
     const canAccessOwnProfile = user.id === id
     const canAccessAsSuperAdmin = adminCanAccessUser(user, target.department)
     const canAccessAsRegistrar =
-      isRegistrar(user) && target.role !== 'super_admin' && registrarCanAccessDepartment(user, target.department)
+      isRegistrar(user) && target.role !== 'super_admin' && registrarCanAdminister(user, target)
     const canAccessStudentInOwnSection =
       user.role === 'teacher' && target.role === 'student'
         ? await this.prisma.enrollment.findFirst({
@@ -192,6 +226,8 @@ export class UsersService {
         isItCoordinator: true,
         isDepartmentHead: true,
         isUserRegistrar: true,
+        managedCourses: true,
+        managesAllCourses: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -240,8 +276,10 @@ export class UsersService {
   }
 
   async createTeacher(dto: CreateTeacherDto, user: RequestUser) {
-    this.assertDepartmentScope(user, dto.department)
-    const forcedDepartment = isRegistrar(user) ? registrarDepartment(user) : dto.department?.trim()
+    this.assertDepartmentScope(user, dto.department, { role: 'teacher' })
+    const forcedDepartment = isRegistrar(user)
+      ? registrarForcedDepartment(user, dto.department)
+      : dto.department?.trim()
     const exists = await this.prisma.user.findUnique({
       where: { email: dto.email.toLowerCase() },
       select: { id: true },
@@ -302,8 +340,15 @@ export class UsersService {
   }
 
   async createStudent(dto: CreateStudentDto, user: RequestUser) {
-    this.assertDepartmentScope(user, dto.department)
-    const forcedDepartment = isRegistrar(user) ? registrarDepartment(user) : (dto.department?.trim() ?? null)
+    // The program is stored as its catalog code when it matches; unmatched text is kept as typed.
+    const course = normalizeCourse(dto.program)
+    const program = course.matched ? (course.code ?? course.raw) : course.raw
+    this.assertDepartmentScope(user, dto.department, { role: 'student', program })
+    // The legacy student `department` column is required by the DB; the campus has no
+    // departments, so it falls back to the course code when the caller does not supply one.
+    const forcedDepartment =
+      (isRegistrar(user) ? registrarForcedDepartment(user, dto.department) : (dto.department?.trim() ?? null)) ||
+      program
     const normalizedStudentId = dto.studentId.toUpperCase()
     const normalizedEmail = dto.email?.toLowerCase()
     const exists = await this.prisma.user.findFirst({
@@ -328,7 +373,7 @@ export class UsersService {
           email: normalizedEmail,
           authEmail: `u-${randomUUID()}@auth.polycheck.invalid`,
           password,
-          program: dto.program?.trim() ?? null,
+          program,
           yearLevel: dto.yearLevel,
           department: forcedDepartment,
           role: 'student',
@@ -378,13 +423,13 @@ export class UsersService {
     this.assertAccountAdministrator(user)
     const target = await this.prisma.user.findUnique({
       where: { id },
-      select: { id: true, role: true, department: true },
+      select: { id: true, role: true, department: true, program: true },
     })
     if (!target) throw new NotFoundException('User not found')
     if (target.role === 'super_admin') {
       throw new ForbiddenException('Super Admin passwords cannot be reset through user management')
     }
-    this.assertDepartmentScope(user, target.department ?? undefined)
+    this.assertDepartmentScope(user, target.department ?? undefined, target)
 
     const generated = password === undefined
     const temporaryPassword = password ?? generateTemporaryPassword()
@@ -393,8 +438,18 @@ export class UsersService {
       this.prisma.user.update({
         where: { id },
         // An admin reset issues a temporary credential: force rotation on the
-        // next login (the session revocation below also forces a fresh login).
-        data: { password: passwordHash, mustChangePassword: true, authVersion: { increment: 1 } },
+        // next login (the session revocation below also forces a fresh login). A reset also ends
+        // any pending email activation: the temporary password is now the way in.
+        data: {
+          password: passwordHash,
+          mustChangePassword: true,
+          activationPending: false,
+          authVersion: { increment: 1 },
+        },
+      }),
+      this.prisma.accountActivationToken.updateMany({
+        where: { userId: id, usedAt: null, revokedAt: null },
+        data: { revokedAt: new Date() },
       }),
       this.prisma.authAccount.upsert({
         where: { providerId_accountId: { providerId: 'credential', accountId: id } },
@@ -584,11 +639,14 @@ export class UsersService {
     }
     const result = await this.deviceBinding.unregisterStudentDevice(user.id, deviceId, ipAddress)
     const profile = await this.loadGovernanceProfile(user.id)
+    const armed = result.cooldownHours > 0
     return {
       user: profile,
       cooldownHours: result.cooldownHours,
       cooldownUntil: result.cooldownUntil.toISOString(),
-      message: `Device unregistered. Mobile logins are locked for ${result.cooldownHours} hour(s); your instructor can release you sooner.`,
+      message: armed
+        ? `Device unregistered. Mobile logins are locked for ${result.cooldownHours} hour(s); your instructor can release you sooner.`
+        : 'Device unregistered. Sign-in is not locked because this request did not identify its device.',
     }
   }
 
@@ -700,11 +758,11 @@ export class UsersService {
     this.assertAccountAdministrator(user)
     const target = await this.prisma.user.findUnique({
       where: { id },
-      select: { id: true, role: true, department: true },
+      select: { id: true, role: true, department: true, program: true },
     })
     if (!target) throw new NotFoundException('User not found')
     if (target.role === 'super_admin') throw new ForbiddenException('Super Admin accounts cannot be disabled here')
-    if (!this.canAdministrateAccount(user, target.department)) {
+    if (!this.canAdministrateAccount(user, target)) {
       throw new ForbiddenException('This account is outside your administrative scope')
     }
     const [updated] = await this.prisma.$transaction([
@@ -760,16 +818,19 @@ export class UsersService {
         id: true,
         role: true,
         department: true,
+        program: true,
         isItCoordinator: true,
         isDepartmentHead: true,
         isUserRegistrar: true,
+        managedCourses: true,
+        managesAllCourses: true,
       },
     })
     if (!target) throw new NotFoundException('User not found')
     if (target.role === 'super_admin') {
       throw new ForbiddenException('Super Admin accounts cannot be edited here')
     }
-    if (!this.canAdministrateAccount(user, target.department)) {
+    if (!this.canAdministrateAccount(user, target)) {
       throw new ForbiddenException('This account is outside your administrative scope')
     }
     if (registrar && dto.email !== undefined) {
@@ -792,11 +853,30 @@ export class UsersService {
     if (isDesignationWriteRequest(dto) && target.role !== 'teacher') {
       throw new BadRequestException('Administrative designations can only be assigned to teacher accounts')
     }
-    if (registrar && dto.department !== undefined) {
+    if (registrar && dto.department !== undefined && courseScopeMode() !== 'course') {
       const requested = dto.department.trim()
       if (requested && !registrarCanAccessDepartment(user, requested)) {
         throw new ForbiddenException('Registrars can only assign their own department')
       }
+    }
+    if (registrar && dto.program !== undefined && courseScopeMode() === 'course') {
+      // A course-pinned registrar cannot move a student out of their own courses.
+      const requested = normalizeCourse(dto.program)
+      if (!registrarCanAdminister(user, { ...target, program: requested.matched ? requested.code : requested.raw })) {
+        throw new ForbiddenException('Registrars can only assign programs inside their own courses')
+      }
+    }
+    let nextManagedCourses: string[] | undefined
+    if (dto.managedCourses !== undefined) {
+      const requested = dto.managedCourses.map((entry) => entry.trim()).filter(Boolean)
+      if (requested.length > MAX_MANAGED_COURSES) {
+        throw new BadRequestException(`A head can manage at most ${MAX_MANAGED_COURSES} courses`)
+      }
+      const unknown = requested.filter((entry) => !normalizeCourse(entry).matched)
+      if (unknown.length > 0) {
+        throw new BadRequestException(`Unknown course: ${unknown.join(', ')}. Use a code from the course catalog.`)
+      }
+      nextManagedCourses = normalizeCourseList(requested)
     }
 
     const data: Prisma.UserUpdateInput = {}
@@ -805,6 +885,8 @@ export class UsersService {
     if (dto.isItCoordinator !== undefined) data.isItCoordinator = dto.isItCoordinator
     if (dto.isDepartmentHead !== undefined) data.isDepartmentHead = dto.isDepartmentHead
     if (dto.isUserRegistrar !== undefined) data.isUserRegistrar = dto.isUserRegistrar
+    if (nextManagedCourses !== undefined) data.managedCourses = nextManagedCourses
+    if (dto.managesAllCourses !== undefined) data.managesAllCourses = dto.managesAllCourses
     if (dto.fullName !== undefined) {
       const fullName = dto.fullName.trim()
       if (fullName.length < 2) throw new BadRequestException('fullName must be at least 2 characters')
@@ -826,14 +908,15 @@ export class UsersService {
     if (dto.program !== undefined) {
       const program = dto.program.trim()
       if (program.length < 2) throw new BadRequestException('program must be at least 2 characters')
-      data.program = program
+      const course = normalizeCourse(program)
+      data.program = course.matched ? course.code : program
     }
     if (dto.yearLevel !== undefined) data.yearLevel = dto.yearLevel
     if (target.role === 'student' && dto.department !== undefined && !dto.department.trim()) {
       // Domain constraint: every student account keeps a department.
       throw new BadRequestException('Student accounts require a department')
     }
-    if (dto.isDepartmentHead === true || dto.isUserRegistrar === true) {
+    if ((dto.isDepartmentHead === true || dto.isUserRegistrar === true) && courseScopeMode() !== 'course') {
       const nextDepartment = (dto.department ?? target.department)?.trim()
       if (!nextDepartment) {
         throw new BadRequestException('A department is required before assigning this designation')
@@ -853,6 +936,21 @@ export class UsersService {
       },
     )
 
+    const sameCourses =
+      nextManagedCourses === undefined ||
+      JSON.stringify([...nextManagedCourses].sort()) === JSON.stringify([...(target.managedCourses ?? [])].sort())
+    const sameAll = dto.managesAllCourses === undefined || dto.managesAllCourses === (target.managesAllCourses ?? false)
+    const scopeChange =
+      sameCourses && sameAll
+        ? null
+        : {
+            from: { managedCourses: target.managedCourses ?? [], managesAllCourses: target.managesAllCourses ?? false },
+            to: {
+              managedCourses: nextManagedCourses ?? target.managedCourses ?? [],
+              managesAllCourses: dto.managesAllCourses ?? target.managesAllCourses ?? false,
+            },
+          }
+
     const changedFields = Object.keys(data)
     if (changedFields.length === 0) throw new BadRequestException('No editable fields were provided')
 
@@ -864,10 +962,11 @@ export class UsersService {
       throw error
     }
     await this.recordAdminAudit(user, 'admin.user.updated', id, { changedFields })
-    if (designationDiff.length > 0) {
+    if (designationDiff.length > 0 || scopeChange) {
       await this.recordAdminAudit(user, 'admin.user.designations_changed', id, {
         targetRole: target.role,
         changes: designationDiff,
+        ...(scopeChange ? { courseScope: scopeChange } : {}),
       })
     }
     return updated
@@ -885,6 +984,9 @@ export class UsersService {
         studentId: true,
         program: true,
         yearLevel: true,
+        isItCoordinator: true,
+        isDepartmentHead: true,
+        isUserRegistrar: true,
       },
     })
     if (!target) throw new NotFoundException('User not found')
@@ -925,16 +1027,43 @@ export class UsersService {
       }
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id },
-      data: {
-        role,
-        // Delegated teacher capabilities do not carry over to a student account.
-        ...(role === 'student' ? { canResetStudentPasswords: null, canEmergencyUnbindDevices: null } : {}),
-      },
-      select: SAFE_USER_SELECT,
+    // Demoting to student drops every teacher-only privilege. Designations are
+    // additive teacher flags; the DB does not enforce role alignment, so a
+    // demoted account that kept `isItCoordinator` would silently pass
+    // `@RequireDesignation` routes on its next login.
+    const designationsCleared =
+      role === 'student' && (target.isItCoordinator || target.isDepartmentHead || target.isUserRegistrar)
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id },
+        data: {
+          role,
+          // Delegated teacher capabilities do not carry over to a student account.
+          ...(role === 'student'
+            ? {
+                canResetStudentPasswords: null,
+                canEmergencyUnbindDevices: null,
+                isItCoordinator: false,
+                isDepartmentHead: false,
+                isUserRegistrar: false,
+                managedCourses: [],
+                managesAllCourses: false,
+              }
+            : {}),
+          // An account-shape change is a security revocation: every existing
+          // session must die (same policy as setStatus/resetPassword).
+          authVersion: { increment: 1 },
+        },
+        select: SAFE_USER_SELECT,
+      }),
+      this.prisma.authSession.deleteMany({ where: { userId: id } }),
+    ])
+    await this.recordAdminAudit(user, 'admin.user.role_changed', id, {
+      before: target.role,
+      after: role,
+      ...(designationsCleared ? { designationsCleared: true } : {}),
     })
-    await this.recordAdminAudit(user, 'admin.user.role_changed', id, { before: target.role, after: role })
     this.events?.emit('auth.session-replaced', { userId: id, reason: 'role_changed' })
     await this.notifications?.notify(id, {
       type: 'role_changed',
@@ -1054,6 +1183,99 @@ export class UsersService {
     }
   }
 
+  /**
+   * Re-send the activation email to one pending student. Uses the same account-admin scope as
+   * every other user-administration action (registrars stay inside their courses/department).
+   */
+  async resendActivation(id: string, user: RequestUser) {
+    this.assertAccountAdministrator(user)
+    await this.assertActivationEmailAvailable()
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        role: true,
+        department: true,
+        program: true,
+        email: true,
+        isActive: true,
+        activationPending: true,
+      },
+    })
+    if (!target) throw new NotFoundException('User not found')
+    if (target.role !== 'student') throw new BadRequestException('Only student accounts use email activation')
+    if (!this.canAdministrateAccount(user, target)) {
+      throw new ForbiddenException('This account is outside your administrative scope')
+    }
+    if (!target.activationPending) {
+      throw new BadRequestException({ code: 'not_pending', message: 'This account is not waiting for activation.' })
+    }
+    if (!target.isActive) {
+      throw new BadRequestException({ code: 'account_disabled', message: 'Enable this account before re-sending.' })
+    }
+    if (!target.email?.trim()) {
+      throw new BadRequestException({
+        code: 'no_email',
+        message: 'Add an email address to this account first, or reset its password instead.',
+      })
+    }
+    const queued = await this.activation!.queueActivationMail(id)
+    await this.recordAdminAudit(user, 'admin.user.activation_resent', id, { alreadyQueued: !queued.created })
+    return { queued: true, alreadyQueued: !queued.created }
+  }
+
+  /** Queue a fresh activation email for every pending student with an email in the caller's scope. */
+  async resendPendingActivation(user: RequestUser) {
+    this.assertAccountAdministrator(user)
+    await this.assertActivationEmailAvailable()
+    const scope = this.userListWhere(user, { role: 'student' })
+    const pending = await this.prisma.user.findMany({
+      where: { AND: [scope, { activationPending: true, isActive: true }] },
+      select: { id: true, email: true },
+      orderBy: { fullName: 'asc' },
+      take: PENDING_RESEND_LIMIT,
+    })
+    let queued = 0
+    let alreadyQueued = 0
+    let noEmail = 0
+    for (const account of pending) {
+      if (!account.email?.trim()) {
+        noEmail += 1
+        continue
+      }
+      const result = await this.activation!.queueActivationMail(account.id)
+      if (result.created) queued += 1
+      else alreadyQueued += 1
+    }
+    await this.recordAdminAudit(user, 'admin.user.activation_resent_bulk', user.id, {
+      pending: pending.length,
+      queued,
+      alreadyQueued,
+      noEmail,
+    })
+    return { pending: pending.length, queued, alreadyQueued, noEmail }
+  }
+
+  /** Drives the import dialog and settings UI: is email activation usable right now? */
+  async activationStatus(): Promise<{ enabled: boolean; configured: boolean; driver: string }> {
+    const enabled = (await this.settings?.getBoolean('activation_email_enabled', false)) ?? false
+    const status = this.mail?.status()
+    return { enabled, configured: status?.configured ?? false, driver: status?.driver ?? 'disabled' }
+  }
+
+  private async assertActivationEmailAvailable(): Promise<void> {
+    const enabled = (await this.settings?.getBoolean('activation_email_enabled', false)) ?? false
+    const configured = this.mail?.status().configured ?? false
+    if (!enabled || !configured || !this.activation) {
+      throw new BadRequestException({
+        code: 'activation_email_unavailable',
+        message: enabled
+          ? 'Email delivery is not configured on this server.'
+          : 'Email activation is switched off in Institution Settings.',
+      })
+    }
+  }
+
   private userListWhere(user: RequestUser, filters: AdminUserFilters): Prisma.UserWhereInput {
     const and: Prisma.UserWhereInput[] = []
     if (isRegistrar(user)) {
@@ -1082,6 +1304,7 @@ export class UsersService {
       and.push({ department: { equals: department, mode: 'insensitive' } })
     }
     if (filters.status) and.push({ isActive: filters.status === 'active' })
+    if (filters.activation === 'pending') and.push({ activationPending: true })
 
     return and.length > 0 ? { AND: and } : {}
   }
@@ -1109,11 +1332,15 @@ export class UsersService {
     }
   }
 
-  private assertDepartmentScope(user: RequestUser, department?: string) {
+  private assertDepartmentScope(user: RequestUser, department?: string, target: AccountTarget = {}) {
     this.assertAccountAdministrator(user)
     if (user.role === 'super_admin') {
       if (adminCanAccessUser(user, department)) return
       throw new ForbiddenException('Department administrators can only manage accounts in their own department')
+    }
+    if (courseScopeMode() === 'course') {
+      if (registrarCanAdminister(user, { ...target, department })) return
+      throw new ForbiddenException('Registrars can only manage accounts inside their own courses')
     }
     // Registrar: a missing department is fine on create (it is forced to the
     // actor's own department); an explicit department must match.
@@ -1128,10 +1355,11 @@ export class UsersService {
   }
 
   /** Scope check shared by status changes and profile edits. */
-  private canAdministrateAccount(user: RequestUser, targetDepartment: string | null | undefined): boolean {
-    if (user.role === 'super_admin') return adminCanAccessUser(user, targetDepartment)
+  private canAdministrateAccount(user: RequestUser, target: AccountTarget): boolean {
+    if (user.role === 'super_admin') return adminCanAccessUser(user, target.department)
     if (isRegistrar(user)) {
-      return targetDepartment !== undefined && registrarCanAccessDepartment(user, targetDepartment)
+      if (courseScopeMode() === 'course') return registrarCanAdminister(user, target)
+      return target.department !== undefined && registrarCanAccessDepartment(user, target.department)
     }
     return false
   }

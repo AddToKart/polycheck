@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { IdCard, Lock, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -235,6 +236,13 @@ export default function StudentLoginPage() {
             </div>
           </form>
         )}
+
+        <p className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
+          First time signing in?{" "}
+          <Link href="/activate" className="font-semibold text-maroon underline underline-offset-2 dark:text-golden">
+            Activate your account
+          </Link>
+        </p>
       </div>
     </div>
   );

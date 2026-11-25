@@ -224,7 +224,7 @@ export default function ServerStatusPage() {
 
   if (loading && !latest) {
     return (
-      <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+      <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
         <Sidebar user={user} onLogout={() => { void requestUserLogout().then((outcome) => { if (outcome.loggedOut) router.push('/') }) }} />
         <main className="flex flex-1 items-center justify-center">
           <div className="text-center">
@@ -240,7 +240,7 @@ export default function ServerStatusPage() {
 
   if (error && !latest) {
     return (
-      <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+      <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
         <Sidebar user={user} onLogout={() => { void requestUserLogout().then((outcome) => { if (outcome.loggedOut) router.push('/') }) }} />
         <main className="flex flex-1 items-center justify-center p-6">
           <div
@@ -267,7 +267,7 @@ export default function ServerStatusPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
       <Sidebar user={user} onLogout={() => { void requestUserLogout().then((outcome) => { if (outcome.loggedOut) router.push('/') }) }} />
 
       <main className="flex-1 overflow-y-auto">

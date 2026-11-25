@@ -244,7 +244,7 @@ const htmlContent = `
 <body>
 
   <div class="header-banner">
-    <div class="institution-tag">Polytechnic University of the Philippines — Santa Maria Branch</div>
+    <div class="institution-tag">Example Polytechnic of the Province — Main Campus</div>
     <h1>Polycheck Seeded Test Accounts Guide</h1>
     <div class="header-sub">Official Role-Based Access Control (RBAC), Dual-Hat Faculty Designations & Demonstration Directory</div>
   </div>
@@ -255,13 +255,13 @@ const htmlContent = `
       <div>• <strong>Master Password:</strong> <span class="code-pill">PolycheckSeed123!</span> <em>(or <span class="code-pill">Polycheck@2026!</span> on local dev)</em></div>
       <div>• <strong>Faculty / Admin Login Portal:</strong> <span class="code-pill">/login/faculty</span> (Web) or Campus Faculty Screen (Mobile)</div>
       <div>• <strong>Student Login Portal:</strong> <span class="code-pill">/login/student</span> (Web) or Campus Student Screen (Mobile)</div>
-      <div>• <strong>Live Production API:</strong> <span class="code-pill">https://polycheck-api.addtokart.tech/api</span></div>
+      <div>• <strong>Live Production API:</strong> <span class="code-pill">https://api.polycheck.live/api</span></div>
     </div>
   </div>
 
   <h2>1. Administrative & Dual-Hat Faculty Accounts</h2>
   <p style="font-size: 8pt; color: #52525b; margin-bottom: 8px;">
-    In accordance with the PUP Santa Maria concurrent faculty appointment model, instructors hold specialized administrative designations under a single login identity, governed by Separation of Duties (SoD).
+    In accordance with the concurrent faculty appointment model, instructors hold specialized administrative designations under a single login identity, governed by Separation of Duties (SoD).
   </p>
 
   <!-- Super Admin -->
@@ -272,7 +272,7 @@ const htmlContent = `
     </div>
     <div class="account-body">
       <div class="field-label">Email Address</div>
-      <div class="field-value"><strong>mcreyes@pup.edu.ph</strong></div>
+      <div class="field-value"><strong>mcreyes@example.edu.ph</strong></div>
       <div class="field-label">Department / Scope</div>
       <div class="field-value">Institution-Wide (All Departments)</div>
       <div class="field-label">Primary Surface</div>
@@ -296,7 +296,7 @@ const htmlContent = `
     </div>
     <div class="account-body">
       <div class="field-label">Email Address</div>
-      <div class="field-value"><strong>bry.mis@pup.edu.ph</strong></div>
+      <div class="field-value"><strong>bry.mis@example.edu.ph</strong></div>
       <div class="field-label">Department</div>
       <div class="field-value">College of Computer and Information Sciences (CCIS)</div>
       <div class="field-label">Appended Suite</div>
@@ -323,7 +323,7 @@ const htmlContent = `
     </div>
     <div class="account-body">
       <div class="field-label">Email Address</div>
-      <div class="field-value"><strong>chair.ccis@pup.edu.ph</strong></div>
+      <div class="field-value"><strong>chair.ccis@example.edu.ph</strong></div>
       <div class="field-label">Department Scope</div>
       <div class="field-value">College of Computer and Information Sciences (CCIS)</div>
       <div class="field-label">Appended Suite</div>
@@ -350,7 +350,7 @@ const htmlContent = `
     </div>
     <div class="account-body">
       <div class="field-label">Email Address</div>
-      <div class="field-value"><strong>reg.campus@pup.edu.ph</strong></div>
+      <div class="field-value"><strong>reg.campus@example.edu.ph</strong></div>
       <div class="field-label">Department Scope</div>
       <div class="field-value">CCIS / Departmental Accounts</div>
       <div class="field-label">Appended Suite</div>
@@ -379,7 +379,7 @@ const htmlContent = `
     </div>
     <div class="account-body">
       <div class="field-label">Email Addresses</div>
-      <div class="field-value"><strong>jmdelacruz@pup.edu.ph</strong> / <strong>mesantos@pup.edu.ph</strong></div>
+      <div class="field-value"><strong>jmdelacruz@example.edu.ph</strong> / <strong>mesantos@example.edu.ph</strong></div>
       <div class="field-label">Department</div>
       <div class="field-value">CCIS (Computer Science & Information Technology)</div>
       <div class="field-label">Role Interface</div>
@@ -410,56 +410,56 @@ const htmlContent = `
       <tr>
         <td><strong>Alexandra Marie Reyes</strong></td>
         <td><span class="code-pill">2024-00001-MN-0</span></td>
-        <td>amreyes@iskolar.pup.edu.ph</td>
+        <td>amreyes@student.example.edu.ph</td>
         <td>BS Computer Science (Year 2)</td>
         <td>Meeting PIN input on online scan, Geofence scan, Excuse letters</td>
       </tr>
       <tr>
         <td><strong>Benjamin Lucas Santos</strong></td>
         <td><span class="code-pill">2024-00002-MN-0</span></td>
-        <td>blsantos@iskolar.pup.edu.ph</td>
+        <td>blsantos@student.example.edu.ph</td>
         <td>BS Computer Science (Year 2)</td>
         <td>Class schedule timetable, digital ID card flip, disputes</td>
       </tr>
       <tr>
         <td><strong>Camille Andrea Villanueva</strong></td>
         <td><span class="code-pill">2024-00003-MN-0</span></td>
-        <td>cavillanueva@iskolar.pup.edu.ph</td>
+        <td>cavillanueva@student.example.edu.ph</td>
         <td>BS Computer Science (Year 2)</td>
         <td>Enrollment code registration, standing projection alerts</td>
       </tr>
       <tr>
         <td><strong>Daniel Joseph Cruz</strong></td>
         <td><span class="code-pill">2024-00004-MN-0</span></td>
-        <td>djcruz@iskolar.pup.edu.ph</td>
+        <td>djcruz@student.example.edu.ph</td>
         <td>BS Computer Science (Year 2)</td>
         <td>Single active session replacement test (logging in on 2nd device)</td>
       </tr>
       <tr>
         <td><strong>Erika Mae Gonzales</strong></td>
         <td><span class="code-pill">2024-00005-MN-0</span></td>
-        <td>emgonzales@iskolar.pup.edu.ph</td>
+        <td>emgonzales@student.example.edu.ph</td>
         <td>BS Computer Science (Year 2)</td>
         <td>Dual checkpoint online attendance (Check-in + Check-out)</td>
       </tr>
       <tr>
         <td><strong>Francis Dominic Reyes</strong></td>
         <td><span class="code-pill">2024-00006-MN-0</span></td>
-        <td>fdreyes@iskolar.pup.edu.ph</td>
+        <td>fdreyes@student.example.edu.ph</td>
         <td>BS Computer Science (Year 2)</td>
         <td>Anti-teleportation concurrent class conflict testing</td>
       </tr>
       <tr>
         <td><strong>Gabriella Sofia Mendoza</strong></td>
         <td><span class="code-pill">2024-00007-MN-0</span></td>
-        <td>gsmendoza@iskolar.pup.edu.ph</td>
+        <td>gsmendoza@student.example.edu.ph</td>
         <td>BS Computer Science (Year 2)</td>
         <td>Offline attendance scanning and sync queue preservation</td>
       </tr>
       <tr>
         <td><strong>Henry William Tan</strong></td>
         <td><span class="code-pill">2024-00008-MN-0</span></td>
-        <td>hwtan@iskolar.pup.edu.ph</td>
+        <td>hwtan@student.example.edu.ph</td>
         <td>BS Computer Science (Year 2)</td>
         <td>Attendance dispute submission and resolution tracking</td>
       </tr>
@@ -566,9 +566,9 @@ const htmlContent = `
 
   <h2>4. Recommended Demonstration & Defense Scenarios</h2>
   <div class="notice-card" style="font-size: 8.5pt;">
-    <strong>Scenario 1: Testing Separation of Duties (PUP Santa Maria Alignment)</strong>
+    <strong>Scenario 1: Testing Separation of Duties (Campus Alignment)</strong>
     <p style="margin-top: 3px;">
-      Log in as <strong>Prof. Bryan Salazar</strong> (<span class="code-pill">bry.mis@pup.edu.ph</span>). Point out the <em>IT Operations Suite</em> (Server Status, Issue Reports, Maintenance). Then log in as <strong>Dr. Corazon Aquino</strong> (<span class="code-pill">chair.ccis@pup.edu.ph</span>) to demonstrate how the interface switches to <em>Academic Department Oversight</em> (Department Reports, Campus Excuses, At-Risk Students).
+      Log in as <strong>Prof. Bryan Salazar</strong> (<span class="code-pill">bry.mis@example.edu.ph</span>). Point out the <em>IT Operations Suite</em> (Server Status, Issue Reports, Maintenance). Then log in as <strong>Dr. Corazon Aquino</strong> (<span class="code-pill">chair.ccis@example.edu.ph</span>) to demonstrate how the interface switches to <em>Academic Department Oversight</em> (Department Reports, Campus Excuses, At-Risk Students).
     </p>
   </div>
 
@@ -582,7 +582,7 @@ const htmlContent = `
   <div class="notice-card" style="font-size: 8.5pt;">
     <strong>Scenario 3: Zero-GPS Hybrid Mode & Meeting PIN Verification</strong>
     <p style="margin-top: 3px;">
-      As regular faculty (<span class="code-pill">jmdelacruz@pup.edu.ph</span>), activate an <em>Online</em> session. Note the 4-digit meeting PIN and dual checkpoint buttons (Start QR vs End QR). On student scan, verify that GPS coordinates are never requested (RA 10173 compliance) and the student must enter the meeting PIN to confirm virtual room presence.
+      As regular faculty (<span class="code-pill">jmdelacruz@example.edu.ph</span>), activate an <em>Online</em> session. Note the 4-digit meeting PIN and dual checkpoint buttons (Start QR vs End QR). On student scan, verify that GPS coordinates are never requested (RA 10173 compliance) and the student must enter the meeting PIN to confirm virtual room presence.
     </p>
   </div>
 

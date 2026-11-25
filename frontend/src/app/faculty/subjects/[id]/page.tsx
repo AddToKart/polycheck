@@ -75,7 +75,7 @@ export default function SubjectDetailPage() {
 
   if (loadError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black p-6">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-brand-black p-6">
         <Card className="w-full max-w-md">
           <CardContent className="p-8">
             <ErrorDisplay message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
@@ -88,7 +88,7 @@ export default function SubjectDetailPage() {
   if (!user || !subject) return null
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
       <Sidebar user={user} onLogout={handleLogout} backHref="/faculty/subjects" backLabel="Back to Subjects" />
 
       <main className="flex-1 overflow-y-auto">

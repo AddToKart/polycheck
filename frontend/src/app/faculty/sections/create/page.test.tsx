@@ -83,16 +83,15 @@ describe('Create Section page course selector', () => {
     expect(apiMock.createSection).not.toHaveBeenCalled()
   })
 
-  it('groups catalog options by department and submits the selected course code', async () => {
+  it('lists the flat catalog and submits the selected course code', async () => {
     renderPage()
     await fillRequiredFields()
 
     const courseSelect = screen.getByLabelText('Course')
-    const optgroups = Array.from(courseSelect.querySelectorAll('optgroup')).map((group) => group.label)
-    expect(optgroups).toContain('CCIS')
+    expect(courseSelect.querySelectorAll('optgroup')).toHaveLength(0)
     expect(
       Array.from(courseSelect.querySelectorAll('option')).some(
-        (option) => option.value === 'BSIT' && option.textContent === 'BSIT — BS Information Technology',
+        (option) => option.value === 'BSIT' && option.textContent === 'BSIT — Bachelor of Science in Information Technology',
       ),
     ).toBe(true)
 
@@ -107,6 +106,19 @@ describe('Create Section page course selector', () => {
       room: 'CS Lab 1',
     })
     expect(routerMock.push).toHaveBeenCalledWith('/faculty/subjects/subj-1')
+  })
+
+  it('continues into the class-list import when asked, and only then', async () => {
+    renderPage()
+    await fillRequiredFields()
+    expect(screen.getByLabelText(/Import the class list next/)).not.toBeChecked()
+
+    fireEvent.change(screen.getByLabelText('Course'), { target: { value: 'BSIT' } })
+    fireEvent.click(screen.getByLabelText(/Import the class list next/))
+    fireEvent.click(screen.getByRole('button', { name: 'Create Section' }))
+
+    await waitFor(() => expect(routerMock.push).toHaveBeenCalledWith('/faculty/sections/sec-1?importRoster=1'))
+    expect(routerMock.push).not.toHaveBeenCalledWith('/faculty/subjects/subj-1')
   })
 
   it('submits the trimmed value typed into the "Other" course field', async () => {

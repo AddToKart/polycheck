@@ -217,7 +217,7 @@ describe('StudentImportService', () => {
         id: 'existing-1',
         studentId: '2024-00001-MN-0',
         fullName: 'Old Name',
-        email: 'old@iskolar.pup.edu.ph',
+        email: 'old@student.example.edu.ph',
         program: 'BSIT',
         yearLevel: 1,
         department: 'CCIS',
@@ -256,13 +256,79 @@ describe('StudentImportService', () => {
     expect(users.get('existing-1')?.password).toBe('keep-this')
   })
 
+  it('preserves an existing department when the CSV row omits the department column (BE-06)', async () => {
+    const { db, users } = createFakePrisma([
+      {
+        id: 'existing-1',
+        studentId: '2024-00001-MN-0',
+        fullName: 'Old Name',
+        email: null,
+        program: 'BSIT',
+        yearLevel: 1,
+        department: 'CCIS',
+        role: 'student',
+        isActive: true,
+      },
+    ])
+    const service = new StudentImportService(db as never)
+    // No department column at all: normalizeRows derives 'Unspecified', but
+    // update mode must never write a derived value over real stored data.
+    const request = importRequest([studentRow(2, '2024-00001-MN-0', { fullName: 'New Name', department: undefined })], {
+      conflictMode: 'update_existing',
+    })
+
+    const validation = await service.importStudents(request, institutionAdmin)
+    expect(validation.summary).toMatchObject({ update: 1 })
+    // The preview only lists real submitted changes.
+    expect(validation.issues.some((issue) => issue.message?.includes('department'))).toBe(false)
+
+    const executed = await service.importStudents(
+      { ...request, mode: 'execute', rowChecksum: validation.rowChecksum },
+      institutionAdmin,
+    )
+    expect(executed.summary).toMatchObject({ update: 1 })
+    const updateData = db.user.update.mock.calls[0][0].data
+    expect(updateData).not.toHaveProperty('department')
+    expect(users.get('existing-1')?.department).toBe('CCIS')
+  })
+
+  it('still updates the department when the CSV row explicitly submits one (BE-06)', async () => {
+    const { db, users } = createFakePrisma([
+      {
+        id: 'existing-1',
+        studentId: '2024-00001-MN-0',
+        fullName: 'Old Name',
+        email: null,
+        program: 'BSIT',
+        yearLevel: 1,
+        department: 'CCIS',
+        role: 'student',
+        isActive: true,
+      },
+    ])
+    const service = new StudentImportService(db as never)
+    const request = importRequest([studentRow(2, '2024-00001-MN-0', { fullName: 'Old Name', department: 'CAFA' })], {
+      conflictMode: 'update_existing',
+    })
+
+    const validation = await service.importStudents(request, institutionAdmin)
+    expect(validation.summary).toMatchObject({ update: 1 })
+    expect(validation.issues.find((issue) => issue.code === 'FIELD_UPDATE_PREVIEW')?.message).toBe(
+      'Updates: department',
+    )
+
+    await service.importStudents({ ...request, mode: 'execute', rowChecksum: validation.rowChecksum }, institutionAdmin)
+    expect(db.user.update.mock.calls[0][0].data).toEqual({ department: 'CAFA' })
+    expect(users.get('existing-1')?.department).toBe('CAFA')
+  })
+
   it('flags email collisions with a different account and duplicates in the file', async () => {
     const { db } = createFakePrisma([
       {
         id: 'other-1',
         studentId: '2024-00999-MN-0',
         fullName: 'Other Student',
-        email: 'shared@iskolar.pup.edu.ph',
+        email: 'shared@student.example.edu.ph',
         program: 'BSIT',
         yearLevel: 1,
         department: 'CCIS',
@@ -274,7 +340,7 @@ describe('StudentImportService', () => {
 
     const result = await service.importStudents(
       importRequest([
-        studentRow(2, '2024-00001-MN-0', { email: 'shared@iskolar.pup.edu.ph' }),
+        studentRow(2, '2024-00001-MN-0', { email: 'shared@student.example.edu.ph' }),
         studentRow(3, '2024-00002-MN-0'),
         studentRow(4, '2024-00002-MN-0'),
       ]),
@@ -392,5 +458,128 @@ describe('StudentImportService', () => {
         institutionAdmin,
       ),
     ).toThrow(ConflictException)
+  })
+})
+
+describe('StudentImportService — courses', () => {
+  const original = process.env.COURSE_SCOPE_MODE
+  const campusRegistrar: RequestUser = {
+    id: 'reg-all',
+    role: 'teacher',
+    isUserRegistrar: true,
+    managesAllCourses: true,
+  }
+  const bsitRegistrar: RequestUser = {
+    id: 'reg-bsit',
+    role: 'teacher',
+    isUserRegistrar: true,
+    managedCourses: ['BSIT'],
+  }
+  const unscopedRegistrar: RequestUser = { id: 'reg-none', role: 'teacher', department: 'CCIS', isUserRegistrar: true }
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.COURSE_SCOPE_MODE
+    else process.env.COURSE_SCOPE_MODE = original
+  })
+
+  it('stores a catalog program as its course code and defaults the legacy department to it', async () => {
+    const { db } = createFakePrisma()
+    const service = new StudentImportService(db as never)
+    const rows = [
+      studentRow(2, '2024-00001-MN-0', { program: 'bs hospitality management', department: undefined }),
+      studentRow(3, '2024-00002-MN-0', { program: 'BS Basket Weaving', department: undefined }),
+    ]
+
+    const validation = await service.importStudents(importRequest(rows), institutionAdmin)
+    // Unmatched programs are kept exactly as submitted and never block a row.
+    expect(validation.summary).toMatchObject({ new: 2, invalid: 0 })
+    await service.importStudents(
+      { ...importRequest(rows), mode: 'execute', rowChecksum: validation.rowChecksum },
+      institutionAdmin,
+    )
+
+    const created = db.user.create.mock.calls.map((call: any[]) => call[0].data)
+    expect(created[0]).toMatchObject({ program: 'BSHM', department: 'BSHM' })
+    expect(created[1]).toMatchObject({ program: 'BS Basket Weaving', department: 'Unspecified' })
+  })
+
+  it('keeps an explicitly submitted department untouched', async () => {
+    const { db } = createFakePrisma()
+    const service = new StudentImportService(db as never)
+    const rows = [studentRow(2, '2024-00001-MN-0', { program: 'BSIT', department: 'CCIS' })]
+    const validation = await service.importStudents(importRequest(rows), institutionAdmin)
+    await service.importStudents(
+      { ...importRequest(rows), mode: 'execute', rowChecksum: validation.rowChecksum },
+      institutionAdmin,
+    )
+    expect(db.user.create.mock.calls[0][0].data).toMatchObject({ program: 'BSIT', department: 'CCIS' })
+  })
+
+  describe('in course mode', () => {
+    beforeEach(() => {
+      process.env.COURSE_SCOPE_MODE = 'course'
+    })
+
+    it('lets a campus-wide registrar import any program', async () => {
+      const { db } = createFakePrisma()
+      const service = new StudentImportService(db as never)
+      const result = await service.importStudents(
+        importRequest([
+          studentRow(2, '2024-00001-MN-0', { program: 'BSIT', department: undefined }),
+          studentRow(3, '2024-00002-MN-0', { program: 'BSHM', department: undefined }),
+        ]),
+        campusRegistrar,
+      )
+      expect(result.summary).toMatchObject({ new: 2, invalid: 0 })
+    })
+
+    it('pins a course registrar to their courses and reports the rest as invalid', async () => {
+      const { db } = createFakePrisma([
+        {
+          id: 'bshm-existing',
+          studentId: '2024-00009-MN-0',
+          fullName: 'Existing BSHM',
+          email: null,
+          program: 'BSHM',
+          yearLevel: 1,
+          department: 'BSHM',
+          role: 'student',
+          isActive: true,
+        },
+      ])
+      const service = new StudentImportService(db as never)
+      const result = await service.importStudents(
+        importRequest([
+          studentRow(2, '2024-00001-MN-0', { program: 'BS Information Technology', department: undefined }),
+          studentRow(3, '2024-00002-MN-0', { program: 'BSHM', department: undefined }),
+          studentRow(4, '2024-00003-MN-0', { program: undefined, department: undefined }),
+          studentRow(5, '2024-00009-MN-0', { program: 'BSIT', department: undefined }),
+        ]),
+        bsitRegistrar,
+      )
+      expect(result.summary).toMatchObject({ new: 1, invalid: 3 })
+      const mismatches = result.issues.filter((issue) => issue.code === 'DEPARTMENT_MISMATCH')
+      expect(mismatches.map((issue) => issue.rowNumber).sort()).toEqual([3, 4, 5])
+    })
+
+    it('stores the course code as the department for an in-scope row', async () => {
+      const { db } = createFakePrisma()
+      const service = new StudentImportService(db as never)
+      const rows = [studentRow(2, '2024-00001-MN-0', { program: 'BSIT', department: undefined })]
+      const validation = await service.importStudents(importRequest(rows), bsitRegistrar)
+      await service.importStudents(
+        { ...importRequest(rows), mode: 'execute', rowChecksum: validation.rowChecksum },
+        bsitRegistrar,
+      )
+      expect(db.user.create.mock.calls[0][0].data).toMatchObject({ program: 'BSIT', department: 'BSIT' })
+    })
+
+    it('rejects a registrar with no courses (fail-closed)', async () => {
+      const { db } = createFakePrisma()
+      const service = new StudentImportService(db as never)
+      await expect(
+        service.importStudents(importRequest([studentRow(2, '2024-00001-MN-0')]), unscopedRegistrar),
+      ).rejects.toBeInstanceOf(ForbiddenException)
+    })
   })
 })

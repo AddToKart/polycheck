@@ -190,7 +190,7 @@ export default function AtRiskStudentsPage() {
       setNoticeNote('')
       try {
         const blob = await api.downloadAssistantFile(chedNoticeDownloadPath(referral.id))
-        triggerBrowserDownload(blob, 'PUP-CHED-Drop-Notice.pdf')
+        triggerBrowserDownload(blob, 'CHED-Drop-Notice.pdf')
       } catch (downloadCause) {
         addNotification(
           'warning',
@@ -216,14 +216,14 @@ export default function AtRiskStudentsPage() {
   if (!user) return null
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
       <Sidebar user={user} onLogout={handleLogout} />
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl p-8">
           <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-                Academic department oversight
+                Academic course oversight
               </p>
               <h1 className="flex items-center gap-2 text-3xl font-heading font-bold text-maroon dark:text-white">
                 <AlertTriangle className="h-7 w-7" aria-hidden />
@@ -231,7 +231,9 @@ export default function AtRiskStudentsPage() {
               </h1>
               <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
                 {user.role === 'teacher' && user.isDepartmentHead
-                  ? `Students in ${user.department ?? 'your department'} approaching the ${threshold ?? 75}% attendance floor.`
+                  ? user.courseScopeMode === 'course'
+                    ? `Students in ${user.managesAllCourses ? 'every course' : ((user.managedCourses ?? []).join(', ') || 'your sections')} approaching the ${threshold ?? 75}% attendance floor.`
+                    : `Students in ${user.department ?? 'your department'} approaching the ${threshold ?? 75}% attendance floor.`
                   : user.role === 'teacher'
                     ? `Students in your sections approaching the ${threshold ?? 75}% attendance floor.`
                     : `Students approaching the ${threshold ?? 75}% attendance floor in your scope.`}

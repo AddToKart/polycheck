@@ -10,7 +10,7 @@ import '../../../../core/network/api_error.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../../../core/providers/device_now.dart';
 import '../../../../core/providers/trusted_clock.dart';
-import '../../../../core/theme/pup_theme.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/widgets/campus_button.dart';
 import '../../../../core/widgets/campus_dialog.dart';
 import '../../../../core/widgets/campus_text_field.dart';
@@ -100,7 +100,7 @@ class _PasswordSecurityPanelState extends ConsumerState<PasswordSecurityPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final errors = _errors;
     final canSubmit = !_saving && errors.isEmpty && _current.text.isNotEmpty;
     return Column(
@@ -255,7 +255,7 @@ class _ContactsPanelState extends ConsumerState<ContactsPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -436,7 +436,7 @@ class _DeviceBindingPanelState extends ConsumerState<DeviceBindingPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final clock = ref.watch(trustedClockProvider);
     final deviceNow = ref.watch(deviceNowProvider);
     final now = clock.now(deviceNow: deviceNow);

@@ -16,12 +16,12 @@ import {
 installSessionCleanup()
 
 test.describe('Auth & Session', () => {
-  test('landing page renders PUP branding and role selection', async ({ page }) => {
+  test('landing page renders branding and role selection', async ({ page }) => {
     const errors = trackErrors(page)
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'Polycheck.' })).toBeVisible()
-    await expect(page.getByText('Polytechnic University of the Philippines • Attendance System')).toBeVisible()
-    await expect(page.getByAltText('PUP Logo').first()).toBeVisible()
+    await expect(page.getByText('Example Polytechnic of the Province • Attendance System')).toBeVisible()
+    await expect(page.getByAltText(/logo$/i).first()).toBeVisible()
     // Role selection cards are <button>s
     await expect(page.getByRole('button', { name: /Student Portal/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /Faculty Portal/i })).toBeVisible()
@@ -61,7 +61,7 @@ test.describe('Auth & Session', () => {
     // submission until the login request is actually observed.
     for (let attempt = 0; attempt < 3 && status === undefined; attempt++) {
       await page.goto('/login/faculty')
-      await page.getByLabel('Email Address').fill('jmdelacruz@pup.edu.ph')
+      await page.getByLabel('Email Address').fill('jmdelacruz@example.edu.ph')
       await page.getByLabel('Password').fill('WrongPassword123!')
       const authenticate = page.getByRole('button', { name: /Authenticate/i })
       await expect(authenticate).toBeEnabled()
@@ -212,7 +212,7 @@ test.describe('Auth & Session', () => {
 
   test('super admin login reaches admin dashboard', async ({ page }) => {
     const errors = trackErrors(page)
-    await loginFaculty(page, 'mcreyes@pup.edu.ph')
+    await loginFaculty(page, 'mcreyes@example.edu.ph')
     await expect(page.getByText('System Administration')).toBeVisible()
     await expect(page.getByText('Super Administrator')).toBeVisible()
     assertNoErrors(errors)

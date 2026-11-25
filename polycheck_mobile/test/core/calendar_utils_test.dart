@@ -11,7 +11,7 @@ void main() {
   });
 
   group('formatCampusDate', () {
-    test('shifts a UTC instant into the PUP (UTC+08:00) civil date', () {
+    test('shifts a UTC instant into the campus (UTC+08:00) civil date', () {
       expect(
         formatCampusDate(DateTime.parse('2026-08-01T20:00:00Z')),
         '2026-08-02',

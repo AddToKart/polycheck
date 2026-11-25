@@ -24,7 +24,7 @@ void main() {
       expect(parsed.errors.join(' '), contains('not closed'));
     });
 
-    test('suggests the PUP master-list column mapping', () {
+    test('suggests the registrar master-list column mapping', () {
       final mapping = suggestImportMapping(const [
         'Student No.',
         'Name',
@@ -90,13 +90,56 @@ void main() {
       expect(enrollImportMaxRows, 250);
     });
 
+    test('truncates over-long names and programs at the DTO cap (FLF-05)', () {
+      // `EnrollImportRowDto.studentName` / `.expectedProgram` are
+      // `@MaxLength(150)`; the shared normalizer slices rather than rejects
+      // (`shared/src/utils/import/normalize.ts:12,51`).
+      expect(enrollImportMaxNameLength, 150);
+      expect(enrollImportMaxProgramLength, 150);
+
+      final mapping = const ImportColumnMapping(
+        studentId: 0,
+        fullName: 1,
+        program: 2,
+      );
+      final built = buildEnrollImportRows([
+        ['2024-00001-MN-0', 'A' * 300, 'B' * 300],
+      ], mapping);
+
+      expect(built.issues, isEmpty, reason: 'a long cell must not 400 or drop');
+      expect(built.rows, hasLength(1));
+      expect(built.rows.first.studentName, hasLength(150));
+      expect(built.rows.first.expectedProgram, hasLength(150));
+    });
+
+    test('collapses whitespace before applying the cap (FLF-05)', () {
+      final mapping = const ImportColumnMapping(studentId: 0, fullName: 1);
+      final built = buildEnrollImportRows([
+        [' 2024-00001-MN-0 ', '  Dela   Cruz,   Juan  '],
+      ], mapping);
+
+      expect(built.rows.single.studentName, 'Dela Cruz, Juan');
+    });
+
+    test('a collapsed name longer than 150 characters is sliced', () {
+      final mapping = const ImportColumnMapping(studentId: 0, fullName: 1);
+      // 200 chars of `x` separated by single spaces collapse to 399 chars.
+      final name = List<String>.filled(200, 'x').join(' ');
+      final built = buildEnrollImportRows([
+        ['2024-00001-MN-0', name],
+      ], mapping);
+
+      expect(built.rows.single.studentName, hasLength(150));
+      expect(built.rows.single.studentName, name.substring(0, 150));
+    });
+
     test('issues CSV is formula-safe and quoted', () {
       final csv = importIssuesCsv([
         const ImportIssue(
           rowNumber: 2,
           column: 'studentId',
           code: ImportIssueCode.invalidStudentNumber,
-          message: 'Enter a valid PUP student number (e.g. 2024-00001-MN-0).',
+          message: 'Enter a valid student number (e.g. 2024-00001-MN-0).',
         ),
         const ImportIssue(
           rowNumber: 3,

@@ -6,7 +6,7 @@ import '../../../core/api/api_providers.dart';
 import '../../../core/models/dashboard.dart';
 import '../../../core/network/api_error.dart';
 import '../../../core/providers/session_provider.dart';
-import '../../../core/theme/pup_theme.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../core/widgets/campus_card.dart';
 import '../../../core/widgets/campus_empty_state.dart';
 import '../domain/admin_access.dart';
@@ -82,7 +82,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           : _error != null
           ? AdminErrorState(message: _error!, onRetry: _load)
           : RefreshIndicator(
-              color: PupTheme.of(context).maroon,
+              color: BrandTheme.of(context).maroon,
               onRefresh: _load,
               child: _DashboardBody(overview: _overview, access: access),
             ),
@@ -98,7 +98,7 @@ class _DashboardBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final data = overview;
     if (data == null) {
       return const CampusEmptyState(
@@ -364,7 +364,7 @@ class _ConsoleGrid extends StatelessWidget {
                     children: <Widget>[
                       Icon(
                         adminSectionIcon(section),
-                        color: PupTheme.of(context).maroon,
+                        color: BrandTheme.of(context).maroon,
                       ),
                       const SizedBox(width: 10),
                       Expanded(

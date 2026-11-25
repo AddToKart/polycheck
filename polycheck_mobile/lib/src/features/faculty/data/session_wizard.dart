@@ -314,7 +314,16 @@ summarizeRoster(Iterable<CockpitRosterRow> rows) {
   );
 }
 
-enum CockpitStatusFilter { all, present, late, absent, pending, disputed }
+enum CockpitStatusFilter {
+  all,
+  present,
+  late,
+  absent,
+  pending,
+  incomplete,
+  disputed,
+  excused,
+}
 
 const Map<CockpitStatusFilter, String> cockpitStatusFilterLabels = {
   CockpitStatusFilter.all: 'All',
@@ -322,7 +331,9 @@ const Map<CockpitStatusFilter, String> cockpitStatusFilterLabels = {
   CockpitStatusFilter.late: 'Late',
   CockpitStatusFilter.absent: 'Absent',
   CockpitStatusFilter.pending: 'Pending',
+  CockpitStatusFilter.incomplete: 'Incomplete',
   CockpitStatusFilter.disputed: 'Disputed',
+  CockpitStatusFilter.excused: 'Excused',
 };
 
 List<CockpitRosterRow> filterRoster(
@@ -335,7 +346,9 @@ List<CockpitRosterRow> filterRoster(
     CockpitStatusFilter.late => AttendanceStatus.late,
     CockpitStatusFilter.absent => AttendanceStatus.absent,
     CockpitStatusFilter.pending => AttendanceStatus.pending,
+    CockpitStatusFilter.incomplete => AttendanceStatus.incomplete,
     CockpitStatusFilter.disputed => AttendanceStatus.disputed,
+    CockpitStatusFilter.excused => AttendanceStatus.excused,
     CockpitStatusFilter.all => null,
   };
   return [

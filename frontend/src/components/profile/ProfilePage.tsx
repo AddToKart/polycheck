@@ -39,7 +39,7 @@ export function ProfilePage({
   ]
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50 md:flex-row dark:bg-pup-black">
+    <div className="flex min-h-screen flex-col bg-zinc-50 md:flex-row dark:bg-brand-black">
       <Sidebar user={user} onLogout={onLogout} />
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl p-6 sm:p-8">
@@ -86,7 +86,7 @@ export function ProfilePage({
 
               <dl className="mt-6 grid gap-x-6 gap-y-4 border-t border-zinc-200 pt-5 text-sm sm:grid-cols-2 dark:border-zinc-800">
                 <div>
-                  <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">PUP ID / Student number</dt>
+                  <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">ID / Student number</dt>
                   <dd className="mt-1 font-medium text-foreground">{user.studentId ?? '—'}</dd>
                 </div>
                 <div>
@@ -98,7 +98,7 @@ export function ProfilePage({
                   <dd className="mt-1 font-medium text-foreground">{user.department ?? '—'}</dd>
                 </div>
                 <div>
-                  <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">PUP email</dt>
+                  <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Institutional email</dt>
                   <dd className="mt-1 font-medium text-foreground">{user.email ?? '—'}</dd>
                 </div>
                 {isStudent ? (

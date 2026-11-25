@@ -79,7 +79,7 @@ void main() {
             studentScanServiceProvider.overrideWithValue(service),
           ],
           child: MaterialApp(
-            theme: PupTheme.light,
+            theme: BrandTheme.light,
             home: const StudentScanScreen(),
           ),
         ),
@@ -146,7 +146,7 @@ void main() {
           studentScanServiceProvider.overrideWithValue(service),
         ],
         child: MaterialApp(
-          theme: PupTheme.light,
+          theme: BrandTheme.light,
           home: const StudentScanScreen(),
         ),
       ),

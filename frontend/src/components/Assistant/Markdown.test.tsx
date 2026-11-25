@@ -32,10 +32,10 @@ describe('Markdown', () => {
   })
 
   it('opens links in a new tab with a safe rel', () => {
-    render(<Markdown content="[PUP](https://pup.edu.ph)" />)
+    render(<Markdown content="[Example](https://example.edu.ph)" />)
 
-    const link = screen.getByRole('link', { name: 'PUP' })
-    expect(link).toHaveAttribute('href', 'https://pup.edu.ph')
+    const link = screen.getByRole('link', { name: 'Example' })
+    expect(link).toHaveAttribute('href', 'https://example.edu.ph')
     expect(link).toHaveAttribute('target', '_blank')
     expect(link).toHaveAttribute('rel', 'noopener noreferrer')
   })

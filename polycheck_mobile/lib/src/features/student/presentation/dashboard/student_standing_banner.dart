@@ -24,7 +24,7 @@ class StudentStandingBanner extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final rate = standing.attendanceRate;
     final professor = standing.professorName.trim().isEmpty
         ? 'your professor'

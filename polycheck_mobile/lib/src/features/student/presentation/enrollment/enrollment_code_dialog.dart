@@ -79,7 +79,7 @@ class _EnrollmentCodeDialogState extends ConsumerState<EnrollmentCodeDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final done = _successMessage != null;
     return AlertDialog(
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),

@@ -31,7 +31,7 @@ import { AttendanceScopeService } from './attendance-scope.service'
 import { AttendanceReportService } from './attendance-report.service'
 import { GeofenceService } from './geofence.service'
 import { verifyQRTokenNative } from '@polycheck/shared/token-node'
-import { academicOversightDepartment } from '../common/designations/department-pin'
+import { hasOversightScope, oversightRecordWhere, sectionInOversightScope } from '../common/course-scope'
 import { RAW_ATTENDANCE_LIMIT, type ScanEvidence, type ScanValidation } from './types'
 import { assertStudentInAdminScope, adminRecordWhere } from '../common/admin-scope'
 import { lockStudentSection } from '../common/student-section-lock'
@@ -39,7 +39,8 @@ import { ProofStorageService } from '../proofs/proof-storage.service'
 import { decodeImageDataUrl } from '../proofs/image-evidence'
 import { NotificationsService } from '../notifications/notifications.service'
 import { DeviceBindingService } from '../users/device-binding.service'
-import { LedgerService } from './ledger.service'
+import { LedgerService, acquireSessionLedgerLock } from './ledger.service'
+import { unknownDisputeReason } from './dispute-reason'
 import type { ScanAttemptView } from '@polycheck/shared'
 
 const OFFLINE_ACTIVATION_LOCK_TTL_SECONDS = 10
@@ -51,6 +52,20 @@ const KEY_ROTATION_LOCK_TTL_SECONDS = 10
 const EXCUSE_REQUEST_RATE_LIMIT = 10
 const EXCUSE_REQUEST_RATE_WINDOW_SECONDS = 24 * 60 * 60
 const EXCUSE_LIST_LIMIT = 500
+
+/**
+ * Scan rate limits (ING-05). The validation-only probe (`POST /attendance/check`)
+ * and the committing submit path (`POST /attendance/scan|submit`) are separate
+ * budgets under separate key namespaces: sharing one bucket let a client burn
+ * its 10-submit allowance with 10 harmless validations, and let 30 probes
+ * exhaust the commits. Both windows are one minute, matching the client retry
+ * cadence.
+ */
+const SCAN_CHECK_RATE_LIMIT = 30
+const SCAN_SUBMIT_RATE_LIMIT = 10
+const SCAN_RATE_WINDOW_SECONDS = 60
+const SCAN_CHECK_RATE_PREFIX = 'scan-check'
+const SCAN_SUBMIT_RATE_PREFIX = 'scan-submit'
 
 // Env-tunable concurrency-conflict policy (see plan/vulnerability-hardening-plan.md V2).
 const CONCURRENT_SESSION_CONFLICT_DETECTION = envFlag(process.env.CONCURRENT_SESSION_CONFLICT_DETECTION, true)
@@ -221,7 +236,11 @@ export class AttendanceService {
   async check(user: RequestUser, dto: ScanAttendanceDto) {
     const evidence = this.scanValidator.scanEvidenceFromScanDto(dto)
     const receivedAt = new Date()
-    const withinLimit = await this.redis.consumeRateLimit(`scan:${user.id}:${dto.sessionId}`, 30, 60)
+    const withinLimit = await this.redis.consumeRateLimit(
+      `${SCAN_CHECK_RATE_PREFIX}:${user.id}:${dto.sessionId}`,
+      SCAN_CHECK_RATE_LIMIT,
+      SCAN_RATE_WINDOW_SECONDS,
+    )
     if (!withinLimit) {
       const validation: ScanValidation = {
         success: false,
@@ -331,7 +350,11 @@ export class AttendanceService {
       return replay
     }
 
-    const withinLimit = await this.redis.consumeRateLimit(`scan:${user.id}:${evidence.sessionId}`, 10, 60)
+    const withinLimit = await this.redis.consumeRateLimit(
+      `${SCAN_SUBMIT_RATE_PREFIX}:${user.id}:${evidence.sessionId}`,
+      SCAN_SUBMIT_RATE_LIMIT,
+      SCAN_RATE_WINDOW_SECONDS,
+    )
     if (!withinLimit) {
       const validation: ScanValidation = {
         success: false,
@@ -359,6 +382,24 @@ export class AttendanceService {
       }
       await this.recordScanAttempt(user, evidence, validation, 'denied', offline)
       return validation
+    }
+    if (activation === 'expired_offline') {
+      // BE-01: ending the session from a student replay would stamp `endedAt`
+      // and permanently 409 the instructor's real activation. Keep the replay
+      // as teacher-visible evidence and leave activation authority intact.
+      const validation: ScanValidation = {
+        success: false,
+        status: 'disputed',
+        reason: 'expired_offline_activation',
+        message:
+          'Offline check-in arrived after its activation window expired; the session remains available for the instructor to activate.',
+        scannedAt: this.scanValidator.clientScannedAt(evidence, offline, receivedAt),
+        receivedAt,
+        riskSignals: ['expired_offline_activation'],
+      }
+      const record = await this.persistOfflineExpiredDispute(user, evidence, validation)
+      await this.recordScanAttempt(user, evidence, validation, 'flagged', offline)
+      return record ? { ...validation, record: this.present(record) } : validation
     }
 
     const validation = await this.scanValidator.validateScan(user, evidence, offline, receivedAt)
@@ -402,6 +443,10 @@ export class AttendanceService {
     let transactionResult: { record: AttendanceRecord | null; priorStatus: AttendanceStatus }
     try {
       transactionResult = await this.prisma.$transaction(async (tx) => {
+        // Lock order (ING-08): the per-session chain lock is taken before any
+        // row lock below, matching the drainer's advisory-first order. Reverse
+        // order deadlocks (40P01) when a batch drains during a scan.
+        await acquireSessionLedgerLock(tx, evidence.sessionId)
         let rosterRecord = existing
         if (!rosterRecord) {
           const session = await tx.session.findUnique({
@@ -634,6 +679,8 @@ export class AttendanceService {
     if (!enrollment) throw new NotFoundException('Student is not enrolled in this section')
     const now = new Date()
     const record = await this.prisma.$transaction(async (tx) => {
+      // Advisory-first, same rule as the scan commit and the drainer.
+      await acquireSessionLedgerLock(tx, dto.sessionId)
       const row = await tx.attendanceRecord.upsert({
         where: { sessionId_studentId: { sessionId: dto.sessionId, studentId: dto.studentId } },
         create: {
@@ -764,12 +811,9 @@ export class AttendanceService {
     if (query.startDate && query.endDate && query.endDate < query.startDate) {
       throw new BadRequestException('endDate must be on or after startDate')
     }
-    const oversight = academicOversightDepartment(user)
     const scope: Prisma.AttendanceRecordWhereInput =
       user.role === 'teacher'
-        ? oversight
-          ? { session: { section: { teacher: { department: { equals: oversight, mode: 'insensitive' } } } } }
-          : { session: { teacherId: user.id } }
+        ? (oversightRecordWhere(user) ?? { session: { teacherId: user.id } })
         : adminRecordWhere(user)
     const where: Prisma.AttendanceRecordWhereInput = {
       AND: [
@@ -816,19 +860,17 @@ export class AttendanceService {
             teacherId: true,
             subjectName: true,
             date: true,
-            section: { select: { teacher: { select: { department: true } } } },
+            section: { select: { course: true, teacher: { select: { department: true } } } },
           },
         },
       },
     })
     if (!record) throw new NotFoundException('Attendance record not found')
-    const oversight = academicOversightDepartment(user)
-    const departmentMatch =
-      oversight !== null && record.session.section.teacher.department?.toLowerCase() === oversight.toLowerCase()
-    if (record.session.teacherId !== user.id && !departmentMatch) {
+    const oversightMatch = sectionInOversightScope(user, record.session.section)
+    if (record.session.teacherId !== user.id && !oversightMatch) {
       throw new ForbiddenException(
-        oversight
-          ? 'You can only decide excuses in your own sessions or within your department'
+        hasOversightScope(user)
+          ? 'You can only decide excuses in your own sessions or within your scope'
           : 'You can only decide excuses in your own sessions',
       )
     }
@@ -960,6 +1002,12 @@ export class AttendanceService {
     const graceEnd = payload.issuedAt + (payload.validityMinutes + payload.gracePeriodMinutes) * 60_000
     const expired = receivedAt.getTime() > graceEnd
     if (expired && !offline) return 'expired' as const
+    // BE-01: an expired *offline* replay must never claim the session. Ending it
+    // here would stamp `endedAt`, which `SessionsService.activate` rejects with a
+    // 409 forever — a student's stale replay would permanently disable the class
+    // the instructor has not activated yet. Leave the session untouched and let
+    // the caller persist the replay as a disputed row for teacher review.
+    if (expired) return 'expired_offline' as const
 
     const issuedAt = new Date(payload.issuedAt)
     const expiresAt = new Date(payload.issuedAt + payload.validityMinutes * 60_000)
@@ -967,17 +1015,16 @@ export class AttendanceService {
       const claimed = await tx.session.updateMany({
         where: { id: session.id, qrToken: null, endedAt: null },
         data: {
-          isActive: !expired,
-          endedAt: expired ? receivedAt : null,
-          qrToken: expired ? null : qrToken,
-          qrGeneratedAt: expired ? null : issuedAt,
-          qrTokenExpiresAt: expired ? null : expiresAt,
+          isActive: true,
+          qrToken,
+          qrGeneratedAt: issuedAt,
+          qrTokenExpiresAt: expiresAt,
           qrValidityMinutes: payload.validityMinutes,
           gracePeriodMinutes: payload.gracePeriodMinutes,
           // Mirrors activateInPerson: without a deadline the auto-end cron
           // (filter `autoEndAt: { not: null }`) never sweeps this session and
           // every seeded roster row stays `pending` forever (DD-B1).
-          autoEndAt: expired ? receivedAt : new Date(expiresAt.getTime() + payload.gracePeriodMinutes * 60_000),
+          autoEndAt: new Date(expiresAt.getTime() + payload.gracePeriodMinutes * 60_000),
         },
       })
       if (!claimed.count) return null
@@ -992,8 +1039,8 @@ export class AttendanceService {
           studentId: enrollment.studentId,
           studentName: enrollment.student.fullName,
           studentProgram: enrollment.student.program,
-          timestamp: expired ? receivedAt : issuedAt,
-          status: expired ? 'absent' : 'pending',
+          timestamp: issuedAt,
+          status: 'pending',
           latitude: session.geofenceLatitude,
           longitude: session.geofenceLongitude,
           isSynced: true,
@@ -1004,70 +1051,143 @@ export class AttendanceService {
       return tx.session.findUniqueOrThrow({ where: { id: session.id } })
     })
     if (activated) {
-      this.realtime.emitSessionState(activated, expired ? 'ended' : 'activated')
-      if (!expired) {
-        try {
-          // Serialize against key rotation so a revoked key cannot be
-          // re-published, and re-read the key at publish time (fail closed).
-          const lockKey = `key-rotation:${activated.teacherId}`
-          const lockToken = await this.redis.acquireLock(lockKey, KEY_ROTATION_LOCK_TTL_SECONDS)
-          if (!lockToken) {
-            Logger.warn(
-              `Skipping offline activation cache publish for session ${activated.id}: signing key rotation in progress`,
-              'AttendanceService',
-            )
-          } else {
-            try {
-              const [currentSession, currentKey] = await Promise.all([
-                this.prisma.session.findUnique({ where: { id: activated.id } }),
-                this.prisma.user.findUnique({
-                  where: { id: activated.teacherId },
-                  select: { teacherPublicKey: true },
-                }),
-              ])
-              if (!currentSession?.isActive || currentSession.endedAt || !currentSession.qrToken) {
-                const deleted = await this.redis.delete(`active-session:${activated.id}`)
-                if (!deleted) {
-                  Logger.warn(
-                    `Could not distribute offline activation cache invalidation for ended session ${activated.id}`,
-                    'AttendanceService',
-                  )
-                }
-              } else {
-                const ttlSeconds = Math.max(
-                  300,
-                  (currentSession.qrValidityMinutes + currentSession.gracePeriodMinutes) * 60,
-                )
-                const published = await this.redis.setJson(
-                  `active-session:${currentSession.id}`,
-                  { ...currentSession, teacherPublicKey: currentKey?.teacherPublicKey ?? undefined },
-                  ttlSeconds,
-                )
-                if (!published) {
-                  Logger.warn(
-                    `Offline activation cache publication was not distributed for session ${currentSession.id}`,
-                    'AttendanceService',
-                  )
-                }
-              }
-            } finally {
-              await this.redis.releaseLock(lockKey, lockToken)
-            }
-          }
-        } catch (error) {
-          Logger.error(
-            `Failed to publish offline activation cache for session ${activated.id}: ${
-              error instanceof Error ? error.message : 'unknown'
-            }`,
+      this.realtime.emitSessionState(activated, 'activated')
+      try {
+        // Serialize against key rotation so a revoked key cannot be
+        // re-published, and re-read the key at publish time (fail closed).
+        const lockKey = `key-rotation:${activated.teacherId}`
+        const lockToken = await this.redis.acquireLock(lockKey, KEY_ROTATION_LOCK_TTL_SECONDS)
+        if (!lockToken) {
+          Logger.warn(
+            `Skipping offline activation cache publish for session ${activated.id}: signing key rotation in progress`,
             'AttendanceService',
           )
+        } else {
+          try {
+            const [currentSession, currentKey] = await Promise.all([
+              this.prisma.session.findUnique({ where: { id: activated.id } }),
+              this.prisma.user.findUnique({
+                where: { id: activated.teacherId },
+                select: { teacherPublicKey: true },
+              }),
+            ])
+            // A concurrent `end()` between the claim and this publish must not
+            // leave an `isActive: true` snapshot behind.
+            if (!currentSession?.isActive || currentSession.endedAt || !currentSession.qrToken) {
+              const deleted = await this.redis.delete(`active-session:${activated.id}`)
+              if (!deleted) {
+                Logger.warn(
+                  `Could not distribute offline activation cache invalidation for ended session ${activated.id}`,
+                  'AttendanceService',
+                )
+              }
+            } else {
+              const ttlSeconds = Math.max(
+                300,
+                (currentSession.qrValidityMinutes + currentSession.gracePeriodMinutes) * 60,
+              )
+              const published = await this.redis.setJson(
+                `active-session:${currentSession.id}`,
+                { ...currentSession, teacherPublicKey: currentKey?.teacherPublicKey ?? undefined },
+                ttlSeconds,
+              )
+              if (!published) {
+                Logger.warn(
+                  `Offline activation cache publication was not distributed for session ${currentSession.id}`,
+                  'AttendanceService',
+                )
+              }
+            }
+          } finally {
+            await this.redis.releaseLock(lockKey, lockToken)
+          }
         }
+      } catch (error) {
+        Logger.error(
+          `Failed to publish offline activation cache for session ${activated.id}: ${
+            error instanceof Error ? error.message : 'unknown'
+          }`,
+          'AttendanceService',
+        )
       }
     }
     return activated ? ('activated' as const) : ('unchanged' as const)
   }
 
   // ── Private: scan attempt persistence ──
+
+  /**
+   * BE-01: persists a student replay whose offline activation window had already
+   * closed as a disputed row for teacher review, without touching session state.
+   * Best-effort: a missing roster row (student removed since activation) or a
+   * conflict leaves the attempt row as the evidence of record.
+   */
+  private async persistOfflineExpiredDispute(
+    user: RequestUser,
+    evidence: ScanEvidence,
+    validation: ScanValidation,
+  ): Promise<AttendanceRecord | null> {
+    try {
+      const session = await this.prisma.session.findUnique({
+        where: { id: evidence.sessionId },
+        select: { sectionId: true },
+      })
+      if (!session) return null
+      const existing = await this.prisma.attendanceRecord.findUnique({
+        where: { sessionId_studentId: { sessionId: evidence.sessionId, studentId: user.id } },
+      })
+      if (existing) {
+        // A teacher decision (or a resolved row) wins over a late replay.
+        if (existing.status !== 'pending' && existing.status !== 'absent') return existing
+        return await this.prisma.attendanceRecord.update({
+          where: { id: existing.id },
+          data: {
+            status: 'disputed',
+            disputeReason: 'expired_offline_activation',
+            disputeDescription: validation.message,
+            deviceId: evidence.deviceId,
+            isSynced: true,
+            syncedAt: validation.receivedAt,
+            // ING-03 semantics: a claim replaces a roster seed that was
+            // `pending`, so that is the restorable pre-dispute state. An
+            // `absent` row restores to `absent` either way, so it stays NULL.
+            disputePreviousStatus: existing.status === 'pending' ? 'pending' : null,
+          },
+        })
+      }
+      const enrollment = await this.prisma.enrollment.findUnique({
+        where: { studentId_sectionId: { studentId: user.id, sectionId: session.sectionId } },
+        include: { student: { select: { fullName: true, program: true } } },
+      })
+      if (!enrollment) return null
+      return await this.prisma.attendanceRecord.create({
+        data: {
+          sessionId: evidence.sessionId,
+          sectionId: session.sectionId,
+          studentId: user.id,
+          studentName: enrollment.student.fullName,
+          studentProgram: enrollment.student.program,
+          timestamp: validation.scannedAt,
+          status: 'disputed',
+          latitude: evidence.latitude ?? null,
+          longitude: evidence.longitude ?? null,
+          deviceId: evidence.deviceId,
+          disputeReason: 'expired_offline_activation',
+          disputeDescription: validation.message,
+          isSynced: true,
+          syncedAt: validation.receivedAt,
+        },
+      })
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') return null
+      this.logger.warn(
+        `Could not persist expired offline activation dispute for session ${evidence.sessionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+      return null
+    }
+  }
 
   private async recordScanAttempt(
     user: RequestUser,
@@ -1165,6 +1285,15 @@ export class AttendanceService {
   // ── Private: presentation helper ──
 
   private present(record: AttendanceRecord) {
+    // ING-07 observability: persisted reasons outside the shared union have no
+    // client label, so surface them in logs. The response shape is unchanged.
+    const unknownReason = unknownDisputeReason(record.disputeReason)
+    if (unknownReason) {
+      this.logger.warn(
+        `dispute_reason_unknown ${unknownReason} on attendance record ${record.id} ` +
+          `(session ${record.sessionId}, student ${record.studentId})`,
+      )
+    }
     return { ...record, coordinates: { latitude: record.latitude, longitude: record.longitude } }
   }
 

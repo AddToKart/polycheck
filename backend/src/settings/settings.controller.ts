@@ -16,8 +16,8 @@ export class SettingsController {
 
   @Get()
   @Roles('teacher', 'super_admin')
-  list() {
-    return this.settings.list()
+  list(@Request() req: AuthenticatedRequest) {
+    return this.settings.list(req.user)
   }
 
   /**

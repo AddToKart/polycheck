@@ -59,7 +59,7 @@ describe('UsersService', () => {
       id: 'student-1',
       studentId: '2026-00001-MN-0',
       fullName: 'Test Student',
-      email: 'student@iskolarngbayan.pup.edu.ph',
+      email: 'student@student.example.edu.ph',
       role: 'student',
       program: 'BS Computer Science',
       yearLevel: 1,
@@ -78,7 +78,7 @@ describe('UsersService', () => {
       {
         fullName: '  Test Student  ',
         studentId: '2026-00001-MN-0',
-        email: 'STUDENT@iskolarngbayan.pup.edu.ph',
+        email: 'STUDENT@student.example.edu.ph',
         password: 'Temporary1!Secure',
         program: '  BS Computer Science  ',
         yearLevel: 1,
@@ -92,7 +92,7 @@ describe('UsersService', () => {
       expect.objectContaining({
         fullName: 'Test Student',
         studentId: '2026-00001-MN-0',
-        email: 'student@iskolarngbayan.pup.edu.ph',
+        email: 'student@student.example.edu.ph',
         program: 'BS Computer Science',
         role: 'student',
       }),
@@ -156,6 +156,7 @@ describe('UsersService', () => {
       },
       authAccount: { upsert: jest.fn().mockResolvedValue({}) },
       authSession: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      accountActivationToken: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
     }
     const service = new UsersService(prisma as never)
@@ -168,6 +169,12 @@ describe('UsersService', () => {
     const updateData = prisma.user.update.mock.calls[0][0].data
     expect(updateData.authVersion).toEqual({ increment: 1 })
     expect(updateData.mustChangePassword).toBe(true)
+    // A reset ends any pending email activation: the temporary password is now the way in.
+    expect(updateData.activationPending).toBe(false)
+    expect(prisma.accountActivationToken.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'teacher-1', usedAt: null, revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    })
     expect(updateData.password).not.toBe('Replacement1!Secure')
     await expect(compare('Replacement1!Secure', updateData.password)).resolves.toBe(true)
     expect(prisma.authAccount.upsert).toHaveBeenCalledWith(
@@ -276,7 +283,7 @@ describe('UsersService', () => {
 
   describe('profile editing', () => {
     it('updates whitelisted fields, normalizes input, and audits field names only', async () => {
-      const updated = { id: 'teacher-1', fullName: 'Ada Lovelace', email: 'ada@pup.edu.ph', department: 'CCIS' }
+      const updated = { id: 'teacher-1', fullName: 'Ada Lovelace', email: 'ada@example.edu.ph', department: 'CCIS' }
       const prisma = {
         user: {
           findUnique: jest.fn().mockResolvedValue({ id: 'teacher-1', role: 'teacher', department: 'CCIS' }),
@@ -290,13 +297,13 @@ describe('UsersService', () => {
 
       const result = await service.updateUser(
         'teacher-1',
-        { fullName: '  Ada Lovelace  ', email: ' ADA@PUP.EDU.PH ', department: ' CCIS ' },
+        { fullName: '  Ada Lovelace  ', email: ' ADA@EXAMPLE.EDU.PH ', department: ' CCIS ' },
         institutionAdmin,
       )
 
       expect(prisma.user.update.mock.calls[0][0].data).toEqual({
         fullName: 'Ada Lovelace',
-        email: 'ada@pup.edu.ph',
+        email: 'ada@example.edu.ph',
         department: 'CCIS',
       })
       const audit = prisma.auditLog.create.mock.calls[0][0].data
@@ -339,7 +346,7 @@ describe('UsersService', () => {
     })
 
     it.each([
-      ['a student email', { id: 'student-1', role: 'student', department: 'CCIS' }, { email: 'student@pup.edu.ph' }],
+      ['a student email', { id: 'student-1', role: 'student', department: 'CCIS' }, { email: 'student@example.edu.ph' }],
       ['teacher program fields', { id: 'teacher-1', role: 'teacher', department: 'CCIS' }, { program: 'BSIT' }],
       ['teacher year level', { id: 'teacher-1', role: 'teacher', department: 'CCIS' }, { yearLevel: 2 }],
     ])('rejects wrong-role fields: %s', async (_label, target, dto) => {
@@ -375,7 +382,7 @@ describe('UsersService', () => {
       }
       const service = new UsersService(prisma as never)
 
-      await expect(service.updateUser('teacher-1', { email: 'taken@pup.edu.ph' }, institutionAdmin)).rejects.toThrow(
+      await expect(service.updateUser('teacher-1', { email: 'taken@example.edu.ph' }, institutionAdmin)).rejects.toThrow(
         ConflictException,
       )
       expect(prisma.user.update).not.toHaveBeenCalled()
@@ -442,7 +449,7 @@ describe('UsersService', () => {
             id: 'student-1',
             role: 'student',
             department: null,
-            email: 'student@pup.edu.ph',
+            email: 'student@example.edu.ph',
           }),
         },
       }
@@ -479,24 +486,34 @@ describe('UsersService', () => {
             id: 'student-1',
             role: 'student',
             department: 'CCIS',
-            email: 'student@pup.edu.ph',
+            email: 'student@example.edu.ph',
           }),
           update: jest.fn().mockResolvedValue(updated),
         },
+        authSession: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
         auditLog: { create: jest.fn().mockResolvedValue({}) },
+        $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
       }
       const events = { emit: jest.fn() }
       const service = new UsersService(prisma as never, events as never)
 
       await expect(service.changeUserRole('student-1', 'teacher', institutionAdmin)).resolves.toBe(updated)
 
-      expect(prisma.user.update.mock.calls[0][0].data).toEqual({ role: 'teacher' })
+      const data = prisma.user.update.mock.calls[0][0].data
+      expect(data).toEqual({ role: 'teacher', authVersion: { increment: 1 } })
+      // Promotion never drops the identity's designations (it has none yet) and
+      // never nulls delegated capabilities that were never set.
+      expect(data).not.toHaveProperty('isItCoordinator')
+      expect(data).not.toHaveProperty('isDepartmentHead')
+      expect(data).not.toHaveProperty('isUserRegistrar')
+      expect(prisma.authSession.deleteMany).toHaveBeenCalledWith({ where: { userId: 'student-1' } })
       expect(prisma.auditLog.create.mock.calls[0][0].data).toMatchObject({
         action: 'admin.user.role_changed',
         entityType: 'user',
         entityId: 'student-1',
         metadata: { before: 'student', after: 'teacher' },
       })
+      expect(prisma.auditLog.create.mock.calls[0][0].data.metadata).not.toHaveProperty('designationsCleared')
       expect(events.emit).toHaveBeenCalledWith('auth.session-replaced', {
         userId: 'student-1',
         reason: 'role_changed',
@@ -535,11 +552,16 @@ describe('UsersService', () => {
             studentId: '2024-00002-MN-0',
             program: 'BSIT',
             yearLevel: 2,
+            isItCoordinator: false,
+            isDepartmentHead: false,
+            isUserRegistrar: false,
           }),
           update: jest.fn().mockResolvedValue(updated),
         },
         section: { count: jest.fn().mockResolvedValue(0) },
+        authSession: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
         auditLog: { create: jest.fn().mockResolvedValue({}) },
+        $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
       }
       const service = new UsersService(prisma as never, { emit: jest.fn() } as never)
 
@@ -548,7 +570,91 @@ describe('UsersService', () => {
         role: 'student',
         canResetStudentPasswords: null,
         canEmergencyUnbindDevices: null,
+        isItCoordinator: false,
+        isDepartmentHead: false,
+        isUserRegistrar: false,
+        managedCourses: [],
+        managesAllCourses: false,
+        authVersion: { increment: 1 },
       })
+      // No designations were held, so the audit row carries no cleared flag.
+      expect(prisma.auditLog.create.mock.calls[0][0].data.metadata).not.toHaveProperty('designationsCleared')
+    })
+
+    it('clears held designations on demotion and records it on the audit row (BE-04)', async () => {
+      const updated = { id: 'teacher-2', role: 'student' }
+      const prisma = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'teacher-2',
+            role: 'teacher',
+            department: 'CCIS',
+            studentId: '2024-00003-MN-0',
+            program: 'BSIT',
+            yearLevel: 2,
+            isItCoordinator: true,
+            isDepartmentHead: true,
+            isUserRegistrar: false,
+          }),
+          update: jest.fn().mockResolvedValue(updated),
+        },
+        section: { count: jest.fn().mockResolvedValue(0) },
+        authSession: { deleteMany: jest.fn().mockResolvedValue({ count: 3 }) },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+        $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
+      }
+      const events = { emit: jest.fn() }
+      const service = new UsersService(prisma as never, events as never)
+
+      await expect(service.changeUserRole('teacher-2', 'student', institutionAdmin)).resolves.toBe(updated)
+
+      const data = prisma.user.update.mock.calls[0][0].data
+      expect(data).toMatchObject({
+        isItCoordinator: false,
+        isDepartmentHead: false,
+        isUserRegistrar: false,
+        authVersion: { increment: 1 },
+      })
+      expect(prisma.auditLog.create.mock.calls[0][0].data.metadata).toEqual({
+        before: 'teacher',
+        after: 'student',
+        designationsCleared: true,
+      })
+      // The role change is a security revocation: sessions are deleted and the
+      // realtime replacement event still fires.
+      expect(prisma.authSession.deleteMany).toHaveBeenCalledWith({ where: { userId: 'teacher-2' } })
+      expect(events.emit).toHaveBeenCalledWith('auth.session-replaced', {
+        userId: 'teacher-2',
+        reason: 'role_changed',
+      })
+    })
+
+    it('leaves a student promotion identity untouched apart from the role and version', async () => {
+      const updated = { id: 'student-1', role: 'teacher' }
+      const prisma = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'student-1',
+            role: 'student',
+            department: 'CCIS',
+            email: 'student@example.edu.ph',
+            isItCoordinator: true,
+            isDepartmentHead: true,
+            isUserRegistrar: true,
+          }),
+          update: jest.fn().mockResolvedValue(updated),
+        },
+        authSession: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+        $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
+      }
+      const service = new UsersService(prisma as never, { emit: jest.fn() } as never)
+
+      await service.changeUserRole('student-1', 'teacher', institutionAdmin)
+
+      const data = prisma.user.update.mock.calls[0][0].data
+      expect(data).toEqual({ role: 'teacher', authVersion: { increment: 1 } })
+      expect(prisma.auditLog.create.mock.calls[0][0].data.metadata).not.toHaveProperty('designationsCleared')
     })
 
     it('rejects a no-op role change', async () => {
@@ -591,7 +697,7 @@ describe('UsersService', () => {
     })
 
     it('creates a fresh super admin with a hashed password and auth account', async () => {
-      const created = { id: 'admin-3', fullName: 'New Admin', email: 'admin@pup.edu.ph', role: 'super_admin' }
+      const created = { id: 'admin-3', fullName: 'New Admin', email: 'admin@example.edu.ph', role: 'super_admin' }
       const prisma = {
         user: {
           findUnique: jest.fn().mockResolvedValue(null),
@@ -605,7 +711,7 @@ describe('UsersService', () => {
         service.createAdmin(
           {
             fullName: ' New Admin ',
-            email: ' ADMIN@PUP.EDU.PH ',
+            email: ' ADMIN@EXAMPLE.EDU.PH ',
             password: 'Temporary1!Secure',
             department: ' CCIS ',
           },
@@ -617,7 +723,7 @@ describe('UsersService', () => {
       expect(data).toEqual(
         expect.objectContaining({
           fullName: 'New Admin',
-          email: 'admin@pup.edu.ph',
+          email: 'admin@example.edu.ph',
           department: 'CCIS',
           role: 'super_admin',
           scope: 'institution',
@@ -638,11 +744,11 @@ describe('UsersService', () => {
     it.each([
       [
         'both modes',
-        { userId: 'teacher-1', fullName: 'New Admin', email: 'new@pup.edu.ph', password: 'Temporary1!Secure' },
+        { userId: 'teacher-1', fullName: 'New Admin', email: 'new@example.edu.ph', password: 'Temporary1!Secure' },
       ],
       ['neither mode', {}],
-      ['an incomplete fresh account', { fullName: 'New Admin', email: 'new@pup.edu.ph' }],
-      ['a weak password', { fullName: 'New Admin', email: 'new@pup.edu.ph', password: 'weak' }],
+      ['an incomplete fresh account', { fullName: 'New Admin', email: 'new@example.edu.ph' }],
+      ['a weak password', { fullName: 'New Admin', email: 'new@example.edu.ph', password: 'weak' }],
     ])('rejects %s', async (_label, dto) => {
       const service = new UsersService({} as never)
       await expect(service.createAdmin(dto, institutionAdmin)).rejects.toThrow(BadRequestException)
@@ -687,7 +793,7 @@ describe('UsersService', () => {
 
       await expect(
         service.createAdmin(
-          { fullName: 'New Admin', email: 'taken@pup.edu.ph', password: 'Temporary1!Secure' },
+          { fullName: 'New Admin', email: 'taken@example.edu.ph', password: 'Temporary1!Secure' },
           institutionAdmin,
         ),
       ).rejects.toThrow(ConflictException)
@@ -724,6 +830,7 @@ describe('UsersService', () => {
         },
         authAccount: { upsert: jest.fn() },
         authSession: { deleteMany: jest.fn() },
+        accountActivationToken: { updateMany: jest.fn() },
         $transaction: jest.fn().mockResolvedValue([]),
       }
       const notifications = { notify: jest.fn().mockResolvedValue(undefined) }
@@ -745,14 +852,16 @@ describe('UsersService', () => {
             id: 'student-1',
             role: 'student',
             department: 'CCIS',
-            email: 'student@pup.edu.ph',
+            email: 'student@example.edu.ph',
             studentId: 'S-001',
             program: 'BSIT',
             yearLevel: 2,
           }),
           update: jest.fn().mockResolvedValue(updated),
         },
+        authSession: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
         auditLog: { create: jest.fn().mockResolvedValue({}) },
+        $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
       }
       const notifications = { notify: jest.fn().mockResolvedValue(undefined) }
       const service = new UsersService(prisma as never, { emit: jest.fn() } as never, notifications as never)
@@ -907,7 +1016,7 @@ describe('UsersService', () => {
       )
 
       expect(result.userId).toBe('student-1')
-      expect(result.temporaryPassword).toMatch(/^PUP-[A-Z2-9]{8}-[a-z]{2}[!@#$%_-]$/)
+      expect(result.temporaryPassword).toMatch(/^PCK-[A-Z2-9]{8}-[a-z]{2}[!@#$%_-]$/)
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'student-1' },
         data: expect.objectContaining({
@@ -1059,7 +1168,7 @@ describe('UsersService', () => {
     })
 
     it('generates a temporary password when creating a teacher without one', async () => {
-      const created = { id: 'teacher-9', fullName: 'New Teacher', email: 'new@pup.edu', role: 'teacher' }
+      const created = { id: 'teacher-9', fullName: 'New Teacher', email: 'new@example.edu', role: 'teacher' }
       const prisma = {
         user: {
           findUnique: jest.fn().mockResolvedValue(null),
@@ -1069,9 +1178,9 @@ describe('UsersService', () => {
       }
       const service = new UsersService(prisma as never)
 
-      const result = await service.createTeacher({ fullName: 'New Teacher', email: 'new@pup.edu' }, institutionAdmin)
+      const result = await service.createTeacher({ fullName: 'New Teacher', email: 'new@example.edu' }, institutionAdmin)
 
-      expect(result.temporaryPassword).toMatch(/^PUP-/)
+      expect(result.temporaryPassword).toMatch(/^PCK-/)
       expect(prisma.user.create.mock.calls[0][0].data).toMatchObject({ mustChangePassword: true })
       expect(prisma.auditLog.create).toHaveBeenCalledWith({
         data: expect.objectContaining({

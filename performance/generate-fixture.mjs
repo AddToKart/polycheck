@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Generates a PUP-style student master list CSV for bulk import + load fixtures.
+ * Generates a registrar-style student master list CSV for bulk import + load fixtures.
  *
  * Usage:
  *   node performance/generate-fixture.mjs --count 5000 [--start 0] [--year 2026] [--out file.csv]

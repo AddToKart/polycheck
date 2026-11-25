@@ -10,7 +10,7 @@ import '../../../core/models/user.dart';
 import '../../../core/providers/session_provider.dart';
 import '../../../core/router/router_decision.dart';
 import '../../../core/router/routes/app_routes.dart';
-import '../../../core/theme/pup_theme.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/designations.dart';
 import '../../../core/widgets/campus_button.dart';
 import '../../../core/widgets/campus_header.dart';
@@ -292,7 +292,7 @@ class _ProfileHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final designations = user.role == UserRole.superAdmin
         ? const <FacultyDesignation>[]
         : activeDesignations(user);
@@ -378,12 +378,12 @@ class _ProfileHeader extends ConsumerWidget {
                       const SizedBox(height: 10),
                       _identityRow(
                         context,
-                        'PUP ID / STUDENT NUMBER',
+                        'ID / STUDENT NUMBER',
                         user.studentId ?? '\u2014',
                       ),
                       _identityRow(
                         context,
-                        'PUP EMAIL',
+                        'INSTITUTIONAL EMAIL',
                         user.email ?? '\u2014',
                       ),
                       _identityRow(
@@ -467,7 +467,7 @@ class _ProfileHeader extends ConsumerWidget {
   }
 
   Widget _identityRow(BuildContext context, String label, String value) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
@@ -518,7 +518,7 @@ class _DesignationChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -547,7 +547,7 @@ class _AdminScopeSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Container(
       padding: const EdgeInsets.all(9),
       decoration: BoxDecoration(
@@ -591,7 +591,7 @@ class _DelegatedPermissions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final permissions = user.delegatedPermissions;
     final reset =
         permissions?.canResetStudentPasswords ??
@@ -627,7 +627,7 @@ class _DelegatedPermissions extends StatelessWidget {
   }
 
   Widget _permissionRow(BuildContext context, String label, bool allowed) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: 3),
       child: Row(

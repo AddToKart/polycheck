@@ -184,7 +184,7 @@ class _SectionDetailScreenState extends ConsumerState<SectionDetailScreen> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: PupTheme.of(context).surface,
+      backgroundColor: BrandTheme.of(context).surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       builder: (sheetContext) => _EnrollStudentSheet(
         candidates: candidates
@@ -322,7 +322,7 @@ class _SectionDetailScreenState extends ConsumerState<SectionDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final section = _section;
     final query = _search.text.trim().toLowerCase();
     final filtered = query.isEmpty
@@ -397,7 +397,9 @@ class _SectionDetailScreenState extends ConsumerState<SectionDetailScreen> {
                               FacultyPill(label: section.semester),
                             if (section.course != null &&
                                 section.course!.trim().isNotEmpty)
-                              FacultyPill(label: pupCourseName(section.course)),
+                              FacultyPill(
+                                label: campusCourseName(section.course),
+                              ),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -681,7 +683,7 @@ class _EnrollmentCodeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final active = code != null && code!.isNotEmpty;
     return Container(
       padding: const EdgeInsets.all(10),
@@ -760,7 +762,7 @@ class _EnrollStudentSheetState extends State<_EnrollStudentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final query = _search.text.trim().toLowerCase();
     final rows = query.isEmpty
         ? widget.candidates
@@ -893,7 +895,7 @@ class _RoleAssignmentFormState extends State<_RoleAssignmentForm> {
           'One student may hold both roles when the section is small.',
           style: Theme.of(
             context,
-          ).textTheme.bodySmall?.copyWith(color: PupTheme.of(context).muted),
+          ).textTheme.bodySmall?.copyWith(color: BrandTheme.of(context).muted),
         ),
         const SizedBox(height: 16),
         CampusButton(

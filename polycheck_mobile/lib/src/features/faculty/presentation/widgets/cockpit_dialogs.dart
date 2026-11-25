@@ -230,7 +230,7 @@ class _CheckpointQrDialogState extends State<_CheckpointQrDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusDialog(
       title:
           '${widget.regenerating ? 'Regenerate' : 'Generate'} '

@@ -2,20 +2,20 @@
 ///
 /// The defaults mirror the Android client (`android/services/api-config.ts`
 /// plus the staging URL pinned in `android/eas.json`). Override at build time:
-/// `--dart-define=PUP_API_BASE_URL=https://host/api` and, when the realtime
-/// endpoint is not derivable, `--dart-define=PUP_WS_BASE_URL=https://host/attendance`.
+/// `--dart-define=API_BASE_URL=https://host/api` and, when the realtime
+/// endpoint is not derivable, `--dart-define=WS_BASE_URL=https://host/attendance`.
 class ApiConfig {
   const ApiConfig._();
 
-  /// Staging API used by the released React Native app.
+  /// Production API. Override per build with `--dart-define=API_BASE_URL`.
   static const String baseUrl = String.fromEnvironment(
-    'PUP_API_BASE_URL',
-    defaultValue: 'https://polycheck-api.addtokart.tech/api',
+    'API_BASE_URL',
+    defaultValue: 'https://api.polycheck.live/api',
   );
 
   /// Optional explicit Socket.IO namespace URL (`.../attendance`).
   static const String socketBaseUrl = String.fromEnvironment(
-    'PUP_WS_BASE_URL',
+    'WS_BASE_URL',
     defaultValue: '',
   );
 

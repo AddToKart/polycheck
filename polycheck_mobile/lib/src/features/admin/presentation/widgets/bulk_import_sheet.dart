@@ -8,7 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/api/api_providers.dart';
 import '../../../../core/models/bulk_import.dart';
-import '../../../../core/theme/pup_theme.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/widgets/campus_bottom_sheet.dart';
 import '../../../../core/widgets/campus_button.dart';
 import '../../../../core/widgets/campus_card.dart';
@@ -253,7 +253,7 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -300,7 +300,7 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
   }
 
   Widget _buildInput(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -358,7 +358,7 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
   }
 
   Widget _buildMapping(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -475,8 +475,8 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
         if (issues.isNotEmpty) ...<Widget>[
           const SizedBox(height: 12),
           CampusCard(
-            color: PupTheme.of(context).gold.withValues(alpha: 0.14),
-            borderColor: PupTheme.of(context).gold,
+            color: BrandTheme.of(context).gold.withValues(alpha: 0.14),
+            borderColor: BrandTheme.of(context).gold,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
@@ -512,7 +512,7 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
             value: _state.chunksTotal == 0
                 ? null
                 : _state.chunksDone / _state.chunksTotal,
-            color: PupTheme.of(context).maroon,
+            color: BrandTheme.of(context).maroon,
           ),
           const SizedBox(height: 6),
           Text(
@@ -539,7 +539,7 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
   }
 
   Widget _buildReport(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final counts = _state.counts;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -652,7 +652,7 @@ class _StepRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     const labels = <BulkImportStep, String>{
       BulkImportStep.input: 'Paste',
       BulkImportStep.map: 'Map',
@@ -692,7 +692,7 @@ class _CountChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(

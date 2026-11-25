@@ -61,7 +61,12 @@ class _SessionCockpitScreenState extends ConsumerState<SessionCockpitScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _refresh(initial: true);
+      // FLR-08: `_refresh` and `_connectRealtime` both await; the widget may
+      // have been popped while they were in flight, in which case any further
+      // `ref` read/`invalidate` throws after dispose.
+      if (!mounted) return;
       await _connectRealtime();
+      if (!mounted) return;
       // B-17: seed the denied-attempts log with the server-side record so
       // the radar list is populated even before the first anomaly event.
       _loadDeniedAttempts();
@@ -99,7 +104,7 @@ class _SessionCockpitScreenState extends ConsumerState<SessionCockpitScreen> {
   }
 
   Future<void> _connectRealtime() async {
-    if (_realtime != null) return;
+    if (!mounted || _realtime != null) return;
     final realtime = CockpitRealtime(
       sessionId: widget.sessionId,
       // Re-read on every (re)connect so a rotated bearer is never stale
@@ -136,10 +141,14 @@ class _SessionCockpitScreenState extends ConsumerState<SessionCockpitScreen> {
   /// B-17: nudge the denied-attempts log provider (the section widget watches
   /// the family; the socket callback and the cockpit mount invalidate it).
   void _loadDeniedAttempts() {
+    if (!mounted) return;
     ref.invalidate(cockpitDeniedAttemptsProvider(widget.sessionId));
   }
 
   Future<void> _refresh({bool initial = false}) async {
+    // FLR-08: the realtime callback and the boot chain can both fire while the
+    // screen is being torn down; every `ref` read below would throw.
+    if (!mounted) return;
     if (_refreshing) {
       _refreshQueued = true;
       return;
@@ -513,6 +522,20 @@ class _SessionCockpitScreenState extends ConsumerState<SessionCockpitScreen> {
       }
       return;
     }
+    // FLF-08: `disputed`/`excused` rows are owned by their queues. Cycling them
+    // here silently rewrote a state a student or officer is waiting on.
+    if (!isManualCycleStatus(row.status)) {
+      final queue = row.status == AttendanceStatus.disputed
+          ? 'dispute'
+          : 'excuse';
+      CampusToast.showIn(
+        context,
+        '${row.studentName} is ${attendanceStatusLabels[row.status]!.toLowerCase()} '
+        '— resolve this through the $queue queue.',
+        tone: CampusToastTone.warning,
+      );
+      return;
+    }
     final next = nextAttendanceStatus(row.status);
     final existing = row.record;
     if (existing != null) {
@@ -599,7 +622,7 @@ class _SessionCockpitScreenState extends ConsumerState<SessionCockpitScreen> {
   @override
   Widget build(BuildContext context) {
     final session = _session;
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final rows = buildCockpitRoster(students: _students, records: _records);
     final summary = summarizeRoster(rows);
     final visible = filterRoster(rows, _filter);
@@ -1157,6 +1180,7 @@ String? deniedAttemptReasonLabel(String? reason) {
     'suspicious_coordinates' => 'Suspicious GPS · unusual jump',
     'outside_geofence' => 'Outside geofence',
     'geofence_uncertain' => 'Location uncertainty extends outside the geofence',
+    'missing_geofence' => 'This session has no geofence configured',
     'poor_location_accuracy' => 'Location accuracy too poor',
     'stale_location' => 'Location fix is stale',
     'missing_location' => 'No location evidence',
@@ -1168,6 +1192,7 @@ String? deniedAttemptReasonLabel(String? reason) {
     'client_attempt_conflict' => 'Replayed client attempt id',
     'replayed_rejection' => 'Replayed rejection',
     'pin_incorrect' => 'Wrong meeting PIN',
+    'pin_mismatch' => 'Meeting PIN state mismatch',
     'pin_required' => 'Meeting PIN required',
     'pin_locked' => 'PIN attempts locked',
     _ => reason.replaceAll('_', ' '),
@@ -1243,7 +1268,7 @@ class _CockpitDeniedAttemptsSectionState
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final attemptsAsync = ref.watch(
       cockpitDeniedAttemptsProvider(widget.sessionId),
     );
@@ -1325,7 +1350,7 @@ class _DeniedAttemptRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final theme = Theme.of(context);
     final reason = deniedAttemptReasonLabel(attempt.denialReason);
     final distanceCopy = deniedDistanceCopy(

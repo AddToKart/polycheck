@@ -6,7 +6,7 @@ import 'package:polycheck_mobile/src/core/api/api_models.dart';
 import 'package:polycheck_mobile/src/core/api/api_providers.dart';
 import 'package:polycheck_mobile/src/core/api/audit_api.dart';
 import 'package:polycheck_mobile/src/core/providers/session_provider.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/features/admin/presentation/audit_logs_screen.dart';
 
 import '../../helpers/auth_harness.dart';
@@ -38,7 +38,10 @@ Future<void> pumpAuditLogs(
         sessionProvider.overrideWith(() => FakeSessionController(testAdmin)),
         auditApiProvider.overrideWithValue(_FakeAuditApi(result)),
       ],
-      child: MaterialApp(theme: PupTheme.light, home: const AuditLogsScreen()),
+      child: MaterialApp(
+        theme: BrandTheme.light,
+        home: const AuditLogsScreen(),
+      ),
     ),
   );
   await tester.pumpAndSettle();

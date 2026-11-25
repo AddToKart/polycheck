@@ -1,4 +1,17 @@
-import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator'
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsEmail,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator'
 import { Type } from 'class-transformer'
 import { IsStrongPassword } from '../../common/decorators/strong-password.decorator'
 
@@ -12,6 +25,7 @@ export class AdminUserQueryDto {
   @IsOptional() @IsString() @MaxLength(100) q?: string
   @IsOptional() @IsString() @MaxLength(100) department?: string
   @IsOptional() @IsIn(['active', 'inactive']) status?: AdminUserStatus
+  @IsOptional() @IsIn(['pending']) activation?: 'pending'
   @IsOptional() @IsString() @MaxLength(10) limit?: string
   @IsOptional() @IsString() @MaxLength(10) offset?: string
 }
@@ -37,6 +51,17 @@ export class UpdateUserDto {
   @IsOptional() @IsBoolean() isItCoordinator?: boolean
   @IsOptional() @IsBoolean() isDepartmentHead?: boolean
   @IsOptional() @IsBoolean() isUserRegistrar?: boolean
+  /**
+   * Course scope of a head/registrar designee (catalog codes; super admin only,
+   * like the designation flags). `managesAllCourses` wins over the list.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(60, { each: true })
+  managedCourses?: string[]
+  @IsOptional() @IsBoolean() managesAllCourses?: boolean
 }
 
 /** Only student <-> teacher transitions are assignable (Locked Decision 6). */

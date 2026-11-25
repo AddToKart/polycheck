@@ -12,7 +12,7 @@ class ProfileSignOutTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusCard(
       key: const ValueKey('profile-sign-out'),
       onTap: () => confirmSignOut(context, ref),

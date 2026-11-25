@@ -70,7 +70,7 @@ describe('formatDate', () => {
 })
 
 describe('formatCampusDate', () => {
-  it('shifts a UTC instant into the PUP (UTC+08:00) civil date', () => {
+  it('shifts a UTC instant into the campus (UTC+08:00) civil date', () => {
     // 2026-08-01T20:00:00Z + 8h crosses into 2026-08-02
     expect(formatCampusDate(new Date('2026-08-01T20:00:00Z'))).toBe('2026-08-02')
     // 2026-08-02T00:30:00Z + 8h stays on 2026-08-02
