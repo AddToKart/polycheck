@@ -71,7 +71,7 @@ export interface IngestDeps {
   /** One pipelined round-trip: pending summary + session snapshot. */
   probeHotPath: (sessionId: string) => Promise<HotPathProbe>
   resolveUser: (authorization: string | undefined) => Promise<AuthResolution>
-  consumePinAttempt: (key: string, limit: number, windowMs: number) => Promise<boolean>
+  consumePinAttempt: (key: string, limit: number, windowSeconds: number) => Promise<boolean>
   /**
    * Atomically claims `(sessionId, userId, checkpoint)` for the dedupe TTL. Returns false
    * when another request already holds the claim — the second scan is a
@@ -82,6 +82,12 @@ export interface IngestDeps {
   releaseScan?: (sessionId: string, userId: string, checkpoint?: string) => Promise<void>
   /** Forwards online-mode scans directly to NestJS (/attendance/scan). */
   forwardOnlineScan?: (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>
+  /**
+   * Forwards online-mode *validation* requests to NestJS `/attendance/check`.
+   * Distinct from `forwardOnlineScan` on purpose: `/attendance/check` must never
+   * reach the committing endpoint (ING-04).
+   */
+  forwardOnlineCheck?: (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>
   /** Dead-letter stream length — observability only, never backpressure. */
   dlqDepth: () => Promise<number>
   metrics: IngestMetrics
@@ -102,7 +108,20 @@ async function forwardOnlineScan(deps: IngestDeps, request: FastifyRequest, repl
   if (deps.forwardOnlineScan) {
     return deps.forwardOnlineScan(request, reply)
   }
-  const url = `${deps.config.CONTROL_PLANE_URL}/attendance/scan`
+  return forwardToControlPlane(deps, request, reply, '/attendance/scan')
+}
+
+/**
+ * Forwards an online-mode request to the control plane. `path` is explicit so
+ * the validate-only route can never be proxied onto the committing one.
+ */
+async function forwardToControlPlane(
+  deps: IngestDeps,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  path: '/attendance/scan' | '/attendance/check',
+): Promise<unknown> {
+  const url = `${deps.config.CONTROL_PLANE_URL}${path}`
   const headers: Record<string, string> = {
     'content-type': 'application/json',
   }
@@ -224,34 +243,56 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
       .send(renderMetrics(deps.metrics, { bufferDepth: depth, streamLength: length, lagSeconds: lag, dlqDepth, ready }))
   })
 
+  interface PreparedScan {
+    user: AuthedUser
+    body: z.infer<typeof scanBodySchema>
+    snapshot: SessionSnapshot
+    teacherPublicKey: string
+    depth: number
+    lag: number
+  }
+
   /**
-   * Accepts one live scan. The decision is made in-memory against the cached
-   * session snapshot; the write is buffered, never synchronous.
+   * Shared front half of the two attendance routes: auth, role/privacy gates,
+   * body parse and the hot-path probe. Returns `null` when the reply has
+   * already been sent (the error path).
    */
-  const submit = async (request: FastifyRequest, reply: FastifyReply) => {
+  const prepareScan = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<PreparedScan | null> => {
     const auth = await deps.resolveUser(bearer(request))
-    if (!auth) return reply.code(401).send({ statusCode: 401, message: 'Unauthorized' })
+    if (!auth) {
+      reply.code(401).send({ statusCode: 401, message: 'Unauthorized' })
+      return null
+    }
     if ('unavailable' in auth) {
       // The control plane could not confirm the session. Answering 401 here would
       // make every client treat a transient upstream blip as a logout.
-      return reply
+      reply
         .code(503)
         .header('retry-after', '2')
         .send({ statusCode: 503, error: 'ServiceUnavailable', message: 'Authentication temporarily unavailable', retryAfterSeconds: 2 })
+      return null
     }
     const user = auth.user
-    if (user.role !== 'student') return reply.code(403).send({ statusCode: 403, message: 'Insufficient role permissions' })
+    if (user.role !== 'student') {
+      reply.code(403).send({ statusCode: 403, message: 'Insufficient role permissions' })
+      return null
+    }
     if (!user.privacyConsent) {
-      return reply.code(403).send({ statusCode: 403, message: 'Privacy consent required', code: 'privacy_consent_required' })
+      reply.code(403).send({ statusCode: 403, message: 'Privacy consent required', code: 'privacy_consent_required' })
+      return null
     }
 
     const parsed = scanBodySchema.safeParse(request.body)
     if (!parsed.success) {
-      return reply.code(400).send({
+      reply.code(400).send({
         statusCode: 400,
         error: 'BadRequestException',
         message: parsed.error.issues.map((issue) => issue.message),
       })
+      return null
     }
     const body = parsed.data
 
@@ -259,9 +300,42 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
     const probe = await deps.probeHotPath(body.sessionId)
     if (!probe.snapshot) {
       // Cannot validate without the snapshot: retryable, never a silent accept.
-      return tooMany(reply, 2)
+      tooMany(reply, 2)
+      return null
     }
-    const { snapshot, teacherPublicKey } = probe.snapshot
+    return {
+      user,
+      body,
+      snapshot: probe.snapshot.snapshot,
+      teacherPublicKey: probe.snapshot.teacherPublicKey,
+      depth: probe.depth,
+      lag: probe.lag,
+    }
+  }
+
+  const toEvidence = (body: z.infer<typeof scanBodySchema>): ScanEvidenceInput => ({
+    qrToken: body.qrToken,
+    clientAttemptId: body.clientAttemptId,
+    accuracyMeters: body.accuracyMeters,
+    locationCapturedAt: body.locationCapturedAt,
+    mocked: body.mocked,
+    inputChannel: body.inputChannel,
+    pin: body.pin,
+    deviceSecurity: body.deviceSecurity,
+    scannedAt: body.scannedAt,
+    latitude: body.lat,
+    longitude: body.lon,
+    deviceId: body.deviceId,
+  })
+
+  /**
+   * Accepts one live scan. The decision is made in-memory against the cached
+   * session snapshot; the write is buffered, never synchronous.
+   */
+  const submit = async (request: FastifyRequest, reply: FastifyReply) => {
+    const prep = await prepareScan(request, reply)
+    if (!prep) return reply
+    const { user, body, snapshot, teacherPublicKey } = prep
 
     if (snapshot.mode === 'online') {
       // Online windows are short and low-volume: the hot path isn't needed.
@@ -270,30 +344,15 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
       return forwardOnlineScan(deps, request, reply)
     }
 
-    if (probe.depth > deps.config.INGEST_MAX_BUFFER || probe.lag > deps.config.INGEST_MAX_LAG_SECONDS) {
+    if (prep.depth > deps.config.INGEST_MAX_BUFFER || prep.lag > deps.config.INGEST_MAX_LAG_SECONDS) {
       return tooMany(reply)
-    }
-
-    const evidence: ScanEvidenceInput = {
-      qrToken: body.qrToken,
-      clientAttemptId: body.clientAttemptId,
-      accuracyMeters: body.accuracyMeters,
-      locationCapturedAt: body.locationCapturedAt,
-      mocked: body.mocked,
-      inputChannel: body.inputChannel,
-      pin: body.pin,
-      deviceSecurity: body.deviceSecurity,
-      scannedAt: body.scannedAt,
-      latitude: body.lat,
-      longitude: body.lon,
-      deviceId: body.deviceId,
     }
 
     const validation = await validateScan({
       snapshot,
       teacherPublicKey,
       userId: user.id,
-      evidence,
+      evidence: toEvidence(body),
       offline: false,
       receivedAt: new Date(),
       consumePinAttempt: deps.consumePinAttempt,
@@ -402,10 +461,56 @@ export function buildServer(deps: IngestDeps): FastifyInstance {
     })
   }
 
+  /**
+   * Validates one scan without committing or buffering anything.
+   *
+   * Mirrors the control plane's `AttendanceService.check()`: a validation-only
+   * probe whose answer is the same envelope for both outcomes. It deliberately
+   * takes no dedupe reservation and appends nothing — a client that submits an
+   * accepted check answer elsewhere must still land a real commit.
+   */
+  const validateOnly = async (request: FastifyRequest, reply: FastifyReply) => {
+    const prep = await prepareScan(request, reply)
+    if (!prep) return reply
+    const { user, body, snapshot, teacherPublicKey } = prep
+
+    if (snapshot.mode === 'online') {
+      // The control plane's `/attendance/check` is the only validator for the
+      // dual-checkpoint contract; forward rather than approximate it. It must go
+      // to `check` (validate-only), never to the committing `scan` route.
+      return deps.forwardOnlineCheck
+        ? deps.forwardOnlineCheck(request, reply)
+        : forwardToControlPlane(deps, request, reply, '/attendance/check')
+    }
+
+    const validation = await validateScan({
+      snapshot,
+      teacherPublicKey,
+      userId: user.id,
+      evidence: toEvidence(body),
+      offline: false,
+      receivedAt: new Date(),
+      consumePinAttempt: deps.consumePinAttempt,
+    })
+
+    if (!validation.success) deps.metrics.scansRejected += 1
+    // 200 for both outcomes: this route creates nothing, so it must not answer
+    // 201. The body is the validation answer the control plane returns.
+    return reply.code(200).send({
+      success: validation.success,
+      status: validation.status,
+      reason: validation.reason,
+      message: validation.message,
+      distanceMeters: validation.distanceMeters,
+      geofenceRadiusMeters: validation.geofenceRadiusMeters,
+      syncState: 'validated',
+    })
+  }
+
   app.post('/attendance/scan', submit)
   app.post('/api/attendance/scan', submit)
-  app.post('/attendance/check', submit)
-  app.post('/api/attendance/check', submit)
+  app.post('/attendance/check', validateOnly)
+  app.post('/api/attendance/check', validateOnly)
 
   /**
    * `/sync/attendance/*` is deliberately NOT served here.

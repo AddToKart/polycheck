@@ -33,7 +33,23 @@ interface StoredRow {
   salt: string
   disputeReason: string | null
   disputePreviousStatus: string | null
+  acceptedScanAttemptId: string | null
+  checkInAttemptId: string | null
+  checkOutAttemptId: string | null
   createdAt_iso: string
+}
+
+interface StoredAttempt {
+  id: string
+  studentId: string
+  clientAttemptId: string | null
+  outcome: string
+  reason: string | null
+  latitude: number | null
+  longitude: number | null
+  offline: boolean
+  checkpoint: string | null
+  tokenHash: string | null
 }
 
 describeDb('createPgWriter (Postgres integration)', () => {
@@ -77,6 +93,14 @@ describeDb('createPgWriter (Postgres integration)', () => {
     riskSignals: [],
     offline: false,
     qrToken: token(),
+    latitude: 12.5,
+    longitude: 121.5,
+    accuracyMeters: 8,
+    locationCapturedAt: new Date(Date.now() - 121_000 + studentIndex * 1_000).toISOString(),
+    deviceId: `writer-device-${studentIndex}`,
+    clientAttemptId: randomUUID(),
+    inputChannel: 'camera',
+    mocked: false,
     ...overrides,
   })
 
@@ -95,11 +119,31 @@ describeDb('createPgWriter (Postgres integration)', () => {
               to_char(timestamp, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS timestamp_iso,
               "prevHash", "recordHash", salt, "disputeReason",
               "disputePreviousStatus"::text AS "disputePreviousStatus",
+              "acceptedScanAttemptId", "checkInAttemptId", "checkOutAttemptId",
               to_char("createdAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "createdAt_iso"
          FROM "AttendanceRecord" WHERE "sessionId" = $1 ORDER BY "createdAt" ASC, id ASC`,
       [ids.session],
     )
     return result.rows
+  }
+
+  async function attemptsForSession(): Promise<StoredAttempt[]> {
+    const result = await pool.query<StoredAttempt>(
+      `SELECT id, "studentId", "clientAttemptId", outcome, reason,
+              latitude, longitude, coalesce(offline, false) AS offline,
+              checkpoint, "tokenHash"
+         FROM "ScanAttempt" WHERE "sessionId" = $1 ORDER BY "createdAt" ASC, id ASC`,
+      [ids.session],
+    )
+    return result.rows
+  }
+
+  async function enroll(studentIndex: number) {
+    await pool.query(
+      `INSERT INTO "Enrollment" (id, "studentId", "sectionId", "enrolledAt")
+       VALUES ($1, $2, $3, now()) ON CONFLICT ("studentId", "sectionId") DO NOTHING`,
+      [randomUUID(), ids.students[studentIndex], ids.section],
+    )
   }
 
   beforeAll(async () => {
@@ -146,11 +190,26 @@ describeDb('createPgWriter (Postgres integration)', () => {
   beforeEach(async () => {
     if (!databaseUrl) return
     await pool.query(`DELETE FROM "AttendanceRecord" WHERE "sessionId" = $1`, [ids.session])
+    await pool.query(`DELETE FROM "ScanAttempt" WHERE "sessionId" = $1`, [ids.session])
+    await pool.query(`DELETE FROM "EnrollmentTombstone" WHERE "sectionId" = $1`, [ids.section])
+    await pool.query(`DELETE FROM "Enrollment" WHERE "sectionId" = $1`, [ids.section])
+    // The cooldown is a User column, not part of the section scope: without this
+    // reset the cooldown case would leak into every later test in the file.
+    await pool.query(
+      `UPDATE "User" SET "deviceCooldownUntil" = NULL, "cooldownDeviceId" = NULL, "boundDeviceId" = NULL
+        WHERE id = ANY($1::text[])`,
+      [ids.students],
+    )
+    // Members of record for the happy paths; individual cases remove one.
+    for (let index = 0; index < ids.students.length; index += 1) await enroll(index)
   })
 
   afterAll(async () => {
     if (!databaseUrl) return
     await pool.query(`DELETE FROM "AttendanceRecord" WHERE "sessionId" = $1`, [ids.session])
+    await pool.query(`DELETE FROM "ScanAttempt" WHERE "sessionId" = $1`, [ids.session])
+    await pool.query(`DELETE FROM "EnrollmentTombstone" WHERE "sectionId" = $1`, [ids.section])
+    await pool.query(`DELETE FROM "Enrollment" WHERE "sectionId" = $1`, [ids.section])
     await pool.query(`DELETE FROM "Session" WHERE id = $1`, [ids.session])
     await pool.query(`DELETE FROM "Section" WHERE id = $1`, [ids.section])
     await pool.query(`DELETE FROM "Subject" WHERE id = $1`, [ids.subject])
@@ -274,5 +333,206 @@ describeDb('createPgWriter (Postgres integration)', () => {
     await pool.query(`DELETE FROM "Session" WHERE id = $1`, [vanished])
 
     await expect(writer.writeBatch(vanished, [scan(0, { sessionId: vanished })])).rejects.toBeInstanceOf(PermanentWriteError)
+  })
+
+  // ── ING-02: commit-time membership re-checks ──
+
+  it('commits a scan from a removed student as disputed and still chains it (ING-02)', async () => {
+    await pool.query(`DELETE FROM "Enrollment" WHERE "sectionId" = $1 AND "studentId" = $2`, [
+      ids.section,
+      ids.students[1],
+    ])
+
+    const result = await writer.writeBatch(ids.session, [scan(0), scan(1)])
+
+    // Not dropped: the row is committed so the teacher rail sees it.
+    expect(result).toEqual({ written: 2, duplicates: 0 })
+    const rows = await rowsForSession()
+    const removed = rows.find((row) => row.studentId === ids.students[1])!
+    expect(removed.status).toBe('disputed')
+    expect(removed.disputeReason).toBe('student_not_enrolled')
+    // Arrival-order chaining is unaffected by the decision.
+    expect(removed.prevHash).toBe(rows[0]!.recordHash)
+    expect(removed.recordHash).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('disputes a tombstoned student with student_blocked_from_section (ING-02)', async () => {
+    await pool.query(
+      `INSERT INTO "EnrollmentTombstone" (id, "sectionId", "studentId", "removedById", "removedAt")
+       VALUES ($1, $2, $3, $4, now())`,
+      [randomUUID(), ids.section, ids.students[2], ids.teacher],
+    )
+
+    await writer.writeBatch(ids.session, [scan(2)])
+
+    const [row] = await rowsForSession()
+    expect(row!.status).toBe('disputed')
+    expect(row!.disputeReason).toBe('student_blocked_from_section')
+  })
+
+  it('disputes a scan inside an active device cooldown (ING-02)', async () => {
+    await pool.query(`UPDATE "User" SET "deviceCooldownUntil" = now() + interval '1 hour' WHERE id = $1`, [
+      ids.students[3],
+    ])
+
+    await writer.writeBatch(ids.session, [scan(3)])
+
+    const [row] = await rowsForSession()
+    expect(row!.status).toBe('disputed')
+    expect(row!.disputeReason).toBe('device_cooldown_active')
+  })
+
+  it('prefers the explicit teacher block over a plain missing enrollment (ING-02)', async () => {
+    // A tombstoned student also has no enrollment row. The reason must be the
+    // teacher-actionable one, not the generic "not enrolled".
+    await pool.query(`DELETE FROM "Enrollment" WHERE "sectionId" = $1 AND "studentId" = $2`, [
+      ids.section,
+      ids.students[3],
+    ])
+    await pool.query(
+      `INSERT INTO "EnrollmentTombstone" (id, "sectionId", "studentId", "removedById", "removedAt")
+       VALUES ($1, $2, $3, $4, now())`,
+      [randomUUID(), ids.section, ids.students[3], ids.teacher],
+    )
+
+    await writer.writeBatch(ids.session, [scan(3)])
+
+    const [row] = await rowsForSession()
+    expect(row!.status).toBe('disputed')
+    expect(row!.disputeReason).toBe('student_blocked_from_section')
+  })
+
+  it('keeps the enrolled happy path unchanged (ING-02)', async () => {
+    await writer.writeBatch(ids.session, [scan(4)])
+
+    const [row] = await rowsForSession()
+    expect(row!.status).toBe('present')
+    expect(row!.disputeReason).toBeNull()
+    expect(row!.disputePreviousStatus).toBeNull()
+  })
+
+  it('does not dispute a bound device inside a cooldown (DeviceBindingService parity, ING-02)', async () => {
+    // `assertScanAllowed` only gates students WITHOUT a bound device: a bound
+    // device was already vouched for at login. The writer must agree or a
+    // legitimate check-in would be flagged after every device change.
+    await pool.query(
+      `UPDATE "User" SET "deviceCooldownUntil" = now() + interval '1 hour', "boundDeviceId" = 'bound-device'
+        WHERE id = $1`,
+      [ids.students[5]],
+    )
+
+    await writer.writeBatch(ids.session, [scan(5)])
+
+    const [row] = await rowsForSession()
+    expect(row!.status).toBe('present')
+    expect(row!.disputeReason).toBeNull()
+  })
+
+  it('lets an invalid signature take precedence over membership disputes (ING-02)', async () => {
+    await pool.query(`DELETE FROM "Enrollment" WHERE "sectionId" = $1 AND "studentId" = $2`, [
+      ids.section,
+      ids.students[4],
+    ])
+
+    await writer.writeBatch(ids.session, [scan(4, { qrToken: token(foreignKeys.secretKey) })])
+
+    const [row] = await rowsForSession()
+    expect(row!.status).toBe('disputed')
+    expect(row!.disputeReason).toBe('invalid_signature')
+  })
+
+  // ── ING-03: disputePreviousStatus semantics ──
+
+  it('stamps NULL on an inserted disputed row so Reject restores absent (ING-03)', async () => {
+    // Re-pinned (ING-03): this used to stamp `scan.status` ('present'), so a
+    // teacher Reject on a forged row flipped it to Present.
+    await writer.writeBatch(ids.session, [scan(5, { qrToken: token(foreignKeys.secretKey) })])
+
+    const [row] = await rowsForSession()
+    expect(row!.status).toBe('disputed')
+    expect(row!.disputeReason).toBe('invalid_signature')
+    expect(row!.disputePreviousStatus).toBeNull()
+
+    // Reject path: `disputes.service.resolve` restores `?? 'absent'`.
+    const restored = row!.disputePreviousStatus ?? 'absent'
+    expect(restored).toBe('absent')
+  })
+
+  it('stamps NULL on a gateway-flagged insert so Reject restores absent (ING-03)', async () => {
+    // A legitimate-but-flagged scan (gateway assigned `disputed`): the old code
+    // copied 'disputed' into the column and Reject then 403'd the teacher.
+    await writer.writeBatch(
+      ids.session,
+      [scan(0, { status: 'disputed', reason: 'missing_scan_evidence', message: 'Legacy evidence incomplete' })],
+    )
+
+    const [row] = await rowsForSession()
+    expect(row!.status).toBe('disputed')
+    expect(row!.disputeReason).toBe('missing_scan_evidence')
+    expect(row!.disputePreviousStatus).toBeNull()
+  })
+
+  it('keeps pending as the claim restore target so Reject returns the row to pending (ING-03)', async () => {
+    await seedRosterRow(1)
+    await writer.writeBatch(
+      ids.session,
+      [scan(1, { status: 'disputed', reason: 'missing_scan_evidence', message: 'Legacy evidence incomplete' })],
+    )
+
+    const [row] = await rowsForSession()
+    expect(row!.status).toBe('disputed')
+    expect(row!.disputePreviousStatus).toBe('pending')
+  })
+
+  // ── ING-09: ScanAttempt persistence ──
+
+  it('writes one ScanAttempt per committed scan and links accepted rows (ING-09)', async () => {
+    await writer.writeBatch(ids.session, [scan(0), scan(1)])
+
+    const rows = await rowsForSession()
+    const attempts = await attemptsForSession()
+    expect(attempts).toHaveLength(2)
+    expect(attempts.every((attempt) => attempt.outcome === 'present')).toBe(true)
+    expect(attempts.every((attempt) => attempt.tokenHash?.length === 64)).toBe(true)
+    // Coordinates are retained for in-person sessions.
+    expect(attempts[0]!.latitude).toBe(12.5)
+    for (const row of rows) {
+      expect(row.acceptedScanAttemptId).toBe(attempts.find((a) => a.studentId === row.studentId)!.id)
+      expect(row.checkInAttemptId).toBeNull()
+      expect(row.checkOutAttemptId).toBeNull()
+    }
+  })
+
+  it('persists a denied-by-signature scan as a flagged attempt (ING-09)', async () => {
+    await writer.writeBatch(ids.session, [scan(2, { qrToken: token(foreignKeys.secretKey) })])
+
+    const attempts = await attemptsForSession()
+    expect(attempts).toHaveLength(1)
+    expect(attempts[0]!.outcome).toBe('flagged')
+    expect(attempts[0]!.reason).toBe('invalid_signature')
+  })
+
+  it('never persists coordinates for an online checkpoint attempt (ING-09, RA 10173)', async () => {
+    await writer.writeBatch(ids.session, [scan(3, { mode: 'online', checkpoint: 'start' })])
+
+    const attempts = await attemptsForSession()
+    expect(attempts).toHaveLength(1)
+    expect(attempts[0]!.latitude).toBeNull()
+    expect(attempts[0]!.longitude).toBeNull()
+    expect(attempts[0]!.checkpoint).toBe('start')
+    // The record links the attempt through the per-leg FK, not the in-person one.
+    const [row] = await rowsForSession()
+    expect(row!.checkInAttemptId).toBe(attempts[0]!.id)
+    expect(row!.acceptedScanAttemptId).toBeNull()
+  })
+
+  it('skips attempt writes entirely when the kill switch is off (ING-09)', async () => {
+    const quiet = createPgWriter(pool, { persistScanAttempts: false })
+    await quiet.writeBatch(ids.session, [scan(0)])
+
+    expect(await attemptsForSession()).toHaveLength(0)
+    const [row] = await rowsForSession()
+    expect(row!.acceptedScanAttemptId).toBeNull()
+    expect(row!.status).toBe('present')
   })
 })

@@ -23,6 +23,15 @@ export const MIN_ONLINE_CHECKPOINT_VALIDITY_SECONDS = 60
 export const MAX_ONLINE_CHECKPOINT_VALIDITY_SECONDS = 300
 export const PIN_ATTEMPT_LIMIT = 6
 export const PIN_ATTEMPT_WINDOW_SECONDS = 10 * 60
+/**
+ * Effective Redis key namespace for the meeting-PIN counter.
+ *
+ * The control plane writes `polycheck:rate:pin-attempt:<session>:<user>:<checkpoint>`
+ * (`RedisService.consumeRateLimit` prefixes `polycheck:` + `rate:`). The gateway's
+ * ioredis client has no prefix wrapper, so the same literal is built here —
+ * otherwise a student could get 6 attempts on each process.
+ */
+export const PIN_ATTEMPT_KEY_PREFIX = 'polycheck:rate:pin-attempt:'
 
 export type SessionMode = 'in_person' | 'online'
 export type Checkpoint = 'start' | 'end'
@@ -154,9 +163,12 @@ export async function validateScan({
     riskSignals.push(`fallback_${evidence.inputChannel}`)
   }
 
-  // Offline replays trust the recorded `scannedAt`; live scans use the device
-  // value when present and otherwise the server receive time.
-  const scannedAt = evidence.scannedAt ? new Date(evidence.scannedAt) : new Date(receivedAt.getTime())
+  // Control-plane parity (`scan-validator.service.ts#clientScannedAt`): a live
+  // scan is timed by the server's receive clock, so a client-supplied
+  // `scannedAt` cannot be back-dated into the Present window. Offline replays
+  // keep their recorded timestamp - the acceptance box below still bounds it.
+  const scannedAt =
+    offline && evidence.scannedAt ? new Date(evidence.scannedAt) : new Date(receivedAt.getTime())
   let distanceMeters: number | undefined
   let geofenceRadiusMeters: number | undefined
 
@@ -439,7 +451,7 @@ export async function validateScan({
       if (!evidence.pin) {
         return failed('absent', 'pin_required', 'Enter the meeting PIN announced by your instructor')
       }
-      const rateKey = `pin-attempt:${session.id}:${userId}:${checkpoint}`
+      const rateKey = `${PIN_ATTEMPT_KEY_PREFIX}${session.id}:${userId}:${checkpoint}`
       const withinLimit = await consumePinAttempt(rateKey, PIN_ATTEMPT_LIMIT, PIN_ATTEMPT_WINDOW_SECONDS)
       if (!withinLimit) {
         return failed(

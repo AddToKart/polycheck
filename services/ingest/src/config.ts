@@ -126,6 +126,19 @@ export const ingestConfigSchema = z.object({
   INGEST_DEDUPE_KEY_PREFIX: z.string().default('polycheck:ingest:dedupe:'),
 
   /**
+   * Writes one `ScanAttempt` row per committed scan (and links accepted rows)
+   * inside the same drainer transaction. Down-stream forensics (dispute
+   * timeline) and the live geofence radar read that table, so without this the
+   * gateway path — which carries almost all production traffic — is invisible
+   * to both. Kill switch for the drain benchmark: it adds one batched INSERT
+   * and one batched UPDATE per drain transaction.
+   */
+  INGEST_PERSIST_SCAN_ATTEMPTS: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
+
+  /**
    * Trusted proxy addresses, CIDR subnets, or hop count for Fastify client IP resolution.
    * Defaults to loopback and private Docker subnets (127.0.0.1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16),
    * preventing direct-client spoofing of X-Forwarded-For while trusting reverse proxies like Traefik/nginx.

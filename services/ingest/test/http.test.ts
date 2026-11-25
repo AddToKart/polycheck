@@ -512,6 +512,144 @@ describe('ingest HTTP surface', () => {
     await app.close()
   })
 
+  it('serves /attendance/check as validate-only: no reservation, no buffering', async () => {
+    const { deps, appended } = makeDeps({
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/check',
+      headers: { authorization: 'Bearer x' },
+      payload: acceptedScan(),
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(JSON.parse(response.body)).toMatchObject({ success: true, syncState: 'validated' })
+    expect(appended).toHaveLength(0)
+    expect(deps.reserveScan).not.toHaveBeenCalled()
+    await app.close()
+  })
+
+  it('does not shed /attendance/check when the buffer is saturated (nothing is buffered)', async () => {
+    const { deps, appended } = makeDeps({
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: config.INGEST_MAX_BUFFER + 500,
+        lag: config.INGEST_MAX_LAG_SECONDS + 60,
+        snapshot: { snapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/check',
+      headers: { authorization: 'Bearer x' },
+      payload: acceptedScan(),
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(appended).toHaveLength(0)
+    await app.close()
+  })
+
+  it('keeps commit behavior on /attendance/scan', async () => {
+    const { deps, appended } = makeDeps({
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/scan',
+      headers: { authorization: 'Bearer x' },
+      payload: acceptedScan(),
+    })
+
+    expect(response.statusCode).toBe(201)
+    expect(appended).toHaveLength(1)
+    expect(deps.reserveScan).toHaveBeenCalledTimes(1)
+    await app.close()
+  })
+
+  it('forwards an online /attendance/check to the control plane check route, never the committing one (ING-04)', async () => {
+    // The dual-checkpoint contract has exactly one validator. Forwarding the
+    // validate-only route onto `/attendance/scan` would silently commit a
+    // check-in the caller only meant to probe.
+    const forwardOnlineScan = vi.fn().mockImplementation(async (_req, reply) => reply.code(201).send({ forwarded: 'scan' }))
+    const forwardOnlineCheck = vi.fn().mockImplementation(async (_req, reply) =>
+      reply.code(200).send({ forwarded: 'check' }),
+    )
+    const onlineSnapshot = { ...snapshot, mode: 'online' as const, checkpoint: 'start' as const }
+    const { deps, appended } = makeDeps({
+      forwardOnlineScan,
+      forwardOnlineCheck,
+      probeHotPath: vi.fn().mockResolvedValue({
+        depth: 0,
+        lag: 0,
+        snapshot: { snapshot: onlineSnapshot, teacherPublicKey: keys.publicKey },
+      }),
+    })
+    const app = buildServer(deps)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/attendance/check',
+      headers: { authorization: 'Bearer x' },
+      payload: acceptedScan(),
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(JSON.parse(response.body)).toEqual({ forwarded: 'check' })
+    expect(forwardOnlineCheck).toHaveBeenCalledTimes(1)
+    expect(forwardOnlineScan).not.toHaveBeenCalled()
+    expect(appended).toHaveLength(0)
+    expect(deps.reserveScan).not.toHaveBeenCalled()
+    await app.close()
+  })
+
+  it('proxies an online /attendance/check to the control plane check path by default (ING-04)', async () => {
+    const originalFetch = globalThis.fetch
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ success: true, syncState: 'validated' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }))
+    globalThis.fetch = mockFetch
+    try {
+      const onlineSnapshot = { ...snapshot, mode: 'online' as const, checkpoint: 'start' as const }
+      const { deps } = makeDeps({
+        probeHotPath: vi.fn().mockResolvedValue({
+          depth: 0,
+          lag: 0,
+          snapshot: { snapshot: onlineSnapshot, teacherPublicKey: keys.publicKey },
+        }),
+      })
+      const app = buildServer(deps)
+      const response = await app.inject({
+        method: 'POST',
+        url: '/attendance/check',
+        headers: { authorization: 'Bearer student-token' },
+        payload: acceptedScan(),
+      })
+
+      expect(response.statusCode).toBe(200)
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${deps.config.CONTROL_PLANE_URL}/attendance/check`,
+        expect.objectContaining({ method: 'POST' }),
+      )
+      await app.close()
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   it('answers the duplicate envelope for a second scan and buffers nothing', async () => {
     const reserveScan = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false)
     const { deps, appended } = makeDeps({
