@@ -22,7 +22,6 @@ describe('user management DTOs', () => {
     ['weak password', { password: 'too-weak' }],
     ['malformed student ID', { studentId: '2026-1' }],
     ['invalid year level', { yearLevel: 9 }],
-    ['missing department', { department: undefined }],
   ])('rejects student requests with %s', async (_label, override) => {
     const dto = plainToInstance(CreateStudentDto, {
       fullName: 'Test Student',
@@ -35,6 +34,18 @@ describe('user management DTOs', () => {
     })
 
     await expect(validate(dto)).resolves.not.toEqual([])
+  })
+
+  it('accepts a student request without a department (the campus has none; it defaults to the course code)', async () => {
+    const dto = plainToInstance(CreateStudentDto, {
+      fullName: 'Test Student',
+      studentId: '2026-00001-MN-0',
+      password: 'Temporary1!Secure',
+      program: 'BSIT',
+      yearLevel: 2,
+    })
+
+    await expect(validate(dto)).resolves.toEqual([])
   })
 
   it('applies the same strong-password policy to teacher creation and password resets', async () => {

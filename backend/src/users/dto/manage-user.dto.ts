@@ -31,7 +31,8 @@ export class CreateStudentDto {
   @IsOptional() @IsStrongPassword() password?: string
   @IsString() @MinLength(2) @MaxLength(150) program!: string
   @Type(() => Number) @IsInt() @Min(1) @Max(8) yearLevel!: number
-  @IsString() @MinLength(2) @MaxLength(100) department!: string
+  /** Optional: the campus has no departments, so it defaults to the course code. */
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(100) department?: string
 }
 
 export class ResetPasswordDto {

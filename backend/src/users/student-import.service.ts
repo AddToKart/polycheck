@@ -7,7 +7,9 @@ import {
   type ImportIssueCode,
   type StudentImportResult,
   type StudentImportSummary,
+  normalizeCourse,
 } from '@polycheck/shared'
+import { courseInScope } from '../common/course-scope'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { Prisma } from '../prisma/client'
@@ -250,6 +252,16 @@ export class StudentImportService {
       let blocked = row.blocked
       const existing = existingByStudentId.get(row.studentId)
 
+      if (existing && scope.kind === 'courses' && !courseInScope(scope, existing.program)) {
+        row.issues.push({
+          rowNumber: row.rowNumber,
+          column: 'program',
+          code: 'DEPARTMENT_MISMATCH',
+          message: `This account is enrolled in ${existing.program ?? 'another course'}, which is outside your courses.`,
+        })
+        blocked = true
+      }
+
       if (
         existing &&
         scope.kind === 'department' &&
@@ -345,7 +357,11 @@ export class StudentImportService {
         .trim()
         .toUpperCase()
       const email = raw.email?.trim().toLowerCase() || undefined
-      const program = raw.program?.replace(/\s+/g, ' ').trim() || undefined
+      const submittedProgram = raw.program?.replace(/\s+/g, ' ').trim() || undefined
+      // A program that matches the course catalog is stored as its code (BSIT);
+      // anything else is kept exactly as submitted — never dropped or blocked.
+      const matchedCourse = submittedProgram ? normalizeCourse(submittedProgram) : undefined
+      const program = matchedCourse?.matched ? matchedCourse.code : submittedProgram
       const yearLevel = raw.yearLevel
       const providedDepartment = raw.department?.replace(/\s+/g, ' ').trim() || undefined
 
@@ -407,8 +423,22 @@ export class StudentImportService {
           blocked = true
         }
         department = scope.department
+      } else if (scope.kind === 'courses') {
+        // Course-pinned registrar: the program must be one of their courses. The legacy
+        // `department` column is auto-filled with the course code.
+        if (!matchedCourse?.matched || !courseInScope(scope, matchedCourse.code)) {
+          issues.push({
+            rowNumber,
+            column: 'program',
+            code: 'DEPARTMENT_MISMATCH',
+            message: `Rows for this import must belong to one of your courses (${scope.courses.join(', ')}).`,
+          })
+          blocked = true
+        }
+        department = providedDepartment ?? matchedCourse?.code ?? DEFAULT_DEPARTMENT
       } else {
-        department = providedDepartment ?? DEFAULT_DEPARTMENT
+        // The campus has no departments: default to the course code when the program is in the catalog.
+        department = providedDepartment ?? matchedCourse?.code ?? DEFAULT_DEPARTMENT
       }
 
       const firstRow = seen.get(studentId)
@@ -537,7 +567,12 @@ export class StudentImportService {
         data: {
           kind: IMPORT_BATCH_KIND,
           actorId: user.id,
-          department: scope.kind === 'department' ? scope.department : null,
+          department:
+            scope.kind === 'department'
+              ? scope.department
+              : scope.kind === 'courses' && scope.courses.length === 1
+                ? scope.courses[0]
+                : null,
           total: plan.summary.total,
           created: plan.summary.new,
           updated: plan.summary.update,

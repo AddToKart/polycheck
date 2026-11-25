@@ -239,6 +239,8 @@ export class StudentImportQueueService implements OnModuleInit, OnModuleDestroy 
         isItCoordinator: true,
         isDepartmentHead: true,
         isUserRegistrar: true,
+        managedCourses: true,
+        managesAllCourses: true,
       },
     })
     if (!account || !account.isActive) {
@@ -255,6 +257,8 @@ export class StudentImportQueueService implements OnModuleInit, OnModuleDestroy 
       isItCoordinator: account.isItCoordinator,
       isDepartmentHead: account.isDepartmentHead,
       isUserRegistrar: account.isUserRegistrar,
+      managedCourses: account.managedCourses,
+      managesAllCourses: account.managesAllCourses,
     }
     if (!allowedRole || accountAdminScope(actor).kind === 'none') {
       await this.auditRefusal(userId, job.id, 'privileges_revoked')

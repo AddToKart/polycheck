@@ -566,6 +566,8 @@ describe('UsersService', () => {
         isItCoordinator: false,
         isDepartmentHead: false,
         isUserRegistrar: false,
+        managedCourses: [],
+        managesAllCourses: false,
         authVersion: { increment: 1 },
       })
       // No designations were held, so the audit row carries no cleared flag.
