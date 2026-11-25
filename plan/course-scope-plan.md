@@ -418,3 +418,40 @@ Adopted defaults (chosen for PUP Santa Maria; tell me if one is wrong):
 - Existing designees keep correct access after the backfill; any unmapped designee is listed and fail-closed.
 - Flipping the mode back to `legacy` restores today's behavior without a deploy.
 - Attendance, ingest, sync, ledger and login behavior are unchanged (unchanged suites green).
+
+---
+
+## Addendum — execution record (2026-11-25)
+
+Executed M1–M6 in order, one commit per step, `COURSE_SCOPE_MODE=legacy` as the default everywhere.
+**M7 (flip to `course`) and M0 (registrar sign-off, head assignments) are owner actions and are not done.**
+
+| Step | Commit | Result |
+|---|---|---|
+| M1 shared catalog + helpers | `6a04f9d` | Eight-program flat catalog with aliases; `normalizeCourse`, `courseScope`, `oversightCourses`, `courseHeadLabel`; Dart mirror + parity test against the TS file. Section selector flattened. |
+| M2 migration + scope module | `656e46e` | `20261125120000_course_scope` (idempotent, verified twice and on a fresh DB); `common/course-scope.ts`; Better Auth `string[]` field verified live; seed gains `head.programs@`, `chair.bshm@`, BSIT sections/students. |
+| M3 call sites | `283ffaa` | attendance-scope, at-risk, referral, excuse, docs, dashboard re-pointed; legacy fragments byte-identical (all pre-existing specs unchanged and green). |
+| M4 accounts | `9b745c3` | Registrar scope by mode (campus-wide or pinned to students of managed courses); designee scope writes (super admin only, catalog-validated, audited with before/after); program normalized to catalog code; student `department` optional and defaults to the course code. |
+| M5 web | `98995e3` | Designee course editor, Reports course filter, registrar console no longer pinned to a department when it has a course scope, labels say Course Head. `/auth/me` reports `courseScopeMode` so banners describe the live rule. |
+| M6 Flutter | `100aa41` | Additive model fields (fail-closed defaults), sheet editor, Reports course filter, labels; catalog/picker tests re-pinned. |
+
+### Deviations from the plan
+- **Head with no scope = plain teacher (own sessions), not "sees nothing".** This matches today's behavior for a head with no department; it is still fail-closed for oversight data.
+- **`oversightSectionWhere` returns `null` for non-oversight actors** so every call site keeps its existing "fall back to own sessions" branch (no new code paths for plain teachers).
+- **`COURSE_SCOPE_MODE` is read per call from `process.env`** (not once at module init) so specs can switch modes; unknown values degrade to `legacy` with a one-time warning.
+- **New `courseScopeMode` field on `/auth/me`** (not in the plan) so web/Flutter banners and labels describe the rule the server actually enforces.
+- **Program normalization and the department→course-code default apply in both modes**, not only course mode: it is a data-quality improvement and keeps data entered *before* the flip clean. Unmatched programs are kept verbatim and never block a row.
+- **Class-record/CHED access and excuse decisions use an in-memory `sectionInOversightScope`**, since those paths check a loaded record rather than build a `where`.
+- **Dashboard exports for heads remain own-sessions ∩ scope** (existing behavior, unchanged); the main report/at-risk/excuse paths use the full scope.
+- Sections without a `course` are visible only to the owning teacher and all-courses heads in course mode (as planned). In the local data 4 legacy sections have no course.
+
+### Verification
+- shared **232** · backend **1,200 / 89 suites** · web **587 / 82 files** · Flutter **863** · `flutter analyze` 0 issues · backend `tsc`/eslint/prettier, frontend `tsc`/eslint clean.
+- Live (rebuilt container, real Postgres): legacy vs course smoke — CCIS-department head 51 excuses (legacy) vs BSIT head 45 (course; the 6 missing are course-less sections), Head of Academic Programs 51, BSHM head 0, plain teacher unchanged. M4 live checks 8/8: alias normalization, unknown course 400, scope visible after re-login, registrar and teacher scope writes 403, campus-wide registrar lists accounts in course mode.
+- Playwright **not** re-run for this change (needs a frontend image rebuild); `e2e/designations-maintenance.spec.ts` label expectations were updated and are the first spec to run before the flip.
+
+### Remaining before the flip (M7)
+1. Registrar sign-off on the eight programs (M0).
+2. Assign each real head in the Users console (Edit → Course Head → courses); `head.programs` shows the all-courses pattern.
+3. Give the four course-less legacy sections a course (or accept that only owners/all-courses heads see them).
+4. Run the Playwright designation journeys, then set `COURSE_SCOPE_MODE=course` and restart; rollback is the same one-line change.
