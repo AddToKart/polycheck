@@ -29,6 +29,7 @@ import { useUrlFilters } from '@/lib/hooks/use-url-filters'
 import { useRunMutation } from '@/lib/run-mutation'
 import { describeMutationError } from '@/lib/run-mutation'
 import { disputeReasonIcon, disputeReasonLabel } from '@/lib/dispute-reasons'
+import { capitalizeStatus, disputePreviousStatusOf } from '@/lib/dispute-resolution'
 import { SecurityDisputeBadge } from './security-dispute-badge'
 import { DisputeTimeline } from '@/components/disputes/DisputeTimeline'
 
@@ -103,7 +104,9 @@ function DisputesContent() {
           api.getSubjects(),
           api.getSections(),
           api.getSessions(),
-          api.getDisputedRecords(),
+          // WEB-04: the backend defaults to `pending`, so the Resolved tab was
+          // permanently empty. Fetch both buckets and split them client-side.
+          api.getDisputedRecords(undefined, { status: 'all' }),
         ])
         if (!active) return
         setSubjects(subjectsData)
@@ -132,20 +135,24 @@ function DisputesContent() {
       () => api.resolveDispute(record.id, resolution, newStatus),
       {
         errorTitle: 'Could not resolve dispute',
-        onSuccess: () => {
+        onSuccess: (resolved) => {
+          // WEB-08: the resolve response is authoritative — a reject restores
+          // `disputePreviousStatus` (often `late`), so the row and the toast
+          // must read the returned status, never a hardcoded `absent`.
+          const status = resolved?.status ?? newStatus ?? (resolution === 'accept' ? 'present' : 'absent')
           setAllDisputes(prev => prev.map(r =>
             r.id === record.id
-              ? { ...r, disputeResolved: true, status: newStatus || (resolution === 'accept' ? 'present' : 'absent') }
+              ? { ...r, ...resolved, disputeResolved: true, status }
               : r
           ))
           setSelectedRecord(null)
 
           if (resolution === 'accept') {
-            addNotification('success', 'Dispute Resolved', `${record.studentName}'s record accepted as Present`)
+            addNotification('success', 'Dispute Resolved', `${record.studentName}'s record accepted as ${capitalizeStatus(status)}`)
           } else if (resolution === 'reject') {
-            addNotification('info', 'Dispute Resolved', `${record.studentName}'s record rejected as Absent`)
+            addNotification('info', 'Dispute Resolved', `${record.studentName}'s record rejected as ${capitalizeStatus(status)}`)
           } else if (resolution === 'override' && newStatus) {
-            addNotification('info', 'Dispute Overridden', `${record.studentName} set to ${newStatus}`)
+            addNotification('info', 'Dispute Overridden', `${record.studentName} set to ${capitalizeStatus(status)}`)
           }
         },
       },
@@ -154,7 +161,10 @@ function DisputesContent() {
 
   const confirmReject = () => {
     if (!selectedRecord || resolving) return
-    if (confirm(`Are you sure you want to reject ${selectedRecord.studentName}'s dispute? This will set their status to Absent.`)) {
+    // The backend restores the pre-dispute status on reject; describe that
+    // truth instead of assuming Absent.
+    const restored = disputePreviousStatusOf(selectedRecord)
+    if (confirm(`Are you sure you want to reject ${selectedRecord.studentName}'s dispute? This will restore their status to ${capitalizeStatus(restored)}.`)) {
       void handleResolve('reject')
     }
   }

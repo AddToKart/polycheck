@@ -19,6 +19,7 @@ import {
   type ScanPhase,
 } from "@/components/scan-qr/types";
 import { useQrCamera } from "@/components/scan-qr/useQrCamera";
+import { isMeetingPinError } from "@/components/scan-qr/pin-error";
 import { api } from "@/lib/api-client";
 import { getOrCreateWebInstallationId } from "@/lib/device-id";
 
@@ -254,7 +255,11 @@ export default function ScanQrModal({
           pinOverride,
         );
         if ("error" in result) {
-          if (payload.pinRequired) {
+          // WEB-10: only PIN-classified failures return to the PIN form. The
+          // token may be PIN-protected while the failure was an expired window,
+          // a duplicate, a geofence miss, or the network — re-entering the PIN
+          // cannot fix any of those and hides the real reason.
+          if (payload.pinRequired && isMeetingPinError(result.error)) {
             setPendingScan({ token, channel: inputChannel, checkpoint: payload.checkpoint });
             setPinError(result.error);
             setPhase("entering-pin");

@@ -171,11 +171,14 @@ test.describe('Faculty (Teacher) Flows', () => {
     await page.getByLabel('Grace Period').fill('10')
     await page.getByRole('dialog').getByRole('button', { name: 'Generate', exact: true }).click()
     await expect(page.getByAltText('Scannable session QR code').first()).toBeVisible({ timeout: 20_000 })
-    // Fresh session → all students pending; tap first roster row: pending → present → late
+    // Fresh session → all students pending. Since 9e5c6a0 the roster tap opens
+    // the student dialog; manual status control lives on its status buttons.
     const firstStudentRow = page.locator('button.w-full.border-b').first()
+    const studentDialog = page.getByRole('dialog')
     await firstStudentRow.click()
+    await studentDialog.getByRole('button', { name: 'present', exact: true }).click()
     await expect(firstStudentRow.getByText('Present')).toBeVisible({ timeout: 20_000 })
-    await firstStudentRow.click()
+    await studentDialog.getByRole('button', { name: 'late', exact: true }).click()
     await expect(firstStudentRow.getByText('Late')).toBeVisible({ timeout: 20_000 })
     assertNoErrors(errors)
   })

@@ -184,6 +184,10 @@ export default function UsersPage() {
   const registrar = Boolean(user?.role === 'teacher' && user.isUserRegistrar)
   const effectiveDepartment =
     departmentScoped || registrar ? (user?.department ?? '') : filters.department
+  // WEB-13: the fetch effects key on the account id, not the profile object —
+  // `polycheck-auth-changed` can hand back an equivalent profile (same id) and
+  // must not refetch the paginated table.
+  const userId = user?.id ?? null
 
   useEffect(() => {
     const syncUser = () => {
@@ -219,7 +223,7 @@ export default function UsersPage() {
   }, [searchInput, departmentInput])
 
   useEffect(() => {
-    if (!user) return
+    if (!userId) return
     const controller = new AbortController()
     let active = true
     setLoading(true)
@@ -243,10 +247,10 @@ export default function UsersPage() {
       active = false
       controller.abort()
     }
-  }, [effectiveDepartment, filters.department, filters.q, offset, refreshToken, status, tab, user])
+  }, [effectiveDepartment, filters.department, filters.q, offset, refreshToken, status, tab, userId])
 
   useEffect(() => {
-    if (!user) return
+    if (!userId) return
     let active = true
     api
       .getUsers({ role: 'student', status: 'inactive', limit: 1, offset: 0 })
@@ -257,7 +261,7 @@ export default function UsersPage() {
     return () => {
       active = false
     }
-  }, [refreshToken, user])
+  }, [refreshToken, userId])
 
   if (!user) return null
 

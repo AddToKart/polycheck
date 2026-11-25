@@ -1,6 +1,6 @@
 import type { AttendanceRecord, Section, Session, Student, Subject } from '@polycheck/shared'
 import { getOfflineDatabase, type EncryptedEnvelope, type OfflineOperationKind, type QueueRow } from './db'
-import { decryptValue, encryptValue } from './crypto'
+import { decryptValue, encryptValue, forgetUserKey, resetUserKeyCache, seedUserKey } from './crypto'
 
 export type OfflineSendResult =
   | { outcome: 'synced' }
@@ -57,13 +57,19 @@ export async function initializeOfflineStore(ownerId: string): Promise<void> {
       await db.clear(store)
     }
     await db.delete('crypto_keys', existing.value)
+    forgetUserKey(existing.value)
   }
   await db.put('meta', { key: 'active_owner', value: ownerId, updatedAt: now() })
   setOfflineOwner(ownerId)
+  // WEB-01: create/load the account key before any cache write so the first
+  // concurrent writes across cache groups share one key (non-fatal: a blocked
+  // IndexedDB key row still lets the first write attempt the same path).
+  await seedUserKey(ownerId).catch(() => undefined)
 }
 
 export async function wipeOfflineStore(): Promise<void> {
   setOfflineOwner(null)
+  resetUserKeyCache()
   const db = await getOfflineDatabase()
   for (const store of [
     'crypto_keys',
@@ -307,16 +313,32 @@ export async function replaceCachedAttendanceForStudent(
   void ownerId
 }
 
-export async function removeCachedAttendanceAttempt(
+/**
+ * WEB-12: remove only the optimistic row for the checkpoint the drain just
+ * committed. Online checkpoints keep one row per leg
+ * (`offline:<session>:<student>:<checkpoint>`); the old whole-bucket delete hid
+ * the still-queued sibling leg's optimistic row. `recordId` wins when known,
+ * otherwise the optimistic id shape is reconstructed from the leg.
+ */
+export async function removeCachedAttendanceLeg(
   sessionId: string,
   studentId: string,
+  leg: { checkpoint?: 'start' | 'end' | null; recordId?: string | null } = {},
 ): Promise<void> {
   const ownerId = requireOwner()
   const db = await getOfflineDatabase()
   const rows = await db.getAllFromIndex('records', 'by-session', sessionId)
+  const targets = new Set<string>()
+  if (leg.recordId) targets.add(leg.recordId)
+  targets.add(
+    leg.checkpoint
+      ? `offline:${sessionId}:${studentId}:${leg.checkpoint}`
+      : `offline:${sessionId}:${studentId}`,
+  )
   const tx = db.transaction('records', 'readwrite')
   for (const row of rows) {
-    if (row.studentId === studentId && row.ownerId === ownerId) await tx.store.delete(row.id)
+    if (row.studentId !== studentId || row.ownerId !== ownerId) continue
+    if (targets.has(row.id)) await tx.store.delete(row.id)
   }
   await tx.done
 }

@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Clock, Wrench } from 'lucide-react'
 import { DEFAULT_MAINTENANCE_MESSAGE } from '@polycheck/shared'
 import { cn } from '@/lib/utils'
+import { useTrustedNow } from '@/lib/hooks/use-trusted-now'
 import { formatMaintenanceRemaining } from './maintenance-time'
 
 export interface MaintenanceScreenProps {
@@ -24,19 +25,17 @@ export function MaintenanceScreen({
   showAdminLogin = true,
   className,
 }: MaintenanceScreenProps) {
-  const [nowMs, setNowMs] = useState(() => Date.now())
+  // WEB-03: the estimate is a server timestamp, so the countdown reads the
+  // `/health`-corrected clock instead of this device's wall clock.
+  const { nowMs, offsetMs } = useTrustedNow()
+  const trustedNowMs = nowMs + (offsetMs ?? 0)
   const headingRef = useRef<HTMLHeadingElement | null>(null)
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1_000)
-    return () => window.clearInterval(timer)
-  }, [])
 
   useEffect(() => {
     headingRef.current?.focus()
   }, [])
 
-  const countdown = formatMaintenanceRemaining(estimatedEnd, nowMs)
+  const countdown = formatMaintenanceRemaining(estimatedEnd, trustedNowMs)
   const fullscreen = variant !== 'embedded'
 
   return (

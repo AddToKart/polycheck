@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { LoadingSpinner } from '@/lib/hooks'
+import { useTrustedNow } from '@/lib/hooks/use-trusted-now'
 import { useNotifications } from '@/lib/notifications'
 import { useRunMutation } from '@/lib/run-mutation'
 import CampusMap from '@/components/CampusMap'
@@ -41,8 +42,6 @@ const GeofenceRadarModal = dynamic(
     ),
   },
 )
-
-const STATUS_CYCLE: EditableAttendanceStatus[] = ['present', 'late', 'incomplete', 'absent']
 
 const STATUS_STYLES: Record<string, string> = {
   present: 'bg-golden text-maroon-dark',
@@ -291,25 +290,25 @@ export default function SessionDetailPage() {
         ? session?.startGraceMinutes
         : session?.endGraceMinutes
       : session?.gracePeriodMinutes) ?? 0
+  // WEB-03: token expiry is a server-clock instant, so the countdown reads the
+  // `/health`-corrected clock (the hook ticks once per second) instead of the
+  // raw device clock — a device minutes off used to show an expired QR.
+  const { nowMs, offsetMs } = useTrustedNow()
+  const trustedNowMs = nowMs + (offsetMs ?? 0)
   useEffect(() => {
     if (!sessionIsActive || !qrTokenExpiresAt) {
       setCountdown('')
       return
     }
     const expiresAt = new Date(qrTokenExpiresAt).getTime()
-    const tick = () => {
-      const diff = expiresAt - Date.now()
-      if (diff <= 0) {
-        const graceDiff = expiresAt + gracePeriodMinutes * 60 * 1000 - Date.now()
-        setCountdown(graceDiff <= 0 ? 'Grace ended' : `Grace: ${String(Math.floor(graceDiff / 60000)).padStart(2, '0')}:${String(Math.floor((graceDiff % 60000) / 1000)).padStart(2, '0')}`)
-        return
-      }
-      setCountdown(`${String(Math.floor(diff / 60000)).padStart(2, '0')}:${String(Math.floor((diff % 60000) / 1000)).padStart(2, '0')}`)
+    const diff = expiresAt - trustedNowMs
+    if (diff <= 0) {
+      const graceDiff = expiresAt + gracePeriodMinutes * 60 * 1000 - trustedNowMs
+      setCountdown(graceDiff <= 0 ? 'Grace ended' : `Grace: ${String(Math.floor(graceDiff / 60000)).padStart(2, '0')}:${String(Math.floor((graceDiff % 60000) / 1000)).padStart(2, '0')}`)
+      return
     }
-    tick()
-    const timer = setInterval(tick, 1000)
-    return () => clearInterval(timer)
-  }, [sessionIsActive, qrTokenExpiresAt, gracePeriodMinutes])
+    setCountdown(`${String(Math.floor(diff / 60000)).padStart(2, '0')}:${String(Math.floor((diff % 60000) / 1000)).padStart(2, '0')}`)
+  }, [sessionIsActive, qrTokenExpiresAt, gracePeriodMinutes, trustedNowMs])
 
   if (loading) return (
     <div className="flex h-screen flex-col gap-4 bg-zinc-100 dark:bg-pup-black items-center justify-center" role="status" aria-live="polite">
@@ -343,6 +342,26 @@ export default function SessionDetailPage() {
   const disputedCount = records.filter((r) => r.status === 'disputed').length
   const incompleteCount = records.filter((r) => r.status === 'incomplete').length
   const studentMap = new Map(records.map((r) => [r.studentId, r]))
+
+  // WEB-07: proof deletion is a destructive mutation — confirm, dedupe
+  // double-clicks via the shared `useRunMutation` key, and surface failures.
+  const handleDeleteProof = (proof: ProofOfClass) => {
+    if (!window.confirm(`Delete the proof-of-class photo from ${proof.uploadedByStudentName}? This cannot be undone.`)) {
+      return
+    }
+    void run(
+      `proof:${proof.id}`,
+      async () => {
+        await api.deleteProofOfClass(proof.id)
+        return api.getProofsOfClass(id)
+      },
+      {
+        errorTitle: 'Could not delete proof',
+        onSuccess: (nextProofs) => setProofsOfClass(nextProofs),
+        success: { title: 'Proof deleted', message: 'The proof-of-class photo was removed.' },
+      },
+    )
+  }
 
   const handleCopyToken = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
@@ -546,12 +565,6 @@ export default function SessionDetailPage() {
     } finally {
       setEndingSession(false)
     }
-  }
-
-  const handleManualOverride = async (studentId: string, currentStatus: AttendanceStatus) => {
-    const idx = STATUS_CYCLE.findIndex((status) => status === currentStatus)
-    const nextStatus = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]
-    await handleSetStudentStatus(studentId, nextStatus)
   }
 
   const handleSetStudentStatus = async (studentId: string, nextStatus: EditableAttendanceStatus) => {
@@ -955,10 +968,13 @@ export default function SessionDetailPage() {
                       {poc.description && <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1 italic">&quot;{poc.description}&quot;</p>}
                       {isTeacher && (
                         <button
-                          className="mt-2 text-[10px] text-red-500 hover:text-red-700 flex items-center gap-1"
-                          onClick={async () => { await api.deleteProofOfClass(poc.id); setProofsOfClass(await api.getProofsOfClass(id)) }}
+                          type="button"
+                          className="mt-2 flex min-h-8 items-center gap-1 text-[10px] text-red-500 hover:text-red-700 disabled:opacity-50"
+                          disabled={isPending(`proof:${poc.id}`)}
+                          onClick={() => void handleDeleteProof(poc)}
                         >
-                          <Trash2 className="w-3 h-3" /> Delete
+                          <Trash2 className="w-3 h-3" />
+                          {isPending(`proof:${poc.id}`) ? 'Deleting…' : 'Delete'}
                         </button>
                       )}
                     </div>

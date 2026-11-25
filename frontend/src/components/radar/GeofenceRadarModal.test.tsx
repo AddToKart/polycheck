@@ -9,7 +9,7 @@ import {
   type Session,
   type Student,
 } from '@polycheck/shared'
-import { radarDistanceCopy, shapeRadarData } from './GeofenceRadarModal'
+import { radarDistanceCopy, shapeRadarData, dropRepresentedAnomalies } from './GeofenceRadarModal'
 
 // ── Hoisted mocks ─────────────────────────────────────────────────────────────
 const apiMock = vi.hoisted(() => ({ getScanAttempts: vi.fn() }))
@@ -258,6 +258,64 @@ describe('radar shaping helpers', () => {
     expect(data.noGps).toHaveLength(1)
     expect(data.noGps[0]).toMatchObject({ studentName: 'No Fix Mate', denied: false, key: 'attempt:a-3' })
   })
+
+  // ── WEB-05: refetch must not double a live denial ────────────────────────
+
+  const liveDenial: AttendanceAnomalyEvent = {
+    sessionId: 'session-1',
+    studentId: 'student-5',
+    studentName: 'Lola Teleport',
+    studentNumber: '2021-00077-MN-0',
+    latitude: 14.8680,
+    longitude: 120.9985,
+    distanceMeters: 210,
+    geofenceRadiusMeters: 50,
+    reason: 'outside_geofence',
+    timestamp: '2026-08-06T08:05:30.000Z',
+  }
+
+  const storedDenial = attemptFixture({
+    id: 'attempt-live',
+    studentId: 'student-5',
+    studentName: 'Lola Teleport',
+    studentNumber: '2021-00077-MN-0',
+    coordinates: { latitude: 14.8680, longitude: 120.9985 },
+    outcome: 'denied',
+    denialReason: 'outside_geofence',
+    distanceMeters: 210,
+    geofenceRadiusMeters: 50,
+    timestamp: '2026-08-06T08:05:31.000Z',
+  })
+
+  it('drops a live anomaly already represented by a stored denied attempt', () => {
+    expect(dropRepresentedAnomalies([liveDenial], [storedDenial])).toEqual([])
+  })
+
+  it('keeps an anomaly with no matching stored attempt, or stored before it', () => {
+    const earlierStored = attemptFixture({
+      id: 'attempt-earlier',
+      studentId: 'student-5',
+      outcome: 'denied',
+      timestamp: '2026-08-06T08:01:00.000Z',
+    })
+    expect(dropRepresentedAnomalies([liveDenial], [earlierStored])).toEqual([liveDenial])
+    expect(dropRepresentedAnomalies([liveDenial], [])).toEqual([liveDenial])
+    // Another student's denial never suppresses this anomaly.
+    const otherStudent = attemptFixture({
+      id: 'attempt-other',
+      studentId: 'student-9',
+      outcome: 'denied',
+      timestamp: '2026-08-06T08:05:31.000Z',
+    })
+    expect(dropRepresentedAnomalies([liveDenial], [otherStudent])).toEqual([liveDenial])
+  })
+
+  it('counts a refetched denial exactly once (one pin, Denied: 1)', () => {
+    const data = shapeRadarData(geofenceConfig, [storedDenial], [], [student], [liveDenial])
+    expect(data.pins).toHaveLength(1)
+    expect(data.pins[0]).toMatchObject({ studentId: 'student-5', denied: true })
+    expect(data.deniedCount).toBe(1)
+  })
 })
 
 // ── Modal integration ────────────────────────────────────────────────────────
@@ -408,6 +466,58 @@ describe('GeofenceRadarModal', () => {
     expect(entries[0]).toHaveTextContent('Broken GPS')
     expect(entries[0]).toHaveTextContent('emulator detected')
     expect(screen.getByTestId('radar-counters')).toHaveTextContent('Denied: 1')
+  })
+
+  it('does not double-count a live anomaly once the refetch returns its stored attempt (WEB-05)', async () => {
+    apiMock.getScanAttempts.mockResolvedValue([])
+    render(
+      <GeofenceRadarModalDefault open onOpenChange={() => undefined} session={session} records={[]} students={[student]} />,
+    )
+    await flush()
+
+    // A denial arrives live (the same moment the teacher would see it blink).
+    const anomaly: AttendanceAnomalyEvent = {
+      sessionId: 'session-1',
+      studentId: 'student-5',
+      studentName: 'Lola Teleport',
+      studentNumber: '2021-00077-MN-0',
+      latitude: 14.8680,
+      longitude: 120.9985,
+      distanceMeters: 210,
+      geofenceRadiusMeters: 50,
+      reason: 'outside_geofence',
+      timestamp: '2026-08-06T08:05:30.000Z',
+    }
+    await act(async () => {
+      emitToSocket(ATTENDANCE_ANOMALY_EVENT, anomaly)
+      await Promise.resolve()
+    })
+    expect(screen.getByTestId('radar-counters')).toHaveTextContent('Denied: 1')
+
+    // The server has now persisted it; the next fetch returns the stored row.
+    apiMock.getScanAttempts.mockResolvedValue([
+      attemptFixture({
+        id: 'attempt-stored',
+        studentId: 'student-5',
+        studentName: 'Lola Teleport',
+        studentNumber: '2021-00077-MN-0',
+        coordinates: { latitude: 14.8680, longitude: 120.9985 },
+        outcome: 'denied',
+        denialReason: 'outside_geofence',
+        distanceMeters: 210,
+        geofenceRadiusMeters: 50,
+        timestamp: '2026-08-06T08:05:31.000Z',
+      }),
+    ])
+    await act(async () => {
+      emitToSocket('attendance:updated', { sessionId: 'session-1', studentId: 'student-5' })
+      await flush()
+    })
+
+    // Still exactly one denial: the anomaly is represented by the stored row.
+    expect(screen.getByTestId('radar-counters')).toHaveTextContent('Denied: 1')
+    expect(document.body.querySelectorAll('[data-testid="radar-pin"]')).toHaveLength(1)
+    expect(screen.getAllByTestId('radar-distance-copy')).toHaveLength(1)
   })
 })
 

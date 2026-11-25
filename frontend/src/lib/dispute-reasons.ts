@@ -17,8 +17,37 @@ import type { DisputeReason } from '@polycheck/shared'
  * value the client does not know yet (`missing_scan_evidence` was exactly
  * that), so both lookups MUST fall back — an undefined map entry used as a
  * JSX element kills the whole page with "Element type is invalid".
+ *
+ * ING-07 (web half): the gateway and control plane persist reasons outside the
+ * shared `DisputeReason` union (`missing_location`, `stale_location`,
+ * `pin_mismatch`, …). The union is NOT widened here (that would ripple to
+ * `android/`); instead every known wire reason gets a display entry and
+ * anything unexpected renders as a humanized label with a safe icon.
  */
-export const DISPUTE_LABELS: Record<DisputeReason, string> = {
+
+/** Reasons the gateway `writer`/`core/scan` and the control plane may persist. */
+type GatewayDisputeReason =
+  | 'missing_location'
+  | 'missing_geofence'
+  | 'geofence_uncertain'
+  | 'stale_location'
+  | 'poor_location_accuracy'
+  | 'duplicate'
+  | 'client_attempt_conflict'
+  | 'replayed_rejection'
+  | 'pin_mismatch'
+  // Record-level reasons the control plane writes directly
+  // (`AttendanceRecord.disputeReason`), or the gateway writer's commit-time
+  // membership gate stamps.
+  | 'expired_offline_activation'
+  | 'student_blocked_from_section'
+  | 'student_not_enrolled'
+  | 'device_cooldown_active'
+  | 'checkpoint_not_armed'
+
+export type KnownDisputeReason = DisputeReason | GatewayDisputeReason
+
+export const DISPUTE_LABELS: Record<KnownDisputeReason, string> = {
   outside_geofence: 'Outside Geofence',
   expired_token: 'Expired Token',
   duplicate_submission: 'Duplicate Submission',
@@ -40,9 +69,24 @@ export const DISPUTE_LABELS: Record<DisputeReason, string> = {
   concurrent_session_conflict: 'Concurrent Session',
   missing_scan_evidence: 'Missing Scan Evidence',
   implausible_client_timestamp: 'Implausible Client Timestamp',
+  // Gateway-persisted reasons (ING-07).
+  missing_location: 'Missing Location',
+  missing_geofence: 'Missing Geofence',
+  geofence_uncertain: 'Uncertain Location',
+  stale_location: 'Stale Location',
+  poor_location_accuracy: 'Poor Location Accuracy',
+  duplicate: 'Duplicate Check-in',
+  client_attempt_conflict: 'Conflicting Attempt',
+  replayed_rejection: 'Replayed Rejection',
+  pin_mismatch: 'Meeting PIN Mismatch',
+  expired_offline_activation: 'Expired Offline Activation',
+  student_blocked_from_section: 'Blocked From Section',
+  student_not_enrolled: 'Not Enrolled',
+  device_cooldown_active: 'Device Cooldown',
+  checkpoint_not_armed: 'Checkpoint Not Open',
 }
 
-export const DISPUTE_ICONS: Record<DisputeReason, ElementType> = {
+export const DISPUTE_ICONS: Record<KnownDisputeReason, ElementType> = {
   outside_geofence: MapPin,
   expired_token: Timer,
   duplicate_submission: Copy,
@@ -64,14 +108,40 @@ export const DISPUTE_ICONS: Record<DisputeReason, ElementType> = {
   concurrent_session_conflict: Clock,
   missing_scan_evidence: AlertTriangle,
   implausible_client_timestamp: Clock,
+  // Gateway-persisted reasons (ING-07).
+  missing_location: MapPin,
+  missing_geofence: MapPin,
+  geofence_uncertain: MapPin,
+  stale_location: Clock,
+  poor_location_accuracy: MapPin,
+  duplicate: Copy,
+  client_attempt_conflict: Copy,
+  replayed_rejection: Copy,
+  pin_mismatch: Fingerprint,
+  expired_offline_activation: Timer,
+  student_blocked_from_section: ShieldAlert,
+  student_not_enrolled: AlertTriangle,
+  device_cooldown_active: Smartphone,
+  checkpoint_not_armed: Timer,
 }
 
-export function disputeReasonLabel(reason: DisputeReason | string | undefined): string {
+/**
+ * Fallback for a wire value neither map knows: `some_new_reason` ->
+ * `Some New Reason`. Never returns an empty string, so the label slot can
+ * never render blank.
+ */
+export function humanizeDisputeReason(reason: string): string {
+  const text = reason.trim().replace(/[_-]+/g, ' ')
+  if (!text) return 'Unknown Reason'
+  return text.replace(/\b\w/g, (character) => character.toUpperCase())
+}
+
+export function disputeReasonLabel(reason: KnownDisputeReason | string | undefined): string {
   if (!reason) return 'Unknown'
-  return DISPUTE_LABELS[reason as DisputeReason] ?? 'Unknown'
+  return DISPUTE_LABELS[reason as KnownDisputeReason] ?? humanizeDisputeReason(reason)
 }
 
-export function disputeReasonIcon(reason: DisputeReason | string | undefined): ElementType {
+export function disputeReasonIcon(reason: KnownDisputeReason | string | undefined): ElementType {
   if (!reason) return AlertTriangle
-  return DISPUTE_ICONS[reason as DisputeReason] ?? AlertTriangle
+  return DISPUTE_ICONS[reason as KnownDisputeReason] ?? AlertTriangle
 }

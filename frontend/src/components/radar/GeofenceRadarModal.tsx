@@ -103,6 +103,38 @@ function plotable(latitude: number | null, longitude: number | null) {
 }
 
 /**
+ * WEB-05: a live anomaly and the stored denied attempt it becomes after the
+ * (re)fetch are the same event. Drop anomalies already represented by a stored
+ * denied attempt for the same student at/after the anomaly timestamp so a
+ * refetch never doubles the pin or the `Denied` counter.
+ *
+ * Dedupe key: `studentId` + the anomaly's second-resolution timestamp; the
+ * attempt window is [timestamp - 1s, +∞) to tolerate the store rounding
+ * `receivedAt` and the live event's timestamp against each other.
+ */
+export function dropRepresentedAnomalies(
+  anomalies: AttendanceAnomalyEvent[],
+  attempts: ScanAttemptView[],
+): AttendanceAnomalyEvent[] {
+  const deniedByStudent = new Map<string, number[]>()
+  for (const attempt of attempts) {
+    if (attempt.outcome !== 'denied') continue
+    const at = Date.parse(attempt.timestamp)
+    if (!Number.isFinite(at)) continue
+    const list = deniedByStudent.get(attempt.studentId) ?? []
+    list.push(at)
+    deniedByStudent.set(attempt.studentId, list)
+  }
+  return anomalies.filter((anomaly) => {
+    const stored = deniedByStudent.get(anomaly.studentId)
+    if (!stored || stored.length === 0) return true
+    const at = Date.parse(anomaly.timestamp)
+    if (!Number.isFinite(at)) return true
+    return !stored.some((storedAt) => storedAt >= at - 1_000)
+  })
+}
+
+/**
  * Merges stored scan attempts, the cockpit's roster records, and live anomaly
  * events into pins + a no-GPS side legend. One pin per student — the latest
  * event wins (anomalies are newest by definition) — while the denied counter
@@ -120,6 +152,7 @@ export function shapeRadarData(
     return students.find((student) => student.id === studentId)?.studentId ?? ''
   }
 
+  const liveAnomalies = dropRepresentedAnomalies(anomalies, attempts)
   const latestPerStudent = new Map<string, ScanAttemptView>()
   for (const attempt of attempts) {
     const existing = latestPerStudent.get(attempt.studentId)
@@ -202,8 +235,9 @@ export function shapeRadarData(
   }
 
   // Live denials arrive while the modal is open — they are the newest truth
-  // for that student, so their pin wins.
-  anomalies.forEach((anomaly, index) => {
+  // for that student, so their pin wins. Ones already stored server-side are
+  // filtered out first (WEB-05) so a refetch never double-counts them.
+  liveAnomalies.forEach((anomaly, index) => {
     deniedCount += 1
     const studentNumber = numberFor(anomaly.studentId, anomaly.studentNumber)
     const coords = plotable(anomaly.latitude ?? null, anomaly.longitude ?? null)
