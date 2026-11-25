@@ -1792,7 +1792,7 @@ const apiBase = {
     );
   },
   getAtRiskStudents(
-    filters: { sectionId?: string; limit?: number } = {},
+    filters: { sectionId?: string; course?: string; limit?: number } = {},
   ): Promise<StudentAtRisk[]> {
     return get(queryPath("/attendance/at-risk", { ...filters }));
   },

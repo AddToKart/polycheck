@@ -126,3 +126,68 @@ describe('Users console revalidation churn (WEB-13)', () => {
     await waitFor(() => expect(apiMock.getUsers.mock.calls.length).toBeGreaterThan(afterInitialLoad))
   })
 })
+
+describe('Users console registrar scope', () => {
+  const registrar = (extra: Record<string, unknown> = {}) =>
+    ({
+      id: 'reg-1',
+      email: 'reg@pup.edu.ph',
+      fullName: 'Registrar',
+      role: 'teacher',
+      isUserRegistrar: true,
+      department: 'CCIS',
+      isActive: true,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+      ...extra,
+    }) as User
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches: true,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    )
+    apiMock.getUsers.mockResolvedValue(emptyPage)
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  it('does not pin a campus-wide registrar to their legacy department', async () => {
+    apiMock.getCurrentUser.mockReturnValue(registrar({ managesAllCourses: true, courseScopeMode: 'course' }))
+    render(<UsersPage />)
+
+    await waitFor(() => expect(apiMock.getUsers).toHaveBeenCalled())
+    expect(apiMock.getUsers.mock.calls[0][0]).not.toHaveProperty('department', 'CCIS')
+    expect(await screen.findByText(/across every course/i)).toBeInTheDocument()
+  })
+
+  it('describes a course-pinned registrar by their courses', async () => {
+    apiMock.getCurrentUser.mockReturnValue(registrar({ managedCourses: ['BSIT', 'BSHM'], courseScopeMode: 'course' }))
+    render(<UsersPage />)
+
+    await waitFor(() => expect(apiMock.getUsers).toHaveBeenCalled())
+    expect(await screen.findByText(/students enrolled in BSIT, BSHM/)).toBeInTheDocument()
+  })
+
+  it('keeps the department pin for a registrar without a course scope (legacy)', async () => {
+    apiMock.getCurrentUser.mockReturnValue(registrar({ courseScopeMode: 'legacy' }))
+    render(<UsersPage />)
+
+    await waitFor(() => expect(apiMock.getUsers).toHaveBeenCalled())
+    expect(apiMock.getUsers.mock.calls[0][0]).toHaveProperty('department', 'CCIS')
+    expect(await screen.findByText(/only lists and manages accounts in CCIS/i)).toBeInTheDocument()
+  })
+})

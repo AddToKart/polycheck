@@ -39,8 +39,8 @@ test.describe('Campus designations & maintenance mode', () => {
     await expect(page.getByRole('link', { name: 'Server Status' })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Issue Reports' })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Maintenance Controls' })).toBeVisible()
-    await expect(page.getByText('Academic Department Oversight', { exact: true })).toHaveCount(0)
-    await expect(page.getByRole('link', { name: 'Department Reports' })).toHaveCount(0)
+    await expect(page.getByText('Academic Course Oversight', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: 'Course Reports' })).toHaveCount(0)
 
     await page.getByRole('link', { name: 'Server Status' }).click()
     await waitForPath(page, '/faculty/server-status')
@@ -63,12 +63,12 @@ test.describe('Campus designations & maintenance mode', () => {
   test('department head gets department reports, excuses, and at-risk oversight only', async ({ page }) => {
     await loginFaculty(page, DEPARTMENT_HEAD_EMAIL)
 
-    await expect(page.getByText('Academic Department Oversight', { exact: true })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'Department Reports' })).toBeVisible()
+    await expect(page.getByText('Academic Course Oversight', { exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Course Reports' })).toBeVisible()
     await expect(page.getByRole('link', { name: 'At-Risk Students' })).toBeVisible()
     await expect(page.getByText('IT Operations Suite', { exact: true })).toHaveCount(0)
 
-    await page.getByRole('link', { name: 'Department Reports' }).click()
+    await page.getByRole('link', { name: 'Course Reports' }).click()
     await waitForPath(page, '/faculty/reports')
     await hideDevOverlay(page)
     await expect(page.getByText('Department oversight', { exact: true })).toBeVisible()

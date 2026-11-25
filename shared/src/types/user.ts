@@ -43,6 +43,8 @@ export interface User {
    */
   managedCourses?: string[]
   managesAllCourses?: boolean
+  /** Live head/registrar scoping rule reported by the server (`legacy` = department, `course` = course). */
+  courseScopeMode?: 'legacy' | 'course'
   /** Secondary contact channels owned by the user (never the login identity). */
   contactEmail?: string | null
   contactPhone?: string | null

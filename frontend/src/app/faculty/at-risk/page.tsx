@@ -223,7 +223,7 @@ export default function AtRiskStudentsPage() {
           <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-                Academic department oversight
+                Academic course oversight
               </p>
               <h1 className="flex items-center gap-2 text-3xl font-heading font-bold text-maroon dark:text-white">
                 <AlertTriangle className="h-7 w-7" aria-hidden />
@@ -231,7 +231,9 @@ export default function AtRiskStudentsPage() {
               </h1>
               <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
                 {user.role === 'teacher' && user.isDepartmentHead
-                  ? `Students in ${user.department ?? 'your department'} approaching the ${threshold ?? 75}% attendance floor.`
+                  ? user.courseScopeMode === 'course'
+                    ? `Students in ${user.managesAllCourses ? 'every course' : ((user.managedCourses ?? []).join(', ') || 'your sections')} approaching the ${threshold ?? 75}% attendance floor.`
+                    : `Students in ${user.department ?? 'your department'} approaching the ${threshold ?? 75}% attendance floor.`
                   : user.role === 'teacher'
                     ? `Students in your sections approaching the ${threshold ?? 75}% attendance floor.`
                     : `Students approaching the ${threshold ?? 75}% attendance floor in your scope.`}

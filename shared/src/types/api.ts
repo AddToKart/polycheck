@@ -99,7 +99,8 @@ export interface CreateStudentInput {
   password?: string;
   program: string;
   yearLevel: number;
-  department: string;
+  /** Optional: the campus has no departments; the server defaults it to the course code. */
+  department?: string;
 }
 
 export interface CreateTeacherResult extends Teacher {
@@ -355,6 +356,8 @@ export interface AttendanceReportFilters {
   sessionId?: string;
   /** Admin-only department filter for institution-wide reports. */
   department?: string;
+  /** Course (program code) filter; narrows within the caller's scope, never widens it. */
+  course?: string;
 }
 
 export interface AttendanceReportSummary extends AttendanceSummary {
@@ -584,6 +587,7 @@ export interface ApiClient {
   // ── At-risk oversight (Wave 4) ──
   getAtRiskStudents(filters?: {
     sectionId?: string;
+    course?: string;
     limit?: number;
   }): Promise<StudentAtRisk[]>;
 

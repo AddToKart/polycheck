@@ -25,14 +25,14 @@ export const DESIGNATION_FLAGS = {
 
 export const DESIGNATION_LABELS: Record<FacultyDesignation, string> = {
   it_operations: 'IT Coordinator',
-  academic_oversight: 'Department Head',
+  academic_oversight: 'Course Head',
   user_admin: 'Registrar',
 }
 
 export const DESIGNATION_DESCRIPTIONS: Record<FacultyDesignation, string> = {
   it_operations: 'Server status, issue triage, and maintenance controls.',
-  academic_oversight: 'Department-wide reports, excuses, and at-risk oversight.',
-  user_admin: 'Department-scoped account creation, resets, and roster imports.',
+  academic_oversight: 'Course-wide reports, excuses, and at-risk oversight.',
+  user_admin: 'Campus-wide or course-scoped account creation, resets, and roster imports.',
 }
 
 export interface DesignationCarrier {

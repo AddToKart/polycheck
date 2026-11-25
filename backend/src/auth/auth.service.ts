@@ -25,6 +25,7 @@ import type { ChangePasswordDto } from './dto/change-password.dto'
 import { NotificationsService } from '../notifications/notifications.service'
 import { DeviceBindingService } from '../users/device-binding.service'
 import { SystemMaintenanceService } from '../maintenance-mode/system-maintenance.service'
+import { courseScopeMode, type CourseScopeMode } from '../common/course-scope'
 import { DEFAULT_MAINTENANCE_MESSAGE, isMaintenanceExempt, type DelegatedTeacherPermissions } from '@polycheck/shared'
 
 // Login rate limits are env-tunable so strict production values can be relaxed for
@@ -101,6 +102,8 @@ export interface AuthResult {
     isUserRegistrar?: boolean
     managedCourses?: string[]
     managesAllCourses?: boolean
+    /** Which scoping rule is live (heads/registrars), so clients describe the scope accurately. */
+    courseScopeMode?: CourseScopeMode
     delegatedPermissions?: DelegatedTeacherPermissions
   }
 }
@@ -702,6 +705,7 @@ export class AuthService {
       isUserRegistrar: user.isUserRegistrar,
       managedCourses: user.managedCourses,
       managesAllCourses: user.managesAllCourses,
+      courseScopeMode: courseScopeMode(),
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     }

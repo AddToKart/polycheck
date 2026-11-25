@@ -12,6 +12,9 @@ import { isInstitutionAdmin } from '@/lib/admin-users'
 import {
   canAccessAcademicOversight,
   formatCampusDate,
+  oversightCourses,
+  pupCourseCodes,
+  pupCourseName,
   getRecentCampusDateRange,
   type User,
   type Subject,
@@ -56,6 +59,7 @@ export default function ReportsPage() {
   const [selectedSubject, setSelectedSubject] = useState('')
   const [selectedSection, setSelectedSection] = useState('')
   const [selectedDepartment, setSelectedDepartment] = useState('')
+  const [selectedCourse, setSelectedCourse] = useState('')
   const [selectedTeacher, setSelectedTeacher] = useState('')
   const [dateFrom, setDateFrom] = useState(defaultStartDate)
   const [dateTo, setDateTo] = useState(defaultEndDate)
@@ -69,7 +73,7 @@ export default function ReportsPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [selectedSubject, selectedSection, selectedDepartment, selectedTeacher, dateFrom, dateTo])
+  }, [selectedSubject, selectedSection, selectedDepartment, selectedCourse, selectedTeacher, dateFrom, dateTo])
   const [report, setReport] = useState<AttendanceReport | null>(null)
 
   useEffect(() => {
@@ -117,6 +121,7 @@ export default function ReportsPage() {
       subjectId: selectedSubject || undefined,
       sectionId: selectedSection || undefined,
       department: selectedDepartment || undefined,
+      course: selectedCourse || undefined,
     })
       .then((nextReport) => {
         if (active) setReport(nextReport)
@@ -129,7 +134,17 @@ export default function ReportsPage() {
     return () => {
       active = false
     }
-  }, [user, selectedSubject, selectedSection, selectedDepartment, selectedTeacher, dateFrom, dateTo, reportRetry])
+  }, [
+    user,
+    selectedSubject,
+    selectedSection,
+    selectedDepartment,
+    selectedCourse,
+    selectedTeacher,
+    dateFrom,
+    dateTo,
+    reportRetry,
+  ])
 
   const sectionOptions = useMemo(
     () =>
@@ -153,12 +168,30 @@ export default function ReportsPage() {
     return [...values].sort((left, right) => left.localeCompare(right))
   }, [teachers, user])
 
+  // Course filter: institution admins and an all-courses head pick any catalog course (plus any
+  // off-catalog course on a visible section); a course head only their own. It narrows the
+  // server-side scope and can never widen it.
+  const courseScopeActive = user?.courseScopeMode === 'course'
+  const courseOptions = useMemo(() => {
+    if (!user) return []
+    const scoped = user.role === 'teacher' ? oversightCourses(user) : null
+    if (scoped !== null && scoped.length === 0) return []
+    const values = new Set<string>(scoped ?? pupCourseCodes())
+    if (scoped === null) {
+      for (const section of sections) if (section.course?.trim()) values.add(section.course.trim())
+    }
+    return [...values].sort((left, right) => left.localeCompare(right))
+  }, [sections, user])
+  const canFilterCourse = Boolean(
+    user && (user.role === 'super_admin' || user.isDepartmentHead) && courseOptions.length > 0,
+  )
+
   const canFilterDepartment = user
     ? isInstitutionAdmin({ role: user.role, scope: (user as User & { scope?: string | null }).scope })
     : false
 
   const hasFilters =
-    Boolean(selectedSubject || selectedSection || selectedDepartment || selectedTeacher) ||
+    Boolean(selectedSubject || selectedSection || selectedDepartment || selectedCourse || selectedTeacher) ||
     dateFrom !== defaultStartDate ||
     dateTo !== defaultEndDate
 
@@ -166,6 +199,7 @@ export default function ReportsPage() {
     setSelectedSubject('')
     setSelectedSection('')
     setSelectedDepartment('')
+    setSelectedCourse('')
     setSelectedTeacher('')
     setDateFrom(defaultStartDate)
     setDateTo(defaultEndDate)
@@ -208,6 +242,7 @@ export default function ReportsPage() {
           subjectId: selectedSubject || undefined,
           sectionId: selectedSection || undefined,
           department: selectedDepartment || undefined,
+          course: selectedCourse || undefined,
         }),
       {
         errorTitle: 'Export failed',
@@ -318,11 +353,18 @@ export default function ReportsPage() {
               className="mb-6 border-l-4 border-maroon bg-white px-4 py-3 text-sm text-zinc-700 shadow-sm dark:border-golden dark:bg-zinc-900 dark:text-zinc-300"
             >
               <span className="font-bold uppercase tracking-widest text-[10px] text-maroon dark:text-golden">
-                Department oversight
+                {courseScopeActive ? 'Course oversight' : 'Department oversight'}
               </span>
               <p className="mt-1">
-                Showing attendance for {user.department ?? 'your department'} only. The server pins every filter to your
-                assigned department.
+                {courseScopeActive
+                  ? `Showing attendance for ${
+                      user.managesAllCourses
+                        ? 'every course'
+                        : (user.managedCourses ?? []).length > 0
+                          ? `sections of ${(user.managedCourses ?? []).join(', ')}`
+                          : 'your own sections (no courses are assigned to you yet)'
+                    } only. The server pins every filter to your assigned courses.`
+                  : `Showing attendance for ${user.department ?? 'your department'} only. The server pins every filter to your assigned department.`}
               </p>
             </div>
           ) : null}
@@ -379,6 +421,22 @@ export default function ReportsPage() {
                     ))}
                   </select>
                 </div>
+                {canFilterCourse ? (
+                  <div>
+                    <label htmlFor="report-course" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Course</label>
+                    <select
+                      id="report-course"
+                      value={selectedCourse}
+                      onChange={(e) => setSelectedCourse(e.target.value)}
+                      className="w-full h-10 rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 text-sm text-zinc-900 dark:text-zinc-100 focus:border-maroon focus:ring-2 focus:ring-maroon/30 outline-none transition-colors"
+                    >
+                      <option value="">All Courses</option>
+                      {courseOptions.map((course) => (
+                        <option key={course} value={course}>{course} — {pupCourseName(course)}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
                 {canFilterDepartment && departmentOptions.length > 0 ? (
                   <div>
                     <label htmlFor="report-department" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Department</label>

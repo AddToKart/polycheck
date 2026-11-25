@@ -69,7 +69,7 @@ describe('Sidebar designation suites', () => {
     expect(screen.getByRole('link', { name: 'Class Sessions' })).toBeInTheDocument()
     expect(screen.queryByText('IT Operations Suite')).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Server Status' })).not.toBeInTheDocument()
-    expect(screen.queryByText('Academic Department Oversight')).not.toBeInTheDocument()
+    expect(screen.queryByText('Academic Course Oversight')).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'At-Risk Students' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'User Management' })).not.toBeInTheDocument()
   })
@@ -90,14 +90,14 @@ describe('Sidebar designation suites', () => {
       'href',
       '/faculty/settings?tab=system',
     )
-    expect(screen.queryByText('Academic Department Oversight')).not.toBeInTheDocument()
+    expect(screen.queryByText('Academic Course Oversight')).not.toBeInTheDocument()
   })
 
-  it('re-parents Excuses under the academic oversight group for a department head', () => {
+  it('re-parents Excuses under the academic oversight group for a course head', () => {
     renderSidebar(head)
 
-    expect(screen.getByText('Academic Department Oversight')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Department Reports' })).toHaveAttribute(
+    expect(screen.getByText('Academic Course Oversight')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Course Reports' })).toHaveAttribute(
       'href',
       '/faculty/reports',
     )
@@ -123,7 +123,7 @@ describe('Sidebar designation suites', () => {
     renderSidebar({ ...itCoordinator, isDepartmentHead: true, isUserRegistrar: true })
 
     expect(screen.getByText('IT Operations Suite')).toBeInTheDocument()
-    expect(screen.getByText('Academic Department Oversight')).toBeInTheDocument()
+    expect(screen.getByText('Academic Course Oversight')).toBeInTheDocument()
     expect(screen.getByText('Registrar Suite')).toBeInTheDocument()
   })
 
@@ -131,7 +131,7 @@ describe('Sidebar designation suites', () => {
     renderSidebar(superAdmin)
 
     expect(screen.queryByText('IT Operations Suite')).not.toBeInTheDocument()
-    expect(screen.queryByText('Academic Department Oversight')).not.toBeInTheDocument()
+    expect(screen.queryByText('Academic Course Oversight')).not.toBeInTheDocument()
     expect(screen.queryByText('Registrar Suite')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'User Management' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Institution Settings' })).toBeInTheDocument()

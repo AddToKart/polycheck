@@ -81,9 +81,9 @@ const itOperationsNav: NavItem[] = [
 ]
 
 const academicOversightNav: NavItem[] = [
-  { label: 'Excuses', href: '/faculty/excuses', icon: ClipboardCheck, group: 'Academic Department Oversight' },
-  { label: 'Department Reports', href: '/faculty/reports', icon: BarChart3, group: 'Academic Department Oversight' },
-  { label: 'At-Risk Students', href: '/faculty/at-risk', icon: ClipboardCheck, group: 'Academic Department Oversight' },
+  { label: 'Excuses', href: '/faculty/excuses', icon: ClipboardCheck, group: 'Academic Course Oversight' },
+  { label: 'Course Reports', href: '/faculty/reports', icon: BarChart3, group: 'Academic Course Oversight' },
+  { label: 'At-Risk Students', href: '/faculty/at-risk', icon: ClipboardCheck, group: 'Academic Course Oversight' },
 ]
 
 const registrarSuiteNav: NavItem[] = [

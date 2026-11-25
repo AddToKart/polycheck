@@ -182,8 +182,12 @@ export default function UsersPage() {
     ? isDepartmentScopedAdmin({ role: user.role, scope: (user as User & { scope?: string | null }).scope })
     : false
   const registrar = Boolean(user?.role === 'teacher' && user.isUserRegistrar)
-  const effectiveDepartment =
-    departmentScoped || registrar ? (user?.department ?? '') : filters.department
+  // A registrar with a course scope (campus-wide or pinned courses) is not pinned to a department.
+  const courseScopedRegistrar = Boolean(
+    registrar && (user?.managesAllCourses === true || (user?.managedCourses?.length ?? 0) > 0),
+  )
+  const departmentPinned = departmentScoped || (registrar && !courseScopedRegistrar)
+  const effectiveDepartment = departmentPinned ? (user?.department ?? '') : filters.department
   // WEB-13: the fetch effects key on the account id, not the profile object —
   // `polycheck-auth-changed` can hand back an equivalent profile (same id) and
   // must not refetch the paginated table.
@@ -328,7 +332,7 @@ export default function UsersPage() {
         email: studentForm.email.trim() || undefined,
         program: studentForm.program,
         yearLevel: Number(studentForm.yearLevel),
-        department: studentForm.department,
+        department: studentForm.department.trim() || undefined,
       })
       setStudentForm({ fullName: '', studentId: '', email: '', program: '', yearLevel: '1', department: '' })
       setShowCreateStudent(false)
@@ -449,10 +453,16 @@ export default function UsersPage() {
   const openCreateDialog = () => {
     setError('')
     if (tab === 'teacher') {
-      setTeacherForm((form) => ({ ...form, department: form.department || user.department || '' }))
+      setTeacherForm((form) => ({
+        ...form,
+        department: form.department || (courseScopedRegistrar ? '' : (user.department ?? '')),
+      }))
       setShowCreateTeacher(true)
     } else if (tab === 'student') {
-      setStudentForm((form) => ({ ...form, department: form.department || user.department || '' }))
+      setStudentForm((form) => ({
+        ...form,
+        department: form.department || (courseScopedRegistrar ? '' : (user.department ?? '')),
+      }))
       setShowCreateStudent(true)
     }
   }
@@ -497,11 +507,21 @@ export default function UsersPage() {
           {departmentScoped || registrar ? (
             <div className="mb-4 flex items-start gap-3 border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
               <Info className="mt-0.5 h-4 w-4 shrink-0" />
-              <p>
-                <span className="font-bold">{registrar ? 'Registrar scope' : 'Department scope'}</span> - this
-                console only lists and manages accounts in {user.department ?? 'your department'}.
-                Institution-wide actions are hidden.
-              </p>
+              {courseScopedRegistrar ? (
+                <p>
+                  <span className="font-bold">Registrar scope</span> -{' '}
+                  {user.managesAllCourses
+                    ? 'you can manage student and faculty accounts across every course.'
+                    : `you can manage students enrolled in ${(user.managedCourses ?? []).join(', ')}.`}{' '}
+                  Institution-wide actions are hidden.
+                </p>
+              ) : (
+                <p>
+                  <span className="font-bold">{registrar ? 'Registrar scope' : 'Department scope'}</span> - this
+                  console only lists and manages accounts in {user.department ?? 'your department'}.
+                  Institution-wide actions are hidden.
+                </p>
+              )}
             </div>
           ) : null}
 
@@ -544,7 +564,7 @@ export default function UsersPage() {
                 </div>
               </div>
               <div>
-                {departmentScoped || registrar ? (
+                {departmentPinned ? (
                   <>
                     <p className="text-sm font-medium leading-none">Department</p>
                     <div className="mt-2 flex h-10 items-center border border-dashed border-zinc-300 px-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
@@ -831,8 +851,8 @@ export default function UsersPage() {
               <Input id="student-year" type="number" min={1} max={8} value={studentForm.yearLevel} onChange={(e) => setStudentForm((form) => ({ ...form, yearLevel: e.target.value }))} required />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="student-department">Department</Label>
-              <Input id="student-department" value={studentForm.department} onChange={(e) => setStudentForm((form) => ({ ...form, department: e.target.value }))} minLength={2} required />
+              <Label htmlFor="student-department">Department (optional)</Label>
+              <Input id="student-department" value={studentForm.department} onChange={(e) => setStudentForm((form) => ({ ...form, department: e.target.value }))} minLength={2} placeholder="Defaults to the course code" />
             </div>
             <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 sm:col-span-2 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
               Share the generated temporary password in person. The student must change it on first sign-in.
