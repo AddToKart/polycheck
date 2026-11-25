@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
 
 /**
- * Chat-safe markdown: GFM tables/lists/bold with the PUP token palette.
+ * Chat-safe markdown: GFM tables/lists/bold with the brand token palette.
  * Raw HTML is never parsed (no rehype-raw, no dangerouslySetInnerHTML) and a
  * boundary degrades to the plain source if a render ever throws.
  */

@@ -7,14 +7,14 @@ import { PaginationBar } from '@/components/ui/pagination-bar'
 
 const REPORTS_PAGE_SIZE = 10
 import { api, requestUserLogout } from '@/lib/api-client'
-import { pupColors } from '@/lib/colors'
+import { brandColors } from '@/lib/colors'
 import { isInstitutionAdmin } from '@/lib/admin-users'
 import {
   canAccessAcademicOversight,
   formatCampusDate,
   oversightCourses,
-  pupCourseCodes,
-  pupCourseName,
+  campusCourseCodes,
+  campusCourseName,
   getRecentCampusDateRange,
   type User,
   type Subject,
@@ -32,7 +32,7 @@ import { describeMutationError, useRunMutation } from '@/lib/run-mutation'
 
 const { startDate: defaultStartDate, endDate: defaultEndDate } = getRecentCampusDateRange(30)
 
-/** F4 (WF-LD1): the official PUP class record is generated server-side (pdfkit). */
+/** F4 (WF-LD1): the official class record is generated server-side (pdfkit). */
 function triggerBrowserDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
@@ -176,7 +176,7 @@ export default function ReportsPage() {
     if (!user) return []
     const scoped = user.role === 'teacher' ? oversightCourses(user) : null
     if (scoped !== null && scoped.length === 0) return []
-    const values = new Set<string>(scoped ?? pupCourseCodes())
+    const values = new Set<string>(scoped ?? campusCourseCodes())
     if (scoped === null) {
       for (const section of sections) if (section.course?.trim()) values.add(section.course.trim())
     }
@@ -275,13 +275,13 @@ export default function ReportsPage() {
       )
       const filename =
         filenameSegments.filter(Boolean).length > 0
-          ? `PUP-Class-Record-${filenameSegments.filter(Boolean).join('-')}.pdf`
-          : 'PUP-Class-Record.pdf'
+          ? `Class-Record-${filenameSegments.filter(Boolean).join('-')}.pdf`
+          : 'Class-Record.pdf'
       triggerBrowserDownload(blob, filename)
       addNotification(
         'success',
         'Class record downloaded',
-        'The official PUP class record PDF has been saved.',
+        'The official class record PDF has been saved.',
       )
     } catch (error) {
       addNotification(
@@ -304,7 +304,7 @@ export default function ReportsPage() {
 
   if (loadError) {
     return (
-      <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+      <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
         <Sidebar user={user} onLogout={handleLogout} />
         <main className="flex flex-1 items-center justify-center p-6">
           <Card className="w-full max-w-md">
@@ -318,7 +318,7 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
       <Sidebar user={user} onLogout={handleLogout} />
 
       <main className="flex-1 overflow-y-auto">
@@ -432,7 +432,7 @@ export default function ReportsPage() {
                     >
                       <option value="">All Courses</option>
                       {courseOptions.map((course) => (
-                        <option key={course} value={course}>{course} — {pupCourseName(course)}</option>
+                        <option key={course} value={course}>{course} — {campusCourseName(course)}</option>
                       ))}
                     </select>
                   </div>
@@ -541,43 +541,43 @@ export default function ReportsPage() {
                     <circle cx="70" cy="70" r="60" fill="none" strokeWidth="20" className="stroke-zinc-200 dark:stroke-zinc-800" />
                     {total.total > 0 && (
                       <>
-                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.golden} strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={brandColors.golden} strokeWidth="20"
                           strokeDasharray={`${(total.present / total.total) * 377} 377`}
                           strokeDashoffset="0"
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.maroon} strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={brandColors.maroon} strokeWidth="20"
                           strokeDasharray={`${(total.late / total.total) * 377} 377`}
                           strokeDashoffset={-((total.present / total.total) * 377)}
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.maroonDark} strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={brandColors.maroonDark} strokeWidth="20"
                           strokeDasharray={`${(total.absent / total.total) * 377} 377`}
                           strokeDashoffset={-(((total.present + total.late) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.chartIncomplete} strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={brandColors.chartIncomplete} strokeWidth="20"
                           strokeDasharray={`${(total.incomplete / total.total) * 377} 377`}
                           strokeDashoffset={-(((total.present + total.late + total.absent) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.chartPending} strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={brandColors.chartPending} strokeWidth="20"
                           strokeDasharray={`${(total.pending / total.total) * 377} 377`}
                           strokeDashoffset={-(((total.present + total.late + total.absent + total.incomplete) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.chartDisputed} strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={brandColors.chartDisputed} strokeWidth="20"
                           strokeDasharray={`${(total.disputed / total.total) * 377} 377`}
                           strokeDashoffset={-(((total.present + total.late + total.absent + total.incomplete + total.pending) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
                           style={{ transition: 'stroke-dasharray 0.5s ease' }}
                         />
-                        <circle cx="70" cy="70" r="60" fill="none" stroke={pupColors.goldenDark} strokeWidth="20"
+                        <circle cx="70" cy="70" r="60" fill="none" stroke={brandColors.goldenDark} strokeWidth="20"
                           strokeDasharray={`${(total.excused / total.total) * 377} 377`}
                           strokeDashoffset={-(((total.present + total.late + total.absent + total.incomplete + total.pending + total.disputed) / total.total) * 377)}
                           transform="rotate(-90 70 70)"
@@ -590,13 +590,13 @@ export default function ReportsPage() {
                   </svg>
                   <div className="space-y-3">
                     {[
-                      { label: 'Present', count: total.present, pct: presentPct, color: pupColors.golden, textColor: 'text-golden' },
-                      { label: 'Late', count: total.late, pct: latePct, color: pupColors.maroon, textColor: 'text-maroon dark:text-red-300' },
-                      { label: 'Incomplete', count: total.incomplete, pct: incompletePct, color: pupColors.chartIncomplete, textColor: 'text-maroon-dark dark:text-golden' },
-                      { label: 'Absent', count: total.absent, pct: absentPct, color: pupColors.maroonDark, textColor: 'text-maroon-dark dark:text-red-400' },
-                      { label: 'Pending', count: total.pending, pct: pendingPct, color: pupColors.chartPending, textColor: 'text-zinc-500 dark:text-zinc-400' },
-                      { label: 'Disputed', count: total.disputed, pct: disputedPct, color: pupColors.chartDisputed, textColor: 'text-amber-600 dark:text-amber-400' },
-                      { label: 'Excused', count: total.excused, pct: excusedPct, color: pupColors.goldenDark, textColor: 'text-golden-dark' },
+                      { label: 'Present', count: total.present, pct: presentPct, color: brandColors.golden, textColor: 'text-golden' },
+                      { label: 'Late', count: total.late, pct: latePct, color: brandColors.maroon, textColor: 'text-maroon dark:text-red-300' },
+                      { label: 'Incomplete', count: total.incomplete, pct: incompletePct, color: brandColors.chartIncomplete, textColor: 'text-maroon-dark dark:text-golden' },
+                      { label: 'Absent', count: total.absent, pct: absentPct, color: brandColors.maroonDark, textColor: 'text-maroon-dark dark:text-red-400' },
+                      { label: 'Pending', count: total.pending, pct: pendingPct, color: brandColors.chartPending, textColor: 'text-zinc-500 dark:text-zinc-400' },
+                      { label: 'Disputed', count: total.disputed, pct: disputedPct, color: brandColors.chartDisputed, textColor: 'text-amber-600 dark:text-amber-400' },
+                      { label: 'Excused', count: total.excused, pct: excusedPct, color: brandColors.goldenDark, textColor: 'text-golden-dark' },
                     ].map((item) => (
                       <div key={item.label} className="flex items-center gap-3">
                         <div className="w-3 h-3 shrink-0" style={{ backgroundColor: item.color }} />

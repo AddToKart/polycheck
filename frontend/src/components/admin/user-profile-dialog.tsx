@@ -250,7 +250,7 @@ export function UserProfileDialog({
 
             {fields.has('email') && isSuperAdmin ? (
               <div className="space-y-2">
-                <Label htmlFor="edit-user-email" className="text-xs uppercase tracking-wider text-zinc-500 font-bold">PUP email</Label>
+                <Label htmlFor="edit-user-email" className="text-xs uppercase tracking-wider text-zinc-500 font-bold">Institutional email</Label>
                 <Input
                   id="edit-user-email"
                   type="email"

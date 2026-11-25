@@ -78,7 +78,7 @@ export function buildTopology({ runId, studentCount = TOPOLOGY.studentCount }) {
     return {
       index,
       tag,
-      email: `load.${slugify(runId, 40, 'run')}.${tag.toLowerCase()}@pup.edu.ph`,
+      email: `load.${slugify(runId, 40, 'run')}.${tag.toLowerCase()}@example.edu.ph`,
       fullName: `Load Professor ${runId} ${tag}`.slice(0, 150),
       password: buildPassword({ runId, tag }),
       department: 'CCIS',

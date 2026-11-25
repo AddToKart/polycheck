@@ -98,7 +98,7 @@ export async function parsePdfFile(file: File, options: PdfParseOptions = {}): P
   if (table.rows.length === 0) {
     throw new SpreadsheetParseError(
       'empty',
-      'No students were found in that PDF. It needs the PUP student numbers (for example 2024-00001-MN-0) as text.',
+      'No students were found in that PDF. It needs the student numbers (for example 2024-00001-MN-0) as text.',
     )
   }
   const errors = [...table.warnings]

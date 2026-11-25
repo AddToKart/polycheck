@@ -179,6 +179,8 @@ services:
     environment:
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: "1"
+      # Server-side (not browser) address of the API, used to render the institution name/logo on first paint.
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:4000/api}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     healthcheck:

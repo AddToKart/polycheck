@@ -41,6 +41,7 @@ import {
   type AttendanceReportFilters,
   type DashboardOverview,
   type ApiClient,
+  type InstitutionBranding,
   type PrivacyNotice,
   type AuditLogFilters,
   type AuditLogPage,
@@ -2036,6 +2037,20 @@ const apiBase = {
     value: string,
   ): Promise<{ key: string; value: string; updatedAt: string }> {
     return put(`/settings/${encodeURIComponent(key)}`, { value });
+  },
+  /** Public institution identity; a failure never breaks a page, callers keep their last-known branding. */
+  async getBranding(): Promise<InstitutionBranding | null> {
+    try {
+      return await get("/branding");
+    } catch {
+      return null;
+    }
+  },
+  setBrandingLogo(dataUrl: string): Promise<InstitutionBranding> {
+    return put("/branding/logo", { dataUrl });
+  },
+  clearBrandingLogo(): Promise<InstitutionBranding> {
+    return del("/branding/logo");
   },
   async getMaintenanceStatus(): Promise<MaintenanceStatus> {
     try {

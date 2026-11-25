@@ -50,7 +50,7 @@ describe('StudentGovernanceActions', () => {
   it('generates a temporary password and shows it once', async () => {
     apiMock.teacherResetStudentPassword.mockResolvedValue({
       userId: 's-1',
-      temporaryPassword: 'PUP-K7W2M4Q8-tx!',
+      temporaryPassword: 'PCK-K7W2M4Q8-tx!',
       message: 'generated',
     })
     renderActions({ canResetStudentPasswords: true, canEmergencyUnbindDevices: false })
@@ -63,7 +63,7 @@ describe('StudentGovernanceActions', () => {
     await waitFor(() =>
       expect(apiMock.teacherResetStudentPassword).toHaveBeenCalledWith('s-1', 'sec-1'),
     )
-    expect(await screen.findByText('PUP-K7W2M4Q8-tx!')).toBeInTheDocument()
+    expect(await screen.findByText('PCK-K7W2M4Q8-tx!')).toBeInTheDocument()
   })
 
   it('submits an emergency release with reason and note', async () => {

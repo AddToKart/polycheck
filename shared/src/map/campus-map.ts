@@ -13,9 +13,9 @@ export interface CampusConfig {
   buildings: CampusBuilding[]
 }
 
-const PUP_SANTA_MARIA_CENTER: [number, number] = [120.9991, 14.8697]
+const CAMPUS_CENTER: [number, number] = [120.9991, 14.8697]
 
-const PUP_SANTA_MARIA_BUILDINGS: CampusBuilding[] = [
+const CAMPUS_BUILDINGS: CampusBuilding[] = [
   {
     id: 'main-academic',
     name: 'Main Academic Building',
@@ -122,9 +122,9 @@ const PUP_SANTA_MARIA_BUILDINGS: CampusBuilding[] = [
   },
 ]
 
-export const pupSantaMaria: CampusConfig = {
-  name: 'PUP Santa Maria, Bulacan Campus',
-  center: PUP_SANTA_MARIA_CENTER,
+export const defaultCampus: CampusConfig = {
+  name: 'Santa Maria, Bulacan Campus',
+  center: CAMPUS_CENTER,
   zoom: 17,
-  buildings: PUP_SANTA_MARIA_BUILDINGS,
+  buildings: CAMPUS_BUILDINGS,
 }

@@ -115,7 +115,7 @@ export function SessionGuard({
   if (state === 'checking') {
     return (
       <main
-        className="flex min-h-screen flex-col items-center justify-center gap-4 bg-zinc-100 px-6 text-center dark:bg-pup-black"
+        className="flex min-h-screen flex-col items-center justify-center gap-4 bg-zinc-100 px-6 text-center dark:bg-brand-black"
         role="status"
         aria-live="polite"
       >
@@ -136,7 +136,7 @@ export function SessionGuard({
 
   if (state === 'unavailable') {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-zinc-100 px-6 dark:bg-pup-black">
+      <main className="flex min-h-screen items-center justify-center bg-zinc-100 px-6 dark:bg-brand-black">
         <section
           className="w-full max-w-md border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-golden/15 dark:bg-surface-dark"
           role="alert"
@@ -159,7 +159,7 @@ export function SessionGuard({
 
   if (pendingUser) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-zinc-100 px-6 py-12 dark:bg-pup-black">
+      <main className="flex min-h-screen items-center justify-center bg-zinc-100 px-6 py-12 dark:bg-brand-black">
         <div className="w-full max-w-md border border-zinc-200 bg-white p-8 dark:border-golden/15 dark:bg-surface-dark">
           <PendingPasswordChange
             user={pendingUser}

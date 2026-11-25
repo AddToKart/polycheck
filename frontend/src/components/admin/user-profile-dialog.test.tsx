@@ -13,7 +13,7 @@ vi.mock('@/lib/notifications', () => ({ useNotifications: () => ({ addNotificati
 const teacher = (overrides: Partial<User> = {}): User => ({
   id: 't-9',
   fullName: 'Prof. Head',
-  email: 'head@pup.edu.ph',
+  email: 'head@example.edu.ph',
   role: 'teacher',
   isActive: true,
   createdAt: '2026-01-01T00:00:00.000Z',

@@ -38,7 +38,7 @@ vi.mock('@/components/ThemeToggle', () => ({ default: () => null }))
 import { Sidebar } from './sidebar'
 
 const base: Omit<User, 'id' | 'fullName' | 'role'> = {
-  email: 'faculty@pup.edu.ph',
+  email: 'faculty@example.edu.ph',
   department: 'CCIS',
   isActive: true,
   createdAt: '2026-01-01T00:00:00.000Z',

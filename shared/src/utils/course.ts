@@ -1,4 +1,4 @@
-import { PUP_SANTA_MARIA_COURSES, pupCourseByCode, type PupCourse } from '../constants/pup-courses'
+import { CAMPUS_COURSES, campusCourseByCode, type CampusCourse } from '../constants/campus-courses'
 import type { UserRole } from '../types/user'
 
 /**
@@ -28,9 +28,9 @@ function buildLookup(): Map<string, string> {
     if (!map.has(key)) map.set(key, code)
   }
   // Codes first, then names, then aliases: precedence is intentional.
-  for (const course of PUP_SANTA_MARIA_COURSES) add(compact(course.code), course.code)
-  for (const course of PUP_SANTA_MARIA_COURSES) add(compact(course.name), course.code)
-  for (const course of PUP_SANTA_MARIA_COURSES) {
+  for (const course of CAMPUS_COURSES) add(compact(course.code), course.code)
+  for (const course of CAMPUS_COURSES) add(compact(course.name), course.code)
+  for (const course of CAMPUS_COURSES) {
     for (const alias of course.aliases) add(compact(alias), course.code)
   }
   return map
@@ -56,9 +56,9 @@ export function isCatalogCourse(input?: string | null): boolean {
 }
 
 /** Catalog entry for free text, via {@link normalizeCourse}. */
-export function resolveCourse(input?: string | null): PupCourse | undefined {
+export function resolveCourse(input?: string | null): CampusCourse | undefined {
   const { code } = normalizeCourse(input)
-  return code ? pupCourseByCode(code) : undefined
+  return code ? campusCourseByCode(code) : undefined
 }
 
 export interface CourseScopeCarrier {

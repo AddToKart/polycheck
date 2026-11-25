@@ -7,7 +7,7 @@ import { BookOpen, GraduationCap, MapPin, CalendarDays, Plus, X } from 'lucide-r
 import { api, requestUserLogout } from '@/lib/api-client'
 import { describeMutationError, useRunMutation } from '@/lib/run-mutation'
 import { ErrorDisplay } from '@/lib/hooks'
-import { PUP_SANTA_MARIA_COURSES, pupCourseName } from '@polycheck/shared'
+import { CAMPUS_COURSES, campusCourseName } from '@polycheck/shared'
 import type { User, Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -103,7 +103,7 @@ function CreateSectionForm() {
 
   if (loadError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black p-6">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-brand-black p-6">
         <Card className="w-full max-w-md">
           <CardContent className="p-8">
             <ErrorDisplay message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
@@ -117,7 +117,7 @@ function CreateSectionForm() {
 
   const isCustomCourse = courseSelection === CUSTOM_COURSE_OPTION
   const resolvedCourse = (isCustomCourse ? customCourse : courseSelection).trim()
-  const selectedCourseName = pupCourseName(resolvedCourse)
+  const selectedCourseName = campusCourseName(resolvedCourse)
 
   const handleAddSchedule = () => {
     if (!currentDay || !currentStartTime || !currentEndTime) return
@@ -181,7 +181,7 @@ function CreateSectionForm() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
       <Sidebar
         user={user}
         onLogout={handleLogout}
@@ -233,7 +233,7 @@ function CreateSectionForm() {
                     required
                   >
                     <option value="">Select a course...</option>
-                    {PUP_SANTA_MARIA_COURSES.map((course) => (
+                    {CAMPUS_COURSES.map((course) => (
                       <option key={course.code} value={course.code}>
                         {course.code} — {course.name}
                       </option>

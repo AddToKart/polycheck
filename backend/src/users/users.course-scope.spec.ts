@@ -261,7 +261,7 @@ describe('UsersService course scope', () => {
         ),
       ).rejects.toBeInstanceOf(ForbiddenException)
       await expect(
-        service.createTeacher({ fullName: 'Prof', email: 'prof@pup.edu.ph' } as never, bsitRegistrar),
+        service.createTeacher({ fullName: 'Prof', email: 'prof@example.edu.ph' } as never, bsitRegistrar),
       ).rejects.toBeInstanceOf(ForbiddenException)
     })
 

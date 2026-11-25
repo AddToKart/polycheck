@@ -8,7 +8,7 @@ import { IMPORT_MAX_ROWS, suggestColumnMapping } from '@polycheck/shared'
  */
 
 export const MAX_SPREADSHEET_BYTES = 10 * 1024 * 1024
-/** How many leading rows are searched for the real header (PUP lists start with title lines). */
+/** How many leading rows are searched for the real header (registrar lists start with title lines). */
 const HEADER_SEARCH_ROWS = 25
 
 export type SpreadsheetErrorCode =

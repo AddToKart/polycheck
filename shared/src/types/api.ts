@@ -168,7 +168,7 @@ export interface DelegatedTeacherPermissions {
 export interface CreateSectionInput {
   subjectId: string;
   section: string;
-  /** PUP Santa Maria program/course code (e.g. 'BSIT'); required by the web form. */
+  /** Campus program/course code (e.g. 'BSIT'); required by the web form. */
   course?: string;
   room: string;
   schedule: {

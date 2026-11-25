@@ -152,16 +152,16 @@ test.describe('Wow-factor suite (F1–F9)', () => {
     assertNoErrors(errors)
   })
 
-  test('F4: section detail downloads the official PUP class record PDF', async ({ page }) => {
+  test('F4: section detail downloads the official class record PDF', async ({ page }) => {
     const errors = trackErrors(page)
     await loginFaculty(page)
     // The section detail h1 carries the parent subject name.
     await page.goto('/faculty/sections/sec-001')
     await expect(page.getByRole('heading', { name: 'Software Engineering' })).toBeVisible({ timeout: 20_000 })
     const downloadPromise = page.waitForEvent('download')
-    await page.getByRole('button', { name: /Class record \(PUP\)/i }).click()
+    await page.getByRole('button', { name: /Class record/i }).click()
     const download = await downloadPromise
-    expect(download.suggestedFilename()).toMatch(/^PUP-Class-Record-.*\.pdf$/)
+    expect(download.suggestedFilename()).toMatch(/^Class-Record-.*\.pdf$/)
     assertNoErrors(errors)
   })
 
@@ -212,7 +212,7 @@ test.describe('Wow-factor suite (F1–F9)', () => {
     const downloadPromise = page.waitForEvent('download')
     await dialog.getByRole('button', { name: /Generate notice/i }).click()
     const download = await downloadPromise
-    expect(download.suggestedFilename()).toMatch(/^PUP-CHED-Drop-Notice\.pdf$/)
+    expect(download.suggestedFilename()).toMatch(/^CHED-Drop-Notice\.pdf$/)
 
     // The referral lands in the guidance queue with the generated status pill.
     await page.getByRole('tab', { name: 'Referrals' }).click()
@@ -265,7 +265,7 @@ test.describe('Wow-factor suite (F1–F9)', () => {
     const downloadPromise = page.waitForEvent('download')
     await page.getByRole('button', { name: 'DPO summary (PDF)' }).click()
     const download = await downloadPromise
-    expect(download.suggestedFilename()).toMatch(/^PUP-DPO-Summary\.pdf$/)
+    expect(download.suggestedFilename()).toMatch(/^DPO-Summary\.pdf$/)
     assertNoErrors(errors)
   })
 

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { ArrowLeft } from 'lucide-react'
 import ThemeToggle from '@/components/ThemeToggle'
+import { useBranding } from '@/components/branding/BrandingProvider'
 
 // Shared Landing Layout Context
 const LandingContext = createContext<{
@@ -21,7 +22,7 @@ const LandingContext = createContext<{
 
 export const useLanding = () => useContext(LandingContext)
 
-function PupStar({ className, darkColor }: { className?: string; darkColor?: boolean }) {
+function BrandStar({ className, darkColor }: { className?: string; darkColor?: boolean }) {
   return (
     <div className={`relative ${className ?? ''}`}>
       <div className={`w-0 h-0 border-l-[12px] border-l-transparent border-r-[12px] border-r-transparent border-b-[20px] relative ${
@@ -36,6 +37,7 @@ function PupStar({ className, darkColor }: { className?: string; darkColor?: boo
 }
 
 export default function LandingLayout({ children }: { children: React.ReactNode }) {
+  const branding = useBranding()
   const pathname = usePathname()
   const router = useRouter()
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
@@ -98,15 +100,16 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
             />
           </div>
 
-          {/* Persistent Sliding PUP Logo */}
+          {/* Persistent Sliding institution logo */}
           <div className={`absolute rounded-full bg-white dark:bg-maroon-dark border shadow-md flex items-center justify-center p-1.5 transition-all duration-300 ease-in-out hover:scale-105 z-20 ${
             isLogin ? 'logo-login border-golden/50 dark:border-maroon/20 shadow-golden/10' : 'logo-home border-zinc-200/50 dark:border-maroon/20'
           }`}>
             <div className="relative w-full h-full">
               <Image
-                src="/pup-logo.png"
-                alt="PUP Logo"
+                src={branding.logoDataUrl ?? '/brand-mark.png'}
+                alt={`${branding.name} logo`}
                 fill
+                unoptimized={Boolean(branding.logoDataUrl)}
                 className="object-contain p-0.5"
                 priority
               />
@@ -126,7 +129,7 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
                   Republic of the Philippines
                 </p>
                 <h2 className="text-xs md:text-sm font-sans font-bold uppercase tracking-[0.18em] text-white dark:text-maroon-dark leading-tight mt-1">
-                  Polytechnic University<br/>of the Philippines
+                  <span className="block max-w-[14rem] whitespace-normal">{branding.name}</span>
                 </h2>
               </div>
 
@@ -134,7 +137,7 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
               <div className={`absolute left-0 transition-all duration-300 flex flex-col justify-center whitespace-nowrap ${
                 isLogin ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4 pointer-events-none'
               }`}>
-                <p className="text-[9px] font-sans font-bold uppercase tracking-[0.15em] text-white/70 dark:text-maroon/60">PUP</p>
+                <p className="text-[9px] font-sans font-bold uppercase tracking-[0.15em] text-white/70 dark:text-maroon/60">{branding.shortName}</p>
                 <p className="text-xs font-sans font-semibold uppercase tracking-[0.1em] text-golden dark:text-maroon-dark">
                   {isFacultyLogin ? 'Faculty Portal' : 'Student Access'}
                 </p>
@@ -169,7 +172,7 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
             }`}>
               <div className="flex items-center gap-3 mb-2 md:gap-4 md:mb-6">
                 <div className="w-8 md:w-10 h-[2px] bg-golden/70 dark:bg-maroon-dark/30" />
-                <PupStar className={`origin-left animate-float transition-all duration-300 ${
+                <BrandStar className={`origin-left animate-float transition-all duration-300 ${
                   hoveredIndex === 0 ? 'scale-[0.65]' : hoveredIndex === 1 ? 'scale-[0.45] opacity-50' : 'scale-[0.55]'
                 }`} darkColor />
               </div>
@@ -177,7 +180,7 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
                 Polycheck.
               </h1>
               <p className="text-xs sm:text-sm md:text-lg font-sans text-zinc-100/80 dark:text-maroon-dark/90 max-w-md leading-relaxed mb-3 md:mb-8 line-clamp-2 md:line-clamp-none">
-                A premium, unified attendance system built for PUP. Digitized class tracking with secure geolocation and offline-first capabilities.
+                A premium, unified attendance system for {branding.name}. Digitized class tracking with secure geolocation and offline-first capabilities.
               </p>
               <div className="flex items-center gap-2 md:gap-3">
                 <div className="w-6 md:w-8 h-[1px] bg-golden/30 dark:bg-maroon-dark/20" />
@@ -200,7 +203,7 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
                 Manage your classes, track attendance, and handle course administration.
               </p>
               <div className="flex items-center gap-2">
-                <PupStar className="scale-[0.5] origin-left" darkColor />
+                <BrandStar className="scale-[0.5] origin-left" darkColor />
                 <span className="text-xs font-sans text-golden/60 dark:text-maroon-dark/70 uppercase tracking-[0.2em] italic">Iskolar ng Bayan</span>
               </div>
             </div>
@@ -217,7 +220,7 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
                 Enter your credentials to view your attendance records and course status.
               </p>
               <div className="flex items-center gap-2">
-                <PupStar className="scale-[0.5] origin-left" darkColor />
+                <BrandStar className="scale-[0.5] origin-left" darkColor />
                 <span className="text-xs font-sans text-golden/60 dark:text-maroon-dark/70 uppercase tracking-[0.2em] italic">Iskolar ng Bayan</span>
               </div>
             </div>
@@ -228,10 +231,14 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
           <div className={`relative z-10 flex items-center justify-between text-[10px] md:text-xs font-sans uppercase tracking-[0.15em] md:tracking-[0.2em] text-white/50 dark:text-maroon-dark/60 animate-fade-in-up delay-500 pt-2 md:pt-0 ${
             isLogin ? 'hidden md:flex' : 'flex'
           }`}>
-            <span>PUP System</span>
+            <span>{branding.shortName} System</span>
             <div className="flex items-center gap-3">
-              <span>&#9679;</span>
-              <span className="text-white/60 dark:text-maroon-dark/75">Est. 1904</span>
+              {branding.campus ? (
+                <>
+                  <span>&#9679;</span>
+                  <span className="text-white/60 dark:text-maroon-dark/75">{branding.campus}</span>
+                </>
+              ) : null}
               <span>&#9679;</span>
               <span>v1.0</span>
             </div>

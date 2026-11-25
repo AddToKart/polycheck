@@ -160,7 +160,7 @@ describe('DisputeTimeline', () => {
     expect(within(rows[1]).getByTestId('timeline-node')).toHaveClass('bg-golden')
   })
 
-  it('renders the accept recommendation chip in PUP golden-on-maroon', async () => {
+  it('renders the accept recommendation chip in brand golden-on-maroon', async () => {
     apiMock.getRecordTimeline.mockResolvedValue(
       timelineFixture({
         recommendation: {

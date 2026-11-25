@@ -42,7 +42,7 @@ test.describe('Privacy Consent Gate', () => {
   test('a fresh student without consent sees the gate, accepts, and the gate clears', async ({ page }) => {
     createdStudentNumber = uniqueStudentId()
     const password = 'E2eTempPass1!'
-    const email = `e2e.consent.${Date.now()}@iskolar.pup.edu.ph`
+    const email = `e2e.consent.${Date.now()}@student.example.edu.ph`
 
     // Super admin creates a student who has never consented to the privacy notice.
     const apiContext = await pwRequest.newContext()
@@ -103,7 +103,7 @@ test.describe('Faculty Student Detail', () => {
     await loginFaculty(page)
   })
 
-  test('flips the PUP ID card and cycles attendance statuses back to the original', async ({ page }) => {    const errors = trackErrors(page)
+  test('flips the ID card and cycles attendance statuses back to the original', async ({ page }) => {    const errors = trackErrors(page)
     await page.goto('/faculty/students/s-001?sectionId=sec-001')
     // level: 1 — the ID card also renders the student name as an h2.
     await expect(page.getByRole('heading', { level: 1, name: 'Alexandra Marie Reyes' })).toBeVisible({

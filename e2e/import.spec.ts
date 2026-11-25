@@ -14,7 +14,7 @@ const MASTER_CSV = [
 
 test.describe('Bulk import wizards', () => {
   test('super admin validates a student master list without committing', async ({ page }) => {
-    await loginFaculty(page, 'mcreyes@pup.edu.ph')
+    await loginFaculty(page, 'mcreyes@example.edu.ph')
     const errors = trackErrors(page)
     await page.goto('/faculty/users')
     await page.getByRole('button', { name: 'Students', exact: true }).click()
@@ -42,7 +42,7 @@ test.describe('Bulk import wizards', () => {
   })
 
   test('super admin uploads an Excel master list with a title block and validates it', async ({ page }) => {
-    await loginFaculty(page, 'mcreyes@pup.edu.ph')
+    await loginFaculty(page, 'mcreyes@example.edu.ph')
     const errors = trackErrors(page)
     await page.goto('/faculty/users')
     await page.getByRole('button', { name: 'Students', exact: true }).click()
@@ -53,7 +53,7 @@ test.describe('Bulk import wizards', () => {
       {
         name: 'BSIT 1-1',
         rows: [
-          ['PUP Santa Maria'],
+          ['Example University - Main Campus'],
           ['Master List - BSIT 1-1'],
           [],
           ['Student No.', 'Name', 'Program', 'Year Level', 'Email'],
@@ -83,7 +83,7 @@ test.describe('Bulk import wizards', () => {
   })
 
   test('super admin uploads a text-based PDF master list and validates it', async ({ page }) => {
-    await loginFaculty(page, 'mcreyes@pup.edu.ph')
+    await loginFaculty(page, 'mcreyes@example.edu.ph')
     const errors = trackErrors(page)
     await page.goto('/faculty/users')
     await page.getByRole('button', { name: 'Students', exact: true }).click()
@@ -109,7 +109,7 @@ test.describe('Bulk import wizards', () => {
   })
 
   test('a scanned PDF is refused with guidance instead of importing nothing', async ({ page }) => {
-    await loginFaculty(page, 'mcreyes@pup.edu.ph')
+    await loginFaculty(page, 'mcreyes@example.edu.ph')
     await page.goto('/faculty/users')
     await page.getByRole('button', { name: 'Students', exact: true }).click()
     await page.getByRole('button', { name: 'Import Students' }).click()

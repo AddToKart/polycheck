@@ -6,7 +6,7 @@ import type { Prisma } from '../prisma/client'
  * Course scoping for academic-oversight heads and registrars
  * (plan/course-scope-plan.md).
  *
- * PUP Santa Maria has no departments; heads and registrars are scoped by
+ * This campus has no departments; heads and registrars are scoped by
  * course (the catalog program code) instead. This module is the single place
  * that decides *which* scoping rule is live, selected by `COURSE_SCOPE_MODE`:
  *

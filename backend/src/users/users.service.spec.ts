@@ -59,7 +59,7 @@ describe('UsersService', () => {
       id: 'student-1',
       studentId: '2026-00001-MN-0',
       fullName: 'Test Student',
-      email: 'student@iskolarngbayan.pup.edu.ph',
+      email: 'student@student.example.edu.ph',
       role: 'student',
       program: 'BS Computer Science',
       yearLevel: 1,
@@ -78,7 +78,7 @@ describe('UsersService', () => {
       {
         fullName: '  Test Student  ',
         studentId: '2026-00001-MN-0',
-        email: 'STUDENT@iskolarngbayan.pup.edu.ph',
+        email: 'STUDENT@student.example.edu.ph',
         password: 'Temporary1!Secure',
         program: '  BS Computer Science  ',
         yearLevel: 1,
@@ -92,7 +92,7 @@ describe('UsersService', () => {
       expect.objectContaining({
         fullName: 'Test Student',
         studentId: '2026-00001-MN-0',
-        email: 'student@iskolarngbayan.pup.edu.ph',
+        email: 'student@student.example.edu.ph',
         program: 'BS Computer Science',
         role: 'student',
       }),
@@ -283,7 +283,7 @@ describe('UsersService', () => {
 
   describe('profile editing', () => {
     it('updates whitelisted fields, normalizes input, and audits field names only', async () => {
-      const updated = { id: 'teacher-1', fullName: 'Ada Lovelace', email: 'ada@pup.edu.ph', department: 'CCIS' }
+      const updated = { id: 'teacher-1', fullName: 'Ada Lovelace', email: 'ada@example.edu.ph', department: 'CCIS' }
       const prisma = {
         user: {
           findUnique: jest.fn().mockResolvedValue({ id: 'teacher-1', role: 'teacher', department: 'CCIS' }),
@@ -297,13 +297,13 @@ describe('UsersService', () => {
 
       const result = await service.updateUser(
         'teacher-1',
-        { fullName: '  Ada Lovelace  ', email: ' ADA@PUP.EDU.PH ', department: ' CCIS ' },
+        { fullName: '  Ada Lovelace  ', email: ' ADA@EXAMPLE.EDU.PH ', department: ' CCIS ' },
         institutionAdmin,
       )
 
       expect(prisma.user.update.mock.calls[0][0].data).toEqual({
         fullName: 'Ada Lovelace',
-        email: 'ada@pup.edu.ph',
+        email: 'ada@example.edu.ph',
         department: 'CCIS',
       })
       const audit = prisma.auditLog.create.mock.calls[0][0].data
@@ -346,7 +346,7 @@ describe('UsersService', () => {
     })
 
     it.each([
-      ['a student email', { id: 'student-1', role: 'student', department: 'CCIS' }, { email: 'student@pup.edu.ph' }],
+      ['a student email', { id: 'student-1', role: 'student', department: 'CCIS' }, { email: 'student@example.edu.ph' }],
       ['teacher program fields', { id: 'teacher-1', role: 'teacher', department: 'CCIS' }, { program: 'BSIT' }],
       ['teacher year level', { id: 'teacher-1', role: 'teacher', department: 'CCIS' }, { yearLevel: 2 }],
     ])('rejects wrong-role fields: %s', async (_label, target, dto) => {
@@ -382,7 +382,7 @@ describe('UsersService', () => {
       }
       const service = new UsersService(prisma as never)
 
-      await expect(service.updateUser('teacher-1', { email: 'taken@pup.edu.ph' }, institutionAdmin)).rejects.toThrow(
+      await expect(service.updateUser('teacher-1', { email: 'taken@example.edu.ph' }, institutionAdmin)).rejects.toThrow(
         ConflictException,
       )
       expect(prisma.user.update).not.toHaveBeenCalled()
@@ -449,7 +449,7 @@ describe('UsersService', () => {
             id: 'student-1',
             role: 'student',
             department: null,
-            email: 'student@pup.edu.ph',
+            email: 'student@example.edu.ph',
           }),
         },
       }
@@ -486,7 +486,7 @@ describe('UsersService', () => {
             id: 'student-1',
             role: 'student',
             department: 'CCIS',
-            email: 'student@pup.edu.ph',
+            email: 'student@example.edu.ph',
           }),
           update: jest.fn().mockResolvedValue(updated),
         },
@@ -637,7 +637,7 @@ describe('UsersService', () => {
             id: 'student-1',
             role: 'student',
             department: 'CCIS',
-            email: 'student@pup.edu.ph',
+            email: 'student@example.edu.ph',
             isItCoordinator: true,
             isDepartmentHead: true,
             isUserRegistrar: true,
@@ -697,7 +697,7 @@ describe('UsersService', () => {
     })
 
     it('creates a fresh super admin with a hashed password and auth account', async () => {
-      const created = { id: 'admin-3', fullName: 'New Admin', email: 'admin@pup.edu.ph', role: 'super_admin' }
+      const created = { id: 'admin-3', fullName: 'New Admin', email: 'admin@example.edu.ph', role: 'super_admin' }
       const prisma = {
         user: {
           findUnique: jest.fn().mockResolvedValue(null),
@@ -711,7 +711,7 @@ describe('UsersService', () => {
         service.createAdmin(
           {
             fullName: ' New Admin ',
-            email: ' ADMIN@PUP.EDU.PH ',
+            email: ' ADMIN@EXAMPLE.EDU.PH ',
             password: 'Temporary1!Secure',
             department: ' CCIS ',
           },
@@ -723,7 +723,7 @@ describe('UsersService', () => {
       expect(data).toEqual(
         expect.objectContaining({
           fullName: 'New Admin',
-          email: 'admin@pup.edu.ph',
+          email: 'admin@example.edu.ph',
           department: 'CCIS',
           role: 'super_admin',
           scope: 'institution',
@@ -744,11 +744,11 @@ describe('UsersService', () => {
     it.each([
       [
         'both modes',
-        { userId: 'teacher-1', fullName: 'New Admin', email: 'new@pup.edu.ph', password: 'Temporary1!Secure' },
+        { userId: 'teacher-1', fullName: 'New Admin', email: 'new@example.edu.ph', password: 'Temporary1!Secure' },
       ],
       ['neither mode', {}],
-      ['an incomplete fresh account', { fullName: 'New Admin', email: 'new@pup.edu.ph' }],
-      ['a weak password', { fullName: 'New Admin', email: 'new@pup.edu.ph', password: 'weak' }],
+      ['an incomplete fresh account', { fullName: 'New Admin', email: 'new@example.edu.ph' }],
+      ['a weak password', { fullName: 'New Admin', email: 'new@example.edu.ph', password: 'weak' }],
     ])('rejects %s', async (_label, dto) => {
       const service = new UsersService({} as never)
       await expect(service.createAdmin(dto, institutionAdmin)).rejects.toThrow(BadRequestException)
@@ -793,7 +793,7 @@ describe('UsersService', () => {
 
       await expect(
         service.createAdmin(
-          { fullName: 'New Admin', email: 'taken@pup.edu.ph', password: 'Temporary1!Secure' },
+          { fullName: 'New Admin', email: 'taken@example.edu.ph', password: 'Temporary1!Secure' },
           institutionAdmin,
         ),
       ).rejects.toThrow(ConflictException)
@@ -852,7 +852,7 @@ describe('UsersService', () => {
             id: 'student-1',
             role: 'student',
             department: 'CCIS',
-            email: 'student@pup.edu.ph',
+            email: 'student@example.edu.ph',
             studentId: 'S-001',
             program: 'BSIT',
             yearLevel: 2,
@@ -1016,7 +1016,7 @@ describe('UsersService', () => {
       )
 
       expect(result.userId).toBe('student-1')
-      expect(result.temporaryPassword).toMatch(/^PUP-[A-Z2-9]{8}-[a-z]{2}[!@#$%_-]$/)
+      expect(result.temporaryPassword).toMatch(/^PCK-[A-Z2-9]{8}-[a-z]{2}[!@#$%_-]$/)
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'student-1' },
         data: expect.objectContaining({
@@ -1168,7 +1168,7 @@ describe('UsersService', () => {
     })
 
     it('generates a temporary password when creating a teacher without one', async () => {
-      const created = { id: 'teacher-9', fullName: 'New Teacher', email: 'new@pup.edu', role: 'teacher' }
+      const created = { id: 'teacher-9', fullName: 'New Teacher', email: 'new@example.edu', role: 'teacher' }
       const prisma = {
         user: {
           findUnique: jest.fn().mockResolvedValue(null),
@@ -1178,9 +1178,9 @@ describe('UsersService', () => {
       }
       const service = new UsersService(prisma as never)
 
-      const result = await service.createTeacher({ fullName: 'New Teacher', email: 'new@pup.edu' }, institutionAdmin)
+      const result = await service.createTeacher({ fullName: 'New Teacher', email: 'new@example.edu' }, institutionAdmin)
 
-      expect(result.temporaryPassword).toMatch(/^PUP-/)
+      expect(result.temporaryPassword).toMatch(/^PCK-/)
       expect(prisma.user.create.mock.calls[0][0].data).toMatchObject({ mustChangePassword: true })
       expect(prisma.auditLog.create).toHaveBeenCalledWith({
         data: expect.objectContaining({

@@ -47,7 +47,7 @@ import UsersPage from './page'
 
 const admin: User = {
   id: 'admin-1',
-  email: 'admin@pup.edu.ph',
+  email: 'admin@example.edu.ph',
   fullName: 'System Administrator',
   role: 'super_admin',
   scope: 'institution',
@@ -133,7 +133,7 @@ describe('Users console registrar scope', () => {
   const registrar = (extra: Record<string, unknown> = {}) =>
     ({
       id: 'reg-1',
-      email: 'reg@pup.edu.ph',
+      email: 'reg@example.edu.ph',
       fullName: 'Registrar',
       role: 'teacher',
       isUserRegistrar: true,
@@ -197,7 +197,7 @@ describe('Users console registrar scope', () => {
 describe('Users console email activation', () => {
   const admin: User = {
     id: 'admin-1',
-    email: 'admin@pup.edu.ph',
+    email: 'admin@example.edu.ph',
     fullName: 'System Administrator',
     role: 'super_admin',
     scope: 'institution',

@@ -121,7 +121,7 @@ export default function FacultyLoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="faculty@pup.edu.ph"
+                placeholder="faculty@example.edu.ph"
                 className="pl-16 h-12 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-lg rounded-none focus-visible:ring-maroon dark:focus-visible:ring-golden"
                 required
               />

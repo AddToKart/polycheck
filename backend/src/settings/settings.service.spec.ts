@@ -21,7 +21,7 @@ describe('SettingsService', () => {
     const result = await service.list()
 
     expect(prisma.institutionSetting.findMany).toHaveBeenCalledWith({
-      where: { key: { not: 'ai_api_key' } },
+      where: { key: { notIn: ['ai_api_key', 'institution_logo'] } },
       orderBy: { key: 'asc' },
     })
     expect(result).toBe(rows)
@@ -53,7 +53,7 @@ describe('SettingsService', () => {
       await service.list({ role: 'super_admin' })
 
       expect(prisma.institutionSetting.findMany).toHaveBeenCalledWith({
-        where: { key: { not: 'ai_api_key' } },
+        where: { key: { notIn: ['ai_api_key', 'institution_logo'] } },
         orderBy: { key: 'asc' },
       })
     })
@@ -64,7 +64,7 @@ describe('SettingsService', () => {
       await service.list({ role: 'teacher', isItCoordinator: true })
 
       expect(prisma.institutionSetting.findMany).toHaveBeenCalledWith({
-        where: { key: { not: 'ai_api_key' } },
+        where: { key: { notIn: ['ai_api_key', 'institution_logo'] } },
         orderBy: { key: 'asc' },
       })
     })

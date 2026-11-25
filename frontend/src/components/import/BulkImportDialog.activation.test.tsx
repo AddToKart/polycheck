@@ -58,7 +58,7 @@ beforeEach(() => {
       ...(request.deliveryMode === 'activation_email'
         ? { activation: { queued: 1, fallbackTemporary: 1 } }
         : {}),
-      credentials: [{ rowNumber: 3, studentId: '2024-00002-MN-0', tempPassword: 'PUP-TEMP0001-xy!' }],
+      credentials: [{ rowNumber: 3, studentId: '2024-00002-MN-0', tempPassword: 'PCK-TEMP0001-xy!' }],
     }
   })
 })
@@ -78,7 +78,7 @@ describe('BulkImportDialog email delivery', () => {
       expect(request).not.toHaveProperty('deliveryMode')
     }
     expect(screen.queryByText(/activation email/i)).not.toBeInTheDocument()
-    expect(screen.getByText('PUP-TEMP0001-xy!')).toBeInTheDocument()
+    expect(screen.getByText('PCK-TEMP0001-xy!')).toBeInTheDocument()
   })
 
   it('offers the email option only when the server says it is enabled and configured', async () => {
@@ -125,7 +125,7 @@ describe('BulkImportDialog email delivery', () => {
     // The report explains queued emails and the temp-password fallback.
     expect(screen.getByRole('status')).toHaveTextContent('1 activation email queued')
     expect(screen.getByRole('status')).toHaveTextContent('1 student without an email got a temporary password')
-    expect(screen.getByText('PUP-TEMP0001-xy!')).toBeInTheDocument()
+    expect(screen.getByText('PCK-TEMP0001-xy!')).toBeInTheDocument()
   })
 })
 
@@ -148,7 +148,7 @@ describe('BulkImportDialog Excel upload', () => {
           {
             name: 'BSIT 1-1',
             rows: [
-              ['PUP Santa Maria'],
+              ['Example University - Main Campus'],
               ['Master List'],
               [],
               HEADER,

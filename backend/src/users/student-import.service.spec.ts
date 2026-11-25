@@ -217,7 +217,7 @@ describe('StudentImportService', () => {
         id: 'existing-1',
         studentId: '2024-00001-MN-0',
         fullName: 'Old Name',
-        email: 'old@iskolar.pup.edu.ph',
+        email: 'old@student.example.edu.ph',
         program: 'BSIT',
         yearLevel: 1,
         department: 'CCIS',
@@ -328,7 +328,7 @@ describe('StudentImportService', () => {
         id: 'other-1',
         studentId: '2024-00999-MN-0',
         fullName: 'Other Student',
-        email: 'shared@iskolar.pup.edu.ph',
+        email: 'shared@student.example.edu.ph',
         program: 'BSIT',
         yearLevel: 1,
         department: 'CCIS',
@@ -340,7 +340,7 @@ describe('StudentImportService', () => {
 
     const result = await service.importStudents(
       importRequest([
-        studentRow(2, '2024-00001-MN-0', { email: 'shared@iskolar.pup.edu.ph' }),
+        studentRow(2, '2024-00001-MN-0', { email: 'shared@student.example.edu.ph' }),
         studentRow(3, '2024-00002-MN-0'),
         studentRow(4, '2024-00002-MN-0'),
       ]),

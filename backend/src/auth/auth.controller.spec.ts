@@ -66,7 +66,7 @@ describe('AuthController', () => {
     })
 
     const result = await controller.loginFaculty(
-      { email: 'teacher@pup.edu.ph', password: 'strong-password' },
+      { email: 'teacher@example.edu.ph', password: 'strong-password' },
       request as Request,
       response as unknown as Response,
     )
@@ -102,7 +102,7 @@ describe('AuthController', () => {
     })
 
     const result = await controller.loginFacultyMobile(
-      { email: 'teacher@pup.edu.ph', password: 'strong-password' },
+      { email: 'teacher@example.edu.ph', password: 'strong-password' },
       request as Request,
     )
 

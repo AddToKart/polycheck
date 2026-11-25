@@ -17,7 +17,7 @@ const student = {
 
 const teacher = {
   id: 'teacher-1',
-  email: 'teacher@pup.edu',
+  email: 'teacher@example.edu',
   fullName: 'Prof. Test',
   role: 'teacher',
 }

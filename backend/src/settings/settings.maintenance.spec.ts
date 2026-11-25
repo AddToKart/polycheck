@@ -92,7 +92,7 @@ describe('SettingsService maintenance mode', () => {
 
   it('does not emit maintenance events for unrelated settings', async () => {
     const { events, service } = build([])
-    await service.set('institution_name', 'PUP Santa Maria', 'admin-1')
+    await service.set('institution_name', 'Example University - Main Campus', 'admin-1')
     expect(events.emit).not.toHaveBeenCalled()
   })
 })

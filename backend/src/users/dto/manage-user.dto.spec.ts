@@ -7,7 +7,7 @@ describe('user management DTOs', () => {
     const dto = plainToInstance(CreateStudentDto, {
       fullName: 'Test Student',
       studentId: '2026-00001-MN-0',
-      email: 'student@iskolarngbayan.pup.edu.ph',
+      email: 'student@student.example.edu.ph',
       password: 'Temporary1!Secure',
       program: 'BS Computer Science',
       yearLevel: '2',
@@ -51,7 +51,7 @@ describe('user management DTOs', () => {
   it('applies the same strong-password policy to teacher creation and password resets', async () => {
     const teacher = plainToInstance(CreateTeacherDto, {
       fullName: 'Test Teacher',
-      email: 'teacher@pup.edu.ph',
+      email: 'teacher@example.edu.ph',
       password: 'weak-password',
     })
     const reset = plainToInstance(ResetPasswordDto, { password: 'weak-password' })

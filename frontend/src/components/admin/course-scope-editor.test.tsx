@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { PUP_SANTA_MARIA_COURSES } from '@polycheck/shared'
+import { CAMPUS_COURSES } from '@polycheck/shared'
 import { CourseScopeEditor, type CourseScopeValue } from './course-scope-editor'
 
 afterEach(cleanup)
@@ -14,10 +14,10 @@ function renderEditor(value: CourseScopeValue, subject: 'head' | 'registrar' | '
 describe('CourseScopeEditor', () => {
   it('offers exactly the catalog courses', () => {
     renderEditor({ managedCourses: [], managesAllCourses: false })
-    for (const course of PUP_SANTA_MARIA_COURSES) {
+    for (const course of CAMPUS_COURSES) {
       expect(screen.getByRole('checkbox', { name: `${course.code} — ${course.name}` })).toBeInTheDocument()
     }
-    expect(screen.getAllByRole('checkbox')).toHaveLength(PUP_SANTA_MARIA_COURSES.length + 1)
+    expect(screen.getAllByRole('checkbox')).toHaveLength(CAMPUS_COURSES.length + 1)
   })
 
   it('adds and removes a course without touching the all-courses switch', () => {

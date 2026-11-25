@@ -116,11 +116,11 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('Section detail page (F4 class record export)', () => {
-  it('renders the section with the "Class record (PUP)" export action', async () => {
+  it('renders the section with the "Class record" export action', async () => {
     renderPage()
 
     expect(
-      await screen.findByRole('button', { name: 'Class record (PUP)' }),
+      await screen.findByRole('button', { name: 'Class record' }),
     ).toBeEnabled()
     expect(screen.getAllByText('Introduction to Computing').length).toBeGreaterThan(0)
   })
@@ -136,7 +136,7 @@ describe('Section detail page (F4 class record export)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try Again' }))
 
     expect(
-      await screen.findByRole('button', { name: 'Class record (PUP)' }),
+      await screen.findByRole('button', { name: 'Class record' }),
     ).toBeEnabled()
   })
 
@@ -145,7 +145,7 @@ describe('Section detail page (F4 class record export)', () => {
 
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Class record (PUP)' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Class record' }))
 
     await waitFor(() =>
       expect(apiMock.downloadAssistantFile).toHaveBeenCalledWith(
@@ -161,13 +161,13 @@ describe('Section detail page (F4 class record export)', () => {
 
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Class record (PUP)' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Class record' }))
 
     expect(await screen.findByText('Download failed')).toBeInTheDocument()
     expect(screen.getByText('Not authorized for this section')).toBeInTheDocument()
 
     apiMock.downloadAssistantFile.mockResolvedValue(new Blob(['%PDF-fake']))
-    fireEvent.click(screen.getByRole('button', { name: 'Class record (PUP)' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Class record' }))
     await waitFor(() =>
       expect(apiMock.downloadAssistantFile).toHaveBeenCalledTimes(2),
     )
@@ -183,12 +183,12 @@ describe('Section detail page (F4 class record export)', () => {
 
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Class record (PUP)' }))
-    expect(screen.getByRole('button', { name: 'Class record (PUP)' })).toBeDisabled()
+    fireEvent.click(await screen.findByRole('button', { name: 'Class record' }))
+    expect(screen.getByRole('button', { name: 'Class record' })).toBeDisabled()
 
     resolveDownload(new Blob(['%PDF-fake']))
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Class record (PUP)' })).toBeEnabled(),
+      expect(screen.getByRole('button', { name: 'Class record' })).toBeEnabled(),
     )
     expect(apiMock.downloadAssistantFile).toHaveBeenCalledTimes(1)
   })
@@ -197,7 +197,7 @@ describe('Section detail page (F4 class record export)', () => {
 describe('Section detail roster import handoff', () => {
   it('does not open the roster import on a normal visit', async () => {
     renderPage()
-    await screen.findByText('Class record (PUP)')
+    await screen.findByText('Class record')
     expect(screen.queryByTestId('roster-import')).not.toBeInTheDocument()
   })
 
@@ -211,7 +211,7 @@ describe('Section detail roster import handoff', () => {
     searchParamsMock.current = new URLSearchParams('importRoster=1')
     apiMock.getCurrentUser.mockReturnValue({ ...teacherUser, id: 'admin-1', role: 'super_admin', scope: 'institution' })
     renderPage()
-    await screen.findByText('Class record (PUP)')
+    await screen.findByText('Class record')
     expect(screen.queryByTestId('roster-import')).not.toBeInTheDocument()
   })
 })

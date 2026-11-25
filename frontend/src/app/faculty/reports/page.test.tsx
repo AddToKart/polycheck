@@ -33,7 +33,7 @@ import { NotificationProvider } from '@/lib/notifications'
 const superAdmin = {
   id: 'admin-1',
   fullName: 'System Administrator',
-  email: 'admin@pup.edu.ph',
+  email: 'admin@example.edu.ph',
   role: 'super_admin' as const,
   scope: 'institution' as const,
   isActive: true,
@@ -127,7 +127,7 @@ describe('Reports page (F4 class record export)', () => {
     expect(screen.queryByRole('button', { name: 'Class record' })).not.toBeInTheDocument()
   })
 
-  it('exports the official PUP class record when a section is selected', async () => {
+  it('exports the official class record when a section is selected', async () => {
     apiMock.downloadAssistantFile.mockResolvedValue(new Blob(['%PDF-fake']))
 
     renderPage()
@@ -177,7 +177,7 @@ describe('Reports page course filter and scope banner', () => {
   const head = (extra: Record<string, unknown> = {}) => ({
     id: 'head-1',
     fullName: 'Dr. Head',
-    email: 'head@pup.edu.ph',
+    email: 'head@example.edu.ph',
     role: 'teacher' as const,
     isActive: true,
     isDepartmentHead: true,

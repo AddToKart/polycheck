@@ -25,7 +25,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     id: 'user-1',
     fullName: 'Test User',
     role: 'teacher',
-    email: 'test@pup.edu.ph',
+    email: 'test@example.edu.ph',
     department: 'CCIS',
     isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -92,13 +92,13 @@ describe('admin user helpers', () => {
     const changed = {
       ...values,
       fullName: '  Updated Name ',
-      email: 'updated@pup.edu.ph',
+      email: 'updated@example.edu.ph',
       program: 'Should be ignored',
       yearLevel: '4',
     }
     expect(buildUserUpdateInput(teacher, changed)).toEqual({
       fullName: 'Updated Name',
-      email: 'updated@pup.edu.ph',
+      email: 'updated@example.edu.ph',
     })
 
     const student = makeUser({
@@ -106,14 +106,14 @@ describe('admin user helpers', () => {
       studentId: '2024-00001-MN-0',
       program: 'BSIT',
       yearLevel: 2,
-      email: 'student@pup.edu.ph',
+      email: 'student@example.edu.ph',
     })
     expect(
       buildUserUpdateInput(student, {
         ...editableValuesForUser(student),
         program: 'BSCS',
         yearLevel: '3',
-        email: 'ignored@pup.edu.ph',
+        email: 'ignored@example.edu.ph',
       }),
     ).toEqual({ program: 'BSCS', yearLevel: 3 })
   })
@@ -123,7 +123,7 @@ describe('admin user helpers', () => {
     const base = editableValuesForUser(teacher)
     expect(validateUserUpdate(teacher, base)).toBeNull()
     expect(validateUserUpdate(teacher, { ...base, fullName: 'A' })).toContain('at least 2')
-    expect(validateUserUpdate(teacher, { ...base, email: 'not-an-email' })).toContain('valid PUP email')
+    expect(validateUserUpdate(teacher, { ...base, email: 'not-an-email' })).toContain('valid email')
 
     const student = makeUser({ role: 'student', program: 'BSIT', yearLevel: 2 })
     const studentValues = editableValuesForUser(student)

@@ -1,6 +1,6 @@
 'use client'
 
-import { PUP_SANTA_MARIA_COURSES } from '@polycheck/shared'
+import { CAMPUS_COURSES } from '@polycheck/shared'
 
 export interface CourseScopeValue {
   managedCourses: string[]
@@ -60,7 +60,7 @@ export function CourseScopeEditor({ value, onChange, subject }: CourseScopeEdito
       <fieldset className="mt-3" disabled={value.managesAllCourses}>
         <legend className="sr-only">Managed courses</legend>
         <div className="grid gap-2 sm:grid-cols-2">
-          {PUP_SANTA_MARIA_COURSES.map((course) => {
+          {CAMPUS_COURSES.map((course) => {
             const checked = value.managesAllCourses || value.managedCourses.includes(course.code)
             return (
               <label

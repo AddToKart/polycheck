@@ -25,7 +25,7 @@ import { useNotifications } from '@/lib/notifications'
  * signed CHED "Notice of Impending Drop" slip.
  */
 
-const CHED_NOTICE_FILENAME = 'PUP-CHED-Drop-Notice.pdf'
+const CHED_NOTICE_FILENAME = 'CHED-Drop-Notice.pdf'
 
 const STATUS_ORDER: readonly ReferralStatus[] = [
   'generated',

@@ -3,7 +3,7 @@ import { suggestColumnMapping } from '@polycheck/shared'
 /**
  * Turns the positioned text of a text-based PDF master list into `{ headers, rows }`.
  *
- * Pure layout logic (no PDF engine), so every heuristic is unit-testable. The anchor is the PUP student
+ * Pure layout logic (no PDF engine), so every heuristic is unit-testable. The anchor is the student
  * number (`2024-00001-MN-0`): a very strong signal that a line starts a record. Columns come from the x
  * positions of the header row; lines without a student number that sit right under a record are wrapped
  * continuations (long names) and are merged into it.

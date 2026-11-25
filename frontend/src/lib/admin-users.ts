@@ -121,7 +121,7 @@ export function validateUserUpdate(
     return 'Department is required for student accounts.'
   }
   if (fields.has('email') && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) {
-    return 'Enter a valid PUP email address.'
+    return 'Enter a valid email address.'
   }
   if (fields.has('program') && values.program.trim().length < 2) {
     return 'Program must be at least 2 characters.'

@@ -27,7 +27,7 @@ describe('SessionAuthenticator', () => {
       isActive: true,
       authVersion: 2,
       role: 'teacher',
-      email: 't@pup.edu',
+      email: 't@example.edu',
       studentId: null,
       department: 'CCIS',
       scope: null,
@@ -61,7 +61,7 @@ describe('SessionAuthenticator', () => {
     expect(user).toEqual({
       id: 'user-1',
       role: 'teacher',
-      email: 't@pup.edu',
+      email: 't@example.edu',
       studentId: null,
       department: 'CCIS',
       scope: null,

@@ -2,7 +2,6 @@
 
 import { Fragment, useState } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
 import { usePathname, useSearchParams } from 'next/navigation'
 import {
   canAccessAcademicOversight,
@@ -39,6 +38,7 @@ import ThemeToggle from '@/components/ThemeToggle'
 import { NotificationBell } from './NotificationBell'
 import { useNotificationCenter } from '@/lib/hooks/use-notification-center'
 import { ReportIssueDialog } from '@/components/reports/ReportIssueDialog'
+import { BrandLogo } from '@/components/branding/BrandingProvider'
 
 type NavItem = { label: string; href: string; icon: any; group?: string }
 
@@ -67,7 +67,7 @@ const teacherNav: NavItem[] = [
 ]
 
 // Concurrent administrative designations append grouped suites below the
-// teaching workspace (PUP Santa Maria dual-hat model). Super admins use the
+// teaching workspace (dual-hat model). Super admins use the
 // unchanged console list above instead.
 const itOperationsNav: NavItem[] = [
   { label: 'Server Status', href: '/faculty/server-status', icon: Server, group: 'IT Operations Suite' },
@@ -171,7 +171,7 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
             onMarkRead={(notification) => notificationCenter.markRead(notification)}
             triggerClassName="text-golden hover:bg-white/10 dark:text-maroon-dark dark:hover:bg-maroon-dark/10"
           />
-          <Image src="/pup-logo.png" width={32} height={32} alt="PUP Logo" className="w-8 h-8 shrink-0 object-contain" />
+          <BrandLogo size={32} className="w-8 h-8 shrink-0 object-contain" />
           <button
             onClick={() => setIsOpen(false)}
             className="md:hidden inline-flex min-h-11 min-w-11 items-center justify-center p-1 rounded-none hover:bg-white/10 text-white dark:text-maroon-dark transition-colors"
@@ -309,7 +309,7 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
       {/* Mobile Top Navigation Header */}
       <div className="md:hidden sticky top-0 z-30 w-full h-auto min-h-16 pt-[env(safe-area-inset-top)] bg-maroon dark:bg-zinc-950 text-white dark:text-golden border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between px-6 shrink-0 select-none">
         <div className="flex items-center gap-3">
-          <Image src="/pup-logo.png" width={24} height={24} alt="PUP Logo" className="w-6 h-6 shrink-0 object-contain" />
+          <BrandLogo size={24} className="w-6 h-6 shrink-0 object-contain" />
           <span className="font-heading font-bold text-lg tracking-tight">Polycheck</span>
         </div>
         <div className="flex items-center gap-1">

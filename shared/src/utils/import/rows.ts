@@ -39,7 +39,7 @@ export function buildStudentRows(
         message:
           studentIdResult.issue === 'EXCEL_MANGLED_STUDENT_NUMBER'
             ? 'Student number looks mangled by Excel. Re-export the CSV with the SN column formatted as text.'
-            : 'Enter a valid PUP student number (e.g. 2024-00001-MN-0).',
+            : 'Enter a valid student number (e.g. 2024-00001-MN-0).',
       })
     }
     if (nameResult.issue) {
@@ -112,7 +112,7 @@ export function buildEnrollRows(
         message:
           studentIdResult.issue === 'EXCEL_MANGLED_STUDENT_NUMBER'
             ? 'Student number looks mangled by Excel. Re-export the CSV with the SN column formatted as text.'
-            : 'Enter a valid PUP student number (e.g. 2024-00001-MN-0).',
+            : 'Enter a valid student number (e.g. 2024-00001-MN-0).',
       })
       return
     }

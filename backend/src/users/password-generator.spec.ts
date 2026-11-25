@@ -2,7 +2,7 @@ import { isStrongPassword } from '../auth/password-policy'
 import { generateTemporaryPassword } from './password-generator'
 
 describe('generateTemporaryPassword', () => {
-  it('always satisfies the 12-character PUP password policy', () => {
+  it('always satisfies the 12-character password policy', () => {
     for (let index = 0; index < 200; index += 1) {
       const password = generateTemporaryPassword()
       expect(password.length).toBeGreaterThanOrEqual(12)
@@ -11,10 +11,10 @@ describe('generateTemporaryPassword', () => {
     }
   })
 
-  it('uses the human-readable PUP format without ambiguous glyphs', () => {
+  it('uses the human-readable format without ambiguous glyphs', () => {
     for (let index = 0; index < 50; index += 1) {
       const password = generateTemporaryPassword()
-      expect(password).toMatch(/^PUP-[A-Z2-9]{8}-[a-z]{2}[!@#$%_-]$/)
+      expect(password).toMatch(/^PCK-[A-Z2-9]{8}-[a-z]{2}[!@#$%_-]$/)
       expect(password).not.toMatch(/[ILO01]/)
     }
   })

@@ -239,8 +239,8 @@ All seeded accounts use the default password: **`PolycheckLocal1!`**
 
 | Role            | Email / Student ID      | Description                                        |
 | :-------------- | :---------------------- | :------------------------------------------------- |
-| **Super Admin** | `mcreyes@pup.edu.ph`    | Dr. Maria Concepcion Reyes (CCIS Department Chair) |
-| **Teacher**     | `jmdelacruz@pup.edu.ph` | Prof. Juan Miguel Dela Cruz (CCIS Faculty)         |
+| **Super Admin** | `mcreyes@example.edu.ph`    | Dr. Maria Concepcion Reyes (CCIS Department Chair) |
+| **Teacher**     | `jmdelacruz@example.edu.ph` | Prof. Juan Miguel Dela Cruz (CCIS Faculty)         |
 | **Student**     | `2024-00001-MN-0`       | Alexandra Marie Reyes (BS Computer Science)        |
 
 ---

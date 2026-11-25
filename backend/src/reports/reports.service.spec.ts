@@ -31,7 +31,7 @@ function makeRow(overrides: Record<string, unknown> = {}) {
       fullName: 'Juan Dela Cruz',
       role: 'student',
       studentId: '2024-00001-MN-0',
-      email: 'amreyes@iskolar.pup.edu.ph',
+      email: 'amreyes@student.example.edu.ph',
       department: 'CCIS',
     },
     ...overrides,

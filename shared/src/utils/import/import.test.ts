@@ -4,15 +4,15 @@ import { suggestColumnMapping } from './map'
 import { parseCsv } from './parse'
 import { buildEnrollRows, buildStudentRows } from './rows'
 
-const PUP_CSV = [
+const MASTER_LIST_CSV = [
   '\uFEFF"Student No.","Name","Program","Year Level","College/Department","Email Address"',
-  '"2024-00001-MN-0","Dela Cruz, Juan M.","BSIT","1st Year","CCIS","JUAN@PUP.EDU.PH"',
-  '"2024-00002-MN-0","Santos, Maria L.","BSIT","2nd Year","CCIS","maria@pup.edu.ph"',
+  '"2024-00001-MN-0","Dela Cruz, Juan M.","BSIT","1st Year","CCIS","JUAN@EXAMPLE.EDU.PH"',
+  '"2024-00002-MN-0","Santos, Maria L.","BSIT","2nd Year","CCIS","maria@example.edu.ph"',
 ].join('\r\n')
 
-describe('PUP master-list parsing', () => {
-  it('parses BOM/CRLF exports and auto-maps PUP SIS headers', () => {
-    const parsed = parseCsv(PUP_CSV)
+describe('Master-list parsing', () => {
+  it('parses BOM/CRLF exports and auto-maps registrar SIS headers', () => {
+    const parsed = parseCsv(MASTER_LIST_CSV)
     expect(parsed.errors).toEqual([])
     expect(parsed.headers).toEqual([
       'Student No.',
@@ -41,7 +41,7 @@ describe('PUP master-list parsing', () => {
         rowNumber: 2,
         studentId: '2024-00001-MN-0',
         fullName: 'Dela Cruz, Juan M.',
-        email: 'juan@pup.edu.ph',
+        email: 'juan@example.edu.ph',
         program: 'BSIT',
         yearLevel: 1,
         department: 'CCIS',
@@ -50,7 +50,7 @@ describe('PUP master-list parsing', () => {
         rowNumber: 3,
         studentId: '2024-00002-MN-0',
         fullName: 'Santos, Maria L.',
-        email: 'maria@pup.edu.ph',
+        email: 'maria@example.edu.ph',
         program: 'BSIT',
         yearLevel: 2,
         department: 'CCIS',
@@ -112,7 +112,7 @@ describe('PUP master-list parsing', () => {
   })
 
   it('builds enrollment rows with verification-only fields', () => {
-    const parsed = parseCsv(PUP_CSV)
+    const parsed = parseCsv(MASTER_LIST_CSV)
     const built = buildEnrollRows(parsed.rows, suggestColumnMapping(parsed.headers))
     expect(built.issues).toEqual([])
     expect(built.rows[0]).toMatchObject({

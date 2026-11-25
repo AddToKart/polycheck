@@ -20,7 +20,7 @@ import {
 import { api, isNetworkFailure } from '@/lib/api-client'
 import { API_BASE } from '@/lib/api-config'
 import QRCode from 'qrcode'
-import { pupColors } from '@/lib/colors'
+import { brandColors } from '@/lib/colors'
 import { LoadingSpinner } from '@/lib/hooks'
 import { useTrustedNow } from '@/lib/hooks/use-trusted-now'
 import KioskQrRing from '@/components/kiosk/KioskQrRing'
@@ -412,7 +412,7 @@ export default function SessionKioskPage() {
       width: 1024,
       margin: 3,
       errorCorrectionLevel: 'M',
-      color: { dark: pupColors.black, light: pupColors.white },
+      color: { dark: brandColors.black, light: brandColors.white },
     })
       .then((dataUrl) => {
         if (active) setQrDataUrl(dataUrl)

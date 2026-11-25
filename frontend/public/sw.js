@@ -110,7 +110,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/icons/') ||
     url.pathname.startsWith('/fonts/') ||
     url.pathname === '/manifest.webmanifest' ||
-    url.pathname === '/pup-logo.png'
+    url.pathname === '/brand-mark.png'
   ) {
     event.respondWith(cacheFirst(request))
     return
@@ -183,7 +183,7 @@ async function clearShellDocuments() {
           if (PRECACHE_URLS.includes(pathname)) return false
           if (pathname.startsWith('/_next/static/')) return false
           if (pathname.startsWith('/icons/') || pathname.startsWith('/fonts/')) return false
-          if (pathname === '/pup-logo.png') return false
+          if (pathname === '/brand-mark.png') return false
           return true
         })
         .map((request) => cache.delete(request)),

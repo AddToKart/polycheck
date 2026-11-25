@@ -387,7 +387,7 @@ export class EnrollmentImportService {
           rowNumber,
           column: 'studentId',
           code: 'INVALID_STUDENT_NUMBER',
-          message: 'Enter a valid PUP student number (e.g. 2024-00001-MN-0).',
+          message: 'Enter a valid student number (e.g. 2024-00001-MN-0).',
         })
         blocked = true
       }

@@ -22,7 +22,7 @@ import { PaginationBar } from '@/components/ui/pagination-bar'
 const PAGE_SIZE = 10
 const SESSIONS_PAGE_SIZE = 6
 
-/** F4 (WF-LD1): the official PUP class record is generated server-side (pdfkit). */
+/** F4 (WF-LD1): the official class record is generated server-side (pdfkit). */
 function triggerBrowserDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
@@ -61,7 +61,7 @@ export default function SectionDetailPage() {
   const [sessionPermissions, setSessionPermissions] = useState<SessionPermission[]>([])
   const [expiredPermissionIds, setExpiredPermissionIds] = useState<Set<string>>(new Set())
 
-  // F4: the official PUP class record export.
+  // F4: the official class record export.
   const { addNotification } = useNotifications()
   const [classRecordLoading, setClassRecordLoading] = useState(false)
   const handleClassRecordExport = async () => {
@@ -77,13 +77,13 @@ export default function SectionDetailPage() {
       triggerBrowserDownload(
         blob,
         filenameSegments.length > 0
-          ? `PUP-Class-Record-${filenameSegments.join('-')}.pdf`
-          : 'PUP-Class-Record.pdf',
+          ? `Class-Record-${filenameSegments.join('-')}.pdf`
+          : 'Class-Record.pdf',
       )
       addNotification(
         'success',
         'Class record downloaded',
-        'The official PUP class record PDF has been saved.',
+        'The official class record PDF has been saved.',
       )
     } catch (error) {
       addNotification(
@@ -344,12 +344,12 @@ export default function SectionDetailPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-brand-black">
       <LoadingSpinner size="lg" />
     </div>
   )
   if (loadError) return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-pup-black p-6">
+    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-brand-black p-6">
       <Card className="w-full max-w-md">
         <CardContent className="p-8">
           <ErrorDisplay message={loadError} onRetry={() => setReloadKey((key) => key + 1)} />
@@ -364,7 +364,7 @@ export default function SectionDetailPage() {
   const totalAbsent = students.reduce((sum, s) => sum + s.attendance.absent, 0)
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
       <Sidebar user={user} onLogout={handleLogout} backHref={`/faculty/subjects/${section.subjectId}`} backLabel="Back to Subject" />
 
       <main className="flex-1 overflow-y-auto">
@@ -700,7 +700,7 @@ export default function SectionDetailPage() {
                   ) : (
                     <FileDown className="w-3.5 h-3.5" />
                   )}
-                  Class record (PUP)
+                  Class record
                 </Button>
                 <Button variant="outline" size="sm" asChild>
                   <Link href={sessionsListHref(id)}>All sessions</Link>

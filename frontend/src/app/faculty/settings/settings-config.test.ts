@@ -74,7 +74,7 @@ describe('settings tab routing', () => {
 describe('settings dirty tracking', () => {
   it('marks only the tab whose values diverge from the saved snapshot', () => {
     const saved = { ...allEnabled }
-    const values = { ...saved, institution_name: 'PUP Santa Maria' }
+    const values = { ...saved, institution_name: 'Example University - Main Campus' }
 
     expect(isTabDirty('institution', values, saved)).toBe(true)
     expect(isTabDirty('sessions', values, saved)).toBe(false)
@@ -129,11 +129,11 @@ describe('mergeSettingValues', () => {
 
   it('lets persisted rows win over defaults', () => {
     const merged = mergeSettingValues([
-      { key: 'institution_name', value: 'PUP Santa Maria' },
+      { key: 'institution_name', value: 'Example University - Main Campus' },
       { key: 'ai_assistant_enabled', value: 'false' },
       { key: 'default_qr_validity_minutes', value: '10' },
     ])
-    expect(merged.institution_name).toBe('PUP Santa Maria')
+    expect(merged.institution_name).toBe('Example University - Main Campus')
     expect(merged.ai_assistant_enabled).toBe('false')
     expect(merged.default_qr_validity_minutes).toBe('10')
     expect(merged.ai_assistant_teacher_enabled).toBe('true')

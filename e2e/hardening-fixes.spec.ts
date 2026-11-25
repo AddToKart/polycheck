@@ -283,7 +283,7 @@ test.describe('V4 — teacher activation geofence', () => {
     // The override is on the audit trail (super-admin scope).
     await apiLoginFaculty(page.request, FACULTY_EMAIL)
     const admin = await browser.newContext()
-    await apiLoginFaculty(admin.request, 'mcreyes@pup.edu.ph')
+    await apiLoginFaculty(admin.request, 'mcreyes@example.edu.ph')
     const auditResponse = await admin.request.get(
       `${API_BASE}/audit-logs?action=session.activation_override&pageSize=50`,
       { failOnStatusCode: false },

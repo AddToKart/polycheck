@@ -346,7 +346,7 @@ function DisputesContent() {
 
   if (loadError) {
     return (
-      <div className="flex flex-col md:flex-row min-h-screen bg-zinc-100 dark:bg-pup-black">
+      <div className="flex flex-col md:flex-row min-h-screen bg-zinc-100 dark:bg-brand-black">
         <Sidebar user={user} onLogout={handleLogout} />
         <div className="flex flex-1 items-center justify-center p-6">
           <Card className="w-full max-w-md rounded-none dark:border-golden/15 dark:bg-surface-dark">
@@ -361,17 +361,17 @@ function DisputesContent() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-100 dark:bg-pup-black">
+      <div className="flex min-h-screen items-center justify-center bg-zinc-100 dark:bg-brand-black">
         <LoadingSpinner size="lg" />
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-zinc-100 dark:bg-pup-black">
+    <div className="flex flex-col md:flex-row min-h-screen bg-zinc-100 dark:bg-brand-black">
       <Sidebar user={user} onLogout={handleLogout} />
       <div className="flex-1 overflow-y-auto">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-300/80 dark:border-zinc-800">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white dark:bg-brand-black border-b border-zinc-300/80 dark:border-zinc-800">
           <div className="min-w-0">
             <h1 className="text-xl font-heading font-bold text-maroon-dark dark:text-golden">Disputed Records</h1>
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
@@ -570,7 +570,7 @@ function DisputesContent() {
                                             <button
                                               type="button"
                                               key={record.id}
-                                              className="text-left rounded-none border border-zinc-200 dark:border-golden/15 dark:bg-pup-black hover:bg-zinc-50/50 dark:hover:bg-surface-dark cursor-pointer transition-colors"
+                                              className="text-left rounded-none border border-zinc-200 dark:border-golden/15 dark:bg-brand-black hover:bg-zinc-50/50 dark:hover:bg-surface-dark cursor-pointer transition-colors"
                                               onClick={() => openDispute(record)}
                                               aria-label={`${activeTab === 'pending' ? 'Review' : 'View'} dispute from ${record.studentName}`}
                                             >
@@ -638,7 +638,7 @@ function DisputesContent() {
               const rSubj = rSec ? subjectMap.get(rSec.subjectId) : undefined
               const rSess = sessionMap.get(selectedRecord.sessionId)
               return (
-                <div className="bg-zinc-50 dark:bg-pup-black border border-zinc-200 dark:border-zinc-800 p-4 mb-4 space-y-2 text-sm rounded-none">
+                <div className="bg-zinc-50 dark:bg-brand-black border border-zinc-200 dark:border-zinc-800 p-4 mb-4 space-y-2 text-sm rounded-none">
                   {selectedRecord.disputeResolved && (
                     <div className="flex gap-2 pb-2 mb-2 border-b border-zinc-200 dark:border-zinc-800 items-center">
                       <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
@@ -725,7 +725,7 @@ function DisputesContent() {
                 </div>
               </>
             ) : (
-              <div className="text-center py-3 bg-zinc-100 dark:bg-pup-black border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400 mb-4 rounded-none">
+              <div className="text-center py-3 bg-zinc-100 dark:bg-brand-black border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400 mb-4 rounded-none">
                 {selectedRecord.disputeResolved
                   ? 'This dispute has been resolved and logged in history.'
                   : 'This dispute is awaiting action from the assigned teacher.'}

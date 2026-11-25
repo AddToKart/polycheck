@@ -2,7 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common'
 import type { RequestUser } from '../auth/authenticated-principal'
 import {
   AT_RISK_NOTICE_ACTIONS,
-  AT_RISK_NOTICE_CITATION_LINES,
+  atRiskNoticeCitationLines,
   AT_RISK_NOTICE_SIGNOFFS,
   AT_RISK_NOTICE_TITLE,
   buildClassRecordGrid,
@@ -104,9 +104,17 @@ function createPrisma(section: unknown = masterSection, sessionFixture: unknown 
     },
     session: { findUnique: jest.fn().mockResolvedValue(sessionFixture) },
     institutionSetting: {
-      findUnique: jest.fn().mockResolvedValue({ value: 'Polytechnic University of the Philippines' }),
+      findUnique: jest.fn(settingLookup),
     },
   }
+}
+
+/** Per-key institution settings, as the service reads them one at a time. */
+const settingLookup = async ({ where }: { where: { key: string } }): Promise<{ value: string } | null> => {
+  if (where.key === 'institution_name') return { value: 'Polytechnic University of the Philippines' }
+  if (where.key === 'institution_short_name') return { value: 'PUP' }
+  if (where.key === 'institution_campus') return { value: 'Santa Maria' }
+  return null
 }
 
 describe('DocsService', () => {
@@ -347,7 +355,7 @@ describe('DocsService', () => {
         },
         attendanceRecord: { findMany: jest.fn().mockResolvedValue(records) },
         institutionSetting: {
-          findUnique: jest.fn().mockResolvedValue({ value: 'Polytechnic University of the Philippines' }),
+          findUnique: jest.fn(settingLookup),
         },
       }
     }
@@ -579,7 +587,7 @@ describe('DocsService', () => {
           findUnique: jest.fn(async ({ where }: { where: { key: string } }) =>
             where.key === 'geolocation_retention_days' && options.retentionDays
               ? { value: options.retentionDays }
-              : { value: 'Polytechnic University of the Philippines' },
+              : settingLookup({ where }),
           ),
         },
         attendanceRecord: { count: jest.fn().mockResolvedValue(0) },
@@ -713,9 +721,7 @@ describe('DocsService', () => {
         },
         institutionSetting: {
           findUnique: jest.fn(async ({ where }: { where: { key: string } }) =>
-            where.key === 'attendance_min_rate_percent'
-              ? { value: '75' }
-              : { value: 'Polytechnic University of the Philippines' },
+            where.key === 'attendance_min_rate_percent' ? { value: '75' } : settingLookup({ where }),
           ),
         },
         attendanceRecord: {
@@ -741,7 +747,7 @@ describe('DocsService', () => {
 
     it('probes the directive-mandated content pieces', () => {
       expect(AT_RISK_NOTICE_TITLE).toBe('NOTICE OF IMPENDING DROP')
-      const citations = AT_RISK_NOTICE_CITATION_LINES.join(' ')
+      const citations = atRiskNoticeCitationLines('PUP').join(' ')
       expect(citations).toContain('CHED CMO No. 40')
       expect(citations).toContain('Article V, Section 21')
       expect(citations).toContain('PUP Student Handbook')

@@ -31,7 +31,7 @@ export interface User {
     canEmergencyUnbindDevices: boolean
   }
   /**
-   * Concurrent administrative designations (PUP Santa Maria dual-hat model).
+   * Concurrent administrative designations (dual-hat model).
    * Teacher accounts only; super admins hold all three suites implicitly.
    */
   isItCoordinator?: boolean

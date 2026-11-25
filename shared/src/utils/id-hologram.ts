@@ -15,7 +15,7 @@
 /**
  * Fixed lead segment of every hologram watermark line.
  */
-export const HOLOGRAM_WATERMARK_TEXT = 'PUP-ID-VERIFIED' as const
+export const HOLOGRAM_WATERMARK_TEXT = 'POLYCHECK-ID-VERIFIED' as const
 
 /**
  * Chip shown when the ID is not bound to a device installation (e.g. the
@@ -93,7 +93,7 @@ export function maskDeviceChip(deviceId?: string | null): string {
 
 /**
  * Assembles one watermark line, e.g.
- * `PUP-ID-VERIFIED • LIVE UTC: 2026-11-02 08:01:14 • DEVICE-BOUND •·•·4F2A`.
+ * `POLYCHECK-ID-VERIFIED • LIVE UTC: 2026-11-02 08:01:14 • DEVICE-BOUND •·•·4F2A`.
  * Rendered repeatedly in a diagonal overlay so every screenshot of the ID
  * carries the stamp within frame.
  */

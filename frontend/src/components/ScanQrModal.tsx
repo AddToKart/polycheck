@@ -459,7 +459,7 @@ export default function ScanQrModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-pup-black/90 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-brand-black/90 backdrop-blur-sm"
       aria-modal="true"
       role="dialog"
       aria-labelledby="scan-qr-title"

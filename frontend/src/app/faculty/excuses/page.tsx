@@ -233,10 +233,10 @@ function ExcusesContent() {
   const evidenceUrl = selected ? resolveEvidenceUrl(selected.excuseEvidencePath) : null
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-zinc-100 dark:bg-pup-black">
+    <div className="flex flex-col md:flex-row min-h-screen bg-zinc-100 dark:bg-brand-black">
       <Sidebar user={user} onLogout={() => { void requestUserLogout().then((outcome) => { if (outcome.loggedOut) router.push('/') }) }} />
       <main className="flex-1 overflow-y-auto">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-300/80 dark:border-zinc-800">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white dark:bg-brand-black border-b border-zinc-300/80 dark:border-zinc-800">
           <div className="min-w-0">
             <h1 className="text-xl font-heading font-bold text-maroon-dark dark:text-golden">Excuse Requests</h1>
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
@@ -407,7 +407,7 @@ function ExcusesContent() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="bg-zinc-50 dark:bg-pup-black border border-zinc-200 dark:border-zinc-800 p-4 mb-4 space-y-2 text-sm rounded-none">
+              <div className="bg-zinc-50 dark:bg-brand-black border border-zinc-200 dark:border-zinc-800 p-4 mb-4 space-y-2 text-sm rounded-none">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-zinc-500 dark:text-zinc-400">Status</span>
                   {selected.excuseStatus ? <ExcuseStatusBadge status={selected.excuseStatus} /> : null}
@@ -456,7 +456,7 @@ function ExcusesContent() {
                       href={evidenceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-800 dark:bg-pup-black"
+                      className="block border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-800 dark:bg-brand-black"
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
@@ -529,7 +529,7 @@ function ExcusesContent() {
                   </div>
                 </div>
               ) : (
-                <div className="mb-4 border border-zinc-200 bg-zinc-100 px-3 py-3 text-center text-xs text-zinc-500 dark:border-zinc-800 dark:bg-pup-black dark:text-zinc-400">
+                <div className="mb-4 border border-zinc-200 bg-zinc-100 px-3 py-3 text-center text-xs text-zinc-500 dark:border-zinc-800 dark:bg-brand-black dark:text-zinc-400">
                   {selected.excuseStatus === 'requested'
                     ? 'Read-only oversight. The assigned teacher reviews this request.'
                     : 'This request has been decided and logged in history.'}

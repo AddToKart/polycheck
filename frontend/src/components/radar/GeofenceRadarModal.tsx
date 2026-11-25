@@ -21,8 +21,8 @@ import {
   useMap,
 } from '@/components/ui/map'
 import GeofenceCircle from '@/components/GeofenceCircle'
-import { pupSantaMaria, type CampusConfig } from '@polycheck/shared/map'
-import { pupColors } from '@/lib/colors'
+import { defaultCampus, type CampusConfig } from '@polycheck/shared/map'
+import { brandColors } from '@/lib/colors'
 import { API_BASE } from '@/lib/api-config'
 import { api } from '@/lib/api-client'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -372,7 +372,7 @@ function RadarCampusLayer({ campus }: { campus: CampusConfig }) {
       type: 'fill',
       source: polygonSourceId,
       paint: {
-        'fill-color': pupColors.maroon,
+        'fill-color': brandColors.maroon,
         'fill-opacity': 0.08,
       },
     })
@@ -383,7 +383,7 @@ function RadarCampusLayer({ campus }: { campus: CampusConfig }) {
       source: polygonSourceId,
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: {
-        'line-color': pupColors.maroon,
+        'line-color': brandColors.maroon,
         'line-width': 1.5,
         'line-opacity': 0.4,
       },
@@ -402,8 +402,8 @@ function RadarCampusLayer({ campus }: { campus: CampusConfig }) {
         'text-allow-overlap': false,
       },
       paint: {
-        'text-color': pupColors.maroon,
-        'text-halo-color': pupColors.white,
+        'text-color': brandColors.maroon,
+        'text-halo-color': brandColors.white,
         'text-halo-width': 2,
         'text-opacity': 0.85,
       },
@@ -563,7 +563,7 @@ export default function GeofenceRadarModal({
                 zoom={17}
                 className="h-full w-full"
               >
-                <RadarCampusLayer campus={pupSantaMaria} />
+                <RadarCampusLayer campus={defaultCampus} />
                 <GeofenceCircle
                   latitude={geofence.latitude}
                   longitude={geofence.longitude}

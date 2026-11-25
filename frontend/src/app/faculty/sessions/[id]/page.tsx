@@ -21,7 +21,7 @@ import { useNotifications } from '@/lib/notifications'
 import { useRunMutation } from '@/lib/run-mutation'
 import CampusMap from '@/components/CampusMap'
 import { subscribeToSession } from '@/lib/realtime'
-import { pupColors } from '@/lib/colors'
+import { brandColors } from '@/lib/colors'
 import { SessionRequestCoordinator } from '@/lib/session-request-coordinator'
 import { OutageSimulator } from '@/components/dev/OutageSimulator'
 import { StudentGovernanceActions } from '@/components/faculty/StudentGovernanceActions'
@@ -240,7 +240,7 @@ export default function SessionDetailPage() {
       width: 1024,
       margin: 3,
       errorCorrectionLevel: 'M',
-      color: { dark: pupColors.black, light: pupColors.white },
+      color: { dark: brandColors.black, light: brandColors.white },
     }).then((dataUrl) => {
       if (active) setQrDataUrl(dataUrl)
     }).catch((error) => {
@@ -311,18 +311,18 @@ export default function SessionDetailPage() {
   }, [sessionIsActive, qrTokenExpiresAt, gracePeriodMinutes, trustedNowMs])
 
   if (loading) return (
-    <div className="flex h-screen flex-col gap-4 bg-zinc-100 dark:bg-pup-black items-center justify-center" role="status" aria-live="polite">
+    <div className="flex h-screen flex-col gap-4 bg-zinc-100 dark:bg-brand-black items-center justify-center" role="status" aria-live="polite">
       <LoadingSpinner size="lg" />
       <p className="text-sm font-semibold text-maroon-dark dark:text-golden">Loading session cockpit…</p>
     </div>
   )
   if (redirecting) return (
-    <div className="flex h-screen bg-zinc-100 dark:bg-pup-black items-center justify-center" role="status" aria-live="polite">
+    <div className="flex h-screen bg-zinc-100 dark:bg-brand-black items-center justify-center" role="status" aria-live="polite">
       <LoadingSpinner size="lg" />
     </div>
   )
   if (initializationError) return (
-    <main className="flex min-h-screen items-center justify-center bg-zinc-100 px-6 dark:bg-pup-black">
+    <main className="flex min-h-screen items-center justify-center bg-zinc-100 px-6 dark:bg-brand-black">
       <section className="w-full max-w-md border border-zinc-200 bg-white p-8 text-center dark:border-golden/15 dark:bg-surface-dark" role="alert">
         <p className="text-xs font-bold uppercase tracking-widest text-maroon dark:text-golden">Session unavailable</p>
         <h1 className="mt-2 font-heading text-2xl font-bold text-maroon-dark dark:text-white">The session cockpit couldn’t load</h1>
@@ -611,10 +611,10 @@ export default function SessionDetailPage() {
   }
 
   return (
-    <div className="flex h-screen bg-zinc-100 dark:bg-pup-black">
+    <div className="flex h-screen bg-zinc-100 dark:bg-brand-black">
       <Sidebar user={user} onLogout={handleLogout} backHref="/faculty/sessions" backLabel="Back to Sessions" />
       <div className="flex-1 overflow-y-auto">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white dark:bg-pup-black border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white dark:bg-brand-black border-b border-zinc-200 dark:border-zinc-800">
           <div className="flex min-w-0 items-center gap-3">
             <Link href="/faculty/sessions" aria-label="Back to sessions" className="inline-flex min-h-11 min-w-11 items-center justify-center p-1 hover:opacity-70 md:min-h-0 md:min-w-0">
               <ArrowLeft className="w-5 h-5 text-maroon dark:text-golden" />
@@ -959,7 +959,7 @@ export default function SessionDetailPage() {
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {proofsOfClass.map((poc) => (
-                    <div key={poc.id} className="border border-zinc-200 dark:border-golden/15 p-3 bg-zinc-50 dark:bg-pup-black">
+                    <div key={poc.id} className="border border-zinc-200 dark:border-golden/15 p-3 bg-zinc-50 dark:bg-brand-black">
                       <div className="w-full aspect-video bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center mb-2">
                         <Camera className="w-8 h-8 text-zinc-400" />
                       </div>
@@ -1381,7 +1381,7 @@ export default function SessionDetailPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto bg-white dark:bg-pup-black border border-zinc-200 dark:border-zinc-800 p-6">
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto bg-white dark:bg-brand-black border border-zinc-200 dark:border-zinc-800 p-6">
           {selectedStudent && (
             <div className="space-y-5">
               <DialogHeader className="text-left">
@@ -1407,7 +1407,7 @@ export default function SessionDetailPage() {
                   >
                     {/* Front Face */}
                     <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] bg-white dark:bg-id-paper-dark border-2 border-maroon dark:border-golden shadow-md overflow-hidden flex flex-col">
-                      {/* PUP Header */}
+                      {/* Institution header */}
                       <div className="bg-maroon px-4 py-2 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800">
                         <div>
                           <p className="text-[10px] font-bold text-golden tracking-wider leading-none">POLYTECHNIC UNIVERSITY</p>
@@ -1423,7 +1423,7 @@ export default function SessionDetailPage() {
                         <div
                           className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none"
                           style={{
-                            backgroundImage: 'url(/pup-logo.png)',
+                            backgroundImage: 'url(/brand-mark.png)',
                             backgroundPosition: 'center',
                             backgroundSize: 'contain',
                             backgroundRepeat: 'no-repeat',

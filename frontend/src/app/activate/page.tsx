@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Circle, Loader2, MailCheck } from 'lucide-react'
+import { useBranding } from '@/components/branding/BrandingProvider'
 import { api } from '@/lib/api-client'
 import {
   ACTIVATION_PROBLEM_COPY,
@@ -26,6 +27,7 @@ type Phase =
   | { name: 'check_failed'; message: string }
 
 function Shell({ children }: { children: React.ReactNode }) {
+  const branding = useBranding()
   return (
     <main className="min-h-dvh bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <header className="bg-maroon px-4 py-4 text-white">
@@ -39,7 +41,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           {children}
         </div>
         <p className="mt-4 text-center text-xs text-zinc-500 dark:text-zinc-400">
-          PUP Santa Maria · If something looks wrong, do not enter your details and contact the registrar.
+          {branding.name}{branding.campus ? ` · ${branding.campus}` : ''} · If something looks wrong, do not enter your details and contact the registrar.
         </p>
       </div>
     </main>

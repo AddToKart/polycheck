@@ -5,7 +5,7 @@ installSessionCleanup()
 
 test.describe('Super Admin Flows', () => {
   test.beforeEach(async ({ page }) => {
-    await loginFaculty(page, 'mcreyes@pup.edu.ph')
+    await loginFaculty(page, 'mcreyes@example.edu.ph')
   })
 
   test('dashboard shows institution overview', async ({ page }) => {
@@ -46,13 +46,13 @@ test.describe('Super Admin Flows', () => {
 
   test('creates a teacher account and manages it (reset password, disable, enable)', async ({ page }) => {
     const errors = trackErrors(page)
-    const email = `e2e.teacher.${Date.now()}@pup.edu.ph`
+    const email = `e2e.teacher.${Date.now()}@example.edu.ph`
 
     await page.goto('/faculty/users')
     await page.getByRole('button', { name: 'Add Teacher' }).click()
     await expect(page.getByText('Create teacher account')).toBeVisible()
     await page.getByLabel('Full name').fill('E2E Test Teacher')
-    await page.getByLabel('PUP email').fill(email)
+    await page.getByLabel('Institutional email').fill(email)
     await page.getByLabel('Department', { exact: true }).fill('CCIS')
     await page.getByRole('button', { name: 'Create Teacher' }).click()
     await expect(page.getByText('Teacher account created')).toBeVisible()

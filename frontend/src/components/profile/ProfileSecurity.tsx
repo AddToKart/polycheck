@@ -66,7 +66,7 @@ export function ContactSettingsForm({ user, onUpdated }: { user: User; onUpdated
         </div>
       </div>
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
-        These are secondary contact channels for your account. Clear a field and save to remove it; your PUP sign-in
+        These are secondary contact channels for your account. Clear a field and save to remove it; your institutional sign-in
         identity never changes here.
       </p>
       {error ? (

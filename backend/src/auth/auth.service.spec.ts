@@ -210,7 +210,7 @@ describe('AuthService', () => {
     })
 
     it('forbids when account role is not student', async () => {
-      prisma.user.findUnique.mockResolvedValue(buildUser({ role: 'teacher', email: 't@pup.edu' }))
+      prisma.user.findUnique.mockResolvedValue(buildUser({ role: 'teacher', email: 't@example.edu' }))
       await expect(service.loginStudent('S-001', VALID_PASSWORD)).rejects.toThrow(ForbiddenException)
     })
 
@@ -235,16 +235,16 @@ describe('AuthService', () => {
       buildUser({
         id: 'teacher-1',
         studentId: null,
-        email: 'teacher@pup.edu',
+        email: 'teacher@example.edu',
         role: 'teacher',
         department: 'CS',
       })
 
     it('returns auth result for valid faculty credentials (email normalized lowercase)', async () => {
       prisma.user.findUnique.mockResolvedValue(facultyUser())
-      const result = await service.loginFaculty('Teacher@PUP.edu', VALID_PASSWORD)
+      const result = await service.loginFaculty('Teacher@Example.edu', VALID_PASSWORD)
       expect(result.token).toBe('signed-bearer-token')
-      expect(prisma.user.findUnique.mock.calls[0][0]).toEqual({ where: { email: 'teacher@pup.edu' } })
+      expect(prisma.user.findUnique.mock.calls[0][0]).toEqual({ where: { email: 'teacher@example.edu' } })
       // Staff logins are never serialized by the student login lock.
       expect(redis.acquireLock).not.toHaveBeenCalled()
       // Staff accounts may hold concurrent sessions: the login replacement
@@ -257,45 +257,45 @@ describe('AuthService', () => {
       prisma.user.findUnique.mockResolvedValue(
         buildUser({
           id: 'admin-1',
-          email: 'admin@pup.edu',
+          email: 'admin@example.edu',
           role: 'super_admin',
           studentId: null,
           department: null,
           scope: 'institution',
         }),
       )
-      await service.loginFaculty('admin@pup.edu', VALID_PASSWORD)
+      await service.loginFaculty('admin@example.edu', VALID_PASSWORD)
       expect(events.emit).not.toHaveBeenCalledWith('auth.session-replaced', expect.anything())
     })
 
     it('rejects invalid password', async () => {
       prisma.user.findUnique.mockResolvedValue(facultyUser())
-      await expect(service.loginFaculty('teacher@pup.edu', 'bad')).rejects.toThrow(UnauthorizedException)
+      await expect(service.loginFaculty('teacher@example.edu', 'bad')).rejects.toThrow(UnauthorizedException)
     })
 
     it('exercises DUMMY_HASH timing when faculty not found', async () => {
       prisma.user.findUnique.mockResolvedValue(null)
-      await expect(service.loginFaculty('ghost@pup.edu', VALID_PASSWORD)).rejects.toThrow(UnauthorizedException)
+      await expect(service.loginFaculty('ghost@example.edu', VALID_PASSWORD)).rejects.toThrow(UnauthorizedException)
     })
 
     it('forbids student trying to use faculty login', async () => {
       prisma.user.findUnique.mockResolvedValue(facultyUser())
       // override: a student email-but-student-role account
       prisma.user.findUnique.mockResolvedValueOnce(
-        buildUser({ email: 'teacher@pup.edu', role: 'student', studentId: 'S-001' }),
+        buildUser({ email: 'teacher@example.edu', role: 'student', studentId: 'S-001' }),
       )
-      await expect(service.loginFaculty('teacher@pup.edu', VALID_PASSWORD)).rejects.toThrow(ForbiddenException)
+      await expect(service.loginFaculty('teacher@example.edu', VALID_PASSWORD)).rejects.toThrow(ForbiddenException)
     })
 
     it('forbids disabled faculty account', async () => {
       prisma.user.findUnique.mockResolvedValue({ ...facultyUser(), isActive: false })
-      await expect(service.loginFaculty('teacher@pup.edu', VALID_PASSWORD)).rejects.toThrow(ForbiddenException)
+      await expect(service.loginFaculty('teacher@example.edu', VALID_PASSWORD)).rejects.toThrow(ForbiddenException)
     })
 
     it('rate limits per normalized email and client address', async () => {
       redis.consumeRateLimit.mockResolvedValue(false)
-      await expect(service.loginFaculty('Teacher@PUP.edu', VALID_PASSWORD, '127.0.0.1')).rejects.toThrow(HttpException)
-      expect(redis.consumeRateLimit).toHaveBeenCalledWith('login:faculty:identity:teacher@pup.edu', 10, 60)
+      await expect(service.loginFaculty('Teacher@Example.edu', VALID_PASSWORD, '127.0.0.1')).rejects.toThrow(HttpException)
+      expect(redis.consumeRateLimit).toHaveBeenCalledWith('login:faculty:identity:teacher@example.edu', 10, 60)
       expect(redis.consumeRateLimit).toHaveBeenCalledWith('login:faculty:ip:127.0.0.1', 30, 60)
     })
   })
@@ -691,13 +691,13 @@ describe('AuthService', () => {
           buildUser({
             id: 'teacher-1',
             studentId: null,
-            email: 'teacher@pup.edu',
+            email: 'teacher@example.edu',
             role: 'teacher',
             department: 'CS',
           }),
         )
 
-        await service.loginFaculty('teacher@pup.edu', VALID_PASSWORD, '127.0.0.1', new Headers(), {
+        await service.loginFaculty('teacher@example.edu', VALID_PASSWORD, '127.0.0.1', new Headers(), {
           channel: 'mobile',
         })
 
@@ -710,13 +710,13 @@ describe('AuthService', () => {
       const teacher = buildUser({
         id: 'teacher-1',
         studentId: null,
-        email: 'teacher@pup.edu',
+        email: 'teacher@example.edu',
         role: 'teacher',
         department: 'CS',
       })
       prisma.user.findUnique.mockResolvedValue(teacher)
 
-      const login = await service.loginFaculty('teacher@pup.edu', VALID_PASSWORD)
+      const login = await service.loginFaculty('teacher@example.edu', VALID_PASSWORD)
       expect(login.user.delegatedPermissions).toEqual({
         canResetStudentPasswords: true,
         canEmergencyUnbindDevices: true,
@@ -1007,7 +1007,7 @@ describe('AuthService', () => {
     it('blocks a non-designated teacher login', async () => {
       prisma.user.findUnique.mockResolvedValue(buildUser({ role: 'teacher', scope: null }))
       maintenance.current.mockResolvedValue({ enabled: true, message: 'Down' })
-      await expect(service.loginFaculty('teacher@pup.edu', VALID_PASSWORD)).rejects.toBeInstanceOf(
+      await expect(service.loginFaculty('teacher@example.edu', VALID_PASSWORD)).rejects.toBeInstanceOf(
         ServiceUnavailableException,
       )
     })
@@ -1015,14 +1015,14 @@ describe('AuthService', () => {
     it('lets an IT coordinator sign in', async () => {
       prisma.user.findUnique.mockResolvedValue(buildUser({ role: 'teacher', isItCoordinator: true }))
       maintenance.current.mockResolvedValue({ enabled: true, message: 'Down' })
-      const result = await service.loginFaculty('teacher@pup.edu', VALID_PASSWORD)
+      const result = await service.loginFaculty('teacher@example.edu', VALID_PASSWORD)
       expect(result.user.role).toBe('teacher')
     })
 
     it('lets a super admin sign in', async () => {
       prisma.user.findUnique.mockResolvedValue(buildUser({ role: 'super_admin', scope: 'institution' }))
       maintenance.current.mockResolvedValue({ enabled: true, message: 'Down' })
-      const result = await service.loginFaculty('admin@pup.edu', VALID_PASSWORD)
+      const result = await service.loginFaculty('admin@example.edu', VALID_PASSWORD)
       expect(result.user.role).toBe('super_admin')
     })
 

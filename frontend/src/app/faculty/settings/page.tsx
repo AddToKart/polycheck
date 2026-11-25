@@ -12,6 +12,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import type { AiCapabilities, PrivacyCenterSnapshot, User } from '@polycheck/shared'
 import { canAccessItOperations, PRIVACY_DATA_INVENTORY, consentCoveragePercent } from '@polycheck/shared'
 import { KeyRound, Loader2, RefreshCw, Save, Settings, ShieldCheck, Sparkles, Trash2 } from 'lucide-react'
+import { BRANDING_CHANGED_EVENT } from '@/components/branding/BrandingProvider'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -22,6 +23,7 @@ import { cn } from '@/lib/utils'
 import { LoadingSpinner } from '@/lib/hooks'
 import { useNotifications } from '@/lib/notifications'
 import { describeMutationError } from '@/lib/run-mutation'
+import { BrandingLogoCard } from './BrandingLogoCard'
 import { SettingSwitch } from './SettingSwitch'
 import {
   SETTINGS_TABS,
@@ -169,7 +171,7 @@ function PrivacyTabPanel() {
     setDpoDownloading(true)
     try {
       const blob = await api.downloadAssistantFile(DPO_SUMMARY_PATH)
-      triggerBrowserDownload(blob, 'PUP-DPO-Summary.pdf')
+      triggerBrowserDownload(blob, 'DPO-Summary.pdf')
       addNotification(
         'success',
         'DPO summary downloaded',
@@ -526,6 +528,8 @@ function InstitutionSettingsPageInner() {
       setValues((current) => ({ ...current, ...normalized }))
       setSaved((current) => ({ ...current, ...normalized }))
 
+      if (tab === 'institution' && savedKeys.length > 0) window.dispatchEvent(new Event(BRANDING_CHANGED_EVENT))
+
       if (failedKeys.length === 0) {
         setFeedback((current) => ({
           ...current,
@@ -627,10 +631,9 @@ function InstitutionSettingsPageInner() {
   const accountsFields = SETTING_FIELDS.filter((field) => field.tab === 'accounts')
 
   const aiFields = SETTING_FIELDS.filter((field) => field.tab === 'ai')
-  const institutionField = SETTING_FIELDS.find((field) => field.key === 'institution_name')
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
       <Sidebar
         user={user}
         onLogout={() => {
@@ -723,13 +726,19 @@ function InstitutionSettingsPageInner() {
                 aria-labelledby={`settings-tab-${activeTab}`}
                 className="space-y-6"
               >
-                {activeTab === 'institution' && institutionField ? (
-                  <SettingFieldRow
-                    field={institutionField}
-                    value={values.institution_name}
-                    disabled={!canEdit || loading}
-                    onChange={(value) => updateValue('institution_name', value)}
-                  />
+                {activeTab === 'institution' ? (
+                  <>
+                    {SETTING_FIELDS.filter((field) => field.tab === 'institution').map((field) => (
+                      <SettingFieldRow
+                        key={field.key}
+                        field={field}
+                        value={values[field.key] ?? ''}
+                        disabled={!canEdit || loading}
+                        onChange={(value) => updateValue(field.key, value)}
+                      />
+                    ))}
+                    <BrandingLogoCard disabled={!canEdit || loading} />
+                  </>
                 ) : null}
 
                 {activeTab === 'sessions' ? (
@@ -1051,7 +1060,7 @@ export default function InstitutionSettingsPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-pup-black">
+        <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-brand-black">
           <p role="status" className="text-sm font-semibold text-maroon dark:text-golden">
             Loading settings…
           </p>

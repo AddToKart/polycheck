@@ -526,7 +526,7 @@ export default function UsersPage() {
   const tabs: UserRoleTab[] = institutionAdmin ? ['teacher', 'student', 'super_admin'] : ['teacher', 'student']
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
       <Sidebar user={user} onLogout={handleLogout} />
 
       <main className="flex-1 overflow-y-auto">
@@ -878,7 +878,7 @@ export default function UsersPage() {
               <Input id="teacher-name" value={teacherForm.fullName} onChange={(e) => setTeacherForm((form) => ({ ...form, fullName: e.target.value }))} minLength={2} required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="teacher-email">PUP email</Label>
+              <Label htmlFor="teacher-email">Institutional email</Label>
               <Input id="teacher-email" type="email" value={teacherForm.email} onChange={(e) => setTeacherForm((form) => ({ ...form, email: e.target.value }))} required />
             </div>
             <div className="space-y-2">
@@ -915,7 +915,7 @@ export default function UsersPage() {
               <Input id="student-number" value={studentForm.studentId} onChange={(e) => setStudentForm((form) => ({ ...form, studentId: e.target.value.toUpperCase() }))} pattern="[0-9]{4}-[0-9]{5}-[A-Z]{2}-[0-9]" placeholder="2024-00001-MN-0" required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="student-email">PUP email (optional)</Label>
+              <Label htmlFor="student-email">Institutional email (optional)</Label>
               <Input id="student-email" type="email" value={studentForm.email} onChange={(e) => setStudentForm((form) => ({ ...form, email: e.target.value }))} />
             </div>
             <div className="space-y-2">

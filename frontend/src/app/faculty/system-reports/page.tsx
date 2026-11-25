@@ -140,7 +140,7 @@ export default function SystemReportsPage() {
   if (!user) return null
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50 md:flex-row dark:bg-pup-black">
+    <div className="flex min-h-screen flex-col bg-zinc-50 md:flex-row dark:bg-brand-black">
       <Sidebar
         user={user}
         onLogout={() => {

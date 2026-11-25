@@ -1,13 +1,13 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { Clock, Wrench } from 'lucide-react'
 import { DEFAULT_MAINTENANCE_MESSAGE } from '@polycheck/shared'
 import { cn } from '@/lib/utils'
 import { useTrustedNow } from '@/lib/hooks/use-trusted-now'
 import { formatMaintenanceRemaining } from './maintenance-time'
+import { BrandLogo } from '@/components/branding/BrandingProvider'
 
 export interface MaintenanceScreenProps {
   message?: string
@@ -53,7 +53,7 @@ export function MaintenanceScreen({
         )}
       >
         <div className="flex items-center justify-center gap-4">
-          <Image src="/pup-logo.png" width={48} height={48} alt="PUP Logo" className="h-12 w-12 object-contain" />
+          <BrandLogo size={48} className="h-12 w-12 object-contain" />
           <div className="relative flex h-14 w-14 items-center justify-center">
             <Wrench
               aria-hidden

@@ -85,7 +85,7 @@ const FIELD_ORDER: (keyof ImportColumnMapping)[] = [
 ]
 
 /**
- * Suggests the automatic mapping for known PUP SIS headers. The import wizard
+ * Suggests the automatic mapping for known registrar SIS headers. The import wizard
  * always shows the result for visual confirmation before parsing continues.
  */
 export function suggestColumnMapping(headers: string[]): ImportColumnMapping {

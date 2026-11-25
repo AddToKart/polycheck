@@ -103,7 +103,7 @@ describe('parseSpreadsheetFile', () => {
 
   it('handles a title block above the table', async () => {
     const file = xlsxFile(
-      buildXlsx([{ name: 'Sheet1', rows: [['PUP Santa Maria'], ['Master List'], [], HEADER, ...DATA] }]),
+      buildXlsx([{ name: 'Sheet1', rows: [['Example University - Main Campus'], ['Master List'], [], HEADER, ...DATA] }]),
     )
     const parsed = await parseSpreadsheetFile(file)
     expect(parsed.headerRowIndex).toBe(3)

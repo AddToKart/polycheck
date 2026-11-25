@@ -3,6 +3,10 @@ import { ConfigService } from '@nestjs/config'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import {
   DEFAULT_MAINTENANCE_MESSAGE,
+  INSTITUTION_CAMPUS_KEY,
+  INSTITUTION_LOGO_KEY,
+  INSTITUTION_NAME_KEY,
+  INSTITUTION_SHORT_NAME_KEY,
   MAINTENANCE_SETTINGS_CHANGED_EVENT,
   MAINTENANCE_SETTING_KEYS,
   clampRetentionDays,
@@ -19,6 +23,7 @@ import {
   type PrivacyShredRecord,
 } from '../common/constants/privacy'
 import { RedisService } from '../infrastructure/redis.service'
+import { BrandingService } from './branding.service'
 import { PrismaService } from '../prisma/prisma.service'
 
 const INTEGER_SETTING_RANGES = {
@@ -75,6 +80,8 @@ export const TEACHER_VISIBLE_SETTING_KEYS = [
 
 export const INSTITUTION_SETTING_KEYS = [
   'institution_name',
+  INSTITUTION_SHORT_NAME_KEY,
+  INSTITUTION_CAMPUS_KEY,
   ...BOOLEAN_SETTING_KEYS,
   ...OPTIONAL_STRING_SETTING_KEYS,
   ...OPTIONAL_TEXT_SETTING_KEYS,
@@ -110,6 +117,7 @@ export class SettingsService {
     // globally provided event emitter; production always injects it.
     @Optional() private readonly events?: EventEmitter2,
     @Optional() private readonly redis?: RedisService,
+    @Optional() private readonly branding?: BrandingService,
   ) {}
 
   /**
@@ -128,7 +136,9 @@ export class SettingsService {
   list(actor?: { role: string; isItCoordinator?: boolean }) {
     const restricted = actor !== undefined && !canReadAdministrativeSettings(actor)
     return this.prisma.institutionSetting.findMany({
-      where: restricted ? { key: { in: [...TEACHER_VISIBLE_SETTING_KEYS] } } : { key: { not: AI_API_KEY_SETTING } },
+      where: restricted
+        ? { key: { in: [...TEACHER_VISIBLE_SETTING_KEYS] } }
+        : { key: { notIn: [AI_API_KEY_SETTING, INSTITUTION_LOGO_KEY] } },
       orderBy: { key: 'asc' },
     })
   }
@@ -301,6 +311,9 @@ export class SettingsService {
       return { ...saved, value: '' }
     }
     const maintenanceKey = isMaintenanceSettingKey(key)
+    if (key === INSTITUTION_NAME_KEY || key === INSTITUTION_SHORT_NAME_KEY || key === INSTITUTION_CAMPUS_KEY) {
+      this.branding?.invalidate()
+    }
     const previous = maintenanceKey ? await this.readValue(key) : null
     const saved = await this.prisma.institutionSetting.upsert({
       where: { key },
@@ -386,6 +399,15 @@ export class SettingsService {
       if (trimmed.length < 2 || trimmed.length > 150) {
         throw new BadRequestException('Institution name must be 2-150 characters')
       }
+      return trimmed
+    }
+    if (key === INSTITUTION_SHORT_NAME_KEY) {
+      // Empty clears the override so the short name is derived from the full name again.
+      if (trimmed.length > 12) throw new BadRequestException('Short name must be at most 12 characters')
+      return trimmed
+    }
+    if (key === INSTITUTION_CAMPUS_KEY) {
+      if (trimmed.length > 80) throw new BadRequestException('Campus must be at most 80 characters')
       return trimmed
     }
     if (BOOLEAN_SETTING_KEYS.includes(key as BooleanInstitutionSettingKey)) {

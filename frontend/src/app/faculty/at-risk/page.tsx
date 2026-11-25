@@ -190,7 +190,7 @@ export default function AtRiskStudentsPage() {
       setNoticeNote('')
       try {
         const blob = await api.downloadAssistantFile(chedNoticeDownloadPath(referral.id))
-        triggerBrowserDownload(blob, 'PUP-CHED-Drop-Notice.pdf')
+        triggerBrowserDownload(blob, 'CHED-Drop-Notice.pdf')
       } catch (downloadCause) {
         addNotification(
           'warning',
@@ -216,7 +216,7 @@ export default function AtRiskStudentsPage() {
   if (!user) return null
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-pup-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
       <Sidebar user={user} onLogout={handleLogout} />
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl p-8">

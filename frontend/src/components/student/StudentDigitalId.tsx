@@ -1,11 +1,11 @@
 'use client'
 
-import Image from 'next/image'
 import { User, X } from 'lucide-react'
 import type { Student } from '@polycheck/shared'
 import { Card, CardContent } from '@/components/ui/card'
 import { HologramOverlay } from './HologramOverlay'
-import { pupColors } from '@/lib/colors'
+import { brandColors } from '@/lib/colors'
+import { BrandLogo, useBranding } from '@/components/branding/BrandingProvider'
 
 interface StudentDigitalIdProps {
   user: Student
@@ -17,15 +17,16 @@ interface StudentDigitalIdProps {
 }
 
 export function StudentDigitalId({ user, isOpen, isFlipped, onOpen, onClose, onFlip }: StudentDigitalIdProps) {
+  const branding = useBranding()
   return (
     <>
       <Card className="lg:col-span-1 lg:sticky lg:top-8 rounded-none border-zinc-300 dark:border-zinc-800 shadow-none overflow-hidden flex flex-col relative bg-zinc-50 dark:bg-zinc-900/50">
         <div className="h-24 bg-maroon flex items-center justify-center relative overflow-hidden">
           <div
             className="absolute inset-0 opacity-10"
-            style={{ backgroundImage: `radial-gradient(circle at center, ${pupColors.golden} 2px, transparent 2px)`, backgroundSize: '16px 16px' }}
+            style={{ backgroundImage: `radial-gradient(circle at center, ${brandColors.golden} 2px, transparent 2px)`, backgroundSize: '16px 16px' }}
           />
-          <Image src="/pup-logo.png" width={64} height={64} alt="PUP Logo" className="w-16 h-16 absolute right-4 bottom-4 opacity-20 filter grayscale contrast-200" />
+          <BrandLogo size={64} className="w-16 h-16 absolute right-4 bottom-4 opacity-20 filter grayscale contrast-200" />
         </div>
         <div className="absolute top-12 left-6 w-24 h-24 bg-zinc-200 dark:bg-zinc-800 border-4 border-background flex items-center justify-center overflow-hidden">
           <User className="w-12 h-12 text-zinc-400" />
@@ -67,15 +68,15 @@ export function StudentDigitalId({ user, isOpen, isFlipped, onOpen, onClose, onF
                 <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] bg-white dark:bg-id-paper-dark border-2 border-zinc-300 dark:border-zinc-700 shadow-2xl overflow-hidden flex flex-col">
                   <div className="bg-maroon p-3 flex justify-between items-center border-b-2 border-zinc-300 dark:border-zinc-700">
                     <div className="flex items-center gap-3">
-                      <Image src="/pup-logo.png" width={32} height={32} alt="PUP Logo" className="w-8 h-8" />
+                      <BrandLogo size={32} className="w-8 h-8" />
                       <div>
                         <h3 className="text-[9px] font-heading font-bold text-golden uppercase tracking-widest leading-none mb-1">Republic of the Philippines</h3>
-                        <h2 className="text-xs sm:text-sm font-heading font-bold text-white uppercase tracking-wider leading-none">Polytechnic University of the Philippines</h2>
+                        <h2 className="text-xs sm:text-sm font-heading font-bold text-white uppercase tracking-wider leading-none">{branding.name}</h2>
                       </div>
                     </div>
                   </div>
                   <div className="flex-1 flex relative bg-id-paper dark:bg-id-paper-dark">
-                    <div className="absolute inset-0 opacity-5" style={{ backgroundImage: 'url(/pup-logo.png)', backgroundPosition: 'center', backgroundSize: 'contain', backgroundRepeat: 'no-repeat' }} />
+                    <div className="absolute inset-0 opacity-5" style={{ backgroundImage: `url(${branding.logoDataUrl ?? '/brand-mark.png'})`, backgroundPosition: 'center', backgroundSize: 'contain', backgroundRepeat: 'no-repeat' }} />
                     <div className="w-1/3 border-r-2 border-zinc-300 dark:border-zinc-700 p-4 flex flex-col items-center justify-center">
                       <div className="w-full aspect-[3/4] bg-white dark:bg-zinc-800 border-2 border-zinc-300 dark:border-zinc-700 mb-4 flex items-center justify-center relative overflow-hidden">
                         <User className="w-16 h-16 text-zinc-300 dark:text-zinc-600" />

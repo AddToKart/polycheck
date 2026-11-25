@@ -247,7 +247,7 @@ describe('service worker cache policy', () => {
     shell.push(
       { url: 'https://polycheck.test/_next/static/chunks/app.js' },
       { url: 'https://polycheck.test/fonts/dm-sans.woff2' },
-      { url: 'https://polycheck.test/pup-logo.png' },
+      { url: 'https://polycheck.test/brand-mark.png' },
       { url: 'https://polycheck.test/faculty/sessions/sess-1' },
     )
 
@@ -261,7 +261,7 @@ describe('service worker cache policy', () => {
     const remaining = worker.caches.get('polycheck-v3-shell') ?? []
     expect(remaining.some((entry) => entry.url.endsWith('/_next/static/chunks/app.js'))).toBe(true)
     expect(remaining.some((entry) => entry.url.endsWith('/fonts/dm-sans.woff2'))).toBe(true)
-    expect(remaining.some((entry) => entry.url.endsWith('/pup-logo.png'))).toBe(true)
+    expect(remaining.some((entry) => entry.url.endsWith('/brand-mark.png'))).toBe(true)
     // Only the app-route document is purged.
     expect(remaining.some((entry) => entry.url.includes('/faculty/sessions/'))).toBe(false)
   })

@@ -174,8 +174,8 @@ export const ScanQrViews = forwardRef<HTMLVideoElement, ScanQrViewsProps>(
 
     if (showScanner) {
       return (
-        <div className="flex-1 flex flex-col h-full min-h-0 bg-pup-black justify-between">
-          <div className="relative flex-1 w-full bg-pup-black overflow-hidden flex items-center justify-center min-h-0">
+        <div className="flex-1 flex flex-col h-full min-h-0 bg-brand-black justify-between">
+          <div className="relative flex-1 w-full bg-brand-black overflow-hidden flex items-center justify-center min-h-0">
             <video
               ref={videoRef}
               autoPlay
@@ -185,7 +185,7 @@ export const ScanQrViews = forwardRef<HTMLVideoElement, ScanQrViewsProps>(
               aria-label="Camera viewfinder"
             />
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="absolute inset-0 bg-pup-black/40" />
+              <div className="absolute inset-0 bg-brand-black/40" />
               <div
                 className="relative"
                 style={{ width: "65%", aspectRatio: "1" }}
@@ -204,7 +204,7 @@ export const ScanQrViews = forwardRef<HTMLVideoElement, ScanQrViewsProps>(
               </p>
             </div>
             {props.phase === "requesting-camera" ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-pup-black/80 gap-3">
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-brand-black/80 gap-3">
                 <Loader2 className="w-8 h-8 text-golden animate-spin" />
                 <p className="text-xs font-bold uppercase tracking-widest text-white/70">
                   Starting camera…

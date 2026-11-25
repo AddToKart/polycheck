@@ -55,7 +55,7 @@ describe('SubjectsService', () => {
     function subjectWithSections() {
       return {
         id: 'subject-1',
-        sections: [{ id: 'section-ccis', section: 'A', teacher: { id: 't-1', fullName: 'T', email: 't1@pup.edu.ph' } }],
+        sections: [{ id: 'section-ccis', section: 'A', teacher: { id: 't-1', fullName: 'T', email: 't1@example.edu.ph' } }],
       }
     }
 

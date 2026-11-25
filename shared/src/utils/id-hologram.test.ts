@@ -62,7 +62,7 @@ describe("maskDeviceChip", () => {
 
   it("ignores separators when extracting the alphanumeric tail", () => {
     expect(maskDeviceChip("AB-CD-EF-1234")).toBe(`${HOLOGRAM_DEVICE_CHIP_PREFIX}1234`);
-    expect(maskDeviceChip("device:PuP_9f2a")).toBe(`${HOLOGRAM_DEVICE_CHIP_PREFIX}9f2a`);
+    expect(maskDeviceChip("device:Dev_9f2a")).toBe(`${HOLOGRAM_DEVICE_CHIP_PREFIX}9f2a`);
   });
 
   it("uses the full mask when the alphanumeric content is shorter than 4 characters", () => {
@@ -84,7 +84,7 @@ describe("maskDeviceChip", () => {
 describe("buildWatermarkLine", () => {
   it("assembles the verified prefix, live UTC stamp, and device chip", () => {
     expect(buildWatermarkLine("2026-11-02 08:01:14", "DEVICE-BOUND •·•·4F2A")).toBe(
-      "PUP-ID-VERIFIED • LIVE UTC: 2026-11-02 08:01:14 • DEVICE-BOUND •·•·4F2A",
+      "POLYCHECK-ID-VERIFIED • LIVE UTC: 2026-11-02 08:01:14 • DEVICE-BOUND •·•·4F2A",
     );
   });
 
@@ -96,13 +96,13 @@ describe("buildWatermarkLine", () => {
 
   it("keeps the web-session chip inline for unbound cards", () => {
     expect(buildWatermarkLine("2026-11-02 08:01:14", HOLOGRAM_WEB_SESSION_CHIP)).toBe(
-      "PUP-ID-VERIFIED • LIVE UTC: 2026-11-02 08:01:14 • WEB-SESSION",
+      "POLYCHECK-ID-VERIFIED • LIVE UTC: 2026-11-02 08:01:14 • WEB-SESSION",
     );
   });
 });
 
 describe("hologram constants", () => {
   it("keeps the watermark lead text stable across platforms", () => {
-    expect(HOLOGRAM_WATERMARK_TEXT).toBe("PUP-ID-VERIFIED");
+    expect(HOLOGRAM_WATERMARK_TEXT).toBe("POLYCHECK-ID-VERIFIED");
   });
 });

@@ -39,6 +39,19 @@ export class AccountMailProcessor {
     @Optional() private readonly config?: ConfigService,
   ) {}
 
+  /** Best effort: a branding lookup failure must never block (or fail) an activation email. */
+  private async institutionName(): Promise<string | undefined> {
+    try {
+      const row = await this.prisma.institutionSetting.findUnique({
+        where: { key: 'institution_name' },
+        select: { value: true },
+      })
+      return row?.value?.trim() || undefined
+    } catch {
+      return undefined
+    }
+  }
+
   dailyCap(): number {
     const raw = Number(this.config?.get('MAIL_DAILY_CAP') ?? process.env.MAIL_DAILY_CAP)
     return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 100
@@ -90,7 +103,12 @@ export class AccountMailProcessor {
     if (!issued) return this.fail(id, 'not_pending')
 
     const link = `${this.frontendBase()}/activate#token=${issued.raw}`
-    const email = buildActivationEmail({ fullName: user.fullName, link, expiresAt: issued.expiresAt })
+    const email = buildActivationEmail({
+      fullName: user.fullName,
+      link,
+      expiresAt: issued.expiresAt,
+      institutionName: await this.institutionName(),
+    })
     try {
       const result = await this.mail.send({
         to,
