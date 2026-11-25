@@ -1,5 +1,5 @@
 /**
- * Deterministic load-test topology (PUP CCIS attendance, local disposable stack).
+ * Deterministic load-test topology (CCIS attendance, local disposable stack).
  *
  * Mandated shape:
  *   - 2000 students split over 34 sections: 33 sections x 60 students + 1 x 20.

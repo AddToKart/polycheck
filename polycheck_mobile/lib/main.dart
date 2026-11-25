@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'src/core/api/api_providers.dart';
+import 'src/core/branding/branding.dart';
 import 'src/core/database/app_database.dart';
 import 'src/core/network/dio_client.dart';
 import 'src/core/providers/maintenance_provider.dart';
@@ -14,8 +15,8 @@ import 'src/core/providers/session_provider.dart';
 import 'src/core/providers/trusted_clock.dart';
 import 'src/core/router/app_router.dart';
 import 'src/core/sync/sync_lifecycle_binder.dart';
-import 'src/core/theme/pup_theme.dart';
-import 'src/core/theme/pup_tokens.dart';
+import 'src/core/theme/brand_theme.dart';
+import 'src/core/theme/brand_tokens.dart';
 import 'src/features/surface/presentation/widgets/outage_widgets.dart';
 
 Future<void> main() async {
@@ -62,13 +63,16 @@ class PolycheckApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'Polycheck',
       debugShowCheckedModeBanner: false,
-      theme: PupTheme.light,
-      darkTheme: PupTheme.dark,
+      theme: BrandTheme.light,
+      darkTheme: BrandTheme.dark,
       themeMode: ThemeMode.system,
       routerConfig: appRouter,
       builder: bootstrap
-          ? (context, child) => SyncLifecycleBinder(
-              child: _BootLifecycle(child: child ?? const SizedBox.shrink()),
+          ? (context, child) => BrandingScope(
+              branding: ref.watch(brandingProvider),
+              child: SyncLifecycleBinder(
+                child: _BootLifecycle(child: child ?? const SizedBox.shrink()),
+              ),
             )
           : null,
     );
@@ -141,7 +145,7 @@ class _BootLifecycleState extends ConsumerState<_BootLifecycle> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -165,7 +169,7 @@ class _BootLifecycleState extends ConsumerState<_BootLifecycle> {
                       Icon(
                         Icons.cloud_off_outlined,
                         size: 14,
-                        color: PupColors.pupDeepMaroon,
+                        color: BrandColors.brandDeepMaroon,
                       ),
                       const SizedBox(width: 6),
                       Flexible(
@@ -177,7 +181,7 @@ class _BootLifecycleState extends ConsumerState<_BootLifecycle> {
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.labelSmall
                               ?.copyWith(
-                                color: PupColors.pupDeepMaroon,
+                                color: BrandColors.brandDeepMaroon,
                                 fontWeight: FontWeight.w700,
                               ),
                         ),

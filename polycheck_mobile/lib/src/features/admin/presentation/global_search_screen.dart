@@ -9,7 +9,7 @@ import '../../../core/api/api_models.dart';
 import '../../../core/models/subject.dart';
 import '../../../core/models/user.dart';
 import '../../../core/network/api_error.dart';
-import '../../../core/theme/pup_theme.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/section_label.dart';
 import '../../../core/widgets/campus_card.dart';
 import '../../../core/widgets/campus_empty_state.dart';
@@ -83,7 +83,7 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final results = _results;
     final hasQuery = _query.text.trim().length >= 2;
     return AdminScaffold(
@@ -211,7 +211,7 @@ class _StudentResult extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusCard(
       onTap: onTap,
       padding: const EdgeInsets.all(12),
@@ -264,7 +264,7 @@ class _SectionResult extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusCard(
       onTap: onTap,
       padding: const EdgeInsets.all(12),

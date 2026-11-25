@@ -25,7 +25,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('STUDENT NUMBER'), findsOneWidget);
-    expect(find.textContaining('PUP-ID-VERIFIED'), findsOneWidget);
+    expect(find.textContaining('POLYCHECK-ID-VERIFIED'), findsOneWidget);
     expect(find.textContaining('DEVICE-BOUND'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('student-id-card')));

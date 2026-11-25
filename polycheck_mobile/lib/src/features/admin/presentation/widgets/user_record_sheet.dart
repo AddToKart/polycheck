@@ -5,9 +5,9 @@ import '../../../../core/api/api_providers.dart';
 import '../../../../core/models/dashboard.dart';
 import '../../../../core/models/user.dart';
 import '../../../../core/providers/session_provider.dart';
-import '../../../../core/theme/pup_theme.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/designations.dart';
-import '../../../../core/utils/pup_courses.dart';
+import '../../../../core/utils/campus_courses.dart';
 import '../../../../core/widgets/campus_badge.dart';
 import '../../../../core/widgets/campus_bottom_sheet.dart';
 import '../../../../core/widgets/campus_button.dart';
@@ -285,7 +285,7 @@ class _UserRecordSheetState extends ConsumerState<UserRecordSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final target = widget.account;
     final actor = ref.watch(sessionProvider).user;
     final access = adminAccessFor(actor);
@@ -411,7 +411,7 @@ class _UserRecordSheetState extends ConsumerState<UserRecordSheet> {
             const SizedBox(height: 12),
             CampusTextField(
               controller: _controllers[EditableUserField.email],
-              label: 'PUP email',
+              label: 'Institutional email',
               keyboardType: TextInputType.emailAddress,
               enabled: !_busy && !registrar,
               helperText: registrar ? 'Registrars cannot change emails.' : null,
@@ -620,7 +620,7 @@ class _CapabilityPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -676,7 +676,7 @@ class _CourseScopeEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final empty = !managesAllCourses && managedCourses.isEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -700,7 +700,7 @@ class _CourseScopeEditor extends StatelessWidget {
           spacing: 6,
           runSpacing: 6,
           children: <Widget>[
-            for (final course in pupSantaMariaCourses)
+            for (final course in campusCourses)
               FilterChip(
                 key: ValueKey('course-scope-${course.code}'),
                 label: Text(course.code),

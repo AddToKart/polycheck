@@ -8,7 +8,7 @@ import '../../../core/api/api_providers.dart';
 import '../../../core/models/system_report.dart';
 import '../../../core/network/api_error.dart';
 import '../../../core/providers/session_provider.dart';
-import '../../../core/theme/pup_theme.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/calendar_utils.dart';
 import '../../../core/widgets/campus_bottom_sheet.dart';
 import '../../../core/widgets/campus_button.dart';
@@ -366,7 +366,7 @@ class _ReportCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final critical = report.severity == ReportSeverity.critical;
     return CampusCard(
       onTap: onTap,
@@ -563,7 +563,7 @@ class _ReportDetailSheetState extends ConsumerState<ReportDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     if (_loading) {
       return const AdminLoading(label: 'Loading report…');
     }

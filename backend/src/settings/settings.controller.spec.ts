@@ -48,7 +48,7 @@ describe('SettingsController read exposure (BE-09)', () => {
 
     expect(() =>
       controller.set({ user: teacher, ip: '127.0.0.1' } as AuthenticatedRequest, 'institution_name', {
-        value: 'PUP',
+        value: 'EPP',
       }),
     ).toThrow('Only institution administrators can change institution settings')
     expect(settings.list).not.toHaveBeenCalled()

@@ -3,7 +3,7 @@ import 'package:polycheck_mobile/src/core/models/attendance.dart';
 import 'package:polycheck_mobile/src/core/models/session.dart';
 import 'package:polycheck_mobile/src/core/models/subject.dart';
 import 'package:polycheck_mobile/src/core/models/user.dart';
-import 'package:polycheck_mobile/src/core/utils/pup_courses.dart';
+import 'package:polycheck_mobile/src/core/utils/campus_courses.dart';
 import 'package:polycheck_mobile/src/core/utils/session_slots.dart';
 import 'package:polycheck_mobile/src/features/faculty/data/session_wizard.dart';
 
@@ -432,10 +432,10 @@ void main() {
   group('catalog gate', () {
     test('course catalog still resolves the default BSIT option', () {
       expect(
-        pupCourseName('BSIT'),
+        campusCourseName('BSIT'),
         'Bachelor of Science in Information Technology',
       );
-      expect(pupCourseByCode('bsit')?.code, 'BSIT');
+      expect(campusCourseByCode('bsit')?.code, 'BSIT');
     });
   });
 }

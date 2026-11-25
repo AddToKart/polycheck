@@ -622,7 +622,7 @@ class _SessionCockpitScreenState extends ConsumerState<SessionCockpitScreen> {
   @override
   Widget build(BuildContext context) {
     final session = _session;
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final rows = buildCockpitRoster(students: _students, records: _records);
     final summary = summarizeRoster(rows);
     final visible = filterRoster(rows, _filter);
@@ -1268,7 +1268,7 @@ class _CockpitDeniedAttemptsSectionState
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final attemptsAsync = ref.watch(
       cockpitDeniedAttemptsProvider(widget.sessionId),
     );
@@ -1350,7 +1350,7 @@ class _DeniedAttemptRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final theme = Theme.of(context);
     final reason = deniedAttemptReasonLabel(attempt.denialReason);
     final distanceCopy = deniedDistanceCopy(

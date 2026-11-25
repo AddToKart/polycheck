@@ -6,7 +6,7 @@ import '../../../core/api/api_providers.dart';
 import '../../../core/network/api_error.dart';
 import '../../../core/providers/session_provider.dart';
 import '../../../core/router/router_decision.dart';
-import '../../../core/theme/pup_theme.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/password_policy.dart';
 import '../../../core/widgets/campus_button.dart';
 import '../../../core/widgets/campus_dialog.dart';
@@ -50,7 +50,7 @@ class _ForcePasswordChangeScreenState
       return const Scaffold(body: CampusLoading(label: 'Checking session.'));
     }
 
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final textTheme = Theme.of(context).textTheme;
     final compliant = isPasswordPolicyCompliant(_newController.text);
     final matches = _confirmController.text == _newController.text;

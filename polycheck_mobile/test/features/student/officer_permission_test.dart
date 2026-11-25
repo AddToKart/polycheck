@@ -107,7 +107,7 @@ void main() {
   Widget app(ProviderContainer container, Widget home) =>
       UncontrolledProviderScope(
         container: container,
-        child: MaterialApp(theme: PupTheme.light, home: home),
+        child: MaterialApp(theme: BrandTheme.light, home: home),
       );
 
   testWidgets(

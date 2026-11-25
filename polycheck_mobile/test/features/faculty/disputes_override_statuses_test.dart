@@ -106,7 +106,7 @@ void main() {
           attendanceApiProvider.overrideWithValue(_FakeAttendanceApi()),
         ],
         child: MaterialApp(
-          theme: PupTheme.light,
+          theme: BrandTheme.light,
           home: const FacultyDisputesScreen(),
         ),
       ),

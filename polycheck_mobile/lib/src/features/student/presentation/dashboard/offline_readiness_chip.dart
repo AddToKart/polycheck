@@ -94,7 +94,7 @@ class _ReadyPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusBadge(
       label: 'READY FOR OFFLINE CLASS',
       background: tokens.maroon,
@@ -120,7 +120,7 @@ class _KeyMissingChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -154,7 +154,7 @@ class _PrepareButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return OutlinedButton.icon(
       onPressed: onTap,
       style: OutlinedButton.styleFrom(

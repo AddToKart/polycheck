@@ -6,7 +6,7 @@ import '../../../core/network/api_error.dart';
 import '../../../core/providers/maintenance_provider.dart';
 import '../../../core/providers/session_provider.dart';
 import '../../../core/router/router_decision.dart';
-import '../../../core/theme/pup_theme.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../core/widgets/campus_button.dart';
 import '../../../core/widgets/campus_text_field.dart';
 import 'widgets/auth_shell.dart';
@@ -55,7 +55,7 @@ class _FacultyLoginScreenState extends ConsumerState<FacultyLoginScreen> {
   @override
   Widget build(BuildContext context) {
     final maintenance = ref.watch(maintenanceProvider);
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final textTheme = Theme.of(context).textTheme;
 
     return AuthShell(
@@ -92,7 +92,7 @@ class _FacultyLoginScreenState extends ConsumerState<FacultyLoginScreen> {
           CampusTextField(
             controller: _emailController,
             label: 'Institutional email',
-            hint: 'name@pup.edu.ph',
+            hint: 'name@example.edu.ph',
             prefixIcon: Icons.alternate_email,
             errorText: _emailError,
             keyboardType: TextInputType.emailAddress,

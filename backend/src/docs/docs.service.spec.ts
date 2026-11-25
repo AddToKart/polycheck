@@ -111,8 +111,8 @@ function createPrisma(section: unknown = masterSection, sessionFixture: unknown 
 
 /** Per-key institution settings, as the service reads them one at a time. */
 const settingLookup = async ({ where }: { where: { key: string } }): Promise<{ value: string } | null> => {
-  if (where.key === 'institution_name') return { value: 'Polytechnic University of the Philippines' }
-  if (where.key === 'institution_short_name') return { value: 'PUP' }
+  if (where.key === 'institution_name') return { value: 'Example Polytechnic of the Province' }
+  if (where.key === 'institution_short_name') return { value: 'EPP' }
   if (where.key === 'institution_campus') return { value: 'Santa Maria' }
   return null
 }
@@ -436,7 +436,7 @@ describe('DocsService', () => {
 
       const document = await service.classRecord(teacher, 'sec-1', 'pdf')
 
-      expect(document.filename).toBe('PUP-ClassRecord-COMP-20043-BSIT-1-A-2026-2027-First-Semester.pdf')
+      expect(document.filename).toBe('EPP-ClassRecord-COMP-20043-BSIT-1-A-2026-2027-First-Semester.pdf')
       expect(document.contentType).toBe('application/pdf')
       expect(document.body.subarray(0, 4).toString()).toBe('%PDF')
       expect(document.body.length).toBeGreaterThan(1_000)
@@ -462,7 +462,7 @@ describe('DocsService', () => {
 
       const document = await service.classRecord(teacher, 'sec-1', 'docx')
 
-      expect(document.filename).toBe('PUP-ClassRecord-COMP-20043-BSIT-1-A-2026-2027-First-Semester.docx')
+      expect(document.filename).toBe('EPP-ClassRecord-COMP-20043-BSIT-1-A-2026-2027-First-Semester.docx')
       expect(document.contentType).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
       expect(document.body[0]).toBe(0x50)
       expect(document.body[1]).toBe(0x4b)
@@ -747,10 +747,10 @@ describe('DocsService', () => {
 
     it('probes the directive-mandated content pieces', () => {
       expect(AT_RISK_NOTICE_TITLE).toBe('NOTICE OF IMPENDING DROP')
-      const citations = atRiskNoticeCitationLines('PUP').join(' ')
+      const citations = atRiskNoticeCitationLines('EPP').join(' ')
       expect(citations).toContain('CHED CMO No. 40')
       expect(citations).toContain('Article V, Section 21')
-      expect(citations).toContain('PUP Student Handbook')
+      expect(citations).toContain('EPP Student Handbook')
       expect(AT_RISK_NOTICE_ACTIONS).toEqual(['Guidance counseling', 'Chair consultation', 'Parental contact'])
       expect(AT_RISK_NOTICE_SIGNOFFS).toEqual(['Advisor', 'Guidance Counselor', 'Department Chairperson'])
       expect(noticeComputationLine(5, 20)).toBe(
@@ -788,7 +788,7 @@ describe('DocsService', () => {
 
       const document = await service.atRiskNotice(teacherNoticeOwner(), 'ref-1', 'pdf')
 
-      expect(document.filename).toBe('PUP-AtRiskNotice-2023-0001-BSIT-1-A.pdf')
+      expect(document.filename).toBe('EPP-AtRiskNotice-2023-0001-BSIT-1-A.pdf')
       expect(document.contentType).toBe('application/pdf')
       expect(document.body.subarray(0, 4).toString()).toBe('%PDF')
       expect(document.body.length).toBeGreaterThan(1_000)
@@ -810,7 +810,7 @@ describe('DocsService', () => {
 
       const document = await service.atRiskNotice(teacherNoticeOwner(), 'ref-1', 'docx')
 
-      expect(document.filename).toBe('PUP-AtRiskNotice-2023-0001-BSIT-1-A.docx')
+      expect(document.filename).toBe('EPP-AtRiskNotice-2023-0001-BSIT-1-A.docx')
       expect(document.contentType).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
       expect(document.body[0]).toBe(0x50)
       expect(document.body[1]).toBe(0x4b)

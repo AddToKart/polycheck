@@ -7,7 +7,7 @@ import '../../../core/api/api_providers.dart';
 import '../../../core/api/api_models.dart';
 import '../../../core/models/api.dart';
 import '../../../core/network/api_error.dart';
-import '../../../core/theme/pup_theme.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/calendar_utils.dart';
 import '../../../core/widgets/campus_card.dart';
 import '../../../core/widgets/campus_empty_state.dart';
@@ -184,9 +184,9 @@ class _AuditLogsScreenState extends ConsumerState<AuditLogsScreen> {
           const SizedBox(height: 12),
           Text(
             'Showing the last 30 days · rollback-safe read-only view',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: PupTheme.of(context).muted),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: BrandTheme.of(context).muted,
+            ),
           ),
           const SizedBox(height: 10),
           if (_loading)
@@ -250,7 +250,7 @@ class _LedgerBannerView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final (background, border, foreground, icon) = switch (banner.tone) {
       LedgerBannerTone.busy => (
         tokens.campus,
@@ -330,7 +330,7 @@ class _AuditRowState extends State<_AuditRow> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final entry = widget.entry;
     final failed = entry.outcome == AuditOutcome.failed;
     return CampusCard(
@@ -422,7 +422,7 @@ class _DetailLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 3),
       child: Row(

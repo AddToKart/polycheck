@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/pup_theme.dart';
+import '../theme/brand_theme.dart';
 
 /// Square label/error/helper text field with an obscure toggle.
 ///
@@ -75,7 +75,7 @@ class _CampusTextFieldState extends State<CampusTextField> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final label = widget.label;
 
     return Column(

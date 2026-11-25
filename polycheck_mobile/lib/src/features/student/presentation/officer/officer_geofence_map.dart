@@ -29,7 +29,7 @@ class _OfficerGeofenceMapState extends State<OfficerGeofenceMap> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final point = LatLng(widget.latitude, widget.longitude);
     return SizedBox(
       height: 220,
@@ -46,7 +46,7 @@ class _OfficerGeofenceMapState extends State<OfficerGeofenceMap> {
         children: <Widget>[
           TileLayer(
             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'edu.pup.polycheck',
+            userAgentPackageName: 'app.polycheck.mobile',
           ),
           CircleLayer(
             circles: <CircleMarker>[
@@ -54,7 +54,7 @@ class _OfficerGeofenceMapState extends State<OfficerGeofenceMap> {
                 point: point,
                 radius: widget.radiusMeters,
                 useRadiusInMeter: true,
-                color: PupColors.pupMaroon.withValues(alpha: 0.12),
+                color: BrandColors.brandMaroon.withValues(alpha: 0.12),
                 borderColor: tokens.maroon,
                 borderStrokeWidth: 2,
               ),

@@ -34,14 +34,14 @@ describe('BrandingService', () => {
   })
 
   it('derives the short name from the institution name and honours an explicit one', async () => {
-    const derived = build([{ key: 'institution_name', value: 'Polytechnic University of the Philippines' }])
-    expect((await derived.service.current()).shortName).toBe('PUP')
+    const derived = build([{ key: 'institution_name', value: 'Example Polytechnic of the Province' }])
+    expect((await derived.service.current()).shortName).toBe('EPP')
     const explicit = build([
-      { key: 'institution_name', value: 'Polytechnic University of the Philippines' },
-      { key: 'institution_short_name', value: 'PUP-SM' },
+      { key: 'institution_name', value: 'Example Polytechnic of the Province' },
+      { key: 'institution_short_name', value: 'EPP-SM' },
       { key: 'institution_campus', value: 'Santa Maria' },
     ])
-    expect(await explicit.service.current()).toMatchObject({ shortName: 'PUP-SM', campus: 'Santa Maria' })
+    expect(await explicit.service.current()).toMatchObject({ shortName: 'EPP-SM', campus: 'Santa Maria' })
   })
 
   it('stores a valid logo, serves it, and clears it', async () => {

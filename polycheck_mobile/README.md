@@ -1,12 +1,12 @@
 # Polycheck Mobile (Flutter)
 
-Production Flutter client for **Polycheck**, the PUP Santa Maria attendance
+Production Flutter client for **Polycheck**, the campus attendance
 management system. This package is a 1:1 port of the shipped React Native app
 in `../android/` and talks to the same NestJS API and shared contracts.
 
 > **Coexistence:** the React Native app in `../android/` is untouched and keeps
-> its own package id (`edu.pup.polycheck`). This Flutter app is
-> `edu.pup.polycheck.mobile`, so both can be installed side-by-side until the
+> its own package id (its original package id). This Flutter app is
+> `app.polycheck.mobile`, so both can be installed side-by-side until the
 > team cuts over. Never edit `../android/`, `../backend/`, `../frontend/`, or
 > `../shared/` from this package.
 
@@ -28,7 +28,7 @@ flutter build apk --debug
 
 # Point a device build at a backend
 flutter run `
-  --dart-define=PUP_API_BASE_URL=https://polycheck-api.addtokart.tech/api
+  --dart-define=API_BASE_URL=https://polycheck-api.addtokart.tech/api
 ```
 
 Release/signing steps live in [`RELEASE.md`](RELEASE.md).
@@ -37,11 +37,11 @@ Release/signing steps live in [`RELEASE.md`](RELEASE.md).
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `PUP_API_BASE_URL` | `https://polycheck-api.addtokart.tech/api` | NestJS base URL (must include `/api`) |
-| `PUP_WS_BASE_URL` | derived from `PUP_API_BASE_URL` | Explicit Socket.IO namespace URL (`.../attendance`) |
+| `API_BASE_URL` | `https://polycheck-api.addtokart.tech/api` | NestJS base URL (must include `/api`) |
+| `WS_BASE_URL` | derived from `API_BASE_URL` | Explicit Socket.IO namespace URL (`.../attendance`) |
 | `ALLOW_QR_FALLBACKS` | `false` | In-person screenshot/manual QR fallbacks; online sessions always allow them |
 | `ENABLE_OUTAGE_SIMULATOR` | `false` | Demo-only offline simulator (never ship enabled) |
-| `PUP_APP_VERSION` | `1.0.0` | Footer/version label |
+| `APP_VERSION` | `1.0.0` | Footer/version label |
 
 Examples:
 
@@ -50,7 +50,7 @@ Examples:
 flutter run --dart-define=ALLOW_QR_FALLBACKS=true
 
 # LAN backend from a physical device (never 10.0.2.2 outside an emulator)
-flutter run --dart-define=PUP_API_BASE_URL=http://192.168.1.20:4000/api
+flutter run --dart-define=API_BASE_URL=http://192.168.1.20:4000/api
 ```
 
 ## Architecture
@@ -65,7 +65,7 @@ lib/
     providers/                  session, maintenance, trusted clock, officers
     router/                     go_router guard ladder (auth/role/maintenance)
     sync/                       offline attendance drain engine + PIN vault
-    theme/ widgets/ utils/      PUP design tokens and shared primitives
+    theme/ widgets/ utils/      Brand design tokens and shared primitives
   src/features/
     auth/ student/ faculty/ admin/ surface/
 ```

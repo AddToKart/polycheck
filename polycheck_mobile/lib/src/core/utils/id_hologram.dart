@@ -3,7 +3,7 @@
 /// The hologram embeds a live, server-clock-correct UTC stamp plus a masked
 /// device-binding chip into the ID card artwork so a screenshot can be
 /// forensically checked for freshness and provenance.
-const String hologramWatermarkText = 'PUP-ID-VERIFIED';
+const String hologramWatermarkText = 'POLYCHECK-ID-VERIFIED';
 
 /// Chip shown when the ID is not bound to a device installation.
 const String hologramWebSessionChip = 'WEB-SESSION';
@@ -56,6 +56,6 @@ String maskDeviceChip(String? deviceId) {
 }
 
 /// Assembles one watermark line, e.g.
-/// `PUP-ID-VERIFIED • LIVE UTC: 2026-11-02 08:01:14 • DEVICE-BOUND •·•·4F2A`.
+/// `POLYCHECK-ID-VERIFIED • LIVE UTC: 2026-11-02 08:01:14 • DEVICE-BOUND •·•·4F2A`.
 String buildWatermarkLine(String stamp, String chip) =>
     '$hologramWatermarkText \u2022 LIVE UTC: $stamp \u2022 $chip';

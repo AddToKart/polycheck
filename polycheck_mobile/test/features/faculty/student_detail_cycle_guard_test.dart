@@ -148,7 +148,7 @@ Future<_RecordingAttendanceApi> _pumpDetail(WidgetTester tester) async {
         attendanceApiProvider.overrideWithValue(attendanceApi),
       ],
       child: MaterialApp(
-        theme: PupTheme.light,
+        theme: BrandTheme.light,
         home: const FacultyStudentDetailScreen(
           studentId: 'student-1',
           sectionId: 'sec-1',

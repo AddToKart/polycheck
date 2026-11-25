@@ -84,7 +84,7 @@ class _FacultyDashboardScreenState
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
     final user = session.user;
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
 
     if (_loading) {
       return const FacultyScaffold(
@@ -377,7 +377,7 @@ class _TodayEventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final active = event.status == CalendarEventStatus.active;
     return CampusCard(
       onTap: onTap,
@@ -437,7 +437,7 @@ class _AtRiskPreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final below = row.status == AttendanceStandingStatus.belowThreshold;
     return CampusCard(
       onTap: onTap,
@@ -499,7 +499,7 @@ class _ShortcutChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return OutlinedButton.icon(
       onPressed: onTap,
       icon: Icon(icon, size: 16),

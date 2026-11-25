@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/pup_theme.dart';
+import '../theme/brand_theme.dart';
 
 const BorderRadius _zero = BorderRadius.zero;
 
@@ -35,7 +35,7 @@ class CampusDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final textTheme = Theme.of(context).textTheme;
     final body = <Widget>[
       if (description != null && description!.isNotEmpty) ...[

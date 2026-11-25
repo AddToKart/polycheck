@@ -17,7 +17,7 @@ class StudentClassesScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final cards = ref.watch(studentClassCardsProvider);
     final sections = ref.watch(studentSectionsProvider);
     final loading = sections.isLoading && cards.isEmpty;

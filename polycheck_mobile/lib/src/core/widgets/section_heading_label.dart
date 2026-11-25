@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/pup_theme.dart';
+import '../theme/brand_theme.dart';
 import '../utils/section_label.dart';
 
 /// Canonical section label (`Section 4-1 · BSIT`).
@@ -23,7 +23,7 @@ class SectionHeadingLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final text = formatSectionHeading(section: section, course: course);
     return Text(
       text,

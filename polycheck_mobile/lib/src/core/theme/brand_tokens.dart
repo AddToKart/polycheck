@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-/// PUP design tokens (K10: zero theme drift from web/RN).
+/// Brand design tokens (K10: zero theme drift from web/RN).
 ///
 /// Raw palette values live here once; every widget reads resolved tokens from
-/// the `PupTokens` theme extension instead of hard-coded hex literals.
-abstract final class PupColors {
-  static const Color pupMaroon = Color(0xFF7B1113);
-  static const Color pupDeepMaroon = Color(0xFF4A0A0B);
-  static const Color pupGold = Color(0xFFFFDF00);
+/// the `BrandTokens` theme extension instead of hard-coded hex literals.
+abstract final class BrandColors {
+  static const Color brandMaroon = Color(0xFF7B1113);
+  static const Color brandDeepMaroon = Color(0xFF4A0A0B);
+  static const Color brandGold = Color(0xFFFFDF00);
 
   static const Color surfaceLight = Color(0xFFFFFFFF);
   static const Color surfaceDark = Color(0xFF0A0A0A);
@@ -23,8 +23,8 @@ abstract final class PupColors {
 
 /// Resolved palette for the active brightness.
 @immutable
-class PupTokens extends ThemeExtension<PupTokens> {
-  const PupTokens({
+class BrandTokens extends ThemeExtension<BrandTokens> {
+  const BrandTokens({
     required this.maroon,
     required this.deepMaroon,
     required this.gold,
@@ -35,25 +35,25 @@ class PupTokens extends ThemeExtension<PupTokens> {
     required this.isDark,
   });
 
-  static const PupTokens light = PupTokens(
-    maroon: PupColors.pupMaroon,
-    deepMaroon: PupColors.pupDeepMaroon,
-    gold: PupColors.pupGold,
-    surface: PupColors.surfaceLight,
-    campus: PupColors.campusLight,
-    borderSubtle: PupColors.borderSubtleLight,
-    muted: PupColors.muted,
+  static const BrandTokens light = BrandTokens(
+    maroon: BrandColors.brandMaroon,
+    deepMaroon: BrandColors.brandDeepMaroon,
+    gold: BrandColors.brandGold,
+    surface: BrandColors.surfaceLight,
+    campus: BrandColors.campusLight,
+    borderSubtle: BrandColors.borderSubtleLight,
+    muted: BrandColors.muted,
     isDark: false,
   );
 
-  static const PupTokens dark = PupTokens(
-    maroon: PupColors.pupMaroon,
-    deepMaroon: PupColors.pupDeepMaroon,
-    gold: PupColors.pupGold,
-    surface: PupColors.surfaceDark,
-    campus: PupColors.campusDark,
-    borderSubtle: PupColors.borderSubtleDark,
-    muted: PupColors.muted,
+  static const BrandTokens dark = BrandTokens(
+    maroon: BrandColors.brandMaroon,
+    deepMaroon: BrandColors.brandDeepMaroon,
+    gold: BrandColors.brandGold,
+    surface: BrandColors.surfaceDark,
+    campus: BrandColors.campusDark,
+    borderSubtle: BrandColors.borderSubtleDark,
+    muted: BrandColors.muted,
     isDark: true,
   );
 
@@ -66,17 +66,17 @@ class PupTokens extends ThemeExtension<PupTokens> {
   final Color muted;
   final bool isDark;
 
-  Color get onSurface => isDark ? PupColors.white : PupColors.ink;
+  Color get onSurface => isDark ? BrandColors.white : BrandColors.ink;
 
-  Color get onMaroon => PupColors.white;
+  Color get onMaroon => BrandColors.white;
 
   Color get onGold => deepMaroon;
 
   /// Text color that stays legible on a filled maroon surface.
-  Color get mutedOnMaroon => PupColors.white.withValues(alpha: 0.72);
+  Color get mutedOnMaroon => BrandColors.white.withValues(alpha: 0.72);
 
   @override
-  PupTokens copyWith({
+  BrandTokens copyWith({
     Color? maroon,
     Color? deepMaroon,
     Color? gold,
@@ -86,7 +86,7 @@ class PupTokens extends ThemeExtension<PupTokens> {
     Color? muted,
     bool? isDark,
   }) {
-    return PupTokens(
+    return BrandTokens(
       maroon: maroon ?? this.maroon,
       deepMaroon: deepMaroon ?? this.deepMaroon,
       gold: gold ?? this.gold,
@@ -99,9 +99,9 @@ class PupTokens extends ThemeExtension<PupTokens> {
   }
 
   @override
-  PupTokens lerp(ThemeExtension<PupTokens>? other, double t) {
-    if (other is! PupTokens) return this;
-    return PupTokens(
+  BrandTokens lerp(ThemeExtension<BrandTokens>? other, double t) {
+    if (other is! BrandTokens) return this;
+    return BrandTokens(
       maroon: Color.lerp(maroon, other.maroon, t)!,
       deepMaroon: Color.lerp(deepMaroon, other.deepMaroon, t)!,
       gold: Color.lerp(gold, other.gold, t)!,

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/features/surface/presentation/widgets/assistant_markdown.dart';
 
 void main() {
   Widget wrap(Widget child) {
     return MaterialApp(
-      theme: PupTheme.light,
+      theme: BrandTheme.light,
       home: Scaffold(body: SingleChildScrollView(child: child)),
     );
   }

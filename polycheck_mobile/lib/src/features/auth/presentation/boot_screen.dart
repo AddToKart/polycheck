@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/pup_theme.dart';
-import '../../../core/theme/pup_tokens.dart';
+import '../../../core/theme/brand_theme.dart';
+import '../../../core/theme/brand_tokens.dart';
 import '../../../core/widgets/campus_loading.dart';
+import '../../../core/branding/branding.dart';
 
 /// Cold-start restore gate (FLR-02).
 ///
@@ -20,7 +21,7 @@ class BootScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: tokens.maroon,
@@ -39,10 +40,10 @@ class BootScreen extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                'Polytechnic University of the Philippines',
+                BrandingScope.of(context).name,
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: PupColors.white.withValues(alpha: 0.82),
+                  color: BrandColors.white.withValues(alpha: 0.82),
                 ),
               ),
               const SizedBox(height: 28),

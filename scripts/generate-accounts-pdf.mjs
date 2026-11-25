@@ -244,7 +244,7 @@ const htmlContent = `
 <body>
 
   <div class="header-banner">
-    <div class="institution-tag">Polytechnic University of the Philippines — Santa Maria Branch</div>
+    <div class="institution-tag">Example Polytechnic of the Province — Main Campus</div>
     <h1>Polycheck Seeded Test Accounts Guide</h1>
     <div class="header-sub">Official Role-Based Access Control (RBAC), Dual-Hat Faculty Designations & Demonstration Directory</div>
   </div>
@@ -261,7 +261,7 @@ const htmlContent = `
 
   <h2>1. Administrative & Dual-Hat Faculty Accounts</h2>
   <p style="font-size: 8pt; color: #52525b; margin-bottom: 8px;">
-    In accordance with the PUP Santa Maria concurrent faculty appointment model, instructors hold specialized administrative designations under a single login identity, governed by Separation of Duties (SoD).
+    In accordance with the concurrent faculty appointment model, instructors hold specialized administrative designations under a single login identity, governed by Separation of Duties (SoD).
   </p>
 
   <!-- Super Admin -->
@@ -566,7 +566,7 @@ const htmlContent = `
 
   <h2>4. Recommended Demonstration & Defense Scenarios</h2>
   <div class="notice-card" style="font-size: 8.5pt;">
-    <strong>Scenario 1: Testing Separation of Duties (PUP Santa Maria Alignment)</strong>
+    <strong>Scenario 1: Testing Separation of Duties (Campus Alignment)</strong>
     <p style="margin-top: 3px;">
       Log in as <strong>Prof. Bryan Salazar</strong> (<span class="code-pill">bry.mis@example.edu.ph</span>). Point out the <em>IT Operations Suite</em> (Server Status, Issue Reports, Maintenance). Then log in as <strong>Dr. Corazon Aquino</strong> (<span class="code-pill">chair.ccis@example.edu.ph</span>) to demonstrate how the interface switches to <em>Academic Department Oversight</em> (Department Reports, Campus Excuses, At-Risk Students).
     </p>

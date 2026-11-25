@@ -107,7 +107,7 @@ class _StudentIdCardScreenState extends ConsumerState<StudentIdCardScreen>
         title: 'Digital Student ID',
         subtitle: 'Tap the card to flip',
       ),
-      backgroundColor: PupColors.surfaceDark,
+      backgroundColor: BrandColors.surfaceDark,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -166,7 +166,7 @@ class _StudentIdCardScreenState extends ConsumerState<StudentIdCardScreen>
                         ? 'Tap to view the front'
                         : 'Tap to view the back',
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: PupColors.pupGold,
+                      color: BrandColors.brandGold,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 1.1,
                     ),
@@ -198,7 +198,7 @@ class _IdCardFront extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -209,9 +209,9 @@ class _IdCardFront extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: const BoxDecoration(
-              color: PupColors.pupMaroon,
+              color: BrandColors.brandMaroon,
               border: Border(
-                bottom: BorderSide(color: PupColors.pupGold, width: 2),
+                bottom: BorderSide(color: BrandColors.brandGold, width: 2),
               ),
             ),
             child: Row(
@@ -221,10 +221,10 @@ class _IdCardFront extends StatelessWidget {
                   height: 34,
                   color: Colors.white,
                   alignment: Alignment.center,
-                  child: const Text(
-                    'PUP',
+                  child: Text(
+                    BrandingScope.of(context).monogram,
                     style: TextStyle(
-                      color: PupColors.pupMaroon,
+                      color: BrandColors.brandMaroon,
                       fontSize: 11,
                       fontWeight: FontWeight.w900,
                       fontFamily: 'Lora',
@@ -239,7 +239,7 @@ class _IdCardFront extends StatelessWidget {
                       Text(
                         'REPUBLIC OF THE PHILIPPINES',
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: PupColors.pupGold,
+                          color: BrandColors.brandGold,
                           fontSize: 6,
                           letterSpacing: 1.1,
                           fontWeight: FontWeight.w700,
@@ -260,7 +260,11 @@ class _IdCardFront extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(Icons.verified, color: PupColors.pupGold, size: 17),
+                const Icon(
+                  Icons.verified,
+                  color: BrandColors.brandGold,
+                  size: 17,
+                ),
               ],
             ),
           ),
@@ -280,7 +284,7 @@ class _IdCardFront extends StatelessWidget {
                               aspectRatio: 3 / 4,
                               child: Container(
                                 decoration: BoxDecoration(
-                                  color: PupColors.campusLight,
+                                  color: BrandColors.campusLight,
                                   border: Border.all(
                                     color: tokens.borderSubtle,
                                     width: 1.5,
@@ -290,7 +294,7 @@ class _IdCardFront extends StatelessWidget {
                                 child: Text(
                                   _initials(user.fullName),
                                   style: const TextStyle(
-                                    color: PupColors.pupMaroon,
+                                    color: BrandColors.brandMaroon,
                                     fontSize: 28,
                                     fontWeight: FontWeight.w800,
                                   ),
@@ -298,7 +302,7 @@ class _IdCardFront extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 5),
-                            Container(height: 1, color: PupColors.ink),
+                            Container(height: 1, color: BrandColors.ink),
                             const SizedBox(height: 2),
                             Text(
                               'SIGNATURE',
@@ -325,7 +329,7 @@ class _IdCardFront extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: PupColors.pupMaroon,
+                                color: BrandColors.brandMaroon,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w800,
                                 fontFamily: 'monospace',
@@ -338,7 +342,7 @@ class _IdCardFront extends StatelessWidget {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: PupColors.ink,
+                                color: BrandColors.ink,
                                 fontSize: 12,
                                 height: 1.15,
                                 fontWeight: FontWeight.w800,
@@ -357,11 +361,11 @@ class _IdCardFront extends StatelessWidget {
                                       Text(
                                         user.program?.trim().isNotEmpty == true
                                             ? user.program!
-                                            : 'PUP Student',
+                                            : 'Student',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
-                                          color: PupColors.ink,
+                                          color: BrandColors.ink,
                                           fontSize: 8.5,
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -376,7 +380,7 @@ class _IdCardFront extends StatelessWidget {
                                     Text(
                                       '${user.yearLevel ?? 1}',
                                       style: const TextStyle(
-                                        color: PupColors.ink,
+                                        color: BrandColors.ink,
                                         fontSize: 8.5,
                                         fontWeight: FontWeight.w700,
                                       ),
@@ -392,7 +396,7 @@ class _IdCardFront extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: PupColors.ink,
+                                color: BrandColors.ink,
                                 fontSize: 8.5,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -432,7 +436,7 @@ class _IdCardBack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final contact = <String>[
       if (user.contactPhone?.trim().isNotEmpty == true) user.contactPhone!,
       if (user.contactEmail?.trim().isNotEmpty == true) user.contactEmail!,
@@ -449,7 +453,7 @@ class _IdCardBack extends StatelessWidget {
               Container(
                 height: 30,
                 margin: const EdgeInsets.only(top: 12),
-                color: PupColors.ink,
+                color: BrandColors.ink,
               ),
               Expanded(
                 child: Padding(
@@ -464,7 +468,7 @@ class _IdCardBack extends StatelessWidget {
                             const Text(
                               'CONDITIONS OF USE',
                               style: TextStyle(
-                                color: PupColors.pupMaroon,
+                                color: BrandColors.brandMaroon,
                                 fontSize: 7.5,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 1,
@@ -474,7 +478,7 @@ class _IdCardBack extends StatelessWidget {
                             const Text(
                               'This card is non-transferable and must be presented upon entry to the university premises. The finder of this lost card is requested to surrender it to the Office of Student Affairs.',
                               style: TextStyle(
-                                color: PupColors.muted,
+                                color: BrandColors.muted,
                                 fontSize: 6.5,
                                 height: 1.35,
                               ),
@@ -495,7 +499,7 @@ class _IdCardBack extends StatelessWidget {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
-                                      color: PupColors.ink,
+                                      color: BrandColors.ink,
                                       fontSize: 7.5,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -536,7 +540,7 @@ class _IdCardBack extends StatelessWidget {
                             const Text(
                               'SCAN TO VERIFY',
                               style: TextStyle(
-                                color: PupColors.muted,
+                                color: BrandColors.muted,
                                 fontSize: 6,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 0.8,
@@ -567,7 +571,7 @@ class _ContactLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(height: 1, color: PupColors.borderSubtleLight);
+    return Container(height: 1, color: BrandColors.borderSubtleLight);
   }
 }
 
@@ -583,7 +587,7 @@ class _CardFieldLabel extends StatelessWidget {
       child: Text(
         label,
         style: const TextStyle(
-          color: PupColors.muted,
+          color: BrandColors.muted,
           fontSize: 6,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.9,
@@ -619,8 +623,8 @@ class _HologramSweep extends StatelessWidget {
                     end: Alignment(-1.2 + position * 4.4, 1),
                     colors: <Color>[
                       Colors.transparent,
-                      PupColors.pupGold.withValues(alpha: 0.16),
-                      PupColors.pupMaroon.withValues(alpha: 0.10),
+                      BrandColors.brandGold.withValues(alpha: 0.16),
+                      BrandColors.brandMaroon.withValues(alpha: 0.10),
                       Colors.transparent,
                     ],
                     stops: const <double>[0.25, 0.45, 0.55, 0.75],
@@ -638,7 +642,7 @@ class _HologramSweep extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: PupColors.pupDeepMaroon,
+                  color: BrandColors.brandDeepMaroon,
                   fontSize: 5.5,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.45,
@@ -665,7 +669,7 @@ class _IdQrPlaceholderPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final cell = size.width / _modules;
-    final paint = Paint()..color = PupColors.ink;
+    final paint = Paint()..color = BrandColors.ink;
     var state = _fnv1a(seed);
     bool nextBit() {
       state ^= (state << 13) & 0xFFFFFFFF;

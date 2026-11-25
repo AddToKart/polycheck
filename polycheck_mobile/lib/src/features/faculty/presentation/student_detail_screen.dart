@@ -351,7 +351,7 @@ class _FacultyStudentDetailScreenState
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final student = _student;
     final section = _section;
     final totalPages = _sessions.isEmpty
@@ -592,7 +592,7 @@ class _SessionAttendanceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final status = record?.status ?? AttendanceStatus.pending;
     return CampusCard(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -665,7 +665,7 @@ class _ReleaseFormState extends State<_ReleaseForm> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

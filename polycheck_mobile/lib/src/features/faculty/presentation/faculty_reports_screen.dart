@@ -8,7 +8,7 @@ import '../data/faculty_logic.dart';
 import 'widgets/attendance_donut.dart';
 import 'widgets/faculty_shell.dart';
 
-/// Reports and exports: analytics, per-section comparison, CSV, and the PUP
+/// Reports and exports: analytics, per-section comparison, CSV, and the official
 /// document downloads (master list, class record, session attendance).
 class FacultyReportsScreen extends ConsumerStatefulWidget {
   const FacultyReportsScreen({super.key});
@@ -55,9 +55,9 @@ class _FacultyReportsScreenState extends ConsumerState<FacultyReportsScreen> {
   List<String> _courseOptions() {
     final user = ref.read(sessionProvider).user;
     if (user == null) return const <String>[];
-    if (user.role == UserRole.superAdmin) return pupCourseCodes();
+    if (user.role == UserRole.superAdmin) return campusCourseCodes();
     final scoped = oversightCourses(user);
-    return scoped ?? pupCourseCodes();
+    return scoped ?? campusCourseCodes();
   }
 
   Future<void> _load() async {
@@ -234,7 +234,7 @@ class _FacultyReportsScreenState extends ConsumerState<FacultyReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final report = _report;
     final totals = report?.totals;
     final segments = totals == null
@@ -368,7 +368,7 @@ class _FacultyReportsScreenState extends ConsumerState<FacultyReportsScreen> {
                                 DropdownMenuItem<String>(
                                   value: code,
                                   child: Text(
-                                    '$code — ${pupCourseName(code)}',
+                                    '$code — ${campusCourseName(code)}',
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),

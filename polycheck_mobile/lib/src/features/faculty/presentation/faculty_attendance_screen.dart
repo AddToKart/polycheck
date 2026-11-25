@@ -116,7 +116,7 @@ class _FacultyAttendanceScreenState
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final report = _report;
     final totals = report?.totals;
     final sectionsById = <String, Section>{
@@ -370,7 +370,7 @@ class _SectionReportRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final rate = attendanceRatePercent(
       present: summary.present,
       late: summary.late,

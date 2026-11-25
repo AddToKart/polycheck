@@ -95,7 +95,7 @@ void main() {
   FakeSessionApi consentedApi() => FakeSessionApi(
     onPrivacyNotice: () async => const PrivacyNotice(
       version: 'v1',
-      url: 'https://pup.edu.ph/privacy',
+      url: 'https://example.edu.ph/privacy',
       summary: 'Attendance evidence notice.',
     ),
   );

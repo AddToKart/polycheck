@@ -87,7 +87,7 @@ class _FacultySessionsScreenState extends ConsumerState<FacultySessionsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final sectionById = <String, Section>{
       for (final section in _sections) section.id: section,
     };

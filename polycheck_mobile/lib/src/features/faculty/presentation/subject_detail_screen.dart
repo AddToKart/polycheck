@@ -62,7 +62,7 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final subject = _subject;
     return FacultyScaffold(
       title: subject == null ? 'Subject' : subject.name,
@@ -196,7 +196,7 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final slots = scheduleSlotsForSection(section);
     return CampusCard(
       onTap: onTap,

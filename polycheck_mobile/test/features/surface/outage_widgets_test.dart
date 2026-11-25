@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/core/utils/outage_simulator.dart';
 import 'package:polycheck_mobile/src/features/surface/data/outage_demo.dart';
 import 'package:polycheck_mobile/src/features/surface/presentation/widgets/outage_widgets.dart';
@@ -105,7 +105,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        theme: PupTheme.light,
+        theme: BrandTheme.light,
         home: const Scaffold(body: OutagePill()),
       ),
     );

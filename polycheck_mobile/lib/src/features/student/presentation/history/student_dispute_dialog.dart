@@ -62,7 +62,7 @@ class _StudentDisputeDialogState extends State<StudentDisputeDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final length = _descriptionController.text.length;
     return AlertDialog(
       key: const ValueKey('student-dispute-dialog'),

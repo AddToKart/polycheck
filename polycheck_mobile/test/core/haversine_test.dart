@@ -42,7 +42,7 @@ void main() {
     });
 
     test('matches the TS vector for a campus-scale offset', () {
-      // 0.00036 deg latitude is ~40.03 m at PUP Santa Maria's latitude.
+      // 0.00036 deg latitude is ~40.03 m at the campus latitude.
       final distance = haversineDistance(14.5995, 120.9842, 14.59986, 120.9842);
       expect(distance, closeTo(39.9, 0.6));
       expect(math.max(distance, 0), distance);

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
-import '../../../../core/theme/pup_theme.dart';
-import '../../../../core/theme/pup_tokens.dart';
+import '../../../../core/theme/brand_theme.dart';
+import '../../../../core/theme/brand_tokens.dart';
 
 /// Token-styled markdown renderer for assistant replies.
 ///
@@ -20,7 +20,7 @@ class AssistantMarkdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final theme = Theme.of(context);
     final body = theme.textTheme.bodyMedium?.copyWith(
       color: tokens.onSurface,
@@ -110,7 +110,7 @@ class ZebraMarkdownTableBuilder extends MarkdownElementBuilder {
   ZebraMarkdownTableBuilder({required this.isDark, required this.tokens});
 
   final bool isDark;
-  final PupTokens tokens;
+  final BrandTokens tokens;
 
   @override
   bool isBlockElement() => true;
@@ -219,9 +219,9 @@ class ZebraMarkdownTableBuilder extends MarkdownElementBuilder {
 
 /// Assistant bubble surface color helper (shared by the chat rows).
 Color assistantBubbleColor(BuildContext context, {required bool isUser}) {
-  final tokens = PupTheme.of(context);
+  final tokens = BrandTheme.of(context);
   if (isUser) {
-    return tokens.isDark ? tokens.surface : PupColors.pupMaroon;
+    return tokens.isDark ? tokens.surface : BrandColors.brandMaroon;
   }
   return tokens.surface;
 }

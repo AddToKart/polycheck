@@ -43,7 +43,7 @@ class _ManualTokenEntryDialogState extends State<ManualTokenEntryDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return AlertDialog(
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       backgroundColor: tokens.surface,
@@ -141,7 +141,7 @@ class _MeetingPinDialogState extends State<MeetingPinDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return AlertDialog(
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       backgroundColor: tokens.surface,

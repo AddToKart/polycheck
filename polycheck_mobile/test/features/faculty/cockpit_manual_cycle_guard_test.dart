@@ -159,7 +159,7 @@ Future<_RecordingAttendanceApi> _pumpCockpit(WidgetTester tester) async {
         deviceNowProvider.overrideWithValue(DateTime.now),
       ],
       child: MaterialApp(
-        theme: PupTheme.light,
+        theme: BrandTheme.light,
         home: const SessionCockpitScreen(sessionId: 'sess-1'),
       ),
     ),
@@ -247,7 +247,7 @@ void main() {
           deviceNowProvider.overrideWithValue(DateTime.now),
         ],
         child: MaterialApp(
-          theme: PupTheme.light,
+          theme: BrandTheme.light,
           home: const SessionCockpitScreen(sessionId: 'sess-1'),
         ),
       ),

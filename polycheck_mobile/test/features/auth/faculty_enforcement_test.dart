@@ -8,7 +8,7 @@ import 'package:polycheck_mobile/src/core/database/app_database.dart';
 import 'package:polycheck_mobile/src/core/network/api_error.dart';
 import 'package:polycheck_mobile/src/core/network/dio_client.dart';
 import 'package:polycheck_mobile/src/core/providers/maintenance_provider.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/core/widgets/campus_button.dart';
 import 'package:polycheck_mobile/src/features/auth/presentation/faculty_login_screen.dart';
 import 'package:polycheck_mobile/src/features/auth/presentation/student_login_screen.dart';
@@ -34,7 +34,7 @@ void main() {
           ),
         ],
         child: MaterialApp(
-          theme: PupTheme.light,
+          theme: BrandTheme.light,
           home: const FacultyLoginScreen(),
         ),
       ),
@@ -45,7 +45,7 @@ void main() {
   Future<void> submitFacultyCredentials(WidgetTester tester) async {
     await tester.enterText(
       find.byType(TextField).at(0),
-      'juan.delacruz@pup.edu.ph',
+      'juan.delacruz@example.edu.ph',
     );
     await tester.enterText(find.byType(TextField).at(1), 'ValidPassw0rd!');
     await tester.tap(find.widgetWithText(CampusButton, 'Sign in'));
@@ -131,7 +131,7 @@ void main() {
             ),
           ],
           child: MaterialApp(
-            theme: PupTheme.light,
+            theme: BrandTheme.light,
             home: const StudentLoginScreen(),
           ),
         ),

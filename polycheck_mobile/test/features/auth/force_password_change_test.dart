@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:polycheck_mobile/src/core/models/user.dart';
 import 'package:polycheck_mobile/src/core/providers/session_provider.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/core/widgets/campus_button.dart';
 import 'package:polycheck_mobile/src/features/auth/presentation/force_password_change_screen.dart';
 
@@ -26,7 +26,7 @@ void main() {
           ),
         ],
         child: MaterialApp(
-          theme: PupTheme.light,
+          theme: BrandTheme.light,
           home: const ForcePasswordChangeScreen(),
         ),
       ),

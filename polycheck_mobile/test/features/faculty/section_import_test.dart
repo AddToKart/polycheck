@@ -24,7 +24,7 @@ void main() {
       expect(parsed.errors.join(' '), contains('not closed'));
     });
 
-    test('suggests the PUP master-list column mapping', () {
+    test('suggests the registrar master-list column mapping', () {
       final mapping = suggestImportMapping(const [
         'Student No.',
         'Name',
@@ -139,7 +139,7 @@ void main() {
           rowNumber: 2,
           column: 'studentId',
           code: ImportIssueCode.invalidStudentNumber,
-          message: 'Enter a valid PUP student number (e.g. 2024-00001-MN-0).',
+          message: 'Enter a valid student number (e.g. 2024-00001-MN-0).',
         ),
         const ImportIssue(
           rowNumber: 3,

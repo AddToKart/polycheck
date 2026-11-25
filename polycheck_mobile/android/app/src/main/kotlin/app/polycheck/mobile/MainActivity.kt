@@ -1,4 +1,4 @@
-package edu.pup.polycheck.mobile
+package app.polycheck.mobile
 
 import io.flutter.embedding.android.FlutterActivity
 

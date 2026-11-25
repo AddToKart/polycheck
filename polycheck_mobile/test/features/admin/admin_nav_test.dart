@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:polycheck_mobile/src/core/models/user.dart';
 import 'package:polycheck_mobile/src/core/providers/session_provider.dart';
 import 'package:polycheck_mobile/src/core/router/router_decision.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/core/widgets/campus_bottom_nav.dart';
 import 'package:polycheck_mobile/src/features/admin/domain/admin_access.dart';
 import 'package:polycheck_mobile/src/features/admin/presentation/widgets/admin_common.dart';
@@ -92,7 +92,7 @@ Future<GoRouter> _pumpConsole(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp.router(theme: PupTheme.light, routerConfig: router),
+      child: MaterialApp.router(theme: BrandTheme.light, routerConfig: router),
     ),
   );
   await tester.pumpAndSettle();

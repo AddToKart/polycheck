@@ -7,7 +7,7 @@ void main() {
     test('strips BOM, handles quotes, CRLF, and skips blank lines', () {
       final parsed = parseCsv(
         '\uFEFFStudent No,Name,Email\r\n'
-        '"2024-00001-MN-0","Santos, Maria",maria@pup.edu.ph\r\n'
+        '"2024-00001-MN-0","Santos, Maria",maria@example.edu.ph\r\n'
         '\r\n'
         '"2024-00002-MN-0","Dela ""Cruz""",,\r\n',
       );
@@ -19,13 +19,13 @@ void main() {
     });
 
     test('reports an unterminated quote', () {
-      final parsed = parseCsv('Name,Email\n"Maria,maria@pup.edu.ph');
+      final parsed = parseCsv('Name,Email\n"Maria,maria@example.edu.ph');
       expect(parsed.errors, isNotEmpty);
     });
   });
 
   group('column mapping', () {
-    test('suggests the PUP master-list layout', () {
+    test('suggests the registrar master-list layout', () {
       final mapping = suggestColumnMapping(<String>[
         'Student No',
         'Name',
@@ -93,7 +93,7 @@ void main() {
         <String>[
           '2024-00001-MN-0',
           'Maria Santos',
-          'MARIA@pup.edu.ph',
+          'MARIA@example.edu.ph',
           'BSIT',
           '2nd year',
           'CCIS',
@@ -103,7 +103,7 @@ void main() {
       ], mapping);
 
       expect(built.rows.length, 1);
-      expect(built.rows.first.email, 'maria@pup.edu.ph');
+      expect(built.rows.first.email, 'maria@example.edu.ph');
       expect(built.rows.first.yearLevel, 2);
       expect(
         built.issues.any(
@@ -135,18 +135,18 @@ void main() {
         ImportCredential(
           rowNumber: 2,
           studentId: '2024-00001-MN-0',
-          tempPassword: 'PUP-A,BC!',
+          tempPassword: 'PCK-A,BC!',
         ),
       ]);
       expect(csv.split('\r\n').first, 'Row,Student number,Temporary password');
-      expect(csv, contains('"PUP-A,BC!"'));
+      expect(csv, contains('"PCK-A,BC!"'));
 
       final issues = issuesCsv(const <ImportIssue>[
         ImportIssue(
           rowNumber: 3,
           column: 'studentId',
           code: ImportIssueCode.invalidStudentNumber,
-          message: 'Enter a valid PUP student number.',
+          message: 'Enter a valid student number.',
         ),
       ]);
       expect(issues, contains('INVALID_STUDENT_NUMBER'));
@@ -156,7 +156,7 @@ void main() {
   group('wizard transitions', () {
     const csv =
         'Student No,Name,Email\n'
-        '2024-00001-MN-0,Maria Santos,maria@pup.edu.ph\n';
+        '2024-00001-MN-0,Maria Santos,maria@example.edu.ph\n';
 
     test('paste advances to mapping and validation to review', () {
       var state = const BulkImportState();

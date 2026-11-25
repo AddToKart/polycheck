@@ -24,7 +24,7 @@ void main() {
       'id': 'u-student-1',
       'studentId': '2023-00001-MN-0',
       'fullName': 'Maria Clara',
-      'email': 'maria.clara@pup.edu.ph',
+      'email': 'maria.clara@example.edu.ph',
       'program': 'BSIT',
       'yearLevel': 3,
       'photoUrl': null,
@@ -119,11 +119,11 @@ void main() {
       final section = Section.fromJson(<String, dynamic>{
         ...baseSection,
         'course': 'BSIT',
-        'enrollmentCode': 'PUP1234',
+        'enrollmentCode': 'ENR1234',
         'enrollmentCodeExpiry': '2026-06-15T00:00:00Z',
       });
       expect(section.course, 'BSIT');
-      expect(section.enrollmentCode, 'PUP1234');
+      expect(section.enrollmentCode, 'ENR1234');
       expect(Section.fromJson(section.toJson()), section);
     });
 

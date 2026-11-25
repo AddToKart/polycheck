@@ -235,7 +235,7 @@ class _SectionCreateScreenState extends ConsumerState<SectionCreateScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return FacultyScaffold(
       title: 'New section',
       subtitle: _subject == null
@@ -288,7 +288,7 @@ class _SectionCreateScreenState extends ConsumerState<SectionCreateScreen> {
                                         : _courseSelection == customCourseOption
                                         ? 'Other — specify manually'
                                         : '$_courseSelection — '
-                                              '${pupCourseName(_courseSelection)}',
+                                              '${campusCourseName(_courseSelection)}',
                                     style: Theme.of(context)
                                         .textTheme
                                         .bodyMedium
@@ -477,15 +477,15 @@ class _CoursePickerSheetState extends State<_CoursePickerSheet> {
     super.dispose();
   }
 
-  List<PupCourseGroup> get _filteredGroups {
+  List<CampusCourseGroup> get _filteredGroups {
     final needle = _query.trim().toLowerCase();
-    final groups = pupCoursesByDepartment();
+    final groups = campusCoursesByDepartment();
     if (needle.isEmpty) return groups;
-    return <PupCourseGroup>[
+    return <CampusCourseGroup>[
       for (final group in groups)
-        PupCourseGroup(
+        CampusCourseGroup(
           department: group.department,
-          courses: <PupCourse>[
+          courses: <CampusCourse>[
             for (final course in group.courses)
               if (course.code.toLowerCase().contains(needle) ||
                   course.name.toLowerCase().contains(needle))
@@ -497,7 +497,7 @@ class _CoursePickerSheetState extends State<_CoursePickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final groups = _filteredGroups;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -588,7 +588,7 @@ class _ScheduleRowEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(border: Border.all(color: tokens.borderSubtle)),

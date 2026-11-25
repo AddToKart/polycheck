@@ -94,7 +94,7 @@ class _FacultyDisputesScreenState extends ConsumerState<FacultyDisputesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final pending = _records
         .where((record) => !record.disputeResolved)
         .toList(growable: false);
@@ -232,7 +232,7 @@ class _FacultyDisputesScreenState extends ConsumerState<FacultyDisputesScreen> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: PupTheme.of(context).surface,
+      backgroundColor: BrandTheme.of(context).surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       builder: (sheetContext) => SizedBox(
         height: MediaQuery.sizeOf(sheetContext).height * 0.88,
@@ -263,7 +263,7 @@ class _DisputeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusCard(
       onTap: onTap,
       semanticLabel:
@@ -436,7 +436,7 @@ class _DisputeDetailSheetState extends ConsumerState<_DisputeDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final record = widget.record;
     final recommendation = _timeline?.recommendation;
     return Column(

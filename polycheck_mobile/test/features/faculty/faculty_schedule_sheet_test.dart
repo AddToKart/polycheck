@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:polycheck_mobile/src/core/models/api.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/features/faculty/presentation/faculty_schedule_screen.dart';
 
 const List<CalendarEvent> _events = <CalendarEvent>[
@@ -39,7 +39,7 @@ Future<void> _pumpShell(
 }) async {
   await tester.pumpWidget(
     MaterialApp(
-      theme: PupTheme.light,
+      theme: BrandTheme.light,
       home: Navigator(
         onGenerateRoute: (_) => MaterialPageRoute<void>(
           builder: (pageContext) => Scaffold(

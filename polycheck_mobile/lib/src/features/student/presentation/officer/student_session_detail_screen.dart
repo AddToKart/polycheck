@@ -161,7 +161,7 @@ class _StudentSessionDetailScreenState
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final detailAsync = ref.watch(studentSessionDetailProvider(_key));
     return Scaffold(
       appBar: CampusHeader(
@@ -263,7 +263,7 @@ class _SessionBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final session = detail.session;
     final activeToken = detail.activeClassToken;
     return ListView(
@@ -616,7 +616,7 @@ class _DetailStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return SizedBox(
       width: 140,
       child: Row(
@@ -660,7 +660,7 @@ class _ProofCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusCard(
       padding: const EdgeInsets.all(10),
       child: Row(
@@ -718,7 +718,7 @@ class _ProofImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final data = proof.photoData;
     if (data.startsWith('data:')) {
       final comma = data.indexOf(',');

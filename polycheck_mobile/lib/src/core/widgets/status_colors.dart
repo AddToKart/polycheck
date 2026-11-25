@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/attendance.dart';
-import '../theme/pup_tokens.dart';
+import '../theme/brand_tokens.dart';
 
 /// The single home for attendance-status labels, icons, and colors.
 ///
@@ -50,36 +50,36 @@ AttendanceStatusStyle attendanceStatusStyle(
   AttendanceStatus status, {
   required bool isDark,
 }) {
-  final surface = isDark ? PupColors.surfaceDark : PupColors.surfaceLight;
-  final campus = isDark ? PupColors.campusDark : PupColors.campusLight;
+  final surface = isDark ? BrandColors.surfaceDark : BrandColors.surfaceLight;
+  final campus = isDark ? BrandColors.campusDark : BrandColors.campusLight;
   final border = isDark
-      ? PupColors.borderSubtleDark
-      : PupColors.borderSubtleLight;
-  final accent = isDark ? PupColors.pupGold : PupColors.pupMaroon;
+      ? BrandColors.borderSubtleDark
+      : BrandColors.borderSubtleLight;
+  final accent = isDark ? BrandColors.brandGold : BrandColors.brandMaroon;
 
   switch (status) {
     case AttendanceStatus.present:
       return AttendanceStatusStyle(
         label: attendanceStatusLabels[status]!,
-        background: PupColors.pupGold,
-        foreground: PupColors.pupDeepMaroon,
-        border: PupColors.pupGold,
+        background: BrandColors.brandGold,
+        foreground: BrandColors.brandDeepMaroon,
+        border: BrandColors.brandGold,
         icon: attendanceStatusIcons[status]!,
       );
     case AttendanceStatus.late:
       return AttendanceStatusStyle(
         label: attendanceStatusLabels[status]!,
-        background: PupColors.pupMaroon,
-        foreground: PupColors.white,
-        border: PupColors.pupMaroon,
+        background: BrandColors.brandMaroon,
+        foreground: BrandColors.white,
+        border: BrandColors.brandMaroon,
         icon: attendanceStatusIcons[status]!,
       );
     case AttendanceStatus.absent:
       return AttendanceStatusStyle(
         label: attendanceStatusLabels[status]!,
-        background: PupColors.pupDeepMaroon,
-        foreground: PupColors.white,
-        border: PupColors.pupGold,
+        background: BrandColors.brandDeepMaroon,
+        foreground: BrandColors.white,
+        border: BrandColors.brandGold,
         icon: attendanceStatusIcons[status]!,
       );
     case AttendanceStatus.pending:
@@ -93,25 +93,27 @@ AttendanceStatusStyle attendanceStatusStyle(
     case AttendanceStatus.disputed:
       return AttendanceStatusStyle(
         label: attendanceStatusLabels[status]!,
-        background: PupColors.pupDeepMaroon,
-        foreground: PupColors.pupGold,
-        border: PupColors.pupGold,
+        background: BrandColors.brandDeepMaroon,
+        foreground: BrandColors.brandGold,
+        border: BrandColors.brandGold,
         icon: attendanceStatusIcons[status]!,
       );
     case AttendanceStatus.excused:
       return AttendanceStatusStyle(
         label: attendanceStatusLabels[status]!,
         background: campus,
-        foreground: isDark ? PupColors.white : PupColors.pupDeepMaroon,
-        border: isDark ? PupColors.pupGold : PupColors.pupMaroon,
+        foreground: isDark ? BrandColors.white : BrandColors.brandDeepMaroon,
+        border: isDark ? BrandColors.brandGold : BrandColors.brandMaroon,
         icon: attendanceStatusIcons[status]!,
       );
     case AttendanceStatus.incomplete:
       return AttendanceStatusStyle(
         label: attendanceStatusLabels[status]!,
         background: campus,
-        foreground: isDark ? PupColors.pupGold : PupColors.pupDeepMaroon,
-        border: PupColors.pupGold,
+        foreground: isDark
+            ? BrandColors.brandGold
+            : BrandColors.brandDeepMaroon,
+        border: BrandColors.brandGold,
         icon: attendanceStatusIcons[status]!,
       );
   }

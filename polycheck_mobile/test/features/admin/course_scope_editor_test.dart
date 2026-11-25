@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:polycheck_mobile/src/core/models/user.dart';
 import 'package:polycheck_mobile/src/core/providers/session_provider.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/features/admin/application/admin_users_api.dart';
 import 'package:polycheck_mobile/src/features/admin/presentation/widgets/user_record_sheet.dart';
 
@@ -25,7 +25,7 @@ User _teacher({
 }) => User(
   id: 't-9',
   fullName: 'Prof. Head',
-  email: 'head@pup.edu.ph',
+  email: 'head@example.edu.ph',
   role: UserRole.teacher,
   isActive: true,
   isDepartmentHead: head,
@@ -63,7 +63,7 @@ Future<_RecordingApi> _pump(WidgetTester tester, User account) async {
         adminUsersApiProvider.overrideWithValue(api),
       ],
       child: MaterialApp(
-        theme: PupTheme.light,
+        theme: BrandTheme.light,
         home: Scaffold(
           body: SingleChildScrollView(
             child: UserRecordSheet(account: account, onChanged: () {}),

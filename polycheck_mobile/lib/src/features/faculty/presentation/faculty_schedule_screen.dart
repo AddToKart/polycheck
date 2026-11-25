@@ -96,7 +96,7 @@ class _FacultyScheduleScreenState extends ConsumerState<FacultyScheduleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final title = _monthView
         ? '${getMonthName(_anchor.month - 1)} ${_anchor.year}'
         : 'Week of ${formatDate(_anchor)}';
@@ -228,7 +228,7 @@ class FacultyDaySheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     if (events.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 18),
@@ -307,7 +307,7 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
@@ -344,7 +344,7 @@ class _MonthGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final weeks = getMonthDays(anchor.year, anchor.month - 1);
     final today = formatDate(DateTime.now());
     return Column(
@@ -421,7 +421,7 @@ class _WeekColumns extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final days = getWeekDays(anchor);
     return SizedBox(
       height: 430,
@@ -549,7 +549,7 @@ class _EventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusCard(
       onTap: onTap,
       padding: const EdgeInsets.all(10),

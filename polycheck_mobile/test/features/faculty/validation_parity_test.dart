@@ -76,7 +76,7 @@ void main() {
               sectionsApiProvider.overrideWithValue(sectionsApi),
           ],
           child: MaterialApp(
-            theme: PupTheme.light,
+            theme: BrandTheme.light,
             home: const SectionCreateScreen(subjectId: 'subj-1'),
           ),
         ),

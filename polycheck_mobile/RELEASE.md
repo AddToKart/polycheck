@@ -1,8 +1,8 @@
 # Polycheck Mobile - Android Release Runbook
 
 Play Store submission target: **November 18-20, 2026** (`.aab` upload).
-Package: `edu.pup.polycheck.mobile` (coexists with the React Native app
-`edu.pup.polycheck`).
+Package: `app.polycheck.mobile` (coexists with the React Native app
+its original package id).
 
 This document covers the Flutter client only. Build/signing commands are
 Windows-oriented (the development machine uses Android Studio's bundled JDK),
@@ -26,9 +26,9 @@ version: 1.0.0+1
   `versionName` is unchanged.
 - Bump `versionName` for user-visible releases (`1.0.1`, `1.1.0`, ...).
 - `flutter.versionCode` / `flutter.versionName` in Gradle come from this field.
-- Keep `lib/src/core/app_info.dart` (`PUP_APP_VERSION`) aligned when displaying
+- Keep `lib/src/core/app_info.dart` (`APP_VERSION`) aligned when displaying
   the version in-app; release pipelines can stamp
-  `--dart-define=PUP_APP_VERSION=1.0.0+12`.
+  `--dart-define=APP_VERSION=1.0.0+12`.
 
 ## 2. Environment
 
@@ -44,19 +44,19 @@ staging API used by the React Native app):
 
 ```powershell
 flutter build appbundle --release `
-  --dart-define=PUP_API_BASE_URL=https://polycheck-api.addtokart.tech/api `
-  --dart-define=PUP_WS_BASE_URL=https://polycheck-api.addtokart.tech/attendance
+  --dart-define=API_BASE_URL=https://polycheck-api.addtokart.tech/api `
+  --dart-define=WS_BASE_URL=https://polycheck-api.addtokart.tech/attendance
 ```
 
 Optional release flags:
 
 | Define | Default | Purpose |
 |---|---|---|
-| `PUP_API_BASE_URL` | staging API | NestJS base URL including `/api` |
-| `PUP_WS_BASE_URL` | derived from API URL | Socket.IO namespace URL |
+| `API_BASE_URL` | staging API | NestJS base URL including `/api` |
+| `WS_BASE_URL` | derived from API URL | Socket.IO namespace URL |
 | `ALLOW_QR_FALLBACKS` | `false` | In-person screenshot/manual QR fallbacks (online sessions always allow them) |
 | `ENABLE_OUTAGE_SIMULATOR` | `false` | Demo-only offline simulator pill |
-| `PUP_APP_VERSION` | `1.0.0` | Footer/app-info display version |
+| `APP_VERSION` | `1.0.0` | Footer/app-info display version |
 
 **Never enable the outage simulator or QR fallbacks in a production build.**
 
@@ -95,14 +95,14 @@ keyPassword=...
 ```powershell
 # Release bundle for Play
 flutter build appbundle --release `
-  --dart-define=PUP_API_BASE_URL=https://polycheck-api.addtokart.tech/api
+  --dart-define=API_BASE_URL=https://polycheck-api.addtokart.tech/api
 
 # Output:
 #   build/app/outputs/bundle/release/app-release.aab
 
 # Local release APK smoke test
 flutter build apk --release `
-  --dart-define=PUP_API_BASE_URL=https://polycheck-api.addtokart.tech/api
+  --dart-define=API_BASE_URL=https://polycheck-api.addtokart.tech/api
 
 # Output:
 #   build/app/outputs/flutter-apk/app-release.apk
@@ -147,10 +147,10 @@ apkanalyzer files list build\app\outputs\bundle\release\app-release.aab |
 | Item | Value |
 |---|---|
 | App label | `Polycheck` (`AndroidManifest.xml`) |
-| Application ID | `edu.pup.polycheck.mobile` |
+| Application ID | `app.polycheck.mobile` |
 | minSdk / targetSdk | 26 (Android 8) / 36 (Play requirement) |
-| Launcher icon | PUP seal on maroon `#7B1113` (legacy + adaptive + monochrome) |
-| Icon source | `assets/branding/` (derived from `android/assets/pup-logo*.png`) |
+| Launcher icon | Polycheck mark on maroon `#7B1113` (legacy + adaptive + monochrome) |
+| Icon source | `assets/branding/` (derived from `android/assets/brand-mark*.png`) |
 | Regenerate icons | `dart run flutter_launcher_icons` |
 | Splash | `LaunchTheme` window background `#7B1113` (light) / `#0A0A0A` (night); Android 12+ uses `windowSplashScreenBackground` |
 | Theme | Lora + DM Sans, maroon/gold tokens (web/mobile parity) |
@@ -191,7 +191,7 @@ Other answers:
 
 - **Encrypted in transit:** Yes (HTTPS/WSS).
 - **Data deletion request:** accounts are institution-provisioned; deletion is
-  handled by the PUP registrar/admin through the admin console. Users can
+  handled by the registrar/admin through the admin console. Users can
   request deletion via the institution's helpdesk.
 - **Data collection optional:** diagnostics, photos, and AI messages are
   user-initiated; attendance/location/device data are required for the

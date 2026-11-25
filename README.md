@@ -6,7 +6,7 @@
 
 ---
 
-[![PUP Brand](https://img.shields.io/badge/PUP-Maroon%20%26%20Gold-7B1113?style=for-the-badge)](https://www.pup.edu.ph/)
+[![Palette](https://img.shields.io/badge/Palette-Maroon%20%26%20Gold-7B1113?style=for-the-badge)](#-brand-design-system)
 [![Stack](https://img.shields.io/badge/Tech_Stack-Next.js_15_|_React_Native_|_NestJS_|_PostgreSQL-blue?style=for-the-badge&logo=typescript)](https://typescriptlang.org)
 [![Turborepo](https://img.shields.io/badge/Monorepo-Turborepo_|_pnpm-EF4444?style=for-the-badge&logo=turborepo)](https://turbo.build/)
 [![Docker](https://img.shields.io/badge/Containerized-Docker_|_PgBouncer_|_Redis-2496ED?style=for-the-badge&logo=docker)](https://www.docker.com/)
@@ -137,7 +137,7 @@ sequenceDiagram
 
 ---
 
-## 🎨 PUP Brand Design System
+## 🎨 Brand Design System
 
 Polycheck adheres strictly to the official brand guidelines of the **Polytechnic University of the Philippines**:
 

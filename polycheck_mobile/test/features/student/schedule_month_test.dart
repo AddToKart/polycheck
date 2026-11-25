@@ -92,40 +92,37 @@ void main() {
     expect(list.single.slot.startTime, '09:00');
   });
 
-  test(
-    'dot colors follow the PUP status palette (incl. disputed gold border)',
-    () {
-      expect(
-        studentMonthDotStyle(AttendanceStatus.present, isDark: false),
-        const StudentMonthDotStyle(
-          fill: PupColors.pupGold,
-          border: PupColors.pupGold,
-        ),
-      );
-      expect(
-        studentMonthDotStyle(AttendanceStatus.late, isDark: false),
-        const StudentMonthDotStyle(
-          fill: PupColors.pupMaroon,
-          border: PupColors.pupMaroon,
-        ),
-      );
-      expect(
-        studentMonthDotStyle(AttendanceStatus.absent, isDark: false).fill,
-        PupColors.pupDeepMaroon,
-      );
-      final disputed = studentMonthDotStyle(
-        AttendanceStatus.disputed,
-        isDark: false,
-      );
-      expect(disputed.fill, PupColors.pupDeepMaroon);
-      expect(disputed.border, PupColors.pupGold);
+  test('dot colors follow the status palette (incl. disputed gold border)', () {
+    expect(
+      studentMonthDotStyle(AttendanceStatus.present, isDark: false),
+      const StudentMonthDotStyle(
+        fill: BrandColors.brandGold,
+        border: BrandColors.brandGold,
+      ),
+    );
+    expect(
+      studentMonthDotStyle(AttendanceStatus.late, isDark: false),
+      const StudentMonthDotStyle(
+        fill: BrandColors.brandMaroon,
+        border: BrandColors.brandMaroon,
+      ),
+    );
+    expect(
+      studentMonthDotStyle(AttendanceStatus.absent, isDark: false).fill,
+      BrandColors.brandDeepMaroon,
+    );
+    final disputed = studentMonthDotStyle(
+      AttendanceStatus.disputed,
+      isDark: false,
+    );
+    expect(disputed.fill, BrandColors.brandDeepMaroon);
+    expect(disputed.border, BrandColors.brandGold);
 
-      // Plain scheduled meetings draw the muted event dot (RN zinc parity).
-      final scheduled = studentMonthDotStyle(null, isDark: false);
-      expect(scheduled.fill, PupColors.muted);
-      expect(scheduled.border, PupColors.muted);
-    },
-  );
+    // Plain scheduled meetings draw the muted event dot (RN zinc parity).
+    final scheduled = studentMonthDotStyle(null, isDark: false);
+    expect(scheduled.fill, BrandColors.muted);
+    expect(scheduled.border, BrandColors.muted);
+  });
 
   testWidgets('grid draws dots and taps a day cell back through onSelectDay', (
     tester,

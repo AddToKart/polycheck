@@ -106,7 +106,7 @@ const List<String> _monthNames = [
 
 /// The Philippines does not observe DST, so a fixed offset avoids partial
 /// time-zone support differences between platforms.
-const int pupTimezoneOffsetMs = 8 * 60 * 60 * 1000;
+const int campusTimezoneOffsetMs = 8 * 60 * 60 * 1000;
 
 String _pad(int n) => n < 10 ? '0$n' : '$n';
 
@@ -116,11 +116,11 @@ String _formatLocalDate(DateTime date) =>
 /// `YYYY-MM-DD` from a local date.
 String formatDate(DateTime date) => _formatLocalDate(date);
 
-/// Civil calendar date used by PUP (Asia/Manila, UTC+08:00).
+/// Civil calendar date used by the campus (Asia/Manila, UTC+08:00).
 String formatCampusDate([DateTime? date]) {
   final instant = date ?? DateTime.now();
   final campus = DateTime.fromMillisecondsSinceEpoch(
-    instant.millisecondsSinceEpoch + pupTimezoneOffsetMs,
+    instant.millisecondsSinceEpoch + campusTimezoneOffsetMs,
     isUtc: true,
   );
   return '${campus.year.toString().padLeft(4, '0')}-'
@@ -132,7 +132,7 @@ CampusDateRange getRecentCampusDateRange(int days, [DateTime? date]) {
   final normalizedDays = days < 1 ? 1 : days;
   final instant = date ?? DateTime.now();
   final campus = DateTime.fromMillisecondsSinceEpoch(
-    instant.millisecondsSinceEpoch + pupTimezoneOffsetMs,
+    instant.millisecondsSinceEpoch + campusTimezoneOffsetMs,
     isUtc: true,
   );
   final endDate =

@@ -20,7 +20,7 @@ test.describe('Auth & Session', () => {
     const errors = trackErrors(page)
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'Polycheck.' })).toBeVisible()
-    await expect(page.getByText('Polytechnic University of the Philippines • Attendance System')).toBeVisible()
+    await expect(page.getByText('Example Polytechnic of the Province • Attendance System')).toBeVisible()
     await expect(page.getByAltText(/logo$/i).first()).toBeVisible()
     // Role selection cards are <button>s
     await expect(page.getByRole('button', { name: /Student Portal/i })).toBeVisible()

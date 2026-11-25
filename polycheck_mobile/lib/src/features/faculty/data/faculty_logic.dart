@@ -366,7 +366,7 @@ class DonutSegment {
 
 List<DonutSegment> buildDonutSegments(
   AttendanceReportTotals totals, {
-  required PupTokens tokens,
+  required BrandTokens tokens,
 }) {
   return <DonutSegment>[
     DonutSegment(label: 'Present', value: totals.present, color: tokens.gold),

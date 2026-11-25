@@ -9,7 +9,7 @@ import '../../../core/providers/maintenance_provider.dart';
 import '../../../core/providers/session_provider.dart';
 import '../../../core/providers/trusted_clock.dart';
 import '../../../core/router/router_decision.dart';
-import '../../../core/theme/pup_theme.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../core/widgets/campus_button.dart';
 import '../../../core/widgets/campus_text_field.dart';
 import 'widgets/auth_shell.dart';
@@ -68,7 +68,7 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
       eyebrow: 'Authentication required',
       title: 'Student sign in',
       subtitle:
-          'Use your PUP student number and password. This device is attached '
+          'Use your student number and password. This device is attached '
           'to the session for integrity checks.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -111,7 +111,7 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
   }
 
   Widget _buildForm(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

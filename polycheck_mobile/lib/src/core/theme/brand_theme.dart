@@ -1,26 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'pup_tokens.dart';
+import 'brand_tokens.dart';
 
-/// Polycheck theme: PUP maroon/gold, Lora headings, DM Sans body, square
+/// Polycheck theme: brand maroon/gold, Lora headings, DM Sans body, square
 /// (zero-radius) surfaces, flat (transparent surface tint), 1px borders.
 ///
-/// Use `PupTheme.of(context)` for the resolved [PupTokens] and
-/// `PupTheme.themeOf(context)` when the [ThemeData] itself is needed.
-abstract final class PupTheme {
+/// Use `BrandTheme.of(context)` for the resolved [BrandTokens] and
+/// `BrandTheme.themeOf(context)` when the [ThemeData] itself is needed.
+abstract final class BrandTheme {
   static const BorderRadius none = BorderRadius.zero;
 
-  static final ThemeData light = _build(Brightness.light, PupTokens.light);
-  static final ThemeData dark = _build(Brightness.dark, PupTokens.dark);
+  static final ThemeData light = _build(Brightness.light, BrandTokens.light);
+  static final ThemeData dark = _build(Brightness.dark, BrandTokens.dark);
 
   /// Resolved design tokens for the current context.
-  static PupTokens of(BuildContext context) {
-    final tokens = Theme.of(context).extension<PupTokens>();
+  static BrandTokens of(BuildContext context) {
+    final tokens = Theme.of(context).extension<BrandTokens>();
     if (tokens != null) return tokens;
     return Theme.of(context).brightness == Brightness.dark
-        ? PupTokens.dark
-        : PupTokens.light;
+        ? BrandTokens.dark
+        : BrandTokens.light;
   }
 
   static ThemeData themeOf(BuildContext context) => Theme.of(context);
@@ -28,7 +28,7 @@ abstract final class PupTheme {
   static ThemeData forBrightness(Brightness brightness) =>
       brightness == Brightness.dark ? dark : light;
 
-  static ThemeData _build(Brightness brightness, PupTokens tokens) {
+  static ThemeData _build(Brightness brightness, BrandTokens tokens) {
     final isDark = brightness == Brightness.dark;
     final scheme = (isDark ? _darkScheme() : _lightScheme()).copyWith(
       surfaceTint: Colors.transparent,
@@ -304,39 +304,39 @@ abstract final class PupTheme {
   }
 
   static ColorScheme _lightScheme() => const ColorScheme.light(
-    primary: PupColors.pupMaroon,
-    onPrimary: PupColors.white,
-    primaryContainer: PupColors.pupDeepMaroon,
-    onPrimaryContainer: PupColors.white,
-    secondary: PupColors.pupGold,
-    onSecondary: PupColors.pupDeepMaroon,
-    secondaryContainer: PupColors.pupGold,
-    onSecondaryContainer: PupColors.pupDeepMaroon,
-    surface: PupColors.surfaceLight,
-    onSurface: PupColors.ink,
-    surfaceContainerHighest: PupColors.campusLight,
-    onSurfaceVariant: PupColors.muted,
-    outline: PupColors.borderSubtleLight,
-    error: PupColors.pupMaroon,
-    onError: PupColors.white,
+    primary: BrandColors.brandMaroon,
+    onPrimary: BrandColors.white,
+    primaryContainer: BrandColors.brandDeepMaroon,
+    onPrimaryContainer: BrandColors.white,
+    secondary: BrandColors.brandGold,
+    onSecondary: BrandColors.brandDeepMaroon,
+    secondaryContainer: BrandColors.brandGold,
+    onSecondaryContainer: BrandColors.brandDeepMaroon,
+    surface: BrandColors.surfaceLight,
+    onSurface: BrandColors.ink,
+    surfaceContainerHighest: BrandColors.campusLight,
+    onSurfaceVariant: BrandColors.muted,
+    outline: BrandColors.borderSubtleLight,
+    error: BrandColors.brandMaroon,
+    onError: BrandColors.white,
   );
 
   static ColorScheme _darkScheme() => const ColorScheme.dark(
-    primary: PupColors.pupGold,
-    onPrimary: PupColors.pupDeepMaroon,
-    primaryContainer: PupColors.pupMaroon,
-    onPrimaryContainer: PupColors.white,
-    secondary: PupColors.pupGold,
-    onSecondary: PupColors.pupDeepMaroon,
-    secondaryContainer: PupColors.pupMaroon,
-    onSecondaryContainer: PupColors.white,
-    surface: PupColors.surfaceDark,
-    onSurface: PupColors.white,
-    surfaceContainerHighest: PupColors.campusDark,
-    onSurfaceVariant: PupColors.muted,
-    outline: PupColors.borderSubtleDark,
-    error: PupColors.pupGold,
-    onError: PupColors.pupDeepMaroon,
+    primary: BrandColors.brandGold,
+    onPrimary: BrandColors.brandDeepMaroon,
+    primaryContainer: BrandColors.brandMaroon,
+    onPrimaryContainer: BrandColors.white,
+    secondary: BrandColors.brandGold,
+    onSecondary: BrandColors.brandDeepMaroon,
+    secondaryContainer: BrandColors.brandMaroon,
+    onSecondaryContainer: BrandColors.white,
+    surface: BrandColors.surfaceDark,
+    onSurface: BrandColors.white,
+    surfaceContainerHighest: BrandColors.campusDark,
+    onSurfaceVariant: BrandColors.muted,
+    outline: BrandColors.borderSubtleDark,
+    error: BrandColors.brandGold,
+    onError: BrandColors.brandDeepMaroon,
   );
 
   static TextTheme _textTheme(TextTheme base) {

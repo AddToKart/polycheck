@@ -20,6 +20,14 @@ export async function seed(prisma: PrismaClient) {
   if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
     throw new Error('Production seeding is disabled. Set ALLOW_PRODUCTION_SEED=true only for an intentional bootstrap.')
   }
+  // Demo institution identity. create-only: an existing deployment's configured identity is never overwritten.
+  for (const [key, value] of [
+    ['institution_name', 'Example Polytechnic of the Province'],
+    ['institution_short_name', 'EPP'],
+    ['institution_campus', 'Main Campus'],
+  ]) {
+    await prisma.institutionSetting.upsert({ where: { key }, update: {}, create: { key, value, updatedBy: 'seed' } })
+  }
   const seedPassword = process.env.SEED_PASSWORD
   if (!seedPassword || seedPassword.length < 12) {
     throw new Error('SEED_PASSWORD must be set to at least 12 characters')

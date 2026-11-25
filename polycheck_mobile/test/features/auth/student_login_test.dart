@@ -9,7 +9,7 @@ import 'package:polycheck_mobile/src/core/network/dio_client.dart';
 import 'package:polycheck_mobile/src/core/providers/device_now.dart';
 import 'package:polycheck_mobile/src/core/providers/maintenance_provider.dart';
 import 'package:polycheck_mobile/src/core/providers/trusted_clock.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/core/widgets/campus_button.dart';
 import 'package:polycheck_mobile/src/features/auth/presentation/student_login_screen.dart';
 
@@ -39,7 +39,7 @@ void main() {
           deviceNowProvider.overrideWithValue(now),
         ],
         child: MaterialApp(
-          theme: PupTheme.light,
+          theme: BrandTheme.light,
           home: const StudentLoginScreen(),
         ),
       ),

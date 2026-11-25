@@ -10,7 +10,7 @@ import '../../../core/models/maintenance.dart';
 import '../../../core/models/privacy.dart';
 import '../../../core/network/api_error.dart';
 import '../../../core/providers/session_provider.dart';
-import '../../../core/theme/pup_theme.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../core/widgets/campus_button.dart';
 import '../../../core/widgets/campus_card.dart';
 import '../../../core/widgets/campus_text_field.dart';
@@ -459,7 +459,7 @@ class _AdminSettingsScreenState extends ConsumerState<AdminSettingsScreen> {
               child: Text(
                 'You have unsaved changes on this tab.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: PupTheme.of(context).maroon,
+                  color: BrandTheme.of(context).maroon,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -476,7 +476,7 @@ class _AdminSettingsScreenState extends ConsumerState<AdminSettingsScreen> {
   }
 
   Widget _buildAiKeyBlock(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final capabilities = _capabilities;
     final status = describeAssistantStatus(
       values: _values,
@@ -577,7 +577,7 @@ class _AdminSettingsScreenState extends ConsumerState<AdminSettingsScreen> {
 
   Widget _buildMaintenancePreview(BuildContext context) {
     final trio = maintenanceTrioFrom(_values);
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: 4, bottom: 12),
       child: CampusCard(
@@ -627,7 +627,7 @@ class _AdminSettingsScreenState extends ConsumerState<AdminSettingsScreen> {
   }
 
   Widget _buildPrivacy(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     if (_privacyLoading) {
       return const AdminLoading(label: 'Loading privacy snapshot…');
     }

@@ -131,7 +131,7 @@ class _GateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return ListView(
       padding: const EdgeInsets.all(16),
       children: <Widget>[
@@ -411,7 +411,7 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final section = widget.detail.section;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
@@ -696,7 +696,7 @@ class _ModeOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Semantics(
       selected: selected,
       button: true,

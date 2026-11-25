@@ -6,7 +6,7 @@ import 'package:polycheck_mobile/src/features/admin/domain/admin_users.dart';
 const teacher = User(
   id: 'teacher-1',
   fullName: 'Prof. Juan Dela Cruz',
-  email: 'juan@pup.edu.ph',
+  email: 'juan@example.edu.ph',
   role: UserRole.teacher,
   department: 'CCIS',
   canResetStudentPasswords: true,
@@ -216,7 +216,7 @@ void main() {
     test('student number and password policy', () {
       expect(studentIdPattern.hasMatch('2024-00001-MN-0'), isTrue);
       expect(studentIdPattern.hasMatch('2024-1-MN-0'), isFalse);
-      expect(meetsPasswordPolicy('Pup@2026Secure!'), isTrue);
+      expect(meetsPasswordPolicy('Brand@2026Secure!'), isTrue);
       expect(meetsPasswordPolicy('weakpassword'), isFalse);
     });
 
@@ -235,7 +235,7 @@ void main() {
       expect(
         validateCreateAdminForm(
           fullName: 'New Admin',
-          email: 'admin@pup.edu.ph',
+          email: 'admin@example.edu.ph',
           department: 'CCIS',
           password: 'short',
         ),

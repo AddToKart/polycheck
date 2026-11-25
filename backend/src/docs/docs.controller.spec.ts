@@ -35,7 +35,7 @@ describe('DocsController (F4/F6)', () => {
     const docs = {
       classRecord: jest.fn().mockResolvedValue(
         documents.classRecord ?? {
-          filename: 'PUP-ClassRecord-COMP-20043-BSIT-1-A.pdf',
+          filename: 'EPP-ClassRecord-COMP-20043-BSIT-1-A.pdf',
           contentType: 'application/pdf',
           body: Buffer.from('%PDF'),
         },

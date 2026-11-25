@@ -5,12 +5,13 @@ import 'package:go_router/go_router.dart';
 import '../../../core/app_info.dart';
 import '../../../core/providers/maintenance_provider.dart';
 import '../../../core/router/routes/app_routes.dart';
-import '../../../core/theme/pup_theme.dart';
-import '../../../core/theme/pup_tokens.dart';
+import '../../../core/theme/brand_theme.dart';
+import '../../../core/theme/brand_tokens.dart';
 import '../../../core/widgets/campus_card.dart';
 import 'maintenance_screen.dart';
+import '../../../core/branding/branding.dart';
 
-/// PUP-branded portal selection (public landing).
+/// Branded portal selection (public landing).
 class PortalSelectScreen extends ConsumerWidget {
   const PortalSelectScreen({super.key});
 
@@ -25,7 +26,7 @@ class PortalSelectScreen extends ConsumerWidget {
     }
 
     final redirect = GoRouterState.of(context).uri.queryParameters['redirect'];
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
@@ -100,7 +101,7 @@ class PortalSelectScreen extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          'Polycheck - PUP Santa Maria attendance management',
+                          'Polycheck - ${BrandingScope.of(context).name} attendance management',
                           style: textTheme.bodySmall?.copyWith(
                             color: tokens.onMaroon.withValues(alpha: 0.7),
                           ),
@@ -139,7 +140,7 @@ class PortalSelectScreen extends ConsumerWidget {
 class _BrandBlock extends StatelessWidget {
   const _BrandBlock({required this.tokens, required this.textTheme});
 
-  final PupTokens tokens;
+  final BrandTokens tokens;
   final TextTheme textTheme;
 
   @override
@@ -158,7 +159,7 @@ class _BrandBlock extends StatelessWidget {
                 border: Border.all(color: tokens.gold, width: 2),
               ),
               child: Text(
-                'PUP',
+                BrandingScope.of(context).monogram,
                 style: textTheme.titleMedium?.copyWith(
                   color: tokens.gold,
                   fontWeight: FontWeight.w800,
@@ -200,7 +201,7 @@ class _BrandBlock extends StatelessWidget {
         Container(width: 64, height: 3, color: tokens.gold),
         const SizedBox(height: 12),
         Text(
-          'Secure, offline-first attendance for the PUP community.',
+          'Secure, offline-first attendance for ${BrandingScope.of(context).name}.',
           style: textTheme.bodyLarge?.copyWith(
             color: tokens.onMaroon.withValues(alpha: 0.82),
             height: 1.45,
@@ -226,7 +227,7 @@ class _PortalCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final textTheme = Theme.of(context).textTheme;
 
     return CampusCard(

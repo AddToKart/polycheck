@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/providers/device_now.dart';
 import '../../../../core/providers/trusted_clock.dart';
-import '../../../../core/theme/pup_theme.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/cooldown.dart';
 import '../../../../core/widgets/campus_button.dart';
 import '../../../../core/widgets/campus_card.dart';
@@ -32,7 +32,7 @@ class DeviceActiveSessionPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final holder = switch (activeDeviceKind) {
       'mobile' => 'your phone',
       'web' => 'the web browser',
@@ -192,7 +192,7 @@ class _DeviceCooldownPanelState extends ConsumerState<DeviceCooldownPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final complete = _remaining <= 0;
 
     return _GateShell(
@@ -286,7 +286,7 @@ class _GateShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return CampusCard(
       padding: EdgeInsets.zero,
       child: Column(

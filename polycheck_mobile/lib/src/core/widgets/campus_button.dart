@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-import '../theme/pup_theme.dart';
-import '../theme/pup_tokens.dart';
+import '../theme/brand_theme.dart';
+import '../theme/brand_tokens.dart';
 
 enum CampusButtonVariant { primary, gold, outline, destructive }
 
-/// Square, flat PUP action button with an inline loading state.
+/// Square, flat action button with an inline loading state.
 ///
 /// Loading disables the tap target and keeps the width stable so forms never
 /// jump when a request starts.
@@ -31,7 +31,7 @@ class CampusButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final enabled = !loading && onPressed != null;
     final foreground = _foreground(tokens, enabled: enabled);
     final content = Row(
@@ -68,7 +68,7 @@ class CampusButton extends StatelessWidget {
         onPressed: enabled ? onPressed : null,
         style: ElevatedButton.styleFrom(
           backgroundColor: tokens.deepMaroon,
-          foregroundColor: PupColors.white,
+          foregroundColor: BrandColors.white,
           disabledBackgroundColor: tokens.muted.withValues(alpha: 0.35),
           disabledForegroundColor: tokens.muted,
           elevation: 0,
@@ -101,11 +101,11 @@ class CampusButton extends StatelessWidget {
     );
   }
 
-  Color _foreground(PupTokens tokens, {required bool enabled}) {
+  Color _foreground(BrandTokens tokens, {required bool enabled}) {
     if (!enabled) return tokens.muted;
     return switch (variant) {
       CampusButtonVariant.primary ||
-      CampusButtonVariant.destructive => PupColors.white,
+      CampusButtonVariant.destructive => BrandColors.white,
       CampusButtonVariant.gold => tokens.deepMaroon,
       CampusButtonVariant.outline =>
         tokens.isDark ? tokens.gold : tokens.maroon,

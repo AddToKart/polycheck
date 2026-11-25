@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../../../core/theme/pup_theme.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../data/faculty_logic.dart';
 
 /// Square donut chart for attendance totals (CustomPainter, no dependency).
@@ -20,7 +20,7 @@ class AttendanceDonut extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final total = segments.fold<int>(0, (sum, segment) => sum + segment.value);
     return Semantics(
       label:
@@ -128,7 +128,7 @@ class DonutLegend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Wrap(
       spacing: 12,
       runSpacing: 6,

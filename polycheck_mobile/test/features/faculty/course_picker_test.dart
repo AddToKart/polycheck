@@ -34,7 +34,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          theme: PupTheme.light,
+          theme: BrandTheme.light,
           home: const SectionCreateScreen(subjectId: 'subj-1'),
         ),
       ),
@@ -89,7 +89,7 @@ void main() {
     );
     expect(find.text('BSA — Bachelor of Science in Accountancy'), findsNothing);
     // The campus has no departments: one flat bucket, never per-college headers.
-    expect(find.text('PUP SANTA MARIA PROGRAMS'), findsOneWidget);
+    expect(find.text('CAMPUS PROGRAMS'), findsOneWidget);
     expect(find.text('CCIS'), findsNothing);
 
     // By name fragment.

@@ -80,7 +80,7 @@ class _StudentExcuseDialogState extends State<StudentExcuseDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return AlertDialog(
       key: const ValueKey('student-excuse-dialog'),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),

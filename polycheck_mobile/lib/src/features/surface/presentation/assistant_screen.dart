@@ -11,8 +11,8 @@ import '../../../core/models/user.dart';
 import '../../../core/network/dio_client.dart';
 import '../../../core/providers/session_provider.dart';
 import '../../../core/router/router_decision.dart';
-import '../../../core/theme/pup_theme.dart';
-import '../../../core/theme/pup_tokens.dart';
+import '../../../core/theme/brand_theme.dart';
+import '../../../core/theme/brand_tokens.dart';
 import '../../../core/widgets/campus_bottom_sheet.dart';
 import '../../../core/widgets/campus_button.dart';
 import '../../../core/widgets/campus_dialog.dart';
@@ -741,7 +741,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
                     'No past conversations yet. Chats you start appear here '
                     'for seven days.',
                     style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                      color: PupTheme.of(sheetContext).muted,
+                      color: BrandTheme.of(sheetContext).muted,
                     ),
                   ),
                 )
@@ -850,7 +850,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     final user = ref.watch(sessionProvider.select((state) => state.user));
     final role = _role;
     final copy = role == null ? null : assistantRoleCopy[role];
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final readiness = assistantAvailabilityFor(
       ref.read(sessionProvider).user?.role ?? UserRole.student,
       _capabilities,
@@ -931,7 +931,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     );
   }
 
-  Widget _buildReadyBody(AssistantRole? role, PupTokens tokens) {
+  Widget _buildReadyBody(AssistantRole? role, BrandTokens tokens) {
     final rows = buildAssistantTranscriptRows(_messages);
     final busy = _sending || _streaming;
     final canSend = _input.text.trim().isNotEmpty && !busy && _ready;
@@ -1191,7 +1191,7 @@ class _TurnDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -1239,7 +1239,7 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final message = row.message;
     final isUser = message.role == AiChatRole.user;
     final isEmpty = message.content.trim().isEmpty;
@@ -1412,7 +1412,7 @@ class _ThreadTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final title = summary.title.trim().isEmpty
         ? 'Untitled chat'
         : summary.title.trim();

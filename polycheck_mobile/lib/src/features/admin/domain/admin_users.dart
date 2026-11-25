@@ -188,7 +188,7 @@ String? validateUserUpdate(User target, Map<EditableUserField, String> values) {
   }
   if (fields.contains(EditableUserField.email) &&
       !_emailPattern.hasMatch((values[EditableUserField.email] ?? '').trim())) {
-    return 'Enter a valid PUP email address.';
+    return 'Enter a valid email address.';
   }
   if (fields.contains(EditableUserField.program) &&
       (values[EditableUserField.program] ?? '').trim().length < 2) {
@@ -357,7 +357,7 @@ String? validateCreateTeacherForm({
   required String email,
 }) {
   if (fullName.trim().length < 2) return 'Enter the full name.';
-  if (!_emailPattern.hasMatch(email.trim())) return 'Enter a valid PUP email.';
+  if (!_emailPattern.hasMatch(email.trim())) return 'Enter a valid email.';
   return null;
 }
 
@@ -375,7 +375,7 @@ String? validateCreateStudentForm({
   }
   final trimmedEmail = email.trim();
   if (trimmedEmail.isNotEmpty && !_emailPattern.hasMatch(trimmedEmail)) {
-    return 'Enter a valid PUP email or leave it blank.';
+    return 'Enter a valid email or leave it blank.';
   }
   if (program.trim().length < 2) return 'Enter the program.';
   final year = int.tryParse(yearLevel.trim());
@@ -393,7 +393,7 @@ String? validateCreateAdminForm({
   required String password,
 }) {
   if (fullName.trim().length < 2) return 'Enter the full name.';
-  if (!_emailPattern.hasMatch(email.trim())) return 'Enter a valid PUP email.';
+  if (!_emailPattern.hasMatch(email.trim())) return 'Enter a valid email.';
   if (department.trim().length < 2) return 'Enter the department.';
   if (!meetsPasswordPolicy(password)) {
     return 'Password must be 12+ characters with uppercase, lowercase, a '

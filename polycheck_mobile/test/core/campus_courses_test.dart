@@ -1,12 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:polycheck_mobile/src/core/utils/pup_courses.dart';
+import 'package:polycheck_mobile/src/core/utils/campus_courses.dart';
 
 void main() {
-  group('PUP Santa Maria course catalog', () {
+  group('Campus course catalog', () {
     test('lists exactly the eight official programs', () {
-      expect(pupCourseCodes(), [
+      expect(campusCourseCodes(), [
         'BSA',
         'BSCpE',
         'BSENTREP',
@@ -20,40 +20,40 @@ void main() {
 
     test('exposes unique course codes', () {
       final codes = [
-        for (final course in pupSantaMariaCourses) course.code.toLowerCase(),
+        for (final course in campusCourses) course.code.toLowerCase(),
       ];
       expect(codes.toSet().length, codes.length);
     });
 
     test('looks up courses case-insensitively', () {
       expect(
-        pupCourseByCode('bsit')?.name,
+        campusCourseByCode('bsit')?.name,
         'Bachelor of Science in Information Technology',
       );
-      expect(pupCourseByCode('  bscpe  ')?.code, 'BSCpE');
+      expect(campusCourseByCode('  bscpe  ')?.code, 'BSCpE');
     });
 
     test('returns null for unknown, retired or blank codes', () {
-      expect(pupCourseByCode('NOPE'), isNull);
-      expect(pupCourseByCode('BSCS'), isNull);
-      expect(pupCourseByCode(''), isNull);
-      expect(pupCourseByCode(null), isNull);
+      expect(campusCourseByCode('NOPE'), isNull);
+      expect(campusCourseByCode('BSCS'), isNull);
+      expect(campusCourseByCode(''), isNull);
+      expect(campusCourseByCode(null), isNull);
     });
 
     test('falls back to the raw code for display when unknown', () {
       expect(
-        pupCourseName('BSHM'),
+        campusCourseName('BSHM'),
         'Bachelor of Science in Hospitality Management',
       );
-      expect(pupCourseName('CUSTOM'), 'CUSTOM');
-      expect(pupCourseName(null), '');
+      expect(campusCourseName('CUSTOM'), 'CUSTOM');
+      expect(campusCourseName(null), '');
     });
 
     test('keeps the legacy grouping wrapper as one flat bucket', () {
-      final groups = pupCoursesByDepartment();
+      final groups = campusCoursesByDepartment();
       expect(groups, hasLength(1));
-      expect(groups.single.department, pupCoursesGroupLabel);
-      expect(groups.single.courses, hasLength(pupSantaMariaCourses.length));
+      expect(groups.single.department, campusCoursesGroupLabel);
+      expect(groups.single.courses, hasLength(campusCourses.length));
     });
   });
 
@@ -99,7 +99,7 @@ void main() {
   });
 
   test('stays in lockstep with the shared TypeScript catalog', () {
-    final source = File('../shared/src/constants/pup-courses.ts');
+    final source = File('../shared/src/constants/campus-courses.ts');
     if (!source.existsSync()) {
       markTestSkipped('shared catalog not reachable from this working dir');
       return;
@@ -111,7 +111,7 @@ void main() {
     final tsNames = RegExp(
       r"name:\s*'([^']+)'",
     ).allMatches(text).map((m) => m.group(1)!).toList();
-    expect(pupCourseCodes(), tsCodes);
-    expect([for (final c in pupSantaMariaCourses) c.name], tsNames);
+    expect(campusCourseCodes(), tsCodes);
+    expect([for (final c in campusCourses) c.name], tsNames);
   });
 }

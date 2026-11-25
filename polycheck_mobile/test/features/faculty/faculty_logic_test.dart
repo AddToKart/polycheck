@@ -4,7 +4,7 @@ import 'package:polycheck_mobile/src/core/api/api_models.dart';
 import 'package:polycheck_mobile/src/core/models/attendance.dart';
 import 'package:polycheck_mobile/src/core/models/at_risk.dart';
 import 'package:polycheck_mobile/src/core/models/standing.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_tokens.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_tokens.dart';
 import 'package:polycheck_mobile/src/features/faculty/data/faculty_logic.dart';
 
 StudentAtRisk _risk({
@@ -278,8 +278,8 @@ void main() {
       expect(formatRatePercent(null), '—');
     });
 
-    test('donut segments use PUP tokens and total every bucket', () {
-      final tokens = PupTokens.light;
+    test('donut segments use brand tokens and total every bucket', () {
+      final tokens = BrandTokens.light;
       final segments = buildDonutSegments(
         const AttendanceReportTotals(
           present: 5,

@@ -36,7 +36,7 @@ describe('SettingsService', () => {
       { key: 'default_geofence_radius_meters', value: '50' },
       { key: 'default_grace_period_minutes', value: '15' },
       { key: 'default_qr_validity_minutes', value: '5' },
-      { key: 'institution_name', value: 'PUP' },
+      { key: 'institution_name', value: 'EPP' },
       { key: 'maintenance_message', value: 'Closed' },
       { key: 'maintenance_mode_enabled', value: 'true' },
       { key: 'maintenance_until', value: '2026-11-30T00:00:00.000Z' },

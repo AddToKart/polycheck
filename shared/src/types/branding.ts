@@ -6,7 +6,7 @@
 export interface InstitutionBranding {
   /** Full institution name (document headers, login screen). */
   name: string
-  /** Short form used in tight spaces and the document seal monogram (for example "PUP"). */
+  /** Short form used in tight spaces and the document seal monogram (for example "ABC"). */
   shortName: string
   /** Campus or branch label; empty when the institution has a single site. */
   campus: string
@@ -32,7 +32,7 @@ export const DEFAULT_BRANDING: InstitutionBranding = {
 
 const SHORT_NAME_STOP_WORDS = new Set(['of', 'the', 'and', 'for', 'in', 'at', 'de', 'ng'])
 
-/** "Polytechnic University of the Philippines" -> "PUP". Used only when no short name is stored. */
+/** "Example Polytechnic of the Province" -> "EPP". Used only when no short name is stored. */
 export function deriveShortName(name: string): string {
   const initials = name
     .split(/\s+/)
@@ -60,7 +60,7 @@ export function resolveBranding(partial: Partial<InstitutionBranding> | null | u
   }
 }
 
-/** "Santa Maria" -> "PUP · Santa Maria"; collapses cleanly when there is no campus. */
+/** "Main Campus" -> "ABC · Main Campus"; collapses cleanly when there is no campus. */
 export function brandingLabel(branding: Pick<InstitutionBranding, 'shortName' | 'campus'>): string {
   return branding.campus ? `${branding.shortName} · ${branding.campus}` : branding.shortName
 }

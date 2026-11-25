@@ -10,8 +10,8 @@ import 'package:image_picker/image_picker.dart';
 import '../../../../core/api/api_providers.dart';
 import '../../../../core/models/system_report.dart';
 import '../../../../core/network/api_error.dart';
-import '../../../../core/theme/pup_theme.dart';
-import '../../../../core/theme/pup_tokens.dart';
+import '../../../../core/theme/brand_theme.dart';
+import '../../../../core/theme/brand_tokens.dart';
 import '../../../../core/utils/image_compression.dart';
 import '../../../../core/widgets/campus_button.dart';
 import '../../../../core/widgets/campus_loading.dart';
@@ -216,7 +216,7 @@ class _ReportIssueDialogState extends ConsumerState<ReportIssueDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final titleError = _title.text.isEmpty
         ? null
         : validateReportTitle(_title.text);
@@ -412,7 +412,7 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Text(
       label,
       style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -437,7 +437,7 @@ class _ChoicePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Semantics(
       button: true,
       selected: selected,
@@ -518,7 +518,7 @@ class _MyReportsPanelState extends ConsumerState<MyReportsPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     if (_loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 24),
@@ -583,7 +583,7 @@ class _MyReportCard extends StatelessWidget {
   const _MyReportCard({required this.report, required this.tokens});
 
   final SystemReport report;
-  final PupTokens tokens;
+  final BrandTokens tokens;
 
   @override
   Widget build(BuildContext context) {

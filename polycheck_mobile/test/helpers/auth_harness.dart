@@ -185,7 +185,7 @@ const User testFaculty = User(
   id: 'teacher-1',
   fullName: 'Prof. Juan Dela Cruz',
   role: UserRole.teacher,
-  email: 'juan.delacruz@pup.edu.ph',
+  email: 'juan.delacruz@example.edu.ph',
   department: 'CCIS',
 );
 

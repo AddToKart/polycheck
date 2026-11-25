@@ -15,7 +15,7 @@ class MyClassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final meta = <String>[
       if (card.subjectCode.isNotEmpty) card.subjectCode,
       card.sectionLabel,
@@ -151,7 +151,7 @@ class _RateBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final fraction = (ratePercent.clamp(0, 100)) / 100;
     return SizedBox(
       height: 8,

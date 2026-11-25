@@ -190,7 +190,7 @@ class _StudentOfflineSyncPanelState
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final user = ref.watch(sessionProvider).user;
     final pending = ref.watch(pendingScanCountProvider).value ?? 0;
     final stamp = ref.watch(_lastSyncStampProvider);
@@ -321,7 +321,7 @@ class _IssueRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final (border, background) = issue.flagged
         ? // Synced-but-flagged: gold rail like the review rail, but a lighter
           // wash than a duplicate and never a failure maroon.

@@ -67,14 +67,16 @@ void main() {
         TeacherSigningKeyService.sanitizeAccount('teacher/1 a'),
         'teacher_1_a',
       );
-      final keys = TeacherSigningKeyService.storageKeys('prof.cruz@pup.edu.ph');
+      final keys = TeacherSigningKeyService.storageKeys(
+        'prof.cruz@example.edu.ph',
+      );
       expect(
         keys.secret,
-        'polycheck.teacher-signing-secret.prof.cruz_pup.edu.ph',
+        'polycheck.teacher-signing-secret.prof.cruz_example.edu.ph',
       );
       expect(
         keys.public,
-        'polycheck.teacher-signing-public.prof.cruz_pup.edu.ph',
+        'polycheck.teacher-signing-public.prof.cruz_example.edu.ph',
       );
       expect(
         () => TeacherSigningKeyService.storageKeys(''),

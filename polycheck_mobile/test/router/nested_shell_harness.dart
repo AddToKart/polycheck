@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:polycheck_mobile/src/core/providers/session_provider.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 
 /// Portal select sentinel (route `/`). Mirrors the real destination of the
 /// anonymous redirect so sign-out assertions can look for it.
@@ -89,7 +89,7 @@ Future<GoRouter> pumpNestedShellApp(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp.router(theme: PupTheme.light, routerConfig: router),
+      child: MaterialApp.router(theme: BrandTheme.light, routerConfig: router),
     ),
   );
   await tester.pumpAndSettle();
@@ -103,7 +103,7 @@ class _DefaultNestedShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Scaffold(
       body: child,
       bottomNavigationBar: Container(

@@ -6,7 +6,7 @@ import '../../../../core/api/api_models.dart';
 import '../../../../core/api/api_providers.dart';
 import '../../../../core/models/user.dart';
 import '../../../../core/providers/session_provider.dart';
-import '../../../../core/theme/pup_theme.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/widgets/campus_button.dart';
 import '../../../../core/widgets/campus_card.dart';
 import '../../../../core/widgets/campus_loading.dart';
@@ -75,7 +75,7 @@ class _PrivacyConsentGateState extends ConsumerState<PrivacyConsentGate> {
   }
 
   Widget _gateBody(BuildContext context, User user) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final textTheme = Theme.of(context).textTheme;
     final notice = _notice;
 

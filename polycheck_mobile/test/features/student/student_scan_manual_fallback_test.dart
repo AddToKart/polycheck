@@ -83,7 +83,7 @@ Future<_RecordingScanService> _pumpScanner(WidgetTester tester) async {
         studentScanServiceProvider.overrideWithValue(service),
       ],
       child: MaterialApp(
-        theme: PupTheme.light,
+        theme: BrandTheme.light,
         home: const StudentScanScreen(),
       ),
     ),

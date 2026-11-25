@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/router/routes/app_routes.dart';
-import '../../../../core/theme/pup_theme.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/widgets/campus_header.dart';
+import '../../../../core/branding/branding.dart';
 
 /// Shared zero-radius authentication page chrome.
 class AuthShell extends StatelessWidget {
@@ -26,13 +27,13 @@ class AuthShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
       appBar: CampusHeader(
         title: 'Polycheck',
-        subtitle: 'Polytechnic University of the Philippines',
+        subtitle: BrandingScope.of(context).name,
         automaticallyImplyLeading: false,
         leading: showBack
             ? IconButton(
@@ -100,7 +101,7 @@ class AuthErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -141,7 +142,7 @@ class AuthInfoBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

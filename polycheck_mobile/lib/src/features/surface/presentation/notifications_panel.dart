@@ -7,7 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/models/notification.dart';
 import '../../../core/models/user.dart';
 import '../../../core/providers/session_provider.dart';
-import '../../../core/theme/pup_theme.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../core/widgets/campus_empty_state.dart';
 import '../../../core/widgets/campus_loading.dart';
 import '../../../core/widgets/campus_toast.dart';
@@ -49,7 +49,7 @@ class _NotificationsPanelState extends ConsumerState<NotificationsPanel> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(notificationInboxProvider);
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final now = DateTime.now();
 
     return Column(
@@ -195,7 +195,7 @@ class _NotificationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final unread = notification.readAt == null;
     final icon = notificationTypeIcon(notification.type);
     final label = notificationTypeLabel(notification.type);
@@ -333,7 +333,7 @@ class NotificationBellAction extends ConsumerWidget {
     final unread = ref.watch(
       notificationInboxProvider.select((state) => state.unreadCount),
     );
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final foreground = color ?? IconTheme.of(context).color ?? tokens.onMaroon;
     return IconButton(
       tooltip: unread > 0 ? 'Notifications ($unread unread)' : 'Notifications',

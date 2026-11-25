@@ -1,9 +1,9 @@
 import '../models/user.dart';
-import 'pup_courses.dart';
+import 'campus_courses.dart';
 
 /// Mirrors `shared/src/utils/designations.ts`.
 ///
-/// PUP Santa Maria "dual-hat" model: teachers keep their classroom identity
+/// Campus "dual-hat" model: teachers keep their classroom identity
 /// and may additionally hold one or more administrative designations. Super
 /// admins implicitly hold every suite, so the helpers always short-circuit on
 /// `role == super_admin` without requiring flags on the account.

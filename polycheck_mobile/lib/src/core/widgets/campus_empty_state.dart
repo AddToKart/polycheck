@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/pup_theme.dart';
+import '../theme/brand_theme.dart';
 
 /// Centered empty state with a square icon plate, copy, and optional action.
 class CampusEmptyState extends StatelessWidget {
@@ -21,7 +21,7 @@ class CampusEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final textTheme = Theme.of(context).textTheme;
 
     return Center(

@@ -70,7 +70,7 @@ Future<void> _pumpScanner(
         offlineBannerProvider.overrideWith(_OnlineBanner.new),
       ],
       child: MaterialApp(
-        theme: PupTheme.light,
+        theme: BrandTheme.light,
         home: StudentScanScreen(controller: controller),
       ),
     ),

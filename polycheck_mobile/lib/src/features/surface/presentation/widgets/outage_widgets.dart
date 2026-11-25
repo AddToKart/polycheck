@@ -7,7 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/providers/trusted_clock.dart';
 import '../../../../core/sync/sync_engine.dart';
-import '../../../../core/theme/pup_theme.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/widgets/campus_button.dart';
 import '../../../../core/widgets/campus_toast.dart';
 import '../../data/outage_demo.dart';
@@ -98,7 +98,7 @@ class _OutagePillState extends State<OutagePill> {
   @override
   Widget build(BuildContext context) {
     if (!OutageDemo.enabled || !_armed) return const SizedBox.shrink();
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Material(
       color: tokens.deepMaroon,
       shape: RoundedRectangleBorder(
@@ -275,21 +275,21 @@ class _OutageDevSectionState extends ConsumerState<OutageDevSection> {
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: PupTheme.of(context).surface,
-          border: Border.all(color: PupTheme.of(context).borderSubtle),
+          color: BrandTheme.of(context).surface,
+          border: Border.all(color: BrandTheme.of(context).borderSubtle),
         ),
         child: Text(
           'The outage simulator is disabled in this build. Enable it with '
           '--dart-define=ENABLE_OUTAGE_SIMULATOR=true for demos.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: PupTheme.of(context).muted,
+            color: BrandTheme.of(context).muted,
             height: 1.4,
           ),
         ),
       );
     }
 
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(

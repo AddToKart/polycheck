@@ -10,7 +10,7 @@ import 'package:polycheck_mobile/src/core/api/api_providers.dart';
 import 'package:polycheck_mobile/src/core/models/ai.dart';
 import 'package:polycheck_mobile/src/core/models/user.dart';
 import 'package:polycheck_mobile/src/core/providers/session_provider.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/features/surface/presentation/assistant_screen.dart';
 
 import '../../helpers/auth_harness.dart';
@@ -107,7 +107,10 @@ Future<_ScriptedAiApi> _pumpAssistant(WidgetTester tester, User user) async {
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp(theme: PupTheme.light, home: const AssistantScreen()),
+      child: MaterialApp(
+        theme: BrandTheme.light,
+        home: const AssistantScreen(),
+      ),
     ),
   );
   await tester.pumpAndSettle();

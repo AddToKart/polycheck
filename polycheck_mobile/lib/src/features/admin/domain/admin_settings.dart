@@ -84,7 +84,7 @@ const List<SettingFieldDef> settingFields = <SettingFieldDef>[
     tab: SettingsTab.institution,
     label: 'Institution name',
     type: SettingFieldType.text,
-    defaultValue: 'Polytechnic University of the Philippines',
+    defaultValue: 'Your Institution',
     caption: 'Used as the header on generated master-list exports.',
   ),
   SettingFieldDef(

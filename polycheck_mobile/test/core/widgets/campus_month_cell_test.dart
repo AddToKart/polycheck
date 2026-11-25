@@ -9,7 +9,7 @@ void main() {
   Future<void> pumpCell(WidgetTester tester, CampusMonthCell cell) async {
     await tester.pumpWidget(
       MaterialApp(
-        theme: PupTheme.light,
+        theme: BrandTheme.light,
         home: Scaffold(
           body: Center(child: SizedBox(width: 60, child: cell)),
         ),
@@ -31,7 +31,7 @@ void main() {
       const CampusMonthCell(dayNumber: 10, today: true, inMonth: true),
     );
     final decoration = surfaceContainer(tester).decoration! as BoxDecoration;
-    expect(decoration.color, PupColors.pupMaroon);
+    expect(decoration.color, BrandColors.brandMaroon);
     expect(tester.widget<Text>(find.text('10')).style?.color, Colors.white);
   });
 
@@ -41,8 +41,8 @@ void main() {
       const CampusMonthCell(dayNumber: 10, today: false, inMonth: true),
     );
     final decoration = surfaceContainer(tester).decoration! as BoxDecoration;
-    expect(decoration.color, PupColors.surfaceLight);
-    expect(tester.widget<Text>(find.text('10')).style?.color, PupColors.ink);
+    expect(decoration.color, BrandColors.surfaceLight);
+    expect(tester.widget<Text>(find.text('10')).style?.color, BrandColors.ink);
   });
 
   testWidgets('out-of-month days mute the number', (tester) async {
@@ -50,7 +50,7 @@ void main() {
       tester,
       const CampusMonthCell(dayNumber: 3, today: false, inMonth: false),
     );
-    expect(tester.widget<Text>(find.text('3')).style?.color, PupColors.muted);
+    expect(tester.widget<Text>(find.text('3')).style?.color, BrandColors.muted);
   });
 
   testWidgets('selected draws the gold border and bolds the number', (
@@ -66,7 +66,10 @@ void main() {
       ),
     );
     final decoration = surfaceContainer(tester).decoration! as BoxDecoration;
-    expect(decoration.border, Border.all(color: PupColors.pupGold, width: 2));
+    expect(
+      decoration.border,
+      Border.all(color: BrandColors.brandGold, width: 2),
+    );
     expect(
       tester.widget<Text>(find.text('10')).style?.fontWeight,
       FontWeight.w800,
@@ -74,7 +77,7 @@ void main() {
   });
 
   testWidgets('dots overflow collapses into the +N badge', (tester) async {
-    final dot = const CampusMonthDot(fill: PupColors.pupMaroon);
+    final dot = const CampusMonthDot(fill: BrandColors.brandMaroon);
     await pumpCell(
       tester,
       CampusMonthCell(
@@ -91,7 +94,7 @@ void main() {
   });
 
   testWidgets('an explicit badge overrides the computed +N', (tester) async {
-    final dot = const CampusMonthDot(fill: PupColors.pupMaroon);
+    final dot = const CampusMonthDot(fill: BrandColors.brandMaroon);
     await pumpCell(
       tester,
       CampusMonthCell(
@@ -117,7 +120,7 @@ void main() {
         inMonth: true,
         dots: <CampusMonthDot>[
           CampusMonthDot(fill: Colors.white),
-          CampusMonthDot(fill: PupColors.pupGold),
+          CampusMonthDot(fill: BrandColors.brandGold),
         ],
       ),
     );
@@ -127,7 +130,7 @@ void main() {
     );
     expect(
       (dotContainer(tester, 1).decoration! as BoxDecoration).color,
-      PupColors.pupGold,
+      BrandColors.brandGold,
     );
   });
 
@@ -143,15 +146,15 @@ void main() {
         inMonth: true,
         dots: <CampusMonthDot>[
           CampusMonthDot(
-            fill: PupColors.pupDeepMaroon,
-            border: PupColors.pupGold,
+            fill: BrandColors.brandDeepMaroon,
+            border: BrandColors.brandGold,
           ),
         ],
       ),
     );
     final decoration = dotContainer(tester, 0).decoration! as BoxDecoration;
-    expect(decoration.color, PupColors.pupDeepMaroon);
-    expect(decoration.border, Border.all(color: PupColors.pupGold));
+    expect(decoration.color, BrandColors.brandDeepMaroon);
+    expect(decoration.border, Border.all(color: BrandColors.brandGold));
   });
 
   testWidgets('a borderless dot defaults its border to the fill', (
@@ -163,11 +166,11 @@ void main() {
         dayNumber: 10,
         today: false,
         inMonth: true,
-        dots: <CampusMonthDot>[CampusMonthDot(fill: PupColors.pupMaroon)],
+        dots: <CampusMonthDot>[CampusMonthDot(fill: BrandColors.brandMaroon)],
       ),
     );
     final decoration = dotContainer(tester, 0).decoration! as BoxDecoration;
-    expect(decoration.border, Border.all(color: PupColors.pupMaroon));
+    expect(decoration.border, Border.all(color: BrandColors.brandMaroon));
   });
 
   testWidgets('taps report the cell date through onTap', (tester) async {

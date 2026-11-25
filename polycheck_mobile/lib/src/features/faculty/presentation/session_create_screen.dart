@@ -450,7 +450,7 @@ class _SessionCreateScreenState extends ConsumerState<SessionCreateScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     final section = _section;
     final subjectSections = _sections
         .where(
@@ -905,7 +905,7 @@ class _BulkRowEditorState extends State<_BulkRowEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = PupTheme.of(context);
+    final tokens = BrandTheme.of(context);
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(border: Border.all(color: tokens.borderSubtle)),

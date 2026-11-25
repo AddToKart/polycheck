@@ -154,7 +154,7 @@ const Map<String, List<String>> _headerAliases = {
 String _canonicalHeader(String value) =>
     value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
 
-/// Suggests the automatic mapping for known PUP SIS headers.
+/// Suggests the automatic mapping for known registrar SIS headers.
 ImportColumnMapping suggestImportMapping(List<String> headers) {
   final canonical = headers.map(_canonicalHeader).toList(growable: false);
   final used = <int>{};
@@ -188,7 +188,7 @@ ImportColumnMapping suggestImportMapping(List<String> headers) {
   );
 }
 
-final RegExp pupStudentIdPattern = RegExp(r'^\d{4}-\d{5}-[A-Z]{2}-\d$');
+final RegExp campusStudentIdPattern = RegExp(r'^\d{4}-\d{5}-[A-Z]{2}-\d$');
 
 enum NormalizedIdIssue { missing, excelMangled, invalid }
 
@@ -203,7 +203,7 @@ enum NormalizedIdIssue { missing, excelMangled, invalid }
       RegExp(r'^\d{5,}$').hasMatch(value)) {
     return (value: null, issue: NormalizedIdIssue.excelMangled);
   }
-  if (!pupStudentIdPattern.hasMatch(value)) {
+  if (!campusStudentIdPattern.hasMatch(value)) {
     return (value: null, issue: NormalizedIdIssue.invalid);
   }
   return (value: value, issue: null);
@@ -256,7 +256,7 @@ BuiltEnrollRows buildEnrollImportRows(
           message: id.issue == NormalizedIdIssue.excelMangled
               ? 'Student number looks mangled by Excel. Re-export the CSV with '
                     'the SN column formatted as text.'
-              : 'Enter a valid PUP student number (e.g. 2024-00001-MN-0).',
+              : 'Enter a valid student number (e.g. 2024-00001-MN-0).',
         ),
       );
       continue;

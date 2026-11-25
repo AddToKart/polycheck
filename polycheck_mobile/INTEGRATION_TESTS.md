@@ -32,7 +32,7 @@ seeded), and an Android device/emulator is attached.
 flutter devices          # expect e.g. emulator-5554
 
 flutter test integration_test/offline_attendance_test.dart -d emulator-5554 \
-  --dart-define=PUP_API_BASE_URL=http://10.0.2.2:4000/api \
+  --dart-define=API_BASE_URL=http://10.0.2.2:4000/api \
   --dart-define=ENABLE_OUTAGE_SIMULATOR=true \
   --dart-define=ALLOW_QR_FALLBACKS=true
 ```
@@ -41,7 +41,7 @@ Run the other two the same way, swapping the file name. To run all three:
 
 ```bash
 flutter test integration_test -d emulator-5554 \
-  --dart-define=PUP_API_BASE_URL=http://10.0.2.2:4000/api \
+  --dart-define=API_BASE_URL=http://10.0.2.2:4000/api \
   --dart-define=ENABLE_OUTAGE_SIMULATOR=true \
   --dart-define=ALLOW_QR_FALLBACKS=true
 ```
@@ -50,7 +50,7 @@ flutter test integration_test -d emulator-5554 \
 
 | Define | Required | Meaning |
 | --- | --- | --- |
-| `PUP_API_BASE_URL` | **yes** | API root. `http://10.0.2.2:4000/api` is the Android emulator's alias for the host loopback and is the harness default. On a physical device or a remote runner use `http://localhost:4000/api` together with `adb reverse tcp:4000 tcp:4000`. |
+| `API_BASE_URL` | **yes** | API root. `http://10.0.2.2:4000/api` is the Android emulator's alias for the host loopback and is the harness default. On a physical device or a remote runner use `http://localhost:4000/api` together with `adb reverse tcp:4000 tcp:4000`. |
 | `ENABLE_OUTAGE_SIMULATOR` | **yes** for the offline specs | Enables the dev outage tools and the interceptor that turns `OutageSimulator.arm()` into connection-shaped failures. The offline spec fails fast with an actionable message if it is missing rather than silently running online. |
 | `ALLOW_QR_FALLBACKS` | no | Keeps the build aligned with the manifest/camera fallback policy the rest of the app is tested under. |
 
@@ -66,7 +66,7 @@ binding with anything else running at the same time).
 
 `AttendanceFixture.create()` performs, in order:
 
-1. **Disposable teacher** — the super admin (`mcreyes@pup.edu.ph`) calls
+1. **Disposable teacher** — the super admin (`mcreyes@example.edu.ph`) calls
    `POST /users/teachers` with an explicit password (`PyE2e!Passw0rd`), so the
    account never lands in `mustChangePassword` and the forced-rotation router
    guard cannot stall a run.

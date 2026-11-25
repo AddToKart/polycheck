@@ -6,7 +6,7 @@ import 'package:polycheck_mobile/src/core/providers/device_now.dart';
 import 'package:polycheck_mobile/src/core/providers/maintenance_provider.dart';
 import 'package:polycheck_mobile/src/core/providers/session_provider.dart';
 import 'package:polycheck_mobile/src/core/providers/trusted_clock.dart';
-import 'package:polycheck_mobile/src/core/theme/pup_theme.dart';
+import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/features/auth/presentation/maintenance_screen.dart';
 
 import '../../helpers/auth_harness.dart';
@@ -34,7 +34,7 @@ void main() {
           deviceNowProvider.overrideWithValue(() => now),
         ],
         child: MaterialApp(
-          theme: PupTheme.light,
+          theme: BrandTheme.light,
           home: const MaintenanceScreen(),
         ),
       ),
@@ -87,7 +87,7 @@ void main() {
           deviceNowProvider.overrideWithValue(DateTime.now),
         ],
         child: MaterialApp(
-          theme: PupTheme.light,
+          theme: BrandTheme.light,
           home: const MaintenanceScreen(),
         ),
       ),

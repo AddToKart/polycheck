@@ -1,13 +1,13 @@
-/// PUP Santa Maria course (degree program) catalog.
+/// Campus course (degree program) catalog (default: Santa Maria campus).
 ///
-/// 1:1 mirror of `shared/src/constants/pup-courses.ts` (a parity test pins
-/// both). PUP Santa Maria has no academic departments: it has courses, each
+/// 1:1 mirror of `shared/src/constants/campus-courses.ts` (a parity test pins
+/// both). This campus has no academic departments: it has courses, each
 /// with a head professor, so the catalog is a flat list and the course `code`
 /// is the only scoping key. Codes are stored verbatim on `Section.course`;
 /// names are display-only. The registrar's sign-off on the list is a release
 /// gate (see `plan/course-scope-plan.md` §4.1).
-class PupCourse {
-  const PupCourse({
+class CampusCourse {
+  const CampusCourse({
     required this.code,
     required this.name,
     this.aliases = const <String>[],
@@ -30,7 +30,7 @@ class PupCourse {
 
   @override
   bool operator ==(Object other) =>
-      other is PupCourse &&
+      other is CampusCourse &&
       other.code == code &&
       other.name == name &&
       other.department == department;
@@ -39,41 +39,41 @@ class PupCourse {
   int get hashCode => Object.hash(code, name, department);
 
   @override
-  String toString() => 'PupCourse($code, $name)';
+  String toString() => 'CampusCourse($code, $name)';
 }
 
-const List<PupCourse> pupSantaMariaCourses = [
-  PupCourse(
+const List<CampusCourse> campusCourses = [
+  CampusCourse(
     code: 'BSA',
     name: 'Bachelor of Science in Accountancy',
     aliases: ['BS Accountancy'],
   ),
-  PupCourse(
+  CampusCourse(
     code: 'BSCpE',
     name: 'Bachelor of Science in Computer Engineering',
     aliases: ['BSCPE', 'BS Computer Engineering'],
   ),
-  PupCourse(
+  CampusCourse(
     code: 'BSENTREP',
     name: 'Bachelor of Science in Entrepreneurship',
     aliases: ['BS Entrepreneurship', 'BSEntrep'],
   ),
-  PupCourse(
+  CampusCourse(
     code: 'BSHM',
     name: 'Bachelor of Science in Hospitality Management',
     aliases: ['BS Hospitality Management'],
   ),
-  PupCourse(
+  CampusCourse(
     code: 'BSIT',
     name: 'Bachelor of Science in Information Technology',
     aliases: ['BS Information Technology'],
   ),
-  PupCourse(
+  CampusCourse(
     code: 'BSEDEN',
     name: 'Bachelor of Secondary Education major in English',
     aliases: ['BSED-EN', 'BSEd English', 'BSEd major in English'],
   ),
-  PupCourse(
+  CampusCourse(
     code: 'BSEDMT',
     name: 'Bachelor of Secondary Education major in Mathematics',
     aliases: [
@@ -83,7 +83,7 @@ const List<PupCourse> pupSantaMariaCourses = [
       'BSEd major in Mathematics',
     ],
   ),
-  PupCourse(
+  CampusCourse(
     code: 'DOMTLOM',
     name: 'Diploma in Office Management Technology – Legal Office Management',
     aliases: ['DOMT', 'DOMT-LOM', 'Diploma in Office Management Technology'],
@@ -91,25 +91,25 @@ const List<PupCourse> pupSantaMariaCourses = [
 ];
 
 /// Every catalog code, in catalog order.
-List<String> pupCourseCodes() => [
-  for (final course in pupSantaMariaCourses) course.code,
+List<String> campusCourseCodes() => [
+  for (final course in campusCourses) course.code,
 ];
 
 /// Case-insensitive catalog lookup by program code.
-PupCourse? pupCourseByCode(String? code) {
+CampusCourse? campusCourseByCode(String? code) {
   final needle = code?.trim().toLowerCase();
   if (needle == null || needle.isEmpty) return null;
-  for (final course in pupSantaMariaCourses) {
+  for (final course in campusCourses) {
     if (course.code.toLowerCase() == needle) return course;
   }
   return null;
 }
 
 /// Display name for a stored course code, falling back to the raw code.
-String pupCourseName(String? code) {
+String campusCourseName(String? code) {
   final trimmed = code?.trim();
   if (trimmed == null || trimmed.isEmpty) return '';
-  return pupCourseByCode(trimmed)?.name ?? trimmed;
+  return campusCourseByCode(trimmed)?.name ?? trimmed;
 }
 
 /// Result of [normalizeCourse]; unmatched input keeps its raw text.
@@ -133,13 +133,13 @@ Map<String, String> _buildLookup() {
     map.putIfAbsent(key, () => code);
   }
 
-  for (final course in pupSantaMariaCourses) {
+  for (final course in campusCourses) {
     add(_compact(course.code), course.code);
   }
-  for (final course in pupSantaMariaCourses) {
+  for (final course in campusCourses) {
     add(_compact(course.name), course.code);
   }
-  for (final course in pupSantaMariaCourses) {
+  for (final course in campusCourses) {
     for (final alias in course.aliases) {
       add(_compact(alias), course.code);
     }
@@ -160,18 +160,18 @@ NormalizedCourse normalizeCourse(String? input) {
       : NormalizedCourse(code: code, matched: true, raw: raw);
 }
 
-/// Label of the single bucket returned by [pupCoursesByDepartment].
-const String pupCoursesGroupLabel = 'PUP Santa Maria programs';
+/// Label of the single bucket returned by [campusCoursesByDepartment].
+const String campusCoursesGroupLabel = 'Campus programs';
 
-class PupCourseGroup {
-  const PupCourseGroup({required this.department, required this.courses});
+class CampusCourseGroup {
+  const CampusCourseGroup({required this.department, required this.courses});
 
   final String department;
-  final List<PupCourse> courses;
+  final List<CampusCourse> courses;
 
   @override
   bool operator ==(Object other) =>
-      other is PupCourseGroup &&
+      other is CampusCourseGroup &&
       other.department == department &&
       _listEquals(other.courses, courses);
 
@@ -189,9 +189,9 @@ bool _listEquals<T>(List<T> a, List<T> b) {
 
 /// Legacy wrapper kept so the picker keeps compiling. The campus has no
 /// departments, so this is always one bucket holding the whole catalog.
-List<PupCourseGroup> pupCoursesByDepartment() => [
-  PupCourseGroup(
-    department: pupCoursesGroupLabel,
-    courses: List<PupCourse>.unmodifiable(pupSantaMariaCourses),
+List<CampusCourseGroup> campusCoursesByDepartment() => [
+  CampusCourseGroup(
+    department: campusCoursesGroupLabel,
+    courses: List<CampusCourse>.unmodifiable(campusCourses),
   ),
 ];
