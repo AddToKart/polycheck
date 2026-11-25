@@ -99,6 +99,8 @@ export interface AuthResult {
     isItCoordinator?: boolean
     isDepartmentHead?: boolean
     isUserRegistrar?: boolean
+    managedCourses?: string[]
+    managesAllCourses?: boolean
     delegatedPermissions?: DelegatedTeacherPermissions
   }
 }
@@ -698,6 +700,8 @@ export class AuthService {
       isItCoordinator: user.isItCoordinator,
       isDepartmentHead: user.isDepartmentHead,
       isUserRegistrar: user.isUserRegistrar,
+      managedCourses: user.managedCourses,
+      managesAllCourses: user.managesAllCourses,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     }

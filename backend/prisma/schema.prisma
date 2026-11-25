@@ -104,7 +104,11 @@ model User {
   isItCoordinator  Boolean @default(false)
   isDepartmentHead Boolean @default(false)
   isUserRegistrar  Boolean @default(false)
-  contactEmail              String?
+  // Course scope of head/registrar designees (catalog program codes). Ignored for
+  // everyone else; managesAllCourses wins; an empty scope is fail-closed.
+  managedCourses    String[] @default([])
+  managesAllCourses Boolean  @default(false)
+  contactEmail            String?
   contactPhone              String?
   privacyConsentVersion String?
   privacyConsentedAt     DateTime?
@@ -246,6 +250,7 @@ model Section {
   @@index([teacherId])
   @@index([subjectId])
   @@index([enrollmentCode])
+  @@index([course])
 }
 
 // V3 anti-zombie: students removed by the instructor can only be re-admitted

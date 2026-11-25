@@ -70,7 +70,27 @@ describe('SessionAuthenticator', () => {
       isItCoordinator: false,
       isDepartmentHead: false,
       isUserRegistrar: false,
+      managedCourses: [],
+      managesAllCourses: false,
     })
+  })
+
+  it('maps the course scope into the principal and normalizes missing values', async () => {
+    betterAuth.auth.api.getSession.mockResolvedValue({
+      ...resolved,
+      user: { ...resolved.user, isDepartmentHead: true, managedCourses: ['BSIT', 'BSHM'], managesAllCourses: false },
+    })
+    const scoped = await service.authenticate(makeHeaders())
+    expect(scoped.managedCourses).toEqual(['BSIT', 'BSHM'])
+    expect(scoped.managesAllCourses).toBe(false)
+
+    betterAuth.auth.api.getSession.mockResolvedValue({
+      ...resolved,
+      user: { ...resolved.user, managedCourses: null, managesAllCourses: true },
+    })
+    const all = await service.authenticate(makeHeaders())
+    expect(all.managedCourses).toEqual([])
+    expect(all.managesAllCourses).toBe(true)
   })
 
   it('maps administrative designations into the principal', async () => {

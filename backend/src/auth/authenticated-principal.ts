@@ -15,4 +15,7 @@ export interface RequestUser {
   isItCoordinator?: boolean
   isDepartmentHead?: boolean
   isUserRegistrar?: boolean
+  /** Course scope of head/registrar designees (see common/course-scope.ts). */
+  managedCourses?: string[]
+  managesAllCourses?: boolean
 }

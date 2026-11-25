@@ -72,6 +72,8 @@ export async function seed(prisma: PrismaClient) {
       role: UserRole.teacher,
       department: 'CCIS',
       isDepartmentHead: true,
+      // Course Head: sees only sections whose course is BSIT (COURSE_SCOPE_MODE=course).
+      managedCourses: ['BSIT'],
     },
     {
       id: 't-005',
@@ -81,6 +83,30 @@ export async function seed(prisma: PrismaClient) {
       role: UserRole.teacher,
       department: 'CCIS',
       isUserRegistrar: true,
+      // The campus registrar serves every program.
+      managesAllCourses: true,
+    },
+    {
+      id: 't-006',
+      fullName: 'Dr. Leonora P. Mercado',
+      email: 'head.programs@pup.edu.ph',
+      password,
+      role: UserRole.teacher,
+      department: 'CCIS',
+      isDepartmentHead: true,
+      // Head of Academic Programs: a head that manages every course.
+      managesAllCourses: true,
+    },
+    {
+      id: 't-007',
+      fullName: 'Prof. Ernesto V. Pangilinan',
+      email: 'chair.bshm@pup.edu.ph',
+      password,
+      role: UserRole.teacher,
+      department: 'BSHM',
+      isDepartmentHead: true,
+      // Course Head of a program with no demo sections (isolation checks).
+      managedCourses: ['BSHM'],
     },
     {
       id: 's-001',
@@ -90,7 +116,7 @@ export async function seed(prisma: PrismaClient) {
       password,
       role: UserRole.student,
       department: 'CCIS',
-      program: 'BS Computer Science',
+      program: 'BSIT',
       yearLevel: 2,
     },
     {
@@ -101,7 +127,7 @@ export async function seed(prisma: PrismaClient) {
       password,
       role: UserRole.student,
       department: 'CCIS',
-      program: 'BS Computer Science',
+      program: 'BSIT',
       yearLevel: 2,
     },
     {
@@ -112,7 +138,7 @@ export async function seed(prisma: PrismaClient) {
       password,
       role: UserRole.student,
       department: 'CCIS',
-      program: 'BS Computer Science',
+      program: 'BSIT',
       yearLevel: 2,
     },
     {
@@ -123,7 +149,7 @@ export async function seed(prisma: PrismaClient) {
       password,
       role: UserRole.student,
       department: 'CCIS',
-      program: 'BS Computer Science',
+      program: 'BSIT',
       yearLevel: 2,
     },
     {
@@ -134,7 +160,7 @@ export async function seed(prisma: PrismaClient) {
       password,
       role: UserRole.student,
       department: 'CCIS',
-      program: 'BS Computer Science',
+      program: 'BSIT',
       yearLevel: 2,
     },
     {
@@ -145,7 +171,7 @@ export async function seed(prisma: PrismaClient) {
       password,
       role: UserRole.student,
       department: 'CCIS',
-      program: 'BS Computer Science',
+      program: 'BSIT',
       yearLevel: 2,
     },
     {
@@ -156,7 +182,7 @@ export async function seed(prisma: PrismaClient) {
       password,
       role: UserRole.student,
       department: 'CCIS',
-      program: 'BS Computer Science',
+      program: 'BSIT',
       yearLevel: 2,
     },
     {
@@ -167,7 +193,7 @@ export async function seed(prisma: PrismaClient) {
       password,
       role: UserRole.student,
       department: 'CCIS',
-      program: 'BS Computer Science',
+      program: 'BSIT',
       yearLevel: 2,
     },
   ]
@@ -247,6 +273,7 @@ export async function seed(prisma: PrismaClient) {
       id: 'sec-001',
       subjectId: 'subj-001',
       section: 'A',
+      course: 'BSIT',
       room: 'CCIS Lab 3',
       semester: '2nd Semester AY 2025-2026',
       teacherId: 't-001',
@@ -258,6 +285,7 @@ export async function seed(prisma: PrismaClient) {
       id: 'sec-002',
       subjectId: 'subj-001',
       section: 'B',
+      course: 'BSIT',
       room: 'CCIS Lecture 1',
       semester: '2nd Semester AY 2025-2026',
       teacherId: 't-001',
@@ -269,6 +297,7 @@ export async function seed(prisma: PrismaClient) {
       id: 'sec-003',
       subjectId: 'subj-002',
       section: 'A',
+      course: 'BSIT',
       room: 'CCIS Lecture 2',
       semester: '2nd Semester AY 2025-2026',
       teacherId: 't-001',
@@ -280,6 +309,7 @@ export async function seed(prisma: PrismaClient) {
       id: 'sec-004',
       subjectId: 'subj-003',
       section: 'A',
+      course: 'BSIT',
       room: 'CCIS Lab 1',
       semester: '2nd Semester AY 2025-2026',
       teacherId: 't-002',
@@ -291,6 +321,7 @@ export async function seed(prisma: PrismaClient) {
       id: 'sec-005',
       subjectId: 'subj-004',
       section: 'A',
+      course: 'BSIT',
       room: 'CCIS Lecture 1',
       semester: '2nd Semester AY 2025-2026',
       teacherId: 't-002',

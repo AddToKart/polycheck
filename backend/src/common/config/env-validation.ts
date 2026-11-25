@@ -45,6 +45,9 @@ export const envSchema = z
     CONCURRENT_SESSION_LOOKBACK_MINUTES: z.coerce.number().int().min(1).max(720).default(30),
     TEACHER_ACTIVATION_LOCATION_ENFORCEMENT: booleanValue.default(true),
     TEACHER_ACTIVATION_TOLERANCE_METERS: z.coerce.number().int().min(30).max(2_000).default(150),
+    // 'legacy' (default) scopes heads/registrars by department; 'course' scopes them by course.
+    // Unknown values are tolerated here and degrade to 'legacy' with a startup warning (common/course-scope.ts).
+    COURSE_SCOPE_MODE: z.string().max(32).optional().or(z.literal('')),
     EXPO_ACCESS_TOKEN: z.string().optional().or(z.literal('')),
   })
   .superRefine((env, ctx) => {
