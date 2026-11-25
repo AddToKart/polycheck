@@ -18,6 +18,8 @@ import type { RequestUser } from '../auth/authenticated-principal'
 import { MetricsService } from '../observability/metrics.service'
 
 const QUEUE_NAME = 'attendance-sync'
+const DEFAULT_WORKER_CONCURRENCY = 20
+const MAX_WORKER_CONCURRENCY = 100
 type SyncResult = Awaited<ReturnType<AttendanceService['syncScan']>>
 interface SyncJobData {
   user: Pick<RequestUser, 'id' | 'role'>
@@ -33,6 +35,8 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
   private events?: QueueEvents
   private worker?: Worker<SyncJobData, SyncResult[]>
   private metricsRefreshTimer?: ReturnType<typeof setInterval>
+  /** True when this process only produces jobs and a separate process consumes them. */
+  private workerExternal = false
 
   constructor(
     private readonly attendance: AttendanceService,
@@ -66,33 +70,54 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       await this.producerConnection.connect()
       this.queue = new Queue<SyncJobData, SyncResult[]>(QUEUE_NAME, { connection: this.producerConnection })
       this.events = new QueueEvents(QUEUE_NAME, { connection: this.connection })
-      this.worker = new Worker<SyncJobData, SyncResult[]>(QUEUE_NAME, (job) => this.processJob(job), {
-        connection: this.connection,
-        concurrency: 20,
-      })
+      this.workerExternal = this.config?.get<string>('SYNC_WORKER_ENABLED') === 'false'
+      if (!this.workerExternal) {
+        this.worker = new Worker<SyncJobData, SyncResult[]>(QUEUE_NAME, (job) => this.processJob(job), {
+          connection: this.connection,
+          concurrency: this.workerConcurrency(),
+        })
+      }
       this.queue.on('error', () => this.metrics?.setBullMqComponentReady('producer', false))
       this.events.on('error', () => this.metrics?.setBullMqComponentReady('events', false))
-      this.worker.on('ready', () => this.metrics?.setBullMqComponentReady('worker', true))
-      this.worker.on('error', () => this.metrics?.setBullMqComponentReady('worker', false))
-      this.worker.on('closed', () => this.metrics?.setBullMqComponentReady('worker', false))
-      this.worker.on('failed', (job, error) => {
+      this.worker?.on('ready', () => this.metrics?.setBullMqComponentReady('worker', true))
+      this.worker?.on('error', () => this.metrics?.setBullMqComponentReady('worker', false))
+      this.worker?.on('closed', () => this.metrics?.setBullMqComponentReady('worker', false))
+      this.worker?.on('failed', (job, error) => {
         this.metrics?.recordBullMqFailure()
         this.logger.error(`Attendance sync job ${job?.id ?? 'unknown'} failed: ${error.message}`)
       })
-      await Promise.all([this.queue.waitUntilReady(), this.events.waitUntilReady(), this.worker.waitUntilReady()])
+      await Promise.all([this.queue.waitUntilReady(), this.events.waitUntilReady(), this.worker?.waitUntilReady()])
       this.metrics?.setBullMqComponentReady('producer', true)
       this.metrics?.setBullMqComponentReady('events', true)
+      // With the worker in another process there is nothing local to be unready; queue depth and age metrics
+      // are what flag a stalled consumer.
       this.metrics?.setBullMqComponentReady('worker', true)
       await this.refreshQueueMetrics()
       this.metricsRefreshTimer = setInterval(() => void this.refreshQueueMetrics(), 15_000)
       this.metricsRefreshTimer.unref()
-      this.logger.log('BullMQ attendance sync worker connected')
+      this.logger.log(
+        this.workerExternal
+          ? 'BullMQ attendance sync producer connected (worker runs in another process)'
+          : `BullMQ attendance sync worker connected (concurrency ${this.workerConcurrency()})`,
+      )
     } catch (error) {
       await this.closeQueue()
       const message = error instanceof Error ? error.message : 'unknown connection error'
       if (required) throw new Error(`BullMQ attendance sync is required in production: ${message}`)
       this.logger.warn(`BullMQ unavailable; attendance sync will run inline: ${message}`)
     }
+  }
+
+  /**
+   * Jobs processed concurrently by this process's worker. Defaults to 20 (the long-standing value). On the
+   * 2-core profile the Prisma pool is smaller than this, so extra jobs simply wait for a connection; lowering it
+   * (or moving the worker to its own process with SYNC_WORKER_ENABLED=false on the API) keeps a sync flood from
+   * competing with HTTP requests for the same pool.
+   */
+  private workerConcurrency(): number {
+    const raw = Number(this.config?.get<string>('SYNC_WORKER_CONCURRENCY'))
+    if (!Number.isFinite(raw) || raw < 1) return DEFAULT_WORKER_CONCURRENCY
+    return Math.min(MAX_WORKER_CONCURRENCY, Math.floor(raw))
   }
 
   /**
@@ -190,7 +215,10 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     ])
     this.metrics?.setBullMqComponentReady('producer', producer)
     this.metrics?.setBullMqComponentReady('events', events)
-    this.metrics?.setBullMqComponentReady('worker', worker && Boolean(this.worker?.isRunning()))
+    this.metrics?.setBullMqComponentReady(
+      'worker',
+      this.workerExternal ? producer : worker && Boolean(this.worker?.isRunning()),
+    )
     if (!producer || !this.queue) return
 
     try {

@@ -48,6 +48,9 @@ export const envSchema = z
     // 'legacy' (default) scopes heads/registrars by department; 'course' scopes them by course.
     // Unknown values are tolerated here and degrade to 'legacy' with a startup warning (common/course-scope.ts).
     COURSE_SCOPE_MODE: z.string().max(32).optional().or(z.literal('')),
+    // Offline-sync worker placement/size. Defaults keep today's behaviour: worker in the API process, 20 jobs at once.
+    SYNC_WORKER_ENABLED: booleanValue.default(true),
+    SYNC_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(100).default(20),
     // Email delivery for account activation. 'disabled' (default) refuses every send; 'log' writes the
     // message to the server log and is rejected in production; 'resend' needs a key and a sender.
     MAIL_DRIVER: z.enum(['disabled', 'log', 'resend']).default('disabled'),
