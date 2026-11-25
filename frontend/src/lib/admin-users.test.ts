@@ -183,6 +183,7 @@ describe('email activation helpers', () => {
     expect(activationMailLabel({ ...pending, email: undefined })).toBe('No email on file')
     expect(activationMailLabel(pending)).toBe('Email not sent yet')
     expect(activationMailLabel({ ...pending, activationMail: { status: 'sent' } })).toBe('Email sent')
+    expect(activationMailLabel({ ...pending, activationMail: { status: 'delivered' } })).toBe('Email delivered')
     expect(activationMailLabel({ ...pending, activationMail: { status: 'queued' } })).toBe('Email queued')
     expect(activationMailLabel({ ...pending, activationMail: { status: 'sending' } })).toBe('Email queued')
     expect(activationMailLabel({ ...pending, activationMail: { status: 'bounced' } })).toBe('Email bounced')

@@ -39,6 +39,7 @@ export function activationMailLabel(row: Pick<User, 'activationPending' | 'activ
   if (!row.email?.trim()) return 'No email on file'
   const status = row.activationMail?.status
   if (!status) return 'Email not sent yet'
+  if (status === 'delivered') return 'Email delivered'
   if (status === 'sent') return 'Email sent'
   if (status === 'queued' || status === 'sending') return 'Email queued'
   if (status === 'bounced') return 'Email bounced'

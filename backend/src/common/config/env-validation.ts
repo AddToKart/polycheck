@@ -54,6 +54,8 @@ export const envSchema = z
     RESEND_API_KEY: z.string().optional().or(z.literal('')),
     MAIL_FROM: z.string().max(300).optional().or(z.literal('')),
     MAIL_REPLY_TO: z.string().max(300).optional().or(z.literal('')),
+    // Svix signing secret (whsec_…) for delivery/bounce receipts at POST /api/webhooks/resend; inert when unset.
+    RESEND_WEBHOOK_SECRET: z.string().max(200).optional().or(z.literal('')),
     MAIL_RATE_PER_SECOND: z.coerce.number().int().min(1).max(10).default(2),
     // Resend's free plan allows 100 emails/day (UTC); raise this on a paid plan.
     MAIL_DAILY_CAP: z.coerce.number().int().min(1).max(100_000).default(100),

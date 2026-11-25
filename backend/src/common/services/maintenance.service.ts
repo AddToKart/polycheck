@@ -143,7 +143,10 @@ export class MaintenanceService {
           where: { createdAt: { lt: new Date(Date.now() - 30 * day) } },
         })
         const mails = await this.prisma.accountMail.deleteMany({
-          where: { queuedAt: { lt: new Date(Date.now() - 90 * day) }, status: { in: ['sent', 'failed', 'bounced'] } },
+          where: {
+            queuedAt: { lt: new Date(Date.now() - 90 * day) },
+            status: { in: ['sent', 'delivered', 'failed', 'bounced'] },
+          },
         })
         if (tokens.count > 0 || mails.count > 0) {
           this.logger.log(`Pruned ${tokens.count} activation tokens and ${mails.count} mail rows past retention`)

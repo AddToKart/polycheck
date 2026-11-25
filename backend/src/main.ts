@@ -19,7 +19,15 @@ async function bootstrap() {
 
   if (env.TRUST_PROXY) app.getHttpAdapter().getInstance().set('trust proxy', env.TRUST_PROXY_HOPS)
   const bodyLimit = `${Math.ceil((env.MAX_PROOF_BYTES * 4) / 3) + 100_000}b`
-  app.use(json({ limit: bodyLimit }))
+  app.use(
+    json({
+      limit: bodyLimit,
+      // Webhook signatures are computed over the exact bytes sent, so keep them for that route only.
+      verify: (req, _res, buf) => {
+        if ((req as { url?: string }).url?.includes('/webhooks/')) (req as { rawBody?: Buffer }).rawBody = buf
+      },
+    }),
+  )
   app.use(urlencoded({ extended: true, limit: bodyLimit }))
 
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }))

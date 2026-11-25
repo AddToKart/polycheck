@@ -131,7 +131,7 @@ describe('MaintenanceService', () => {
     expect(Date.now() - tokenCutoff.getTime()).toBeGreaterThanOrEqual(30 * day - 1000)
     const mailWhere = prisma.accountMail.deleteMany.mock.calls[0][0].where
     expect(Date.now() - (mailWhere.queuedAt.lt as Date).getTime()).toBeGreaterThanOrEqual(90 * day - 1000)
-    expect(mailWhere.status).toEqual({ in: ['sent', 'failed', 'bounced'] })
+    expect(mailWhere.status).toEqual({ in: ['sent', 'delivered', 'failed', 'bounced'] })
     expect(redis.releaseLock).toHaveBeenCalledWith('maintenance:prune-account-activation', 'owner-token')
   })
 
