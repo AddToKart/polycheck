@@ -127,7 +127,7 @@ test.describe('Faculty (Teacher) Flows', () => {
     const sectionName = `E2E-${Date.now() % 100000}`
     await page.goto('/faculty/sections/create?subjectId=subj-001')
     await expect(page.getByRole('heading', { name: 'Create Section' })).toBeVisible()
-    await page.getByLabel('Section').fill(sectionName)
+    await page.getByLabel('Section', { exact: true }).fill(sectionName)
     await page.getByLabel('Course').selectOption('BSIT')
     await page.getByLabel('Room').fill('E2E Room')
     // Add one schedule entry
