@@ -107,6 +107,7 @@ class AttendanceReportFilters {
     this.sectionId,
     this.sessionId,
     this.department,
+    this.course,
   });
 
   final String? startDate;
@@ -117,6 +118,9 @@ class AttendanceReportFilters {
   final String? sessionId;
   final String? department;
 
+  /// Course (program code) filter; narrows within the caller's scope.
+  final String? course;
+
   Map<String, dynamic> toQuery() => {
     if (startDate != null && startDate!.isNotEmpty) 'startDate': startDate,
     if (endDate != null && endDate!.isNotEmpty) 'endDate': endDate,
@@ -125,6 +129,7 @@ class AttendanceReportFilters {
     if (sectionId != null && sectionId!.isNotEmpty) 'sectionId': sectionId,
     if (sessionId != null && sessionId!.isNotEmpty) 'sessionId': sessionId,
     if (department != null && department!.isNotEmpty) 'department': department,
+    if (course != null && course!.isNotEmpty) 'course': course,
   };
 }
 

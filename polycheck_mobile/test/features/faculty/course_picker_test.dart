@@ -59,8 +59,14 @@ void main() {
     await pumpCreateScreen(tester);
     await openCoursePicker(tester);
 
-    expect(find.text('BSIT — BS Information Technology'), findsOneWidget);
-    expect(find.text('BSA — BS Accountancy'), findsOneWidget);
+    expect(
+      find.text('BSIT — Bachelor of Science in Information Technology'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('BSA — Bachelor of Science in Accountancy'),
+      findsOneWidget,
+    );
     expect(find.text('Other — specify manually'), findsOneWidget);
 
     // The sheet is capped (Bug 2): never full-screen.
@@ -68,7 +74,7 @@ void main() {
     expect(sheetRect.height, lessThan(800));
   });
 
-  testWidgets('search filters by code and name and keeps group headers', (
+  testWidgets('search filters by code and name over the flat catalog', (
     tester,
   ) async {
     await pumpCreateScreen(tester);
@@ -77,25 +83,29 @@ void main() {
     // By code (case-insensitive).
     await tester.enterText(find.byKey(const ValueKey('course-search')), 'bsit');
     await tester.pump();
-    expect(find.text('BSIT — BS Information Technology'), findsOneWidget);
-    expect(find.text('BSA — BS Accountancy'), findsNothing);
-    expect(find.text('CCIS'), findsOneWidget);
-    expect(find.text('BUSINESS'), findsNothing);
+    expect(
+      find.text('BSIT — Bachelor of Science in Information Technology'),
+      findsOneWidget,
+    );
+    expect(find.text('BSA — Bachelor of Science in Accountancy'), findsNothing);
+    // The campus has no departments: one flat bucket, never per-college headers.
+    expect(find.text('PUP SANTA MARIA PROGRAMS'), findsOneWidget);
+    expect(find.text('CCIS'), findsNothing);
 
-    // By name fragment across one department.
+    // By name fragment.
     await tester.enterText(
       find.byKey(const ValueKey('course-search')),
       'account',
     );
     await tester.pump();
-    expect(find.text('BSA — BS Accountancy'), findsOneWidget);
-    expect(find.text('BSMA — BS Management Accounting'), findsOneWidget);
     expect(
-      find.text('BSAIS — BS Accounting Information Systems'),
+      find.text('BSA — Bachelor of Science in Accountancy'),
       findsOneWidget,
     );
-    expect(find.text('BUSINESS'), findsOneWidget);
-    expect(find.text('CCIS'), findsNothing);
+    expect(
+      find.text('BSIT — Bachelor of Science in Information Technology'),
+      findsNothing,
+    );
 
     // The manual escape hatch stays reachable while filtered.
     expect(find.byKey(const ValueKey('course-option-custom')), findsOneWidget);
@@ -116,14 +126,17 @@ void main() {
     await pumpCreateScreen(tester);
     await openCoursePicker(tester);
 
-    await tester.enterText(find.byKey(const ValueKey('course-search')), 'bscs');
+    await tester.enterText(find.byKey(const ValueKey('course-search')), 'bshm');
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('course-option-BSCS')));
+    await tester.tap(find.byKey(const ValueKey('course-option-BSHM')));
     await tester.pumpAndSettle();
 
     // Sheet closed; the field shows the resolved selection.
     expect(find.byType(CampusBottomSheet), findsNothing);
-    expect(find.text('BSCS — BS Computer Science'), findsOneWidget);
+    expect(
+      find.text('BSHM — Bachelor of Science in Hospitality Management'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the manual option opens the custom course field', (

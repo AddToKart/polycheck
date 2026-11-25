@@ -141,6 +141,29 @@ void main() {
       expect(user.isDepartmentHead, isFalse);
       expect(user.isUserRegistrar, isFalse);
       expect(user.mustChangePassword, isFalse);
+      // Course scope fields are additive: legacy payloads decode to an empty (fail-closed) scope.
+      expect(user.managedCourses, isEmpty);
+      expect(user.managesAllCourses, isFalse);
+      expect(user.courseScopeMode, isNull);
+    });
+
+    test('course scope fields decode from the /auth/me shape', () {
+      final user = User.fromJson({
+        'id': 'u-3',
+        'fullName': 'Course Head',
+        'role': 'teacher',
+        'isActive': true,
+        'isDepartmentHead': true,
+        'managedCourses': ['BSIT', 'BSHM'],
+        'managesAllCourses': false,
+        'courseScopeMode': 'course',
+        'createdAt': '2026-01-01T00:00:00Z',
+        'updatedAt': '2026-01-01T00:00:00Z',
+      });
+      expect(user.managedCourses, ['BSIT', 'BSHM']);
+      expect(user.managesAllCourses, isFalse);
+      expect(user.courseScopeMode, 'course');
+      expect(User.fromJson(user.toJson()), user);
     });
 
     test('Section carries the course and nested schedule', () {

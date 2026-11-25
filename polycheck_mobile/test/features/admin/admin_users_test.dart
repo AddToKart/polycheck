@@ -138,6 +138,51 @@ void main() {
       },
     );
 
+    test(
+      'course scope writes only include a changed list or all-courses flag',
+      () {
+        final scoped = teacher.copyWith(
+          isDepartmentHead: true,
+          managedCourses: const ['BSIT'],
+        );
+        final unchanged = buildUserUpdatePayload(
+          scoped,
+          editableValuesForUser(scoped),
+          managedCourses: const ['BSIT'],
+          managesAllCourses: false,
+        );
+        expect(unchanged, isEmpty);
+
+        final reordered = buildUserUpdatePayload(
+          scoped.copyWith(managedCourses: const ['BSIT', 'BSHM']),
+          editableValuesForUser(scoped),
+          managedCourses: const ['BSHM', 'BSIT'],
+        );
+        expect(reordered, isEmpty);
+
+        final changed = buildUserUpdatePayload(
+          scoped,
+          editableValuesForUser(scoped),
+          managedCourses: const ['BSIT', 'BSHM'],
+          managesAllCourses: true,
+        );
+        expect(changed, <String, dynamic>{
+          'managedCourses': ['BSIT', 'BSHM'],
+          'managesAllCourses': true,
+        });
+      },
+    );
+
+    test('students never receive course scope fields', () {
+      final payload = buildUserUpdatePayload(
+        student,
+        editableValuesForUser(student),
+        managedCourses: const ['BSIT'],
+        managesAllCourses: true,
+      );
+      expect(payload, isEmpty);
+    });
+
     test('designation writes only include changed flags', () {
       final payload = buildUserUpdatePayload(
         teacher,

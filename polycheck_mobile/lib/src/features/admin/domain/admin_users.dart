@@ -218,6 +218,8 @@ Map<String, dynamic> buildUserUpdatePayload(
   bool? isItCoordinator,
   bool? isDepartmentHead,
   bool? isUserRegistrar,
+  List<String>? managedCourses,
+  bool? managesAllCourses,
 }) {
   final fields = editableFieldsForRole(target.role).toSet();
   final payload = <String, dynamic>{};
@@ -280,9 +282,27 @@ Map<String, dynamic> buildUserUpdatePayload(
     if (isUserRegistrar != null && isUserRegistrar != target.isUserRegistrar) {
       payload['isUserRegistrar'] = isUserRegistrar;
     }
+    if (managedCourses != null &&
+        !_sameCourses(managedCourses, target.managedCourses)) {
+      payload['managedCourses'] = managedCourses;
+    }
+    if (managesAllCourses != null &&
+        managesAllCourses != target.managesAllCourses) {
+      payload['managesAllCourses'] = managesAllCourses;
+    }
   }
 
   return payload;
+}
+
+bool _sameCourses(List<String> next, List<String> current) {
+  final left = [...next]..sort();
+  final right = [...current]..sort();
+  if (left.length != right.length) return false;
+  for (var index = 0; index < left.length; index++) {
+    if (left[index] != right[index]) return false;
+  }
+  return true;
 }
 
 bool hasUserChanges(Map<String, dynamic> payload) => payload.isNotEmpty;

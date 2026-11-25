@@ -9,6 +9,8 @@ class FakePolyUser implements PolyUser {
     this.isItCoordinator,
     this.isDepartmentHead,
     this.isUserRegistrar,
+    this.managedCourses,
+    this.managesAllCourses,
   });
 
   @override
@@ -25,6 +27,12 @@ class FakePolyUser implements PolyUser {
 
   @override
   final bool? isUserRegistrar;
+
+  @override
+  final List<String>? managedCourses;
+
+  @override
+  final bool? managesAllCourses;
 }
 
 void main() {
@@ -127,5 +135,53 @@ void main() {
       FacultyDesignation.userAdmin,
     ]);
     expect(hasDesignation(dualHat, FacultyDesignation.userAdmin), isTrue);
+  });
+
+  group('course scope', () {
+    FakePolyUser head({List<String>? courses, bool? all}) => FakePolyUser(
+      UserRole.teacher,
+      isDepartmentHead: true,
+      managedCourses: courses,
+      managesAllCourses: all,
+    );
+
+    test('an all-courses head sees every course (null)', () {
+      expect(oversightCourses(head(all: true, courses: ['BSIT'])), isNull);
+      expect(courseHeadLabel(head(all: true)), 'Head of Academic Programs');
+    });
+
+    test('a course head is limited to the normalized, de-duplicated list', () {
+      expect(
+        oversightCourses(
+          head(courses: ['bsit', 'BS Information Technology', 'BSHM', 'junk']),
+        ),
+        ['BSIT', 'BSHM'],
+      );
+      expect(
+        courseHeadLabel(head(courses: ['BSIT', 'BSHM'])),
+        'Course Head (BSIT, BSHM)',
+      );
+    });
+
+    test('no courses, non-heads and other roles are fail-closed', () {
+      expect(oversightCourses(head()), isEmpty);
+      expect(oversightCourses(FakePolyUser(UserRole.teacher)), isEmpty);
+      expect(
+        oversightCourses(
+          FakePolyUser(
+            UserRole.student,
+            isDepartmentHead: true,
+            managesAllCourses: true,
+          ),
+        ),
+        isEmpty,
+      );
+      expect(oversightCourses(null), isEmpty);
+      expect(courseHeadLabel(head()), 'Course Head');
+    });
+
+    test('the designation label is course-oriented', () {
+      expect(FacultyDesignation.academicOversight.label, 'Course Head');
+    });
   });
 }
