@@ -208,6 +208,12 @@ final studentSectionDetailProvider = FutureProvider.autoDispose
       final sectionsApi = ref.read(sectionsApiProvider);
       final sessionsApi = ref.read(sessionsApiProvider);
       final subjectsApi = ref.read(subjectsApiProvider);
+      // FLR-09: expiry is a server-clock decision, exactly like every token
+      // window. A device clock running minutes behind would keep a stale
+      // grant alive, and one running ahead would deny a live grant.
+      final trustedNow = ref
+          .read(trustedClockProvider)
+          .now(deviceNow: ref.read(deviceNowProvider));
 
       Section section;
       try {
@@ -273,7 +279,7 @@ final studentSectionDetailProvider = FutureProvider.autoDispose
           for (final row in mine) {
             final expires = DateTime.tryParse(row.expiresAt)?.toUtc();
             if (expires == null) continue;
-            if (expires.isAfter(DateTime.now().toUtc()) &&
+            if (expires.isAfter(trustedNow) &&
                 (latest == null || expires.isAfter(latest))) {
               latest = expires;
             }

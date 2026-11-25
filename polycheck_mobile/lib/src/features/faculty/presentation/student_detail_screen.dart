@@ -126,6 +126,21 @@ class _FacultyStudentDetailScreenState
     final section = _section;
     if (student == null || section == null || _busy != null) return;
     final record = _recordFor(session.id);
+    // FLF-08: disputed/excused rows belong to their queues; a tap here used to
+    // rewrite them without the student ever seeing the decision.
+    if (record != null && !isManualCycleStatus(record.status)) {
+      final queue = record.status == AttendanceStatus.disputed
+          ? 'dispute'
+          : 'excuse';
+      CampusToast.showIn(
+        context,
+        'This record is '
+        '${attendanceStatusLabels[record.status]!.toLowerCase()} — resolve it '
+        'through the $queue queue.',
+        tone: CampusToastTone.warning,
+      );
+      return;
+    }
     final next = nextAttendanceStatus(
       record?.status ?? AttendanceStatus.pending,
     );

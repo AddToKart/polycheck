@@ -221,13 +221,19 @@ class TeacherSigningKeyService {
 /// `ensureTeacherSigningKeyProvisioned` parity (`android/services/api-client.ts:520-553`).
 ///
 /// Provisioning is rate limited server-side, so the upload is skipped when the
-/// session already carries the same public key or this process already
-/// provisioned it.
+/// session payload already carries this device's public key.
+///
+/// **FLR-07:** the decision reads the authoritative server state only - the
+/// `teacherPublicKey` in the session payload - and keeps no process-static
+/// "already provisioned" set. That set could never observe
+/// `POST /auth/revoke-key` (which nulls the server key), so a revoked teacher
+/// kept signing with a key the server no longer trusted until the app
+/// restarted. A missing or different key now always uploads; a matching key
+/// always skips.
 class TeacherKeyProvisioner {
   TeacherKeyProvisioner(this._api);
 
   final SessionApi _api;
-  static final Set<String> _provisionedTeacherIds = <String>{};
 
   Future<void> ensure({
     required User user,
@@ -235,17 +241,13 @@ class TeacherKeyProvisioner {
     required TeacherSigningKey key,
     bool force = false,
   }) async {
-    if (!force) {
-      if (session.teacherPublicKey != null &&
-          session.teacherPublicKey == key.publicKey) {
-        _provisionedTeacherIds.add(user.id);
-        return;
-      }
-      if (_provisionedTeacherIds.contains(user.id)) return;
+    if (!force &&
+        key.publicKey.isNotEmpty &&
+        session.teacherPublicKey == key.publicKey) {
+      return;
     }
     try {
       await _api.provisionKey(key.publicKey);
-      _provisionedTeacherIds.add(user.id);
     } catch (error) {
       if (error is! ApiRequestError || !error.isNetworkFailure) rethrow;
       // Typed 4xx on purpose: an unprovisioned signing key would make every
@@ -258,10 +260,6 @@ class TeacherKeyProvisioner {
         status: 400,
       );
     }
-  }
-
-  static void forget(String teacherId) {
-    _provisionedTeacherIds.remove(teacherId);
   }
 }
 

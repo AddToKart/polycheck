@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:polycheck_mobile/src/core/api/api_models.dart';
 import 'package:polycheck_mobile/src/core/models/attendance.dart';
@@ -28,13 +29,15 @@ StudentAtRisk _risk({
 
 void main() {
   group('attendance status cycle', () {
-    test('cycles through the web order plus pending', () {
+    // Re-pinned for FLF-02: the cycle used to include `pending`, which is a
+    // system pre-resolution state the backend rejects with a 400
+    // (`UpdateAttendanceStatusDto` allowlist). Absent now wraps to present.
+    test('cycles through the backend starter set without pending', () {
       expect(attendanceStatusCycle, <AttendanceStatus>[
         AttendanceStatus.present,
         AttendanceStatus.late,
         AttendanceStatus.incomplete,
         AttendanceStatus.absent,
-        AttendanceStatus.pending,
       ]);
       expect(
         nextAttendanceStatus(AttendanceStatus.present),
@@ -50,12 +53,34 @@ void main() {
       );
       expect(
         nextAttendanceStatus(AttendanceStatus.absent),
-        AttendanceStatus.pending,
+        AttendanceStatus.present,
       );
       expect(
         nextAttendanceStatus(AttendanceStatus.pending),
         AttendanceStatus.present,
       );
+    });
+
+    test('the cycle is a subset of the backend DTO allowlist', () {
+      // `UpdateAttendanceStatusDto` / `CreateManualAttendanceDto`
+      // (`backend/src/attendance/dto/attendance.dto.ts`):
+      // `@IsIn(['present','late','absent','disputed','incomplete'])`.
+      // `pending` and `excused` are not teacher decisions.
+      expect(editableAttendanceStatuses, <AttendanceStatus>{
+        AttendanceStatus.present,
+        AttendanceStatus.late,
+        AttendanceStatus.absent,
+        AttendanceStatus.disputed,
+        AttendanceStatus.incomplete,
+      });
+      for (final status in attendanceStatusCycle) {
+        expect(
+          editableAttendanceStatuses,
+          contains(status),
+          reason: '${status.wire} would 400 against the backend allowlist',
+        );
+      }
+      expect(attendanceStatusCycle, isNot(contains(AttendanceStatus.pending)));
     });
 
     test('unknown/disputed rows restart at present', () {
@@ -68,7 +93,9 @@ void main() {
         AttendanceStatus.present,
       );
       expect(isManualCycleStatus(AttendanceStatus.disputed), isFalse);
+      expect(isManualCycleStatus(AttendanceStatus.excused), isFalse);
       expect(isManualCycleStatus(AttendanceStatus.present), isTrue);
+      expect(isManualCycleStatus(AttendanceStatus.incomplete), isTrue);
     });
   });
 
@@ -89,6 +116,41 @@ void main() {
       }
       expect(disputeReasonLabel(null), 'Unknown');
       expect(disputeReasonIcon(null), isNotNull);
+    });
+
+    test('gateway-persisted reasons render a display label (ING-07)', () {
+      // Reasons the ingest gateway persists outside the shared union. They
+      // must never blank the rail or crash a decode.
+      const persisted = <String, String>{
+        'missing_location': 'Missing Location',
+        'missing_geofence': 'Missing Geofence',
+        'geofence_uncertain': 'Uncertain Location',
+        'stale_location': 'Stale Location',
+        'poor_location_accuracy': 'Poor Location Accuracy',
+        'duplicate': 'Duplicate Check-in',
+        'client_attempt_conflict': 'Conflicting Attempt',
+        'replayed_rejection': 'Replayed Rejection',
+        'pin_mismatch': 'Meeting PIN Mismatch',
+      };
+      for (final entry in persisted.entries) {
+        expect(
+          disputeReasonLabelForWire(entry.key),
+          entry.value,
+          reason: 'label for ${entry.key}',
+        );
+        expect(disputeReasonIconForWire(entry.key), isNotNull);
+      }
+    });
+
+    test('an unknown persisted reason is humanized, never blank', () {
+      expect(disputeReasonLabelForWire('brand_new_reason'), 'Brand New Reason');
+      expect(disputeReasonLabelForWire('  '), 'Unknown');
+      expect(disputeReasonLabelForWire(null), 'Unknown');
+      expect(disputeReasonIconForWire('brand_new_reason'), isNotNull);
+      expect(disputeReasonIconForWire(null), Icons.help_outline);
+      expect(humanizeDisputeReason(''), 'Unknown Reason');
+      // A wire this build knows decodes strictly (no fallback masking).
+      expect(DisputeReason.tryParse('future_reason'), isNull);
     });
   });
 

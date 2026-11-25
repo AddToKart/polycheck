@@ -331,6 +331,58 @@ void main() {
       expect(filterRoster(rows, CockpitStatusFilter.all), hasLength(3));
     });
 
+    test(
+      'filters every status bucket including incomplete/excused (FLF-07)',
+      () {
+        final rows = buildCockpitRoster(
+          students: students,
+          records: [
+            const AttendanceRecord(
+              id: 'rec-1',
+              sessionId: 'sess-1',
+              sectionId: 'sec-1',
+              studentId: '001',
+              status: AttendanceStatus.incomplete,
+            ),
+            const AttendanceRecord(
+              id: 'rec-2',
+              sessionId: 'sess-1',
+              sectionId: 'sec-1',
+              studentId: '002',
+              status: AttendanceStatus.excused,
+            ),
+          ],
+        );
+
+        expect(
+          filterRoster(
+            rows,
+            CockpitStatusFilter.incomplete,
+          ).map((row) => row.studentId).toList(),
+          ['001'],
+        );
+        expect(
+          filterRoster(
+            rows,
+            CockpitStatusFilter.excused,
+          ).map((row) => row.studentId).toList(),
+          ['002'],
+        );
+        // Every filter has a label and is listed in the tab order.
+        for (final filter in CockpitStatusFilter.values) {
+          expect(cockpitStatusFilterLabels[filter], isNotNull);
+        }
+        expect(
+          CockpitStatusFilter.values,
+          contains(CockpitStatusFilter.incomplete),
+        );
+        expect(
+          CockpitStatusFilter.values,
+          contains(CockpitStatusFilter.excused),
+        );
+      },
+    );
+
     test('disputed and excused rows are their own buckets, not pending '
         '(DD-F17)', () {
       final rows = buildCockpitRoster(

@@ -292,8 +292,7 @@ class _SessionCreateScreenState extends ConsumerState<SessionCreateScreen> {
     existingDates: _existingSessions.map((session) => session.date).toSet(),
   );
 
-  bool _validTime(String value) =>
-      RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(value.trim());
+  bool _validTime(String value) => isValidCampusTime(value);
 
   bool _validDate(String value) => parseCampusDate(value) != null;
 
@@ -435,11 +434,14 @@ class _SessionCreateScreenState extends ConsumerState<SessionCreateScreen> {
     TextEditingController controller,
     ValueChanged<String> onPicked,
   ) async {
-    final initial = parseCampusDate(controller.text) ?? DateTime.now();
+    // FLF-06: 2020 allowed creating a class meeting years in the past.
+    final parsed = parseCampusDate(controller.text);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final picked = await showDatePicker(
       context: context,
-      initialDate: initial,
-      firstDate: DateTime(2020),
+      initialDate: parsed == null || parsed.isBefore(today) ? today : parsed,
+      firstDate: today,
       lastDate: DateTime(2035),
     );
     if (picked == null) return;

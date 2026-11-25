@@ -8,6 +8,22 @@ import '../../../core/polycheck_core.dart';
 
 const int enrollImportMaxRows = 250;
 
+/// Backend `EnrollImportRowDto` caps (`studentName`/`expectedProgram` are both
+/// `@MaxLength(150)` in `backend/src/sections/dto/import-enrollments.dto.ts`).
+const int enrollImportMaxNameLength = 150;
+const int enrollImportMaxProgramLength = 150;
+
+/// Collapses internal whitespace and trims, matching the shared normalizer
+/// (`shared/src/utils/import/normalize.ts` + `rows.ts`).
+String _collapseImportWhitespace(String raw) =>
+    raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+/// 150-char cap after whitespace collapse (FLF-05). The web normalizer slices
+/// rather than rejects, so a 300-character cell imports truncated instead of
+/// 400-ing the whole batch.
+String _capImportField(String value, int maxLength) =>
+    value.length > maxLength ? value.substring(0, maxLength) : value;
+
 class ParsedCsv {
   const ParsedCsv({
     required this.headers,
@@ -259,14 +275,14 @@ BuiltEnrollRows buildEnrollImportRows(
     }
     seen[id.value!] = rowNumber;
 
-    final name = importCell(
-      raw,
-      mapping.fullName,
-    ).replaceAll(RegExp(r'\s+'), ' ');
-    final program = importCell(
-      raw,
-      mapping.program,
-    ).replaceAll(RegExp(r'\s+'), ' ');
+    final name = _capImportField(
+      _collapseImportWhitespace(importCell(raw, mapping.fullName)),
+      enrollImportMaxNameLength,
+    );
+    final program = _capImportField(
+      _collapseImportWhitespace(importCell(raw, mapping.program)),
+      enrollImportMaxProgramLength,
+    );
     final year = normalizeYearLevel(importCell(raw, mapping.yearLevel));
     rows.add(
       EnrollImportRow(

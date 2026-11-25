@@ -12,15 +12,27 @@ import '../../../core/polycheck_core.dart';
 
 // ── Attendance status cycle ──
 
-/// Web parity cycle plus `pending`, which an online checkpoint row legitimately
-/// holds between arms. `incomplete` stays in the cycle because half-attended
-/// online sessions resolve to it.
+/// The backend's manual-decision allowlist (`UpdateAttendanceStatusDto` and
+/// `CreateManualAttendanceDto` in `backend/src/attendance/dto/attendance.dto.ts`).
+///
+/// `pending` is deliberately absent: it is a system pre-resolution state, never
+/// a teacher decision, so sending it is a 400 (FLF-02).
+const Set<AttendanceStatus> editableAttendanceStatuses = <AttendanceStatus>{
+  AttendanceStatus.present,
+  AttendanceStatus.late,
+  AttendanceStatus.absent,
+  AttendanceStatus.disputed,
+  AttendanceStatus.incomplete,
+};
+
+/// Web parity cycle. `incomplete` stays in the cycle because half-attended
+/// online sessions resolve to it; `pending` does not, because the backend
+/// rejects it (FLF-02). A `pending` row starts at `present`.
 const List<AttendanceStatus> attendanceStatusCycle = <AttendanceStatus>[
   AttendanceStatus.present,
   AttendanceStatus.late,
   AttendanceStatus.incomplete,
   AttendanceStatus.absent,
-  AttendanceStatus.pending,
 ];
 
 AttendanceStatus nextAttendanceStatus(AttendanceStatus current) {
@@ -88,12 +100,78 @@ const Map<DisputeReason, IconData> disputeReasonIcons = {
 
 String disputeReasonLabel(DisputeReason? reason) {
   if (reason == null) return 'Unknown';
-  return disputeReasonLabels[reason] ?? reason.wire;
+  return disputeReasonLabelForWire(reason.wire);
 }
 
 IconData disputeReasonIcon(DisputeReason? reason) {
   if (reason == null) return Icons.help_outline;
-  return disputeReasonIcons[reason] ?? Icons.help_outline;
+  return disputeReasonIconForWire(reason.wire);
+}
+
+// ── Gateway-persisted dispute reasons (ING-07) ──
+
+/// Reasons the ingest gateway (`services/ingest/src/core/scan.ts`) and the
+/// control plane persist that are outside the shared `DisputeReason` union.
+///
+/// The union is NOT widened here: `DisputeReasonConverter` must keep degrading
+/// unknown wires to [DisputeReason.other] instead of throwing, and widening a
+/// persisted enum ripples into the sync replay payloads. Instead every known
+/// gateway wire gets a display entry and anything unexpected is humanized.
+const Map<String, String> gatewayDisputeReasonLabels = <String, String>{
+  'missing_location': 'Missing Location',
+  'missing_geofence': 'Missing Geofence',
+  'geofence_uncertain': 'Uncertain Location',
+  'stale_location': 'Stale Location',
+  'poor_location_accuracy': 'Poor Location Accuracy',
+  'duplicate': 'Duplicate Check-in',
+  'client_attempt_conflict': 'Conflicting Attempt',
+  'replayed_rejection': 'Replayed Rejection',
+  'pin_mismatch': 'Meeting PIN Mismatch',
+};
+
+const Map<String, IconData> gatewayDisputeReasonIcons = <String, IconData>{
+  'missing_location': Icons.place_outlined,
+  'missing_geofence': Icons.place_outlined,
+  'geofence_uncertain': Icons.place_outlined,
+  'stale_location': Icons.schedule,
+  'poor_location_accuracy': Icons.place_outlined,
+  'duplicate': Icons.copy_all_outlined,
+  'client_attempt_conflict': Icons.copy_all_outlined,
+  'replayed_rejection': Icons.copy_all_outlined,
+  'pin_mismatch': Icons.fingerprint,
+};
+
+/// `some_new_reason` → `Some New Reason`; never empty (web
+/// `humanizeDisputeReason` parity).
+String humanizeDisputeReason(String reason) {
+  final text = reason.trim().replaceAll(RegExp(r'[_-]+'), ' ');
+  if (text.isEmpty) return 'Unknown Reason';
+  return text.replaceAllMapped(
+    RegExp(r'\b\w'),
+    (match) => match.group(0)!.toUpperCase(),
+  );
+}
+
+/// Wire-keyed label lookup: the enum map first, then the gateway map, then a
+/// humanized fallback so an unknown persisted reason never renders blank.
+String disputeReasonLabelForWire(String? wire) {
+  if (wire == null || wire.trim().isEmpty) return 'Unknown';
+  final parsed = DisputeReason.tryParse(wire);
+  if (parsed != null) {
+    final label = disputeReasonLabels[parsed];
+    if (label != null) return label;
+  }
+  return gatewayDisputeReasonLabels[wire] ?? humanizeDisputeReason(wire);
+}
+
+IconData disputeReasonIconForWire(String? wire) {
+  if (wire == null || wire.trim().isEmpty) return Icons.help_outline;
+  final parsed = DisputeReason.tryParse(wire);
+  if (parsed != null) {
+    final icon = disputeReasonIcons[parsed];
+    if (icon != null) return icon;
+  }
+  return gatewayDisputeReasonIcons[wire] ?? Icons.help_outline;
 }
 
 // ── At-risk ordering ──

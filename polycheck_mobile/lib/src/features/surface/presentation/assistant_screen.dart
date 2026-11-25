@@ -71,11 +71,17 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
   Map<String, AttachmentDownloadState> _downloadStates =
       const <String, AttachmentDownloadState>{};
 
-  AiThreadStream? _threadStream;
+  AiThreadSubscription? _threadStream;
   StreamSubscription<AiStreamEvent>? _threadEvents;
   Timer? _replyTimer;
   Timer? _reconcileTimer;
   int _conversationSeq = 0;
+
+  /// Stop sentinel (FLF-04): bumped by [_stop], captured by [_send] before the
+  /// HTTP request. A Stop pressed while `POST /ai/chat` is still in flight
+  /// wins — the send continuation must not adopt the stream, timers, or
+  /// subscription the server just started.
+  int _stopToken = 0;
   bool _disposed = false;
 
   @override
@@ -437,8 +443,28 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     });
   }
 
+  /// The last non-empty user turn. Regenerate re-sends exactly this content
+  /// (web parity, `AssistantChat.tsx:603-626`) instead of whatever happens to
+  /// be in the composer (FLF-01).
+  AiChatMessage? get _lastUserMessage {
+    for (var index = _messages.length - 1; index >= 0; index -= 1) {
+      final message = _messages[index];
+      if (message.role == AiChatRole.user &&
+          message.content.trim().isNotEmpty) {
+        return message;
+      }
+    }
+    return null;
+  }
+
   Future<void> _send({String? rawText, bool regenerate = false}) async {
-    final text = (rawText ?? _input.text).trim();
+    // FLF-01: a regenerate never reads or clears the composer — the teacher's
+    // unsent draft must survive "try that again".
+    final text =
+        (regenerate
+                ? (_lastUserMessage?.content ?? '')
+                : (rawText ?? _input.text))
+            .trim();
     final user = _user;
     if (text.isEmpty ||
         user == null ||
@@ -458,8 +484,11 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     final seq = _conversationSeq;
     _conversationBusy = true;
     _receivedStreamEvent = false;
+    // FLF-04: a stop pressed while the POST is in flight must win. The sentinel
+    // is captured here and re-checked after every await in this method.
+    final stopToken = _stopToken;
     _cancelTimers();
-    _input.clear();
+    if (!regenerate) _input.clear();
     setState(() {
       _sending = true;
       _error = null;
@@ -494,8 +523,33 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
               regenerate: regenerate ? true : null,
             ),
           );
+      // FLF-04: Stop during the HTTP window. The turn is already claimed
+      // server-side, so the thread id is still adopted (a later reload finds
+      // that turn) but the stream, timers, and draft are NOT — the sentinel
+      // comparison is the authority, not `_conversationBusy`.
       if (!mounted || seq != _conversationSeq) return;
+      final stoppedDuringSend = stopToken != _stopToken;
       await _adoptThread(result.threadId);
+      if (!mounted || seq != _conversationSeq) return;
+      if (stoppedDuringSend) {
+        // Surface the stopped affordance so the teacher can retry; nothing is
+        // subscribed and no reply timer is armed. The optimistic user bubble
+        // still adopts the authoritative thread id so a later reload and the
+        // retry both target the right conversation.
+        setState(() {
+          _stoppedMessageId = result.messageId;
+          if (optimisticId != null) {
+            _messages = [
+              for (final message in _messages)
+                if (message.id == optimisticId)
+                  message.copyWith(threadId: result.threadId)
+                else
+                  message,
+            ];
+          }
+        });
+        return;
+      }
       _pendingMessageId = result.messageId;
       final draft = AiChatMessage(
         id: result.messageId,
@@ -534,10 +588,14 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
             for (final item in _messages)
               if (item.id != optimisticId) item,
           ];
+          // Only a new turn restores its text; a failed regenerate must never
+          // clobber the teacher's unsent draft (FLF-01).
+          _input.text = text;
+          _input.selection = TextSelection.collapsed(offset: text.length);
+          _retryText = text;
+        } else {
+          _retryText = null;
         }
-        _input.text = text;
-        _input.selection = TextSelection.collapsed(offset: text.length);
-        _retryText = regenerate ? null : text;
         _retryRegenerate = regenerate;
         _error = message;
       });
@@ -551,6 +609,9 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
 
   Future<void> _stop() async {
     if (!_conversationBusy) return;
+    // FLF-04: invalidate the in-flight send's sentinel *before* any await, so
+    // a `POST /ai/chat` that resolves afterwards can never adopt the stream.
+    _stopToken += 1;
     final activeThreadId = _threadId;
     final pendingId = _pendingMessageId;
 
@@ -1039,7 +1100,11 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
                     ),
                     Padding(
                       padding: const EdgeInsets.all(4),
-                      child: _streaming
+                      // FLF-04: Stop is available for the whole turn — the
+                      // in-flight `POST /ai/chat` window included — so a slow
+                      // provider can always be cancelled. `_stop` bumps the
+                      // sentinel the send continuation re-checks.
+                      child: (_streaming || _sending)
                           ? IconButton(
                               tooltip: 'Stop generating',
                               onPressed: () => unawaited(_stop()),
@@ -1091,7 +1156,9 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      _streaming
+                      _sending
+                          ? 'Sending.'
+                          : _streaming
                           ? (_connected ? 'Replying.' : 'Reconnecting.')
                           : _stoppedMessageId != null
                           ? 'Reply stopped \u00b7 retry or send a new message'

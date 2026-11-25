@@ -128,6 +128,10 @@ String? notificationFallbackDestination(NotificationType type, UserRole role) {
       return isAdmin ? '/admin/system-reports' : SurfacePaths.reports;
     case NotificationType.atRiskReferral:
       return isAdmin ? null : '/faculty/at-risk';
+    case NotificationType.unknown:
+      // A type this build does not know has no safe destination; the server
+      // link (when present) is still honored by [notificationDestination].
+      return null;
   }
 }
 

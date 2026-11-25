@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../../core/network/dio_client.dart';
 import '../../../../core/providers/trusted_clock.dart';
 import '../../../../core/sync/sync_engine.dart';
 import '../../../../core/theme/pup_theme.dart';
@@ -15,16 +14,28 @@ import '../../data/outage_demo.dart';
 
 /// Installs the demo interceptor once per process when the flag is on.
 ///
-/// The core Dio client does not know about the dev simulator (core is owned
-/// by the foundation wave), so the surface attaches its own guard: while
-/// armed every request rejects with a connection-shaped failure, which makes
-/// the real offline queues and error classifiers run exactly as in a campus
-/// outage.
+/// The core Dio client does not know about the dev simulator, so the surface
+/// attaches its own guard: while armed every request rejects with a
+/// connection-shaped failure, which makes the real offline queues and error
+/// classifiers run exactly as in a campus outage.
+///
+/// **FLR-11:** [install] runs from the app bootstrap (`main.dart`) so the guard
+/// is present before the first request of the process. It used to run from the
+/// profile dev section's `initState`, which meant an armed simulator only took
+/// effect after that screen had been visited once - and not at all on a
+/// cold-start demo that never opened the profile. The profile section keeps the
+/// arm/disarm UI only.
 abstract final class SurfaceOutageInterceptor {
   static bool _installed = false;
 
-  static void install(Dio dio) {
-    if (!OutageDemo.enabled || _installed) return;
+  /// True once a guard has been attached (test/diagnostic seam).
+  static bool get isInstalled => _installed;
+
+  /// [enabled] defaults to the build flag; tests pass an explicit value
+  /// because `OutageDemo.enabled` is a compile-time constant.
+  static void install(Dio dio, {bool? enabled}) {
+    final active = enabled ?? OutageDemo.enabled;
+    if (!active || _installed) return;
     _installed = true;
     dio.interceptors.insert(
       0,
@@ -44,6 +55,11 @@ abstract final class SurfaceOutageInterceptor {
         },
       ),
     );
+  }
+
+  /// Test seam: forget the process-static install so a spec can re-install.
+  static void resetForTests() {
+    _installed = false;
   }
 }
 
@@ -217,9 +233,9 @@ class _OutageDevSectionState extends ConsumerState<OutageDevSection> {
   @override
   void initState() {
     super.initState();
-    if (OutageDemo.enabled) {
-      SurfaceOutageInterceptor.install(ref.read(dioProvider));
-    }
+    // FLR-11: the guard itself is installed by the app bootstrap
+    // (`main.dart`), before the first request. This section is arm/disarm UI
+    // only; installing here would have no effect on a cold start anyway.
     _unsubscribe = OutageDemo.subscribe((armed) {
       if (mounted) setState(() => _armed = armed);
     });

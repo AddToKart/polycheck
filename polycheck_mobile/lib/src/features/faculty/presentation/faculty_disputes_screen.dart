@@ -659,7 +659,9 @@ class _DisputeDetailSheetState extends ConsumerState<_DisputeDetailSheet> {
                                   if (attempt.geofenceRadiusMeters != null)
                                     'radius ${attempt.geofenceRadiusMeters!.round()} m',
                                   if (attempt.denialReason != null)
-                                    attempt.denialReason!,
+                                    disputeReasonLabelForWire(
+                                      attempt.denialReason,
+                                    ),
                                 ].join(' · '),
                                 style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(color: tokens.muted),

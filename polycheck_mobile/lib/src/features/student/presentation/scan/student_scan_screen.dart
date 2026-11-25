@@ -311,6 +311,22 @@ class _StudentScanScreenState extends ConsumerState<StudentScanScreen> {
       _promptOpen = false;
     }
     if (token == null || token.trim().isEmpty || !mounted) return;
+    // FLF-03: manual entry is a fallback channel, so it obeys the same policy
+    // as image upload (`shouldShowScanFallbacks`, RN `scan.tsx:1036` gating).
+    // Without this an in-person token could be pasted in even with fallbacks
+    // pinned off in production.
+    final payload = decodeTokenPayload(token.trim());
+    if (payload != null && !shouldShowScanFallbacks(payload.mode)) {
+      _showTransientOutcome(
+        const StudentScanOutcome(
+          kind: ScanOutcomeKind.rejected,
+          title: 'MANUAL ENTRY DISABLED',
+          message:
+              'Entering a code is disabled for in-person check-in. Scan the live QR.',
+        ),
+      );
+      return;
+    }
     // Give the dialog one frame of teardown before this screen flips into its
     // submitting state; the dialog (not this State) owns the controller.
     await WidgetsBinding.instance.endOfFrame;

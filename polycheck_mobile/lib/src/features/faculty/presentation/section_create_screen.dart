@@ -12,6 +12,15 @@ const List<String> semesterOptions = <String>[
   'Summer AY 2026-2027',
 ];
 
+/// Backend `CreateSectionDto` caps (`backend/src/sections/dto/
+/// create-section.dto.ts`) — validated locally so a long value surfaces as a
+/// field error instead of a 400 round trip.
+const int sectionCourseMaxLength = 30;
+const int sectionLabelMaxLength = 100;
+const int sectionRoomMaxLength = 100;
+const int sectionMeetingRoomMaxLength = 100;
+const int sectionSemesterMaxLength = 100;
+
 class _ScheduleRow {
   _ScheduleRow({
     required this.day,
@@ -137,14 +146,22 @@ class _SectionCreateScreenState extends ConsumerState<SectionCreateScreen> {
     final room = _room.text.trim();
     final course = _resolvedCourse;
     String? scheduleError;
+    String? meetingRoomError;
     final slots = <CreateSectionScheduleSlot>[];
     for (final row in _schedule) {
       final start = row.start.text.trim();
       final end = row.end.text.trim();
+      final meetingRoom = row.roomController.text.trim();
       if (!_validTime(start) || !_validTime(end) || end.compareTo(start) <= 0) {
         scheduleError =
             'Each meeting needs a valid start/end time in 24-hour HH:mm form '
             'with the end after the start.';
+        break;
+      }
+      if (meetingRoom.length > sectionMeetingRoomMaxLength) {
+        meetingRoomError =
+            'Meeting rooms are limited to $sectionMeetingRoomMaxLength '
+            'characters.';
         break;
       }
       slots.add(
@@ -152,9 +169,7 @@ class _SectionCreateScreenState extends ConsumerState<SectionCreateScreen> {
           day: row.day,
           startTime: start,
           endTime: end,
-          room: row.roomController.text.trim().isEmpty
-              ? null
-              : row.roomController.text.trim(),
+          room: meetingRoom.isEmpty ? null : meetingRoom,
         ),
       );
     }
@@ -162,10 +177,22 @@ class _SectionCreateScreenState extends ConsumerState<SectionCreateScreen> {
       scheduleError = 'Add at least one class meeting.';
     }
     setState(() {
-      _sectionError = section.isEmpty ? 'Enter the section label.' : null;
-      _courseError = course.isEmpty ? 'Choose the section course.' : null;
-      _roomError = room.isEmpty ? 'Enter the default room.' : null;
-      _scheduleError = scheduleError;
+      _sectionError = section.isEmpty
+          ? 'Enter the section label.'
+          : section.length > sectionLabelMaxLength
+          ? 'Sections are limited to $sectionLabelMaxLength characters.'
+          : null;
+      _courseError = course.isEmpty
+          ? 'Choose the section course.'
+          : course.length > sectionCourseMaxLength
+          ? 'Course codes are limited to $sectionCourseMaxLength characters.'
+          : null;
+      _roomError = room.isEmpty
+          ? 'Enter the default room.'
+          : room.length > sectionRoomMaxLength
+          ? 'Rooms are limited to $sectionRoomMaxLength characters.'
+          : null;
+      _scheduleError = scheduleError ?? meetingRoomError;
       _error = null;
     });
     if (_sectionError != null ||
@@ -284,9 +311,12 @@ class _SectionCreateScreenState extends ConsumerState<SectionCreateScreen> {
                         if (_courseSelection == customCourseOption) ...[
                           const SizedBox(height: 10),
                           CampusTextField(
+                            key: const ValueKey('section-custom-course'),
                             controller: _customCourse,
                             label: 'Custom course code',
                             hint: 'e.g. BSIT',
+                            helperText:
+                                'Up to $sectionCourseMaxLength characters.',
                             onChanged: (_) {
                               if (_courseError != null) {
                                 setState(() => _courseError = null);
@@ -325,6 +355,7 @@ class _SectionCreateScreenState extends ConsumerState<SectionCreateScreen> {
                           label: 'Section',
                           hint: 'e.g. A',
                           errorText: _sectionError,
+                          maxLength: sectionLabelMaxLength,
                         ),
                         const SizedBox(height: 12),
                         CampusTextField(
@@ -332,6 +363,7 @@ class _SectionCreateScreenState extends ConsumerState<SectionCreateScreen> {
                           label: 'Default room',
                           hint: 'e.g. CCIS Lab 3',
                           errorText: _roomError,
+                          maxLength: sectionRoomMaxLength,
                         ),
                         const SizedBox(height: 12),
                         FacultyDropdown<String>(
@@ -619,6 +651,14 @@ class _ScheduleRowEditor extends StatelessWidget {
           const SizedBox(height: 8),
           TextField(
             controller: row.roomController,
+            maxLength: sectionMeetingRoomMaxLength,
+            buildCounter:
+                (
+                  context, {
+                  required currentLength,
+                  required isFocused,
+                  required maxLength,
+                }) => null,
             decoration: const InputDecoration(
               labelText: 'Room for this meeting (optional)',
               isDense: true,
