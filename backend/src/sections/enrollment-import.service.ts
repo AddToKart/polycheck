@@ -294,7 +294,7 @@ export class EnrollmentImportService {
           message:
             provisioningEnabled && !section.teacher.department
               ? 'This section teacher has no department configured, so a minimal account cannot be provisioned. Ask a Super Admin to import the roster.'
-              : 'No Polycheck account exists for this student number. Ask a Super Admin to import the department roster first.',
+              : 'No Polycheck account exists for this student number yet. Ask the registrar to import the master list first (it also emails each student an activation link), then run this import again.',
         })
         return { row, action: 'invalid' }
       }
@@ -330,9 +330,9 @@ export class EnrollmentImportService {
           rowNumber: row.rowNumber,
           column: 'program',
           code: 'PROGRAM_YEAR_MISMATCH',
-          message: `The master list does not match the account (${student.program ?? 'unknown program'}, year ${
+          message: `This student's account is registered under ${student.program ?? 'an unknown program'}, year ${
             student.yearLevel ?? 'unknown'
-          }). Enrollment will continue.`,
+          }, which differs from the list. That is normal for irregular or cross-enrolled students; enrollment will continue.`,
         })
       }
 

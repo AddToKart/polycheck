@@ -16,17 +16,19 @@ const apiMock = vi.hoisted(() => ({
 }))
 
 const routerMock = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }))
+const searchParamsMock = vi.hoisted(() => ({ current: new URLSearchParams() }))
 
 vi.mock('@/lib/api-client', () => ({ api: apiMock }))
 vi.mock('next/navigation', () => ({
   useRouter: () => routerMock,
   useParams: () => ({ id: 'sec-1' }),
+  useSearchParams: () => searchParamsMock.current,
 }))
 vi.mock('@/components/layout/sidebar', () => ({
   Sidebar: () => <aside data-testid="sidebar" />,
 }))
 vi.mock('@/components/import/BulkImportDialog', () => ({
-  BulkImportDialog: () => null,
+  BulkImportDialog: ({ open }: { open: boolean }) => (open ? <div data-testid="roster-import" /> : null),
 }))
 
 beforeAll(() => {
@@ -98,6 +100,7 @@ function renderPage() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  searchParamsMock.current = new URLSearchParams()
   URL.createObjectURL = vi.fn(() => 'blob:mock-url') as unknown as typeof URL.createObjectURL
   URL.revokeObjectURL = vi.fn()
   apiMock.getCurrentUser.mockReturnValue(teacherUser)
@@ -188,5 +191,27 @@ describe('Section detail page (F4 class record export)', () => {
       expect(screen.getByRole('button', { name: 'Class record (PUP)' })).toBeEnabled(),
     )
     expect(apiMock.downloadAssistantFile).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Section detail roster import handoff', () => {
+  it('does not open the roster import on a normal visit', async () => {
+    renderPage()
+    await screen.findByText('Class record (PUP)')
+    expect(screen.queryByTestId('roster-import')).not.toBeInTheDocument()
+  })
+
+  it('opens the roster import once when arriving from section creation', async () => {
+    searchParamsMock.current = new URLSearchParams('importRoster=1')
+    renderPage()
+    expect(await screen.findByTestId('roster-import')).toBeInTheDocument()
+  })
+
+  it('never opens it for a non-teacher, even with the flag', async () => {
+    searchParamsMock.current = new URLSearchParams('importRoster=1')
+    apiMock.getCurrentUser.mockReturnValue({ ...teacherUser, id: 'admin-1', role: 'super_admin', scope: 'institution' })
+    renderPage()
+    await screen.findByText('Class record (PUP)')
+    expect(screen.queryByTestId('roster-import')).not.toBeInTheDocument()
   })
 })

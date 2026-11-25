@@ -108,6 +108,19 @@ describe('Create Section page course selector', () => {
     expect(routerMock.push).toHaveBeenCalledWith('/faculty/subjects/subj-1')
   })
 
+  it('continues into the class-list import when asked, and only then', async () => {
+    renderPage()
+    await fillRequiredFields()
+    expect(screen.getByLabelText(/Import the class list next/)).not.toBeChecked()
+
+    fireEvent.change(screen.getByLabelText('Course'), { target: { value: 'BSIT' } })
+    fireEvent.click(screen.getByLabelText(/Import the class list next/))
+    fireEvent.click(screen.getByRole('button', { name: 'Create Section' }))
+
+    await waitFor(() => expect(routerMock.push).toHaveBeenCalledWith('/faculty/sections/sec-1?importRoster=1'))
+    expect(routerMock.push).not.toHaveBeenCalledWith('/faculty/subjects/subj-1')
+  })
+
   it('submits the trimmed value typed into the "Other" course field', async () => {
     renderPage()
     await fillRequiredFields()

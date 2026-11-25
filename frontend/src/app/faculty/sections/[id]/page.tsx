@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, FileDown, FileUp, Loader2, Search, Key, RefreshCw, Ban, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle, CalendarDays } from 'lucide-react'
 import { api, requestUserLogout } from '@/lib/api-client'
@@ -52,6 +52,8 @@ export default function SectionDetailPage() {
   const [sessionPage, setSessionPage] = useState(1)
   const [isEnrollOpen, setIsEnrollOpen] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
+  const importRequested = useSearchParams().get('importRoster') === '1'
+  const importAutoOpened = useRef(false)
   const [enrollSearch, setEnrollSearch] = useState('')
   const [enrollSuccess, setEnrollSuccess] = useState('')
 
@@ -194,6 +196,14 @@ export default function SectionDetailPage() {
   const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   useEffect(() => { setPage(0) }, [search])
+
+  // Arriving from "Create Section → Import the class list next": open the roster import once.
+  useEffect(() => {
+    if (!importRequested || importAutoOpened.current || !section || user?.role !== 'teacher') return
+    importAutoOpened.current = true
+    setIsEnrollOpen(true)
+    setIsImportOpen(true)
+  }, [importRequested, section, user])
 
   const sortedSessions = useMemo(
     () => [...sessions].sort((a, b) => b.date.localeCompare(a.date)),

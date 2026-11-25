@@ -7,6 +7,7 @@ vi.setConfig({ testTimeout: 20_000 })
 const apiMock = vi.hoisted(() => ({
   importStudents: vi.fn(),
   getActivationStatus: vi.fn(),
+  previewEnrollImport: vi.fn(),
 }))
 
 vi.mock('@/lib/api-client', () => ({ api: apiMock }))
@@ -238,5 +239,48 @@ describe('BulkImportDialog Excel upload', () => {
     upload(xlsxFile(buildXlsx([{ name: 'S', rows: [reordered, ['Beta Student', '2024-00002-MN-0', 'b@example.com', 'BSIT', 1]] }])))
     expect(await screen.findByLabelText(/Student number/)).toHaveValue('1')
     expect(screen.getByLabelText(/Full name/)).toHaveValue('0')
+  })
+})
+
+describe('BulkImportDialog roster enrollment hand-off', () => {
+  it('tells a teacher how many students still need accounts and who creates them', async () => {
+    const issue = (rowNumber: number) => ({
+      rowNumber,
+      column: 'studentId',
+      code: 'STUDENT_NOT_FOUND',
+      message: 'No Polycheck account exists for this student number yet.',
+    })
+    apiMock.previewEnrollImport.mockResolvedValue({
+      mode: 'validate',
+      rowChecksum: CHECKSUM,
+      summary: { total: 2, valid: 0, enrollable: 0, alreadyEnrolled: 0, notFound: 2, invalid: 2 },
+      issues: [issue(2), issue(3)],
+      hasMoreIssues: false,
+    })
+    render(<BulkImportDialog open onOpenChange={() => undefined} mode="enrollments" sectionId="sec-1" />)
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File([CSV], 'roster.csv', { type: 'text/csv' })] } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Validate rows' }))
+
+    const notice = await screen.findByRole('status')
+    expect(notice).toHaveTextContent('2 students have no Polycheck account yet')
+    expect(notice).toHaveTextContent(/registrar/i)
+    expect(notice).toHaveTextContent(/already enrolled are skipped/i)
+  })
+
+  it('shows nothing extra when every student already has an account', async () => {
+    apiMock.previewEnrollImport.mockResolvedValue({
+      mode: 'validate',
+      rowChecksum: CHECKSUM,
+      summary: { total: 2, valid: 2, enrollable: 2, alreadyEnrolled: 0, notFound: 0, invalid: 0 },
+      issues: [],
+      hasMoreIssues: false,
+    })
+    render(<BulkImportDialog open onOpenChange={() => undefined} mode="enrollments" sectionId="sec-1" />)
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File([CSV], 'roster.csv', { type: 'text/csv' })] } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Validate rows' }))
+    await waitFor(() => expect(apiMock.previewEnrollImport).toHaveBeenCalled())
+    expect(screen.queryByText(/have no Polycheck account yet/)).not.toBeInTheDocument()
   })
 })

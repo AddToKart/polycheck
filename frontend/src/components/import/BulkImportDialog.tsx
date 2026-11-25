@@ -702,6 +702,8 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
               </div>
             ) : null}
 
+            {mode === 'enrollments' ? <MissingAccountsNotice issues={allIssues} /> : null}
+
             <IssueTable issues={allIssues} onDownload={downloadIssues} />
 
             <div className="flex flex-wrap justify-between gap-3 pt-2">
@@ -846,6 +848,8 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
               </section>
             ) : null}
 
+            {mode === 'enrollments' ? <MissingAccountsNotice issues={allIssues} /> : null}
+
             <div className="flex flex-wrap gap-2">
               {allIssues.length > 0 ? <Button variant="outline" onClick={downloadIssues}>Download issues CSV</Button> : null}
               {allIssues.length > 0 ? <Button variant="outline" onClick={downloadFailedRows}>Download failed rows CSV</Button> : null}
@@ -858,6 +862,25 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
         ) : null}
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * Teachers can only enroll students who already have an account (the registrar creates
+ * accounts). Say so plainly, with the count, instead of leaving a column of "not found" rows.
+ */
+function MissingAccountsNotice({ issues }: { issues: ImportIssue[] }) {
+  const missing = new Set(issues.filter((issue) => issue.code === 'STUDENT_NOT_FOUND').map((issue) => issue.rowNumber)).size
+  if (missing === 0) return null
+  return (
+    <div role="status" className="flex items-start gap-2 border border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <p>
+        <span className="font-bold">{missing.toLocaleString()}</span> student{missing === 1 ? ' has' : 's have'} no Polycheck
+        account yet. Ask the registrar to import the master list first (accounts and activation emails), then run this
+        import again — students who are already enrolled are skipped.
+      </p>
+    </div>
   )
 }
 
