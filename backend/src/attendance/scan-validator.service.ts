@@ -237,15 +237,28 @@ export class ScanValidatorService {
       if (evidence.latitude === undefined || evidence.longitude === undefined) {
         return failed('disputed', 'missing_location', 'Location evidence is required for in-person attendance')
       }
+      // A legacy row without a geofence would make the distance `NaN`, and every
+      // comparison against `NaN` is false — the scan would be accepted with a
+      // NaN distance. Mirror the gateway guard (`core/scan.ts`) and dispute it.
+      if (
+        session.geofenceLatitude === null ||
+        session.geofenceLatitude === undefined ||
+        session.geofenceLongitude === null ||
+        session.geofenceLongitude === undefined ||
+        session.geofenceRadiusMeters === null ||
+        session.geofenceRadiusMeters === undefined
+      ) {
+        return failed('disputed', 'missing_geofence', 'This session has no geofence configured')
+      }
       const latitude = evidence.latitude
       const longitude = evidence.longitude
       distanceMeters = this.geofence.calculateDistance(
         latitude,
         longitude,
-        session.geofenceLatitude!,
-        session.geofenceLongitude!,
+        session.geofenceLatitude,
+        session.geofenceLongitude,
       )
-      const radiusMeters = session.geofenceRadiusMeters!
+      const radiusMeters = session.geofenceRadiusMeters
       geofenceRadiusMeters = radiusMeters
       const withLocation = (validation: ScanValidation): ScanValidation => ({
         ...validation,

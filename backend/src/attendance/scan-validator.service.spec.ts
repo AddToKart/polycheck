@@ -182,6 +182,24 @@ describe('ScanValidatorService', () => {
       expect(result.reason).toBe('geofence_uncertain')
     })
 
+    it('returns disputed/missing_geofence for an in-person session with no geofence configured', async () => {
+      // Legacy row: geometry would compute `NaN`, and `NaN > radius` is false,
+      // so the scan used to be accepted with a NaN distance.
+      prisma.session.findUnique.mockResolvedValue({
+        ...cached,
+        geofenceLatitude: null,
+        geofenceLongitude: null,
+        geofenceRadiusMeters: null,
+      })
+
+      const result = await service.validateScan(studentUser, makeEvidence(), false, new Date())
+
+      expect(result.success).toBe(false)
+      expect(result.status).toBe('disputed')
+      expect(result.reason).toBe('missing_geofence')
+      expect(geofence.calculateDistance).not.toHaveBeenCalled()
+    })
+
     it('returns disputed for stale location', async () => {
       const staleTime = new Date(ISSUED_AT - 5 * 60_000).toISOString() // 5 min before ISSUED_AT
       const result = await service.validateScan(

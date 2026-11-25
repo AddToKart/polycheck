@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing'
 import type { TestingModule } from '@nestjs/testing'
-import { ForbiddenException, NotFoundException } from '@nestjs/common'
+import { ForbiddenException, Logger, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { RedisService } from '../infrastructure/redis.service'
 import { AttendanceService } from './attendance.service'
@@ -73,6 +73,7 @@ describe('AttendanceService', () => {
         updateMany: jest.fn(),
         update: jest.fn(),
         upsert: jest.fn(),
+        create: jest.fn(),
         createMany: jest.fn(),
       },
       session: {
@@ -163,6 +164,31 @@ describe('AttendanceService', () => {
       await service.findAll(teacherUser, { sessionId: 'sess-1' })
 
       expect(prisma.attendanceRecord.findMany.mock.calls[0][0]).toEqual(expect.objectContaining({ take: 1000 }))
+    })
+
+    it('logs gateway-only dispute reasons instead of rejecting the row (ING-07)', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+      try {
+        prisma.attendanceRecord.findMany.mockResolvedValue([
+          makeRosterRecord({ status: 'disputed', disputeReason: 'geofence_uncertain' }),
+          makeRosterRecord({ id: 'rec-2', status: 'disputed', disputeReason: 'outside_geofence' }),
+        ])
+
+        const records = await service.findAll(adminUser, {
+          startDate: '2026-07-01',
+          endDate: '2026-07-14',
+        })
+
+        // Both rows are returned unchanged; only the unknown one is logged.
+        expect(records.map((record) => record.disputeReason)).toEqual(['geofence_uncertain', 'outside_geofence'])
+        const unknownLogs = warn.mock.calls
+          .map((call) => String(call[0]))
+          .filter((line) => line.includes('dispute_reason_unknown'))
+        expect(unknownLogs).toHaveLength(1)
+        expect(unknownLogs[0]).toContain('geofence_uncertain')
+      } finally {
+        warn.mockRestore()
+      }
     })
   })
 
@@ -344,7 +370,23 @@ describe('AttendanceService', () => {
       expect(result.success).toBe(false)
       expect(result.reason).toBe('rate_limited')
       expect(result.status).toBe('absent')
-      expect(redis.consumeRateLimit).toHaveBeenCalledWith('scan:stu-1:sess-1', 30, 60)
+      // Re-pinned (ING-05): the check bucket is namespaced separately from submit
+      // so a validation-only probe can never spend the commit budget.
+      expect(redis.consumeRateLimit).toHaveBeenCalledWith('scan-check:stu-1:sess-1', 30, 60)
+    })
+
+    it('keeps 30 check probes from consuming the submit budget', async () => {
+      // First call is the check bucket; keep answering "allowed" for it.
+      redis.consumeRateLimit.mockResolvedValue(true)
+      mockedVerifyQRToken.mockReturnValue(null)
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+
+      for (let index = 0; index < 30; index += 1) await service.check(studentUser, checkArgs)
+
+      const keys = redis.consumeRateLimit.mock.calls.map((call: unknown[]) => call[0])
+      expect(keys).toHaveLength(30)
+      expect(new Set(keys)).toEqual(new Set(['scan-check:stu-1:sess-1']))
+      expect(keys).not.toContain('scan-submit:stu-1:sess-1')
     })
   })
 
@@ -370,6 +412,29 @@ describe('AttendanceService', () => {
       const result = await service.submit(studentUser, submitArgs)
       expect(result.success).toBe(false)
       expect(result.reason).toBe('rate_limited')
+      // ING-05: the commit bucket has its own key and its own (stricter) limit.
+      expect(redis.consumeRateLimit).toHaveBeenCalledWith('scan-submit:stu-1:sess-1', 10, 60)
+    })
+
+    it('keeps the submit bucket independent of the check bucket (ING-05)', async () => {
+      // Ten probes and ten submits target different keys, so a client that
+      // validates before every commit never burns its commit budget early.
+      redis.consumeRateLimit.mockResolvedValue(true)
+      prisma.session.findUnique.mockResolvedValue(makeCachedSession())
+      redis.getJson.mockResolvedValue(makeCachedSession())
+      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
+      mockedVerifyQRToken.mockReturnValue(validPayload())
+      mockedHaversineDistance.mockReturnValue(0)
+      prisma.attendanceRecord.findUnique.mockResolvedValue(makeRosterRecord())
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
+      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(makeRosterRecord({ status: 'present' }))
+
+      await service.submit(studentUser, submitArgs)
+
+      const keys = redis.consumeRateLimit.mock.calls.map((call: unknown[]) => call[0])
+      expect(keys).toEqual(['scan-submit:stu-1:sess-1'])
+      expect(keys).not.toContain('scan-check:stu-1:sess-1')
     })
 
     it('rejects duplicate submission (updateMany count 0)', async () => {
@@ -884,7 +949,10 @@ describe('AttendanceService', () => {
       expect(prisma.attendanceRecord.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ id: 'rec-1', status: 'pending' }) }),
       )
-      expect(prisma.$executeRaw).toHaveBeenCalledTimes(2)
+      // Re-pinned (ING-08): three advisory locks now — the session chain lock
+      // before any row lock, the student/section lock, and the idempotent
+      // re-acquisition inside `appendLedger`.
+      expect(prisma.$executeRaw).toHaveBeenCalledTimes(3)
       expect(prisma.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
         prisma.attendanceRecord.upsert.mock.invocationCallOrder[0],
       )
@@ -972,27 +1040,25 @@ describe('AttendanceService', () => {
       })
     })
 
-    it('materializes an expired offline activation and preserves its signed scan as disputed', async () => {
-      const issuedAt = Date.now() - 20 * 60_000
-      const scannedAt = new Date(issuedAt + 2 * 60_000).toISOString()
+    it('disputes an expired offline activation replay instead of ending the session (BE-01)', async () => {
+      // Re-pinned (BE-01): the old path claim-ended the session, seeded every
+      // enrollment `absent`, and made the instructor's real activation 409
+      // forever. The replay is now a teacher-visible dispute; session state is
+      // untouched so the activation claim stays free.
+      const issuedAt = Date.now() - 3 * 60 * 60_000
+      const scannedAt = new Date(issuedAt + 60_000).toISOString()
       const unactivated = makeSession({ isActive: false, endedAt: null, qrToken: null })
-      const ended = makeSession({ isActive: false, endedAt: new Date(), qrToken: null })
-      prisma.session.findUnique.mockResolvedValueOnce(unactivated).mockResolvedValue(ended)
-      prisma.session.updateMany.mockResolvedValue({ count: 1 })
-      prisma.session.findUniqueOrThrow.mockResolvedValue(ended)
+      prisma.session.findUnique.mockResolvedValue(unactivated)
       prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
-      prisma.enrollment.findMany.mockResolvedValue([
-        { studentId: 'stu-1', student: { fullName: 'Jane Doe', program: 'BSIT' } },
-      ])
-      prisma.enrollment.findUnique.mockResolvedValue({ id: 'enr-1' })
-      prisma.attendanceRecord.createMany.mockResolvedValue({ count: 1 })
-      prisma.attendanceRecord.findUnique.mockResolvedValue(makeRosterRecord({ status: 'absent' }))
-      prisma.attendanceRecord.findMany.mockResolvedValue([])
-      prisma.attendanceRecord.updateMany.mockResolvedValue({ count: 1 })
-      prisma.attendanceRecord.findUniqueOrThrow.mockResolvedValue(
-        makeRosterRecord({ status: 'disputed', disputeReason: 'delayed_offline_sync' }),
+      prisma.enrollment.findUnique.mockResolvedValue({
+        id: 'enr-1',
+        student: { fullName: 'Jane Doe', program: 'BSIT' },
+      })
+      prisma.attendanceRecord.findUnique.mockResolvedValue(null)
+      prisma.attendanceRecord.create.mockResolvedValue(
+        makeRosterRecord({ status: 'disputed', disputeReason: 'expired_offline_activation' }),
       )
-      mockedVerifyQRToken.mockReturnValue(validPayload({ issuedAt }))
+      mockedVerifyQRToken.mockReturnValue(validPayload({ issuedAt, validityMinutes: 10, gracePeriodMinutes: 5 }))
       mockedHaversineDistance.mockReturnValue(0)
 
       const result = await service.syncScan(studentUser, {
@@ -1004,15 +1070,100 @@ describe('AttendanceService', () => {
       })
 
       expect(result).toBeDefined()
+      // Invariants of the fix: no session mutation, no absent seeding.
+      expect(prisma.session.updateMany).not.toHaveBeenCalled()
+      expect(prisma.attendanceRecord.createMany).not.toHaveBeenCalled()
+      expect(realtime.emitSessionState).not.toHaveBeenCalled()
+      expect(redis.setJson).not.toHaveBeenCalled()
+      // The replay is persisted as evidence the teacher can review.
+      const created = prisma.attendanceRecord.create.mock.calls[0][0].data
+      expect(created).toEqual(
+        expect.objectContaining({ status: 'disputed', disputeReason: 'expired_offline_activation' }),
+      )
+      // No stale pre-dispute status stamped: teacher Reject restores the safe
+      // `absent` default rather than flipping a rejected row to Present.
+      expect(created).not.toHaveProperty('disputePreviousStatus')
+      expect(prisma.scanAttempt.create.mock.calls.at(-1)?.[0]?.data).toEqual(
+        expect.objectContaining({ outcome: 'flagged', reason: 'expired_offline_activation' }),
+      )
+    })
+
+    it('leaves the session claimable so the instructor can still activate it', async () => {
+      const issuedAt = Date.now() - 3 * 60 * 60_000
+      const scannedAt = new Date(issuedAt + 60_000).toISOString()
+      const unactivated = makeSession({ isActive: false, endedAt: null, qrToken: null })
+      // The activation claim in `SessionsService.activate` is
+      // `{ isActive: false, endedAt: null, qrToken: null }`; capture it so a
+      // silent mutation of the row fails this assertion.
+      const claimable = {
+        isActive: unactivated.isActive,
+        endedAt: unactivated.endedAt,
+        qrToken: unactivated.qrToken,
+      }
+      prisma.session.findUnique.mockResolvedValue(unactivated)
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      prisma.enrollment.findUnique.mockResolvedValue({
+        id: 'enr-1',
+        student: { fullName: 'Jane Doe', program: 'BSIT' },
+      })
+      prisma.attendanceRecord.findUnique.mockResolvedValue(null)
+      prisma.attendanceRecord.create.mockResolvedValue(
+        makeRosterRecord({ status: 'disputed', disputeReason: 'expired_offline_activation' }),
+      )
+      mockedVerifyQRToken.mockReturnValue(validPayload({ issuedAt, validityMinutes: 10, gracePeriodMinutes: 5 }))
+
+      const result = await service.syncScan(studentUser, {
+        ...submitArgs,
+        lat: 14.6,
+        lon: 121,
+        scannedAt,
+        locationCapturedAt: scannedAt,
+      })
+
+      // No session write of any kind: no claim, no end, no roster seeding.
+      expect(prisma.session.updateMany).not.toHaveBeenCalled()
+      expect(prisma.session.findUniqueOrThrow).not.toHaveBeenCalled()
+      expect(prisma.attendanceRecord.createMany).not.toHaveBeenCalled()
+      expect(realtime.emitSessionState).not.toHaveBeenCalled()
+      // The claim predicate still matches, so the instructor's own activation
+      // (which requires exactly these values) will succeed afterwards.
+      expect({
+        isActive: unactivated.isActive,
+        endedAt: unactivated.endedAt,
+        qrToken: unactivated.qrToken,
+      }).toEqual(claimable)
+      // The replay is surfaced, not silently swallowed. `syncScan` returns the
+      // written record when one exists, so the dispute is what the student sees.
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'disputed',
+          disputeReason: 'expired_offline_activation',
+        }),
+      )
+      expect(result).toBeDefined()
       expect('error' in result!).toBe(false)
-      expect(prisma.session.updateMany.mock.calls[0][0].data).toEqual(
-        expect.objectContaining({ isActive: false, qrToken: null, endedAt: expect.any(Date) }),
-      )
-      expect(prisma.attendanceRecord.createMany.mock.calls[0][0].data[0].status).toBe('absent')
-      expect(prisma.attendanceRecord.updateMany.mock.calls.at(-1)[0].data).toEqual(
-        expect.objectContaining({ status: 'disputed', disputeReason: 'delayed_offline_sync' }),
-      )
-      expect(realtime.emitSessionState).toHaveBeenCalledWith(ended, 'ended')
+    })
+
+    it('never mutates or publishes session state for a live timed-out activation', async () => {
+      // Re-pinned (BE-01): the previous case drove this through an offline
+      // replay, which no longer ends anything. The surviving `expired` branch
+      // is the live one, and it must still write nothing at all.
+      const issuedAt = Date.now() - 20 * 60_000
+      const unactivated = makeSession({ isActive: false, endedAt: null, qrToken: null })
+      prisma.session.findUnique.mockResolvedValue(unactivated)
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+      prisma.attendanceRecord.findUnique.mockResolvedValue(null)
+      prisma.attendanceRecord.findMany.mockResolvedValue([])
+      mockedVerifyQRToken.mockReturnValue(validPayload({ issuedAt }))
+
+      const result = await service.submit(studentUser, submitArgs)
+
+      expect(result).toEqual(expect.objectContaining({ success: false, reason: 'qr_expired' }))
+      expect(prisma.session.updateMany).not.toHaveBeenCalled()
+      expect(prisma.attendanceRecord.createMany).not.toHaveBeenCalled()
+      expect(prisma.attendanceRecord.create).not.toHaveBeenCalled()
+      expect(prisma.attendanceRecord.updateMany).not.toHaveBeenCalled()
+      expect(realtime.emitSessionState).not.toHaveBeenCalled()
       expect(redis.setJson).not.toHaveBeenCalled()
     })
 
@@ -1484,7 +1635,10 @@ describe('AttendanceService', () => {
       expect(record).toEqual({ id: 'rec-1', sessionId: 'sess-1', studentId: 'stu-1', timestamp: new Date(ISSUED_AT) })
       // The advisory lock plus row update run through the transaction handle.
       expect(tx).toBe(prisma)
-      expect(ledger.appendLedger.mock.invocationCallOrder[0]).toBeGreaterThan(
+      // Invariant flipped by ING-08: the session chain lock must be acquired
+      // before any record row lock (advisory-first, same order as the drainer),
+      // so the append itself now runs before `updateMany` rather than after it.
+      expect(prisma.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
         prisma.attendanceRecord.updateMany.mock.invocationCallOrder[0],
       )
       expect(ledger.appendLedger.mock.invocationCallOrder[0]).toBeLessThan(

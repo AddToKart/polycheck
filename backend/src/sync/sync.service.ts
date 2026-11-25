@@ -95,26 +95,24 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Legacy `POST /sync/attendance` contract.
+   *
+   * It used to block the request on `job.waitUntilFinished(..., 5_000)` while
+   * the worker processed up to 100 records sequentially, so a normal batch
+   * routinely timed out and the client could neither see a receipt nor retry
+   * safely. It now joins the receipt pipeline: the caller gets
+   * `{ queued: true, jobId, receiptId }` immediately and polls
+   * `GET /sync/attendance/batches/:receiptId` for the authoritative results.
+   * The inline `results` shape survives only for the no-Redis development path.
+   */
   async submit(user: RequestUser, records: ScanAttendanceDto[]) {
     if (!this.queue || !this.events) {
       return { queued: false as const, results: await this.processRecords(user, records) }
     }
-    const job = await this.queue.add(
-      'process-batch',
-      { user: { id: user.id, role: user.role }, records },
-      {
-        attempts: 5,
-        backoff: { type: 'exponential', delay: 1_000 },
-        removeOnComplete: { age: 3_600, count: 10_000 },
-        removeOnFail: { age: 86_400, count: 10_000 },
-      },
-    )
-    this.metrics?.setBullMqComponentReady('producer', true)
-    void this.refreshQueueMetrics()
-    // The job is durable before waiting, but SQLite records are acknowledged only after
-    // the worker returns authoritative per-record results.
-    const results = await job.waitUntilFinished(this.events, 5_000)
-    return { queued: false as const, results }
+    const receipt = await this.enqueue(user, records)
+    if (!receipt.queued) return receipt
+    return { queued: true as const, jobId: receipt.receiptId, receiptId: receipt.receiptId }
   }
 
   // A receipt is not an attendance acknowledgment. Clients retain evidence until

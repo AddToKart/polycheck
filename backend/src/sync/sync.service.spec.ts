@@ -56,6 +56,26 @@ describe('SyncService', () => {
     expect(attendance.syncScan).toHaveBeenCalledTimes(2)
   })
 
+  it('routes the legacy endpoint through the receipt pipeline without waiting on the job', async () => {
+    // Re-pinned (ING-10): `submit` used to `waitUntilFinished(..., 5_000)` and
+    // return inline results, which timed out on a normal 100-record batch.
+    const service = new SyncService({ syncScan: jest.fn() } as never)
+    const queue = { getJob: jest.fn().mockResolvedValue(undefined), add: jest.fn().mockResolvedValue({}) }
+    const events = { waitUntilFinished: jest.fn() }
+    Object.assign(service, { queue, events })
+    const user = { id: 'student-1', role: 'student' as const }
+    const records = [{ sessionId: 's1', lat: 1, lon: 1, qrToken: 'x'.repeat(80), clientAttemptId: 'attempt-1' }]
+
+    const result = await service.submit(user, records)
+
+    expect(result).toMatchObject({ queued: true, jobId: expect.stringMatching(/^[a-f0-9]{64}$/) })
+    expect(result).toHaveProperty('receiptId')
+    expect(queue.add).toHaveBeenCalledTimes(1)
+    // The old synchronous wait must be gone entirely.
+    expect(events.waitUntilFinished).not.toHaveBeenCalled()
+    expect(result).not.toHaveProperty('results')
+  })
+
   it('marks BullMQ disabled when Redis is not configured', async () => {
     const metrics = { configureBullMq: jest.fn() }
     const config = { get: jest.fn().mockReturnValue(undefined) }

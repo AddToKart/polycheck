@@ -39,6 +39,21 @@ interface DateBucket {
 // overrides). Verify treats rows without `recordHash` (roster seeds resolved
 // without scan evidence) as simply not being on the chain, so coverage grows
 // as rows receive committed decisions.
+/**
+ * Acquisition point for the per-session chain lock.
+ *
+ * Both writers must take it **before** any `AttendanceRecord` row lock or they
+ * invert against each other (control plane: row lock → advisory; drainer:
+ * advisory → row lock) and Postgres reports 40P01 under simultaneous load.
+ * PostgreSQL transaction-scoped advisory locks are re-entrant per session, so a
+ * caller that takes it early and `appendLedger` taking it again is one
+ * acquisition, not a self-deadlock.
+ */
+export async function acquireSessionLedgerLock(tx: Pick<Prisma.TransactionClient, '$executeRaw'>, sessionId: string) {
+  // hashtext returns int4; the single-arg xact-lock overload takes bigint.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${sessionId})::bigint)`
+}
+
 @Injectable()
 export class LedgerService {
   private readonly logger = new Logger(LedgerService.name)
@@ -55,8 +70,7 @@ export class LedgerService {
    */
   async appendLedger(tx: Prisma.TransactionClient, record: LedgerAppendRecord, prev?: string | null) {
     try {
-      // hashtext returns int4; the single-arg xact-lock overload takes bigint.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${record.sessionId})::bigint)`
+      await acquireSessionLedgerLock(tx, record.sessionId)
       const existing = await tx.attendanceRecord.findUnique({
         where: { id: record.id },
         select: { recordHash: true },
