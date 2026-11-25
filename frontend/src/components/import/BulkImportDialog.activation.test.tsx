@@ -8,6 +8,8 @@ const apiMock = vi.hoisted(() => ({
   importStudents: vi.fn(),
   getActivationStatus: vi.fn(),
   previewEnrollImport: vi.fn(),
+  getImportMappingProfile: vi.fn(),
+  saveImportMappingProfile: vi.fn(),
 }))
 
 vi.mock('@/lib/api-client', () => ({ api: apiMock }))
@@ -282,5 +284,78 @@ describe('BulkImportDialog roster enrollment hand-off', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Validate rows' }))
     await waitFor(() => expect(apiMock.previewEnrollImport).toHaveBeenCalled())
     expect(screen.queryByText(/have no Polycheck account yet/)).not.toBeInTheDocument()
+  })
+})
+
+describe('BulkImportDialog shared mapping profiles', () => {
+  const REORDERED = ['Name', 'Student No.', 'Email', 'Program', 'Year Level']
+  const upload = () => {
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, {
+      target: {
+        files: [
+          xlsxFile(buildXlsx([{ name: 'S', rows: [REORDERED, ['Alpha Student', '2024-00001-MN-0', 'a@example.com', 'BSIT', 1]] }])),
+        ],
+      },
+    })
+  }
+
+  beforeEach(() => {
+    window.localStorage.clear()
+    apiMock.getImportMappingProfile.mockResolvedValue({ mapping: null })
+    apiMock.saveImportMappingProfile.mockResolvedValue({ saved: true })
+  })
+
+  it('uses a mapping another administrator confirmed when this browser has none', async () => {
+    apiMock.getImportMappingProfile.mockResolvedValue({ mapping: { studentId: 3, fullName: 0 } })
+    setup()
+    upload()
+
+    // The shared profile wins over the heuristic suggestion (which would pick column 1 for the student number).
+    expect(await screen.findByLabelText(/Student number/)).toHaveValue('3')
+    expect(screen.getByLabelText(/Full name/)).toHaveValue('0')
+    expect(apiMock.getImportMappingProfile).toHaveBeenCalledWith('students', expect.stringContaining('student no'))
+  })
+
+  it('prefers this browser’s own memory and never asks the server in that case', async () => {
+    setup()
+    upload()
+    fireEvent.change(await screen.findByLabelText(/Full name/), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Validate rows' }))
+    await screen.findByText('Existing students')
+    cleanup()
+    apiMock.getImportMappingProfile.mockClear()
+
+    setup()
+    upload()
+    expect(await screen.findByLabelText(/Student number/)).toHaveValue('1')
+    expect(apiMock.getImportMappingProfile).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the suggestion when the shared lookup fails', async () => {
+    apiMock.getImportMappingProfile.mockRejectedValue(new Error('offline'))
+    setup()
+    upload()
+    expect(await screen.findByLabelText(/Student number/)).toHaveValue('1')
+  })
+
+  it('shares a confirmed mapping after validation, and an unavailable server never blocks the import', async () => {
+    apiMock.saveImportMappingProfile.mockRejectedValue(new Error('403'))
+    setup()
+    upload()
+    fireEvent.change(await screen.findByLabelText(/Full name/), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Validate rows' }))
+
+    await screen.findByText('Existing students')
+    await waitFor(() => expect(apiMock.saveImportMappingProfile).toHaveBeenCalledTimes(1))
+    expect(apiMock.saveImportMappingProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: 'students',
+        headers: REORDERED,
+        mapping: expect.objectContaining({ studentId: 1, fullName: 0 }),
+      }),
+    )
+    // Headers and positions only: no student data in what is shared.
+    expect(JSON.stringify(apiMock.saveImportMappingProfile.mock.calls[0][0])).not.toContain('2024-00001')
   })
 })

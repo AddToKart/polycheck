@@ -1892,6 +1892,24 @@ const apiBase = {
       password === undefined ? {} : { password },
     );
   },
+  // ── Shared import column-mapping profiles (headers and positions only) ──
+  getImportMappingProfile(
+    mode: "students" | "enrollments",
+    fingerprint: string,
+  ): Promise<{ mapping: Record<string, number> | null }> {
+    return get(
+      queryPath("/import-profiles", { mode, fingerprint }),
+    );
+  },
+  saveImportMappingProfile(input: {
+    mode: "students" | "enrollments";
+    fingerprint: string;
+    headers: string[];
+    mapping: object;
+  }): Promise<{ saved: true }> {
+    return put("/import-profiles", input);
+  },
+
   // ── Email activation (web-only: the link opens in any phone browser) ──
   activationValidate(token: string): Promise<ActivationValidateResult> {
     return post("/activation/validate", { token });

@@ -44,6 +44,7 @@ import { NotificationsModule } from './notifications/notifications.module'
 import { ReportsModule } from './reports/reports.module'
 import { AccountActivationModule } from './account-activation/account-activation.module'
 import { MailModule } from './mail/mail.module'
+import { ImportProfilesModule } from './import-profiles/import-profiles.module'
 
 @Module({
   imports: [
@@ -91,6 +92,7 @@ import { MailModule } from './mail/mail.module'
     ReportsModule,
     AccountActivationModule,
     MailModule,
+    ImportProfilesModule,
     MaintenanceModule,
     MaintenanceModeModule,
   ],

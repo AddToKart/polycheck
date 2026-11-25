@@ -571,6 +571,22 @@ model AccountMail {
   @@index([batchId])
 }
 
+// Shared column-mapping profile for master-list imports (headers and column positions only, never student data).
+model ImportMappingProfile {
+  id          String   @id @default(cuid())
+  mode        String
+  fingerprint String
+  headers     String[] @default([])
+  mapping     Json
+  uses        Int      @default(1)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([mode, fingerprint])
+  @@index([updatedAt])
+}
+
 model ImportBatch {
   id          String   @id @default(cuid())
   kind        String

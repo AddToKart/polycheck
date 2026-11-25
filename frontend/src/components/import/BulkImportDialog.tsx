@@ -26,7 +26,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from '@/components/ui/label'
 import { useNotifications } from '@/lib/notifications'
 import { downloadCsv } from '@/lib/import/csv-download'
-import { loadMappingProfile, saveMappingProfile } from '@/lib/import/mapping-profiles'
+import { fingerprintHeaders, loadMappingProfile, saveMappingProfile } from '@/lib/import/mapping-profiles'
 import { parseSpreadsheetFile, SpreadsheetParseError, type SpreadsheetSheet } from '@/lib/import/spreadsheet-parser'
 
 type ImportMode = 'students' | 'enrollments'
@@ -203,7 +203,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   }, [open, mode])
 
   /** Shared by the CSV and Excel paths: validate size, pick the remembered or suggested mapping, move on. */
-  const applyTable = (
+  const applyTable = async (
     name: string,
     parsed: { headers: string[]; rows: string[][]; errors: string[] },
     source: 'CSV' | 'Excel',
@@ -216,8 +216,12 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
       setError(`This file has ${parsed.rows.length} rows. The limit is ${IMPORT_MAX_ROWS.toLocaleString()} per import.`)
       return false
     }
-    // A layout the admin confirmed before maps itself; anything new gets the heuristic suggestion.
-    const nextMapping = loadMappingProfile(parsed.headers) ?? suggestColumnMapping(parsed.headers)
+    // A layout confirmed before maps itself: this browser's memory first, then the shared profiles other
+    // administrators confirmed; anything new gets the heuristic suggestion. Never blocks on the network.
+    const nextMapping =
+      loadMappingProfile(parsed.headers) ??
+      (await loadSharedMapping(mode, parsed.headers)) ??
+      suggestColumnMapping(parsed.headers)
     setFileName(name)
     setHeaders(parsed.headers)
     setRawRows(parsed.rows)
@@ -232,7 +236,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   const readWorkbook = async (file: File, sheetName?: string) => {
     try {
       const parsed = await parseSpreadsheetFile(file, sheetName)
-      if (applyTable(file.name, parsed, 'Excel')) {
+      if (await applyTable(file.name, parsed, 'Excel')) {
         setWorkbook({ file, sheets: parsed.sheets, sheetName: parsed.sheetName })
       }
     } catch (cause) {
@@ -261,7 +265,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     }
     try {
       setWorkbook(null)
-      applyTable(file.name, parseCsv(await file.text()), 'CSV')
+      await applyTable(file.name, parseCsv(await file.text()), 'CSV')
     } catch {
       setError('That file could not be read as CSV.')
     }
@@ -316,6 +320,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
         })
       }
       saveMappingProfile(headers, mapping)
+      void saveSharedMapping(mode, headers, mapping)
       setChunks(plans)
       setServerIssues(issues)
       setSummary(mergeSummaries(summaries))
@@ -863,6 +868,35 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
       </DialogContent>
     </Dialog>
   )
+}
+
+/** The shared profile for this layout, or null (offline, not allowed, unknown layout, slow server). */
+async function loadSharedMapping(
+  mode: 'students' | 'enrollments',
+  headers: string[],
+): Promise<ImportColumnMapping | null> {
+  try {
+    const result = await Promise.race([
+      api.getImportMappingProfile(mode, fingerprintHeaders(headers)),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_500)),
+    ])
+    return (result?.mapping as ImportColumnMapping | null | undefined) ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Share a confirmed layout with the other administrators. Best effort: a failure is invisible. */
+async function saveSharedMapping(
+  mode: 'students' | 'enrollments',
+  headers: string[],
+  mapping: ImportColumnMapping,
+): Promise<void> {
+  try {
+    await api.saveImportMappingProfile({ mode, fingerprint: fingerprintHeaders(headers), headers, mapping })
+  } catch {
+    // Sharing is a convenience; the local profile already saved.
+  }
 }
 
 /**
