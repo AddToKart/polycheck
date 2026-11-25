@@ -1,47 +1,70 @@
 /**
  * PUP Santa Maria course (degree program) catalog.
  *
- * This is the default value list for the section "Course" selector. The codes
- * are stored verbatim on `Section.course`; the names are display-only.
+ * PUP Santa Maria has no academic departments: it has courses (degree
+ * programs), each with a head professor. The catalog is therefore a flat list
+ * and the course `code` is the only scoping key. Codes are stored verbatim on
+ * `Section.course` and normalized into `User.program` for students; names are
+ * display-only.
  *
- * DRAFT: confirm every entry against the official PUP Santa Maria program
- * offerings before release, then keep this file as the single source of truth.
- * Teachers can still enter an off-catalog course through the form's
- * "Other — specify manually" option.
+ * Source: the eight programs published on the official campus page
+ * (https://www.pup.edu.ph/stamaria/), cross-checked against the campus-maintained
+ * site. The page is undated, so the registrar's sign-off is a release gate
+ * (see plan/course-scope-plan.md §4.1). Teachers can still enter an off-catalog
+ * course through the form's "Other — specify manually" option; such values are
+ * never silently dropped, but heads cannot be assigned to them.
  */
 export interface PupCourse {
   /** Short program code stored on the section, e.g. 'BSIT'. */
   code: string
-  /** Full program name for display. */
+  /** Full official program name for display. */
   name: string
-  /** Optional grouping key used by the selector (department/college). */
+  /** Alternate spellings that normalize to this code (matched ignoring case, spacing and punctuation). */
+  aliases: readonly string[]
+  /**
+   * Legacy grouping key from the pre-course draft catalog. Never set on the
+   * current entries; kept optional so older consumers still compile.
+   */
   department?: string
 }
 
 export const PUP_SANTA_MARIA_COURSES: PupCourse[] = [
-  // College of Computer and Information Sciences (CCIS)
-  { code: 'BSIT', name: 'BS Information Technology', department: 'CCIS' },
-  { code: 'BSCS', name: 'BS Computer Science', department: 'CCIS' },
-  { code: 'BSIS', name: 'BS Information Systems', department: 'CCIS' },
-  // Business / Accountancy
-  { code: 'BSA', name: 'BS Accountancy', department: 'Business' },
-  { code: 'BSMA', name: 'BS Management Accounting', department: 'Business' },
-  { code: 'BSAIS', name: 'BS Accounting Information Systems', department: 'Business' },
-  { code: 'BSBA', name: 'BS Business Administration', department: 'Business' },
-  { code: 'BSHM', name: 'BS Hospitality Management', department: 'Business' },
-  { code: 'BSTM', name: 'BS Tourism Management', department: 'Business' },
-  // Engineering
-  { code: 'BSCE', name: 'BS Civil Engineering', department: 'Engineering' },
-  { code: 'BSECE', name: 'BS Electronics Engineering', department: 'Engineering' },
-  { code: 'BSME', name: 'BS Mechanical Engineering', department: 'Engineering' },
-  { code: 'BSEE', name: 'BS Electrical Engineering', department: 'Engineering' },
-  { code: 'BSIE', name: 'BS Industrial Engineering', department: 'Engineering' },
-  // Teacher Education
-  { code: 'BEEd', name: 'Bachelor of Elementary Education', department: 'Education' },
-  { code: 'BSEd', name: 'Bachelor of Secondary Education', department: 'Education' },
-  { code: 'BTVTE', name: 'Bachelor of Technical-Vocational Teacher Education', department: 'Education' },
-  // Industrial Technology
-  { code: 'BIT', name: 'Bachelor of Industrial Technology', department: 'Industrial Technology' },
+  { code: 'BSA', name: 'Bachelor of Science in Accountancy', aliases: ['BS Accountancy'] },
+  {
+    code: 'BSCpE',
+    name: 'Bachelor of Science in Computer Engineering',
+    aliases: ['BSCPE', 'BS Computer Engineering'],
+  },
+  {
+    code: 'BSENTREP',
+    name: 'Bachelor of Science in Entrepreneurship',
+    aliases: ['BS Entrepreneurship', 'BSEntrep'],
+  },
+  {
+    code: 'BSHM',
+    name: 'Bachelor of Science in Hospitality Management',
+    aliases: ['BS Hospitality Management'],
+  },
+  {
+    code: 'BSIT',
+    name: 'Bachelor of Science in Information Technology',
+    aliases: ['BS Information Technology'],
+  },
+  {
+    code: 'BSEDEN',
+    name: 'Bachelor of Secondary Education major in English',
+    aliases: ['BSED-EN', 'BSEd English', 'BSEd major in English'],
+  },
+  {
+    code: 'BSEDMT',
+    name: 'Bachelor of Secondary Education major in Mathematics',
+    aliases: ['BSED-MT', 'BSEd Math', 'BSEd Mathematics', 'BSEd major in Mathematics'],
+  },
+  {
+    code: 'DOMTLOM',
+    name: 'Diploma in Office Management Technology – Legal Office Management',
+    aliases: ['DOMT', 'DOMT-LOM', 'Diploma in Office Management Technology'],
+  },
 ]
 
 /** Case-insensitive catalog lookup by program code. */
@@ -58,14 +81,16 @@ export const pupCourseName = (code?: string | null): string => {
   return pupCourseByCode(trimmed)?.name ?? trimmed
 }
 
-/** Catalog entries grouped by department, preserving list order. */
-export const pupCoursesByDepartment = (): { department: string; courses: PupCourse[] }[] => {
-  const groups = new Map<string, PupCourse[]>()
-  for (const course of PUP_SANTA_MARIA_COURSES) {
-    const key = course.department ?? 'Other'
-    const bucket = groups.get(key)
-    if (bucket) bucket.push(course)
-    else groups.set(key, [course])
-  }
-  return Array.from(groups, ([department, courses]) => ({ department, courses }))
-}
+/** Every catalog code, in catalog order. */
+export const pupCourseCodes = (): string[] => PUP_SANTA_MARIA_COURSES.map((course) => course.code)
+
+/** Label of the single bucket returned by the legacy grouping wrapper. */
+export const PUP_COURSES_GROUP_LABEL = 'PUP Santa Maria programs'
+
+/**
+ * Legacy wrapper kept so older selectors keep compiling. The campus has no
+ * departments, so this is always one bucket containing the whole catalog.
+ */
+export const pupCoursesByDepartment = (): { department: string; courses: PupCourse[] }[] => [
+  { department: PUP_COURSES_GROUP_LABEL, courses: [...PUP_SANTA_MARIA_COURSES] },
+]

@@ -1,19 +1,31 @@
 /// PUP Santa Maria course (degree program) catalog.
 ///
-/// 1:1 copy of `shared/src/constants/pup-courses.ts`. Codes are stored
-/// verbatim on `Section.course`; names are display-only. DRAFT: confirm with
-/// the registrar before release — teachers can still enter an off-catalog
-/// course through the form's "Other — specify manually" option.
+/// 1:1 mirror of `shared/src/constants/pup-courses.ts` (a parity test pins
+/// both). PUP Santa Maria has no academic departments: it has courses, each
+/// with a head professor, so the catalog is a flat list and the course `code`
+/// is the only scoping key. Codes are stored verbatim on `Section.course`;
+/// names are display-only. The registrar's sign-off on the list is a release
+/// gate (see `plan/course-scope-plan.md` §4.1).
 class PupCourse {
-  const PupCourse({required this.code, required this.name, this.department});
+  const PupCourse({
+    required this.code,
+    required this.name,
+    this.aliases = const <String>[],
+    this.department,
+  });
 
   /// Short program code stored on the section, e.g. 'BSIT'.
   final String code;
 
-  /// Full program name for display.
+  /// Full official program name for display.
   final String name;
 
-  /// Optional grouping key used by the selector (department/college).
+  /// Alternate spellings that normalize to this code (matched ignoring case,
+  /// spacing and punctuation).
+  final List<String> aliases;
+
+  /// Legacy grouping key from the pre-course draft catalog. Never set on the
+  /// current entries.
   final String? department;
 
   @override
@@ -27,93 +39,60 @@ class PupCourse {
   int get hashCode => Object.hash(code, name, department);
 
   @override
-  String toString() => 'PupCourse($code, $name, department: $department)';
+  String toString() => 'PupCourse($code, $name)';
 }
 
 const List<PupCourse> pupSantaMariaCourses = [
-  // College of Computer and Information Sciences (CCIS)
   PupCourse(
-    code: 'BSIT',
-    name: 'BS Information Technology',
-    department: 'CCIS',
-  ),
-  PupCourse(code: 'BSCS', name: 'BS Computer Science', department: 'CCIS'),
-  PupCourse(code: 'BSIS', name: 'BS Information Systems', department: 'CCIS'),
-  // Business / Accountancy
-  PupCourse(code: 'BSA', name: 'BS Accountancy', department: 'Business'),
-  PupCourse(
-    code: 'BSMA',
-    name: 'BS Management Accounting',
-    department: 'Business',
+    code: 'BSA',
+    name: 'Bachelor of Science in Accountancy',
+    aliases: ['BS Accountancy'],
   ),
   PupCourse(
-    code: 'BSAIS',
-    name: 'BS Accounting Information Systems',
-    department: 'Business',
+    code: 'BSCpE',
+    name: 'Bachelor of Science in Computer Engineering',
+    aliases: ['BSCPE', 'BS Computer Engineering'],
   ),
   PupCourse(
-    code: 'BSBA',
-    name: 'BS Business Administration',
-    department: 'Business',
+    code: 'BSENTREP',
+    name: 'Bachelor of Science in Entrepreneurship',
+    aliases: ['BS Entrepreneurship', 'BSEntrep'],
   ),
   PupCourse(
     code: 'BSHM',
-    name: 'BS Hospitality Management',
-    department: 'Business',
+    name: 'Bachelor of Science in Hospitality Management',
+    aliases: ['BS Hospitality Management'],
   ),
   PupCourse(
-    code: 'BSTM',
-    name: 'BS Tourism Management',
-    department: 'Business',
-  ),
-  // Engineering
-  PupCourse(
-    code: 'BSCE',
-    name: 'BS Civil Engineering',
-    department: 'Engineering',
+    code: 'BSIT',
+    name: 'Bachelor of Science in Information Technology',
+    aliases: ['BS Information Technology'],
   ),
   PupCourse(
-    code: 'BSECE',
-    name: 'BS Electronics Engineering',
-    department: 'Engineering',
+    code: 'BSEDEN',
+    name: 'Bachelor of Secondary Education major in English',
+    aliases: ['BSED-EN', 'BSEd English', 'BSEd major in English'],
   ),
   PupCourse(
-    code: 'BSME',
-    name: 'BS Mechanical Engineering',
-    department: 'Engineering',
+    code: 'BSEDMT',
+    name: 'Bachelor of Secondary Education major in Mathematics',
+    aliases: [
+      'BSED-MT',
+      'BSEd Math',
+      'BSEd Mathematics',
+      'BSEd major in Mathematics',
+    ],
   ),
   PupCourse(
-    code: 'BSEE',
-    name: 'BS Electrical Engineering',
-    department: 'Engineering',
+    code: 'DOMTLOM',
+    name: 'Diploma in Office Management Technology – Legal Office Management',
+    aliases: ['DOMT', 'DOMT-LOM', 'Diploma in Office Management Technology'],
   ),
-  PupCourse(
-    code: 'BSIE',
-    name: 'BS Industrial Engineering',
-    department: 'Engineering',
-  ),
-  // Teacher Education
-  PupCourse(
-    code: 'BEEd',
-    name: 'Bachelor of Elementary Education',
-    department: 'Education',
-  ),
-  PupCourse(
-    code: 'BSEd',
-    name: 'Bachelor of Secondary Education',
-    department: 'Education',
-  ),
-  PupCourse(
-    code: 'BTVTE',
-    name: 'Bachelor of Technical-Vocational Teacher Education',
-    department: 'Education',
-  ),
-  // Industrial Technology
-  PupCourse(
-    code: 'BIT',
-    name: 'Bachelor of Industrial Technology',
-    department: 'Industrial Technology',
-  ),
+];
+
+/// Every catalog code, in catalog order.
+List<String> pupCourseCodes() => [
+  for (final course in pupSantaMariaCourses) course.code,
 ];
 
 /// Case-insensitive catalog lookup by program code.
@@ -132,6 +111,57 @@ String pupCourseName(String? code) {
   if (trimmed == null || trimmed.isEmpty) return '';
   return pupCourseByCode(trimmed)?.name ?? trimmed;
 }
+
+/// Result of [normalizeCourse]; unmatched input keeps its raw text.
+class NormalizedCourse {
+  const NormalizedCourse({this.code, required this.matched, required this.raw});
+
+  final String? code;
+  final bool matched;
+  final String raw;
+}
+
+String _compact(String value) =>
+    value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+
+Map<String, String>? _lookup;
+
+Map<String, String> _buildLookup() {
+  final map = <String, String>{};
+  void add(String key, String code) {
+    if (key.isEmpty) return;
+    map.putIfAbsent(key, () => code);
+  }
+
+  for (final course in pupSantaMariaCourses) {
+    add(_compact(course.code), course.code);
+  }
+  for (final course in pupSantaMariaCourses) {
+    add(_compact(course.name), course.code);
+  }
+  for (final course in pupSantaMariaCourses) {
+    for (final alias in course.aliases) {
+      add(_compact(alias), course.code);
+    }
+  }
+  return map;
+}
+
+/// Case-, spacing- and punctuation-insensitive match against the catalog's
+/// codes, names and aliases (mirrors `normalizeCourse` in shared). Unknown
+/// input is returned unmatched with the raw text intact; a bare legacy `BSEd`
+/// stays unmatched because two majors exist.
+NormalizedCourse normalizeCourse(String? input) {
+  final raw = (input ?? '').trim();
+  if (raw.isEmpty) return NormalizedCourse(matched: false, raw: raw);
+  final code = (_lookup ??= _buildLookup())[_compact(raw)];
+  return code == null
+      ? NormalizedCourse(matched: false, raw: raw)
+      : NormalizedCourse(code: code, matched: true, raw: raw);
+}
+
+/// Label of the single bucket returned by [pupCoursesByDepartment].
+const String pupCoursesGroupLabel = 'PUP Santa Maria programs';
 
 class PupCourseGroup {
   const PupCourseGroup({required this.department, required this.courses});
@@ -157,18 +187,11 @@ bool _listEquals<T>(List<T> a, List<T> b) {
   return true;
 }
 
-/// Catalog entries grouped by department, preserving list order.
-List<PupCourseGroup> pupCoursesByDepartment() {
-  final groups = <String, List<PupCourse>>{};
-  for (final course in pupSantaMariaCourses) {
-    final key = course.department ?? 'Other';
-    groups.putIfAbsent(key, () => <PupCourse>[]).add(course);
-  }
-  return [
-    for (final entry in groups.entries)
-      PupCourseGroup(
-        department: entry.key,
-        courses: List<PupCourse>.unmodifiable(entry.value),
-      ),
-  ];
-}
+/// Legacy wrapper kept so the picker keeps compiling. The campus has no
+/// departments, so this is always one bucket holding the whole catalog.
+List<PupCourseGroup> pupCoursesByDepartment() => [
+  PupCourseGroup(
+    department: pupCoursesGroupLabel,
+    courses: List<PupCourse>.unmodifiable(pupSantaMariaCourses),
+  ),
+];

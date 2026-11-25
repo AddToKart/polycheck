@@ -83,16 +83,15 @@ describe('Create Section page course selector', () => {
     expect(apiMock.createSection).not.toHaveBeenCalled()
   })
 
-  it('groups catalog options by department and submits the selected course code', async () => {
+  it('lists the flat catalog and submits the selected course code', async () => {
     renderPage()
     await fillRequiredFields()
 
     const courseSelect = screen.getByLabelText('Course')
-    const optgroups = Array.from(courseSelect.querySelectorAll('optgroup')).map((group) => group.label)
-    expect(optgroups).toContain('CCIS')
+    expect(courseSelect.querySelectorAll('optgroup')).toHaveLength(0)
     expect(
       Array.from(courseSelect.querySelectorAll('option')).some(
-        (option) => option.value === 'BSIT' && option.textContent === 'BSIT — BS Information Technology',
+        (option) => option.value === 'BSIT' && option.textContent === 'BSIT — Bachelor of Science in Information Technology',
       ),
     ).toBe(true)
 

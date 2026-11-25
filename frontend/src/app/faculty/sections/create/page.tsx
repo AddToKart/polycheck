@@ -7,7 +7,7 @@ import { BookOpen, GraduationCap, MapPin, CalendarDays, Plus, X } from 'lucide-r
 import { api, requestUserLogout } from '@/lib/api-client'
 import { describeMutationError, useRunMutation } from '@/lib/run-mutation'
 import { ErrorDisplay } from '@/lib/hooks'
-import { pupCourseName, pupCoursesByDepartment } from '@polycheck/shared'
+import { PUP_SANTA_MARIA_COURSES, pupCourseName } from '@polycheck/shared'
 import type { User, Subject } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -24,7 +24,6 @@ const SEMESTERS = [
 
 /** Sentinel option that swaps the catalog select for a free-text course code. */
 const CUSTOM_COURSE_OPTION = '__custom__'
-const COURSE_GROUPS = pupCoursesByDepartment()
 const SELECT_CLASS =
   'flex h-10 w-full rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon/30 focus-visible:border-maroon'
 
@@ -227,14 +226,10 @@ function CreateSectionForm() {
                     required
                   >
                     <option value="">Select a course...</option>
-                    {COURSE_GROUPS.map((group) => (
-                      <optgroup key={group.department} label={group.department}>
-                        {group.courses.map((course) => (
-                          <option key={course.code} value={course.code}>
-                            {course.code} — {course.name}
-                          </option>
-                        ))}
-                      </optgroup>
+                    {PUP_SANTA_MARIA_COURSES.map((course) => (
+                      <option key={course.code} value={course.code}>
+                        {course.code} — {course.name}
+                      </option>
                     ))}
                     <option value={CUSTOM_COURSE_OPTION}>Other — specify manually</option>
                   </select>
@@ -252,7 +247,8 @@ function CreateSectionForm() {
                       required
                     />
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                      Stored exactly as typed (trimmed), up to 30 characters.
+                      Stored exactly as typed (trimmed), up to 30 characters. Course heads cannot be
+                      assigned to a course that is not in the list above.
                     </p>
                   </div>
                 ) : courseSelection ? (

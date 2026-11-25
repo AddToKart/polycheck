@@ -37,6 +37,12 @@ export interface User {
   isItCoordinator?: boolean
   isDepartmentHead?: boolean
   isUserRegistrar?: boolean
+  /**
+   * Course scope of a head/registrar designee (catalog codes). Ignored for everyone else;
+   * `managesAllCourses` wins. Empty scope is fail-closed.
+   */
+  managedCourses?: string[]
+  managesAllCourses?: boolean
   /** Secondary contact channels owned by the user (never the login identity). */
   contactEmail?: string | null
   contactPhone?: string | null

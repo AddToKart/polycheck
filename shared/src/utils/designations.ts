@@ -41,6 +41,8 @@ export interface DesignationCarrier {
   isItCoordinator?: boolean
   isDepartmentHead?: boolean
   isUserRegistrar?: boolean
+  managedCourses?: readonly string[] | null
+  managesAllCourses?: boolean | null
 }
 
 type DesignationFlag = (typeof DESIGNATION_FLAGS)[FacultyDesignation]

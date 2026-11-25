@@ -431,7 +431,10 @@ void main() {
 
   group('catalog gate', () {
     test('course catalog still resolves the default BSIT option', () {
-      expect(pupCourseName('BSIT'), 'BS Information Technology');
+      expect(
+        pupCourseName('BSIT'),
+        'Bachelor of Science in Information Technology',
+      );
       expect(pupCourseByCode('bsit')?.code, 'BSIT');
     });
   });
