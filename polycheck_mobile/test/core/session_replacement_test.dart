@@ -8,14 +8,34 @@ class _FakeChannel implements SessionReplacementChannel {
   _FakeChannel();
 
   void Function()? _callback;
+  void Function()? _connectCallback;
+  void Function()? _reconnectFailedCallback;
 
   @override
   void listen(void Function() onSessionReplaced) {
     _callback = onSessionReplaced;
   }
 
+  @override
+  void onConnected(void Function() handler) {
+    _connectCallback = handler;
+  }
+
+  @override
+  void onReconnectFailed(void Function() handler) {
+    _reconnectFailedCallback = handler;
+  }
+
   void emit() {
     _callback?.call();
+  }
+
+  void emitConnected() {
+    _connectCallback?.call();
+  }
+
+  void emitReconnectFailed() {
+    _reconnectFailedCallback?.call();
   }
 
   bool closed = false;
@@ -314,6 +334,154 @@ void main() {
       // Idempotent re-start (the binder calls start on every sign-in id).
       await monitor.start();
       expect(channels, 1);
+    });
+  });
+
+  group('SessionReplacementMonitor (FLR-03 self-heal)', () {
+    test(
+      'an exhausted reconnect burst re-arms a fresh channel and still terminates',
+      () async {
+        final channels = <_FakeChannel>[];
+        var terminations = 0;
+
+        final monitor = SessionReplacementMonitor(
+          readToken: () async => 'token-1',
+          probeSession: () async => true,
+          isOwnLoginInFlight: () => false,
+          onTerminate: () async => terminations++,
+          backoff: const <Duration>[Duration(milliseconds: 10)],
+          channelFactory:
+              ({
+                required socketUrl,
+                required readToken,
+                required onSessionReplaced,
+              }) {
+                final channel = _FakeChannel();
+                channels.add(channel);
+                return channel;
+              },
+        );
+
+        await monitor.start();
+        expect(channels, hasLength(1));
+
+        // The manager gives up: the channel is dead and would never retry.
+        channels.single.emitReconnectFailed();
+        expect(channels.single.closed, isTrue);
+        expect(monitor.isRunning, isFalse);
+
+        // The bounded backoff re-arms without any external trigger.
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        expect(channels, hasLength(2));
+        expect(monitor.isRunning, isTrue);
+
+        // The replacement channel still delivers revocations.
+        channels.last.emit();
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        expect(terminations, 1);
+
+        monitor.stop();
+        expect(channels.last.closed, isTrue);
+        expect(monitor.isRunning, isFalse);
+      },
+    );
+
+    test('stop() cancels a scheduled self-heal restart', () async {
+      final channels = <_FakeChannel>[];
+      final monitor = SessionReplacementMonitor(
+        readToken: () async => 'token-1',
+        probeSession: () async => true,
+        isOwnLoginInFlight: () => false,
+        onTerminate: () async {},
+        backoff: const <Duration>[Duration(milliseconds: 20)],
+        channelFactory:
+            ({
+              required socketUrl,
+              required readToken,
+              required onSessionReplaced,
+            }) {
+              final channel = _FakeChannel();
+              channels.add(channel);
+              return channel;
+            },
+      );
+
+      await monitor.start();
+      channels.single.emitReconnectFailed();
+      monitor.stop();
+
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(channels, hasLength(1), reason: 'sign-out must not re-arm');
+    });
+
+    test('a token-less restart stays idle instead of looping', () async {
+      String? token = 'token-1';
+      final channels = <_FakeChannel>[];
+      final monitor = SessionReplacementMonitor(
+        readToken: () async => token,
+        probeSession: () async => true,
+        isOwnLoginInFlight: () => false,
+        onTerminate: () async {},
+        backoff: const <Duration>[Duration(milliseconds: 10)],
+        channelFactory:
+            ({
+              required socketUrl,
+              required readToken,
+              required onSessionReplaced,
+            }) {
+              final channel = _FakeChannel();
+              channels.add(channel);
+              return channel;
+            },
+      );
+
+      await monitor.start();
+      expect(channels, hasLength(1));
+      token = null;
+      channels.single.emitReconnectFailed();
+
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(channels, hasLength(1), reason: 'no token, no channel');
+
+      monitor.stop();
+    });
+
+    test('a successful reconnect resets the backoff ladder', () async {
+      final channels = <_FakeChannel>[];
+      final monitor = SessionReplacementMonitor(
+        readToken: () async => 'token-1',
+        probeSession: () async => true,
+        isOwnLoginInFlight: () => false,
+        onTerminate: () async {},
+        backoff: const <Duration>[
+          Duration(milliseconds: 10),
+          Duration(minutes: 5),
+        ],
+        channelFactory:
+            ({
+              required socketUrl,
+              required readToken,
+              required onSessionReplaced,
+            }) {
+              final channel = _FakeChannel();
+              channels.add(channel);
+              return channel;
+            },
+      );
+
+      await monitor.start();
+      // Earn a high backoff step, then recover: the next burst restarts fast.
+      channels.single.emitReconnectFailed();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(channels, hasLength(2));
+      channels.last.emitConnected();
+      channels.last.emitReconnectFailed();
+
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(channels, hasLength(3));
+
+      monitor.stop();
     });
   });
 

@@ -110,6 +110,17 @@ abstract interface class AttendancePinCipher {
 }
 
 /// Production cipher over secure storage + `cryptography` AES-GCM.
+///
+/// Key resolution is split into a **read-only** path ([_readKey], used by
+/// decrypt) and a **may-create** path ([_key], used by encrypt):
+///
+/// * decrypt must never write. A transiently unreadable keystore used to
+///   rotate the key, which permanently orphaned every previously encrypted
+///   envelope on the queue (FLR-04). Now a missing/unusable stored key simply
+///   yields `null` - the row drains without a PIN and the server stamps
+///   terminal `pin_required` evidence instead of silently losing the key.
+/// * encrypt still creates the key once when it is genuinely absent, so the
+///   normal persistence path is byte-identical.
 class SecureAttendancePinCipher implements AttendancePinCipher {
   SecureAttendancePinCipher({PinKeyStore? keyStore})
     : _keyStore = keyStore ?? const SecurePinKeyStore();
@@ -117,17 +128,29 @@ class SecureAttendancePinCipher implements AttendancePinCipher {
   final PinKeyStore _keyStore;
   final AesGcm _algorithm = AesGcm.with256bits();
 
-  Future<List<int>> _key() async {
-    final stored = await _keyStore.read();
-    if (stored != null && stored.isNotEmpty) {
-      try {
-        final decoded = decodeBase64Url(stored);
-        if (decoded.length == 32) return decoded;
-      } on Object {
-        // Fall through and rotate an unusable key instead of rejecting every
-        // future encryption.
-      }
+  /// Reads the stored key exactly as persisted (no generation).
+  Future<List<int>?> _readKey() async {
+    final String? stored;
+    try {
+      stored = await _keyStore.read();
+    } on Object {
+      // An unreadable keystore is indistinguishable from a lost key: report
+      // "no key" without touching what is stored.
+      return null;
     }
+    if (stored == null || stored.isEmpty) return null;
+    try {
+      final decoded = decodeBase64Url(stored);
+      return decoded.length == 32 ? decoded : null;
+    } on Object {
+      return null;
+    }
+  }
+
+  /// Encrypt-only resolution: creates and persists the key when absent.
+  Future<List<int>> _key() async {
+    final existing = await _readKey();
+    if (existing != null) return existing;
     final generated = SecretKeyData.random(length: 32);
     final bytes = await generated.extractBytes();
     await _keyStore.write(encodeBase64Url(bytes));
@@ -156,10 +179,10 @@ class SecureAttendancePinCipher implements AttendancePinCipher {
         nonceLength: _algorithm.nonceLength,
         macLength: _algorithm.macAlgorithm.macLength,
       );
-      final clear = await _algorithm.decrypt(
-        box,
-        secretKey: SecretKey(await _key()),
-      );
+      // Read-only: a decrypt that cannot resolve the key never overwrites it.
+      final key = await _readKey();
+      if (key == null) return null;
+      final clear = await _algorithm.decrypt(box, secretKey: SecretKey(key));
       return utf8.decode(clear);
     } on Object {
       return null;

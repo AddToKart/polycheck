@@ -6,6 +6,14 @@ abstract final class AppRoutes {
   static const String forcePasswordChange = '/force-password-change';
   static const String maintenance = '/maintenance';
 
+  /// Cold-start restore gate (FLR-02).
+  ///
+  /// Protected routes are never rendered while the session is
+  /// `unknown`/`restoring`/`authenticating`; the guard parks the requested
+  /// location here as `?redirect=<target>` and resolves it once the session
+  /// state is authoritative.
+  static const String boot = '/boot';
+
   static const String profile = '/profile';
   static const String assistant = '/assistant';
 

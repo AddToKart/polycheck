@@ -1,11 +1,51 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as socket_io;
 
 import '../models/ai.dart';
 import '../network/api_config.dart';
 import '../network/secure_token_store.dart';
 import 'api_base.dart';
+
+/// Reads the CURRENT bearer token, invoked on every socket engine open (the
+/// initial connect *and* each reconnect) so a mid-session rotation never
+/// re-authenticates with a stale bearer (FLR-06, DD-F18).
+typedef AiTokenReader = Future<String?> Function();
+
+/// Builds the per-thread Socket.IO options.
+///
+/// Extracted so the `setAuthFn` contract is unit-testable without a live
+/// gateway, mirroring `cockpit_realtime.dart`/`notification_realtime.dart`.
+Map<String, dynamic> buildAiThreadSocketOptions(AiTokenReader readToken) {
+  return socket_io.OptionBuilder()
+      .setTransports(<String>['websocket'])
+      // Resolve the bearer per engine open rather than at construction.
+      .setAuthFn((void Function(Map auth) callback) {
+        unawaited(() async {
+          try {
+            final token = await readToken();
+            if (token == null || token.isEmpty) return;
+            callback(<String, dynamic>{'token': token});
+          } on Object catch (error) {
+            // This runs outside `openThreadStream`'s try; a failed re-read
+            // skips the CONNECT auth packet and the engine reports the failure
+            // through `onConnectError` (the assistant surfaces it as an error
+            // stream event).
+            debugPrint('AiThreadStream token re-read failed: $error');
+          }
+        }());
+      })
+      .enableForceNew()
+      .build();
+}
+
+/// The live subscription seam the assistant screen consumes. `AiThreadStream`
+/// is the production implementation; tests supply a scripted one.
+abstract interface class AiThreadSubscription {
+  Stream<AiStreamEvent> get events;
+  Future<void> close();
+}
 
 /// AI assistant REST surface plus the typed Socket.IO reply stream.
 class AiApi extends ApiBase {
@@ -43,15 +83,16 @@ class AiApi extends ApiBase {
 
   /// Opens the per-thread Socket.IO room and exposes `ai:thread:stream`
   /// ticks as [AiStreamEvent]s (`delta` / `done` / `error`).
-  Future<AiThreadStream> openThreadStream(String threadId) async {
-    final token = await tokenStore.read();
+  ///
+  /// The bearer is resolved per engine open (FLR-06), so a token rotated
+  /// mid-session is picked up on the next reconnect.
+  ///
+  /// Returns the [AiThreadSubscription] seam (not the concrete socket class)
+  /// so tests can script a stream without a live gateway.
+  Future<AiThreadSubscription> openThreadStream(String threadId) async {
     final socket = socket_io.io(
       ApiConfig.socketUrl,
-      socket_io.OptionBuilder()
-          .setTransports(<String>['websocket'])
-          .setAuth(<String, dynamic>{'token': ?token})
-          .enableForceNew()
-          .build(),
+      buildAiThreadSocketOptions(() => tokenStore.read()),
     );
     final stream = AiThreadStream._(socket, threadId);
     await stream.start();
@@ -60,7 +101,7 @@ class AiApi extends ApiBase {
 }
 
 /// One live assistant thread room. Call [close] when leaving the chat.
-class AiThreadStream {
+class AiThreadStream implements AiThreadSubscription {
   AiThreadStream._(this._socket, this.threadId);
 
   final socket_io.Socket _socket;
@@ -69,6 +110,7 @@ class AiThreadStream {
       StreamController<AiStreamEvent>.broadcast();
   bool _closed = false;
 
+  @override
   Stream<AiStreamEvent> get events => _controller.stream;
 
   Future<void> start() async {
@@ -100,6 +142,7 @@ class AiThreadStream {
     }
   }
 
+  @override
   Future<void> close() async {
     if (_closed) return;
     _closed = true;

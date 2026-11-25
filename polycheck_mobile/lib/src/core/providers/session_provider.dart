@@ -127,51 +127,67 @@ class SessionController extends Notifier<SessionState> {
   /// cached profile survives transport failures; an authoritative 401/403
   /// revokes it; `password_change_required` keeps the profile flagged so the
   /// forced-rotation gate can take over.
+  ///
+  /// Any non-API failure (corrupt `profileJson`, a decode cast, a database
+  /// error) drops the local session and lands [SessionStatus.signedOut]. The
+  /// guard ladder refuses protected routes while `restoring`, so letting such
+  /// an error escape would otherwise pin the app on the restoring state
+  /// forever (FLR-02).
   Future<void> restore() async {
     if (_restoring) return;
     _restoring = true;
     try {
-      final token = await _tokens.read();
-      if (token == null || token.isEmpty) {
-        state = const SessionState(status: SessionStatus.signedOut);
-        return;
-      }
-      final cached = await _database.readActiveProfile();
-      if (cached == null) {
-        await _restoreWithoutCachedProfile();
-        return;
-      }
-      state = state.copyWith(status: SessionStatus.signedIn, user: cached.user);
-      try {
-        final profile = await _api.me(
-          timeout: ApiConfig.coldStartVerificationTimeout,
-        );
-        await _storeProfile(profile);
-      } on ApiRequestError catch (error) {
-        if (error.isNetworkFailure) {
-          // Offline-first: trust the cached profile while the network is down.
-          return;
-        }
-        if (error.isPasswordChangeRequired) {
-          final flagged = cached.user.copyWith(mustChangePassword: true);
-          await _storeProfile(flagged);
-          return;
-        }
-        if (error.isUnauthorized) {
-          await handleSessionExpired(
-            SessionExpiredEvent(
-              at: DateTime.now().toUtc(),
-              method: 'GET',
-              path: '/auth/me',
-              message: error.message,
-            ),
-          );
-          return;
-        }
-        await _clearLocal(cached.userId);
-      }
+      await _restore();
+    } on Object catch (error, stackTrace) {
+      debugPrint(
+        'SessionController.restore: dropping local session after an '
+        'unexpected failure: $error\n$stackTrace',
+      );
+      await _discardLocalSession();
     } finally {
       _restoring = false;
+    }
+  }
+
+  Future<void> _restore() async {
+    final token = await _tokens.read();
+    if (token == null || token.isEmpty) {
+      state = const SessionState(status: SessionStatus.signedOut);
+      return;
+    }
+    final cached = await _database.readActiveProfile();
+    if (cached == null) {
+      await _restoreWithoutCachedProfile();
+      return;
+    }
+    state = state.copyWith(status: SessionStatus.signedIn, user: cached.user);
+    try {
+      final profile = await _api.me(
+        timeout: ApiConfig.coldStartVerificationTimeout,
+      );
+      await _storeProfile(profile);
+    } on ApiRequestError catch (error) {
+      if (error.isNetworkFailure) {
+        // Offline-first: trust the cached profile while the network is down.
+        return;
+      }
+      if (error.isPasswordChangeRequired) {
+        final flagged = cached.user.copyWith(mustChangePassword: true);
+        await _storeProfile(flagged);
+        return;
+      }
+      if (error.isUnauthorized) {
+        await handleSessionExpired(
+          SessionExpiredEvent(
+            at: DateTime.now().toUtc(),
+            method: 'GET',
+            path: '/auth/me',
+            message: error.message,
+          ),
+        );
+        return;
+      }
+      await _clearLocal(cached.userId);
     }
   }
 
@@ -189,6 +205,44 @@ class SessionController extends Notifier<SessionState> {
       }
       await _clearLocal(null);
     }
+  }
+
+  /// Drops the local session after an unexpected restore failure.
+  ///
+  /// Fails closed exactly like an explicit sign-out *without* deleting another
+  /// account's queue (the owner is unknown here: the corrupt profile may not
+  /// carry an `id`). The token is what must go — a session we could not decode
+  /// can never be trusted. A previously decodable owner row keeps its queued
+  /// attendance evidence for a later re-authentication.
+  ///
+  /// The corrupt cache is removed too (FLR-02): the owner pointer is read from
+  /// the ownerless metadata row - it never decodes the profile JSON - so a
+  /// stored profile that cannot be parsed is cleared instead of being
+  /// re-parsed (and re-failing) on the next cold start. Queued attendance
+  /// evidence survives so a later re-authentication can still drain it.
+  Future<void> _discardLocalSession() async {
+    try {
+      await _tokens.clear();
+    } catch (error) {
+      debugPrint('SessionController.restore: token clear failed: $error');
+    }
+    ref.read(attendancePinVaultProvider).clear();
+    try {
+      final pointer = (await _database.readMeta(
+        AppDatabase.globalMetaOwnerId,
+      ))?.activeProfileUserId;
+      if (pointer != null && pointer.isNotEmpty) {
+        await _database.clearOwner(pointer, preserveAttendanceQueue: true);
+      }
+    } catch (error) {
+      debugPrint(
+        'SessionController.restore: corrupt profile purge failed: $error',
+      );
+    }
+    state = SessionState(
+      status: SessionStatus.signedOut,
+      maintenance: state.maintenance,
+    );
   }
 
   Future<User> loginStudent({

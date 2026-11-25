@@ -512,7 +512,7 @@ return $default(_that.id,_that.sessionId,_that.sectionId,_that.studentId,_that.s
 
 /// @nodoc
 
-@JsonSerializable(fieldRename: FieldRename.none, explicitToJson: true, converters: [AttendanceStatusConverter(), SessionModeConverter(), DisputeReasonConverter(), ExcuseStatusConverter()])
+@JsonSerializable(fieldRename: FieldRename.none, explicitToJson: true, converters: [AttendanceStatusConverter(), SessionModeConverter(), DisputeReasonConverter(), ExcuseStatusConverter(), ExcuseReasonConverter()])
 class _AttendanceRecord implements AttendanceRecord {
   const _AttendanceRecord({required this.id, required this.sessionId, required this.sectionId, required this.studentId, this.studentName = '', this.studentProgram, this.timestamp = '', required this.status, this.coordinates = const AttendanceCoordinates(latitude: null, longitude: null), this.mode, this.checkInTime, this.checkInStatus, this.checkOutTime, this.checkOutStatus, this.deviceId, this.tokenSnapshot, this.isSynced = false, this.syncedAt, this.disputeReason, this.disputeResolved = false, this.disputeDescription, this.manuallySet = false, this.notes, this.excuseStatus, this.excuseReason, this.excuseDescription, this.excuseEvidencePath, this.excuseReviewedBy, this.excuseReviewedAt, this.excuseReviewNote});
   factory _AttendanceRecord.fromJson(Map<String, dynamic> json) => _$AttendanceRecordFromJson(json);

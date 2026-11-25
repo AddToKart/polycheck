@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../models/notification.dart';
 import 'api_base.dart';
 
@@ -16,10 +18,7 @@ class NotificationsApi extends ApiBase {
         'limit': limit,
       },
     );
-    return asList(data)
-        .whereType<Map>()
-        .map((item) => AppNotification.fromJson(asMap(item)))
-        .toList(growable: false);
+    return parseNotificationInbox(data);
   }
 
   Future<int> getUnreadNotificationCount() async {
@@ -42,4 +41,25 @@ class NotificationsApi extends ApiBase {
     );
     return data == true;
   }
+}
+
+/// Decodes the inbox list row-by-row.
+///
+/// **Documented degraded mode (FLR-05):** a row that cannot be decoded (a
+/// missing/ill-typed field, a removed shape) is skipped and logged instead of
+/// failing the whole request. The list used to be decoded with `map`, so one
+/// malformed row - or one notification type this build does not know - blanked
+/// the entire inbox. Unknown *types* already degrade to
+/// [NotificationType.unknown]; this guard covers structural drift.
+List<AppNotification> parseNotificationInbox(Object? data) {
+  final notifications = <AppNotification>[];
+  for (final item in asList(data)) {
+    if (item is! Map) continue;
+    try {
+      notifications.add(AppNotification.fromJson(asMap(item)));
+    } catch (error) {
+      debugPrint('NotificationsApi: skipping undecodable row: $error');
+    }
+  }
+  return List<AppNotification>.unmodifiable(notifications);
 }

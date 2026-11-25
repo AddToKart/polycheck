@@ -67,9 +67,9 @@ _AttendanceRecord _$AttendanceRecordFromJson(Map<String, dynamic> json) =>
         json['excuseStatus'],
         const ExcuseStatusConverter().fromJson,
       ),
-      excuseReason: $enumDecodeNullable(
-        _$ExcuseReasonEnumMap,
+      excuseReason: _$JsonConverterFromJson<String, ExcuseReason>(
         json['excuseReason'],
+        const ExcuseReasonConverter().fromJson,
       ),
       excuseDescription: json['excuseDescription'] as String?,
       excuseEvidencePath: json['excuseEvidencePath'] as String?,
@@ -119,7 +119,10 @@ Map<String, dynamic> _$AttendanceRecordToJson(_AttendanceRecord instance) =>
         instance.excuseStatus,
         const ExcuseStatusConverter().toJson,
       ),
-      'excuseReason': _$ExcuseReasonEnumMap[instance.excuseReason],
+      'excuseReason': _$JsonConverterToJson<String, ExcuseReason>(
+        instance.excuseReason,
+        const ExcuseReasonConverter().toJson,
+      ),
       'excuseDescription': instance.excuseDescription,
       'excuseEvidencePath': instance.excuseEvidencePath,
       'excuseReviewedBy': instance.excuseReviewedBy,
@@ -131,15 +134,6 @@ Value? _$JsonConverterFromJson<Json, Value>(
   Object? json,
   Value? Function(Json json) fromJson,
 ) => json == null ? null : fromJson(json as Json);
-
-const _$ExcuseReasonEnumMap = {
-  ExcuseReason.medical: 'medical',
-  ExcuseReason.familyEmergency: 'familyEmergency',
-  ExcuseReason.schoolActivity: 'schoolActivity',
-  ExcuseReason.transportation: 'transportation',
-  ExcuseReason.bereavement: 'bereavement',
-  ExcuseReason.other: 'other',
-};
 
 Json? _$JsonConverterToJson<Json, Value>(
   Value? value,

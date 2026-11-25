@@ -6,6 +6,13 @@ part 'notification.freezed.dart';
 part 'notification.g.dart';
 
 /// Mirrors `shared/src/types/notification.ts`.
+///
+/// **Documented degraded mode (FLR-05):** [unknown] is a sentinel for a wire
+/// type this build does not know. A strict decode threw `UnknownApiValue` for
+/// the whole row, and `NotificationsApi` decoded the list with `map`, so one
+/// new server-side notification type blanked the *entire* inbox. The union is
+/// append-only server-side; an unrecognized type now degrades to a generic
+/// "Update" row (label/icon fallbacks already exist) instead of failing.
 enum NotificationType {
   disputeFiled('dispute_filed'),
   disputeResolved('dispute_resolved'),
@@ -19,7 +26,10 @@ enum NotificationType {
   keyProvisioned('key_provisioned'),
   deviceReleased('device_released'),
   systemReportResolved('system_report_resolved'),
-  atRiskReferral('at_risk_referral');
+  atRiskReferral('at_risk_referral'),
+
+  /// Sentinel only — never a value the backend emits today.
+  unknown('unknown');
 
   const NotificationType(this.wire);
 
@@ -30,10 +40,13 @@ enum NotificationType {
     (v) => v.wire,
   );
 
-  static NotificationType fromWire(String value) =>
-      decodeWireEnum('NotificationType', value, byWire);
+  static NotificationType fromWire(String value) => tryParse(value) ?? unknown;
 
-  static NotificationType? tryParse(String value) => byWire[value];
+  static NotificationType? tryParse(String value) {
+    final decoded = byWire[value];
+    if (decoded == null || decoded == unknown) return null;
+    return decoded;
+  }
 }
 
 class NotificationTypeConverter
@@ -41,7 +54,8 @@ class NotificationTypeConverter
   const NotificationTypeConverter();
 
   @override
-  NotificationType fromJson(String json) => NotificationType.fromWire(json);
+  NotificationType fromJson(String json) =>
+      NotificationType.tryParse(json) ?? NotificationType.unknown;
 
   @override
   String toJson(NotificationType object) => object.wire;

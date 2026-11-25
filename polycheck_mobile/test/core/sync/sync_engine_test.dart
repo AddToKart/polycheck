@@ -243,6 +243,61 @@ void main() {
       expect(pinVault.length, 0);
     });
 
+    test(
+      'an excused receipt with a snake_case excuseReason reconciles (FLR-01)',
+      () async {
+        await seed();
+        // The real receipt decode path: `SyncBatchStatus.fromJson` ->
+        // `SyncRecordResult.fromJson` -> `AttendanceRecord.fromJson`. Before
+        // FLR-01 the record decoder used the camelCase `$enumDecodeNullable`
+        // map for `excuseReason`, so this payload threw and the claimed row
+        // was released and re-uploaded on every drain (a queue deadlock).
+        final status = SyncBatchStatus.fromJson(<String, dynamic>{
+          'state': 'completed',
+          'results': <dynamic>[
+            <String, dynamic>{
+              'id': 'rec-r1',
+              'sessionId': 'sess-1',
+              'sectionId': 'sec-1',
+              'studentId': 'u1',
+              'timestamp': '2026-11-10T08:00:00.000Z',
+              'status': 'excused',
+              'coordinates': <String, dynamic>{
+                'latitude': null,
+                'longitude': null,
+              },
+              'isSynced': true,
+              'excuseStatus': 'approved',
+              'excuseReason': 'family_emergency',
+            },
+          ],
+        });
+        expect(
+          (status.results!.single as SyncRecordSuccess).record.excuseReason,
+          ExcuseReason.familyEmergency,
+        );
+
+        transport.onSubmit = (_, _) async =>
+            const SyncBatchSubmitResult(queued: true, receiptId: 'receipt-1');
+        transport.onStatus = (_) async => status;
+
+        final report = await engine().drain(
+          userId: 'u1',
+          isOwnerCurrent: () => true,
+        );
+
+        final row = (await database.attendanceQueueEntry('r1'))!;
+        expect(row.syncStatus, AttendanceSyncStatus.confirmed);
+        expect(report.confirmed, 1);
+        expect(report.retryableFailed, 0);
+        expect(await database.countDrainableAttendance('u1'), 0);
+
+        // A second drain has nothing to claim: no re-upload loop.
+        await drain(engine());
+        expect(transport.submitted, hasLength(1));
+      },
+    );
+
     test('queued receipt polls until completed', () async {
       await seed();
       transport.onSubmit = (_, _) async =>
@@ -512,6 +567,32 @@ void main() {
       expect(row.syncStatus, AttendanceSyncStatus.failed);
       expect(row.serverError, isNot(startsWith('terminal:')));
       expect(row.retryCount, 1);
+    });
+
+    test('batch 409 is retryable, never terminal (FLR-10)', () async {
+      await seed();
+      // A batch-level 409 is the idempotency/activation collision shape: the
+      // check-in is still valid, so destroying it would lose the only copy.
+      transport.onSubmit = (_, _) async => throw const ApiRequestError(
+        message:
+            'A request with this Idempotency-Key is already being processed',
+        status: 409,
+        code: 'idempotency_replay',
+      );
+
+      final report = await engine().drain(
+        userId: 'u1',
+        isOwnerCurrent: () => true,
+      );
+
+      final row = (await database.attendanceQueueEntry('r1'))!;
+      expect(report.abortReason, SyncAbortReason.serverError);
+      expect(report.retryableFailed, 1);
+      expect(report.terminalFailed, 0);
+      expect(row.syncStatus, AttendanceSyncStatus.failed);
+      expect(row.serverError, isNot(startsWith('terminal:')));
+      expect(row.retryCount, 1);
+      expect(await database.countDrainableAttendance('u1'), 1);
     });
 
     test('owner switch mid-drain releases the claim and stops', () async {

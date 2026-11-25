@@ -232,14 +232,20 @@ bool isDuplicateAttendanceSyncError(String message) {
 /// shape itself can never be accepted for these rows.
 ///
 /// * `400` — validation failure (`forbidNonWhitelisted` / malformed record),
-/// * `409` — duplicate replay (the batch/lookup already exists server-side),
 /// * `422` — unprocessable records.
 ///
+/// `409` is deliberately **not** terminal (FLR-10). A batch-level 409 is always
+/// a concurrency shape - the idempotency interceptor's "already being
+/// processed" / "payload differs" replies, or an activation/end collision -
+/// and the queued evidence is still valid; terminalizing it destroyed the only
+/// copy of a check-in. Duplicate *records* are still handled per record through
+/// the `already submitted for this session` message classifier above.
+///
 /// Everything else (`403` privacy consent or a scope rejection, `404`, `405`,
-/// `409` in-flight, `413`) must leave the evidence retryable. Terminalizing a
-/// whole batch on any 4xx used to destroy up to 25 queued check-ins when
+/// `409`, `413`) must leave the evidence retryable. Terminalizing a whole batch
+/// on any 4xx used to destroy up to 25 queued check-ins when
 /// `PRIVACY_NOTICE_VERSION` was bumped (DD-F19).
-const Set<int> terminalAttendanceSyncStatuses = <int>{400, 409, 422};
+const Set<int> terminalAttendanceSyncStatuses = <int>{400, 422};
 
 bool isTerminalAttendanceSyncStatus(int status) =>
     terminalAttendanceSyncStatuses.contains(status);
@@ -274,9 +280,9 @@ class _ReceiptTimeout implements Exception {
 /// * rows are claimed `SYNCING` and released back to `PENDING` on auth,
 ///   privacy-consent or maintenance aborts,
 /// * transient failures stay `FAILED` with exponential backoff,
-/// * only a contract-terminal batch status (400/409/422) or a per-record
-///   contract rejection terminalizes evidence; every other 4xx stays
-///   retryable,
+/// * only a contract-terminal batch status (400/422) or a per-record
+///   contract rejection terminalizes evidence; every other 4xx - including a
+///   batch-level `409` - stays retryable,
 /// * terminal evidence stays in the table prefixed `terminal:` / marked
 ///   `DISPUTED_DUPLICATE` - never deleted,
 /// * a receipt that reconciles a `disputed` record marks the row
@@ -632,10 +638,11 @@ class SyncEngine {
       );
     }
     if (error.status >= 400 && error.status < 500) {
-      // Only a contract-terminal set (400 invalid payload, 409 duplicate
-      // replay, 422) can never be accepted. Every other 4xx — 403 scope, 404,
-      // 405, 409 in-flight, 413 — leaves the claimed evidence retryable with
-      // backoff instead of destroying the batch (DD-F19, locked decision 10).
+      // Only a contract-terminal set (400 invalid payload, 422) can never be
+      // accepted. Every other 4xx — 403 scope, 404, 405, 409 (idempotency
+      // in-flight, activation/end collision), 413 — leaves the claimed
+      // evidence retryable with backoff instead of destroying the batch
+      // (DD-F19, locked decision 10, FLR-10).
       if (isTerminalAttendanceSyncStatus(error.status)) {
         for (final row in claimed) {
           await database.markQueueFailed(

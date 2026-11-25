@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import 'src/core/api/api_providers.dart';
 import 'src/core/database/app_database.dart';
+import 'src/core/network/dio_client.dart';
 import 'src/core/providers/maintenance_provider.dart';
 import 'src/core/providers/offline_banner.dart';
 import 'src/core/providers/session_provider.dart';
@@ -15,6 +16,7 @@ import 'src/core/router/app_router.dart';
 import 'src/core/sync/sync_lifecycle_binder.dart';
 import 'src/core/theme/pup_theme.dart';
 import 'src/core/theme/pup_tokens.dart';
+import 'src/features/surface/presentation/widgets/outage_widgets.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -92,6 +94,11 @@ class _BootLifecycleState extends ConsumerState<_BootLifecycle> {
   @override
   void initState() {
     super.initState();
+    // FLR-11: attach the demo outage guard during bootstrap, before the first
+    // request of the process. `install` is a no-op unless
+    // `ENABLE_OUTAGE_SIMULATOR=true` and idempotent across remounts; the
+    // profile section is arm/disarm UI only.
+    SurfaceOutageInterceptor.install(ref.read(dioProvider));
     ref.read(sessionProvider);
     ref.read(maintenanceProvider);
     ref.read(trustedClockProvider.notifier).startPeriodicRefresh();
