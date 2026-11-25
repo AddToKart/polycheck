@@ -42,6 +42,7 @@ import { DocsModule } from './docs/docs.module'
 import { StandingModule } from './standing/standing.module'
 import { NotificationsModule } from './notifications/notifications.module'
 import { ReportsModule } from './reports/reports.module'
+import { AccountActivationModule } from './account-activation/account-activation.module'
 
 @Module({
   imports: [
@@ -87,6 +88,7 @@ import { ReportsModule } from './reports/reports.module'
     StandingModule,
     NotificationsModule,
     ReportsModule,
+    AccountActivationModule,
     MaintenanceModule,
     MaintenanceModeModule,
   ],

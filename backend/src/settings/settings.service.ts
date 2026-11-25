@@ -29,6 +29,7 @@ const INTEGER_SETTING_RANGES = {
   attendance_min_rate_percent: { min: 0, max: 100 },
   device_cooldown_hours: { min: 1, max: 24 },
   geolocation_retention_days: { min: 7, max: 90 },
+  activation_link_ttl_hours: { min: 24, max: 336 },
 } as const
 
 const BOOLEAN_SETTING_KEYS = [
@@ -39,6 +40,7 @@ const BOOLEAN_SETTING_KEYS = [
   'ai_assistant_teacher_enabled',
   'ai_assistant_student_enabled',
   'maintenance_mode_enabled',
+  'activation_email_enabled',
 ] as const
 
 const OPTIONAL_STRING_SETTING_KEYS = ['ai_base_url', 'ai_model'] as const
