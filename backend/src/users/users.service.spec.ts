@@ -483,20 +483,30 @@ describe('UsersService', () => {
           }),
           update: jest.fn().mockResolvedValue(updated),
         },
+        authSession: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
         auditLog: { create: jest.fn().mockResolvedValue({}) },
+        $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
       }
       const events = { emit: jest.fn() }
       const service = new UsersService(prisma as never, events as never)
 
       await expect(service.changeUserRole('student-1', 'teacher', institutionAdmin)).resolves.toBe(updated)
 
-      expect(prisma.user.update.mock.calls[0][0].data).toEqual({ role: 'teacher' })
+      const data = prisma.user.update.mock.calls[0][0].data
+      expect(data).toEqual({ role: 'teacher', authVersion: { increment: 1 } })
+      // Promotion never drops the identity's designations (it has none yet) and
+      // never nulls delegated capabilities that were never set.
+      expect(data).not.toHaveProperty('isItCoordinator')
+      expect(data).not.toHaveProperty('isDepartmentHead')
+      expect(data).not.toHaveProperty('isUserRegistrar')
+      expect(prisma.authSession.deleteMany).toHaveBeenCalledWith({ where: { userId: 'student-1' } })
       expect(prisma.auditLog.create.mock.calls[0][0].data).toMatchObject({
         action: 'admin.user.role_changed',
         entityType: 'user',
         entityId: 'student-1',
         metadata: { before: 'student', after: 'teacher' },
       })
+      expect(prisma.auditLog.create.mock.calls[0][0].data.metadata).not.toHaveProperty('designationsCleared')
       expect(events.emit).toHaveBeenCalledWith('auth.session-replaced', {
         userId: 'student-1',
         reason: 'role_changed',
@@ -535,11 +545,16 @@ describe('UsersService', () => {
             studentId: '2024-00002-MN-0',
             program: 'BSIT',
             yearLevel: 2,
+            isItCoordinator: false,
+            isDepartmentHead: false,
+            isUserRegistrar: false,
           }),
           update: jest.fn().mockResolvedValue(updated),
         },
         section: { count: jest.fn().mockResolvedValue(0) },
+        authSession: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
         auditLog: { create: jest.fn().mockResolvedValue({}) },
+        $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
       }
       const service = new UsersService(prisma as never, { emit: jest.fn() } as never)
 
@@ -548,7 +563,89 @@ describe('UsersService', () => {
         role: 'student',
         canResetStudentPasswords: null,
         canEmergencyUnbindDevices: null,
+        isItCoordinator: false,
+        isDepartmentHead: false,
+        isUserRegistrar: false,
+        authVersion: { increment: 1 },
       })
+      // No designations were held, so the audit row carries no cleared flag.
+      expect(prisma.auditLog.create.mock.calls[0][0].data.metadata).not.toHaveProperty('designationsCleared')
+    })
+
+    it('clears held designations on demotion and records it on the audit row (BE-04)', async () => {
+      const updated = { id: 'teacher-2', role: 'student' }
+      const prisma = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'teacher-2',
+            role: 'teacher',
+            department: 'CCIS',
+            studentId: '2024-00003-MN-0',
+            program: 'BSIT',
+            yearLevel: 2,
+            isItCoordinator: true,
+            isDepartmentHead: true,
+            isUserRegistrar: false,
+          }),
+          update: jest.fn().mockResolvedValue(updated),
+        },
+        section: { count: jest.fn().mockResolvedValue(0) },
+        authSession: { deleteMany: jest.fn().mockResolvedValue({ count: 3 }) },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+        $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
+      }
+      const events = { emit: jest.fn() }
+      const service = new UsersService(prisma as never, events as never)
+
+      await expect(service.changeUserRole('teacher-2', 'student', institutionAdmin)).resolves.toBe(updated)
+
+      const data = prisma.user.update.mock.calls[0][0].data
+      expect(data).toMatchObject({
+        isItCoordinator: false,
+        isDepartmentHead: false,
+        isUserRegistrar: false,
+        authVersion: { increment: 1 },
+      })
+      expect(prisma.auditLog.create.mock.calls[0][0].data.metadata).toEqual({
+        before: 'teacher',
+        after: 'student',
+        designationsCleared: true,
+      })
+      // The role change is a security revocation: sessions are deleted and the
+      // realtime replacement event still fires.
+      expect(prisma.authSession.deleteMany).toHaveBeenCalledWith({ where: { userId: 'teacher-2' } })
+      expect(events.emit).toHaveBeenCalledWith('auth.session-replaced', {
+        userId: 'teacher-2',
+        reason: 'role_changed',
+      })
+    })
+
+    it('leaves a student promotion identity untouched apart from the role and version', async () => {
+      const updated = { id: 'student-1', role: 'teacher' }
+      const prisma = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'student-1',
+            role: 'student',
+            department: 'CCIS',
+            email: 'student@pup.edu.ph',
+            isItCoordinator: true,
+            isDepartmentHead: true,
+            isUserRegistrar: true,
+          }),
+          update: jest.fn().mockResolvedValue(updated),
+        },
+        authSession: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+        $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
+      }
+      const service = new UsersService(prisma as never, { emit: jest.fn() } as never)
+
+      await service.changeUserRole('student-1', 'teacher', institutionAdmin)
+
+      const data = prisma.user.update.mock.calls[0][0].data
+      expect(data).toEqual({ role: 'teacher', authVersion: { increment: 1 } })
+      expect(prisma.auditLog.create.mock.calls[0][0].data.metadata).not.toHaveProperty('designationsCleared')
     })
 
     it('rejects a no-op role change', async () => {
@@ -752,7 +849,9 @@ describe('UsersService', () => {
           }),
           update: jest.fn().mockResolvedValue(updated),
         },
+        authSession: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
         auditLog: { create: jest.fn().mockResolvedValue({}) },
+        $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
       }
       const notifications = { notify: jest.fn().mockResolvedValue(undefined) }
       const service = new UsersService(prisma as never, { emit: jest.fn() } as never, notifications as never)

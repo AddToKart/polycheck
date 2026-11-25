@@ -50,8 +50,11 @@ const KEY_ROTATION_LOCK_TTL_SECONDS = 10
 // Student logins are serialized per account so two simultaneous cross-device
 // attempts cannot both clear the device gate before either session exists.
 // The lease only covers the gate plus session creation; contention waits are
-// bounded so a wedged holder can never pin a login request open.
-const STUDENT_LOGIN_LOCK_TTL_SECONDS = 15
+// bounded so a wedged holder can never pin a login request open. The TTL is
+// well above the worst-case gate + Better Auth round-trip (bcrypt cost 12 plus
+// two DB writes) so the lease cannot lapse mid-login under load and let a
+// concurrent attempt slip through the gate.
+const STUDENT_LOGIN_LOCK_TTL_SECONDS = 60
 const STUDENT_LOGIN_LOCK_MAX_ATTEMPTS = 10
 const STUDENT_LOGIN_LOCK_RETRY_BASE_MS = 200
 const STUDENT_LOGIN_LOCK_RETRY_MAX_MS = 500
@@ -176,6 +179,12 @@ export class AuthService {
       await this.deviceBinding?.assertLoginAllowed(user.id, deviceId)
 
       const result = await this.createSession(user, password, headers, deviceId)
+      // Belt-and-braces: the lease above can expire under load (or be skipped
+      // when Redis is unavailable), so two cross-device logins could both clear
+      // the gate before either session row exists. Re-assert after the session
+      // is committed and fail closed by deleting *this* login's session when
+      // another device now holds the account. Staff are exempt.
+      await this.reassertStudentSessionExclusivity(user.id, deviceId, result.token)
       if (device?.channel === 'mobile') {
         try {
           await this.deviceBinding?.registerBinding(user.id, deviceId, user.role)
@@ -436,6 +445,82 @@ export class AuthService {
     })
 
     return this.getProfile(userId)
+  }
+
+  /**
+   * Post-create exclusivity re-assert for student logins (BE-11).
+   *
+   * `assertLoginAllowed` runs before the session exists, so a race that beats
+   * the finished request can still leave two live devices. This second pass
+   * runs after the row is committed: if the account now has a *different*
+   * device holding it, the login that lost the race deletes its own session and
+   * fails closed with the same 403 the pre-check would have produced. The
+   * legitimate holder's session is never touched.
+   *
+   * A missing token id (header absent) falls back to the newest session row for
+   * this device; if that cannot be identified, the gate result stands rather
+   * than deleting an unknown row.
+   */
+  private async reassertStudentSessionExclusivity(
+    userId: string,
+    deviceId: string | null,
+    sessionToken: string | undefined,
+  ): Promise<void> {
+    if (!this.deviceBinding) return
+    // An unidentified attempt cannot prove it is the holder, so the gate's
+    // null-device rule would flag *this* login's own freshly stamped row and
+    // reject every device-less sign-in. The pre-check already covers that case.
+    if (!deviceId) return
+    try {
+      await this.deviceBinding.assertLoginAllowed(userId, deviceId)
+    } catch (error) {
+      // Only a device-integrity rejection is actionable here; a transient
+      // failure must not turn a committed login into an error.
+      if (!(error instanceof ForbiddenException)) {
+        this.logger.warn(
+          `Skipped the post-create device re-check for ${userId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
+        return
+      }
+      const deleted = await this.deleteOwnLoginSession(userId, sessionToken, deviceId)
+      this.logger.warn(
+        `Rejected a racing student login for ${userId} (device ${deviceId}): ` +
+          `another device now holds the account; session removal ${deleted ? 'succeeded' : 'could not be confirmed'}`,
+      )
+      throw error
+    }
+  }
+
+  /** Deletes the row this login just created, never another device's session. */
+  private async deleteOwnLoginSession(
+    userId: string,
+    sessionToken: string | undefined,
+    deviceId: string | null,
+  ): Promise<boolean> {
+    try {
+      if (sessionToken) {
+        const result = await this.prisma.authSession.deleteMany({ where: { userId, token: sessionToken } })
+        if (result.count > 0) return true
+      }
+      // Fallback: the newest row for this account with this device identity.
+      const newest = await this.prisma.authSession.findFirst({
+        where: { userId, ...(deviceId ? { deviceId } : {}) },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { id: true },
+      })
+      if (!newest) return false
+      await this.prisma.authSession.deleteMany({ where: { id: newest.id, userId } })
+      return true
+    } catch (error) {
+      this.logger.error(
+        `Could not delete the rejected login session for ${userId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+      return false
+    }
   }
 
   private async createSession(

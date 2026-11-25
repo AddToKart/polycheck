@@ -347,4 +347,114 @@ describe('ReportsService', () => {
     prisma.systemReport.findUnique.mockResolvedValueOnce({ userId: 'student-1', screenshotUrl: null })
     await expect(service.screenshot(studentUser, 'report-1')).rejects.toBeInstanceOf(NotFoundException)
   })
+
+  describe('department scope (BE-03)', () => {
+    const scopedAdmin = {
+      id: 'admin-2',
+      role: 'super_admin',
+      scope: 'department',
+      department: 'CCIS',
+    } as never
+    const ccisFilter = { department: { equals: 'CCIS', mode: 'insensitive' } }
+
+    it('leaves an institution super admin unscoped across list, stats, detail, and screenshot', async () => {
+      const { service, prisma, storage } = build()
+      storage.read.mockResolvedValue({ buffer: Buffer.from('png'), contentType: 'image/png' })
+      prisma.systemReport.findUnique
+        .mockResolvedValueOnce(makeRow({ user: { ...makeRow().user, department: 'CAF' } }))
+        .mockResolvedValueOnce({
+          userId: 'student-1',
+          screenshotUrl: '/uploads/report-1.png',
+          user: { department: 'CAF' },
+        })
+
+      await service.list(adminUser, {} as never)
+      expect(prisma.systemReport.findMany.mock.calls[0][0].where).toEqual({})
+
+      await service.stats(adminUser)
+      expect(prisma.systemReport.count.mock.calls[0][0].where).toEqual({})
+      expect(prisma.systemReport.groupBy.mock.calls[0][0].where).toEqual({})
+
+      await expect(service.findOne(adminUser, 'report-1')).resolves.toMatchObject({ id: 'report-1' })
+      await expect(service.screenshot(adminUser, 'report-1')).resolves.toMatchObject({ contentType: 'image/png' })
+    })
+
+    it('scopes a department super admin to their own submitters in list and every count', async () => {
+      const { service, prisma } = build()
+      prisma.systemReport.count.mockResolvedValue(0)
+      prisma.systemReport.findMany.mockResolvedValue([])
+
+      await service.list(scopedAdmin, {} as never)
+      expect(prisma.systemReport.findMany.mock.calls[0][0].where).toEqual({
+        AND: [{ user: { is: ccisFilter } }],
+      })
+      expect(prisma.systemReport.count.mock.calls[0][0].where).toEqual({
+        AND: [{ user: { is: ccisFilter } }],
+      })
+
+      await service.stats(scopedAdmin)
+      const countWheres = prisma.systemReport.count.mock.calls
+        .slice(1)
+        .map((call: Array<{ where?: unknown }>) => call[0].where)
+      expect(countWheres).toHaveLength(4)
+      for (const where of countWheres) expect(where).toEqual(expect.objectContaining({ user: { is: ccisFilter } }))
+      expect(prisma.systemReport.groupBy.mock.calls[0][0].where).toEqual({ user: { is: ccisFilter } })
+    })
+
+    it('404s a department super admin for out-of-department detail and screenshot rows', async () => {
+      const { service, prisma, storage } = build()
+      prisma.systemReport.findUnique.mockResolvedValue(makeRow({ user: { ...makeRow().user, department: 'CAF' } }))
+
+      await expect(service.findOne(scopedAdmin, 'report-1')).rejects.toBeInstanceOf(NotFoundException)
+
+      prisma.systemReport.findUnique.mockResolvedValue({
+        userId: 'student-9',
+        screenshotUrl: '/uploads/report-9.png',
+        user: { department: 'CAF' },
+      })
+      await expect(service.screenshot(scopedAdmin, 'report-9')).rejects.toBeInstanceOf(NotFoundException)
+      expect(storage.read).not.toHaveBeenCalled()
+    })
+
+    it('serves a department super admin their own department rows', async () => {
+      const { service, prisma, storage } = build()
+      storage.read.mockResolvedValue({ buffer: Buffer.from('png'), contentType: 'image/png' })
+      prisma.systemReport.findUnique
+        .mockResolvedValueOnce(makeRow({ user: { ...makeRow().user, department: 'ccis' } }))
+        .mockResolvedValueOnce({
+          userId: 'student-1',
+          screenshotUrl: '/uploads/report-1.png',
+          user: { department: 'ccis' },
+        })
+
+      await expect(service.findOne(scopedAdmin, 'report-1')).resolves.toMatchObject({ id: 'report-1' })
+      await expect(service.screenshot(scopedAdmin, 'report-1')).resolves.toMatchObject({ contentType: 'image/png' })
+    })
+
+    it('treats an IT coordinator as unrestricted and a plain teacher as forbidden', async () => {
+      const { service, prisma } = build()
+      const itCoordinator = { id: 'teacher-it', role: 'teacher', isItCoordinator: true } as never
+
+      await service.list(itCoordinator, {} as never)
+      expect(prisma.systemReport.findMany.mock.calls[0][0].where).toEqual({})
+
+      await expect(service.list(teacherUser, {} as never)).rejects.toThrow(ForbiddenException)
+    })
+
+    it('sees nothing when a department-scoped admin has no department', async () => {
+      const { service, prisma } = build()
+      const departmentlessAdmin = { id: 'admin-3', role: 'super_admin', scope: 'department' } as never
+      prisma.systemReport.count.mockResolvedValue(0)
+      prisma.systemReport.findMany.mockResolvedValue([])
+
+      await service.list(departmentlessAdmin, {} as never)
+      // An empty id set is the fail-closed equivalent of "nothing in scope".
+      expect(prisma.systemReport.findMany.mock.calls[0][0].where).toEqual({
+        AND: [{ user: { is: { id: { in: [] } } } }],
+      })
+
+      prisma.systemReport.findUnique.mockResolvedValue(makeRow())
+      await expect(service.findOne(departmentlessAdmin, 'report-1')).rejects.toBeInstanceOf(NotFoundException)
+    })
+  })
 })

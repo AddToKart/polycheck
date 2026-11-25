@@ -14,6 +14,20 @@ function executeRequest(): StudentImportRequestDto {
   }
 }
 
+function activeAccount(overrides: Record<string, unknown> = {}) {
+  return {
+    id: admin.id,
+    role: 'super_admin',
+    scope: 'institution',
+    department: null,
+    isActive: true,
+    isItCoordinator: false,
+    isDepartmentHead: false,
+    isUserRegistrar: false,
+    ...overrides,
+  }
+}
+
 describe('StudentImportQueueService', () => {
   const importer = { importStudents: jest.fn(), assertChecksum: jest.fn() }
   const redis = {
@@ -22,11 +36,16 @@ describe('StudentImportQueueService', () => {
     delete: jest.fn().mockResolvedValue(true),
   }
   const config = { get: jest.fn().mockReturnValue(undefined) }
+  const prisma = {
+    user: { findUnique: jest.fn() },
+    auditLog: { create: jest.fn().mockResolvedValue({}) },
+  }
   let service: StudentImportQueueService
 
   beforeEach(async () => {
     jest.clearAllMocks()
-    service = new StudentImportQueueService(importer as never, redis as never, config as never)
+    prisma.user.findUnique.mockResolvedValue(activeAccount())
+    service = new StudentImportQueueService(importer as never, prisma as never, redis as never, config as never)
     await service.onModuleInit()
   })
 
@@ -115,6 +134,113 @@ describe('StudentImportQueueService', () => {
         ...completedResult,
         credentials: [{ rowNumber: 2, studentId: '2024-00001-MN-0', tempPassword: 'secret' }],
       },
+    })
+  })
+
+  describe('queued job privilege re-check (BE-05)', () => {
+    function job(overrides: Record<string, unknown> = {}) {
+      return {
+        id: jobId,
+        data: {
+          user: { id: admin.id, role: 'super_admin', scope: 'institution', department: null },
+          request: executeRequest(),
+          rowChecksum: 'b'.repeat(16),
+          ...overrides,
+        },
+        updateProgress: jest.fn().mockResolvedValue(undefined),
+        getState: jest.fn(),
+      }
+    }
+
+    const runJob = (target: unknown) =>
+      (service as unknown as { processJob: (job: unknown) => Promise<unknown> }).processJob(target)
+
+    it('executes an import with the freshly loaded actor snapshot', async () => {
+      importer.importStudents.mockResolvedValue({ mode: 'execute', summary: { new: 1 } })
+      prisma.user.findUnique.mockResolvedValue(activeAccount())
+
+      await runJob(job())
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: admin.id },
+        select: expect.objectContaining({ isActive: true, role: true, scope: true, department: true }),
+      })
+      expect(importer.importStudents).toHaveBeenCalledWith(
+        executeRequest(),
+        expect.objectContaining({
+          id: admin.id,
+          role: 'super_admin',
+          scope: 'institution',
+          isItCoordinator: false,
+          isDepartmentHead: false,
+          isUserRegistrar: false,
+        }),
+      )
+    })
+
+    it('fails the job when the actor was disabled while it sat in the queue', async () => {
+      prisma.user.findUnique.mockResolvedValue(activeAccount({ isActive: false }))
+
+      await expect(runJob(job())).rejects.toMatchObject({
+        message: 'The account that queued this import is no longer active',
+      })
+      expect(importer.importStudents).not.toHaveBeenCalled()
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          actorId: admin.id,
+          action: 'admin.user.import_refused',
+          entityType: 'import_batch',
+          metadata: { reason: 'account_disabled' },
+        }),
+      })
+    })
+
+    it('fails the job when the actor is demoted out of the import privilege', async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        activeAccount({ role: 'student', scope: null, isItCoordinator: false, isUserRegistrar: false }),
+      )
+
+      await expect(runJob(job())).rejects.toMatchObject({
+        message: 'The account that queued this import is no longer allowed to import students',
+      })
+      expect(importer.importStudents).not.toHaveBeenCalled()
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ metadata: { reason: 'privileges_revoked' } }),
+      })
+    })
+
+    it('fails the job when the actor lost the registrar designation', async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        activeAccount({ role: 'teacher', scope: null, department: 'CCIS', isUserRegistrar: false }),
+      )
+
+      await expect(runJob(job())).rejects.toMatchObject({
+        message: 'The account that queued this import is no longer allowed to import students',
+      })
+      expect(importer.importStudents).not.toHaveBeenCalled()
+    })
+
+    it('accepts a registrar who still holds the designation and department', async () => {
+      importer.importStudents.mockResolvedValue({ mode: 'execute', summary: {} })
+      prisma.user.findUnique.mockResolvedValue(
+        activeAccount({ role: 'teacher', scope: null, department: 'CCIS', isUserRegistrar: true }),
+      )
+
+      await expect(runJob(job())).resolves.toMatchObject({ mode: 'execute' })
+      expect(importer.importStudents).toHaveBeenCalledWith(
+        executeRequest(),
+        expect.objectContaining({ role: 'teacher', department: 'CCIS', isUserRegistrar: true }),
+      )
+    })
+
+    it('fails the job when the actor row disappeared and still never crashes on audit failure', async () => {
+      prisma.user.findUnique.mockResolvedValue(null)
+      prisma.auditLog.create.mockRejectedValue(new Error('audit down'))
+
+      await expect(runJob(job())).rejects.toMatchObject({
+        message: 'The account that queued this import is no longer active',
+      })
+      expect(importer.importStudents).not.toHaveBeenCalled()
     })
   })
 })

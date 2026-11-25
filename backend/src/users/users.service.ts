@@ -584,11 +584,14 @@ export class UsersService {
     }
     const result = await this.deviceBinding.unregisterStudentDevice(user.id, deviceId, ipAddress)
     const profile = await this.loadGovernanceProfile(user.id)
+    const armed = result.cooldownHours > 0
     return {
       user: profile,
       cooldownHours: result.cooldownHours,
       cooldownUntil: result.cooldownUntil.toISOString(),
-      message: `Device unregistered. Mobile logins are locked for ${result.cooldownHours} hour(s); your instructor can release you sooner.`,
+      message: armed
+        ? `Device unregistered. Mobile logins are locked for ${result.cooldownHours} hour(s); your instructor can release you sooner.`
+        : 'Device unregistered. Sign-in is not locked because this request did not identify its device.',
     }
   }
 
@@ -885,6 +888,9 @@ export class UsersService {
         studentId: true,
         program: true,
         yearLevel: true,
+        isItCoordinator: true,
+        isDepartmentHead: true,
+        isUserRegistrar: true,
       },
     })
     if (!target) throw new NotFoundException('User not found')
@@ -925,16 +931,41 @@ export class UsersService {
       }
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id },
-      data: {
-        role,
-        // Delegated teacher capabilities do not carry over to a student account.
-        ...(role === 'student' ? { canResetStudentPasswords: null, canEmergencyUnbindDevices: null } : {}),
-      },
-      select: SAFE_USER_SELECT,
+    // Demoting to student drops every teacher-only privilege. Designations are
+    // additive teacher flags; the DB does not enforce role alignment, so a
+    // demoted account that kept `isItCoordinator` would silently pass
+    // `@RequireDesignation` routes on its next login.
+    const designationsCleared =
+      role === 'student' && (target.isItCoordinator || target.isDepartmentHead || target.isUserRegistrar)
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id },
+        data: {
+          role,
+          // Delegated teacher capabilities do not carry over to a student account.
+          ...(role === 'student'
+            ? {
+                canResetStudentPasswords: null,
+                canEmergencyUnbindDevices: null,
+                isItCoordinator: false,
+                isDepartmentHead: false,
+                isUserRegistrar: false,
+              }
+            : {}),
+          // An account-shape change is a security revocation: every existing
+          // session must die (same policy as setStatus/resetPassword).
+          authVersion: { increment: 1 },
+        },
+        select: SAFE_USER_SELECT,
+      }),
+      this.prisma.authSession.deleteMany({ where: { userId: id } }),
+    ])
+    await this.recordAdminAudit(user, 'admin.user.role_changed', id, {
+      before: target.role,
+      after: role,
+      ...(designationsCleared ? { designationsCleared: true } : {}),
     })
-    await this.recordAdminAudit(user, 'admin.user.role_changed', id, { before: target.role, after: role })
     this.events?.emit('auth.session-replaced', { userId: id, reason: 'role_changed' })
     await this.notifications?.notify(id, {
       type: 'role_changed',

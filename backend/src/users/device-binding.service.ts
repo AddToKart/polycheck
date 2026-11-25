@@ -185,51 +185,72 @@ export class DeviceBindingService {
   }
 
   /**
-   * Self-service unregister. Clears the binding, revokes every session
-   * (including the calling device), and arms the cooldown. The unregistering
-   * device is exempt so it can immediately register again. A repeated call
-   * extends — never shortens — an existing cooldown.
+   * Self-service unregister. Clears the binding and revokes every session
+   * (including the calling device). The unregistering device is exempt so it
+   * can immediately register again. A repeated call extends — never shortens —
+   * an existing cooldown.
+   *
+   * A cooldown is only armed when the caller identifies its device, matching
+   * `armLogoutCooldown`: a device-agnostic cooldown has no exempt device and
+   * would lock every future login out of the account.
    */
   async unregisterStudentDevice(
     userId: string,
     deviceId: string | undefined,
     ipAddress?: string,
   ): Promise<{ cooldownHours: number; cooldownUntil: Date }> {
+    const exemptDeviceId = normalizeDeviceId(deviceId)
     const policies = await this.settings.getTeacherDelegationPolicies()
     const cooldown = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({
         where: { id: userId },
-        select: { id: true, role: true, deviceCooldownUntil: true },
+        select: { id: true, role: true, deviceCooldownUntil: true, cooldownDeviceId: true },
       })
       if (!user) throw new NotFoundException('User not found')
       if (user.role !== 'student') {
         throw new BadRequestException('Only student accounts bind mobile devices')
       }
       const proposed = new Date(Date.now() + policies.deviceCooldownHours * COOLDOWN_HOUR_MS)
-      const cooldownUntil =
-        user.deviceCooldownUntil && user.deviceCooldownUntil.getTime() > proposed.getTime()
-          ? user.deviceCooldownUntil
-          : proposed
+      const existing = user.deviceCooldownUntil
+      const shouldArm = exemptDeviceId !== null
+      const cooldownUntil = existing && (!shouldArm || existing.getTime() > proposed.getTime()) ? existing : proposed
       await tx.user.update({
         where: { id: userId },
         data: {
           boundDeviceId: null,
           deviceBoundAt: null,
-          deviceCooldownUntil: cooldownUntil,
-          cooldownDeviceId: normalizeDeviceId(deviceId),
+          ...(shouldArm
+            ? { deviceCooldownUntil: cooldownUntil, cooldownDeviceId: exemptDeviceId }
+            : // No device identity: leave any existing cooldown untouched rather
+              // than replacing it with an unexempt one.
+              {}),
         },
       })
       await tx.authSession.deleteMany({ where: { userId } })
-      return { cooldownUntil, cooldownHours: policies.deviceCooldownHours }
+      return {
+        cooldownUntil: shouldArm ? cooldownUntil : existing,
+        cooldownHours: policies.deviceCooldownHours,
+        armed: shouldArm,
+      }
     })
 
     await this.recordAudit(userId, 'student', 'student.device_unregister', userId, {
-      deviceId: deviceId ?? null,
+      deviceId: exemptDeviceId,
+      cooldownArmed: cooldown.armed,
       cooldownHours: cooldown.cooldownHours,
-      cooldownUntil: cooldown.cooldownUntil.toISOString(),
+      cooldownUntil: cooldown.cooldownUntil ? cooldown.cooldownUntil.toISOString() : null,
       ipAddress: ipAddress ?? null,
     })
-    return cooldown
+    return {
+      // An unarmed unregister reports the actual state (0 hours, no lock) so
+      // the client copy never claims a lock that was not applied.
+      cooldownHours: cooldown.armed
+        ? cooldown.cooldownHours
+        : cooldown.cooldownUntil
+          ? Math.max(0, Math.ceil((cooldown.cooldownUntil.getTime() - Date.now()) / COOLDOWN_HOUR_MS))
+          : 0,
+      cooldownUntil: cooldown.cooldownUntil ?? new Date(),
+    }
   }
 
   /** Best-effort audit write; governance mutations must not 500 on audit faults. */

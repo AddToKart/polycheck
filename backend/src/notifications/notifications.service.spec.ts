@@ -29,9 +29,12 @@ function makeService(options: { fetchImpl?: jest.Mock; accessToken?: string } = 
     },
     pushSubscription: {
       findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
       upsert: jest.fn().mockResolvedValue({}),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
+    // Used to decide whether a token's current owner is still signed in.
+    authSession: { count: jest.fn().mockResolvedValue(0) },
   }
   const redis = {
     consumeRateLimit: jest.fn().mockResolvedValue(true),
@@ -119,13 +122,67 @@ describe('NotificationsService', () => {
     })
   })
 
-  it('upserts a push token by token and reassigns ownership when it moved', async () => {
+  it('registers an unowned push token for the caller', async () => {
     const { service, prisma } = makeService()
+    prisma.pushSubscription.findUnique = jest.fn().mockResolvedValue(null)
 
     await expect(
       service.registerPushToken({ id: 'user-2' }, { token: ' ExponentPushToken[abc] ', platform: 'expo' }),
     ).resolves.toBe(true)
 
+    expect(prisma.pushSubscription.findUnique).toHaveBeenCalledWith({
+      where: { token: 'ExponentPushToken[abc]' },
+      select: { userId: true },
+    })
+    expect(prisma.pushSubscription.upsert).toHaveBeenCalledWith({
+      where: { token: 'ExponentPushToken[abc]' },
+      update: { userId: 'user-2', platform: 'expo', lastSeenAt: expect.any(Date) },
+      create: { userId: 'user-2', platform: 'expo', token: 'ExponentPushToken[abc]' },
+    })
+    // A token with no owner row never needs a session probe.
+    expect(prisma.authSession.count).not.toHaveBeenCalled()
+  })
+
+  it('lets the owning account re-register its token', async () => {
+    const { service, prisma } = makeService()
+    prisma.pushSubscription.findUnique = jest.fn().mockResolvedValue({ userId: 'user-2' })
+
+    await expect(
+      service.registerPushToken({ id: 'user-2' }, { token: 'ExponentPushToken[abc]', platform: 'expo' }),
+    ).resolves.toBe(true)
+    expect(prisma.pushSubscription.upsert).toHaveBeenCalledWith({
+      where: { token: 'ExponentPushToken[abc]' },
+      update: { userId: 'user-2', platform: 'expo', lastSeenAt: expect.any(Date) },
+      create: { userId: 'user-2', platform: 'expo', token: 'ExponentPushToken[abc]' },
+    })
+    // The owner always passes, active or not.
+    expect(prisma.authSession.count).not.toHaveBeenCalled()
+  })
+
+  it('rejects a token already owned by another active account with 409 push_token_in_use (BE-08)', async () => {
+    const { service, prisma } = makeService()
+    prisma.pushSubscription.findUnique = jest.fn().mockResolvedValue({ userId: 'user-1' })
+    prisma.authSession.count.mockResolvedValue(1)
+
+    await expect(
+      service.registerPushToken({ id: 'user-2' }, { token: 'ExponentPushToken[abc]', platform: 'expo' }),
+    ).rejects.toMatchObject({ status: 409, response: expect.objectContaining({ code: 'push_token_in_use' }) })
+    // Ownership is never reassigned while the original owner is still signed in.
+    expect(prisma.pushSubscription.upsert).not.toHaveBeenCalled()
+    expect(prisma.authSession.count).toHaveBeenCalledWith({
+      where: { userId: 'user-1', expiresAt: { gt: expect.any(Date) } },
+    })
+  })
+
+  it('claims a token left behind by a signed-out owner so a reinstall can register', async () => {
+    const { service, prisma } = makeService()
+    prisma.pushSubscription.findUnique = jest.fn().mockResolvedValue({ userId: 'user-1' })
+    // No live session for the previous owner: the row is stale, not a conflict.
+    prisma.authSession.count.mockResolvedValue(0)
+
+    await expect(
+      service.registerPushToken({ id: 'user-2' }, { token: 'ExponentPushToken[abc]', platform: 'expo' }),
+    ).resolves.toBe(true)
     expect(prisma.pushSubscription.upsert).toHaveBeenCalledWith({
       where: { token: 'ExponentPushToken[abc]' },
       update: { userId: 'user-2', platform: 'expo', lastSeenAt: expect.any(Date) },

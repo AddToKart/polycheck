@@ -25,11 +25,7 @@ const VALID_PASSWORD = 'correct-horse-battery-staple'
 const VALID_HASH = hashSync(VALID_PASSWORD, { cost: 10 })
 
 /** Lets real macrotasks (bcrypt chunks) run while fake timers are installed. */
-async function waitForCalls(
-  mock: { mock: { calls: unknown[] } },
-  count: number,
-  timeoutMs = 5_000,
-) {
+async function waitForCalls(mock: { mock: { calls: unknown[] } }, count: number, timeoutMs = 5_000) {
   // Wall-clock bound, not iteration bound: native bcrypt (`@node-rs/bcrypt`)
   // resolves from the libuv threadpool after ~50-100 ms of real work, whereas
   // the previous pure-JS implementation resolved on the next microtask. A
@@ -80,7 +76,7 @@ describe('AuthService', () => {
     user: { findUnique: jest.Mock; update: jest.Mock }
     session: { findMany: jest.Mock }
     authAccount: { upsert: jest.Mock }
-    authSession: { deleteMany: jest.Mock; updateMany: jest.Mock }
+    authSession: { deleteMany: jest.Mock; updateMany: jest.Mock; findFirst: jest.Mock }
     $transaction: jest.Mock
   }
   let redis: {
@@ -114,6 +110,7 @@ describe('AuthService', () => {
       authSession: {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findFirst: jest.fn().mockResolvedValue({ id: 'session-new' }),
       },
       $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => callback(prisma)),
     }
@@ -471,7 +468,7 @@ describe('AuthService', () => {
         deviceId: 'web-abc',
       })
 
-      expect(redis.acquireLock).toHaveBeenCalledWith('student-login:user-1', 15)
+      expect(redis.acquireLock).toHaveBeenCalledWith('student-login:user-1', 60)
       expect(redis.acquireLock.mock.invocationCallOrder[0]).toBeLessThan(
         deviceBinding.assertLoginAllowed.mock.invocationCallOrder[0],
       )
@@ -518,7 +515,9 @@ describe('AuthService', () => {
 
         await expect(pending).resolves.toMatchObject({ token: 'signed-bearer-token' })
         expect(redis.acquireLock).toHaveBeenCalledTimes(3)
-        expect(deviceBinding.assertLoginAllowed).toHaveBeenCalledTimes(1)
+        // Two gate evaluations: the pre-lease check and the post-create
+        // re-assert that closes the BE-11 cross-device race.
+        expect(deviceBinding.assertLoginAllowed).toHaveBeenCalledTimes(2)
         expect(betterAuth.signInWithDevice).toHaveBeenCalledTimes(1)
         expect(redis.releaseLock).toHaveBeenCalledWith('student-login:user-1', 'lock-token')
       } finally {
@@ -576,6 +575,135 @@ describe('AuthService', () => {
       } finally {
         warn.mockRestore()
       }
+    })
+
+    describe('post-create re-assert (BE-11)', () => {
+      it('rejects a racing cross-device login after its session is created and deletes only that row', async () => {
+        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+        try {
+          prisma.user.findUnique.mockResolvedValue(buildUser())
+          // The token-addressed delete succeeds, so no fallback lookup runs.
+          prisma.authSession.deleteMany.mockResolvedValue({ count: 1 })
+          // The pre-check passes (no session yet), the loser's create succeeds,
+          // then the winner's row is visible to the re-assert.
+          deviceBinding.assertLoginAllowed.mockResolvedValueOnce(undefined).mockRejectedValueOnce(
+            new ForbiddenException({
+              statusCode: 403,
+              error: 'Forbidden',
+              code: 'active_session_elsewhere',
+              activeDeviceKind: 'mobile',
+              activeSessionLastActiveAt: '2026-11-10T09:15:00.000Z',
+              message: 'Active session elsewhere',
+            }),
+          )
+
+          await expect(
+            service.loginStudent('S-001', VALID_PASSWORD, '127.0.0.1', new Headers(), {
+              channel: 'web',
+              deviceId: 'web-loser',
+            }),
+          ).rejects.toMatchObject({
+            response: expect.objectContaining({
+              code: 'active_session_elsewhere',
+              activeDeviceKind: 'mobile',
+            }),
+          })
+
+          // Only this login's session row is removed — the winner's survives.
+          expect(prisma.authSession.deleteMany).toHaveBeenCalledWith({
+            where: { userId: 'user-1', token: 'signed-bearer-token' },
+          })
+          expect(prisma.authSession.deleteMany).toHaveBeenCalledTimes(1)
+          expect(prisma.authSession.findFirst).not.toHaveBeenCalled()
+          expect(warn).toHaveBeenCalledWith(expect.stringContaining('racing student login'))
+          // The losing device never binds, and the lock is always released.
+          expect(deviceBinding.registerBinding).not.toHaveBeenCalled()
+          expect(redis.releaseLock).toHaveBeenCalledWith('student-login:user-1', 'lock-token')
+        } finally {
+          warn.mockRestore()
+        }
+      })
+
+      it('falls back to the newest same-device row when no bearer token was issued', async () => {
+        prisma.user.findUnique.mockResolvedValue(buildUser())
+        betterAuth.signInWithDevice.mockResolvedValue({ headers: new Headers() })
+        deviceBinding.assertLoginAllowed.mockResolvedValueOnce(undefined).mockRejectedValueOnce(
+          new ForbiddenException({
+            statusCode: 403,
+            error: 'Forbidden',
+            code: 'device_cooldown_active',
+            message: 'Cooldown',
+          }),
+        )
+
+        await expect(
+          service.loginStudent('S-001', VALID_PASSWORD, '127.0.0.1', new Headers(), {
+            channel: 'web',
+            deviceId: 'web-abc',
+          }),
+        ).rejects.toMatchObject({ response: expect.objectContaining({ code: 'device_cooldown_active' }) })
+
+        expect(prisma.authSession.findFirst).toHaveBeenCalledWith({
+          where: { userId: 'user-1', deviceId: 'web-abc' },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          select: { id: true },
+        })
+        expect(prisma.authSession.deleteMany).toHaveBeenCalledWith({
+          where: { id: 'session-new', userId: 'user-1' },
+        })
+      })
+
+      it('does not fail a legitimate login when the re-check hits a transient error', async () => {
+        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+        try {
+          prisma.user.findUnique.mockResolvedValue(buildUser())
+          deviceBinding.assertLoginAllowed
+            .mockResolvedValueOnce(undefined)
+            .mockRejectedValueOnce(new ServiceUnavailableException('Redis is unavailable'))
+
+          await expect(
+            service.loginStudent('S-001', VALID_PASSWORD, '127.0.0.1', new Headers(), {
+              channel: 'web',
+              deviceId: 'web-abc',
+            }),
+          ).resolves.toMatchObject({ token: 'signed-bearer-token' })
+
+          expect(prisma.authSession.deleteMany).not.toHaveBeenCalled()
+          expect(warn).toHaveBeenCalledWith(expect.stringContaining('Skipped the post-create device re-check'))
+        } finally {
+          warn.mockRestore()
+        }
+      })
+
+      it('skips the re-assert for device-less logins so the null-device rule cannot reject its own row', async () => {
+        prisma.user.findUnique.mockResolvedValue(buildUser())
+
+        await expect(service.loginStudent('S-001', VALID_PASSWORD)).resolves.toMatchObject({
+          token: 'signed-bearer-token',
+        })
+
+        expect(deviceBinding.assertLoginAllowed).toHaveBeenCalledTimes(1)
+        expect(deviceBinding.assertLoginAllowed).toHaveBeenCalledWith('user-1', null)
+      })
+
+      it('never applies the re-assert to staff logins', async () => {
+        prisma.user.findUnique.mockResolvedValue(
+          buildUser({
+            id: 'teacher-1',
+            studentId: null,
+            email: 'teacher@pup.edu',
+            role: 'teacher',
+            department: 'CS',
+          }),
+        )
+
+        await service.loginFaculty('teacher@pup.edu', VALID_PASSWORD, '127.0.0.1', new Headers(), {
+          channel: 'mobile',
+        })
+
+        expect(deviceBinding.assertLoginAllowed).not.toHaveBeenCalled()
+        expect(prisma.authSession.deleteMany).not.toHaveBeenCalled()
+      })
     })
 
     it('adds effective delegated permissions for teacher logins and profiles', async () => {

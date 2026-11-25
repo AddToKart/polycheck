@@ -445,7 +445,11 @@ export class StudentImportService {
     if (row.email !== undefined && (existing.email ?? undefined) !== row.email) changed.push('email')
     if (row.program !== undefined && (existing.program ?? undefined) !== row.program) changed.push('program')
     if (row.yearLevel !== undefined && existing.yearLevel !== row.yearLevel) changed.push('yearLevel')
-    if (row.department !== undefined && (existing.department ?? undefined) !== row.department) {
+    // `row.department` is always a string (the scope or 'Unspecified' default),
+    // so only an explicitly submitted department may update an existing
+    // account. Without this guard a re-import lacking the column would rewrite
+    // every matched student's department to 'Unspecified'.
+    if (row.submittedDepartment !== undefined && (existing.department ?? undefined) !== row.department) {
       changed.push('department')
     }
     return changed

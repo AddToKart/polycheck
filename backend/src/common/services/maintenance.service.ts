@@ -12,9 +12,11 @@ import { GEOLOCATION_RETENTION_DAYS_KEY, type PrivacyShredRecord } from '../cons
 import { ledgerDateOf } from '@polycheck/shared/ledger'
 
 const EXPIRE_PERMISSIONS_LOCK_TTL_SECONDS = 2 * 60 * 60
-const PRUNE_SCAN_ATTEMPTS_LOCK_TTL_SECONDS = 25 * 60 * 60
-const LEDGER_ANCHOR_LOCK_TTL_SECONDS = 25 * 60 * 60
-const SHRED_TELEMETRY_LOCK_TTL_SECONDS = 25 * 60 * 60
+// Daily jobs finish in minutes. A 25 h TTL meant a single crashed replica left
+// the lock held past the next day's schedule, silently skipping a full run;
+// 2 h is comfortably above the worst-case duration and strictly increases the
+// chance the next scheduled run happens.
+const DAILY_JOB_LOCK_TTL_SECONDS = 2 * 60 * 60
 const SCAN_ATTEMPT_PRUNE_BATCH_SIZE = 1_000
 const AUDIT_LOG_PRUNE_BATCH_SIZE = 1_000
 const SHRED_TELEMETRY_BATCH_SIZE = 1_000
@@ -52,7 +54,7 @@ export class MaintenanceService {
   async pruneScanAttempts() {
     await this.runLockedJob(
       'maintenance:prune-scan-attempts',
-      PRUNE_SCAN_ATTEMPTS_LOCK_TTL_SECONDS,
+      DAILY_JOB_LOCK_TTL_SECONDS,
       async () => {
         const retentionDays = this.config?.get<number>('DENIED_SCAN_RETENTION_DAYS') ?? 90
         const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)
@@ -89,7 +91,7 @@ export class MaintenanceService {
   async pruneAuditLogs() {
     await this.runLockedJob(
       'maintenance:prune-audit-logs',
-      PRUNE_SCAN_ATTEMPTS_LOCK_TTL_SECONDS,
+      DAILY_JOB_LOCK_TTL_SECONDS,
       async () => {
         const retentionDays = this.config?.get<number>('AUDIT_LOG_RETENTION_DAYS') ?? 2555
         const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)
@@ -116,7 +118,7 @@ export class MaintenanceService {
   async pruneNotifications() {
     await this.runLockedJob(
       'maintenance:prune-notifications',
-      PRUNE_SCAN_ATTEMPTS_LOCK_TTL_SECONDS,
+      DAILY_JOB_LOCK_TTL_SECONDS,
       async () => {
         const pruned = (await this.notifications?.pruneExpired(30)) ?? 0
         if (pruned > 0) this.logger.log(`Pruned ${pruned} notifications older than 30 days`)
@@ -129,7 +131,7 @@ export class MaintenanceService {
   async anchorAttendanceLedger() {
     await this.runLockedJob(
       'maintenance:anchor-attendance-ledger',
-      LEDGER_ANCHOR_LOCK_TTL_SECONDS,
+      DAILY_JOB_LOCK_TTL_SECONDS,
       async () => {
         // 2AM UTC always looks back at the completed UTC day, matching the
         // ledgerDateOf bucketing used by verification.
@@ -184,7 +186,7 @@ export class MaintenanceService {
   async shredEphemeralTelemetry() {
     await this.runLockedJob(
       'maintenance:shred-ephemeral-telemetry',
-      SHRED_TELEMETRY_LOCK_TTL_SECONDS,
+      DAILY_JOB_LOCK_TTL_SECONDS,
       async () => {
         const retentionDays = await this.shredRetentionDays()
         const cutoff = new Date(Date.now() - retentionDays * MS_PER_DAY)
@@ -290,7 +292,13 @@ export class MaintenanceService {
     let ownershipToken: string | null = null
     try {
       ownershipToken = await this.redis.acquireLock(lockKey, ttlSeconds)
-      if (!ownershipToken) return
+      if (!ownershipToken) {
+        // A silently skipped run is indistinguishable from a healthy one in
+        // metrics; log it so a stuck/foreign lock is observable. `lock.skip` is
+        // the stable marker log-based alerting greps for.
+        this.logger.warn(`Skipped ${description} (lock.skip): lock ${lockKey} is held by another replica`)
+        return
+      }
       await job()
     } catch (error) {
       this.logger.error(`Failed to ${description}: ${error instanceof Error ? error.message : 'unknown'}`)

@@ -49,7 +49,27 @@ const OPTIONAL_TEXT_SETTING_KEYS = ['maintenance_message'] as const
 /** ISO-8601 datetime settings stored as strings; an empty value clears them. */
 const OPTIONAL_DATETIME_SETTING_KEYS = ['maintenance_until'] as const
 
+/** True for actors allowed to read the administrative settings surface. */
+function canReadAdministrativeSettings(actor: { role: string; isItCoordinator?: boolean }): boolean {
+  return actor.role === 'super_admin' || (actor.role === 'teacher' && actor.isItCoordinator === true)
+}
+
 export const AI_API_KEY_SETTING = 'ai_api_key'
+
+/**
+ * Keys a plain teacher legitimately needs. `GET /settings` is reachable by
+ * every teacher because the session composer reads the classroom defaults
+ * (`frontend/.../faculty/sessions/create/page.tsx`,
+ * `polycheck_mobile/.../session_create_screen.dart`). Everything else —
+ * AI configuration, the maintenance trio, governance/availability toggles,
+ * retention policy, and the institution name — is administrative and is
+ * redacted for non-IT/non-super-admin actors.
+ */
+export const TEACHER_VISIBLE_SETTING_KEYS = [
+  'default_geofence_radius_meters',
+  'default_qr_validity_minutes',
+  'default_grace_period_minutes',
+] as const
 
 export const INSTITUTION_SETTING_KEYS = [
   'institution_name',
@@ -90,9 +110,23 @@ export class SettingsService {
     @Optional() private readonly redis?: RedisService,
   ) {}
 
-  list() {
+  /**
+   * Institution settings for an authenticated actor.
+   *
+   * Administrative keys are only returned to actors that may change them
+   * (institution super admins and IT coordinators). Plain teachers get an
+   * **allowlist** (the classroom defaults their session composer reads) and
+   * nothing else — a default-deny allowlist so a future setting can never leak
+   * by being forgotten here. The AI API key is excluded for everyone; its value
+   * is never returned.
+   *
+   * `undefined` preserves the pre-existing (unrestricted) behavior for callers
+   * that are not request-scoped, such as internal tooling and unit tests.
+   */
+  list(actor?: { role: string; isItCoordinator?: boolean }) {
+    const restricted = actor !== undefined && !canReadAdministrativeSettings(actor)
     return this.prisma.institutionSetting.findMany({
-      where: { key: { not: AI_API_KEY_SETTING } },
+      where: restricted ? { key: { in: [...TEACHER_VISIBLE_SETTING_KEYS] } } : { key: { not: AI_API_KEY_SETTING } },
       orderBy: { key: 'asc' },
     })
   }

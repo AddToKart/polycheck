@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common'
 import { MaintenanceService } from './maintenance.service'
 
 describe('MaintenanceService', () => {
@@ -113,17 +114,42 @@ describe('MaintenanceService', () => {
   })
 
   it('does no maintenance work when another replica owns the job lock', async () => {
-    const prisma = { scanAttempt: { findMany: jest.fn(), deleteMany: jest.fn() } }
-    const permissions = { expireStale: jest.fn() }
-    const redis = { acquireLock: jest.fn().mockResolvedValue(null), releaseLock: jest.fn() }
-    const service = new MaintenanceService(prisma as never, permissions as never, redis as never)
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+    try {
+      const prisma = { scanAttempt: { findMany: jest.fn(), deleteMany: jest.fn() } }
+      const permissions = { expireStale: jest.fn() }
+      const redis = { acquireLock: jest.fn().mockResolvedValue(null), releaseLock: jest.fn() }
+      const service = new MaintenanceService(prisma as never, permissions as never, redis as never)
 
-    await service.expireStalePermissions()
+      await service.expireStalePermissions()
+      await service.pruneScanAttempts()
+
+      expect(permissions.expireStale).not.toHaveBeenCalled()
+      expect(prisma.scanAttempt.deleteMany).not.toHaveBeenCalled()
+      expect(redis.releaseLock).not.toHaveBeenCalled()
+      // A skipped run must be observable, naming the contended lock.
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('lock maintenance:expire-stale-permissions'))
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('lock maintenance:prune-scan-attempts'))
+      // The stable marker log-based alerting greps for (BE-10).
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('(lock.skip)'))
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('uses a 2h lease for the daily jobs so a crashed replica cannot skip tomorrow', async () => {
+    const prisma = { scanAttempt: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() } }
+    const redis = { acquireLock: jest.fn().mockResolvedValue('owner-token'), releaseLock: jest.fn() }
+    const service = new MaintenanceService(prisma as never, { expireStale: jest.fn() } as never, redis as never)
+
     await service.pruneScanAttempts()
 
-    expect(permissions.expireStale).not.toHaveBeenCalled()
-    expect(prisma.scanAttempt.deleteMany).not.toHaveBeenCalled()
-    expect(redis.releaseLock).not.toHaveBeenCalled()
+    expect(redis.acquireLock).toHaveBeenCalledWith('maintenance:prune-scan-attempts', 7_200)
+    // An expired lease can be re-acquired: the second run is not skipped.
+    redis.acquireLock.mockResolvedValue('new-owner')
+    await service.pruneScanAttempts()
+    expect(prisma.scanAttempt.findMany).toHaveBeenCalledTimes(2)
+    expect(redis.acquireLock).toHaveBeenNthCalledWith(2, 'maintenance:prune-scan-attempts', 7_200)
   })
 
   describe('attendance ledger anchoring (F9)', () => {

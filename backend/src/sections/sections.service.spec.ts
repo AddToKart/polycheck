@@ -437,5 +437,121 @@ describe('SectionsService', () => {
         where: { sectionId: 'section-1', studentId: 'student-1' },
       })
     })
+
+    it('re-reads the tombstone inside the locked transaction (BE-02 TOCTOU)', async () => {
+      // The caller's pre-check passed, then the instructor's removal commits
+      // while this request waits for the advisory locks. Only the in-transaction
+      // re-read can observe that, so it must run after both locks and before
+      // the enrollment insert.
+      const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
+        enrollment: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'enrollment-race' }),
+        },
+        enrollmentTombstone: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'tombstone-race' }),
+          deleteMany: jest.fn(),
+        },
+        section: { update: jest.fn().mockResolvedValue({}) },
+      }
+      const prisma = {
+        section: { findUnique: jest.fn().mockResolvedValue({ ...section, enrollmentCodeExpiry: null }) },
+        // Outer fast-path sees no tombstone; the transactional read does.
+        enrollmentTombstone: { findFirst: jest.fn().mockResolvedValue(null) },
+        $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
+      }
+      const service = new SectionsService(prisma as never, settings as never)
+
+      const response = await blockedResponse(service.enrollByCode('student-1', 'ABC123'))
+
+      expect(response).toMatchObject({ code: 'student_blocked_from_section' })
+      expect(tx.enrollmentTombstone.findFirst).toHaveBeenCalledWith({
+        where: { sectionId: 'section-1', studentId: 'student-1' },
+        select: { id: true },
+      })
+      // Both advisory locks are taken before the authoritative re-read.
+      expect(tx.$executeRaw).toHaveBeenCalledTimes(2)
+      expect(tx.$executeRaw.mock.invocationCallOrder[1]).toBeLessThan(
+        tx.enrollmentTombstone.findFirst.mock.invocationCallOrder[0],
+      )
+      expect(tx.enrollmentTombstone.findFirst.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.enrollment.create.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+      )
+      expect(tx.enrollment.create).not.toHaveBeenCalled()
+      expect(tx.enrollmentTombstone.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it('re-checks the tombstone on the section-scoped enroll route too', async () => {
+      const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
+        enrollment: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        enrollmentTombstone: { findFirst: jest.fn().mockResolvedValue({ id: 'tombstone-race' }) },
+        section: { update: jest.fn() },
+      }
+      const prisma = {
+        section: { findUnique: jest.fn().mockResolvedValue({ ...section, enrollmentCodeExpiry: null }) },
+        enrollment: { findUnique: jest.fn().mockResolvedValue(null) },
+        enrollmentTombstone: { findFirst: jest.fn().mockResolvedValue(null) },
+        $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
+      }
+      const service = new SectionsService(prisma as never, settings as never)
+
+      const response = await blockedResponse(service.enrollViaCode('section-1', 'student-1', 'CODE123'))
+
+      expect(response).toMatchObject({ code: 'student_blocked_from_section' })
+      expect(tx.enrollmentTombstone.findFirst).toHaveBeenCalledTimes(1)
+      expect(tx.enrollment.create).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('enrollment code comparison (BE-12)', () => {
+    function serviceFor(code: string | null) {
+      const prisma = {
+        section: { findUnique: jest.fn().mockResolvedValue({ ...section, enrollmentCode: code }) },
+        enrollmentTombstone: { findFirst: jest.fn().mockResolvedValue(null) },
+      }
+      return new SectionsService(prisma as never, settings as never)
+    }
+
+    it('accepts the exact code regardless of case and surrounding whitespace', async () => {
+      const prisma = {
+        section: {
+          findUnique: jest.fn().mockResolvedValue({
+            ...section,
+            enrollmentCode: 'ABCD234',
+            enrollmentCodeExpiry: null,
+          }),
+        },
+        enrollment: { findUnique: jest.fn().mockResolvedValue({ id: 'enrollment-1' }) },
+        enrollmentTombstone: { findFirst: jest.fn().mockResolvedValue(null) },
+      }
+      const service = new SectionsService(prisma as never, settings as never)
+
+      // The "already enrolled" conflict proves the code comparison passed.
+      await expect(service.enrollViaCode('section-1', 'student-1', ' abcd234 ')).rejects.toThrow('Already enrolled')
+    })
+
+    it('rejects a differing code with the unchanged message', async () => {
+      const service = serviceFor('ABCD234')
+      await expect(service.enrollViaCode('section-1', 'student-1', 'ABCD235')).rejects.toThrow(
+        'Invalid enrollment code',
+      )
+    })
+
+    it('rejects differing-length input without throwing from timingSafeEqual', async () => {
+      const service = serviceFor('ABCD234')
+      await expect(service.enrollViaCode('section-1', 'student-1', 'ABCD2345')).rejects.toThrow(
+        'Invalid enrollment code',
+      )
+      await expect(service.enrollViaCode('section-1', 'student-1', 'ABC')).rejects.toThrow('Invalid enrollment code')
+    })
+
+    it('rejects every submission when the section has no code', async () => {
+      const service = serviceFor(null)
+      await expect(service.enrollViaCode('section-1', 'student-1', 'ABCD234')).rejects.toThrow(
+        'Invalid enrollment code',
+      )
+    })
   })
 })

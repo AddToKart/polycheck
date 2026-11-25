@@ -27,6 +27,78 @@ describe('SettingsService', () => {
     expect(result).toBe(rows)
   })
 
+  describe('read exposure (BE-09)', () => {
+    const rows = [
+      { key: 'ai_base_url', value: 'https://ai.example/v1' },
+      { key: 'ai_model', value: 'model-x' },
+      { key: 'attendance_min_rate_percent', value: '75' },
+      { key: 'allow_teacher_password_reset', value: 'true' },
+      { key: 'default_geofence_radius_meters', value: '50' },
+      { key: 'default_grace_period_minutes', value: '15' },
+      { key: 'default_qr_validity_minutes', value: '5' },
+      { key: 'institution_name', value: 'PUP' },
+      { key: 'maintenance_message', value: 'Closed' },
+      { key: 'maintenance_mode_enabled', value: 'true' },
+      { key: 'maintenance_until', value: '2026-11-30T00:00:00.000Z' },
+    ]
+
+    function serviceWithRows() {
+      const prisma = { institutionSetting: { findMany: jest.fn().mockResolvedValue(rows) } }
+      return { prisma, service: new SettingsService(prisma as never, config as never) }
+    }
+
+    it('keeps the full administrative surface for institution super admins', async () => {
+      const { prisma, service } = serviceWithRows()
+
+      await service.list({ role: 'super_admin' })
+
+      expect(prisma.institutionSetting.findMany).toHaveBeenCalledWith({
+        where: { key: { not: 'ai_api_key' } },
+        orderBy: { key: 'asc' },
+      })
+    })
+
+    it('keeps the full administrative surface for IT coordinators', async () => {
+      const { prisma, service } = serviceWithRows()
+
+      await service.list({ role: 'teacher', isItCoordinator: true })
+
+      expect(prisma.institutionSetting.findMany).toHaveBeenCalledWith({
+        where: { key: { not: 'ai_api_key' } },
+        orderBy: { key: 'asc' },
+      })
+    })
+
+    it('gives plain teachers only the classroom defaults through a default-deny allowlist', async () => {
+      const { prisma, service } = serviceWithRows()
+
+      await service.list({ role: 'teacher' })
+
+      // Default-deny: a plain teacher's read is an allowlist, so a future
+      // administrative key cannot leak just because nobody added it to a
+      // denylist.
+      expect(prisma.institutionSetting.findMany).toHaveBeenCalledWith({
+        where: {
+          key: {
+            in: ['default_geofence_radius_meters', 'default_qr_validity_minutes', 'default_grace_period_minutes'],
+          },
+        },
+        orderBy: { key: 'asc' },
+      })
+    })
+
+    it('gives plain teachers nothing when the actor carries no designation', async () => {
+      const { prisma, service } = serviceWithRows()
+
+      // `isItCoordinator` is the only teacher key; `undefined`/`false` must not
+      // widen the read.
+      await service.list({ role: 'teacher', isItCoordinator: false })
+      expect(prisma.institutionSetting.findMany.mock.calls[0][0].where).toEqual({
+        key: { in: ['default_geofence_radius_meters', 'default_qr_validity_minutes', 'default_grace_period_minutes'] },
+      })
+    })
+  })
+
   it('validates and defaults the teacher student-provisioning flag', async () => {
     const prisma = {
       institutionSetting: {

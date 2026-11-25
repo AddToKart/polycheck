@@ -256,6 +256,72 @@ describe('StudentImportService', () => {
     expect(users.get('existing-1')?.password).toBe('keep-this')
   })
 
+  it('preserves an existing department when the CSV row omits the department column (BE-06)', async () => {
+    const { db, users } = createFakePrisma([
+      {
+        id: 'existing-1',
+        studentId: '2024-00001-MN-0',
+        fullName: 'Old Name',
+        email: null,
+        program: 'BSIT',
+        yearLevel: 1,
+        department: 'CCIS',
+        role: 'student',
+        isActive: true,
+      },
+    ])
+    const service = new StudentImportService(db as never)
+    // No department column at all: normalizeRows derives 'Unspecified', but
+    // update mode must never write a derived value over real stored data.
+    const request = importRequest([studentRow(2, '2024-00001-MN-0', { fullName: 'New Name', department: undefined })], {
+      conflictMode: 'update_existing',
+    })
+
+    const validation = await service.importStudents(request, institutionAdmin)
+    expect(validation.summary).toMatchObject({ update: 1 })
+    // The preview only lists real submitted changes.
+    expect(validation.issues.some((issue) => issue.message?.includes('department'))).toBe(false)
+
+    const executed = await service.importStudents(
+      { ...request, mode: 'execute', rowChecksum: validation.rowChecksum },
+      institutionAdmin,
+    )
+    expect(executed.summary).toMatchObject({ update: 1 })
+    const updateData = db.user.update.mock.calls[0][0].data
+    expect(updateData).not.toHaveProperty('department')
+    expect(users.get('existing-1')?.department).toBe('CCIS')
+  })
+
+  it('still updates the department when the CSV row explicitly submits one (BE-06)', async () => {
+    const { db, users } = createFakePrisma([
+      {
+        id: 'existing-1',
+        studentId: '2024-00001-MN-0',
+        fullName: 'Old Name',
+        email: null,
+        program: 'BSIT',
+        yearLevel: 1,
+        department: 'CCIS',
+        role: 'student',
+        isActive: true,
+      },
+    ])
+    const service = new StudentImportService(db as never)
+    const request = importRequest([studentRow(2, '2024-00001-MN-0', { fullName: 'Old Name', department: 'CAFA' })], {
+      conflictMode: 'update_existing',
+    })
+
+    const validation = await service.importStudents(request, institutionAdmin)
+    expect(validation.summary).toMatchObject({ update: 1 })
+    expect(validation.issues.find((issue) => issue.code === 'FIELD_UPDATE_PREVIEW')?.message).toBe(
+      'Updates: department',
+    )
+
+    await service.importStudents({ ...request, mode: 'execute', rowChecksum: validation.rowChecksum }, institutionAdmin)
+    expect(db.user.update.mock.calls[0][0].data).toEqual({ department: 'CAFA' })
+    expect(users.get('existing-1')?.department).toBe('CAFA')
+  })
+
   it('flags email collisions with a different account and duplicates in the file', async () => {
     const { db } = createFakePrisma([
       {

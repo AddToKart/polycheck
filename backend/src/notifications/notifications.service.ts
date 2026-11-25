@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus, Inject, Injectable, Logger, Optional } from '@nestjs/common'
+import { ConflictException, HttpException, HttpStatus, Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import type { AppNotification, NotificationReadInput, NotificationType, PushTokenInput } from '@polycheck/shared'
@@ -139,8 +139,42 @@ export class NotificationsService {
       throw new HttpException('Too many push registration attempts. Try again later.', HttpStatus.TOO_MANY_REQUESTS)
     }
     const token = input.token.trim()
+    // A push token identifies one installation, and the installation is owned
+    // by whoever is signed in on it. Silently reassigning the row would let a
+    // second account take over delivery for a device that never logged out —
+    // and, worse, would strand the original owner's notifications on a device
+    // they no longer control.
+    //
+    // The owner test is "still has a live session", not "row exists": after a
+    // sign-out (or app reinstall) the leftover row is stale and must be
+    // claimable, otherwise the next account on that device could never receive
+    // push notifications. Clients do not send their token on logout, so the
+    // session check is what makes the reinstall path work without a contract
+    // change.
+    const existing = await this.prisma.pushSubscription.findUnique({
+      where: { token },
+      select: { userId: true },
+    })
+    if (existing && existing.userId !== user.id) {
+      const ownerActive = await this.prisma.authSession.count({
+        where: { userId: existing.userId, expiresAt: { gt: new Date() } },
+      })
+      if (ownerActive > 0) {
+        throw new ConflictException({
+          statusCode: 409,
+          error: 'Conflict',
+          // Not (yet) a member of `ErrorCode`: the enum lives in a shared file
+          // other lanes also edit, so the wire string is inline here. Clients
+          // branch on this exact value.
+          code: 'push_token_in_use',
+          message: 'This device is registered to another account. Sign out of that account first.',
+        })
+      }
+    }
     await this.prisma.pushSubscription.upsert({
       where: { token },
+      // `userId` is repeated so a stale row (owner signed out) is claimed
+      // atomically by this registration.
       update: { userId: user.id, platform: input.platform, lastSeenAt: new Date() },
       create: { userId: user.id, platform: input.platform, token },
     })
