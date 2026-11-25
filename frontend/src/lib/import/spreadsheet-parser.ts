@@ -11,7 +11,15 @@ export const MAX_SPREADSHEET_BYTES = 10 * 1024 * 1024
 /** How many leading rows are searched for the real header (PUP lists start with title lines). */
 const HEADER_SEARCH_ROWS = 25
 
-export type SpreadsheetErrorCode = 'too_large' | 'legacy_xls' | 'not_xlsx' | 'empty' | 'unreadable'
+export type SpreadsheetErrorCode =
+  | 'too_large'
+  | 'legacy_xls'
+  | 'not_xlsx'
+  | 'not_pdf'
+  | 'too_many_pages'
+  | 'scanned'
+  | 'empty'
+  | 'unreadable'
 
 export class SpreadsheetParseError extends Error {
   constructor(

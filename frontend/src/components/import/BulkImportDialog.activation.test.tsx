@@ -216,7 +216,7 @@ describe('BulkImportDialog Excel upload', () => {
     )
   })
 
-  it('explains legacy .xls, fake .xlsx and PDF uploads instead of failing silently', async () => {
+  it('explains legacy .xls, fake .xlsx and fake PDF uploads instead of failing silently', async () => {
     setup()
     upload(new File([new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0, 0])], 'old.xls'))
     expect(await screen.findByText(/old \.xls file/i)).toBeInTheDocument()
@@ -224,8 +224,8 @@ describe('BulkImportDialog Excel upload', () => {
     upload(new File(['Student No.,Name'], 'renamed.xlsx'))
     expect(await screen.findByText(/not a valid Excel/i)).toBeInTheDocument()
 
-    upload(new File(['%PDF-1.7'], 'master.pdf', { type: 'application/pdf' }))
-    expect(await screen.findByText(/PDF master lists are not supported yet/i)).toBeInTheDocument()
+    upload(new File(['Student No.,Name'], 'master.pdf', { type: 'application/pdf' }))
+    expect(await screen.findByText(/not a valid PDF/i)).toBeInTheDocument()
   })
 
   it('remembers a confirmed layout and maps it automatically next time', async () => {

@@ -27,6 +27,7 @@ import { Label } from '@/components/ui/label'
 import { useNotifications } from '@/lib/notifications'
 import { downloadCsv } from '@/lib/import/csv-download'
 import { fingerprintHeaders, loadMappingProfile, saveMappingProfile } from '@/lib/import/mapping-profiles'
+import { parsePdfFile } from '@/lib/import/pdf-parser'
 import { parseSpreadsheetFile, SpreadsheetParseError, type SpreadsheetSheet } from '@/lib/import/spreadsheet-parser'
 
 type ImportMode = 'students' | 'enrollments'
@@ -206,10 +207,10 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   const applyTable = async (
     name: string,
     parsed: { headers: string[]; rows: string[][]; errors: string[] },
-    source: 'CSV' | 'Excel',
+    source: 'CSV' | 'Excel' | 'PDF',
   ) => {
     if (parsed.headers.length === 0 || parsed.rows.length === 0) {
-      setError(`No rows were found in that ${source === 'CSV' ? 'CSV' : 'sheet'}. Export the master list again and retry.`)
+      setError(`No rows were found in that ${source === 'Excel' ? 'sheet' : source}. Export the master list again and retry.`)
       return false
     }
     if (parsed.rows.length > IMPORT_MAX_ROWS) {
@@ -252,7 +253,16 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     setError('')
     const name = file.name.toLowerCase()
     if (name.endsWith('.pdf') || file.type === 'application/pdf') {
-      setError('PDF master lists are not supported yet. Upload the Excel (.xlsx) or CSV version, or ask the registrar for it.')
+      try {
+        setWorkbook(null)
+        await applyTable(file.name, await parsePdfFile(file), 'PDF')
+      } catch (cause) {
+        setError(
+          cause instanceof SpreadsheetParseError
+            ? cause.message
+            : 'That PDF could not be read. Upload the Excel (.xlsx) or CSV version instead.',
+        )
+      }
       return
     }
     if (name.endsWith('.xlsx') || name.endsWith('.xls') || file.type.includes('spreadsheetml') || file.type === 'application/vnd.ms-excel') {
@@ -566,13 +576,13 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
             >
               <Upload className="h-8 w-8 text-maroon dark:text-golden" aria-hidden="true" />
               <div>
-                <p className="font-bold text-zinc-900 dark:text-zinc-100">Drop a CSV or Excel file here, or choose a file</p>
-                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">CSV up to 5 MB, Excel (.xlsx) up to 10 MB, 5,000 rows per import.</p>
+                <p className="font-bold text-zinc-900 dark:text-zinc-100">Drop a CSV, Excel or PDF file here, or choose a file</p>
+                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">CSV up to 5 MB, Excel (.xlsx) or text-based PDF up to 10 MB, 5,000 rows per import.</p>
               </div>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pdf,application/pdf"
                 className="hidden"
                 onChange={(event) => {
                   const file = event.target.files?.[0]
@@ -590,6 +600,12 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Found {rawRows.length.toLocaleString()} rows and {headers.length} columns in <span className="font-semibold">{fileName}</span>. Confirm the mapping:
             </p>
+            {fileName.toLowerCase().endsWith('.pdf') ? (
+              <p role="note" className="border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                Read from a PDF: columns are detected from the page layout. Compare a few rows with the original before
+                importing; if something looks off, upload the Excel or CSV version.
+              </p>
+            ) : null}
             {workbook && workbook.sheets.filter((sheet) => sheet.rowCount > 0).length > 1 ? (
               <div className="space-y-1.5">
                 <Label htmlFor="import-sheet">Sheet</Label>
