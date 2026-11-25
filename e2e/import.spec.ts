@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { loginFaculty, trackErrors, assertNoErrors, installSessionCleanup } from './helpers'
+// Synthetic workbook builder shared with the unit tests (no real student data).
+import { buildXlsx } from '../frontend/src/lib/import/xlsx-fixture'
 
 installSessionCleanup()
 
@@ -33,6 +35,47 @@ test.describe('Bulk import wizards', () => {
     // Validation only: never execute in this smoke test.
     await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible()
 
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).not.toBeVisible()
+    assertNoErrors(errors)
+  })
+
+  test('super admin uploads an Excel master list with a title block and validates it', async ({ page }) => {
+    await loginFaculty(page, 'mcreyes@pup.edu.ph')
+    const errors = trackErrors(page)
+    await page.goto('/faculty/users')
+    await page.getByRole('button', { name: 'Students', exact: true }).click()
+    await page.getByRole('button', { name: 'Import Students' }).click()
+
+    const workbook = buildXlsx([
+      { name: 'Cover', rows: [] },
+      {
+        name: 'BSIT 1-1',
+        rows: [
+          ['PUP Santa Maria'],
+          ['Master List - BSIT 1-1'],
+          [],
+          ['Student No.', 'Name', 'Program', 'Year Level', 'Email'],
+          ['2024-00911-MN-0', 'E2E Excel One', 'BSIT', 1, 'excel.one@example.com'],
+          ['2024-00912-MN-0', 'E2E Excel Two', 'BSIT', 1, null],
+        ],
+      },
+    ])
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'master-list.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: Buffer.from(workbook),
+    })
+
+    // The title block is skipped and the columns map themselves.
+    await expect(page.getByText(/Confirm the mapping/i)).toBeVisible()
+    await expect(page.getByLabel('Student number')).toHaveValue('0')
+    await expect(page.getByLabel('Full name')).toHaveValue('1')
+    await page.getByRole('button', { name: 'Validate rows' }).click()
+
+    await expect(page.getByText('Rows in file')).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText('Importable')).toBeVisible()
+    // Validation only: never execute in this smoke test.
     await page.keyboard.press('Escape')
     await expect(page.getByRole('dialog')).not.toBeVisible()
     assertNoErrors(errors)

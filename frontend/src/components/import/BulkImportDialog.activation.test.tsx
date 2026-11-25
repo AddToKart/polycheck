@@ -13,6 +13,7 @@ vi.mock('@/lib/api-client', () => ({ api: apiMock }))
 vi.mock('@/lib/notifications', () => ({ useNotifications: () => ({ addNotification: vi.fn() }) }))
 
 import { BulkImportDialog } from './BulkImportDialog'
+import { buildXlsx, xlsxFile } from '@/lib/import/xlsx-fixture'
 
 const CSV = [
   'Student Number,Full Name,Email,Program,Year Level',
@@ -122,5 +123,120 @@ describe('BulkImportDialog email delivery', () => {
     expect(screen.getByRole('status')).toHaveTextContent('1 activation email queued')
     expect(screen.getByRole('status')).toHaveTextContent('1 student without an email got a temporary password')
     expect(screen.getByText('PUP-TEMP0001-xy!')).toBeInTheDocument()
+  })
+})
+
+describe('BulkImportDialog Excel upload', () => {
+  const HEADER = ['Student No.', 'Name', 'Email', 'Program', 'Year Level']
+  const upload = (file: File) => {
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [file] } })
+  }
+
+  beforeEach(() => {
+    window.localStorage.clear()
+  })
+
+  it('reads an .xlsx workbook, skips the title block and maps the columns automatically', async () => {
+    setup()
+    upload(
+      xlsxFile(
+        buildXlsx([
+          {
+            name: 'BSIT 1-1',
+            rows: [
+              ['PUP Santa Maria'],
+              ['Master List'],
+              [],
+              HEADER,
+              ['2024-00001-MN-0', 'Alpha Student', 'alpha@example.com', 'BSIT', 1],
+              ['2024-00002-MN-0', 'Beta Student', null, 'BSIT', 1],
+            ],
+          },
+        ]),
+      ),
+    )
+
+    expect(await screen.findByLabelText(/Student number/)).toHaveValue('0')
+    expect(screen.getByLabelText(/Full name/)).toHaveValue('1')
+    expect(screen.queryByLabelText('Sheet')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Validate rows' }))
+    await screen.findByText('Existing students')
+    expect(apiMock.importStudents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: 'validate',
+        rows: [
+          expect.objectContaining({ studentId: '2024-00001-MN-0', fullName: 'Alpha Student', email: 'alpha@example.com' }),
+          expect.objectContaining({ studentId: '2024-00002-MN-0', fullName: 'Beta Student' }),
+        ],
+      }),
+    )
+  })
+
+  it('lets the admin choose a sheet when the workbook has several', async () => {
+    setup()
+    upload(
+      xlsxFile(
+        buildXlsx([
+          { name: 'Cover', rows: [] },
+          { name: 'BSIT 1-1', rows: [HEADER, ['2024-00001-MN-0', 'Alpha Student', 'a@example.com', 'BSIT', 1]] },
+          {
+            name: 'BSHM 1-1',
+            rows: [
+              HEADER,
+              ['2024-00007-MN-0', 'Gamma Student', 'g@example.com', 'BSHM', 2],
+              ['2024-00008-MN-0', 'Delta Student', 'd@example.com', 'BSHM', 2],
+            ],
+          },
+        ]),
+      ),
+    )
+
+    const picker = (await screen.findByLabelText('Sheet')) as HTMLSelectElement
+    expect(Array.from(picker.options).map((option) => option.textContent)).toEqual([
+      'BSIT 1-1 (1 rows)',
+      'BSHM 1-1 (2 rows)',
+    ])
+    fireEvent.change(picker, { target: { value: 'BSHM 1-1' } })
+    await waitFor(() => expect((screen.getByLabelText('Sheet') as HTMLSelectElement).value).toBe('BSHM 1-1'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Validate rows' }))
+    await screen.findByText('Existing students')
+    expect(apiMock.importStudents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rows: [
+          expect.objectContaining({ studentId: '2024-00007-MN-0' }),
+          expect.objectContaining({ studentId: '2024-00008-MN-0' }),
+        ],
+      }),
+    )
+  })
+
+  it('explains legacy .xls, fake .xlsx and PDF uploads instead of failing silently', async () => {
+    setup()
+    upload(new File([new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0, 0])], 'old.xls'))
+    expect(await screen.findByText(/old \.xls file/i)).toBeInTheDocument()
+
+    upload(new File(['Student No.,Name'], 'renamed.xlsx'))
+    expect(await screen.findByText(/not a valid Excel/i)).toBeInTheDocument()
+
+    upload(new File(['%PDF-1.7'], 'master.pdf', { type: 'application/pdf' }))
+    expect(await screen.findByText(/PDF master lists are not supported yet/i)).toBeInTheDocument()
+  })
+
+  it('remembers a confirmed layout and maps it automatically next time', async () => {
+    setup()
+    const reordered = ['Name', 'Student No.', 'Email', 'Program', 'Year Level']
+    upload(xlsxFile(buildXlsx([{ name: 'S', rows: [reordered, ['Alpha Student', '2024-00001-MN-0', 'a@example.com', 'BSIT', 1]] }])))
+    fireEvent.change(await screen.findByLabelText(/Full name/), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Validate rows' }))
+    await screen.findByText('Existing students')
+    cleanup()
+
+    setup()
+    upload(xlsxFile(buildXlsx([{ name: 'S', rows: [reordered, ['Beta Student', '2024-00002-MN-0', 'b@example.com', 'BSIT', 1]] }])))
+    expect(await screen.findByLabelText(/Student number/)).toHaveValue('1')
+    expect(screen.getByLabelText(/Full name/)).toHaveValue('0')
   })
 })

@@ -26,6 +26,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from '@/components/ui/label'
 import { useNotifications } from '@/lib/notifications'
 import { downloadCsv } from '@/lib/import/csv-download'
+import { loadMappingProfile, saveMappingProfile } from '@/lib/import/mapping-profiles'
+import { parseSpreadsheetFile, SpreadsheetParseError, type SpreadsheetSheet } from '@/lib/import/spreadsheet-parser'
 
 type ImportMode = 'students' | 'enrollments'
 type Step = 'upload' | 'map' | 'validate' | 'confirm' | 'report'
@@ -115,6 +117,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   const [headers, setHeaders] = useState<string[]>([])
   const [rawRows, setRawRows] = useState<string[][]>([])
   const [fileName, setFileName] = useState('')
+  const [workbook, setWorkbook] = useState<{ file: File; sheets: SpreadsheetSheet[]; sheetName: string } | null>(null)
   const [mapping, setMapping] = useState<ImportColumnMapping>({})
   const [conflictMode, setConflictMode] = useState<ImportConflictMode>('skip_existing')
   const [validatedConflictMode, setValidatedConflictMode] = useState<ImportConflictMode>('skip_existing')
@@ -152,6 +155,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     setHeaders([])
     setRawRows([])
     setFileName('')
+    setWorkbook(null)
     setMapping({})
     setConflictMode('skip_existing')
     setValidatedConflictMode('skip_existing')
@@ -198,44 +202,66 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     }
   }, [open, mode])
 
+  /** Shared by the CSV and Excel paths: validate size, pick the remembered or suggested mapping, move on. */
+  const applyTable = (
+    name: string,
+    parsed: { headers: string[]; rows: string[][]; errors: string[] },
+    source: 'CSV' | 'Excel',
+  ) => {
+    if (parsed.headers.length === 0 || parsed.rows.length === 0) {
+      setError(`No rows were found in that ${source === 'CSV' ? 'CSV' : 'sheet'}. Export the master list again and retry.`)
+      return false
+    }
+    if (parsed.rows.length > IMPORT_MAX_ROWS) {
+      setError(`This file has ${parsed.rows.length} rows. The limit is ${IMPORT_MAX_ROWS.toLocaleString()} per import.`)
+      return false
+    }
+    // A layout the admin confirmed before maps itself; anything new gets the heuristic suggestion.
+    const nextMapping = loadMappingProfile(parsed.headers) ?? suggestColumnMapping(parsed.headers)
+    setFileName(name)
+    setHeaders(parsed.headers)
+    setRawRows(parsed.rows)
+    setMapping(nextMapping)
+    setStep('map')
+    if (parsed.errors.length > 0) {
+      addNotification('warning', `${source} parsed with warnings`, parsed.errors[0])
+    }
+    return true
+  }
+
+  const readWorkbook = async (file: File, sheetName?: string) => {
+    try {
+      const parsed = await parseSpreadsheetFile(file, sheetName)
+      if (applyTable(file.name, parsed, 'Excel')) {
+        setWorkbook({ file, sheets: parsed.sheets, sheetName: parsed.sheetName })
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof SpreadsheetParseError
+          ? cause.message
+          : 'That Excel file could not be read. Re-save it from Excel as .xlsx or CSV and try again.',
+      )
+    }
+  }
+
   const handleFile = async (file: File) => {
     setError('')
+    const name = file.name.toLowerCase()
+    if (name.endsWith('.pdf') || file.type === 'application/pdf') {
+      setError('PDF master lists are not supported yet. Upload the Excel (.xlsx) or CSV version, or ask the registrar for it.')
+      return
+    }
+    if (name.endsWith('.xlsx') || name.endsWith('.xls') || file.type.includes('spreadsheetml') || file.type === 'application/vnd.ms-excel') {
+      await readWorkbook(file)
+      return
+    }
     if (file.size > MAX_FILE_BYTES) {
       setError('That file is larger than 5 MB. Split the master list and import it in batches.')
       return
     }
     try {
-      const text = await file.text()
-      const parsed = parseCsv(text)
-      if (parsed.headers.length === 0 || parsed.rows.length === 0) {
-        setError('No rows were found in that CSV. Export the master list again and retry.')
-        return
-      }
-      if (parsed.rows.length > IMPORT_MAX_ROWS) {
-        setError(`This file has ${parsed.rows.length} rows. The limit is ${IMPORT_MAX_ROWS.toLocaleString()} per import.`)
-        return
-      }
-      const suggested = suggestColumnMapping(parsed.headers)
-      let nextMapping = suggested
-      try {
-        const remembered = window.localStorage.getItem('polycheck-import-mapping')
-        if (remembered) {
-          const stored = JSON.parse(remembered) as { headers?: string[]; mapping?: ImportColumnMapping }
-          if (stored.headers && JSON.stringify(stored.headers) === JSON.stringify(parsed.headers) && stored.mapping) {
-            nextMapping = stored.mapping
-          }
-        }
-      } catch {
-        // Ignore unavailable localStorage and use the suggested mapping.
-      }
-      setFileName(file.name)
-      setHeaders(parsed.headers)
-      setRawRows(parsed.rows)
-      setMapping(nextMapping)
-      setStep('map')
-      if (parsed.errors.length > 0) {
-        addNotification('warning', 'CSV parsed with warnings', parsed.errors[0])
-      }
+      setWorkbook(null)
+      applyTable(file.name, parseCsv(await file.text()), 'CSV')
     } catch {
       setError('That file could not be read as CSV.')
     }
@@ -289,11 +315,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
           message: 'More issues exist than are shown. Download the issues CSV for the full list.',
         })
       }
-      try {
-        window.localStorage.setItem('polycheck-import-mapping', JSON.stringify({ headers, mapping }))
-      } catch {
-        // Remembering the mapping is a convenience only.
-      }
+      saveMappingProfile(headers, mapping)
       setChunks(plans)
       setServerIssues(issues)
       setSummary(mergeSummaries(summaries))
@@ -539,13 +561,13 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
             >
               <Upload className="h-8 w-8 text-maroon dark:text-golden" aria-hidden="true" />
               <div>
-                <p className="font-bold text-zinc-900 dark:text-zinc-100">Drop a CSV here or choose a file</p>
-                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Up to 5 MB and 5,000 rows. Excel files must be exported as CSV.</p>
+                <p className="font-bold text-zinc-900 dark:text-zinc-100">Drop a CSV or Excel file here, or choose a file</p>
+                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">CSV up to 5 MB, Excel (.xlsx) up to 10 MB, 5,000 rows per import.</p>
               </div>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv,text/csv"
+                accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 className="hidden"
                 onChange={(event) => {
                   const file = event.target.files?.[0]
@@ -563,6 +585,29 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Found {rawRows.length.toLocaleString()} rows and {headers.length} columns in <span className="font-semibold">{fileName}</span>. Confirm the mapping:
             </p>
+            {workbook && workbook.sheets.filter((sheet) => sheet.rowCount > 0).length > 1 ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="import-sheet">Sheet</Label>
+                <select
+                  id="import-sheet"
+                  value={workbook.sheetName}
+                  onChange={(event) => void readWorkbook(workbook.file, event.target.value)}
+                  className="h-10 w-full border border-zinc-300 bg-white px-3 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                >
+                  {workbook.sheets
+                    .filter((sheet) => sheet.rowCount > 0)
+                    .map((sheet) => (
+                      <option key={sheet.name} value={sheet.name}>
+                        {sheet.name} ({Math.max(0, sheet.rowCount - 1).toLocaleString()} rows)
+                      </option>
+                    ))}
+                </select>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  This workbook has several sheets. Import one sheet at a time.
+                </p>
+              </div>
+            ) : null}
+
             <div className="grid gap-3 sm:grid-cols-2">
               {fields.map(({ key, required }) => (
                 <div key={key} className="space-y-1.5">
