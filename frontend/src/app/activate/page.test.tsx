@@ -24,8 +24,14 @@ class ApiError extends Error {
   }
 }
 
+// replaceState (unlike assigning location.hash) does not fire an async `hashchange`, which would
+// leak into the next test and trigger an extra check.
+function setHash(hash: string) {
+  window.history.replaceState(null, '', `${window.location.pathname}${hash}`)
+}
+
 function openWithToken(token: string | null) {
-  window.location.hash = token ? `#token=${token}` : ''
+  setHash(token ? `#token=${token}` : '')
 }
 
 async function fillAndSubmit(studentId = '2024-00001-MN-0', password = GOOD_PASSWORD, confirm = password) {
@@ -42,7 +48,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
-  window.location.hash = ''
+  setHash('')
 })
 
 describe('/activate page', () => {
@@ -53,6 +59,21 @@ describe('/activate page', () => {
     expect(await screen.findByRole('heading', { name: 'Activate your account' })).toBeInTheDocument()
     expect(screen.getByLabelText('Email on file')).toBeInTheDocument()
     expect(apiMock.activationValidate).not.toHaveBeenCalled()
+  })
+
+  it('re-checks when a different link replaces the fragment in an already-open tab', async () => {
+    openWithToken(TOKEN)
+    apiMock.activationValidate.mockResolvedValueOnce({ valid: false })
+    render(<ActivatePage />)
+    expect(await screen.findByRole('heading', { name: 'This link is no longer valid' })).toBeInTheDocument()
+
+    const next = 'Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3i2H1g0F9e'
+    apiMock.activationValidate.mockResolvedValueOnce({ valid: true, expiresAt: '2026-12-02T00:00:00.000Z' })
+    setHash(`#token=${next}`)
+    fireEvent(window, new HashChangeEvent('hashchange'))
+
+    expect(await screen.findByLabelText('New password')).toBeInTheDocument()
+    expect(apiMock.activationValidate).toHaveBeenLastCalledWith(next)
   })
 
   it('validates the fragment token without consuming it, then shows the form', async () => {
@@ -187,6 +208,27 @@ describe('/activate page', () => {
     expect(apiMock.activationRequestLink).toHaveBeenCalledWith({
       studentId: '2024-00001-MN-0',
       email: 'Maria@Example.com',
+    })
+  })
+
+  it('lets a student who mistyped their email try again from the confirmation', async () => {
+    openWithToken(null)
+    apiMock.activationRequestLink.mockResolvedValue({ ok: true })
+    render(<ActivatePage />)
+
+    fireEvent.change(await screen.findByLabelText('Student number'), { target: { value: '2024-00001-MN-0' } })
+    fireEvent.change(screen.getByLabelText('Email on file'), { target: { value: 'typo@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send me a new link' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Use different details' }))
+
+    // The form is back, with what they typed kept so only the mistake needs fixing.
+    expect(screen.getByLabelText('Email on file')).toHaveValue('typo@example.com')
+    fireEvent.change(screen.getByLabelText('Email on file'), { target: { value: 'right@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send me a new link' }))
+    await waitFor(() => expect(apiMock.activationRequestLink).toHaveBeenCalledTimes(2))
+    expect(apiMock.activationRequestLink).toHaveBeenLastCalledWith({
+      studentId: '2024-00001-MN-0',
+      email: 'right@example.com',
     })
   })
 

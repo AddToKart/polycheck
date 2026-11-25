@@ -85,6 +85,9 @@ function RequestLinkForm({ heading }: { heading: string }) {
           If those details match an account waiting for activation, we sent a new link to the email address on file. It
           can take a few minutes. Look in your spam or promotions folder too. You can ask again after a few minutes.
         </p>
+        <Button type="button" variant="outline" className="min-h-11 w-full" onClick={() => setSent(false)}>
+          Use different details
+        </Button>
       </div>
     )
   }
@@ -165,6 +168,10 @@ export default function ActivatePage() {
 
   useEffect(() => {
     void check()
+    // A new link opened or pasted into an already-open tab only changes the fragment.
+    const onHashChange = () => void check()
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
   }, [check])
 
   const checks = passwordChecks(password)
