@@ -7,6 +7,7 @@ import {
   GraduationCap,
   Info,
   KeyRound,
+  Mail,
   Pencil,
   Plus,
   RefreshCw,
@@ -45,6 +46,8 @@ import {
   userPageCount,
   userPageNumber,
   userRangeLabel,
+  userStatusLabel,
+  activationMailLabel,
   type UserRoleTab,
   type UserStatusFilter,
 } from '@/lib/admin-users'
@@ -81,6 +84,7 @@ function UserRowActions({
   onChangeRole,
   onResetPassword,
   onToggleStatus,
+  onResendActivation,
 }: {
   row: User
   actorRole: User['role']
@@ -90,6 +94,7 @@ function UserRowActions({
   onChangeRole: (target: User) => void
   onResetPassword: (target: User) => void
   onToggleStatus: (target: User) => void
+  onResendActivation?: (target: User) => void
 }) {
   if (!canManageUser(row)) {
     return (
@@ -114,6 +119,17 @@ function UserRowActions({
           onClick={() => onChangeRole(row)}
         >
           Change role
+        </Button>
+      ) : null}
+      {row.activationPending && onResendActivation ? (
+        <Button
+          variant="outline"
+          size="sm"
+          className={touchClass}
+          disabled={busy}
+          onClick={() => onResendActivation(row)}
+        >
+          <Mail className="h-3.5 w-3.5" /> Resend activation
         </Button>
       ) : null}
       <Button
@@ -153,6 +169,7 @@ export default function UsersPage() {
   const [refreshToken, setRefreshToken] = useState(0)
   const [inactiveStudents, setInactiveStudents] = useState(0)
   const [activatingAll, setActivatingAll] = useState(false)
+  const [resendingAll, setResendingAll] = useState(false)
   const [busyUserId, setBusyUserId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [showCreateTeacher, setShowCreateTeacher] = useState(false)
@@ -408,6 +425,45 @@ export default function UsersPage() {
     void handleSetStatus(target)
   }
 
+  const handleResendActivation = async (target: User) => {
+    setBusyUserId(target.id)
+    setError('')
+    try {
+      const result = await api.resendActivation(target.id)
+      refresh()
+      addNotification(
+        'success',
+        result.alreadyQueued ? 'Already queued' : 'Activation email queued',
+        result.alreadyQueued
+          ? `An activation email for ${target.fullName} is already on its way.`
+          : `${target.fullName} will receive a new activation link shortly.`,
+      )
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to re-send the activation email')
+    } finally {
+      setBusyUserId(null)
+    }
+  }
+
+  const handleResendAllPending = async () => {
+    setResendingAll(true)
+    setError('')
+    try {
+      const result = await api.resendPendingActivation()
+      refresh()
+      const parts = [
+        `${result.queued} queued`,
+        ...(result.alreadyQueued > 0 ? [`${result.alreadyQueued} already on the way`] : []),
+        ...(result.noEmail > 0 ? [`${result.noEmail} have no email (reset their password instead)`] : []),
+      ]
+      addNotification('success', 'Activation emails', parts.join(' · '))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to re-send activation emails')
+    } finally {
+      setResendingAll(false)
+    }
+  }
+
   const fetchInactiveStudents = async () => {
     const collected: User[] = []
     let nextOffset = 0
@@ -598,6 +654,7 @@ export default function UsersPage() {
                   <option value="">All statuses</option>
                   <option value="active">Active</option>
                   <option value="inactive">Inactive (provisioned)</option>
+                  {tab === 'student' ? <option value="pending">Awaiting activation</option> : null}
                 </select>
               </div>
             </CardContent>
@@ -616,6 +673,17 @@ export default function UsersPage() {
                   onClick={() => void handleActivateAllInactive()}
                 >
                   {activatingAll ? 'Activating…' : `Activate all inactive (${inactiveStudents})`}
+                </Button>
+              ) : null}
+              {tab === 'student' && status === 'pending' && page.total > 0 ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={resendingAll}
+                  onClick={() => void handleResendAllPending()}
+                >
+                  <Mail className="h-3.5 w-3.5" />
+                  {resendingAll ? 'Queuing…' : `Resend to all pending (${page.total})`}
                 </Button>
               ) : null}
               <Button size="sm" variant="outline" onClick={refresh} disabled={loading}>
@@ -677,9 +745,12 @@ export default function UsersPage() {
                             <Badge variant="default">{roleLabel(row.role)}</Badge>
                           </td>
                           <td className="px-5 py-3">
-                            <Badge variant={row.isActive ? 'active' : 'inactive'}>
-                              {row.isActive ? 'Active' : 'Inactive'}
+                            <Badge variant={row.activationPending ? 'pending' : row.isActive ? 'active' : 'inactive'}>
+                              {userStatusLabel(row)}
                             </Badge>
+                            {activationMailLabel(row) ? (
+                              <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">{activationMailLabel(row)}</p>
+                            ) : null}
                           </td>
                           <td className="px-5 py-3 text-right">
                             <UserRowActions
@@ -690,6 +761,7 @@ export default function UsersPage() {
                               onChangeRole={setRoleTarget}
                               onResetPassword={openResetPassword}
                               onToggleStatus={toggleStatus}
+                              onResendActivation={(target) => void handleResendActivation(target)}
                             />
                           </td>
                         </tr>
@@ -707,10 +779,13 @@ export default function UsersPage() {
                         </p>
                         <div className="flex shrink-0 flex-wrap gap-1.5">
                           <Badge variant="default">{roleLabel(row.role)}</Badge>
-                          <Badge variant={row.isActive ? 'active' : 'inactive'}>
-                            {row.isActive ? 'Active' : 'Inactive'}
+                          <Badge variant={row.activationPending ? 'pending' : row.isActive ? 'active' : 'inactive'}>
+                            {userStatusLabel(row)}
                           </Badge>
                         </div>
+                        {activationMailLabel(row) ? (
+                          <p className="basis-full text-[11px] text-zinc-500 dark:text-zinc-400">{activationMailLabel(row)}</p>
+                        ) : null}
                       </div>
                       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                         {tab === 'student' ? (
@@ -754,6 +829,7 @@ export default function UsersPage() {
                         onChangeRole={setRoleTarget}
                         onResetPassword={openResetPassword}
                         onToggleStatus={toggleStatus}
+                        onResendActivation={(target) => void handleResendActivation(target)}
                       />
                     </div>
                   ))}

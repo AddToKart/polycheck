@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AdminUserPage, User } from '@polycheck/shared'
 import {
+  activationMailLabel,
   assignableRoleFor,
   buildUserFilters,
   buildUserUpdateInput,
@@ -15,6 +16,7 @@ import {
   userPageCount,
   userPageNumber,
   userRangeLabel,
+  userStatusLabel,
   validateUserUpdate,
 } from './admin-users'
 
@@ -153,5 +155,37 @@ describe('admin user helpers', () => {
     expect(userPageCount(populated)).toBe(3)
     expect(userPageNumber(populated)).toBe(2)
     expect(userRangeLabel(populated)).toBe('21–40 of 45')
+  })
+})
+
+describe('email activation helpers', () => {
+  it('maps the pending filter to the activation query, never to an account status', () => {
+    expect(buildUserFilters('student', { q: '', department: '', status: 'pending' })).toMatchObject({
+      role: 'student',
+      activation: 'pending',
+    })
+    expect(buildUserFilters('student', { q: '', department: '', status: 'pending' })).not.toHaveProperty('status')
+    expect(buildUserFilters('student', { q: '', department: '', status: 'inactive' })).toMatchObject({
+      status: 'inactive',
+    })
+    expect(buildUserFilters('student', { q: '', department: '', status: '' })).not.toHaveProperty('activation')
+  })
+
+  it('labels pending accounts Invited and others by their status', () => {
+    expect(userStatusLabel({ isActive: true, activationPending: true })).toBe('Invited')
+    expect(userStatusLabel({ isActive: true })).toBe('Active')
+    expect(userStatusLabel({ isActive: false })).toBe('Inactive')
+  })
+
+  it('describes the latest delivery state in plain words, only for pending accounts', () => {
+    const pending = { activationPending: true, email: 'a@b.ph' }
+    expect(activationMailLabel({ activationPending: false, email: 'a@b.ph' })).toBeNull()
+    expect(activationMailLabel({ ...pending, email: undefined })).toBe('No email on file')
+    expect(activationMailLabel(pending)).toBe('Email not sent yet')
+    expect(activationMailLabel({ ...pending, activationMail: { status: 'sent' } })).toBe('Email sent')
+    expect(activationMailLabel({ ...pending, activationMail: { status: 'queued' } })).toBe('Email queued')
+    expect(activationMailLabel({ ...pending, activationMail: { status: 'sending' } })).toBe('Email queued')
+    expect(activationMailLabel({ ...pending, activationMail: { status: 'bounced' } })).toBe('Email bounced')
+    expect(activationMailLabel({ ...pending, activationMail: { status: 'failed' } })).toBe('Email failed')
   })
 })

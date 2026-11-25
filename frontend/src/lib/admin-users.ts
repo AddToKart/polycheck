@@ -11,7 +11,7 @@ export const USER_PAGE_SIZE = 20
 export const MAX_USER_PAGE_SIZE = 100
 
 export type UserRoleTab = 'teacher' | 'student' | 'super_admin'
-export type UserStatusFilter = '' | 'active' | 'inactive'
+export type UserStatusFilter = '' | 'active' | 'inactive' | 'pending'
 
 export interface UserFilterState {
   q: string
@@ -25,6 +25,24 @@ export const emptyUserPage: AdminUserPage = {
   limit: USER_PAGE_SIZE,
   offset: 0,
   hasMore: false,
+}
+
+/** Label for the account chip: pending activation reads "Invited", never "Active". */
+export function userStatusLabel(row: Pick<User, 'isActive' | 'activationPending'>): string {
+  if (row.activationPending) return 'Invited'
+  return row.isActive ? 'Active' : 'Inactive'
+}
+
+/** Delivery state of the latest activation email, in plain words for admins. */
+export function activationMailLabel(row: Pick<User, 'activationPending' | 'activationMail' | 'email'>): string | null {
+  if (!row.activationPending) return null
+  if (!row.email?.trim()) return 'No email on file'
+  const status = row.activationMail?.status
+  if (!status) return 'Email not sent yet'
+  if (status === 'sent') return 'Email sent'
+  if (status === 'queued' || status === 'sending') return 'Email queued'
+  if (status === 'bounced') return 'Email bounced'
+  return 'Email failed'
 }
 
 /** Institution-scope admins are the only ones allowed to provision super admins. */
@@ -60,7 +78,12 @@ export function buildUserFilters(
     role: tab,
     ...(query ? { q: query } : {}),
     ...(department ? { department } : {}),
-    ...(filters.status ? { status: filters.status } : {}),
+    // `pending` is not an account status: it lists students still waiting to activate by email.
+    ...(filters.status === 'pending'
+      ? { activation: 'pending' as const }
+      : filters.status
+        ? { status: filters.status }
+        : {}),
     limit: cappedLimit,
     offset: Math.max(0, Math.trunc(offset)),
   }

@@ -1858,6 +1858,7 @@ const apiBase = {
         q: filters.q,
         department: filters.department,
         status: filters.status,
+        activation: filters.activation,
         limit:
           filters.limit === undefined
             ? undefined
@@ -1890,6 +1891,34 @@ const apiBase = {
       `/users/${id}/password`,
       password === undefined ? {} : { password },
     );
+  },
+  // ── Email activation (web-only: the link opens in any phone browser) ──
+  activationValidate(token: string): Promise<ActivationValidateResult> {
+    return post("/activation/validate", { token });
+  },
+  activationComplete(input: {
+    token: string;
+    studentId: string;
+    password: string;
+  }): Promise<ActivationCompleteResult> {
+    return post("/activation/complete", input);
+  },
+  activationRequestLink(input: {
+    studentId: string;
+    email: string;
+  }): Promise<{ ok: true }> {
+    return post("/activation/request-link", input);
+  },
+  getActivationStatus(): Promise<ActivationStatus> {
+    return get("/users/activation/status");
+  },
+  resendActivation(
+    id: string,
+  ): Promise<{ queued: boolean; alreadyQueued: boolean }> {
+    return post(`/users/${encodeURIComponent(id)}/activation/resend`);
+  },
+  resendPendingActivation(): Promise<ResendPendingActivationResult> {
+    return post("/users/activation/resend-pending");
   },
   setUserStatus(id: string, isActive: boolean): Promise<User> {
     return patch(`/users/${id}/status`, { isActive });
@@ -2424,6 +2453,25 @@ const apiBase = {
     return get("/settings/privacy-center");
   },
 };
+
+export interface ActivationStatus {
+  enabled: boolean;
+  configured: boolean;
+  driver: string;
+}
+export type ActivationValidateResult =
+  | { valid: true; expiresAt: string }
+  | { valid: false };
+export interface ActivationCompleteResult {
+  ok: true;
+  alreadyActivated?: true;
+}
+export interface ResendPendingActivationResult {
+  pending: number;
+  queued: number;
+  alreadyQueued: number;
+  noEmail: number;
+}
 
 export const api = { ...apiBase, downloadAssistantFile };
 

@@ -105,6 +105,17 @@ export const SETTING_FIELDS: readonly SettingFieldDefinition[] = [
       'After a student unregisters their mobile device, mobile logins stay locked for this many hours. Instructors can release a student sooner.',
   },
   {
+    key: 'activation_link_ttl_hours',
+    tab: 'accounts',
+    label: 'Activation link lifetime (hours)',
+    type: 'number',
+    defaultValue: '168',
+    min: 24,
+    max: 336,
+    caption:
+      'How long an emailed activation link stays valid (default 7 days). Students on mobile data may open the email late; an expired link can be re-requested from the activation page.',
+  },
+  {
     key: 'ai_base_url',
     tab: 'ai',
     label: 'AI endpoint base URL (optional)',
@@ -173,6 +184,14 @@ export const SETTING_SWITCHES: readonly SettingSwitchDefinition[] = [
     label: 'Allow teacher student provisioning',
     caption:
       'Let teachers auto-provision inactive student accounts when importing an enrollment list for a student without an account.',
+    defaultValue: 'false',
+  },
+  {
+    key: 'activation_email_enabled',
+    tab: 'accounts',
+    label: 'Email activation links for imported students',
+    caption:
+      'Lets registrars and super admins choose "Email an activation link" when importing students. Requires the mail provider to be configured on the server; turn it off to go back to temporary passwords only.',
     defaultValue: 'false',
   },
   {

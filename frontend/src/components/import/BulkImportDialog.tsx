@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, ArrowLeft, CheckCircle2, FileSpreadsheet, Upload } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileSpreadsheet, Mail, Upload } from 'lucide-react'
 import {
   buildEnrollRows,
   buildStudentRows,
@@ -16,10 +16,11 @@ import {
   type ImportConflictMode,
   type ImportCredential,
   type ImportIssue,
+  type StudentImportDeliveryMode,
   type StudentImportResult,
   type StudentImportRow,
 } from '@polycheck/shared'
-import { api } from '@/lib/api-client'
+import { api, type ActivationStatus } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
@@ -117,6 +118,10 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   const [mapping, setMapping] = useState<ImportColumnMapping>({})
   const [conflictMode, setConflictMode] = useState<ImportConflictMode>('skip_existing')
   const [validatedConflictMode, setValidatedConflictMode] = useState<ImportConflictMode>('skip_existing')
+  const [deliveryMode, setDeliveryMode] = useState<StudentImportDeliveryMode>('temporary_password')
+  const [validatedDeliveryMode, setValidatedDeliveryMode] = useState<StudentImportDeliveryMode>('temporary_password')
+  const [activationStatus, setActivationStatus] = useState<ActivationStatus | null>(null)
+  const [activationReport, setActivationReport] = useState<{ queued: number; fallbackTemporary: number } | null>(null)
   const [localIssues, setLocalIssues] = useState<ImportIssue[]>([])
   const [chunks, setChunks] = useState<ChunkPlan[]>([])
   const [serverIssues, setServerIssues] = useState<ImportIssue[]>([])
@@ -134,6 +139,8 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   const stopRequestedRef = useRef(false)
 
   const fields = mode === 'students' ? STUDENT_FIELDS : ENROLL_FIELDS
+  // Email delivery is offered only when an admin enabled it AND the server can actually send.
+  const activationAvailable = Boolean(activationStatus?.enabled && activationStatus.configured)
   const blockingIssues = useMemo(
     () => localIssues.filter((issue) => BLOCKING_CODES.has(issue.code)),
     [localIssues],
@@ -148,6 +155,9 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     setMapping({})
     setConflictMode('skip_existing')
     setValidatedConflictMode('skip_existing')
+    setDeliveryMode('temporary_password')
+    setValidatedDeliveryMode('temporary_password')
+    setActivationReport(null)
     setLocalIssues([])
     setChunks([])
     setServerIssues([])
@@ -170,6 +180,23 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   useEffect(() => {
     if (open) reset()
   }, [open, reset])
+
+  // Offer email delivery only when the server says it can actually send; any failure just hides it.
+  useEffect(() => {
+    if (!open || mode !== 'students') return
+    let active = true
+    api
+      .getActivationStatus()
+      .then((status) => {
+        if (active) setActivationStatus(status)
+      })
+      .catch(() => {
+        if (active) setActivationStatus(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [open, mode])
 
   const handleFile = async (file: File) => {
     setError('')
@@ -271,6 +298,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
       setServerIssues(issues)
       setSummary(mergeSummaries(summaries))
       setValidatedConflictMode(conflictMode)
+      setValidatedDeliveryMode(deliveryMode)
       setStep('validate')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Validation failed.')
@@ -287,6 +315,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
       return api.importStudents({
         mode: 'validate',
         conflictMode,
+        ...(deliveryMode === 'activation_email' ? { deliveryMode } : {}),
         rows: plan.rows as StudentImportRow[],
         idempotencyKey: `${runIdRef.current}-validate-${index}`,
       })
@@ -301,6 +330,8 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
       return api.importStudents({
         mode: 'execute',
         conflictMode,
+        // The checksum was minted for the validated mode, so execute must use exactly that one.
+        ...(validatedDeliveryMode === 'activation_email' ? { deliveryMode: validatedDeliveryMode } : {}),
         rows: plan.rows as StudentImportRow[],
         rowChecksum: plan.rowChecksum,
         idempotencyKey: `${runIdRef.current}-execute-${index}`,
@@ -325,6 +356,8 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     const collectedReports: ChunkReport[] = []
     let failure: string | null = null
 
+    const activationTotals = { queued: 0, fallbackTemporary: 0 }
+    let sawActivation = false
     for (let index = startIndex; index < plans.length; index += 1) {
       try {
         const result = await executeChunk(plans[index], index)
@@ -339,6 +372,11 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
         if ('credentials' in result && result.credentials) {
           collectedCredentials.push(...result.credentials)
         }
+        if ('activation' in result && result.activation) {
+          activationTotals.queued += result.activation.queued
+          activationTotals.fallbackTemporary += result.activation.fallbackTemporary
+          sawActivation = true
+        }
         setProgress(index + 1)
         if (stopRequestedRef.current) break
       } catch (cause) {
@@ -348,6 +386,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     }
 
     setCredentials(collectedCredentials)
+    setActivationReport(sawActivation ? activationTotals : null)
     setReports(collectedReports)
     setExecuting(false)
     if (failure) {
@@ -364,7 +403,9 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
       'Import completed',
       collectedCredentials.length > 0
         ? 'Download the credentials CSV now — temporary passwords are shown only once.'
-        : 'The roster was updated successfully.',
+        : sawActivation
+          ? 'Activation emails are on their way to the new students.'
+          : 'The roster was updated successfully.',
     )
     onCompleted?.()
   }
@@ -582,6 +623,26 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
               </fieldset>
             ) : null}
 
+            {mode === 'students' && activationAvailable ? (
+              <fieldset className="space-y-2 border border-zinc-200 p-3 dark:border-zinc-700">
+                <legend className="px-1 text-xs font-bold uppercase tracking-widest text-zinc-500">How new students get access</legend>
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="radio" checked={deliveryMode === 'temporary_password'} onChange={() => setDeliveryMode('temporary_password')} className="mt-1" />
+                  <span>Temporary passwords (shown once, hand them out in person).</span>
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="radio" checked={deliveryMode === 'activation_email'} onChange={() => setDeliveryMode('activation_email')} className="mt-1" />
+                  <span>
+                    Email an activation link. Students choose their own password. Rows without an email still get a
+                    temporary password.
+                  </span>
+                </label>
+                {deliveryMode !== validatedDeliveryMode ? (
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Re-validate to apply the new delivery method before continuing.</p>
+                ) : null}
+              </fieldset>
+            ) : null}
+
             {blockingIssues.length > 0 ? (
               <div className="border border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
                 <p className="flex items-center gap-2 font-bold">
@@ -608,7 +669,11 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
                 </Button>
                 <Button
                   onClick={() => setStep('confirm')}
-                  disabled={(blockingIssues.length > 0 && !skipInvalid) || conflictMode !== validatedConflictMode}
+                  disabled={
+                    (blockingIssues.length > 0 && !skipInvalid) ||
+                    conflictMode !== validatedConflictMode ||
+                    deliveryMode !== validatedDeliveryMode
+                  }
                 >
                   Continue
                 </Button>
@@ -626,7 +691,9 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
               </p>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-zinc-600 dark:text-zinc-400">
                 <li>Each chunk commits atomically; stopping after a chunk keeps earlier chunks.</li>
-                {mode === 'students' ? (
+                {mode === 'students' && validatedDeliveryMode === 'activation_email' ? (
+                  <li>Students with an email receive a single-use activation link; the others get a temporary password shown once in the report.</li>
+                ) : mode === 'students' ? (
                   <li>Temporary passwords are generated server-side and shown once in the report.</li>
                 ) : (
                   <li>Students without accounts are reported, not auto-created, unless the institution enables provisioning.</li>
@@ -691,6 +758,20 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
               <SummaryTile label="Skipped" value={reports.reduce((total, item) => total + item.skipped, 0)} />
               <SummaryTile label="Failed" value={reports.reduce((total, item) => total + item.failed, 0) + localIssues.filter((issue) => BLOCKING_CODES.has(issue.code)).length} />
             </div>
+
+            {activationReport ? (
+              <div role="status" className="flex items-start gap-2 border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-200">
+                <Mail className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <p>
+                  <span className="font-bold">{activationReport.queued.toLocaleString()}</span> activation email
+                  {activationReport.queued === 1 ? '' : 's'} queued
+                  {activationReport.fallbackTemporary > 0
+                    ? `, and ${activationReport.fallbackTemporary.toLocaleString()} student${activationReport.fallbackTemporary === 1 ? '' : 's'} without an email got a temporary password below`
+                    : ''}
+                  . Delivery can take a few minutes; you can follow it in User Management under “Awaiting activation”.
+                </p>
+              </div>
+            ) : null}
 
             {credentials.length > 0 ? (
               <section className="space-y-2 border border-golden/50 bg-golden/10 p-4 dark:bg-golden/5">

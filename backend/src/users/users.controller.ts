@@ -61,6 +61,14 @@ export class UsersController {
     return this.importQueue.status(req.user, jobId)
   }
 
+  /** Whether email activation can be used right now (setting on + mail provider configured). */
+  @Get('activation/status')
+  @Roles('teacher', 'super_admin')
+  @RequireDesignation('user_admin')
+  activationStatus() {
+    return this.users.activationStatus()
+  }
+
   /** Queue a fresh activation email for every pending student in the caller's scope. */
   @Post('activation/resend-pending')
   @Roles('teacher', 'super_admin')

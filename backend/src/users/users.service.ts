@@ -1256,6 +1256,13 @@ export class UsersService {
     return { pending: pending.length, queued, alreadyQueued, noEmail }
   }
 
+  /** Drives the import dialog and settings UI: is email activation usable right now? */
+  async activationStatus(): Promise<{ enabled: boolean; configured: boolean; driver: string }> {
+    const enabled = (await this.settings?.getBoolean('activation_email_enabled', false)) ?? false
+    const status = this.mail?.status()
+    return { enabled, configured: status?.configured ?? false, driver: status?.driver ?? 'disabled' }
+  }
+
   private async assertActivationEmailAvailable(): Promise<void> {
     const enabled = (await this.settings?.getBoolean('activation_email_enabled', false)) ?? false
     const configured = this.mail?.status().configured ?? false

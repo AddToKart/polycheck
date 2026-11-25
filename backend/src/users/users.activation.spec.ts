@@ -128,6 +128,18 @@ describe('UsersService.resendActivation', () => {
   })
 })
 
+describe('UsersService.activationStatus', () => {
+  it('reports whether email activation can be used right now', async () => {
+    await expect(build().service.activationStatus()).resolves.toEqual({
+      enabled: true,
+      configured: true,
+      driver: 'resend',
+    })
+    await expect(build({ enabled: false }).service.activationStatus()).resolves.toMatchObject({ enabled: false })
+    await expect(build({ configured: false }).service.activationStatus()).resolves.toMatchObject({ configured: false })
+  })
+})
+
 describe('UsersService.resendPendingActivation', () => {
   it('queues every pending student with an email and counts the rest', async () => {
     const { service, activation, prisma } = build({

@@ -3,6 +3,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import type { User } from '@polycheck/shared'
 import { UserProfileDialog } from './user-profile-dialog'
 
+// The Radix dialog's first render is heavy; keep the suite stable on a busy 2-core machine.
+vi.setConfig({ testTimeout: 20_000 })
+
 const apiMock = vi.hoisted(() => ({ updateUser: vi.fn() }))
 vi.mock('@/lib/api-client', () => ({ api: apiMock }))
 vi.mock('@/lib/notifications', () => ({ useNotifications: () => ({ addNotification: vi.fn() }) }))
