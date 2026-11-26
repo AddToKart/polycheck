@@ -247,7 +247,7 @@ class _IdCardFront extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'POLYTECHNIC UNIVERSITY OF THE PHILIPPINES',
+                        BrandingScope.of(context).name.toUpperCase(),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(

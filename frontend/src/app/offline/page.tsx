@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import ThemeToggle from '@/components/ThemeToggle'
 
 export const metadata = {
   title: 'Offline — Polycheck',
@@ -7,6 +8,9 @@ export const metadata = {
 export default function OfflinePage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-zinc-100 px-6 text-center dark:bg-brand-black">
+      <div className="fixed right-4 top-4 z-30">
+        <ThemeToggle />
+      </div>
       <div className="max-w-md border border-zinc-200 bg-white p-8 shadow-sm dark:border-golden/15 dark:bg-surface-dark">
         <p className="mb-2 text-xs font-bold uppercase tracking-widest text-maroon dark:text-golden">
           No connection

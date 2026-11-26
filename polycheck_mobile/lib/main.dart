@@ -17,6 +17,7 @@ import 'src/core/router/app_router.dart';
 import 'src/core/sync/sync_lifecycle_binder.dart';
 import 'src/core/theme/brand_theme.dart';
 import 'src/core/theme/brand_tokens.dart';
+import 'src/core/theme/theme_mode_provider.dart';
 import 'src/features/surface/presentation/widgets/outage_widgets.dart';
 
 Future<void> main() async {
@@ -65,7 +66,7 @@ class PolycheckApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: BrandTheme.light,
       darkTheme: BrandTheme.dark,
-      themeMode: ThemeMode.system,
+      themeMode: ref.watch(themeModeProvider),
       routerConfig: appRouter,
       builder: bootstrap
           ? (context, child) => BrandingScope(

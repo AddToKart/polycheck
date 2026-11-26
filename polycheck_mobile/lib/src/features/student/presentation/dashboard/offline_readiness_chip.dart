@@ -34,6 +34,7 @@ class _OfflineReadinessChipState extends ConsumerState<OfflineReadinessChip> {
           .read(offlinePreparationProvider)
           .prepareForOfflineClass(user);
       ref.invalidate(offlineReadinessProvider);
+      ref.invalidate(offlinePreparedOkAtProvider);
       await ref.read(offlineReadinessProvider.future);
       if (!mounted) return;
       if (result.isComplete) {
@@ -65,11 +66,19 @@ class _OfflineReadinessChipState extends ConsumerState<OfflineReadinessChip> {
   @override
   Widget build(BuildContext context) {
     final snapshot = ref.watch(offlineReadinessProvider);
+    // Watched here (not inside the data branch) so the subscription is stable.
+    final preparedToday = isOfflinePreparationCurrent(
+      ref.watch(offlinePreparedOkAtProvider).value,
+      ref.read(deviceNowProvider)(),
+    );
     return snapshot.when(
       loading: () => const SizedBox.shrink(),
       error: (_, _) => const SizedBox.shrink(),
       data: (value) {
-        if (value.isReady) {
+        // Ready either because classes for today/tomorrow are cached and
+        // verifiable, or because a clean preparation already ran today. Either
+        // way the button is gone: there is nothing left to press.
+        if (value.isReady || (preparedToday && !value.keyCoverageMissing)) {
           return const _ReadyPill(key: ValueKey('offline-ready'));
         }
         if (value.keyCoverageMissing) {

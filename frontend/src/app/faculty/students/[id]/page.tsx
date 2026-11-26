@@ -13,6 +13,7 @@ import { describeMutationError, useRunMutation } from '@/lib/run-mutation'
 import { Sidebar } from '@/components/layout/sidebar'
 import { StudentGovernanceActions } from '@/components/faculty/StudentGovernanceActions'
 import { HologramOverlay } from '@/components/student/HologramOverlay'
+import { InstitutionHeaderLines } from '@/components/branding/InstitutionHeaderLines'
 
 const STATUS_CYCLE: EditableAttendanceStatus[] = ['present', 'late', 'incomplete', 'absent']
 
@@ -238,10 +239,10 @@ export default function StudentDetailPage() {
                 <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] bg-white dark:bg-id-paper-dark border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
                   {/* Institution header */}
                   <div className="bg-maroon px-5 py-3 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800">
-                    <div>
-                      <p className="text-xs font-bold text-golden tracking-wider">POLYTECHNIC UNIVERSITY</p>
-                      <p className="text-[10px] font-medium text-white/80 tracking-[3px] mt-0.5">OF THE PHILIPPINES</p>
-                    </div>
+                    <InstitutionHeaderLines
+                      nameClassName="text-xs font-bold text-golden tracking-wider"
+                      campusClassName="text-[10px] font-medium text-white/80 tracking-[3px] mt-0.5"
+                    />
                     <div className="w-9 h-9 bg-white/15 rounded-full flex items-center justify-center">
                       <School className="w-5 h-5 text-white" />
                     </div>

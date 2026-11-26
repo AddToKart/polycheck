@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { MailCheck, MailWarning } from 'lucide-react'
 import { useBranding } from '@/components/branding/BrandingProvider'
+import ThemeToggle from '@/components/ThemeToggle'
 import { api } from '@/lib/api-client'
 import { STUDENT_NUMBER_PATTERN, describeResetFailure, normalizeStudentNumber } from '@/lib/password-reset'
 import { Button } from '@/components/ui/button'
@@ -20,6 +21,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <div className="mx-auto flex max-w-md items-center gap-3">
           <span className="font-heading text-xl font-bold">Polycheck</span>
           <span className="text-xs uppercase tracking-widest text-golden">Password help</span>
+          <ThemeToggle className="ml-auto rounded-none p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-golden" />
         </div>
       </header>
       <div className="mx-auto max-w-md px-4 py-6">

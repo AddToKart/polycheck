@@ -109,7 +109,7 @@ test.describe('Faculty Student Detail', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Alexandra Marie Reyes' })).toBeVisible({
       timeout: 20_000,
     })
-    await expect(page.getByText('POLYTECHNIC UNIVERSITY')).toBeVisible()
+    await expect(page.getByText('EXAMPLE POLYTECHNIC OF THE PROVINCE')).toBeVisible()
 
     // Playwright does not honor backface-visibility, so the flip state must be
     // asserted through the rotateY class on the preserve-3d wrapper. Click the

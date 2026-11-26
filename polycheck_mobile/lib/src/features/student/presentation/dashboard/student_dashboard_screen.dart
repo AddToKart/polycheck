@@ -103,7 +103,6 @@ class StudentDashboardScreen extends ConsumerWidget {
             const SizedBox(height: 12),
             const StudentOfflineSyncPanel(),
             const SizedBox(height: 12),
-            const SignOutFooterTile(),
             _CredentialCard(
               studentNumber: user.studentId?.trim().isNotEmpty == true
                   ? user.studentId!
@@ -193,6 +192,9 @@ class StudentDashboardScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 10),
               ],
+            const SizedBox(height: 18),
+            const SignOutFooterTile(),
+            const SizedBox(height: 8),
           ],
         ),
       ),

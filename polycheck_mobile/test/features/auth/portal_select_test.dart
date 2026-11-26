@@ -28,6 +28,37 @@ void main() {
     expect(find.text('Version 1.0.0'), findsOneWidget);
   });
 
+  testWidgets('the portal and sign-in screens show the configured institution, '
+      'never a hardcoded one, and carry the theme toggle', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          tokenStoreProvider.overrideWithValue(MemoryTokenStore()),
+          maintenanceProvider.overrideWith(
+            () => FakeMaintenanceController(const MaintenanceState()),
+          ),
+        ],
+        child: const PolycheckApp(bootstrap: false),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('YOUR INSTITUTION'), findsOneWidget);
+    expect(find.textContaining('POLYTECHNIC UNIVERSITY'), findsNothing);
+    expect(find.textContaining('Santa Maria'), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('theme-mode-toggle')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Student'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('theme-mode-toggle')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('student card navigates to the student login form', (
     tester,
   ) async {

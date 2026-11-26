@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/router/routes/app_routes.dart';
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/widgets/campus_header.dart';
+import '../../../../core/widgets/theme_mode_toggle.dart';
 import '../../../../core/branding/branding.dart';
 
 /// Shared zero-radius authentication page chrome.
@@ -42,7 +43,7 @@ class AuthShell extends StatelessWidget {
                 icon: const Icon(Icons.arrow_back),
               )
             : null,
-        actions: actions,
+        actions: <Widget>[...?actions, const ThemeModeToggleButton()],
       ),
       body: SafeArea(
         top: false,

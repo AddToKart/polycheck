@@ -179,6 +179,11 @@ void main() {
 
       final stamp = await readOfflineLastPreparedAt(database, _student.id);
       expect(stamp, DateTime.utc(2026, 11, 10, 12));
+      // A clean run also marks the dashboard "ready" until the day changes.
+      expect(
+        await readOfflinePreparedOkAt(database, _student.id),
+        DateTime.utc(2026, 11, 10, 12),
+      );
       expect(await database.readEnrolledSectionIds(_student.id), ['sec-1']);
       expect(await database.watchSubjects(_student.id).first, [_subject]);
     },
@@ -249,6 +254,8 @@ void main() {
     expect(result.isComplete, isFalse);
     expect(result.failures.single.step, OfflinePrepStep.attendance);
     expect(result.failures.single.error.status, 403);
+    // A run with any failure never claims the device is ready.
+    expect(await readOfflinePreparedOkAt(database, _student.id), isNull);
     expect(
       await readOfflineLastPreparedAt(database, _student.id),
       DateTime.utc(2026, 11, 10, 12),

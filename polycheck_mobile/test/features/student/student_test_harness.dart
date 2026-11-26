@@ -281,6 +281,9 @@ List<Override> dashboardOverrides({
       database ?? AppDatabase.forTesting(NativeDatabase.memory()),
     ),
     offlineReadinessProvider.overrideWith((ref) => Future.value(readiness)),
+    // Real drift reads never settle under the widget-test fake clock; a clean
+    // preparation stamp is canned like readiness (null = never prepared).
+    offlinePreparedOkAtProvider.overrideWith((ref) => Future.value(null)),
     offlineQueueIssuesProvider.overrideWith(
       (ref, _) => Stream.value(queueIssues),
     ),

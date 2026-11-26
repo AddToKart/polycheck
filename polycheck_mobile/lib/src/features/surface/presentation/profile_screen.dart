@@ -15,6 +15,7 @@ import '../../../core/utils/designations.dart';
 import '../../../core/widgets/campus_button.dart';
 import '../../../core/widgets/campus_header.dart';
 import '../../../core/widgets/campus_loading.dart';
+import '../../../core/widgets/theme_mode_toggle.dart';
 import '../data/assistant_copy.dart';
 import '../data/outage_demo.dart';
 import '../data/surface_navigation.dart';
@@ -187,6 +188,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     'The assistant is not available in this build.',
               ),
             ),
+          const ThemeModeToggleButton(),
           const NotificationBellAction(),
         ],
       ),

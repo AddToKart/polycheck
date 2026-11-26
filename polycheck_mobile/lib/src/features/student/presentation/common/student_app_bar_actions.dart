@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/widgets/theme_mode_toggle.dart';
 import '../../student_paths.dart';
 
 /// Notification, assistant, and profile entry points shared by the student
@@ -10,6 +11,7 @@ class StudentAppBarActions {
 
   static List<Widget> build(BuildContext context) {
     return <Widget>[
+      const ThemeModeToggleButton(),
       IconButton(
         tooltip: 'Notifications',
         onPressed: () => context.push(StudentPaths.notifications),

@@ -1,8 +1,13 @@
+import ThemeToggle from '@/components/ThemeToggle'
+
 const noticeVersion = process.env.NEXT_PUBLIC_PRIVACY_NOTICE_VERSION ?? '2026-09-05'
 
 export default function PrivacyNoticePage() {
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-12 text-foreground">
+      <div className="fixed right-4 top-4 z-30">
+        <ThemeToggle />
+      </div>
       <p className="text-xs font-bold uppercase tracking-[0.2em] text-maroon">Polycheck privacy notice</p>
       <h1 className="mt-3 font-serif text-4xl font-bold">Attendance evidence and your privacy</h1>
       <p className="mt-2 text-sm text-muted-foreground">Version {noticeVersion}</p>

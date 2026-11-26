@@ -8,6 +8,7 @@ import '../../../core/router/routes/app_routes.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/theme/brand_tokens.dart';
 import '../../../core/widgets/campus_card.dart';
+import '../../../core/widgets/theme_mode_toggle.dart';
 import 'maintenance_screen.dart';
 import '../../../core/branding/branding.dart';
 
@@ -40,6 +41,10 @@ class PortalSelectScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: ThemeModeToggleButton(color: tokens.onMaroon),
+                  ),
                   _BrandBlock(tokens: tokens, textTheme: textTheme),
                   const SizedBox(height: 36),
                   LayoutBuilder(
@@ -173,20 +178,22 @@ class _BrandBlock extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'POLYTECHNIC UNIVERSITY OF THE PHILIPPINES',
+                    BrandingScope.of(context).name.toUpperCase(),
                     style: textTheme.labelSmall?.copyWith(
                       color: tokens.gold,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 1.4,
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    'Santa Maria, Bulacan',
-                    style: textTheme.bodySmall?.copyWith(
-                      color: tokens.onMaroon.withValues(alpha: 0.72),
+                  if (BrandingScope.of(context).campus.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      BrandingScope.of(context).campus,
+                      style: textTheme.bodySmall?.copyWith(
+                        color: tokens.onMaroon.withValues(alpha: 0.72),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),

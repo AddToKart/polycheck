@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 
-export default function ThemeToggle() {
+export default function ThemeToggle({ className }: { className?: string }) {
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
@@ -21,7 +21,10 @@ export default function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      className="p-2 rounded-none text-zinc-500 hover:text-maroon dark:text-zinc-400 dark:hover:text-golden hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+      className={
+        className ??
+        "p-2 rounded-none text-zinc-500 hover:text-maroon dark:text-zinc-400 dark:hover:text-golden hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+      }
       aria-label="Toggle theme"
     >
       {dark ? (

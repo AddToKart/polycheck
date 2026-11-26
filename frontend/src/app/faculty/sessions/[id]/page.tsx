@@ -27,6 +27,7 @@ import { OutageSimulator } from '@/components/dev/OutageSimulator'
 import { StudentGovernanceActions } from '@/components/faculty/StudentGovernanceActions'
 import { HologramOverlay } from '@/components/student/HologramOverlay'
 import QRCode from 'qrcode'
+import { InstitutionHeaderLines } from '@/components/branding/InstitutionHeaderLines'
 
 // F2 radar opens as a cockpit dialog; maplibre and its worker chain load only
 // when the teacher actually opens it.
@@ -1409,10 +1410,10 @@ export default function SessionDetailPage() {
                     <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] bg-white dark:bg-id-paper-dark border-2 border-maroon dark:border-golden shadow-md overflow-hidden flex flex-col">
                       {/* Institution header */}
                       <div className="bg-maroon px-4 py-2 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800">
-                        <div>
-                          <p className="text-[10px] font-bold text-golden tracking-wider leading-none">POLYTECHNIC UNIVERSITY</p>
-                          <p className="text-[8px] font-medium text-white/80 tracking-[2px] mt-0.5 leading-none">OF THE PHILIPPINES</p>
-                        </div>
+                        <InstitutionHeaderLines
+                          nameClassName="text-[10px] font-bold text-golden tracking-wider leading-none"
+                          campusClassName="text-[8px] font-medium text-white/80 tracking-[2px] mt-0.5 leading-none"
+                        />
                         <div className="w-7 h-7 bg-white/15 rounded-full flex items-center justify-center">
                           <School className="w-4 h-4 text-white" />
                         </div>

@@ -21,6 +21,11 @@ import 'student_cache.dart';
 /// range key — the same owner-scoped drift store contract.
 const String offlinePreparedCacheKey = 'offline-prepared-at';
 
+/// Stamped only by a run that finished with no failures. The dashboard chip
+/// reads it to say "Ready for offline class" and stay disabled until the
+/// preparation goes stale (a new day), because the day's classes change.
+const String offlinePreparedOkCacheKey = 'offline-prepared-ok-at';
+
 enum OfflinePrepStep {
   clock,
   drain,
@@ -84,15 +89,12 @@ class OfflinePreparationResult {
       failures.isEmpty ? null : failures.first;
 }
 
-/// Reads the persisted preparation stamp (owner-scoped, device UTC).
-Future<DateTime?> readOfflineLastPreparedAt(
+Future<DateTime?> _readStamp(
   AppDatabase database,
   String userId,
+  String key,
 ) async {
-  final rows = await database.readScheduleCache(
-    userId,
-    offlinePreparedCacheKey,
-  );
+  final rows = await database.readScheduleCache(userId, key);
   for (final raw in rows ?? const <Object?>[]) {
     if (raw is String) {
       final parsed = DateTime.tryParse(raw);
@@ -100,6 +102,26 @@ Future<DateTime?> readOfflineLastPreparedAt(
     }
   }
   return null;
+}
+
+/// Reads the persisted preparation stamp (owner-scoped, device UTC).
+Future<DateTime?> readOfflineLastPreparedAt(
+  AppDatabase database,
+  String userId,
+) => _readStamp(database, userId, offlinePreparedCacheKey);
+
+/// When the last *fully successful* preparation finished, or null.
+Future<DateTime?> readOfflinePreparedOkAt(
+  AppDatabase database,
+  String userId,
+) => _readStamp(database, userId, offlinePreparedOkCacheKey);
+
+/// A successful preparation counts as current for the rest of the campus day
+/// it ran on; the next day the prepare action returns, because the class
+/// schedule has moved on.
+bool isOfflinePreparationCurrent(DateTime? okAt, DateTime now) {
+  if (okAt == null) return false;
+  return formatCampusDate(okAt.toLocal()) == formatCampusDate(now);
 }
 
 /// Queue issue label (web `OfflineSyncPanel.tsx:23-36` mapping; the drift
@@ -282,9 +304,11 @@ class OfflinePreparation {
     }
 
     final preparedAt = _now();
-    await database.putScheduleCache(userId, offlinePreparedCacheKey, <Object?>[
-      preparedAt.toUtc().toIso8601String(),
-    ]);
+    final stamp = <Object?>[preparedAt.toUtc().toIso8601String()];
+    await database.putScheduleCache(userId, offlinePreparedCacheKey, stamp);
+    if (failures.isEmpty) {
+      await database.putScheduleCache(userId, offlinePreparedOkCacheKey, stamp);
+    }
 
     return OfflinePreparationResult(
       preparedAt: preparedAt,
@@ -315,6 +339,13 @@ final offlinePreparationProvider = Provider<OfflinePreparation>((ref) {
     },
     drain: () => ref.read(syncControllerProvider.notifier).drainNow(),
   );
+});
+
+/// When this account last finished a clean preparation (null if never).
+final offlinePreparedOkAtProvider = FutureProvider<DateTime?>((ref) async {
+  final user = ref.watch(sessionProvider).user;
+  if (user == null) return null;
+  return readOfflinePreparedOkAt(ref.watch(appDatabaseProvider), user.id);
 });
 
 /// Current offline readiness snapshot for the dashboard chip (B-11). Loading

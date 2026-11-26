@@ -131,10 +131,12 @@ class _IdFront extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'POLYTECHNIC UNIVERSITY OF THE PHILIPPINES',
-                    style: TextStyle(
+                    BrandingScope.of(context).name.toUpperCase(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w700,
                       fontSize: 9,
