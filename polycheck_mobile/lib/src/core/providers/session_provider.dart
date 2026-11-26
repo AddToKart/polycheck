@@ -325,6 +325,22 @@ class SessionController extends Notifier<SessionState> {
   }
 
   /// Re-reads the profile; throws the typed failure so callers can surface it.
+  /// Applies a profile the server just returned (for example from the consent
+  /// call) without a second round trip. The on-screen state is updated even if
+  /// the local cache write fails, so a saved action never looks unsaved.
+  Future<void> applyProfile(User user) async {
+    try {
+      await _database.writeProfile(user);
+    } on Object {
+      // The next authoritative profile read rewrites the cache.
+    }
+    state = state.copyWith(
+      status: SessionStatus.signedIn,
+      user: user,
+      clearExpired: true,
+    );
+  }
+
   Future<User> refreshMe() async {
     final profile = await _api.me();
     await _storeProfile(profile);

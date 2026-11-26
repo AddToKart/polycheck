@@ -5,11 +5,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/api/api_models.dart';
 import '../../../../core/api/api_providers.dart';
 import '../../../../core/models/user.dart';
+import '../../../../core/network/api_error.dart';
 import '../../../../core/providers/session_provider.dart';
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/widgets/campus_button.dart';
 import '../../../../core/widgets/campus_card.dart';
 import '../../../../core/widgets/campus_loading.dart';
+
+/// What to tell the student (and, through them, support) when consent could not
+/// be recorded. Includes the server's reason so a failure can be diagnosed from
+/// a screenshot.
+String describeConsentError(Object error) {
+  if (error is ApiRequestError) {
+    if (error.status == 0) {
+      return 'Cannot reach the Polycheck server. Check your connection and '
+          'try again.';
+    }
+    final reason = error.message.trim();
+    return 'Unable to record privacy consent (error ${error.status}'
+        '${reason.isEmpty ? '' : ': $reason'}). Please try again.';
+  }
+  return 'Unable to record privacy consent. Please try again. '
+      '(${error.runtimeType})';
+}
 
 /// App-level RA 10173 consent gate (mirrors the web `PrivacyConsentGate`).
 ///
@@ -214,13 +232,15 @@ class _PrivacyConsentGateState extends ConsumerState<PrivacyConsentGate> {
       _error = null;
     });
     try {
-      await ref.read(sessionApiProvider).acceptPrivacyConsent(notice.version);
-      await ref.read(sessionProvider.notifier).refreshMe();
-    } catch (_) {
+      // The consent call returns the updated profile; applying it directly
+      // means a flaky second request can never hide a recorded consent.
+      final updated = await ref
+          .read(sessionApiProvider)
+          .acceptPrivacyConsent(notice.version);
+      await ref.read(sessionProvider.notifier).applyProfile(updated);
+    } catch (error) {
       if (!mounted) return;
-      setState(() {
-        _error = 'Unable to record privacy consent. Please try again.';
-      });
+      setState(() => _error = describeConsentError(error));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
