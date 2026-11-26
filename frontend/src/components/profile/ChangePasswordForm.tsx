@@ -8,6 +8,7 @@ import { useNotifications } from '@/lib/notifications'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PasswordRequirements } from '@/components/auth/PasswordRequirements'
 
 const PASSWORD_RULES: { test: (value: string) => boolean; message: string }[] = [
   { test: (value) => value.length >= 12, message: 'Use at least 12 characters.' },
@@ -26,6 +27,7 @@ export function ChangePasswordForm({ user, onUpdated }: { user: User; onUpdated:
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -66,7 +68,7 @@ export function ChangePasswordForm({ user, onUpdated }: { user: User; onUpdated:
         <Label htmlFor="profile-current-password">Current password</Label>
         <Input
           id="profile-current-password"
-          type="password"
+          type={showPassword ? 'text' : 'password'}
           autoComplete="current-password"
           value={currentPassword}
           onChange={(event) => setCurrentPassword(event.target.value)}
@@ -80,7 +82,7 @@ export function ChangePasswordForm({ user, onUpdated }: { user: User; onUpdated:
             <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
             <Input
               id="profile-new-password"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               autoComplete="new-password"
               className="pl-9"
               value={newPassword}
@@ -94,7 +96,7 @@ export function ChangePasswordForm({ user, onUpdated }: { user: User; onUpdated:
           <Label htmlFor="profile-confirm-password">Confirm new password</Label>
           <Input
             id="profile-confirm-password"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             autoComplete="new-password"
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
@@ -103,9 +105,18 @@ export function ChangePasswordForm({ user, onUpdated }: { user: User; onUpdated:
           />
         </div>
       </div>
+      <PasswordRequirements password={newPassword} />
+      <label className="flex min-h-9 items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="h-4 w-4 accent-maroon"
+          checked={showPassword}
+          onChange={(event) => setShowPassword(event.target.checked)}
+        />
+        Show passwords
+      </label>
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
-        At least 12 characters with lowercase, uppercase, number, and special character. Changing your password signs
-        out every other device; this session stays signed in.
+        Changing your password signs out every other device; this session stays signed in.
       </p>
       {error ? (
         <p role="alert" className="text-sm text-red-600 dark:text-red-400">

@@ -1,12 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { Lock } from 'lucide-react'
+import { Eye, EyeOff, Lock } from 'lucide-react'
 import type { User } from '@polycheck/shared'
 import { api } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PasswordRequirements } from '@/components/auth/PasswordRequirements'
 
 function validatePassword(password: string): string | null {
   if (password.length < 12) return 'Use at least 12 characters.'
@@ -32,6 +33,7 @@ export function PendingPasswordChange({
 }) {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -89,18 +91,25 @@ export function PendingPasswordChange({
             </div>
             <Input
               id="new-password"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               autoComplete="new-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="h-12 rounded-none border-zinc-200 pl-16 text-lg dark:border-zinc-700"
+              className="h-12 rounded-none border-zinc-200 pl-16 pr-12 text-lg dark:border-zinc-700"
               required
               minLength={12}
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword((current) => !current)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-pressed={showPassword}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 focus:outline-none dark:hover:text-zinc-300"
+            >
+              {showPassword ? <EyeOff className="h-5 w-5" aria-hidden="true" /> : <Eye className="h-5 w-5" aria-hidden="true" />}
+            </button>
           </div>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            At least 12 characters with lowercase, uppercase, number, and special character.
-          </p>
+          <PasswordRequirements password={password} className="pt-1" />
         </div>
 
         <div className="space-y-2">
@@ -109,7 +118,7 @@ export function PendingPasswordChange({
           </Label>
           <Input
             id="confirm-password"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             autoComplete="new-password"
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
