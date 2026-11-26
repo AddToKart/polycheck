@@ -94,6 +94,19 @@ do, the login screen shows "Your Institution".
 Optional (all default to today's behaviour): `COURSE_SCOPE_MODE`, `SYNC_WORKER_ENABLED`, `SYNC_WORKER_CONCURRENCY`,
 `MAIL_DRIVER`, `RESEND_API_KEY`, `MAIL_FROM`, `RESEND_WEBHOOK_SECRET`.
 
+### Email: activation and "forgot password"
+
+Both flows send through Resend. Set `MAIL_DRIVER=resend`, `RESEND_API_KEY` and `MAIL_FROM` (a sender on a domain verified
+at Resend, for example `Polycheck <no-reply@polycheck.live>`) in the Coolify environment and redeploy; with
+`MAIL_DRIVER=resend` the backend refuses to start if the key or sender is missing. The daily cap (`MAIL_DAILY_CAP`,
+default 100) is shared by activation and reset emails.
+
+- **Forgot password** works only for students who added an email under *Profile*. The reset page is
+  `https://<web host>/reset-password` (the emailed link), so `FRONTEND_URL` must be the web app's public URL. A student
+  with no bound email is told to ask an instructor, who issues a temporary password from the student's page.
+- Optional tuning: `PASSWORD_RESET_TTL_MINUTES` (default 60), `PASSWORD_RESET_COOLDOWN_SECONDS` (300),
+  `PASSWORD_RESET_ACCOUNT_LIMIT` per day (5), `PASSWORD_RESET_REQUEST_IP_LIMIT` per hour (40).
+
 ## 3. Vercel (web app)
 
 - `NEXT_PUBLIC_API_URL` = `https://<API host>/api` (note the `/api` suffix). It is baked in at **build** time, so

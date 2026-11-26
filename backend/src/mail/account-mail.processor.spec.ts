@@ -56,6 +56,7 @@ function makeProcessor(
       ? { raw: 'RAWTOKEN'.padEnd(43, 'x'), expiresAt: new Date('2026-12-02T00:00:00Z') }
       : options.issue
   const activation = { issueToken: jest.fn().mockResolvedValue(issued) }
+  const passwordReset = { issueToken: jest.fn().mockResolvedValue(issued) }
   const config = {
     get: jest.fn((key: string) =>
       key === 'MAIL_DAILY_CAP'
@@ -65,8 +66,14 @@ function makeProcessor(
           : undefined,
     ),
   }
-  const processor = new AccountMailProcessor(prisma, mail as never, activation as never, config as never)
-  return { processor, prisma, mail, activation, issued }
+  const processor = new AccountMailProcessor(
+    prisma,
+    mail as never,
+    activation as never,
+    passwordReset as never,
+    config as never,
+  )
+  return { processor, prisma, mail, activation, passwordReset, issued }
 }
 
 describe('AccountMailProcessor.process', () => {
@@ -198,6 +205,55 @@ describe('AccountMailProcessor.process', () => {
   it('rejects unsupported mail kinds', async () => {
     const { processor, mail } = makeProcessor({ row: { id: 'm-1', userId: 'u-1', kind: 'weird', attempts: 1 } })
     await expect(processor.process('m-1')).resolves.toBe('failed')
+    expect(mail.send).not.toHaveBeenCalled()
+  })
+})
+
+describe('AccountMailProcessor password_reset mail', () => {
+  const resetRow = { id: 'm-9', userId: 'u-1', kind: 'password_reset', attempts: 1 }
+  const eligible = {
+    id: 'u-1',
+    fullName: 'Dela Cruz, Maria Elena',
+    email: 'login@example.com',
+    contactEmail: 'bound@example.com',
+    role: 'student',
+    isActive: true,
+    activationPending: false,
+  }
+
+  it('mints a reset token and sends the reset link to the BOUND contact email, not the login email', async () => {
+    const { processor, mail, passwordReset, activation } = makeProcessor({ row: resetRow, user: eligible })
+    expect(await processor.process('m-9')).toBe('sent')
+    expect(passwordReset.issueToken).toHaveBeenCalledWith('u-1')
+    expect(activation.issueToken).not.toHaveBeenCalled()
+    const sent = mail.send.mock.calls[0][0]
+    expect(sent.to).toBe('bound@example.com')
+    expect(sent.subject).toBe('Reset your Polycheck password')
+    expect(sent.text).toContain('https://app.polycheck.live/reset-password#token=')
+    expect(sent.idempotencyKey).toBe('account-mail-m-9-1')
+  })
+
+  it('fails with no_email when nothing is bound anymore', async () => {
+    const { processor, mail, prisma } = makeProcessor({ row: resetRow, user: { ...eligible, contactEmail: null } })
+    expect(await processor.process('m-9')).toBe('failed')
+    expect(mail.send).not.toHaveBeenCalled()
+    expect(prisma.accountMail.update).toHaveBeenCalledWith({
+      where: { id: 'm-9' },
+      data: { status: 'failed', errorCode: 'no_email' },
+    })
+  })
+
+  it('fails when the account is inactive, not a student, or still awaiting activation', async () => {
+    for (const patch of [{ isActive: false }, { role: 'teacher' }, { activationPending: true }]) {
+      const { processor, mail } = makeProcessor({ row: resetRow, user: { ...eligible, ...patch } })
+      expect(await processor.process('m-9')).toBe('failed')
+      expect(mail.send).not.toHaveBeenCalled()
+    }
+  })
+
+  it('fails when no token can be issued', async () => {
+    const { processor, mail } = makeProcessor({ row: resetRow, user: eligible, issue: null })
+    expect(await processor.process('m-9')).toBe('failed')
     expect(mail.send).not.toHaveBeenCalled()
   })
 })

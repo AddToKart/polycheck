@@ -1,8 +1,14 @@
 import { Injectable, Logger, Optional } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { AccountActivationService } from '../account-activation/account-activation.service'
+import {
+  PasswordResetService,
+  PASSWORD_RESET_MAIL_KIND,
+  PASSWORD_RESET_TTL_MINUTES,
+} from '../password-reset/password-reset.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { buildActivationEmail } from './activation-email'
+import { buildPasswordResetEmail } from './password-reset-email'
 import { MailService } from './mail.service'
 import { MailSendError } from './mail.types'
 
@@ -36,6 +42,7 @@ export class AccountMailProcessor {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly activation: AccountActivationService,
+    private readonly passwordReset: PasswordResetService,
     @Optional() private readonly config?: ConfigService,
   ) {}
 
@@ -87,34 +94,21 @@ export class AccountMailProcessor {
       select: { id: true, userId: true, kind: true, attempts: true },
     })
     if (!row) return 'skipped'
-    if (row.kind !== 'activation') return this.fail(id, 'unsupported_kind')
-
-    const user = await this.prisma.user.findUnique({
-      where: { id: row.userId },
-      select: { id: true, fullName: true, email: true, role: true, isActive: true, activationPending: true },
-    })
-    if (!user || user.role !== 'student' || !user.isActive || !user.activationPending) {
-      return this.fail(id, 'not_pending')
+    let message: { to: string; subject: string; html: string; text: string }
+    if (row.kind === 'activation') {
+      const built = await this.buildActivation(row.userId)
+      if ('failure' in built) return this.fail(id, built.failure)
+      message = built.message
+    } else if (row.kind === PASSWORD_RESET_MAIL_KIND) {
+      const built = await this.buildPasswordReset(row.userId)
+      if ('failure' in built) return this.fail(id, built.failure)
+      message = built.message
+    } else {
+      return this.fail(id, 'unsupported_kind')
     }
-    const to = user.email?.trim()
-    if (!to) return this.fail(id, 'no_email')
-
-    const issued = await this.activation.issueToken(user.id)
-    if (!issued) return this.fail(id, 'not_pending')
-
-    const link = `${this.frontendBase()}/activate#token=${issued.raw}`
-    const email = buildActivationEmail({
-      fullName: user.fullName,
-      link,
-      expiresAt: issued.expiresAt,
-      institutionName: await this.institutionName(),
-    })
     try {
       const result = await this.mail.send({
-        to,
-        subject: email.subject,
-        html: email.html,
-        text: email.text,
+        ...message,
         // One key per attempt: a retry after a lost response must not be replayed
         // against a stale payload (each attempt mints a different link).
         idempotencyKey: `account-mail-${row.id}-${row.attempts}`,
@@ -136,6 +130,59 @@ export class AccountMailProcessor {
       }
       return this.fail(id, retryable ? 'max_attempts' : code)
     }
+  }
+
+  private async buildActivation(
+    userId: string,
+  ): Promise<{ message: { to: string; subject: string; html: string; text: string } } | { failure: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, fullName: true, email: true, role: true, isActive: true, activationPending: true },
+    })
+    if (!user || user.role !== 'student' || !user.isActive || !user.activationPending) {
+      return { failure: 'not_pending' }
+    }
+    const to = user.email?.trim()
+    if (!to) return { failure: 'no_email' }
+
+    const issued = await this.activation.issueToken(user.id)
+    if (!issued) return { failure: 'not_pending' }
+
+    const link = `${this.frontendBase()}/activate#token=${issued.raw}`
+    const email = buildActivationEmail({
+      fullName: user.fullName,
+      link,
+      expiresAt: issued.expiresAt,
+      institutionName: await this.institutionName(),
+    })
+    return { message: { to, subject: email.subject, html: email.html, text: email.text } }
+  }
+
+  /** The reset link goes to the contact email the student bound on their own profile, never the login email. */
+  private async buildPasswordReset(
+    userId: string,
+  ): Promise<{ message: { to: string; subject: string; html: string; text: string } } | { failure: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, fullName: true, contactEmail: true, role: true, isActive: true, activationPending: true },
+    })
+    if (!user || user.role !== 'student' || !user.isActive || user.activationPending) {
+      return { failure: 'not_eligible' }
+    }
+    const to = user.contactEmail?.trim()
+    if (!to) return { failure: 'no_email' }
+
+    const issued = await this.passwordReset.issueToken(user.id)
+    if (!issued) return { failure: 'not_eligible' }
+
+    const link = `${this.frontendBase()}/reset-password#token=${issued.raw}`
+    const email = buildPasswordResetEmail({
+      fullName: user.fullName,
+      link,
+      validMinutes: PASSWORD_RESET_TTL_MINUTES,
+      institutionName: await this.institutionName(),
+    })
+    return { message: { to, subject: email.subject, html: email.html, text: email.text } }
   }
 
   /**

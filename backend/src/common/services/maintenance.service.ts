@@ -142,14 +142,19 @@ export class MaintenanceService {
         const tokens = await this.prisma.accountActivationToken.deleteMany({
           where: { createdAt: { lt: new Date(Date.now() - 30 * day) } },
         })
+        const resetTokens = await this.prisma.passwordResetToken.deleteMany({
+          where: { createdAt: { lt: new Date(Date.now() - 7 * day) } },
+        })
         const mails = await this.prisma.accountMail.deleteMany({
           where: {
             queuedAt: { lt: new Date(Date.now() - 90 * day) },
             status: { in: ['sent', 'delivered', 'failed', 'bounced'] },
           },
         })
-        if (tokens.count > 0 || mails.count > 0) {
-          this.logger.log(`Pruned ${tokens.count} activation tokens and ${mails.count} mail rows past retention`)
+        if (tokens.count > 0 || resetTokens.count > 0 || mails.count > 0) {
+          this.logger.log(
+            `Pruned ${tokens.count} activation tokens, ${resetTokens.count} reset tokens and ${mails.count} mail rows past retention`,
+          )
         }
       },
       'prune account activation',

@@ -6,6 +6,14 @@ import '../network/api_error.dart';
 import 'api_base.dart';
 import 'api_models.dart';
 
+/// Outcome of a self-service password-reset request.
+///
+/// [email]: a reset link was sent (or one was sent moments ago) to the email
+/// the student bound on their profile. [unavailable]: no usable bound email
+/// for that student number; the unknown-number and nothing-bound cases are
+/// indistinguishable by design, so the student is pointed at their instructor.
+enum PasswordResetDelivery { email, unavailable }
+
 /// Authentication and device-key endpoints (`backend/src/auth/auth.controller.ts`).
 class SessionApi extends ApiBase {
   SessionApi(super.dio);
@@ -21,6 +29,19 @@ class SessionApi extends ApiBase {
       body: <String, dynamic>{'version': version},
     );
     return User.fromJson(asMap(data));
+  }
+
+  /// `POST /password-reset/request` -> `{ ok, delivery }`. Public. The reset
+  /// itself happens on the web page the emailed link opens.
+  Future<PasswordResetDelivery> requestPasswordReset(String studentId) async {
+    final data = await postJson(
+      '/password-reset/request',
+      body: <String, dynamic>{'studentId': studentId},
+    );
+    final delivery = asMap(data)['delivery'];
+    return delivery == 'email'
+        ? PasswordResetDelivery.email
+        : PasswordResetDelivery.unavailable;
   }
 
   /// `POST /auth/mobile/login/student` -> `{ user, token }`.

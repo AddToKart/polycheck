@@ -1928,6 +1928,19 @@ const apiBase = {
   }): Promise<{ ok: true }> {
     return post("/activation/request-link", input);
   },
+  // ── Forgot password (web-only: the emailed link opens in any browser) ──
+  passwordResetRequest(studentId: string): Promise<PasswordResetRequestResult> {
+    return post("/password-reset/request", { studentId });
+  },
+  passwordResetValidate(token: string): Promise<{ valid: boolean }> {
+    return post("/password-reset/validate", { token });
+  },
+  passwordResetComplete(input: {
+    token: string;
+    password: string;
+  }): Promise<{ ok: true; alreadyReset?: true }> {
+    return post("/password-reset/complete", input);
+  },
   getActivationStatus(): Promise<ActivationStatus> {
     return get("/users/activation/status");
   },
@@ -2486,6 +2499,15 @@ const apiBase = {
     return get("/settings/privacy-center");
   },
 };
+
+/**
+ * `email`: a reset link was sent to the student's bound email. `unavailable`: no usable bound email for that
+ * student number (the unknown-number and nothing-bound cases are indistinguishable by design).
+ */
+export interface PasswordResetRequestResult {
+  ok: true;
+  delivery: "email" | "unavailable";
+}
 
 export interface ActivationStatus {
   enabled: boolean;

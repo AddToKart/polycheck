@@ -44,6 +44,7 @@ import { NotificationsModule } from './notifications/notifications.module'
 import { ReportsModule } from './reports/reports.module'
 import { AccountActivationModule } from './account-activation/account-activation.module'
 import { MailModule } from './mail/mail.module'
+import { PasswordResetModule } from './password-reset/password-reset.module'
 import { ImportProfilesModule } from './import-profiles/import-profiles.module'
 
 @Module({
@@ -91,6 +92,7 @@ import { ImportProfilesModule } from './import-profiles/import-profiles.module'
     NotificationsModule,
     ReportsModule,
     AccountActivationModule,
+    PasswordResetModule,
     MailModule,
     ImportProfilesModule,
     MaintenanceModule,

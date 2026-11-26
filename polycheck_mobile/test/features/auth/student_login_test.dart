@@ -73,6 +73,14 @@ void main() {
     expect(called, isFalse);
   });
 
+  testWidgets('shows a Forgot password? link on the sign-in form', (
+    tester,
+  ) async {
+    await pumpLogin(tester, FakeSessionApi(), now: DateTime.now);
+
+    expect(find.text('Forgot password?'), findsOneWidget);
+  });
+
   testWidgets('active_session_elsewhere renders the device explainer', (
     tester,
   ) async {

@@ -116,6 +116,7 @@ describe('MaintenanceService', () => {
   it('prunes expired activation tokens after 30 days and settled mail rows after 90, never pending ones', async () => {
     const prisma = {
       accountActivationToken: { deleteMany: jest.fn().mockResolvedValue({ count: 4 }) },
+      passwordResetToken: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
       accountMail: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
     }
     const redis = {

@@ -11,6 +11,7 @@ import { seed } from '../prisma/seed'
 const mockedBackfill = jest.mocked(backfillAttendanceLedger)
 
 type SeedClient = {
+  institutionSetting: { upsert: jest.Mock }
   user: { findUnique: jest.Mock; upsert: jest.Mock }
   authAccount: { upsert: jest.Mock }
   subject: { upsert: jest.Mock }
@@ -24,6 +25,7 @@ type SeedClient = {
 
 function makeClient() {
   return {
+    institutionSetting: { upsert: jest.fn().mockResolvedValue({}) },
     user: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({}) },
     authAccount: { upsert: jest.fn().mockResolvedValue({}) },
     subject: { upsert: jest.fn().mockResolvedValue({}) },
