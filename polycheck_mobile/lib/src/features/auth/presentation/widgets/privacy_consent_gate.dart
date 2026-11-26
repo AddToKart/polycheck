@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/api/api_models.dart';
@@ -8,6 +7,7 @@ import '../../../../core/models/user.dart';
 import '../../../../core/network/api_error.dart';
 import '../../../../core/providers/session_provider.dart';
 import '../../../../core/theme/brand_theme.dart';
+import '../../../../core/utils/legal_links.dart';
 import '../../../../core/widgets/campus_button.dart';
 import '../../../../core/widgets/campus_card.dart';
 import '../../../../core/widgets/campus_loading.dart';
@@ -143,11 +143,28 @@ class _PrivacyConsentGateState extends ConsumerState<PrivacyConsentGate> {
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton(
-                    onPressed: () => _showNoticeLink(notice),
+                    onPressed: () => openLegalLink(
+                      context,
+                      ref,
+                      title: 'Privacy notice',
+                      url: notice.url,
+                    ),
                     child: const Text('Read the complete privacy notice'),
                   ),
                 ),
               ],
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: () => openLegalLink(
+                    context,
+                    ref,
+                    title: 'Terms & Conditions',
+                    url: LegalLinks.terms,
+                  ),
+                  child: const Text('Read the Terms & Conditions'),
+                ),
+              ),
               if (_error != null) ...[
                 const SizedBox(height: 10),
                 Semantics(
@@ -248,30 +265,5 @@ class _PrivacyConsentGateState extends ConsumerState<PrivacyConsentGate> {
 
   Future<void> _signOut() async {
     await ref.read(sessionProvider.notifier).logout();
-  }
-
-  Future<void> _showNoticeLink(PrivacyNotice notice) async {
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Privacy notice'),
-          content: SelectableText(notice.url),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: notice.url));
-                if (dialogContext.mounted) Navigator.of(dialogContext).pop();
-              },
-              child: const Text('Copy link'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
   }
 }

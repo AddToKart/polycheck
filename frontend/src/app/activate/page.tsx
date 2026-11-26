@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Circle, Loader2, MailCheck } from 'lucide-react'
 import { useBranding } from '@/components/branding/BrandingProvider'
 import ThemeToggle from '@/components/ThemeToggle'
+import { LegalLinks } from '@/components/legal/LegalLinks'
 import { api } from '@/lib/api-client'
 import {
   ACTIVATION_PROBLEM_COPY,
@@ -45,6 +46,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <p className="mt-4 text-center text-xs text-zinc-500 dark:text-zinc-400">
           {branding.name}{branding.campus ? ` · ${branding.campus}` : ''} · If something looks wrong, do not enter your details and contact the registrar.
         </p>
+        <LegalLinks className="mt-2" />
       </div>
     </main>
   )

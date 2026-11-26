@@ -25,7 +25,6 @@ export const ANONYMOUS_ROUTES: RouteCase[] = [
   { name: 'login-choice', path: '/login' },
   { name: 'login-faculty', path: '/login/faculty' },
   { name: 'login-student', path: '/login/student' },
-  { name: 'privacy', path: '/privacy' },
   { name: 'offline-fallback', path: '/offline' },
 ]
 

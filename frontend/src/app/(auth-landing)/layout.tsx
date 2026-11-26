@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { ArrowLeft } from 'lucide-react'
 import ThemeToggle from '@/components/ThemeToggle'
+import { LegalLinks } from '@/components/legal/LegalLinks'
 import { useBranding } from '@/components/branding/BrandingProvider'
 
 // Shared Landing Layout Context
@@ -250,6 +251,7 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
           isLogin ? 'right-panel-login' : 'right-panel-home'
         }`}>
           {children}
+          <LegalLinks className="mt-4 px-6 pb-2" />
         </div>
       </div>
     </LandingContext.Provider>

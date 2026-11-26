@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { PrivacyNotice, User } from '@polycheck/shared'
 import { api } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
+import { TERMS_URL } from '@/lib/legal'
 
 export function PrivacyConsentGate() {
   const [user, setUser] = useState<User | null>(() => api.getCurrentUser())
@@ -60,7 +61,10 @@ export function PrivacyConsentGate() {
         <p className="mt-4 text-sm leading-6 text-muted-foreground">
           {notice?.summary ?? 'The current privacy notice must be loaded before attendance check-in can be used.'}
         </p>
-        {notice ? <a className="mt-4 inline-block text-sm font-bold text-maroon underline dark:text-golden" href={notice.url} target="_blank" rel="noreferrer">Read the complete privacy notice</a> : null}
+        <div className="mt-4 flex flex-col items-start gap-2">
+          {notice ? <a className="inline-block text-sm font-bold text-maroon underline dark:text-golden" href={notice.url} target="_blank" rel="noreferrer">Read the complete privacy notice</a> : null}
+          <a className="inline-block text-sm font-bold text-maroon underline dark:text-golden" href={TERMS_URL} target="_blank" rel="noreferrer">Read the Terms &amp; Conditions</a>
+        </div>
         {error ? <p role="alert" className="mt-4 text-sm font-semibold text-red-600">{error}</p> : null}
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           {notice ? <Button className="min-h-11 flex-1" disabled={submitting} onClick={() => void accept()}>{submitting ? 'Recording consent…' : 'I understand and consent'}</Button> : null}

@@ -33,7 +33,7 @@ export async function seed(prisma: PrismaClient) {
     throw new Error('SEED_PASSWORD must be set to at least 12 characters')
   }
   const password = await hash(seedPassword, { cost: 12 })
-  const privacyConsentVersion = process.env.PRIVACY_NOTICE_VERSION ?? '2026-09-05'
+  const privacyConsentVersion = process.env.PRIVACY_NOTICE_VERSION ?? '2026-11-26'
   const privacyConsentedAt = new Date()
 
   // ── Users ──

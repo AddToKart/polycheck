@@ -107,6 +107,15 @@ default 100) is shared by activation and reset emails.
 - Optional tuning: `PASSWORD_RESET_TTL_MINUTES` (default 60), `PASSWORD_RESET_COOLDOWN_SECONDS` (300),
   `PASSWORD_RESET_ACCOUNT_LIMIT` per day (5), `PASSWORD_RESET_REQUEST_IP_LIMIT` per hour (40).
 
+### Privacy Policy and Terms
+
+The only copies live on the landing site (`polycheck-landing-page`: `/privacy`, `/terms`); the web app's `/privacy` and
+`/terms` redirect there. The backend serves the accepted notice from `PRIVACY_NOTICE_URL` (default
+`https://polycheck.live/privacy`) and `PRIVACY_NOTICE_VERSION` (default `2026-11-26`). **Raising the version makes every
+student accept again** before they can check in, so raise it only when the policy changes materially, together with
+`LEGAL_UPDATED`/`LEGAL_VERSION` in the landing repo. A value set in the Coolify environment overrides the default.
+The policy says Polycheck does not create backups by itself: if you set up database backups, update that row.
+
 ## 3. Vercel (web app)
 
 - `NEXT_PUBLIC_API_URL` = `https://<API host>/api` (note the `/api` suffix). It is baked in at **build** time, so

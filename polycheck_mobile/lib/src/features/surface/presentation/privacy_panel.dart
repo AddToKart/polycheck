@@ -11,6 +11,7 @@ import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/designations.dart';
 import '../../../core/widgets/campus_button.dart';
 import '../../../core/widgets/campus_loading.dart';
+import '../../../core/widgets/legal_links_row.dart';
 import '../../../core/widgets/campus_toast.dart';
 import '../data/surface_downloads.dart';
 
@@ -109,6 +110,8 @@ class _PrivacyPanelState extends ConsumerState<PrivacyPanel> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 28),
         children: [
+          const LegalLinksRow(alignment: WrapAlignment.start),
+          const SizedBox(height: 4),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(

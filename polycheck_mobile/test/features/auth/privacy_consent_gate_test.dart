@@ -7,24 +7,31 @@ import 'package:polycheck_mobile/src/core/database/app_database.dart';
 import 'package:polycheck_mobile/src/core/network/api_error.dart';
 import 'package:polycheck_mobile/src/core/providers/session_provider.dart';
 import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
+import 'package:polycheck_mobile/src/core/utils/legal_links.dart';
 import 'package:polycheck_mobile/src/features/auth/presentation/widgets/privacy_consent_gate.dart';
 
 import '../../helpers/auth_harness.dart';
 
 const _notice = PrivacyNotice(
-  version: '2026-09-05',
-  url: 'https://app.polycheck.live/privacy',
+  version: '2026-11-26',
+  url: 'https://polycheck.live/privacy',
   summary: 'Polycheck stores attendance evidence.',
 );
 
 void main() {
-  Future<void> pumpGate(WidgetTester tester, FakeSessionApi api) async {
+  Future<void> pumpGate(
+    WidgetTester tester,
+    FakeSessionApi api, {
+    ExternalLinkOpener? opener,
+  }) async {
     final database = createTestDatabase();
     addTearDown(database.close);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           sessionApiProvider.overrideWithValue(api),
+          if (opener != null)
+            externalLinkOpenerProvider.overrideWithValue(opener),
           appDatabaseProvider.overrideWithValue(database),
           sessionProvider.overrideWith(
             () => FakeSessionController(testStudent),
@@ -71,7 +78,7 @@ void main() {
 
     await consent(tester);
 
-    expect(sentVersion, '2026-09-05');
+    expect(sentVersion, '2026-11-26');
     expect(profileReloads, 0);
     expect(find.text('Attendance uses location evidence'), findsNothing);
     expect(find.textContaining('Unable to record'), findsNothing);
@@ -98,6 +105,51 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Attendance uses location evidence'), findsOneWidget);
+  });
+
+  Future<void> tapLink(WidgetTester tester, String label) async {
+    final link = find.text(label);
+    await tester.ensureVisible(link);
+    await tester.tap(link);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('both legal links open in the browser', (tester) async {
+    final opened = <Uri>[];
+    await pumpGate(
+      tester,
+      FakeSessionApi(onPrivacyNotice: () async => _notice),
+      opener: (uri) async {
+        opened.add(uri);
+        return true;
+      },
+    );
+
+    await tapLink(tester, 'Read the complete privacy notice');
+    await tapLink(tester, 'Read the Terms & Conditions');
+
+    expect(opened.map((uri) => '$uri'), [_notice.url, LegalLinks.terms]);
+    expect(find.text('Copy link'), findsNothing);
+  });
+
+  testWidgets('if no browser can open it, the address can still be copied', (
+    tester,
+  ) async {
+    await pumpGate(
+      tester,
+      FakeSessionApi(onPrivacyNotice: () async => _notice),
+      opener: (uri) async => throw StateError('no browser'),
+    );
+
+    await tapLink(tester, 'Read the complete privacy notice');
+
+    expect(find.text('Copy link'), findsOneWidget);
+    expect(find.text(_notice.url), findsOneWidget);
+  });
+
+  test('the public legal links point at the landing site', () {
+    expect(LegalLinks.privacy, 'https://polycheck.live/privacy');
+    expect(LegalLinks.terms, 'https://polycheck.live/terms');
   });
 
   test('describes network and unexpected failures plainly', () {
