@@ -3,6 +3,7 @@ abstract final class AppRoutes {
   static const String portal = '/';
   static const String studentLogin = '/login/student';
   static const String facultyLogin = '/login/faculty';
+  static const String forgotPassword = '/forgot-password';
   static const String forcePasswordChange = '/force-password-change';
   static const String maintenance = '/maintenance';
 
@@ -37,6 +38,7 @@ abstract final class AppRoutes {
     portal,
     studentLogin,
     facultyLogin,
+    forgotPassword,
     maintenance,
   };
 

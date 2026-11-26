@@ -222,6 +222,15 @@ export default function StudentLoginPage() {
               </div>
             </div>
 
+            <div className="-mt-3 text-right">
+              <Link
+                href="/forgot-password"
+                className="text-sm font-semibold text-maroon underline underline-offset-2 dark:text-golden"
+              >
+                Forgot password?
+              </Link>
+            </div>
+
             <div className="pt-2">
               <Button
                 type="submit"

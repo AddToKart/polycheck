@@ -2,7 +2,7 @@ name: polycheck_mobile
 description: "Polycheck — attendance management (Flutter mobile client)."
 publish_to: 'none'
 
-version: 1.1.0+2
+version: 1.1.1+3
 
 environment:
   sdk: ^3.12.2

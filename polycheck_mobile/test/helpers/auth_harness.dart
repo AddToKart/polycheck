@@ -37,6 +37,7 @@ class FakeSessionApi extends SessionApi {
     this.onChangePassword,
     this.onMe,
     this.onAcceptPrivacy,
+    this.onRequestPasswordReset,
   }) : super(Dio());
 
   final Future<LoginResult> Function(
@@ -56,6 +57,8 @@ class FakeSessionApi extends SessionApi {
   onChangePassword;
   final Future<User> Function()? onMe;
   final Future<User> Function(String version)? onAcceptPrivacy;
+  final Future<PasswordResetDelivery> Function(String studentId)?
+  onRequestPasswordReset;
 
   @override
   Future<LoginResult> loginStudent({
@@ -81,6 +84,15 @@ class FakeSessionApi extends SessionApi {
       throw UnimplementedError('loginFaculty not configured');
     }
     return handler(email, password, deviceId);
+  }
+
+  @override
+  Future<PasswordResetDelivery> requestPasswordReset(String studentId) {
+    final handler = onRequestPasswordReset;
+    if (handler == null) {
+      throw UnimplementedError('requestPasswordReset not configured');
+    }
+    return handler(studentId);
   }
 
   @override

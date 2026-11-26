@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../features/auth/presentation/boot_screen.dart';
 import '../../../features/auth/presentation/faculty_login_screen.dart';
+import '../../../features/auth/presentation/forgot_password_screen.dart';
 import '../../../features/auth/presentation/force_password_change_screen.dart';
 import '../../../features/auth/presentation/maintenance_screen.dart';
 import '../../../features/auth/presentation/portal_select_screen.dart';
@@ -32,6 +33,10 @@ final List<RouteBase> authRoutes = <RouteBase>[
       redirect: state.uri.queryParameters['redirect'],
       reason: state.uri.queryParameters['reason'],
     ),
+  ),
+  GoRoute(
+    path: AppRoutes.forgotPassword,
+    builder: (context, state) => const ForgotPasswordScreen(),
   ),
   GoRoute(
     path: AppRoutes.forcePasswordChange,

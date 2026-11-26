@@ -133,6 +133,7 @@ model User {
   pushSubscriptions  PushSubscription[]
   systemReports      SystemReport[]
   activationTokens   AccountActivationToken[]
+  passwordResetTokens PasswordResetToken[]
   accountMails       AccountMail[]
 
   sectionRemovals         EnrollmentTombstone[] @relation("SectionRemovals")
@@ -544,6 +545,22 @@ model AccountActivationToken {
   // Wrong student-number attempts against this token; the fifth revokes it.
   failedAttempts Int       @default(0)
   createdAt      DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+}
+
+// Single-use, hashed, short-lived link for the self-service "forgot password" flow. Only sha256(token) is
+// stored; the raw value exists in the email and the link fragment only.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
 
   @@index([userId, createdAt])
   @@index([expiresAt])

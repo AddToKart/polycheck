@@ -51,7 +51,13 @@ empty schema (plus 12 default setting rows) and nothing else is written.
 
 ### Creating the first super administrator (once)
 
-Set these in the stack's environment, then run the one-off service or the command below:
+The bootstrap variables are read only by the one-off `bootstrap-admin` service (profile `bootstrap`); the running
+`backend` container does **not** receive them, so setting them in the Coolify environment does nothing for the backend
+terminal. Pass them inline instead (no redeploy needed). In the **backend container terminal** in Coolify:
+
+```sh
+BOOTSTRAP_ADMIN_EMAIL='you@example.com' BOOTSTRAP_ADMIN_PASSWORD='A-strong-12+char-Passw0rd!' node dist-seed/prisma/bootstrap-admin.js
+```
 
 | Variable | Notes |
 |---|---|
@@ -59,14 +65,12 @@ Set these in the stack's environment, then run the one-off service or the comman
 | `BOOTSTRAP_ADMIN_PASSWORD` | 12-128 chars with upper, lower, digit and symbol |
 | `BOOTSTRAP_ADMIN_NAME` | Optional display name (default `System Administrator`) |
 
-Run it with either:
-
-- the **backend container terminal** in Coolify: `node dist-seed/prisma/bootstrap-admin.js`, or
-- `docker compose -f docker-compose.coolify.yml --profile bootstrap run --rm bootstrap-admin`.
+Alternatively, with the three variables set in the stack environment, run
+`docker compose -f docker-compose.coolify.yml --profile bootstrap run --rm bootstrap-admin` on the server.
 
 The script creates exactly one institution super admin, never touches an existing user with that email, and flags the
-password for rotation: the first sign-in forces a new password, after which you should **delete the two
-`BOOTSTRAP_ADMIN_*` variables**. Everything else (teachers, students, sections) is created from the admin console or
+password for rotation: the first sign-in forces a new password, after which you should **delete any
+`BOOTSTRAP_ADMIN_*` variables** you set in Coolify. Everything else (teachers, students, sections) is created from the admin console or
 the bulk import.
 
 After signing in, open **Institution Settings** and set the institution name, short name, campus and logo. Until you
@@ -89,6 +93,19 @@ do, the login screen shows "Your Institution".
 
 Optional (all default to today's behaviour): `COURSE_SCOPE_MODE`, `SYNC_WORKER_ENABLED`, `SYNC_WORKER_CONCURRENCY`,
 `MAIL_DRIVER`, `RESEND_API_KEY`, `MAIL_FROM`, `RESEND_WEBHOOK_SECRET`.
+
+### Email: activation and "forgot password"
+
+Both flows send through Resend. Set `MAIL_DRIVER=resend`, `RESEND_API_KEY` and `MAIL_FROM` (a sender on a domain verified
+at Resend, for example `Polycheck <no-reply@polycheck.live>`) in the Coolify environment and redeploy; with
+`MAIL_DRIVER=resend` the backend refuses to start if the key or sender is missing. The daily cap (`MAIL_DAILY_CAP`,
+default 100) is shared by activation and reset emails.
+
+- **Forgot password** works only for students who added an email under *Profile*. The reset page is
+  `https://<web host>/reset-password` (the emailed link), so `FRONTEND_URL` must be the web app's public URL. A student
+  with no bound email is told to ask an instructor, who issues a temporary password from the student's page.
+- Optional tuning: `PASSWORD_RESET_TTL_MINUTES` (default 60), `PASSWORD_RESET_COOLDOWN_SECONDS` (300),
+  `PASSWORD_RESET_ACCOUNT_LIMIT` per day (5), `PASSWORD_RESET_REQUEST_IP_LIMIT` per hour (40).
 
 ## 3. Vercel (web app)
 

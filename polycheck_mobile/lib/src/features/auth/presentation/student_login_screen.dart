@@ -9,6 +9,7 @@ import '../../../core/providers/maintenance_provider.dart';
 import '../../../core/providers/session_provider.dart';
 import '../../../core/providers/trusted_clock.dart';
 import '../../../core/router/router_decision.dart';
+import '../../../core/router/routes/app_routes.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/widgets/campus_button.dart';
 import '../../../core/widgets/campus_text_field.dart';
@@ -150,7 +151,16 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
           },
           onSubmitted: (_) => _submit(),
         ),
-        const SizedBox(height: 20),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: _submitting
+                ? null
+                : () => context.go(AppRoutes.forgotPassword),
+            child: const Text('Forgot password?'),
+          ),
+        ),
+        const SizedBox(height: 8),
         CampusButton(
           label: _submitting ? 'Verifying...' : 'Sign in',
           loading: _submitting,
