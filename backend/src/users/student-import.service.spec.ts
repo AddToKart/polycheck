@@ -118,6 +118,48 @@ function studentRow(rowNumber: number, studentId: string, overrides: Record<stri
 }
 
 describe('StudentImportService', () => {
+  describe('one bad row never stops the others', () => {
+    it('rejects only the second row of a shared email and only the malformed address', async () => {
+      const { db } = createFakePrisma()
+      const service = new StudentImportService(db as never)
+
+      const result = await service.importStudents(
+        importRequest([
+          studentRow(2, '2024-00001-MN-0', { email: 'shared@example.com' }),
+          studentRow(3, '2024-00002-MN-0', { email: 'shared@example.com' }),
+          studentRow(4, '2024-00003-MN-0', { email: 'someone..else@example.com' }),
+          studentRow(5, '2024-00004-MN-0', { email: 'fine@example.com' }),
+        ]),
+        institutionAdmin,
+      )
+
+      expect(result.summary).toMatchObject({ new: 2, invalid: 2 })
+      expect(result.issues.map((issue) => [issue.rowNumber, issue.code])).toEqual([
+        [3, 'DUPLICATE_IN_FILE'],
+        [4, 'INVALID_EMAIL'],
+      ])
+    })
+
+    it('lists every existing account, not only the first fifty', async () => {
+      const ids = Array.from({ length: 80 }, (_, index) => `2024-${String(index + 1).padStart(5, '0')}-MN-0`)
+      const { db } = createFakePrisma(
+        ids.map(
+          (studentId, index) => ({ id: `u-${index}`, studentId, fullName: 'Existing', role: 'student' }) as never,
+        ),
+      )
+      const service = new StudentImportService(db as never)
+
+      const result = await service.importStudents(
+        importRequest(ids.map((studentId, index) => studentRow(index + 2, studentId))),
+        institutionAdmin,
+      )
+
+      expect(result.summary).toMatchObject({ new: 0, skip: 80 })
+      expect(result.issues).toHaveLength(80)
+      expect(result.hasMoreIssues).toBe(false)
+    })
+  })
+
   it('validates a clean master list without writing anything', async () => {
     const { db } = createFakePrisma()
     const service = new StudentImportService(db as never)

@@ -58,7 +58,7 @@ interface ChunkReport {
 }
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024
-const MAX_DISPLAY_ISSUES = 100
+const MAX_DISPLAY_ISSUES = 1000
 const BLOCKING_CODES = new Set([
   'MISSING_REQUIRED_FIELD',
   'INVALID_STUDENT_NUMBER',
@@ -135,10 +135,20 @@ function mergeSummaries(summaries: Array<Record<string, unknown>>): Record<strin
   return merged
 }
 
-function issueRowsCsv(issues: ImportIssue[]): unknown[][] {
+/** In file order; notes about the whole file (row 0) stay at the end. */
+const byRow = (issues: ImportIssue[]) =>
+  issues.sort((left, right) => (left.rowNumber || Infinity) - (right.rowNumber || Infinity))
+
+/** Who a problem row is about, as written in the file. */
+type RowStudent = (rowNumber: number) => { number: string; name: string }
+
+function issueRowsCsv(issues: ImportIssue[], studentOf: RowStudent): unknown[][] {
   return [
-    ['Row', 'Column', 'Code', 'Message'],
-    ...issues.map((issue) => [issue.rowNumber, issue.column ?? '', issue.code, issue.message]),
+    ['Row', 'Student number', 'Name', 'Column', 'Code', 'Message'],
+    ...issues.map((issue) => {
+      const student = studentOf(issue.rowNumber)
+      return [issue.rowNumber, student.number, student.name, issue.column ?? '', issue.code, issue.message]
+    }),
   ]
 }
 
@@ -163,6 +173,8 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   const [localIssues, setLocalIssues] = useState<ImportIssue[]>([])
   const [chunks, setChunks] = useState<ChunkPlan[]>([])
   const [serverIssues, setServerIssues] = useState<ImportIssue[]>([])
+  // What the server reported while saving; this is what the results list shows.
+  const [savedIssues, setSavedIssues] = useState<ImportIssue[]>([])
   const [summary, setSummary] = useState<Record<string, number>>({})
   const [skipInvalid, setSkipInvalid] = useState(false)
   const [validating, setValidating] = useState(false)
@@ -183,7 +195,8 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     () => localIssues.filter((issue) => BLOCKING_CODES.has(issue.code)),
     [localIssues],
   )
-  const allIssues = useMemo(() => [...localIssues, ...serverIssues], [localIssues, serverIssues])
+  const allIssues = useMemo(() => byRow([...localIssues, ...serverIssues]), [localIssues, serverIssues])
+  const reportIssues = useMemo(() => byRow([...localIssues, ...savedIssues]), [localIssues, savedIssues])
 
   const reset = useCallback(() => {
     setStep('upload')
@@ -203,6 +216,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     setLocalIssues([])
     setChunks([])
     setServerIssues([])
+    setSavedIssues([])
     setSummary({})
     setSkipInvalid(false)
     setValidating(false)
@@ -382,7 +396,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
         issues.push({
           rowNumber: 0,
           code: 'FIELD_UPDATE_PREVIEW',
-          message: 'More issues exist than are shown. Download the issues CSV for the full list.',
+          message: 'There are more problems than can be listed. Fix these first, then check the file again.',
         })
       }
       saveMappingProfile(headers, mapping)
@@ -447,6 +461,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     stopRequestedRef.current = false
     const collectedCredentials: ImportCredential[] = []
     const collectedReports: ChunkReport[] = []
+    const collectedIssues: ImportIssue[] = []
     let failure: string | null = null
 
     const activationTotals = { queued: 0, fallbackTemporary: 0 }
@@ -470,6 +485,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
           activationTotals.fallbackTemporary += result.activation.fallbackTemporary
           sawActivation = true
         }
+        collectedIssues.push(...result.issues)
         setProgress(index + 1)
         if (stopRequestedRef.current) break
       } catch (cause) {
@@ -481,6 +497,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     setCredentials(collectedCredentials)
     setActivationReport(sawActivation ? activationTotals : null)
     setReports(collectedReports)
+    setSavedIssues(collectedIssues)
     setExecuting(false)
     if (failure) {
       setError(`${failure} Anything already saved stays saved, so it is safe to try again.`)
@@ -533,11 +550,11 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   }
 
   const downloadIssues = () => {
-    downloadCsv('polycheck-import-issues.csv', issueRowsCsv(allIssues))
+    downloadCsv('polycheck-import-issues.csv', issueRowsCsv(step === 'report' ? reportIssues : allIssues, studentOf))
   }
 
   const downloadFailedRows = () => {
-    const failedRowNumbers = new Set(allIssues.map((issue) => issue.rowNumber))
+    const failedRowNumbers = new Set(reportIssues.map((issue) => issue.rowNumber))
     const failed: unknown[][] = [
       [...headers, 'Issue codes'],
       ...rawRows
@@ -545,7 +562,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
         .filter(({ rowNumber }) => failedRowNumbers.has(rowNumber))
         .map(({ row, rowNumber }) => [
           ...row,
-          allIssues.filter((issue) => issue.rowNumber === rowNumber).map((issue) => issue.code).join(' '),
+          reportIssues.filter((issue) => issue.rowNumber === rowNumber).map((issue) => issue.code).join(' '),
         ]),
     ]
     downloadCsv('polycheck-failed-rows.csv', failed)
@@ -555,6 +572,12 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     if (executing) return
     onOpenChange(nextOpen)
     if (!nextOpen) reset()
+  }
+
+  const studentOf: RowStudent = (rowNumber) => {
+    const row = rawRows[rowNumber - 2]
+    const read = (column: number | undefined) => (column === undefined ? '' : (row?.[column] ?? '').trim())
+    return { number: read(mapping.studentId), name: read(mapping.fullName) }
   }
 
   const mergeColumn = (key: keyof ImportColumnMapping, value: string) => {
@@ -915,7 +938,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
 
             {mode === 'enrollments' ? <MissingAccountsNotice issues={allIssues} /> : null}
 
-            <IssueTable issues={allIssues} onDownload={downloadIssues} />
+            <IssueTable issues={allIssues} studentOf={studentOf} onDownload={downloadIssues} />
 
             <div className="flex flex-wrap justify-between gap-3 pt-2">
               <Button variant="outline" onClick={() => setStep('map')}>
@@ -1073,10 +1096,13 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
 
             {mode === 'enrollments' ? <MissingAccountsNotice issues={allIssues} /> : null}
 
-            <div className="flex flex-wrap gap-2">
-              {allIssues.length > 0 ? <Button variant="outline" onClick={downloadIssues}>Download issues CSV</Button> : null}
-              {allIssues.length > 0 ? <Button variant="outline" onClick={downloadFailedRows}>Download failed rows CSV</Button> : null}
-            </div>
+            {reportIssues.length > 0 ? (
+              <section className="space-y-2">
+                <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">Rows that were skipped or had problems</h3>
+                <IssueTable issues={reportIssues} studentOf={studentOf} onDownload={downloadIssues} />
+                <Button variant="outline" size="sm" onClick={downloadFailedRows}>Download failed rows CSV</Button>
+              </section>
+            ) : null}
 
             <div className="flex justify-end pt-2">
               <Button onClick={() => close(false)}>Close</Button>
@@ -1145,7 +1171,15 @@ function SummaryTile({ label, value }: { label: string; value: number }) {
   )
 }
 
-function IssueTable({ issues, onDownload }: { issues: ImportIssue[]; onDownload: () => void }) {
+function IssueTable({
+  issues,
+  studentOf,
+  onDownload,
+}: {
+  issues: ImportIssue[]
+  studentOf: RowStudent
+  onDownload: () => void
+}) {
   const visible = issues.slice(0, MAX_DISPLAY_ISSUES)
   if (visible.length === 0) {
     return <p className="text-sm text-emerald-700 dark:text-emerald-400">No issues found.</p>
@@ -1157,13 +1191,18 @@ function IssueTable({ issues, onDownload }: { issues: ImportIssue[]; onDownload:
           <thead className="sticky top-0 bg-zinc-50 dark:bg-zinc-800">
             <tr>
               <th className="px-3 py-2 text-left">Row</th>
+              <th className="px-3 py-2 text-left">Student</th>
               <th className="px-3 py-2 text-left">What happened</th>
             </tr>
           </thead>
           <tbody>
             {visible.map((issue, index) => (
               <tr key={`${issue.rowNumber}-${issue.code}-${index}`} className="border-t border-zinc-100 dark:border-zinc-800">
-                <td className="px-3 py-1.5">{issue.rowNumber || '—'}</td>
+                <td className="px-3 py-1.5 align-top">{issue.rowNumber || '—'}</td>
+                <td className="px-3 py-1.5 align-top">
+                  <span className="block font-mono">{studentOf(issue.rowNumber).number || '—'}</span>
+                  <span className="block break-words text-zinc-500 dark:text-zinc-400">{studentOf(issue.rowNumber).name}</span>
+                </td>
                 <td className="px-3 py-1.5">{issue.message}</td>
               </tr>
             ))}

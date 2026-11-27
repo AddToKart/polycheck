@@ -21,6 +21,7 @@ export function buildStudentRows(
   const rows: StudentImportRow[] = []
   const issues: ImportIssue[] = []
   const seen = new Map<string, number>()
+  const emailRow = new Map<string, number>()
 
   rawRows.forEach((raw, index) => {
     const rowNumber = index + 2
@@ -75,6 +76,20 @@ export function buildStudentRows(
     }
     if (yearResult.issue) {
       issues.push({ rowNumber, column: 'yearLevel', code: 'YEAR_LEVEL_OUT_OF_RANGE', message: 'Year level must be between 1 and 8 and was ignored.' })
+    }
+
+    if (emailResult.value) {
+      const sameEmail = emailRow.get(emailResult.value)
+      if (sameEmail !== undefined) {
+        issues.push({
+          rowNumber,
+          column: 'email',
+          code: 'DUPLICATE_IN_FILE',
+          message: `Same email address as row ${sameEmail}. Each student needs their own email.`,
+        })
+        return
+      }
+      emailRow.set(emailResult.value, rowNumber)
     }
 
     rows.push({

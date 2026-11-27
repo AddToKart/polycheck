@@ -351,7 +351,11 @@ NormalizedValue<String> normalizeStudentId(String raw) {
   return NormalizedValue<String>(value: value);
 }
 
-final RegExp _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+// As strict as the server: no doubled or edge dots, and a real domain ending.
+final RegExp _emailPattern = RegExp(
+  r'^[^\s@.,;:<>()"]+(\.[^\s@.,;:<>()"]+)*@([\p{L}\p{N}]([\p{L}\p{N}-]*[\p{L}\p{N}])?\.)+\p{L}{2,}$',
+  unicode: true,
+);
 
 NormalizedValue<String> normalizeEmail(String raw) {
   final value = raw.replaceAll(RegExp(r'\s+'), '').toLowerCase();
@@ -409,6 +413,7 @@ BuildResult buildStudentRows(
   final rows = <StudentImportRow>[];
   final issues = <ImportIssue>[];
   final seen = <String, int>{};
+  final emailRow = <String, int>{};
 
   for (var index = 0; index < rawRows.length; index++) {
     final raw = rawRows[index];
@@ -503,6 +508,25 @@ BuildResult buildStudentRows(
           message: 'Year level must be between 1 and 8 and was ignored.',
         ),
       );
+    }
+
+    final address = emailResult.value;
+    if (address != null) {
+      final sameEmail = emailRow[address];
+      if (sameEmail != null) {
+        issues.add(
+          ImportIssue(
+            rowNumber: rowNumber,
+            column: 'email',
+            code: ImportIssueCode.duplicateInFile,
+            message:
+                'Same email address as row $sameEmail. Each student needs '
+                'their own email.',
+          ),
+        );
+        continue;
+      }
+      emailRow[address] = rowNumber;
     }
 
     rows.add(

@@ -54,6 +54,24 @@ describe('prepareImportTable', () => {
     expect(built.rows[0].yearLevel).toBeUndefined()
   })
 
+  it('drops only the bad address or the second use of a shared one', () => {
+    const rows = [
+      ['2023-00101-SM-0', 'One', 'shared@example.com'],
+      ['2023-00102-SM-0', 'Two', 'shared@example.com'],
+      ['2023-00103-SM-0', 'Three', 'someone..else@example.com'],
+    ]
+    const built = buildStudentRows(rows, { studentId: 0, fullName: 1, email: 2 })
+
+    expect(built.rows.map((row) => [row.rowNumber, row.email])).toEqual([
+      [2, 'shared@example.com'],
+      [4, undefined],
+    ])
+    expect(built.issues.map((issue) => [issue.rowNumber, issue.code])).toEqual([
+      [3, 'DUPLICATE_IN_FILE'],
+      [4, 'INVALID_EMAIL'],
+    ])
+  })
+
   it('leaves an already well-formed list alone', () => {
     const headers = ['Student No.', 'Name', 'Program', 'Year Level', 'Section']
     const rows = [['2023-00101-SM-0', 'Santos, Maria', 'BSHM', '2', 'BSIT 4-1']]

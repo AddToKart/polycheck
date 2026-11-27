@@ -1,5 +1,6 @@
 import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
+import { isEmail } from 'class-validator'
 import { computeRowChecksum, type EnrollImportResult, type ImportIssue, type ImportIssueCode } from '@polycheck/shared'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { ErrorCode } from '../common/constants/error-codes'
@@ -13,7 +14,8 @@ import type { EnrollImportRequestDto, EnrollImportRowDto } from './dto/import-en
 
 const IMPORT_BATCH_KIND = 'section_enrollment'
 const IMPORT_RETENTION_DAYS = 90
-const MAX_RETURNED_ISSUES = 50
+// A batch is at most 250 rows, so every skipped or rejected row can be listed.
+const MAX_RETURNED_ISSUES = 1000
 const STUDENT_ID_PATTERN = /^\d{4}-\d{5}-[A-Z]{2}-\d$/
 const DEFAULT_PROGRAM = 'Unspecified'
 const DEFAULT_YEAR_LEVEL = 1
@@ -427,6 +429,10 @@ export class EnrollmentImportService {
           code: 'INVALID_STUDENT_NUMBER',
           message: 'Enter a valid student number (e.g. 2024-00001-MN-0).',
         })
+        blocked = true
+      }
+      if (email && !isEmail(email)) {
+        issues.push({ rowNumber, column: 'email', code: 'INVALID_EMAIL', message: 'Email address is invalid.' })
         blocked = true
       }
       if (

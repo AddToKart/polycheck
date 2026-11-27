@@ -7,6 +7,7 @@ import {
   Optional,
 } from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
+import { isEmail } from 'class-validator'
 import {
   computeRowChecksum,
   type ImportCredential,
@@ -31,9 +32,9 @@ import type { StudentImportRequestDto, StudentImportRowDto } from './dto/import-
 
 const IMPORT_BATCH_KIND = 'student_registration'
 const IMPORT_RETENTION_DAYS = 90
-const MAX_RETURNED_ISSUES = 50
+// A batch is at most 250 rows, so every skipped or rejected row can be listed.
+const MAX_RETURNED_ISSUES = 1000
 const STUDENT_ID_PATTERN = /^\d{4}-\d{5}-[A-Z]{2}-\d$/
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 // The domain constraint requires every student to have these fields. Import
 // rows are allowed to omit optional columns, so creation uses institution-safe
 // defaults while updates never clear an existing value.
@@ -414,6 +415,7 @@ export class StudentImportService {
     }
 
     const seen = new Map<string, number>()
+    const emailRow = new Map<string, number>()
     return rows.map((raw) => {
       const issues: ImportIssue[] = []
       let blocked = false
@@ -452,7 +454,7 @@ export class StudentImportService {
         })
         blocked = true
       }
-      if (email && (!EMAIL_PATTERN.test(email) || email.length > 254)) {
+      if (email && (!isEmail(email) || email.length > 254)) {
         issues.push({
           rowNumber,
           column: 'email',
@@ -521,6 +523,20 @@ export class StudentImportService {
         blocked = true
       } else if (studentId) {
         seen.set(studentId, rowNumber)
+      }
+
+      // Emails are unique per account. Two rows sharing one would otherwise fail the whole batch.
+      const sameEmail = email && !blocked ? emailRow.get(email) : undefined
+      if (sameEmail !== undefined) {
+        issues.push({
+          rowNumber,
+          column: 'email',
+          code: 'DUPLICATE_IN_FILE',
+          message: `Same email address as row ${sameEmail}. Each student needs their own email.`,
+        })
+        blocked = true
+      } else if (email && !blocked) {
+        emailRow.set(email, rowNumber)
       }
 
       return {

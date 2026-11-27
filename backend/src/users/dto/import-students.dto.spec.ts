@@ -61,9 +61,20 @@ describe('StudentImportRequestDto', () => {
     await expect(validate(request({ mode: 'validate' }))).resolves.toEqual([])
   })
 
+  // A rejected request creates nobody, so a bad address is left to the service, which rejects only its row.
+  it('lets a malformed email through to the row-by-row check', async () => {
+    const dto = plainToInstance(StudentImportRowDto, {
+      rowNumber: 2,
+      fullName: 'Student Name',
+      studentId: '2024-00001-MN-0',
+      email: 'not-an-email',
+    })
+
+    await expect(validate(dto)).resolves.toEqual([])
+  })
+
   it.each([
     ['malformed student number', { studentId: '2024-1' }],
-    ['invalid email', { email: 'not-an-email' }],
     ['year level out of range', { yearLevel: 9 }],
     ['too-short program', { program: 'B' }],
     ['too-short department', { department: 'C' }],

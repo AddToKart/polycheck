@@ -3,7 +3,6 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
-  IsEmail,
   IsIn,
   IsInt,
   IsOptional,
@@ -43,10 +42,11 @@ export class StudentImportRowDto {
   @Matches(STUDENT_ID_PATTERN, { message: 'studentId must use the format 2024-00001-MN-0' })
   studentId!: string
 
+  /** Checked row by row in the service, so one bad address rejects its row and not the whole batch. */
   @IsOptional()
   @Transform(trimLower)
-  @IsEmail()
-  @MaxLength(254)
+  @IsString()
+  @MaxLength(500)
   email?: string
 
   @IsOptional()

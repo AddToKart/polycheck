@@ -35,7 +35,9 @@ export function normalizeStudentId(raw: string): NormalizedValue<string> {
   return { value }
 }
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// As strict as the server: no doubled or edge dots, and a real domain ending.
+const EMAIL_PATTERN =
+  /^[^\s@.,;:<>()"]+(\.[^\s@.,;:<>()"]+)*@([\p{L}\p{N}]([\p{L}\p{N}-]*[\p{L}\p{N}])?\.)+\p{L}{2,}$/u
 
 export function normalizeEmail(raw: string): NormalizedValue<string> {
   const value = raw.replace(/\s+/g, '').toLowerCase()
