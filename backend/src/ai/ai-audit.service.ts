@@ -48,6 +48,17 @@ export class AiAuditService {
     })
   }
 
+  async recordTermsAccepted(user: RequestUser, version: string) {
+    await this.write({
+      actorId: user.id,
+      actorRole: user.role,
+      action: 'ai.terms.accepted',
+      entityType: 'ai_assistant',
+      entityId: null,
+      metadata: { outcome: 'succeeded', version },
+    })
+  }
+
   async recordThreadDelete(user: RequestUser, threadId: string, outcome: 'succeeded' | 'failed') {
     await this.write({
       actorId: user.id,

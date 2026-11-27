@@ -1,4 +1,4 @@
-import type { AiCapabilities } from '@polycheck/shared'
+import { AI_DAILY_LIMIT_DEFAULTS, AI_DAILY_LIMIT_MAX, type AiCapabilities } from '@polycheck/shared'
 
 /** Pure settings-tab configuration and derivations (no React). */
 
@@ -142,8 +142,9 @@ export const SETTING_FIELDS: readonly SettingFieldDefinition[] = [
     type: 'text',
     defaultValue: '',
     optional: true,
-    placeholder: 'https://opencode.ai/inference/go/openai/v1',
-    caption: 'OpenAI-compatible base URL. For OpenCode Go use https://opencode.ai/inference/go/openai/v1.',
+    placeholder: 'https://api.commandcode.ai/provider/v1',
+    caption:
+      'OpenAI-compatible base URL, without /chat/completions. Command Code: https://api.commandcode.ai/provider/v1. OpenCode Go: https://opencode.ai/inference/go/openai/v1.',
   },
   {
     key: 'ai_model',
@@ -152,8 +153,39 @@ export const SETTING_FIELDS: readonly SettingFieldDefinition[] = [
     type: 'text',
     defaultValue: '',
     optional: true,
-    placeholder: 'deepseek-v4.1-flash',
-    caption: 'Model identifier sent to the configured endpoint.',
+    placeholder: 'deepseek/deepseek-v4-flash',
+    caption:
+      'Model ID exactly as your provider lists it. Command Code’s Claude models use a different format and do not work here.',
+  },
+  {
+    key: 'ai_daily_limit_student',
+    tab: 'ai',
+    label: 'Per student',
+    type: 'number',
+    defaultValue: String(AI_DAILY_LIMIT_DEFAULTS.student),
+    min: 0,
+    max: AI_DAILY_LIMIT_MAX,
+    caption: '0 turns the assistant off for students.',
+  },
+  {
+    key: 'ai_daily_limit_teacher',
+    tab: 'ai',
+    label: 'Per teacher',
+    type: 'number',
+    defaultValue: String(AI_DAILY_LIMIT_DEFAULTS.teacher),
+    min: 0,
+    max: AI_DAILY_LIMIT_MAX,
+    caption: '0 turns the assistant off for teachers.',
+  },
+  {
+    key: 'ai_daily_limit_super_admin',
+    tab: 'ai',
+    label: 'Per super admin',
+    type: 'number',
+    defaultValue: String(AI_DAILY_LIMIT_DEFAULTS.super_admin),
+    min: 0,
+    max: AI_DAILY_LIMIT_MAX,
+    caption: '0 turns the assistant off for super admins. These settings stay available.',
   },
   {
     key: 'maintenance_message',

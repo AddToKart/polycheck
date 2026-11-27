@@ -270,6 +270,32 @@ abstract class AiThreadSummary with _$AiThreadSummary {
 }
 
 @freezed
+abstract class AiTermsStatus with _$AiTermsStatus {
+  @JsonSerializable(fieldRename: FieldRename.none, explicitToJson: true)
+  const factory AiTermsStatus({
+    required String version,
+    @Default(false) bool accepted,
+  }) = _AiTermsStatus;
+
+  factory AiTermsStatus.fromJson(Map<String, dynamic> json) =>
+      _$AiTermsStatusFromJson(json);
+}
+
+@freezed
+abstract class AiDailyUsage with _$AiDailyUsage {
+  @JsonSerializable(fieldRename: FieldRename.none, explicitToJson: true)
+  const factory AiDailyUsage({
+    required int limit,
+    required int used,
+    required int remaining,
+    @Default('') String resetsAt,
+  }) = _AiDailyUsage;
+
+  factory AiDailyUsage.fromJson(Map<String, dynamic> json) =>
+      _$AiDailyUsageFromJson(json);
+}
+
+@freezed
 abstract class AiCapabilities with _$AiCapabilities {
   @JsonSerializable(
     fieldRename: FieldRename.none,
@@ -283,6 +309,15 @@ abstract class AiCapabilities with _$AiCapabilities {
     String? reason,
     @Default(<AiMissingConfig>[]) List<AiMissingConfig> missing,
     @Default(false) bool policyBlocked,
+
+    /// Whether this person accepted the current terms; null on older servers.
+    AiTermsStatus? terms,
+
+    /// Host name of the AI provider that receives messages.
+    String? provider,
+
+    /// This person's daily message allowance.
+    AiDailyUsage? usage,
   }) = _AiCapabilities;
 
   factory AiCapabilities.fromJson(Map<String, dynamic> json) =>

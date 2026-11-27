@@ -1939,9 +1939,550 @@ as String,
 
 
 /// @nodoc
+mixin _$AiTermsStatus {
+
+ String get version; bool get accepted;
+/// Create a copy of AiTermsStatus
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AiTermsStatusCopyWith<AiTermsStatus> get copyWith => _$AiTermsStatusCopyWithImpl<AiTermsStatus>(this as AiTermsStatus, _$identity);
+
+  /// Serializes this AiTermsStatus to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AiTermsStatus&&(identical(other.version, version) || other.version == version)&&(identical(other.accepted, accepted) || other.accepted == accepted));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode => Object.hash(runtimeType,version,accepted);
+
+@override
+String toString() {
+  return 'AiTermsStatus(version: $version, accepted: $accepted)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AiTermsStatusCopyWith<$Res>  {
+  factory $AiTermsStatusCopyWith(AiTermsStatus value, $Res Function(AiTermsStatus) _then) = _$AiTermsStatusCopyWithImpl;
+@useResult
+$Res call({
+ String version, bool accepted
+});
+
+
+
+
+}
+/// @nodoc
+class _$AiTermsStatusCopyWithImpl<$Res>
+    implements $AiTermsStatusCopyWith<$Res> {
+  _$AiTermsStatusCopyWithImpl(this._self, this._then);
+
+  final AiTermsStatus _self;
+  final $Res Function(AiTermsStatus) _then;
+
+/// Create a copy of AiTermsStatus
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? version = null,Object? accepted = null,}) {
+  return _then(AiTermsStatus(
+version: null == version ? _self.version : version // ignore: cast_nullable_to_non_nullable
+as String,accepted: null == accepted ? _self.accepted : accepted // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [AiTermsStatus].
+extension AiTermsStatusPatterns on AiTermsStatus {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _AiTermsStatus value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _AiTermsStatus() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _AiTermsStatus value)  $default,){
+final _that = this;
+switch (_that) {
+case _AiTermsStatus():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _AiTermsStatus value)?  $default,){
+final _that = this;
+switch (_that) {
+case _AiTermsStatus() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String version,  bool accepted)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _AiTermsStatus() when $default != null:
+return $default(_that.version,_that.accepted);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String version,  bool accepted)  $default,) {final _that = this;
+switch (_that) {
+case _AiTermsStatus():
+return $default(_that.version,_that.accepted);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String version,  bool accepted)?  $default,) {final _that = this;
+switch (_that) {
+case _AiTermsStatus() when $default != null:
+return $default(_that.version,_that.accepted);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+@JsonSerializable(fieldRename: FieldRename.none, explicitToJson: true)
+class _AiTermsStatus implements AiTermsStatus {
+  const _AiTermsStatus({required this.version, this.accepted = false});
+  factory _AiTermsStatus.fromJson(Map<String, dynamic> json) => _$AiTermsStatusFromJson(json);
+
+@override final  String version;
+@override@JsonKey() final  bool accepted;
+
+/// Create a copy of AiTermsStatus
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$AiTermsStatusCopyWith<_AiTermsStatus> get copyWith => __$AiTermsStatusCopyWithImpl<_AiTermsStatus>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$AiTermsStatusToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _AiTermsStatus&&(identical(other.version, version) || other.version == version)&&(identical(other.accepted, accepted) || other.accepted == accepted));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode => Object.hash(runtimeType,version,accepted);
+
+@override
+String toString() {
+  return 'AiTermsStatus(version: $version, accepted: $accepted)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$AiTermsStatusCopyWith<$Res> implements $AiTermsStatusCopyWith<$Res> {
+  factory _$AiTermsStatusCopyWith(_AiTermsStatus value, $Res Function(_AiTermsStatus) _then) = __$AiTermsStatusCopyWithImpl;
+@override @useResult
+$Res call({
+ String version, bool accepted
+});
+
+
+
+
+}
+/// @nodoc
+class __$AiTermsStatusCopyWithImpl<$Res>
+    implements _$AiTermsStatusCopyWith<$Res> {
+  __$AiTermsStatusCopyWithImpl(this._self, this._then);
+
+  final _AiTermsStatus _self;
+  final $Res Function(_AiTermsStatus) _then;
+
+/// Create a copy of AiTermsStatus
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? version = null,Object? accepted = null,}) {
+  return _then(_AiTermsStatus(
+version: null == version ? _self.version : version // ignore: cast_nullable_to_non_nullable
+as String,accepted: null == accepted ? _self.accepted : accepted // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+
+}
+
+
+/// @nodoc
+mixin _$AiDailyUsage {
+
+ int get limit; int get used; int get remaining; String get resetsAt;
+/// Create a copy of AiDailyUsage
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AiDailyUsageCopyWith<AiDailyUsage> get copyWith => _$AiDailyUsageCopyWithImpl<AiDailyUsage>(this as AiDailyUsage, _$identity);
+
+  /// Serializes this AiDailyUsage to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AiDailyUsage&&(identical(other.limit, limit) || other.limit == limit)&&(identical(other.used, used) || other.used == used)&&(identical(other.remaining, remaining) || other.remaining == remaining)&&(identical(other.resetsAt, resetsAt) || other.resetsAt == resetsAt));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode => Object.hash(runtimeType,limit,used,remaining,resetsAt);
+
+@override
+String toString() {
+  return 'AiDailyUsage(limit: $limit, used: $used, remaining: $remaining, resetsAt: $resetsAt)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AiDailyUsageCopyWith<$Res>  {
+  factory $AiDailyUsageCopyWith(AiDailyUsage value, $Res Function(AiDailyUsage) _then) = _$AiDailyUsageCopyWithImpl;
+@useResult
+$Res call({
+ int limit, int used, int remaining, String resetsAt
+});
+
+
+
+
+}
+/// @nodoc
+class _$AiDailyUsageCopyWithImpl<$Res>
+    implements $AiDailyUsageCopyWith<$Res> {
+  _$AiDailyUsageCopyWithImpl(this._self, this._then);
+
+  final AiDailyUsage _self;
+  final $Res Function(AiDailyUsage) _then;
+
+/// Create a copy of AiDailyUsage
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? limit = null,Object? used = null,Object? remaining = null,Object? resetsAt = null,}) {
+  return _then(AiDailyUsage(
+limit: null == limit ? _self.limit : limit // ignore: cast_nullable_to_non_nullable
+as int,used: null == used ? _self.used : used // ignore: cast_nullable_to_non_nullable
+as int,remaining: null == remaining ? _self.remaining : remaining // ignore: cast_nullable_to_non_nullable
+as int,resetsAt: null == resetsAt ? _self.resetsAt : resetsAt // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [AiDailyUsage].
+extension AiDailyUsagePatterns on AiDailyUsage {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _AiDailyUsage value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _AiDailyUsage() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _AiDailyUsage value)  $default,){
+final _that = this;
+switch (_that) {
+case _AiDailyUsage():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _AiDailyUsage value)?  $default,){
+final _that = this;
+switch (_that) {
+case _AiDailyUsage() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int limit,  int used,  int remaining,  String resetsAt)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _AiDailyUsage() when $default != null:
+return $default(_that.limit,_that.used,_that.remaining,_that.resetsAt);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int limit,  int used,  int remaining,  String resetsAt)  $default,) {final _that = this;
+switch (_that) {
+case _AiDailyUsage():
+return $default(_that.limit,_that.used,_that.remaining,_that.resetsAt);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int limit,  int used,  int remaining,  String resetsAt)?  $default,) {final _that = this;
+switch (_that) {
+case _AiDailyUsage() when $default != null:
+return $default(_that.limit,_that.used,_that.remaining,_that.resetsAt);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+@JsonSerializable(fieldRename: FieldRename.none, explicitToJson: true)
+class _AiDailyUsage implements AiDailyUsage {
+  const _AiDailyUsage({required this.limit, required this.used, required this.remaining, this.resetsAt = ''});
+  factory _AiDailyUsage.fromJson(Map<String, dynamic> json) => _$AiDailyUsageFromJson(json);
+
+@override final  int limit;
+@override final  int used;
+@override final  int remaining;
+@override@JsonKey() final  String resetsAt;
+
+/// Create a copy of AiDailyUsage
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$AiDailyUsageCopyWith<_AiDailyUsage> get copyWith => __$AiDailyUsageCopyWithImpl<_AiDailyUsage>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$AiDailyUsageToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _AiDailyUsage&&(identical(other.limit, limit) || other.limit == limit)&&(identical(other.used, used) || other.used == used)&&(identical(other.remaining, remaining) || other.remaining == remaining)&&(identical(other.resetsAt, resetsAt) || other.resetsAt == resetsAt));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode => Object.hash(runtimeType,limit,used,remaining,resetsAt);
+
+@override
+String toString() {
+  return 'AiDailyUsage(limit: $limit, used: $used, remaining: $remaining, resetsAt: $resetsAt)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$AiDailyUsageCopyWith<$Res> implements $AiDailyUsageCopyWith<$Res> {
+  factory _$AiDailyUsageCopyWith(_AiDailyUsage value, $Res Function(_AiDailyUsage) _then) = __$AiDailyUsageCopyWithImpl;
+@override @useResult
+$Res call({
+ int limit, int used, int remaining, String resetsAt
+});
+
+
+
+
+}
+/// @nodoc
+class __$AiDailyUsageCopyWithImpl<$Res>
+    implements _$AiDailyUsageCopyWith<$Res> {
+  __$AiDailyUsageCopyWithImpl(this._self, this._then);
+
+  final _AiDailyUsage _self;
+  final $Res Function(_AiDailyUsage) _then;
+
+/// Create a copy of AiDailyUsage
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? limit = null,Object? used = null,Object? remaining = null,Object? resetsAt = null,}) {
+  return _then(_AiDailyUsage(
+limit: null == limit ? _self.limit : limit // ignore: cast_nullable_to_non_nullable
+as int,used: null == used ? _self.used : used // ignore: cast_nullable_to_non_nullable
+as int,remaining: null == remaining ? _self.remaining : remaining // ignore: cast_nullable_to_non_nullable
+as int,resetsAt: null == resetsAt ? _self.resetsAt : resetsAt // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+
+/// @nodoc
 mixin _$AiCapabilities {
 
- bool get enabled; String? get model; int? get maxMessageChars; String? get reason; List<AiMissingConfig> get missing; bool get policyBlocked;
+ bool get enabled; String? get model; int? get maxMessageChars; String? get reason; List<AiMissingConfig> get missing; bool get policyBlocked;/// Whether this person accepted the current terms; null on older servers.
+ AiTermsStatus? get terms;/// Host name of the AI provider that receives messages.
+ String? get provider;/// This person's daily message allowance.
+ AiDailyUsage? get usage;
 /// Create a copy of AiCapabilities
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -1954,16 +2495,16 @@ $AiCapabilitiesCopyWith<AiCapabilities> get copyWith => _$AiCapabilitiesCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is AiCapabilities&&(identical(other.enabled, enabled) || other.enabled == enabled)&&(identical(other.model, model) || other.model == model)&&(identical(other.maxMessageChars, maxMessageChars) || other.maxMessageChars == maxMessageChars)&&(identical(other.reason, reason) || other.reason == reason)&&const DeepCollectionEquality().equals(other.missing, missing)&&(identical(other.policyBlocked, policyBlocked) || other.policyBlocked == policyBlocked));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AiCapabilities&&(identical(other.enabled, enabled) || other.enabled == enabled)&&(identical(other.model, model) || other.model == model)&&(identical(other.maxMessageChars, maxMessageChars) || other.maxMessageChars == maxMessageChars)&&(identical(other.reason, reason) || other.reason == reason)&&const DeepCollectionEquality().equals(other.missing, missing)&&(identical(other.policyBlocked, policyBlocked) || other.policyBlocked == policyBlocked)&&(identical(other.terms, terms) || other.terms == terms)&&(identical(other.provider, provider) || other.provider == provider)&&(identical(other.usage, usage) || other.usage == usage));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,enabled,model,maxMessageChars,reason,const DeepCollectionEquality().hash(missing),policyBlocked);
+int get hashCode => Object.hash(runtimeType,enabled,model,maxMessageChars,reason,const DeepCollectionEquality().hash(missing),policyBlocked,terms,provider,usage);
 
 @override
 String toString() {
-  return 'AiCapabilities(enabled: $enabled, model: $model, maxMessageChars: $maxMessageChars, reason: $reason, missing: $missing, policyBlocked: $policyBlocked)';
+  return 'AiCapabilities(enabled: $enabled, model: $model, maxMessageChars: $maxMessageChars, reason: $reason, missing: $missing, policyBlocked: $policyBlocked, terms: $terms, provider: $provider, usage: $usage)';
 }
 
 
@@ -1974,11 +2515,11 @@ abstract mixin class $AiCapabilitiesCopyWith<$Res>  {
   factory $AiCapabilitiesCopyWith(AiCapabilities value, $Res Function(AiCapabilities) _then) = _$AiCapabilitiesCopyWithImpl;
 @useResult
 $Res call({
- bool enabled, String? model, int? maxMessageChars, String? reason, List<AiMissingConfig> missing, bool policyBlocked
+ bool enabled, String? model, int? maxMessageChars, String? reason, List<AiMissingConfig> missing, bool policyBlocked, AiTermsStatus? terms, String? provider, AiDailyUsage? usage
 });
 
 
-
+$AiTermsStatusCopyWith<$Res>? get terms;$AiDailyUsageCopyWith<$Res>? get usage;
 
 }
 /// @nodoc
@@ -1991,7 +2532,7 @@ class _$AiCapabilitiesCopyWithImpl<$Res>
 
 /// Create a copy of AiCapabilities
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? enabled = null,Object? model = freezed,Object? maxMessageChars = freezed,Object? reason = freezed,Object? missing = null,Object? policyBlocked = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? enabled = null,Object? model = freezed,Object? maxMessageChars = freezed,Object? reason = freezed,Object? missing = null,Object? policyBlocked = null,Object? terms = freezed,Object? provider = freezed,Object? usage = freezed,}) {
   return _then(AiCapabilities(
 enabled: null == enabled ? _self.enabled : enabled // ignore: cast_nullable_to_non_nullable
 as bool,model: freezed == model ? _self.model : model // ignore: cast_nullable_to_non_nullable
@@ -1999,10 +2540,37 @@ as String?,maxMessageChars: freezed == maxMessageChars ? _self.maxMessageChars :
 as int?,reason: freezed == reason ? _self.reason : reason // ignore: cast_nullable_to_non_nullable
 as String?,missing: null == missing ? _self.missing : missing // ignore: cast_nullable_to_non_nullable
 as List<AiMissingConfig>,policyBlocked: null == policyBlocked ? _self.policyBlocked : policyBlocked // ignore: cast_nullable_to_non_nullable
-as bool,
+as bool,terms: freezed == terms ? _self.terms : terms // ignore: cast_nullable_to_non_nullable
+as AiTermsStatus?,provider: freezed == provider ? _self.provider : provider // ignore: cast_nullable_to_non_nullable
+as String?,usage: freezed == usage ? _self.usage : usage // ignore: cast_nullable_to_non_nullable
+as AiDailyUsage?,
   ));
 }
+/// Create a copy of AiCapabilities
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$AiTermsStatusCopyWith<$Res>? get terms {
+    if (_self.terms == null) {
+    return null;
+  }
 
+  return $AiTermsStatusCopyWith<$Res>(_self.terms!, (value) {
+    return _then(_self.copyWith(terms: value));
+  });
+}/// Create a copy of AiCapabilities
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$AiDailyUsageCopyWith<$Res>? get usage {
+    if (_self.usage == null) {
+    return null;
+  }
+
+  return $AiDailyUsageCopyWith<$Res>(_self.usage!, (value) {
+    return _then(_self.copyWith(usage: value));
+  });
+}
 }
 
 
@@ -2084,10 +2652,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool enabled,  String? model,  int? maxMessageChars,  String? reason,  List<AiMissingConfig> missing,  bool policyBlocked)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool enabled,  String? model,  int? maxMessageChars,  String? reason,  List<AiMissingConfig> missing,  bool policyBlocked,  AiTermsStatus? terms,  String? provider,  AiDailyUsage? usage)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _AiCapabilities() when $default != null:
-return $default(_that.enabled,_that.model,_that.maxMessageChars,_that.reason,_that.missing,_that.policyBlocked);case _:
+return $default(_that.enabled,_that.model,_that.maxMessageChars,_that.reason,_that.missing,_that.policyBlocked,_that.terms,_that.provider,_that.usage);case _:
   return orElse();
 
 }
@@ -2105,10 +2673,10 @@ return $default(_that.enabled,_that.model,_that.maxMessageChars,_that.reason,_th
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool enabled,  String? model,  int? maxMessageChars,  String? reason,  List<AiMissingConfig> missing,  bool policyBlocked)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool enabled,  String? model,  int? maxMessageChars,  String? reason,  List<AiMissingConfig> missing,  bool policyBlocked,  AiTermsStatus? terms,  String? provider,  AiDailyUsage? usage)  $default,) {final _that = this;
 switch (_that) {
 case _AiCapabilities():
-return $default(_that.enabled,_that.model,_that.maxMessageChars,_that.reason,_that.missing,_that.policyBlocked);case _:
+return $default(_that.enabled,_that.model,_that.maxMessageChars,_that.reason,_that.missing,_that.policyBlocked,_that.terms,_that.provider,_that.usage);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -2125,10 +2693,10 @@ return $default(_that.enabled,_that.model,_that.maxMessageChars,_that.reason,_th
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool enabled,  String? model,  int? maxMessageChars,  String? reason,  List<AiMissingConfig> missing,  bool policyBlocked)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool enabled,  String? model,  int? maxMessageChars,  String? reason,  List<AiMissingConfig> missing,  bool policyBlocked,  AiTermsStatus? terms,  String? provider,  AiDailyUsage? usage)?  $default,) {final _that = this;
 switch (_that) {
 case _AiCapabilities() when $default != null:
-return $default(_that.enabled,_that.model,_that.maxMessageChars,_that.reason,_that.missing,_that.policyBlocked);case _:
+return $default(_that.enabled,_that.model,_that.maxMessageChars,_that.reason,_that.missing,_that.policyBlocked,_that.terms,_that.provider,_that.usage);case _:
   return null;
 
 }
@@ -2140,7 +2708,7 @@ return $default(_that.enabled,_that.model,_that.maxMessageChars,_that.reason,_th
 
 @JsonSerializable(fieldRename: FieldRename.none, explicitToJson: true, converters: [AiMissingConfigConverter()])
 class _AiCapabilities implements AiCapabilities {
-  const _AiCapabilities({required this.enabled, this.model, this.maxMessageChars, this.reason,  List<AiMissingConfig> missing = const <AiMissingConfig>[], this.policyBlocked = false}): _missing = missing;
+  const _AiCapabilities({required this.enabled, this.model, this.maxMessageChars, this.reason,  List<AiMissingConfig> missing = const <AiMissingConfig>[], this.policyBlocked = false, this.terms, this.provider, this.usage}): _missing = missing;
   factory _AiCapabilities.fromJson(Map<String, dynamic> json) => _$AiCapabilitiesFromJson(json);
 
 @override final  bool enabled;
@@ -2155,6 +2723,12 @@ class _AiCapabilities implements AiCapabilities {
 }
 
 @override@JsonKey() final  bool policyBlocked;
+/// Whether this person accepted the current terms; null on older servers.
+@override final  AiTermsStatus? terms;
+/// Host name of the AI provider that receives messages.
+@override final  String? provider;
+/// This person's daily message allowance.
+@override final  AiDailyUsage? usage;
 
 /// Create a copy of AiCapabilities
 /// with the given fields replaced by the non-null parameter values.
@@ -2169,16 +2743,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _AiCapabilities&&(identical(other.enabled, enabled) || other.enabled == enabled)&&(identical(other.model, model) || other.model == model)&&(identical(other.maxMessageChars, maxMessageChars) || other.maxMessageChars == maxMessageChars)&&(identical(other.reason, reason) || other.reason == reason)&&const DeepCollectionEquality().equals(other._missing, _missing)&&(identical(other.policyBlocked, policyBlocked) || other.policyBlocked == policyBlocked));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _AiCapabilities&&(identical(other.enabled, enabled) || other.enabled == enabled)&&(identical(other.model, model) || other.model == model)&&(identical(other.maxMessageChars, maxMessageChars) || other.maxMessageChars == maxMessageChars)&&(identical(other.reason, reason) || other.reason == reason)&&const DeepCollectionEquality().equals(other._missing, _missing)&&(identical(other.policyBlocked, policyBlocked) || other.policyBlocked == policyBlocked)&&(identical(other.terms, terms) || other.terms == terms)&&(identical(other.provider, provider) || other.provider == provider)&&(identical(other.usage, usage) || other.usage == usage));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,enabled,model,maxMessageChars,reason,const DeepCollectionEquality().hash(_missing),policyBlocked);
+int get hashCode => Object.hash(runtimeType,enabled,model,maxMessageChars,reason,const DeepCollectionEquality().hash(_missing),policyBlocked,terms,provider,usage);
 
 @override
 String toString() {
-  return 'AiCapabilities(enabled: $enabled, model: $model, maxMessageChars: $maxMessageChars, reason: $reason, missing: $missing, policyBlocked: $policyBlocked)';
+  return 'AiCapabilities(enabled: $enabled, model: $model, maxMessageChars: $maxMessageChars, reason: $reason, missing: $missing, policyBlocked: $policyBlocked, terms: $terms, provider: $provider, usage: $usage)';
 }
 
 
@@ -2189,11 +2763,11 @@ abstract mixin class _$AiCapabilitiesCopyWith<$Res> implements $AiCapabilitiesCo
   factory _$AiCapabilitiesCopyWith(_AiCapabilities value, $Res Function(_AiCapabilities) _then) = __$AiCapabilitiesCopyWithImpl;
 @override @useResult
 $Res call({
- bool enabled, String? model, int? maxMessageChars, String? reason, List<AiMissingConfig> missing, bool policyBlocked
+ bool enabled, String? model, int? maxMessageChars, String? reason, List<AiMissingConfig> missing, bool policyBlocked, AiTermsStatus? terms, String? provider, AiDailyUsage? usage
 });
 
 
-
+@override $AiTermsStatusCopyWith<$Res>? get terms;@override $AiDailyUsageCopyWith<$Res>? get usage;
 
 }
 /// @nodoc
@@ -2206,7 +2780,7 @@ class __$AiCapabilitiesCopyWithImpl<$Res>
 
 /// Create a copy of AiCapabilities
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? enabled = null,Object? model = freezed,Object? maxMessageChars = freezed,Object? reason = freezed,Object? missing = null,Object? policyBlocked = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? enabled = null,Object? model = freezed,Object? maxMessageChars = freezed,Object? reason = freezed,Object? missing = null,Object? policyBlocked = null,Object? terms = freezed,Object? provider = freezed,Object? usage = freezed,}) {
   return _then(_AiCapabilities(
 enabled: null == enabled ? _self.enabled : enabled // ignore: cast_nullable_to_non_nullable
 as bool,model: freezed == model ? _self.model : model // ignore: cast_nullable_to_non_nullable
@@ -2214,11 +2788,38 @@ as String?,maxMessageChars: freezed == maxMessageChars ? _self.maxMessageChars :
 as int?,reason: freezed == reason ? _self.reason : reason // ignore: cast_nullable_to_non_nullable
 as String?,missing: null == missing ? _self._missing : missing // ignore: cast_nullable_to_non_nullable
 as List<AiMissingConfig>,policyBlocked: null == policyBlocked ? _self.policyBlocked : policyBlocked // ignore: cast_nullable_to_non_nullable
-as bool,
+as bool,terms: freezed == terms ? _self.terms : terms // ignore: cast_nullable_to_non_nullable
+as AiTermsStatus?,provider: freezed == provider ? _self.provider : provider // ignore: cast_nullable_to_non_nullable
+as String?,usage: freezed == usage ? _self.usage : usage // ignore: cast_nullable_to_non_nullable
+as AiDailyUsage?,
   ));
 }
 
+/// Create a copy of AiCapabilities
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$AiTermsStatusCopyWith<$Res>? get terms {
+    if (_self.terms == null) {
+    return null;
+  }
 
+  return $AiTermsStatusCopyWith<$Res>(_self.terms!, (value) {
+    return _then(_self.copyWith(terms: value));
+  });
+}/// Create a copy of AiCapabilities
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$AiDailyUsageCopyWith<$Res>? get usage {
+    if (_self.usage == null) {
+    return null;
+  }
+
+  return $AiDailyUsageCopyWith<$Res>(_self.usage!, (value) {
+    return _then(_self.copyWith(usage: value));
+  });
+}
 }
 
 // dart format on

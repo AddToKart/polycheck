@@ -58,6 +58,15 @@ class AiApi extends ApiBase {
     return AiCapabilities.fromJson(asMap(data));
   }
 
+  /// Records that the signed-in person accepted this version of the terms.
+  Future<AiCapabilities> acceptTerms(String version) async {
+    final data = await postJson(
+      '/ai/terms/accept',
+      body: <String, dynamic>{'version': version},
+    );
+    return AiCapabilities.fromJson(asMap(data));
+  }
+
   Future<AiChatSendResult> sendMessage(AiChatSendInput input) async {
     final data = await postJson('/ai/chat', body: input.toJson());
     return AiChatSendResult.fromJson(asMap(data));

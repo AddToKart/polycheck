@@ -3,6 +3,7 @@ import { InfrastructureModule } from '../infrastructure/infrastructure.module'
 import { PrismaModule } from '../prisma/prisma.module'
 import { SettingsModule } from '../settings/settings.module'
 import { StandingModule } from '../standing/standing.module'
+import { AiAccessService } from './ai-access.service'
 import { AiAuditService } from './ai-audit.service'
 import { AiChatService } from './ai-chat.service'
 import { AiController } from './ai.controller'
@@ -19,6 +20,7 @@ import { AiToolRegistryService } from './ai-tool-registry.service'
     AiAuditService,
     AiToolRegistryService,
     AiStreamService,
+    AiAccessService,
     AiChatService,
   ],
   exports: [AiProviderService, AiChatService, AiStreamService, AiToolRegistryService],

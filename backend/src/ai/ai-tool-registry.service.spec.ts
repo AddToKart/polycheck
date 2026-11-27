@@ -1,3 +1,4 @@
+import { CAMPUS_COURSES } from '@polycheck/shared'
 import { AiToolError, AiToolRegistryService } from './ai-tool-registry.service'
 
 const teacher = { id: 'teacher-1', role: 'teacher' as const }
@@ -14,6 +15,7 @@ const institutionAdmin = { id: 'admin-2', role: 'super_admin' as const, scope: '
 const sectionRow = {
   id: 'sec-1',
   section: '1',
+  course: 'BSIT',
   teacherId: 'teacher-1',
   studentCount: 40,
   semester: '2026-1',
@@ -80,6 +82,7 @@ function makeRegistry() {
     user: {
       count: jest.fn().mockResolvedValue(3),
       findMany: jest.fn().mockResolvedValue([]),
+      groupBy: jest.fn().mockResolvedValue([]),
     },
     auditLog: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -97,12 +100,14 @@ describe('AiToolRegistryService', () => {
 
     expect(registry.toOpenAiTools('teacher').map((tool) => tool.function.name)).toEqual([
       'find_sections',
+      'list_courses',
       'get_section_master_list',
       'get_section_sessions',
       'get_session_attendance',
     ])
     expect(registry.toOpenAiTools('super_admin').map((tool) => tool.function.name)).toEqual([
       'find_sections',
+      'list_courses',
       'get_section_master_list',
       'get_section_sessions',
       'get_session_attendance',
@@ -336,6 +341,7 @@ describe('AiToolRegistryService', () => {
           subject: 'Software Engineering',
           subjectCode: 'SE101',
           section: '1',
+          course: 'BSIT',
           studentCount: 40,
           room: 'Room 101',
           scheduleSummary: 'Mon 09:00-10:00, Wed 10:00-11:30',
@@ -429,7 +435,7 @@ describe('AiToolRegistryService', () => {
         downloadPath: '/docs/master-list/sec-1?format=pdf',
       },
     ])
-    expect(execution.result).toEqual({ attachment: execution.attachments[0], studentCount: 40 })
+    expect(execution.result).toEqual({ attachment: execution.attachments[0], studentCount: 40, course: 'BSIT' })
     expect(JSON.stringify(execution.result)).not.toContain('studentName')
   })
 
@@ -711,6 +717,135 @@ describe('AiToolRegistryService', () => {
     )
     expect(JSON.stringify(execution.result)).not.toContain('password')
     expect(execution.result).toMatchObject({ count: 1 })
+  })
+
+  describe('courses', () => {
+    const codes = CAMPUS_COURSES.map((course) => course.code)
+
+    it('lists exactly the courses offered when a student is created, with counts', async () => {
+      const { registry, prisma } = makeRegistry()
+      prisma.user.groupBy.mockResolvedValue([
+        { program: 'BSIT', _count: { _all: 4 } },
+        { program: 'BS Information Technology', _count: { _all: 1 } },
+        { program: 'BSHM', _count: { _all: 2 } },
+        { program: 'Unknown course', _count: { _all: 9 } },
+      ])
+
+      const execution = await registry.execute('super_admin', departmentAdmin as never, 'list_courses', {}, 't')
+      const result = execution.result as { count: number; courses: Array<Record<string, unknown>> }
+
+      expect(result.courses.map((course) => course.code)).toEqual(codes)
+      expect(result.count).toBe(codes.length)
+      expect(result.courses.find((course) => course.code === 'BSIT')).toMatchObject({ activeStudents: 5 })
+      expect(result.courses.find((course) => course.code === 'BSHM')).toMatchObject({ activeStudents: 2 })
+      // Counts stay inside the administrator's scope.
+      expect(prisma.user.groupBy.mock.calls[0][0].where).toMatchObject({
+        role: 'student',
+        isActive: true,
+        department: { equals: 'CCIS', mode: 'insensitive' },
+      })
+    })
+
+    it('gives teachers the list with their own section counts and no student figures', async () => {
+      const { registry, prisma } = makeRegistry()
+      prisma.section.findMany.mockResolvedValue([{ course: 'BSIT' }, { course: 'BSIT' }, { course: null }])
+
+      const execution = await registry.execute('teacher', teacher as never, 'list_courses', {}, 't')
+
+      expect(prisma.section.findMany).toHaveBeenCalledWith({
+        where: { teacherId: 'teacher-1' },
+        select: { course: true },
+      })
+      expect(prisma.user.groupBy).not.toHaveBeenCalled()
+      expect(JSON.stringify(execution.result)).not.toContain('activeStudents')
+      expect((execution.result as { courses: unknown[] }).courses).toContainEqual({
+        code: 'BSIT',
+        name: 'Bachelor of Science in Information Technology',
+        yourSections: 2,
+      })
+    })
+
+    it('does not offer the course list to students', async () => {
+      const { registry } = makeRegistry()
+      await expect(registry.execute('student', student as never, 'list_courses', {}, 't')).rejects.toBeInstanceOf(
+        AiToolError,
+      )
+    })
+
+    it('filters sections by a course, however it is written', async () => {
+      const { registry, prisma } = makeRegistry()
+
+      await registry.execute('teacher', teacher as never, 'find_sections', { course: 'BS Information Technology' }, 't')
+
+      expect(prisma.section.findMany.mock.calls[0][0].where).toEqual({
+        teacherId: 'teacher-1',
+        AND: [{ course: { equals: 'BSIT', mode: 'insensitive' } }],
+      })
+    })
+
+    it('also matches a course code typed in a section search', async () => {
+      const { registry, prisma } = makeRegistry()
+
+      await registry.execute('teacher', teacher as never, 'find_sections', { query: 'bshm' }, 't')
+
+      expect(prisma.section.findMany.mock.calls[0][0].where.OR).toContainEqual({
+        course: { equals: 'BSHM', mode: 'insensitive' },
+      })
+    })
+
+    it('refuses a course that is not in the list and names the valid ones', async () => {
+      const { registry, prisma } = makeRegistry()
+
+      await expect(
+        registry.execute('teacher', teacher as never, 'find_sections', { course: 'CCIS' }, 't'),
+      ).rejects.toThrow(`Unknown course. Use one of: ${codes.join(', ')}`)
+      expect(prisma.section.findMany).not.toHaveBeenCalled()
+    })
+
+    it('finds the students of a course and reports their course, not a department', async () => {
+      const { registry, prisma } = makeRegistry()
+      prisma.user.findMany.mockResolvedValue([
+        {
+          id: 's',
+          fullName: 'Student One',
+          role: 'student',
+          email: 'one@example.edu.ph',
+          studentId: '2024-00001-MN-0',
+          isActive: true,
+          program: 'BS Information Technology',
+          yearLevel: 1,
+        },
+        {
+          id: 't',
+          fullName: 'Teacher One',
+          role: 'teacher',
+          email: 'two@example.edu.ph',
+          studentId: null,
+          isActive: true,
+          program: null,
+          yearLevel: null,
+        },
+      ])
+
+      const execution = await registry.execute(
+        'super_admin',
+        institutionAdmin as never,
+        'find_users',
+        { course: 'BSIT' },
+        't',
+      )
+      const call = prisma.user.findMany.mock.calls[0][0]
+
+      expect(call.select).not.toHaveProperty('department')
+      expect(call.where.AND).toEqual([
+        { role: 'student' },
+        { OR: expect.arrayContaining([{ program: { equals: 'BSIT', mode: 'insensitive' } }]) },
+      ])
+      expect((execution.result as { users: unknown[] }).users).toEqual([
+        expect.objectContaining({ id: 's', course: 'BSIT', yearLevel: 1 }),
+        expect.not.objectContaining({ course: expect.anything() }),
+      ])
+    })
   })
 
   it('denies administrative tools to teachers', async () => {

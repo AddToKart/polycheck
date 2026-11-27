@@ -1,21 +1,30 @@
 import { Body, Controller, Delete, Get, Param, Post, Request } from '@nestjs/common'
-import { AiChatSendSchema, type AiChatSendInput } from '@polycheck/shared'
+import { AiAcceptTermsSchema, AiChatSendSchema, type AiAcceptTermsInput, type AiChatSendInput } from '@polycheck/shared'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
 import { Roles } from '../common/decorators/roles.decorator'
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe'
+import { AiAccessService } from './ai-access.service'
 import { AiChatService } from './ai-chat.service'
-import { AiProviderService } from './ai-provider.service'
 
 @Controller('ai')
 export class AiController {
   constructor(
-    private readonly provider: AiProviderService,
+    private readonly access: AiAccessService,
     private readonly chat: AiChatService,
   ) {}
 
   @Get('capabilities')
   capabilities(@Request() req: AuthenticatedRequest) {
-    return this.provider.describe(req.user)
+    return this.access.capabilities(req.user)
+  }
+
+  @Post('terms/accept')
+  @Roles('teacher', 'super_admin', 'student')
+  acceptTerms(
+    @Body(new ZodValidationPipe(AiAcceptTermsSchema)) dto: AiAcceptTermsInput,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.access.acceptTerms(req.user, dto.version)
   }
 
   @Get('threads')

@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import Link from 'next/link'
-import type {
-  AiCapabilities,
-  AiChatMessage,
-  AiStreamEvent,
-  User,
+import {
+  AI_TERMS_REQUIRED_CODE,
+  AI_TERMS_VERSION,
+  type AiCapabilities,
+  type AiChatMessage,
+  type AiStreamEvent,
+  type User,
 } from '@polycheck/shared'
 import { AlertTriangle, ArrowDown, ArrowUp, Loader2, Sparkles, Square } from 'lucide-react'
 import { api } from '@/lib/api-client'
@@ -20,6 +22,7 @@ import { EmptyState } from './EmptyState'
 import { Markdown } from './Markdown'
 import { MessageActions } from './MessageActions'
 import { ThreadsRail } from './ThreadsRail'
+import { TermsGate } from './TermsGate'
 import { ToolActivityDisclosure } from './ToolActivityDisclosure'
 import {
   buildTranscriptRows,
@@ -42,6 +45,12 @@ import { ASSISTANT_ROLE_COPY, starterPromptsFor } from './suggestions'
 const REPLY_TIMEOUT_MS = 75_000
 
 type RetryAction = { kind: 'send'; text: string } | { kind: 'regenerate' }
+
+/** The server refused for a reason that changes what the screen should show. */
+function needsFreshCapabilities(error: unknown) {
+  const refusal = error as { status?: number; code?: string } | null
+  return refusal?.code === AI_TERMS_REQUIRED_CODE || refusal?.status === 429
+}
 
 function TypingDots() {
   return (
@@ -213,6 +222,8 @@ export function AssistantChat({
   const [stoppedMessageId, setStoppedMessageId] = useState<string | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [threadsRefreshKey, setThreadsRefreshKey] = useState(0)
+  const [acceptingTerms, setAcceptingTerms] = useState(false)
+  const [termsError, setTermsError] = useState<string | null>(null)
 
   const messagesRef = useRef<AiChatMessage[]>([])
   const threadIdRef = useRef<string | null>(null)
@@ -313,6 +324,15 @@ export function AssistantChat({
     [setMessagesSafe, stopReconcile, stopReplyTimer],
   )
 
+  /** Re-reads today's allowance and consent without disturbing the chat. */
+  const refreshCapabilities = useCallback(async () => {
+    try {
+      setCapabilities(await api.getAiCapabilities())
+    } catch {
+      // The numbers on screen stay until the next successful read.
+    }
+  }, [])
+
   const handleStreamEvent = useCallback(
     (event: AiStreamEvent) => {
       const update = applyStreamEvent(messagesRef.current, event, {
@@ -334,6 +354,8 @@ export function AssistantChat({
         setError(update.error)
         setRetryAction({ kind: 'regenerate' })
       }
+      // A message that got no reply is given back to today's allowance.
+      if (update.error) void refreshCapabilities()
       if (update.done) {
         conversationBusyRef.current = false
         stopReconcile()
@@ -349,7 +371,7 @@ export function AssistantChat({
       }
       setMessagesSafe(next)
     },
-    [setMessagesSafe, stopReconcile, stopReplyTimer],
+    [refreshCapabilities, setMessagesSafe, stopReconcile, stopReplyTimer],
   )
 
   const subscribe = useCallback(
@@ -482,6 +504,16 @@ export function AssistantChat({
     unsubscribe,
   ])
 
+  // Out of messages: read the allowance again when the day's count starts over.
+  const resetsAt = capabilities?.usage?.resetsAt
+  const usedUp = Boolean(capabilities?.usage && capabilities.usage.remaining <= 0)
+  useEffect(() => {
+    if (!usedUp || !resetsAt) return
+    const wait = Math.max(Date.parse(resetsAt) - Date.now(), 0) + 1_000
+    const timer = window.setTimeout(() => void refreshCapabilities(), wait)
+    return () => window.clearTimeout(timer)
+  }, [refreshCapabilities, resetsAt, usedUp])
+
   useEffect(() => {
     if (!autoFocus || initializing || !capabilities?.enabled) return
     const timer = window.setTimeout(() => composerRef.current?.focus(), 50)
@@ -517,6 +549,7 @@ export function AssistantChat({
         !text ||
         !user ||
         !capabilities?.enabled ||
+        capabilities.terms?.accepted === false ||
         sending ||
         streaming ||
         conversationBusyRef.current
@@ -573,6 +606,7 @@ export function AssistantChat({
         startReplyTimer()
         scheduleReconcile(result.threadId)
         subscribe(result.threadId)
+        void refreshCapabilities()
       } catch (sendError) {
         if (threadRequestSeqRef.current !== seq) return
         conversationBusyRef.current = false
@@ -581,6 +615,8 @@ export function AssistantChat({
         setInput(text)
         setRetryAction({ kind: 'send', text })
         setError(describeAssistantError(sendError))
+        // The terms may have changed, or the day's messages run out.
+        if (needsFreshCapabilities(sendError)) void refreshCapabilities()
       } finally {
         if (threadRequestSeqRef.current === seq) setSending(false)
       }
@@ -589,6 +625,7 @@ export function AssistantChat({
       adoptThread,
       capabilities,
       input,
+      refreshCapabilities,
       scheduleReconcile,
       sending,
       setMessagesSafe,
@@ -642,17 +679,20 @@ export function AssistantChat({
       startReplyTimer()
       scheduleReconcile(result.threadId)
       subscribe(result.threadId)
+      void refreshCapabilities()
     } catch (regenerateError) {
       if (threadRequestSeqRef.current !== seq) return
       conversationBusyRef.current = false
       stopReconcile()
       setError(describeAssistantError(regenerateError))
       setRetryAction({ kind: 'regenerate' })
+      if (needsFreshCapabilities(regenerateError)) void refreshCapabilities()
     } finally {
       if (threadRequestSeqRef.current === seq) setSending(false)
     }
   }, [
     adoptThread,
+    refreshCapabilities,
     scheduleReconcile,
     sending,
     setMessagesSafe,
@@ -765,7 +805,23 @@ export function AssistantChat({
     }
   }, [regenerate, retryAction, sendMessage])
 
+  const acceptTerms = async () => {
+    setAcceptingTerms(true)
+    setTermsError(null)
+    try {
+      setCapabilities(await api.acceptAiTerms(AI_TERMS_VERSION))
+    } catch (acceptError) {
+      setTermsError(describeAssistantError(acceptError))
+    } finally {
+      setAcceptingTerms(false)
+    }
+  }
+
   const enabled = capabilities?.enabled === true
+  // Older servers send no `terms`; then there is nothing to accept.
+  const termsPending = enabled && capabilities?.terms?.accepted === false
+  const usage = capabilities?.usage
+  const outOfMessages = Boolean(usage && usage.remaining <= 0)
   const unavailable = Boolean(capabilityError) || !capabilities
   const disabledMessage = capabilities?.policyBlocked
     ? capabilities.reason?.trim() || 'The assistant has been disabled by your administrator.'
@@ -838,6 +894,16 @@ export function AssistantChat({
           </Link>
         ) : null}
       </div>
+    )
+  } else if (termsPending) {
+    body = (
+      <TermsGate
+        provider={capabilities?.provider}
+        accepting={acceptingTerms}
+        error={termsError}
+        onAccept={() => void acceptTerms()}
+        onDecline={onClose}
+      />
     )
   } else {
     body = (
@@ -963,7 +1029,9 @@ export function AssistantChat({
                 disabled={sending}
                 aria-describedby={`${composerId}-hint`}
                 placeholder={
-                  role === 'student'
+                  outOfMessages
+                    ? 'No messages left today. They start again at midnight.'
+                    : role === 'student'
                     ? 'Ask about your attendance or classes…'
                     : role === 'super_admin'
                       ? 'Ask about accounts, sections, audit activity, or exports…'
@@ -987,7 +1055,7 @@ export function AssistantChat({
                   type="submit"
                   size="icon"
                   aria-label="Send message"
-                  disabled={!input.trim() || sending}
+                  disabled={!input.trim() || sending || outOfMessages}
                   className="m-1 h-8 w-8 shrink-0 bg-maroon text-white hover:bg-maroon-dark disabled:opacity-50 dark:bg-golden dark:text-maroon-dark dark:hover:bg-golden-dark"
                 >
                   {sending ? (
@@ -1000,10 +1068,15 @@ export function AssistantChat({
             </div>
             <div
               id={`${composerId}-hint`}
-              className="mt-1.5 flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400"
+              className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400"
             >
               <span>Enter to send · Shift+Enter for a new line</span>
               <span className="flex items-center gap-2">
+                {usage ? (
+                  <span aria-label="Messages left today">
+                    {outOfMessages ? 0 : Math.max(usage.remaining, 0)} of {usage.limit} left today
+                  </span>
+                ) : null}
                 {attachmentCount > 0 ? (
                   <span className="border border-zinc-300 px-1 py-0.5 dark:border-zinc-700">
                     {attachmentCount} file{attachmentCount === 1 ? '' : 's'}

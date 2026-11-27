@@ -8,11 +8,13 @@ import '../../../core/api/ai_api.dart';
 import '../../../core/api/api_providers.dart';
 import '../../../core/models/ai.dart';
 import '../../../core/models/user.dart';
+import '../../../core/network/api_error.dart';
 import '../../../core/network/dio_client.dart';
 import '../../../core/providers/session_provider.dart';
 import '../../../core/router/router_decision.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/theme/brand_tokens.dart';
+import '../../../core/utils/ai_terms.dart';
 import '../../../core/widgets/campus_bottom_sheet.dart';
 import '../../../core/widgets/campus_button.dart';
 import '../../../core/widgets/campus_dialog.dart';
@@ -24,6 +26,7 @@ import '../data/surface_downloads.dart';
 import '../data/surface_navigation.dart';
 import '../data/surface_paths.dart';
 import 'widgets/assistant_markdown.dart';
+import 'widgets/assistant_terms.dart';
 import 'widgets/assistant_widgets.dart';
 
 /// Process-lifetime last thread per account (the Android client keeps the
@@ -56,6 +59,8 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
   bool _receivedStreamEvent = false;
   bool _nearBottom = true;
   bool _threadLoading = false;
+  bool _acceptingTerms = false;
+  String? _termsError;
 
   String? _threadId;
   List<AiChatMessage> _messages = const <AiChatMessage>[];
@@ -116,6 +121,52 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
       AssistantAvailability.ready;
 
   User? get _user => ref.read(sessionProvider).user;
+
+  /// Older servers send no terms; then there is nothing to accept.
+  bool get _termsPending => _capabilities?.terms?.accepted == false;
+
+  /// True while today's messages are used up. The server enforces the limit;
+  /// this only stops a send that is certain to be refused.
+  bool get _outOfMessages {
+    final usage = _capabilities?.usage;
+    if (usage == null || usage.remaining > 0) return false;
+    final resets = DateTime.tryParse(usage.resetsAt);
+    return resets == null || DateTime.now().isBefore(resets);
+  }
+
+  /// Re-reads today's allowance and consent without disturbing the chat.
+  Future<void> _refreshCapabilities() async {
+    try {
+      final capabilities = await ref.read(aiApiProvider).getCapabilities();
+      if (!mounted || _disposed) return;
+      setState(() => _capabilities = capabilities);
+    } on Object {
+      // The numbers on screen stay until the next successful read.
+    }
+  }
+
+  Future<void> _acceptTerms() async {
+    setState(() {
+      _acceptingTerms = true;
+      _termsError = null;
+    });
+    try {
+      final capabilities = await ref
+          .read(aiApiProvider)
+          .acceptTerms(aiTermsVersion);
+      if (!mounted || _disposed) return;
+      setState(() {
+        _capabilities = capabilities;
+        _acceptingTerms = false;
+      });
+    } catch (error) {
+      if (!mounted || _disposed) return;
+      setState(() {
+        _acceptingTerms = false;
+        _termsError = describeAssistantError(error);
+      });
+    }
+  }
 
   int get _maxMessageLength {
     final configured = _capabilities?.maxMessageChars;
@@ -424,6 +475,8 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     required int seq,
   }) {
     if (!mounted || seq != _conversationSeq) return;
+    // A message that got no reply is given back to today's allowance.
+    unawaited(_refreshCapabilities());
     final pendingId = _pendingMessageId;
     _pendingMessageId = null;
     if (!keepConversationBusy) _conversationBusy = false;
@@ -469,6 +522,8 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     if (text.isEmpty ||
         user == null ||
         !_ready ||
+        _termsPending ||
+        _outOfMessages ||
         _sending ||
         _streaming ||
         _conversationBusy) {
@@ -576,6 +631,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
       _startReplyTimer();
       _scheduleReconcile();
       _scrollToBottomSoon();
+      unawaited(_refreshCapabilities());
       await _subscribe(result.threadId);
     } catch (error) {
       if (!mounted || seq != _conversationSeq) return;
@@ -600,6 +656,11 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
         _error = message;
       });
       CampusToast.showIn(context, message, tone: CampusToastTone.error);
+      // The terms may have changed, or the day's messages run out.
+      if (error is ApiRequestError &&
+          (error.code == aiTermsRequiredCode || error.status == 429)) {
+        unawaited(_refreshCapabilities());
+      }
     } finally {
       if (mounted && seq == _conversationSeq) {
         setState(() => _sending = false);
@@ -881,7 +942,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
                 ),
               ),
         actions: [
-          if (_ready) ...[
+          if (_ready && !_termsPending) ...[
             IconButton(
               tooltip: 'Conversations',
               onPressed: () => unawaited(_openThreadsSheet()),
@@ -924,6 +985,13 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
                       )
                     : null,
               )
+            : _termsPending
+            ? AssistantTermsPanel(
+                provider: _capabilities?.provider,
+                accepting: _acceptingTerms,
+                error: _termsError,
+                onAccept: () => unawaited(_acceptTerms()),
+              )
             : _threadLoading
             ? const CampusLoading(label: 'Loading conversation.')
             : _buildReadyBody(role, tokens),
@@ -934,7 +1002,10 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
   Widget _buildReadyBody(AssistantRole? role, BrandTokens tokens) {
     final rows = buildAssistantTranscriptRows(_messages);
     final busy = _sending || _streaming;
-    final canSend = _input.text.trim().isNotEmpty && !busy && _ready;
+    final outOfMessages = _outOfMessages;
+    final usage = _capabilities?.usage;
+    final canSend =
+        _input.text.trim().isNotEmpty && !busy && _ready && !outOfMessages;
     final showJump = !_nearBottom && _messages.isNotEmpty;
 
     return Column(
@@ -1085,7 +1156,9 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
                           color: tokens.onSurface,
                         ),
                         decoration: InputDecoration(
-                          hintText: role == null
+                          hintText: outOfMessages
+                              ? 'No messages left today.'
+                              : role == null
                               ? 'Message the assistant'
                               : assistantRoleCopy[role]!.placeholder,
                           border: InputBorder.none,
@@ -1152,6 +1225,21 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
                 ),
               ),
               const SizedBox(height: 4),
+              if (usage != null)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    outOfMessages
+                        ? '0 of ${usage.limit} messages left today \u00b7 '
+                              'resets at midnight'
+                        : '${usage.remaining < 0 ? 0 : usage.remaining} of '
+                              '${usage.limit} messages left today',
+                    key: const ValueKey<String>('assistant-usage'),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall?.copyWith(color: tokens.muted),
+                  ),
+                ),
               Row(
                 children: [
                   Expanded(

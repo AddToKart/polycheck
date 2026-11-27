@@ -2,15 +2,12 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  HttpException,
-  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
   RequestTimeoutException,
   ServiceUnavailableException,
 } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import {
   AiChatSendSchema,
   type AiChatAttachment,
@@ -25,6 +22,7 @@ import { randomUUID } from 'node:crypto'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { RedisService } from '../infrastructure/redis.service'
 import type { UserRole } from '../prisma/client'
+import { AiAccessService } from './ai-access.service'
 import { AiAuditService } from './ai-audit.service'
 import type { AiProviderMessage } from './ai-provider.service'
 import { AiProviderService } from './ai-provider.service'
@@ -41,10 +39,11 @@ const HISTORY_MESSAGE_LIMIT = 20
 const MAX_TOOL_ITERATIONS = 4
 const RUN_BUDGET_MS = 60_000
 const RUN_LOCK_TTL_SECONDS = 180
-const DAILY_MESSAGE_LIMIT = 100
 const ERROR_TEXT = 'The assistant could not complete that request.'
 
 type StoredAiThread = AiChatThread & { userId: string; role: UserRole }
+/** The per-user list holds no message text: titles are read from the chats themselves. */
+type ThreadIndexEntry = Omit<AiThreadSummary, 'title'>
 
 @Injectable()
 export class AiChatService {
@@ -56,7 +55,7 @@ export class AiChatService {
     private readonly redis: RedisService,
     private readonly stream: AiStreamService,
     private readonly audit: AiAuditService,
-    private readonly config: ConfigService,
+    private readonly access: AiAccessService,
   ) {}
 
   async start(user: RequestUser, dto: AiChatSendInput): Promise<AiChatSendResult> {
@@ -83,7 +82,7 @@ export class AiChatService {
       throw new ServiceUnavailableException(capabilities.reason ?? 'Assistant is not configured')
     }
 
-    await this.rateLimit(user.id)
+    await this.access.assertTermsAccepted(user.id)
 
     const now = new Date().toISOString()
     const thread = input.threadId ? await this.loadOwnedThread(input.threadId, user) : this.createThread(user, now)
@@ -106,7 +105,9 @@ export class AiChatService {
       throw new ConflictException('A reply is already being drafted for this conversation')
     }
 
+    let refundMessage: (() => Promise<void>) | undefined
     try {
+      refundMessage = await this.access.reserveMessage(user)
       if (!regenerate) {
         thread.messages.push({
           id: randomUUID(),
@@ -128,11 +129,13 @@ export class AiChatService {
       thread.updatedAt = now
       await this.saveThread(thread)
     } catch (error) {
+      await refundMessage?.()
       await this.releaseRunLock(lockKey, lockToken)
       throw error
     }
 
-    void this.run(user, thread, messageId, lockKey, lockToken).catch(async (error) => {
+    const refund = refundMessage
+    void this.run(user, thread, messageId, lockKey, lockToken, refund).catch(async (error) => {
       this.logger.error(
         `AI chat run escaped its error boundary for thread ${thread.id}: ${
           error instanceof Error ? error.message : 'unknown error'
@@ -156,8 +159,18 @@ export class AiChatService {
   }
 
   async listThreads(user: RequestUser): Promise<AiThreadSummary[]> {
-    const summaries = await this.readIndex(user.id)
-    return summaries.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+    const entries = await this.readIndex(user.id)
+    const summaries = await Promise.all(
+      entries.map(async (entry) => {
+        const thread = await this.redis.getJson<StoredAiThread>(this.threadKey(entry.id))
+        // A chat that has expired drops out of the list.
+        if (!thread || thread.userId !== user.id) return null
+        return { ...entry, title: this.deriveThreadTitle(thread) }
+      }),
+    )
+    return summaries
+      .filter((summary): summary is AiThreadSummary => summary !== null)
+      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
   }
 
   async deleteThread(user: RequestUser, threadId: string): Promise<boolean> {
@@ -195,19 +208,13 @@ export class AiChatService {
     return true
   }
 
-  async rateLimit(userId: string) {
-    const limit = this.positiveInteger(this.config.get('AI_MAX_MESSAGES_PER_DAY'), DAILY_MESSAGE_LIMIT)
-    const date = new Date().toISOString().slice(0, 10)
-    const allowed = await this.redis.consumeRateLimit(`ai:chat:${userId}:${date}`, limit, 86_400)
-    if (!allowed) throw new HttpException('Daily assistant limit reached', HttpStatus.TOO_MANY_REQUESTS)
-  }
-
   private async run(
     user: RequestUser,
     thread: StoredAiThread,
     messageId: string,
     lockKey: string,
     lockToken: string,
+    refundMessage: () => Promise<void>,
   ): Promise<void> {
     const invocations: AiToolInvocationSummary[] = []
     const attachments = new Map<string, AiChatAttachment>()
@@ -279,6 +286,8 @@ export class AiChatService {
         `AI chat run failed for thread ${thread.id}: ${error instanceof Error ? error.message : 'unknown error'}`,
       )
       await this.persistFailure(thread, messageId, invocations)
+      // A message that never got a reply does not use up the day's allowance.
+      await refundMessage().catch(() => this.logger.warn(`Could not return the AI message for thread ${thread.id}`))
       this.stream.emitToThread(thread.id, {
         type: 'error',
         threadId: thread.id,
@@ -429,9 +438,8 @@ export class AiChatService {
       const key = this.threadIndexKey(thread.userId)
       const existing = this.readIndexEntries(await this.redis.getJson<unknown>(key))
       const previous = existing.find((entry) => entry.id === thread.id)
-      const summary: AiThreadSummary = {
+      const summary: ThreadIndexEntry = {
         id: thread.id,
-        title: this.deriveThreadTitle(thread, previous?.title ?? DEFAULT_THREAD_TITLE),
         createdAt: previous?.createdAt ?? thread.createdAt,
         updatedAt: thread.updatedAt,
       }
@@ -472,32 +480,33 @@ export class AiChatService {
     }
   }
 
-  private async readIndex(userId: string): Promise<AiThreadSummary[]> {
+  private async readIndex(userId: string): Promise<ThreadIndexEntry[]> {
     return this.readIndexEntries(await this.redis.getJson<unknown>(this.threadIndexKey(userId)))
   }
 
-  private readIndexEntries(value: unknown): AiThreadSummary[] {
+  private readIndexEntries(value: unknown): ThreadIndexEntry[] {
     if (!Array.isArray(value)) return []
-    const entries: AiThreadSummary[] = []
+    const entries: ThreadIndexEntry[] = []
     const seen = new Set<string>()
     for (const candidate of value) {
       if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue
-      const { id, title, createdAt, updatedAt } = candidate as Partial<Record<keyof AiThreadSummary, unknown>>
+      const { id, createdAt, updatedAt } = candidate as Partial<Record<keyof ThreadIndexEntry, unknown>>
       if (typeof id !== 'string' || !id || id.length > 128 || seen.has(id)) continue
-      if (typeof title !== 'string') continue
       if (typeof createdAt !== 'string' || !Number.isFinite(Date.parse(createdAt))) continue
       if (typeof updatedAt !== 'string' || !Number.isFinite(Date.parse(updatedAt))) continue
+      // Older than a chat's lifetime: the chat itself is already gone.
+      if (Date.now() - Date.parse(updatedAt) > THREAD_TTL_SECONDS * 1_000) continue
       seen.add(id)
-      entries.push({ id, title, createdAt, updatedAt })
+      entries.push({ id, createdAt, updatedAt })
     }
     return entries
   }
 
-  private deriveThreadTitle(thread: StoredAiThread, fallback: string): string {
+  private deriveThreadTitle(thread: StoredAiThread): string {
     const firstUserMessage = thread.messages.find(
       (message) => message.role === 'user' && message.content.trim().length > 0,
     )
-    return firstUserMessage ? firstUserMessage.content.trim().slice(0, THREAD_TITLE_MAX_LENGTH) : fallback
+    return firstUserMessage ? firstUserMessage.content.trim().slice(0, THREAD_TITLE_MAX_LENGTH) : DEFAULT_THREAD_TITLE
   }
 
   private lastUserMessageIndex(thread: StoredAiThread): number {
@@ -544,10 +553,5 @@ export class AiChatService {
     if (user.role !== 'teacher' && user.role !== 'super_admin' && user.role !== 'student') {
       throw new ForbiddenException('Unsupported assistant role')
     }
-  }
-
-  private positiveInteger(value: unknown, fallback: number) {
-    const parsed = Number(value)
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
   }
 }

@@ -6,7 +6,9 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common'
+import { AI_TERMS_VERSION } from '@polycheck/shared'
 import type { AiChatAttachment, AiChatMessage, AiStreamEvent, AiThreadSummary } from '@polycheck/shared'
+import { AiAccessService } from './ai-access.service'
 import { AiChatService } from './ai-chat.service'
 import { STUDENT_SYSTEM_PROMPT } from './ai-prompts'
 
@@ -37,6 +39,8 @@ function makeChat() {
       return true
     }),
     consumeRateLimit: jest.fn().mockResolvedValue(true),
+    releaseRateLimit: jest.fn().mockResolvedValue(undefined),
+    readRateLimit: jest.fn().mockResolvedValue(0),
     acquireLock: jest.fn(async (key: string) => {
       if (locks.has(key)) return null
       const token = `lock-owner-${++lockSequence}`
@@ -67,15 +71,29 @@ function makeChat() {
   const config = {
     get: jest.fn((key: string) => (key === 'AI_MAX_MESSAGES_PER_DAY' ? 100 : undefined)),
   }
+  const account = { aiTermsVersion: AI_TERMS_VERSION as string | null }
+  const prisma = { user: { findUnique: jest.fn(async () => ({ ...account })), update: jest.fn() } }
+  const savedLimits: Record<string, number> = {}
+  const settings = {
+    getInteger: jest.fn(async (key: string, fallback: number) => savedLimits[key] ?? fallback),
+  }
+  const access = new AiAccessService(
+    provider as never,
+    prisma as never,
+    settings as never,
+    redis as never,
+    audit as never,
+    config as never,
+  )
   const service = new AiChatService(
     provider as never,
     registry as never,
     redis as never,
     stream as never,
     audit as never,
-    config as never,
+    access,
   )
-  return { service, store, locks, redis, provider, registry, stream, audit, config }
+  return { service, access, account, savedLimits, store, locks, redis, provider, registry, stream, audit, config }
 }
 
 async function waitFor(predicate: () => boolean, description: string, timeoutMs = 2_000) {
@@ -142,7 +160,7 @@ describe('AiChatService', () => {
     expect((error as HttpException).getStatus()).toBe(429)
     expect(redis.consumeRateLimit).toHaveBeenCalledWith(
       expect.stringMatching(/^ai:chat:teacher-1:\d{4}-\d{2}-\d{2}$/),
-      100,
+      20,
       86_400,
     )
   })
@@ -311,8 +329,43 @@ describe('AiChatService', () => {
     }
   })
 
+  it('sends nothing to the provider before the terms are accepted', async () => {
+    const { service, account, provider, redis, store, locks } = makeChat()
+    account.aiTermsVersion = null
+
+    await expect(service.start(teacher as never, { message: 'hello' })).rejects.toBeInstanceOf(ForbiddenException)
+
+    expect(provider.chat).not.toHaveBeenCalled()
+    expect(redis.consumeRateLimit).not.toHaveBeenCalled()
+    expect(store.size).toBe(0)
+    expect(locks.size).toBe(0)
+  })
+
+  it('refuses over the daily limit, without keeping the conversation locked', async () => {
+    const { service, redis, provider, locks, store } = makeChat()
+    redis.consumeRateLimit.mockResolvedValue(false)
+
+    await expect(service.start(teacher as never, { message: 'hello' })).rejects.toBeInstanceOf(HttpException)
+
+    expect(redis.releaseRateLimit).toHaveBeenCalledTimes(1)
+    expect(provider.chat).not.toHaveBeenCalled()
+    expect(locks.size).toBe(0)
+    expect(store.size).toBe(0)
+  })
+
+  it('gives the message back when no reply could be made', async () => {
+    const { service, redis, provider, stream } = makeChat()
+    provider.chat.mockRejectedValue(new Error('provider down'))
+    const errorEvent = waitForError(stream)
+
+    await service.start(teacher as never, { message: 'hello' })
+    await errorEvent
+
+    expect(redis.releaseRateLimit).toHaveBeenCalledTimes(1)
+  })
+
   it('persists a short error message and emits an error event on provider failure', async () => {
-    const { service, provider, stream, store, audit } = makeChat()
+    const { service, provider, stream, audit } = makeChat()
     provider.chat.mockRejectedValue(new Error('provider down'))
     const errorEvent = waitForError(stream)
 
@@ -334,7 +387,7 @@ describe('AiChatService', () => {
       model: 'test-model',
       toolCount: 0,
     })
-    expect(store.get('ai:user-threads:teacher-1')).toEqual([
+    await expect(service.listThreads(teacher as never)).resolves.toEqual([
       expect.objectContaining({ id: result.threadId, title: 'hello' }),
     ])
   })
@@ -355,7 +408,8 @@ describe('AiChatService', () => {
     const indexKey = 'ai:user-threads:teacher-1'
     const created = store.get(indexKey) as AiThreadSummary[]
     expect(created).toHaveLength(1)
-    expect(created[0]).toMatchObject({ id: result.threadId, title: 'A'.repeat(60) })
+    expect(created[0]).toMatchObject({ id: result.threadId })
+    await expect(service.listThreads(teacher as never)).resolves.toMatchObject([{ title: 'A'.repeat(60) }])
 
     releaseChat?.()
     await done
@@ -363,7 +417,8 @@ describe('AiChatService', () => {
     const completed = store.get(indexKey) as AiThreadSummary[]
     const stored = store.get(`ai:thread:${result.threadId}`) as { updatedAt: string }
     expect(completed).toHaveLength(1)
-    expect(completed[0]).toMatchObject({ id: result.threadId, title: 'A'.repeat(60) })
+    // No message text is kept in the list, only in the chat itself.
+    expect(Object.keys(completed[0]).sort()).toEqual(['createdAt', 'id', 'updatedAt'])
     expect(completed[0].updatedAt).toBe(stored.updatedAt)
     expect(redis.setJson.mock.calls.filter(([key]) => key === indexKey)).toHaveLength(2)
   })
@@ -373,8 +428,8 @@ describe('AiChatService', () => {
     const seeded: AiThreadSummary[] = Array.from({ length: 20 }, (_, index) => ({
       id: `seed-${index}`,
       title: `Seed ${index}`,
-      createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
-      updatedAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+      createdAt: new Date(Date.now() - (60 - index) * 60_000).toISOString(),
+      updatedAt: new Date(Date.now() - (60 - index) * 60_000).toISOString(),
     }))
     store.set('ai:user-threads:teacher-1', seeded)
     const done = waitForDone(stream)
@@ -391,7 +446,7 @@ describe('AiChatService', () => {
 
   it('uses a default title when a thread has no user message', async () => {
     const { service, store } = makeChat()
-    const now = '2026-10-26T00:00:00.000Z'
+    const now = new Date().toISOString()
 
     await (service as any).saveThread({
       id: 'thread-empty',
@@ -402,37 +457,42 @@ describe('AiChatService', () => {
       updatedAt: now,
     })
 
-    expect(store.get('ai:user-threads:teacher-1')).toEqual([
+    expect(store.get('ai:user-threads:teacher-1')).toEqual([{ id: 'thread-empty', createdAt: now, updatedAt: now }])
+    await expect(service.listThreads(teacher as never)).resolves.toEqual([
       { id: 'thread-empty', title: 'New conversation', createdAt: now, updatedAt: now },
     ])
   })
 
   it('lists only the signed-in user index, newest-first, and drops malformed entries', async () => {
     const { service, store } = makeChat()
-    const older: AiThreadSummary = {
-      id: 'older',
-      title: 'Older',
-      createdAt: '2026-10-01T00:00:00.000Z',
-      updatedAt: '2026-10-01T00:00:00.000Z',
+    const day = 24 * 60 * 60 * 1000
+    const at = (daysAgo: number) => new Date(Date.now() - daysAgo * day).toISOString()
+    const older: AiThreadSummary = { id: 'older', title: 'Older', createdAt: at(2), updatedAt: at(2) }
+    const newer: AiThreadSummary = { id: 'newer', title: 'Newer', createdAt: at(1), updatedAt: at(1) }
+    for (const entry of [older, newer]) {
+      store.set(`ai:thread:${entry.id}`, {
+        id: entry.id,
+        userId: teacher.id,
+        role: 'teacher',
+        messages: [{ id: `m-${entry.id}`, role: 'user', content: entry.title, createdAt: entry.createdAt }],
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+      })
     }
-    const newer: AiThreadSummary = {
-      id: 'newer',
-      title: 'Newer',
-      createdAt: '2026-10-02T00:00:00.000Z',
-      updatedAt: '2026-10-02T00:00:00.000Z',
-    }
+    const listed = ({ id, createdAt, updatedAt }: AiThreadSummary) => ({ id, createdAt, updatedAt })
     store.set('ai:user-threads:teacher-1', [
-      older,
+      listed(older),
       null,
       { id: 'missing-fields' },
-      { id: 'bad-date', title: 'Bad', createdAt: 'nope', updatedAt: newer.updatedAt },
-      { id: 'bad-title', title: 42, createdAt: older.createdAt, updatedAt: older.updatedAt },
-      newer,
-      { ...older, title: 'Duplicate' },
+      { id: 'bad-date', createdAt: 'nope', updatedAt: newer.updatedAt },
+      listed(newer),
+      listed(older),
+      // The chat behind this entry no longer exists.
+      { id: 'expired-chat', createdAt: at(1), updatedAt: at(1) },
+      // Older than a chat's seven-day lifetime.
+      { id: 'too-old', createdAt: at(9), updatedAt: at(8) },
     ])
-    store.set('ai:user-threads:teacher-2', [
-      { id: 'foreign', title: 'Foreign', createdAt: older.createdAt, updatedAt: older.updatedAt },
-    ])
+    store.set('ai:user-threads:teacher-2', [{ id: 'foreign', createdAt: older.createdAt, updatedAt: older.updatedAt }])
 
     await expect(service.listThreads(teacher as never)).resolves.toEqual([newer, older])
     await expect(service.listThreads({ id: 'teacher-3', role: 'teacher' } as never)).resolves.toEqual([])
@@ -440,7 +500,7 @@ describe('AiChatService', () => {
 
   it('deletes an owned thread, removes its index summary, and audits the deletion', async () => {
     const { service, store, audit } = makeChat()
-    const now = '2026-10-26T00:00:00.000Z'
+    const now = new Date().toISOString()
     store.set('ai:thread:thread-1', {
       id: 'thread-1',
       userId: teacher.id,
@@ -450,16 +510,14 @@ describe('AiChatService', () => {
       updatedAt: now,
     })
     store.set('ai:user-threads:teacher-1', [
-      { id: 'thread-1', title: 'Hello', createdAt: now, updatedAt: now },
-      { id: 'thread-2', title: 'Other', createdAt: now, updatedAt: now },
+      { id: 'thread-1', createdAt: now, updatedAt: now },
+      { id: 'thread-2', createdAt: now, updatedAt: now },
     ])
 
     await expect(service.deleteThread(teacher as never, 'thread-1')).resolves.toBe(true)
 
     expect(store.has('ai:thread:thread-1')).toBe(false)
-    expect(store.get('ai:user-threads:teacher-1')).toEqual([
-      { id: 'thread-2', title: 'Other', createdAt: now, updatedAt: now },
-    ])
+    expect(store.get('ai:user-threads:teacher-1')).toEqual([{ id: 'thread-2', createdAt: now, updatedAt: now }])
     expect(audit.recordThreadDelete).toHaveBeenCalledWith(teacher, 'thread-1', 'succeeded')
   })
 
@@ -473,7 +531,7 @@ describe('AiChatService', () => {
 
   it('does not delete or reveal another user thread', async () => {
     const { service, store, audit } = makeChat()
-    const now = '2026-10-26T00:00:00.000Z'
+    const now = new Date().toISOString()
     store.set('ai:thread:thread-1', {
       id: 'thread-1',
       userId: otherTeacher.id,
@@ -482,7 +540,7 @@ describe('AiChatService', () => {
       createdAt: now,
       updatedAt: now,
     })
-    store.set('ai:user-threads:teacher-2', [{ id: 'thread-1', title: 'Foreign', createdAt: now, updatedAt: now }])
+    store.set('ai:user-threads:teacher-2', [{ id: 'thread-1', createdAt: now, updatedAt: now }])
 
     await expect(service.deleteThread(teacher as never, 'thread-1')).rejects.toBeInstanceOf(NotFoundException)
 
@@ -524,7 +582,8 @@ describe('AiChatService', () => {
 
     const index = store.get('ai:user-threads:teacher-1') as AiThreadSummary[]
     expect(index).toHaveLength(1)
-    expect(index[0]).toMatchObject({ id: created.threadId, title: 'original question' })
+    expect(index[0]).toMatchObject({ id: created.threadId })
+    await expect(service.listThreads(teacher as never)).resolves.toMatchObject([{ title: 'original question' }])
     expect(audit.recordChatRun).toHaveBeenCalledWith(teacher, created.threadId, 'succeeded', {
       model: 'test-model',
       toolCount: 0,

@@ -1,5 +1,12 @@
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common'
-import type { AiChatAttachment, AiToolOutcome } from '@polycheck/shared'
+import {
+  CAMPUS_COURSES,
+  campusCourseByCode,
+  courseShortLabel,
+  normalizeCourse,
+  type AiChatAttachment,
+  type AiToolOutcome,
+} from '@polycheck/shared'
 import type { RequestUser } from '../auth/authenticated-principal'
 import {
   adminRecordWhere,
@@ -46,6 +53,8 @@ const QUERY_STOPWORDS = new Set([
   'and',
   'as',
   'class',
+  'course',
+  'courses',
   'docx',
   'extract',
   'for',
@@ -85,7 +94,7 @@ const findSectionsDefinition: AiProviderTool = {
   function: {
     name: 'find_sections',
     description:
-      'Search the sections the signed-in user may access by subject name, subject code, or section name. Distinctive words in the query are matched independently, so a subject code or section label works best. Omit query to browse up to 10 accessible sections (teachers see only their own; administrators see their administrative scope). Returns at most 10 candidates with roster size, room, schedule, teacher, and semester. Never returns student names.',
+      'Search the sections the signed-in user may access by subject name, subject code, section name, or course code. Distinctive words in the query are matched independently, so a subject code or section label works best. Use course to keep only one course’s sections. Omit both to browse up to 10 accessible sections (teachers see only their own; administrators see their administrative scope). Returns at most 10 candidates with course, roster size, room, schedule, teacher, and semester. Never returns student names.',
     parameters: {
       type: 'object',
       properties: {
@@ -94,9 +103,24 @@ const findSectionsDefinition: AiProviderTool = {
           description: 'Subject name/code or section name, case-insensitive contains match. Optional.',
           maxLength: 200,
         },
+        course: {
+          type: 'string',
+          description: 'Course code from list_courses, such as BSIT. Optional.',
+          maxLength: 150,
+        },
       },
       additionalProperties: false,
     },
+  },
+}
+
+const listCoursesDefinition: AiProviderTool = {
+  type: 'function',
+  function: {
+    name: 'list_courses',
+    description:
+      'List the campus courses (degree programs): exactly the choices offered when a student account is created. Teachers also get how many of their sections each course has; administrators get how many active students each course has.',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
 }
 
@@ -265,14 +289,19 @@ const findUsersDefinition: AiProviderTool = {
   function: {
     name: 'find_users',
     description:
-      'Search user accounts (teachers, students, super admins) within the administrator scope by name, email, student number, or department. Read-only; returns at most 10 accounts with role, department, and active status. Never returns passwords, sessions, attendance, GPS, or other personal records.',
+      'Search user accounts (teachers, students, super admins) within the administrator scope by name, email, student number, or course. Read-only; returns at most 10 accounts with role and active status, plus course and year level for students. Never returns passwords, sessions, attendance, GPS, or other personal records.',
     parameters: {
       type: 'object',
       properties: {
         query: {
           type: 'string',
-          description: 'Name, email, student number, or department match. Optional.',
+          description: 'Name, email, student number, or course match. Optional.',
           maxLength: 120,
+        },
+        course: {
+          type: 'string',
+          description: 'Only students of this course; a code from list_courses, such as BSIT. Optional.',
+          maxLength: 150,
         },
         role: { type: 'string', enum: ['teacher', 'student', 'super_admin'], description: 'Optional role filter.' },
         status: { type: 'string', enum: ['active', 'inactive'], description: 'Optional account status filter.' },
@@ -302,6 +331,7 @@ const getRecentAuditActivityDefinition: AiProviderTool = {
 const sectionReadSelect = {
   id: true,
   section: true,
+  course: true,
   teacherId: true,
   studentCount: true,
   semester: true,
@@ -371,6 +401,7 @@ export class AiToolRegistryService {
     if (role === 'teacher') {
       return [
         { definition: findSectionsDefinition, execute: (user, args) => this.findSections(user, args) },
+        { definition: listCoursesDefinition, execute: (user) => this.listCourses(user) },
         { definition: getSectionMasterListDefinition, execute: (user, args) => this.getSectionMasterList(user, args) },
         { definition: getSectionSessionsDefinition, execute: (user, args) => this.getSectionSessions(user, args) },
         { definition: getSessionAttendanceDefinition, execute: (user, args) => this.getSessionAttendance(user, args) },
@@ -379,6 +410,7 @@ export class AiToolRegistryService {
     if (role === 'super_admin') {
       return [
         { definition: findSectionsDefinition, execute: (user, args) => this.findSections(user, args) },
+        { definition: listCoursesDefinition, execute: (user) => this.listCourses(user) },
         { definition: getSectionMasterListDefinition, execute: (user, args) => this.getSectionMasterList(user, args) },
         { definition: getSectionSessionsDefinition, execute: (user, args) => this.getSectionSessions(user, args) },
         { definition: getSessionAttendanceDefinition, execute: (user, args) => this.getSessionAttendance(user, args) },
@@ -418,6 +450,7 @@ export class AiToolRegistryService {
     this.assertSupportedRole(user)
     const args = this.objectArgs(rawArgs)
     const query = this.optionalString(args, 'query', 200)
+    const course = this.optionalCourse(args)
     const scope = user.role === 'teacher' ? { teacherId: user.id } : adminSectionWhere(user)
     const terms = query
       ? [
@@ -431,19 +464,25 @@ export class AiToolRegistryService {
     const sections = await this.prisma.section.findMany({
       where: {
         ...scope,
+        ...(course ? { AND: [{ course: { equals: course, mode: 'insensitive' as const } }] } : {}),
         ...(query
           ? {
-              OR: (terms.length > 0 ? terms : [query]).flatMap((term) => [
-                { section: { contains: term, mode: 'insensitive' as const } },
-                { subject: { name: { contains: term, mode: 'insensitive' as const } } },
-                { subject: { code: { contains: term, mode: 'insensitive' as const } } },
-              ]),
+              OR: (terms.length > 0 ? terms : [query]).flatMap((term) => {
+                const named = normalizeCourse(term).code
+                return [
+                  { section: { contains: term, mode: 'insensitive' as const } },
+                  { subject: { name: { contains: term, mode: 'insensitive' as const } } },
+                  { subject: { code: { contains: term, mode: 'insensitive' as const } } },
+                  ...(named ? [{ course: { equals: named, mode: 'insensitive' as const } }] : []),
+                ]
+              }),
             }
           : {}),
       },
       select: {
         id: true,
         section: true,
+        course: true,
         room: true,
         semester: true,
         studentCount: true,
@@ -465,6 +504,7 @@ export class AiToolRegistryService {
           subject: section.subject.name,
           subjectCode: section.subject.code,
           section: section.section,
+          course: courseShortLabel(section.course) || null,
           studentCount: section.studentCount,
           room: section.room,
           scheduleSummary: this.scheduleSummary(section.schedule),
@@ -493,7 +533,7 @@ export class AiToolRegistryService {
       downloadPath: `/docs/master-list/${sectionId}?format=${format}`,
     }
     return {
-      result: { attachment, studentCount: section.studentCount },
+      result: { attachment, studentCount: section.studentCount, course: courseShortLabel(section.course) || null },
       attachments: [attachment],
     }
   }
@@ -743,6 +783,58 @@ export class AiToolRegistryService {
     }
   }
 
+  private async listCourses(user: RequestUser): Promise<AiToolExecutionResult> {
+    this.assertSupportedRole(user)
+    const counts = new Map<string, number>()
+    const add = (value: string | null, amount: number) => {
+      const code = normalizeCourse(value).code
+      if (code) counts.set(code, (counts.get(code) ?? 0) + amount)
+    }
+    if (user.role === 'super_admin') {
+      const grouped = await this.prisma.user.groupBy({
+        by: ['program'],
+        where: { ...(adminUserWhere(user) ?? {}), role: 'student', isActive: true },
+        _count: { _all: true },
+      })
+      for (const row of grouped) add(row.program, row._count._all)
+    } else {
+      const sections = await this.prisma.section.findMany({ where: { teacherId: user.id }, select: { course: true } })
+      for (const section of sections) add(section.course, 1)
+    }
+    const countName = user.role === 'super_admin' ? 'activeStudents' : 'yourSections'
+
+    return {
+      result: {
+        count: CAMPUS_COURSES.length,
+        courses: CAMPUS_COURSES.map((course) => ({
+          code: course.code,
+          name: course.name,
+          [countName]: counts.get(course.code) ?? 0,
+        })),
+      },
+      attachments: [],
+    }
+  }
+
+  /** The `course` argument as a catalog code; anything else is refused with the valid codes. */
+  private optionalCourse(args: Record<string, unknown>): string | undefined {
+    const value = this.optionalString(args, 'course', 150)
+    if (!value) return undefined
+    const { code } = normalizeCourse(value)
+    if (!code) {
+      throw new AiToolError('failed', `Unknown course. Use one of: ${CAMPUS_COURSES.map((c) => c.code).join(', ')}`)
+    }
+    return code
+  }
+
+  /** Every stored spelling of a course: older accounts may hold its name instead of its code. */
+  private programMatches(code: string) {
+    const course = campusCourseByCode(code)
+    return [code, ...(course ? [course.name, ...course.aliases] : [])].map((spelling) => ({
+      program: { equals: spelling, mode: 'insensitive' as const },
+    }))
+  }
+
   private async getInstitutionOverview(user: RequestUser): Promise<AiToolExecutionResult> {
     this.assertAdmin(user)
     const userScope = adminUserWhere(user) ?? {}
@@ -789,19 +881,24 @@ export class AiToolRegistryService {
       throw new AiToolError('failed', 'status must be active or inactive')
     }
     const limit = this.optionalInteger(args, 'limit', 1, USER_RESULT_LIMIT) ?? USER_RESULT_LIMIT
+    const course = this.optionalCourse(args)
+    // A query such as "IT" or "BS Information Technology" also finds that course's students.
+    const queriedCourse = query ? normalizeCourse(query).code : undefined
 
     const users = await this.prisma.user.findMany({
       where: {
         ...(adminUserWhere(user) ?? {}),
         ...(role ? { role: role as UserRole } : {}),
         ...(status ? { isActive: status === 'active' } : {}),
+        ...(course ? { AND: [{ role: 'student' as const }, { OR: this.programMatches(course) }] } : {}),
         ...(query
           ? {
               OR: [
                 { fullName: { contains: query, mode: 'insensitive' } },
                 { email: { contains: query, mode: 'insensitive' } },
                 { studentId: { contains: query, mode: 'insensitive' } },
-                { department: { contains: query, mode: 'insensitive' } },
+                { program: { contains: query, mode: 'insensitive' } },
+                ...(queriedCourse ? this.programMatches(queriedCourse) : []),
               ],
             }
           : {}),
@@ -812,7 +909,6 @@ export class AiToolRegistryService {
         role: true,
         email: true,
         studentId: true,
-        department: true,
         isActive: true,
         program: true,
         yearLevel: true,
@@ -825,7 +921,9 @@ export class AiToolRegistryService {
       result: {
         count: users.length,
         truncated: users.length === limit,
-        users,
+        users: users.map(({ program, yearLevel, ...account }) =>
+          account.role === 'student' ? { ...account, course: courseShortLabel(program) || null, yearLevel } : account,
+        ),
       },
       attachments: [],
     }

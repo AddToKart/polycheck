@@ -1,8 +1,12 @@
+import { CAMPUS_COURSES } from '@polycheck/shared'
 import { STUDENT_SYSTEM_PROMPT, SUPER_ADMIN_SYSTEM_PROMPT, TEACHER_SYSTEM_PROMPT, systemPromptFor } from './ai-prompts'
 
 describe('AI system prompts', () => {
   it('selects the teacher prompt with scope, privacy, and language rules', () => {
-    expect(systemPromptFor('teacher')).toBe(TEACHER_SYSTEM_PROMPT)
+    const sent = systemPromptFor('teacher')
+    expect(sent.startsWith(TEACHER_SYSTEM_PROMPT)).toBe(true)
+    // The same courses the student form offers, and no others to invent.
+    for (const course of CAMPUS_COURSES) expect(sent).toContain(`${course.code} (${course.name})`)
     expect(TEACHER_SYSTEM_PROMPT).toContain('own sections')
     expect(TEACHER_SYSTEM_PROMPT).toContain('never invent data')
     expect(TEACHER_SYSTEM_PROMPT).toContain('do not recite student names')
@@ -12,7 +16,10 @@ describe('AI system prompts', () => {
   })
 
   it('selects the super-admin prompt with administrative scope and admin-only tools', () => {
-    expect(systemPromptFor('super_admin')).toBe(SUPER_ADMIN_SYSTEM_PROMPT)
+    const sent = systemPromptFor('super_admin')
+    expect(sent.startsWith(SUPER_ADMIN_SYSTEM_PROMPT)).toBe(true)
+    // The same courses the student form offers, and no others to invent.
+    for (const course of CAMPUS_COURSES) expect(sent).toContain(`${course.code} (${course.name})`)
     expect(SUPER_ADMIN_SYSTEM_PROMPT).toContain('administrative scope')
     expect(SUPER_ADMIN_SYSTEM_PROMPT).toContain('audited')
     expect(SUPER_ADMIN_SYSTEM_PROMPT).toContain('never invent data')

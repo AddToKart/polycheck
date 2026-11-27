@@ -11,6 +11,14 @@ end
 return 0
 `
 
+const RELEASE_COUNT_SCRIPT = `
+local count = tonumber(redis.call('get', KEYS[1]))
+if count and count > 0 then
+  return redis.call('decr', KEYS[1])
+end
+return 0
+`
+
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name)
@@ -150,6 +158,40 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
     this.assertDistributedStateAvailable('consume rate limit')
     return this.consumeLocalRateLimit(redisKey, limit, windowSeconds)
+  }
+
+  /** The current count of a `consumeRateLimit` counter. */
+  async readRateLimit(key: string): Promise<number> {
+    const redisKey = this.key(`rate:${key}`)
+    if (this.client?.isReady) {
+      try {
+        const value = Number((await this.client.get(redisKey)) ?? 0)
+        return Number.isFinite(value) && value > 0 ? value : 0
+      } catch (error) {
+        this.assertDistributedStateAvailable('read rate limit', error)
+        this.logFallback('read rate limit', error)
+      }
+    }
+    this.assertDistributedStateAvailable('read rate limit')
+    const entry = this.localRateLimits.get(redisKey)
+    return entry && entry.expiresAt > Date.now() ? entry.count : 0
+  }
+
+  /** Gives one use back to a `consumeRateLimit` counter, never below zero. */
+  async releaseRateLimit(key: string): Promise<void> {
+    const redisKey = this.key(`rate:${key}`)
+    if (this.client?.isReady) {
+      try {
+        await this.client.eval(RELEASE_COUNT_SCRIPT, { keys: [redisKey], arguments: [] })
+        return
+      } catch (error) {
+        this.assertDistributedStateAvailable('release rate limit', error)
+        this.logFallback('release rate limit', error)
+      }
+    }
+    this.assertDistributedStateAvailable('release rate limit')
+    const entry = this.localRateLimits.get(redisKey)
+    if (entry && entry.count > 0) this.localRateLimits.set(redisKey, { ...entry, count: entry.count - 1 })
   }
 
   async setIfAbsent(key: string, value: string, ttlSeconds: number): Promise<boolean> {

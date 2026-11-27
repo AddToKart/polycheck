@@ -1,9 +1,26 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Locator } from '@playwright/test'
 import { API_BASE, loginFaculty, trackErrors, assertNoErrors, installSessionCleanup } from './helpers'
 
 installSessionCleanup()
 
 test.use({ serviceWorkers: 'block' })
+
+// Labels from shared/src/constants/ai-terms.ts.
+const AI_TERMS_TITLE = 'Before you use the AI assistant'
+const AI_TERMS_ACCEPT_LABEL = 'I agree and continue'
+
+/** First use shows the AI terms; later runs of the same account do not. */
+async function acceptTermsIfAsked(dialog: Locator) {
+  const accept = dialog.getByRole('button', { name: AI_TERMS_ACCEPT_LABEL })
+  const composer = dialog.getByLabel(/Message the assistant/i)
+  await expect(accept.or(composer)).toBeVisible({ timeout: 20_000 })
+  if (await accept.isVisible()) {
+    await expect(dialog.getByText(AI_TERMS_TITLE)).toBeVisible()
+    await expect(composer).toHaveCount(0)
+    await accept.click()
+  }
+  await expect(composer).toBeVisible({ timeout: 20_000 })
+}
 
 test.describe('Assistant panel', () => {
   test('launcher opens dock, expands to theater, and the Esc ladder closes it', async ({ page }) => {
@@ -24,6 +41,7 @@ test.describe('Assistant panel', () => {
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
     await expect(dialog.getByRole('heading', { name: 'Assistant' })).toBeVisible()
+    await acceptTermsIfAsked(dialog)
     await expect(dialog.getByRole('button', { name: 'List my sections' })).toBeVisible()
 
     await dialog.getByRole('button', { name: 'Expand assistant to theater' }).click()
@@ -48,6 +66,7 @@ test.describe('Assistant panel', () => {
     await launcher.click()
 
     const dialog = page.getByRole('dialog')
+    await acceptTermsIfAsked(dialog)
     const composer = dialog.getByLabel(/Message the assistant/i)
     await composer.fill('List my sections')
     await composer.press('Enter')

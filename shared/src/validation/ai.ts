@@ -6,4 +6,10 @@ export const AiChatSendSchema = z.object({
   regenerate: z.boolean().optional(),
 })
 
+export const AiAcceptTermsSchema = z.object({
+  version: z.string().trim().min(1).max(32),
+})
+
+export type AiAcceptTermsInput = z.infer<typeof AiAcceptTermsSchema>
+
 export type AiChatSendInputParsed = z.infer<typeof AiChatSendSchema>

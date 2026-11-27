@@ -1,6 +1,7 @@
 import '../../../core/api/api_models.dart';
 import '../../../core/models/ai.dart';
 import '../../../core/models/privacy.dart';
+import '../../../core/utils/ai_terms.dart';
 
 /// Mirrors `frontend/src/app/faculty/settings/settings-config.ts`.
 ///
@@ -162,10 +163,10 @@ const List<SettingFieldDef> settingFields = <SettingFieldDef>[
     type: SettingFieldType.text,
     defaultValue: '',
     optional: true,
-    placeholder: 'https://opencode.ai/inference/go/openai/v1',
+    placeholder: 'https://api.commandcode.ai/provider/v1',
     caption:
-        'OpenAI-compatible base URL. For OpenCode Go use '
-        'https://opencode.ai/inference/go/openai/v1.',
+        'OpenAI-compatible base URL, without /chat/completions. Command Code: '
+        'https://api.commandcode.ai/provider/v1',
   ),
   SettingFieldDef(
     key: 'ai_model',
@@ -174,8 +175,41 @@ const List<SettingFieldDef> settingFields = <SettingFieldDef>[
     type: SettingFieldType.text,
     defaultValue: '',
     optional: true,
-    placeholder: 'deepseek-v4.1-flash',
-    caption: 'Model identifier sent to the configured endpoint.',
+    placeholder: 'deepseek/deepseek-v4-flash',
+    caption:
+        'Model ID exactly as your provider lists it. Command Code’s Claude '
+        'models use a different format and do not work here.',
+  ),
+  SettingFieldDef(
+    key: 'ai_daily_limit_student',
+    tab: SettingsTab.ai,
+    label: 'Messages per day: each student',
+    type: SettingFieldType.number,
+    defaultValue: '$aiDailyLimitStudentDefault',
+    min: 0,
+    max: aiDailyLimitMax,
+    caption: '0 turns the assistant off for students.',
+  ),
+  SettingFieldDef(
+    key: 'ai_daily_limit_teacher',
+    tab: SettingsTab.ai,
+    label: 'Messages per day: each teacher',
+    type: SettingFieldType.number,
+    defaultValue: '$aiDailyLimitTeacherDefault',
+    min: 0,
+    max: aiDailyLimitMax,
+    caption: '0 turns the assistant off for teachers.',
+  ),
+  SettingFieldDef(
+    key: 'ai_daily_limit_super_admin',
+    tab: SettingsTab.ai,
+    label: 'Messages per day: each super admin',
+    type: SettingFieldType.number,
+    defaultValue: '$aiDailyLimitSuperAdminDefault',
+    min: 0,
+    max: aiDailyLimitMax,
+    caption:
+        '0 turns the assistant off for super admins. These settings stay available.',
   ),
   SettingFieldDef(
     key: 'maintenance_message',

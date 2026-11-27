@@ -751,6 +751,8 @@ export interface ApiClient {
 
   // ── AI assistant (AI0) ──
   getAiCapabilities(): Promise<AiCapabilities>;
+  /** Records that the signed-in person accepted this version of the AI terms. */
+  acceptAiTerms(version: string): Promise<AiCapabilities>;
   sendAiChatMessage(data: AiChatSendInput): Promise<AiChatSendResult>;
   getAiThread(threadId: string): Promise<AiChatThread>;
   listAiThreads(): Promise<AiThreadSummary[]>;

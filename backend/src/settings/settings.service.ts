@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import {
+  AI_DAILY_LIMIT_MAX,
   DEFAULT_MAINTENANCE_MESSAGE,
   INSTITUTION_CAMPUS_KEY,
   INSTITUTION_LOGO_KEY,
@@ -35,6 +36,10 @@ const INTEGER_SETTING_RANGES = {
   device_cooldown_hours: { min: 1, max: 24 },
   geolocation_retention_days: { min: 7, max: 90 },
   activation_link_ttl_hours: { min: 24, max: 336 },
+  // Daily AI assistant messages per account of each role; 0 turns it off for that role.
+  ai_daily_limit_student: { min: 0, max: AI_DAILY_LIMIT_MAX },
+  ai_daily_limit_teacher: { min: 0, max: AI_DAILY_LIMIT_MAX },
+  ai_daily_limit_super_admin: { min: 0, max: AI_DAILY_LIMIT_MAX },
 } as const
 
 const BOOLEAN_SETTING_KEYS = [

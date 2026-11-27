@@ -8,10 +8,11 @@ import {
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { randomUUID } from 'node:crypto'
-import type { AiCapabilities, AiMissingConfig } from '@polycheck/shared'
+import type { AiCapabilities, AiLimitRole, AiMissingConfig } from '@polycheck/shared'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
+import { resolveDailyLimit } from './ai-limits'
 
 export const AI_FETCH = Symbol('AI_FETCH')
 
@@ -63,6 +64,7 @@ const DEFAULT_MAX_OUTPUT_TOKENS = 1_024
 const MASTER_DISABLED_REASON = 'The AI assistant has been disabled by your administrator.'
 const TEACHER_DISABLED_REASON = 'The AI assistant is disabled for teachers by your administrator.'
 const STUDENT_DISABLED_REASON = 'The AI assistant is disabled for students by your administrator.'
+const NO_MESSAGES_REASON = 'Your administrator set the daily assistant limit to 0 for your account type.'
 
 interface ResolvedAiConfig {
   baseUrl: string
@@ -98,7 +100,12 @@ export class AiProviderService {
 
     const resolved = await this.resolveConfig()
     if (resolved) {
-      return { enabled: true, model: resolved.model, maxMessageChars: MAX_MESSAGE_CHARS }
+      return {
+        enabled: true,
+        model: resolved.model,
+        maxMessageChars: MAX_MESSAGE_CHARS,
+        provider: this.hostName(resolved.baseUrl),
+      }
     }
     const [baseUrlSetting, modelSetting, storedKey] = await Promise.all([
       this.readSetting(AI_BASE_URL_SETTING),
@@ -131,7 +138,18 @@ export class AiProviderService {
     if (user.role === 'student' && !(await this.settings.getBoolean('ai_assistant_student_enabled', true))) {
       return this.policyBlocked(STUDENT_DISABLED_REASON)
     }
+    if ((await resolveDailyLimit(this.settings, this.config, user.role as AiLimitRole)) === 0) {
+      return this.policyBlocked(NO_MESSAGES_REASON)
+    }
     return null
+  }
+
+  private hostName(baseUrl: string): string | undefined {
+    try {
+      return new URL(baseUrl).host
+    } catch {
+      return undefined
+    }
   }
 
   private policyBlocked(reason: string): AiCapabilities {

@@ -1,6 +1,12 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { User } from '@polycheck/shared'
+import {
+  AI_TERMS_ACCEPT_LABEL,
+  AI_TERMS_SECTIONS,
+  AI_TERMS_TITLE,
+  AI_TERMS_VERSION,
+  type User,
+} from '@polycheck/shared'
 
 const apiMock = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
@@ -11,6 +17,7 @@ const apiMock = vi.hoisted(() => ({
   downloadAssistantFile: vi.fn(),
   listAiThreads: vi.fn(),
   deleteAiThread: vi.fn(),
+  acceptAiTerms: vi.fn(),
 }))
 
 vi.mock('@/lib/api-client', () => ({ api: apiMock }))
@@ -203,5 +210,81 @@ describe('AssistantChat suggestions', () => {
 
     expect(await screen.findByText('Assistant is not configured (missing api_key)')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open Institution Settings' })).toBeInTheDocument()
+  })
+})
+
+describe('AssistantChat terms and daily messages', () => {
+  const ready = (accepted: boolean, remaining = 10) => ({
+    enabled: true,
+    maxMessageChars: 500,
+    provider: 'api.provider.example',
+    terms: { version: AI_TERMS_VERSION, accepted },
+    usage: { limit: 10, used: 10 - remaining, remaining, resetsAt: new Date(Date.now() + 3_600_000).toISOString() },
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.localStorage.clear()
+    apiMock.getCurrentUser.mockReturnValue(student)
+  })
+
+  afterEach(cleanup)
+
+  it('shows the terms first and offers no way to send a message', async () => {
+    apiMock.getAiCapabilities.mockResolvedValue(ready(false))
+
+    render(<AssistantChat />)
+
+    expect(await screen.findByText(AI_TERMS_TITLE)).toBeInTheDocument()
+    expect(screen.getByText('api.provider.example')).toBeInTheDocument()
+    for (const section of AI_TERMS_SECTIONS) {
+      expect(screen.getByText(section.heading)).toBeInTheDocument()
+      for (const point of section.points) expect(screen.getByText(point)).toBeInTheDocument()
+    }
+    expect(screen.queryByLabelText('Message the assistant')).not.toBeInTheDocument()
+    expect(apiMock.acceptAiTerms).not.toHaveBeenCalled()
+  })
+
+  it('records the current version when accepted, then opens the chat', async () => {
+    apiMock.getAiCapabilities.mockResolvedValue(ready(false))
+    apiMock.acceptAiTerms.mockResolvedValue(ready(true))
+    render(<AssistantChat />)
+
+    fireEvent.click(await screen.findByRole('button', { name: AI_TERMS_ACCEPT_LABEL }))
+
+    expect(await screen.findByLabelText('Message the assistant')).toBeInTheDocument()
+    expect(apiMock.acceptAiTerms).toHaveBeenCalledWith(AI_TERMS_VERSION)
+    expect(screen.getByLabelText('Messages left today')).toHaveTextContent('10 of 10 left today')
+  })
+
+  it('stays on the terms and says why when accepting fails', async () => {
+    apiMock.getAiCapabilities.mockResolvedValue(ready(false))
+    apiMock.acceptAiTerms.mockRejectedValue(new Error('The AI terms have changed.'))
+    render(<AssistantChat />)
+
+    fireEvent.click(await screen.findByRole('button', { name: AI_TERMS_ACCEPT_LABEL }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The AI terms have changed.')
+    expect(screen.queryByLabelText('Message the assistant')).not.toBeInTheDocument()
+  })
+
+  it('cannot send once the messages for today are used up', async () => {
+    apiMock.getAiCapabilities.mockResolvedValue(ready(true, 0))
+    render(<AssistantChat />)
+
+    const composer = await screen.findByLabelText('Message the assistant')
+    fireEvent.change(composer, { target: { value: 'Hello' } })
+
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled()
+    expect(screen.getByLabelText('Messages left today')).toHaveTextContent('0 of 10 left today')
+  })
+
+  it('works with an older server that sends no terms or allowance', async () => {
+    apiMock.getAiCapabilities.mockResolvedValue({ enabled: true, maxMessageChars: 500 })
+    render(<AssistantChat />)
+
+    expect(await screen.findByLabelText('Message the assistant')).toBeInTheDocument()
+    expect(screen.queryByText(AI_TERMS_TITLE)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Messages left today')).not.toBeInTheDocument()
   })
 })

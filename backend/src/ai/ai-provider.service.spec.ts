@@ -26,6 +26,7 @@ function makeProvider(
   const settingsService = {
     getAiApiKey: jest.fn(async () => options.storedKey ?? null),
     getBoolean: jest.fn(async (key: string, fallback = false) => (key in booleans ? booleans[key] : fallback)),
+    getInteger: jest.fn(async (key: string, fallback: number) => (key in settings ? Number(settings[key]) : fallback)),
   }
   const provider = new AiProviderService(prisma as never, config as never, settingsService as never, options.fetchImpl)
   return { provider, prisma, config, settingsService }
@@ -127,6 +128,7 @@ describe('AiProviderService', () => {
       enabled: true,
       model: 'test-model',
       maxMessageChars: 2_000,
+      provider: 'ai.example',
     })
     await provider.chat([{ role: 'user', content: 'hello' }], [], undefined, undefined, 'thread-123')
     const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
@@ -141,6 +143,7 @@ describe('AiProviderService', () => {
       enabled: true,
       model: 'env-model',
       maxMessageChars: 2_000,
+      provider: 'env.example',
     })
 
     const settingsProvider = makeProvider({
@@ -148,8 +151,27 @@ describe('AiProviderService', () => {
       env: { AI_BASE_URL: 'https://env.example/v1', AI_MODEL: 'env-model', AI_API_KEY: 'env-secret' },
     })
     const description = await settingsProvider.provider.describe({ role: 'teacher' })
-    expect(description).toEqual({ enabled: true, model: 'settings-model', maxMessageChars: 2_000 })
+    expect(description).toEqual({
+      enabled: true,
+      model: 'settings-model',
+      maxMessageChars: 2_000,
+      provider: 'settings.example',
+    })
     expect(JSON.stringify(description)).not.toContain('env-secret')
+  })
+
+  it('turns the assistant off for a role whose daily limit is 0', async () => {
+    const { provider } = makeProvider({
+      settings: { ai_base_url: 'https://ai.example/v1', ai_model: 'm', ai_daily_limit_student: '0' },
+      storedKey: 'stored-secret',
+    })
+
+    await expect(provider.describe({ role: 'student' })).resolves.toMatchObject({
+      enabled: false,
+      policyBlocked: true,
+      reason: expect.stringContaining('daily assistant limit to 0'),
+    })
+    await expect(provider.describe({ role: 'teacher' })).resolves.toMatchObject({ enabled: true })
   })
 
   it('parses delta content and assembles fragmented tool calls from SSE', async () => {

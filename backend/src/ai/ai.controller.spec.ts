@@ -12,19 +12,24 @@ describe('AiController', () => {
   })
 
   it('delegates capabilities, thread reads, thread listing/deletion, and chat sends', async () => {
-    const provider = { describe: jest.fn().mockResolvedValue({ enabled: true }) }
+    const access = {
+      capabilities: jest.fn().mockResolvedValue({ enabled: true }),
+      acceptTerms: jest.fn().mockResolvedValue({ enabled: true, terms: { version: '1.0', accepted: true } }),
+    }
     const chat = {
       getThread: jest.fn().mockResolvedValue({ id: 'thread-1', messages: [] }),
       listThreads: jest.fn().mockResolvedValue([{ id: 'thread-1', title: 'Hello' }]),
       deleteThread: jest.fn().mockResolvedValue(true),
       start: jest.fn().mockResolvedValue({ threadId: 'thread-1', messageId: 'message-1' }),
     }
-    const controller = new AiController(provider as never, chat as never)
+    const controller = new AiController(access as never, chat as never)
     const request = { user: { id: 'teacher-1', role: 'teacher' as const } }
     const input: AiChatSendInput = { message: 'hello' }
 
     await expect(controller.capabilities(request as never)).resolves.toEqual({ enabled: true })
-    expect(provider.describe).toHaveBeenCalledWith(request.user)
+    expect(access.capabilities).toHaveBeenCalledWith(request.user)
+    await controller.acceptTerms({ version: '1.0' }, request as never)
+    expect(access.acceptTerms).toHaveBeenCalledWith(request.user, '1.0')
     await expect(controller.getThread('thread-1', request as never)).resolves.toEqual({ id: 'thread-1', messages: [] })
     await expect(controller.listThreads(request as never)).resolves.toEqual([{ id: 'thread-1', title: 'Hello' }])
     await expect(controller.deleteThread('thread-1', request as never)).resolves.toBe(true)

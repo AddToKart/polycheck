@@ -6,6 +6,8 @@ import {
   INSTITUTION_CAMPUS_KEY,
   INSTITUTION_SHORT_NAME_KEY,
   brandingMonogram,
+  courseFullLabel,
+  courseShortLabel,
   resolveBranding,
   type InstitutionBranding,
 } from '@polycheck/shared'
@@ -146,15 +148,16 @@ export const MASTER_LIST_COLUMNS = [
   { key: 'index', header: 'No.', width: 32 },
   { key: 'studentNumber', header: 'Student Number', width: 92 },
   { key: 'fullName', header: 'Full Name', width: 171 },
-  { key: 'program', header: 'Program', width: 130 },
+  { key: 'course', header: 'Course', width: 130 },
   { key: 'yearLevel', header: 'Year Level', width: 70 },
 ] as const
 
 export const SESSION_ATTENDANCE_COLUMNS = [
-  { key: 'studentNumber', header: 'Student Number', width: 110 },
-  { key: 'fullName', header: 'Full Name', width: 205 },
-  { key: 'status', header: 'Status', width: 80 },
-  { key: 'timestamp', header: 'Timestamp', width: 100 },
+  { key: 'studentNumber', header: 'Student Number', width: 92 },
+  { key: 'fullName', header: 'Full Name', width: 171 },
+  { key: 'course', header: 'Course', width: 82 },
+  { key: 'status', header: 'Status', width: 60 },
+  { key: 'timestamp', header: 'Timestamp', width: 90 },
 ] as const
 
 const DPO_INVENTORY_COLUMNS: readonly PdfColumn[] = [
@@ -192,13 +195,14 @@ interface MasterListRow {
   index: string
   studentNumber: string
   fullName: string
-  program: string
+  course: string
   yearLevel: string
 }
 
 interface SessionAttendanceRow {
   studentNumber: string
   fullName: string
+  course: string
   status: string
   timestamp: string
 }
@@ -211,6 +215,8 @@ interface MasterListMeta {
   semester: string
   room: string
   professorName: string
+  /** The section's course in full, or empty for a section without one. */
+  sectionCourse: string
 }
 
 interface SessionAttendanceMeta {
@@ -251,7 +257,8 @@ interface ClassRecordMeta {
   semester: string
   room: string
   professorName: string
-  department: string
+  /** The section's course in full, or empty for a section without one. */
+  sectionCourse: string
 }
 
 interface AtRiskNoticeMeta {
@@ -260,7 +267,7 @@ interface AtRiskNoticeMeta {
   campus: string
   studentName: string
   studentNumber: string
-  program: string
+  course: string
   subjectName: string
   subjectCode: string
   sectionName: string
@@ -286,6 +293,7 @@ export class DocsService {
         id: true,
         teacherId: true,
         section: true,
+        course: true,
         room: true,
         semester: true,
         subject: { select: { name: true, code: true } },
@@ -312,12 +320,13 @@ export class DocsService {
       semester: section.semester,
       room: section.room,
       professorName: section.teacher.fullName,
+      sectionCourse: courseFullLabel(section.course),
     }
     const rows: MasterListRow[] = section.enrollments.map((enrollment, index) => ({
       index: String(index + 1),
       studentNumber: enrollment.student.studentId ?? '',
       fullName: enrollment.student.fullName,
-      program: enrollment.student.program ?? '',
+      course: courseShortLabel(enrollment.student.program),
       yearLevel: enrollment.student.yearLevel == null ? '' : String(enrollment.student.yearLevel),
     }))
     const filename = `master-list-${sanitizeFilenamePart(section.section)}-${sanitizeFilenamePart(
@@ -363,7 +372,7 @@ export class DocsService {
             teacher: { select: { fullName: true } },
             enrollments: {
               select: {
-                student: { select: { id: true, studentId: true, fullName: true } },
+                student: { select: { id: true, studentId: true, fullName: true, program: true } },
               },
               orderBy: { student: { fullName: 'asc' } },
             },
@@ -375,7 +384,7 @@ export class DocsService {
             studentName: true,
             status: true,
             timestamp: true,
-            student: { select: { studentId: true, fullName: true } },
+            student: { select: { studentId: true, fullName: true, program: true } },
           },
         },
       },
@@ -518,7 +527,7 @@ export class DocsService {
       semester: section.semester,
       room: section.room,
       professorName: section.teacher.fullName,
-      department: section.teacher.department ?? '',
+      sectionCourse: courseFullLabel(section.course),
     }
     const filename = `${sanitizeFilenamePart(meta.shortName)}-ClassRecord-${sanitizeFilenamePart(section.subject.code)}-${sanitizeFilenamePart(
       section.section,
@@ -586,7 +595,7 @@ export class DocsService {
       ...(await this.brandingMeta()),
       studentName: referral.student.fullName,
       studentNumber: referral.student.studentId ?? '',
-      program: referral.student.program ?? '',
+      course: courseShortLabel(referral.student.program),
       subjectName: referral.section.subject.name,
       subjectCode: referral.section.subject.code,
       sectionName: referral.section.section,
@@ -611,14 +620,16 @@ export class DocsService {
 
   private sessionAttendanceRows(session: {
     section: {
-      enrollments: Array<{ student: { id: string; studentId: string | null; fullName: string } }>
+      enrollments: Array<{
+        student: { id: string; studentId: string | null; fullName: string; program?: string | null }
+      }>
     }
     attendanceRecords: Array<{
       studentId: string
       studentName: string
       status: string
       timestamp: Date
-      student: { studentId: string | null; fullName: string | null }
+      student: { studentId: string | null; fullName: string | null; program?: string | null }
     }>
   }): SessionAttendanceRow[] {
     const recordsByStudent = new Map(session.attendanceRecords.map((record) => [record.studentId, record]))
@@ -628,6 +639,7 @@ export class DocsService {
       return {
         studentNumber: enrollment.student.studentId ?? '',
         fullName: enrollment.student.fullName,
+        course: courseShortLabel(enrollment.student.program),
         status: record?.status ?? 'pending',
         timestamp: record && record.status !== 'pending' ? record.timestamp.toISOString() : '',
       }
@@ -640,6 +652,7 @@ export class DocsService {
       .map((record) => ({
         studentNumber: record.student.studentId ?? '',
         fullName: record.student.fullName ?? record.studentName,
+        course: courseShortLabel(record.student.program),
         status: record.status,
         timestamp: record.status === 'pending' ? '' : record.timestamp.toISOString(),
       }))
@@ -689,6 +702,7 @@ export class DocsService {
       metaLines: [
         `Subject: ${meta.subjectName} (${meta.subjectCode})`,
         `Section: ${meta.sectionName}   Semester: ${meta.semester}   Room: ${meta.room}`,
+        ...(meta.sectionCourse ? [`Course: ${meta.sectionCourse}`] : []),
         `Professor: ${meta.professorName}`,
       ],
       columns: MASTER_LIST_COLUMNS,
@@ -1132,7 +1146,7 @@ export class DocsService {
     centered(meta.institutionName, 58, 12, true, BRAND_MAROON)
     centered(campusLine(meta.campus), 71, 9, false, '#333333')
     centered(CLASS_RECORD_TITLE, 82, 13, true, '#111111')
-    centered(`Course: ${meta.subjectCode} — ${meta.subjectName}`, 97, 8.5, false, '#111111')
+    centered(`Subject: ${meta.subjectCode} — ${meta.subjectName}`, 97, 8.5, false, '#111111')
     centered(
       `Section: ${meta.sectionName}   Semester: ${meta.semester}   Room: ${meta.room}`,
       107,
@@ -1141,8 +1155,8 @@ export class DocsService {
       '#111111',
     )
     centered(
-      meta.department
-        ? `Instructor: ${meta.professorName}   College / Department: ${meta.department}`
+      meta.sectionCourse
+        ? `Instructor: ${meta.professorName}   Course: ${meta.sectionCourse}`
         : `Instructor: ${meta.professorName}`,
       117,
       8.5,
@@ -1192,7 +1206,7 @@ export class DocsService {
     const studentLines = [
       ['Student name', meta.studentName],
       ['Student number', meta.studentNumber || '—'],
-      ['Program', meta.program || '—'],
+      ['Course', meta.course || '—'],
       ['Subject', `${meta.subjectName} (${meta.subjectCode})`],
       ['Section', `${meta.sectionName}   Semester: ${meta.semester}`],
       ['Professor', meta.professorName],
@@ -1290,7 +1304,7 @@ export class DocsService {
     const studentLines = [
       `Student name: ${meta.studentName}`,
       `Student number: ${meta.studentNumber || '—'}`,
-      `Program: ${meta.program || '—'}`,
+      `Course: ${meta.course || '—'}`,
       `Subject: ${meta.subjectName} (${meta.subjectCode})`,
       `Section: ${meta.sectionName}   Semester: ${meta.semester}`,
       `Professor: ${meta.professorName}`,
@@ -1396,11 +1410,11 @@ export class DocsService {
                 centered(meta.institutionName, 22, true, '7B1113'),
                 centered(campusLine(meta.campus), 16, false),
                 centered(CLASS_RECORD_TITLE, 24, true),
-                centered(`Course: ${meta.subjectCode} — ${meta.subjectName}`, 15, false),
+                centered(`Subject: ${meta.subjectCode} — ${meta.subjectName}`, 15, false),
                 centered(`Section: ${meta.sectionName}   Semester: ${meta.semester}   Room: ${meta.room}`, 15, false),
                 centered(
-                  meta.department
-                    ? `Instructor: ${meta.professorName}   College / Department: ${meta.department}`
+                  meta.sectionCourse
+                    ? `Instructor: ${meta.professorName}   Course: ${meta.sectionCourse}`
                     : `Instructor: ${meta.professorName}`,
                   15,
                   false,
@@ -1712,6 +1726,7 @@ export class DocsService {
             default: this.docxHeader(meta.institutionName, MASTER_LIST_TITLE, [
               `Subject: ${meta.subjectName} (${meta.subjectCode})`,
               `Section: ${meta.sectionName}   Semester: ${meta.semester}   Room: ${meta.room}`,
+              ...(meta.sectionCourse ? [`Course: ${meta.sectionCourse}`] : []),
               `Professor: ${meta.professorName}`,
             ]),
           },

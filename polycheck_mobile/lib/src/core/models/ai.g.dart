@@ -140,6 +140,34 @@ Map<String, dynamic> _$AiThreadSummaryToJson(_AiThreadSummary instance) =>
       'updatedAt': instance.updatedAt,
     };
 
+_AiTermsStatus _$AiTermsStatusFromJson(Map<String, dynamic> json) =>
+    _AiTermsStatus(
+      version: json['version'] as String,
+      accepted: json['accepted'] as bool? ?? false,
+    );
+
+Map<String, dynamic> _$AiTermsStatusToJson(_AiTermsStatus instance) =>
+    <String, dynamic>{
+      'version': instance.version,
+      'accepted': instance.accepted,
+    };
+
+_AiDailyUsage _$AiDailyUsageFromJson(Map<String, dynamic> json) =>
+    _AiDailyUsage(
+      limit: (json['limit'] as num).toInt(),
+      used: (json['used'] as num).toInt(),
+      remaining: (json['remaining'] as num).toInt(),
+      resetsAt: json['resetsAt'] as String? ?? '',
+    );
+
+Map<String, dynamic> _$AiDailyUsageToJson(_AiDailyUsage instance) =>
+    <String, dynamic>{
+      'limit': instance.limit,
+      'used': instance.used,
+      'remaining': instance.remaining,
+      'resetsAt': instance.resetsAt,
+    };
+
 _AiCapabilities _$AiCapabilitiesFromJson(Map<String, dynamic> json) =>
     _AiCapabilities(
       enabled: json['enabled'] as bool,
@@ -154,6 +182,13 @@ _AiCapabilities _$AiCapabilitiesFromJson(Map<String, dynamic> json) =>
               .toList() ??
           const <AiMissingConfig>[],
       policyBlocked: json['policyBlocked'] as bool? ?? false,
+      terms: json['terms'] == null
+          ? null
+          : AiTermsStatus.fromJson(json['terms'] as Map<String, dynamic>),
+      provider: json['provider'] as String?,
+      usage: json['usage'] == null
+          ? null
+          : AiDailyUsage.fromJson(json['usage'] as Map<String, dynamic>),
     );
 
 Map<String, dynamic> _$AiCapabilitiesToJson(_AiCapabilities instance) =>
@@ -166,4 +201,7 @@ Map<String, dynamic> _$AiCapabilitiesToJson(_AiCapabilities instance) =>
           .map(const AiMissingConfigConverter().toJson)
           .toList(),
       'policyBlocked': instance.policyBlocked,
+      'terms': instance.terms?.toJson(),
+      'provider': instance.provider,
+      'usage': instance.usage?.toJson(),
     };

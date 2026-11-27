@@ -630,7 +630,10 @@ function InstitutionSettingsPageInner() {
   const accountsSwitches = SETTING_SWITCHES.filter((item) => item.tab === 'accounts')
   const accountsFields = SETTING_FIELDS.filter((field) => field.tab === 'accounts')
 
-  const aiFields = SETTING_FIELDS.filter((field) => field.tab === 'ai')
+  const aiFields = SETTING_FIELDS.filter(
+    (field) => field.tab === 'ai' && !field.key.startsWith('ai_daily_limit_'),
+  )
+  const aiLimitFields = SETTING_FIELDS.filter((field) => field.key.startsWith('ai_daily_limit_'))
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
@@ -857,6 +860,29 @@ function InstitutionSettingsPageInner() {
                       </span>
                       <p className="mt-1 leading-relaxed">{status.message}</p>
                     </div>
+
+                    <section className="space-y-4 border-t border-zinc-200 pt-6 dark:border-zinc-800">
+                      <div>
+                        <h2 className="text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">
+                          Daily message limits
+                        </h2>
+                        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                          How many messages one account may send per day. Counts start again at
+                          midnight, campus time. A message that gets no reply is not counted.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                        {aiLimitFields.map((field) => (
+                          <SettingFieldRow
+                            key={field.key}
+                            field={field}
+                            value={values[field.key] ?? ''}
+                            disabled={!canEdit || loading}
+                            onChange={(value) => updateValue(field.key, value)}
+                          />
+                        ))}
+                      </div>
+                    </section>
 
                     <section className="space-y-4 border-t border-zinc-200 pt-6 dark:border-zinc-800">
                       <div>

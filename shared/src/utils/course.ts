@@ -50,6 +50,22 @@ export function normalizeCourse(input?: string | null): NormalizedCourse {
   return code ? { code, matched: true, raw } : { matched: false, raw }
 }
 
+/**
+ * The short course shown in lists and exported files: the catalog code, as in the
+ * student form. Text that matches no catalog course is kept as written.
+ */
+export function courseShortLabel(input?: string | null): string {
+  const course = normalizeCourse(input)
+  return course.code ?? course.raw
+}
+
+/** "BSIT - Bachelor of Science in Information Technology", as the student form lists it. */
+export function courseFullLabel(input?: string | null): string {
+  const course = normalizeCourse(input)
+  if (!course.code) return course.raw
+  return `${course.code} - ${campusCourseByCode(course.code)?.name ?? course.code}`
+}
+
 /** True when the value is (or normalizes to) a catalog course. */
 export function isCatalogCourse(input?: string | null): boolean {
   return normalizeCourse(input).matched

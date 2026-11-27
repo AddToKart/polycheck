@@ -123,7 +123,7 @@ describe('DocsService', () => {
       'No.',
       'Student Number',
       'Full Name',
-      'Program',
+      'Course',
       'Year Level',
     ])
     expect(MASTER_LIST_COLUMNS.reduce((total, column) => total + column.width, 0)).toBe(495)
@@ -252,9 +252,9 @@ describe('DocsService', () => {
       expect(document.filename).toBe('attendance-BSIT-1-A-2026-10-26.csv')
       expect(document.contentType).toBe('text/csv; charset=utf-8')
       expect(document.body.subarray(0, 3)).not.toEqual(Buffer.from([0xef, 0xbb, 0xbf]))
-      expect(lines[0]).toBe('"Student Number","Full Name","Status","Timestamp"')
-      expect(csv).toContain('"2023-0001","Alpha, Juan","present","2026-10-26T01:00:00.000Z"')
-      expect(csv).toContain('"2023-0003","Gamma, Ana","pending",""')
+      expect(lines[0]).toBe('"Student Number","Full Name","Course","Status","Timestamp"')
+      expect(csv).toContain('"2023-0001","Alpha, Juan","","present","2026-10-26T01:00:00.000Z"')
+      expect(csv).toContain('"2023-0003","Gamma, Ana","","pending",""')
       expect(csv).toContain('"Dela ""Cruz"", Ana"')
       expect(csv).toContain('"\'=REMOVED, Eve"')
       expect(lines).toContain('"Present","1"')
@@ -264,6 +264,32 @@ describe('DocsService', () => {
       expect(lines).toContain('"Disputed","1"')
       expect(lines).toContain('"Excused","0"')
       expect(lines).toContain('"Total","5"')
+    })
+
+    it("lists each student's course with the same code as the student form", async () => {
+      const enrolled = (id: string, program: string) => ({
+        student: { id, studentId: `2024-${id}`, fullName: `Student ${id}`, program },
+      })
+      const fixture = {
+        ...session,
+        section: {
+          ...session.section,
+          enrollments: [
+            enrolled('a', 'BSIT'),
+            // Older accounts may hold the course's name.
+            enrolled('b', 'BS Hospitality Management'),
+            enrolled('c', 'Something Else'),
+          ],
+        },
+        attendanceRecords: [],
+      }
+      const service = new DocsService(createPrisma(masterSection, fixture) as never)
+
+      const csv = (await service.sessionAttendance(teacher, 'sess-1', 'csv')).body.toString('utf8')
+
+      expect(csv).toContain('"2024-a","Student a","BSIT","pending",""')
+      expect(csv).toContain('"2024-b","Student b","BSHM","pending",""')
+      expect(csv).toContain('"2024-c","Student c","Something Else","pending",""')
     })
 
     it('renders a valid PDF session attendance report', async () => {

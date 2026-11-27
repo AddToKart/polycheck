@@ -2528,6 +2528,9 @@ const apiBase = {
   getAiCapabilities(): Promise<AiCapabilities> {
     return get("/ai/capabilities");
   },
+  acceptAiTerms(version: string): Promise<AiCapabilities> {
+    return post("/ai/terms/accept", { version });
+  },
   sendAiChatMessage(data: AiChatSendInput): Promise<AiChatSendResult> {
     return post("/ai/chat", data);
   },

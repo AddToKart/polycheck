@@ -69,6 +69,25 @@ export interface AiCapabilities {
   missing?: AiMissingConfig[]
   /** True when an administrator disabled the assistant for this role or entirely. */
   policyBlocked?: boolean
+  /** Whether this person has accepted the current AI terms. Absent on older servers. */
+  terms?: AiTermsStatus
+  /** Host name of the AI provider that receives messages. */
+  provider?: string
+  /** This person's daily message allowance. */
+  usage?: AiDailyUsage
+}
+
+export interface AiTermsStatus {
+  version: string
+  accepted: boolean
+}
+
+export interface AiDailyUsage {
+  limit: number
+  used: number
+  remaining: number
+  /** ISO time the count starts again (midnight, campus time). */
+  resetsAt: string
 }
 
 export type AiMissingConfig = 'base_url' | 'model' | 'api_key'
