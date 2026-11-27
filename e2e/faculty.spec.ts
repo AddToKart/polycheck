@@ -12,7 +12,17 @@ test.describe('Faculty (Teacher) Flows', () => {
     const errors = trackErrors(page)
     await expect(page.getByText('Faculty Dashboard')).toBeVisible()
     await expect(page.getByText("Today's Schedule")).toBeVisible()
-    await expect(page.getByRole('link', { name: 'My Subjects' })).toBeVisible()
+    // The sidebar item; the stat card of the same name also carries its number.
+    await expect(page.getByRole('link', { name: 'My Subjects', exact: true })).toBeVisible()
+    // Each stat card opens its list.
+    for (const [card, path] of [
+      [/^My Subjects \d+/, '/faculty/subjects'],
+      [/^My Students \d+/, '#my-sections'],
+      [/^Sessions Today \d+/, '/faculty/sessions'],
+      [/^Disputes \d+/, '/faculty/disputes'],
+    ] as const) {
+      await expect(page.getByRole('link', { name: card })).toHaveAttribute('href', path)
+    }
     // Stat cards should render numbers
     await expect(page.getByText('My Students').first()).toBeVisible()
     await expect(page.getByText('Sessions Today').first()).toBeVisible()
@@ -21,7 +31,7 @@ test.describe('Faculty (Teacher) Flows', () => {
 
   test('subjects list renders seeded subjects', async ({ page }) => {
     const errors = trackErrors(page)
-    await page.getByRole('link', { name: 'My Subjects' }).click()
+    await page.getByRole('link', { name: 'My Subjects', exact: true }).click()
     await expect(page).toHaveURL(/\/faculty\/subjects/)
     await expect(page.getByText('Software Engineering', { exact: true })).toBeVisible()
     await expect(page.getByText('Data Structures and Algorithms', { exact: true })).toBeVisible()

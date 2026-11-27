@@ -307,9 +307,12 @@ class FacultyStatCard extends StatelessWidget {
                 ),
               ),
             ),
+            // Shows which cards open something.
+            if (onTap != null)
+              Icon(Icons.chevron_right, size: 16, color: tokens.muted),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           value,
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -327,7 +330,8 @@ class FacultyStatCard extends StatelessWidget {
   }
 }
 
-/// Responsive stat grid: 2 columns on phones, 3+ on wider screens.
+/// Responsive stat grid: 2 columns on phones, [wideColumns] on wider screens.
+/// Cards in a row share one height, and a last card on its own fills the row.
 class FacultyStatGrid extends StatelessWidget {
   const FacultyStatGrid({
     super.key,
@@ -342,18 +346,40 @@ class FacultyStatGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        // Only a very narrow screen drops to one column.
         final columns = constraints.maxWidth >= 700
             ? wideColumns
-            : (constraints.maxWidth >= 420 ? 2 : 1);
+            : (constraints.maxWidth >= 280 ? 2 : 1);
         const spacing = 8.0;
-        final width =
-            (constraints.maxWidth - spacing * (columns - 1)) / columns;
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: [
-            for (final child in children) SizedBox(width: width, child: child),
-          ],
+        final rows = <Widget>[];
+        for (var start = 0; start < children.length; start += columns) {
+          final cells = children.skip(start).take(columns).toList();
+          // A lone last card stretches; a short last row keeps its columns.
+          final slots = cells.length == 1 ? 1 : columns;
+          rows.add(
+            Padding(
+              padding: EdgeInsets.only(top: start == 0 ? 0 : spacing),
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < slots; i += 1) ...[
+                      if (i > 0) const SizedBox(width: spacing),
+                      Expanded(
+                        child: i < cells.length
+                            ? cells[i]
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: rows,
         );
       },
     );

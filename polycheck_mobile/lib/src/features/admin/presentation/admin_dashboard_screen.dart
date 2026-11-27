@@ -9,6 +9,7 @@ import '../../../core/providers/session_provider.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/widgets/campus_card.dart';
 import '../../../core/widgets/campus_empty_state.dart';
+import '../../../core/widgets/theme_mode_toggle.dart';
 import '../domain/admin_access.dart';
 import '../domain/server_metrics.dart';
 import 'widgets/admin_common.dart';
@@ -72,7 +73,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       title: 'Administrator console',
       subtitle: 'Institution-wide oversight and governance',
       section: AdminSection.dashboard,
+      // This is the console's home: there is nothing to go back to.
+      canBack: false,
       actions: <Widget>[
+        const ThemeModeToggleButton(),
         IconButton(
           key: const ValueKey('admin-sign-out'),
           tooltip: 'Sign out',

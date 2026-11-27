@@ -13,8 +13,11 @@ import {
 } from '../common/admin-scope'
 import { oversightSectionWhere } from '../common/course-scope'
 import type { Prisma } from '../prisma/client'
-import type { AuditLogsService } from '../audit-logs/audit-logs.service'
-import type { RedisService } from '../infrastructure/redis.service'
+// Value imports: Nest needs the classes at run time to inject them. As type-only
+// imports they were left undefined, so Redis always showed as down and the
+// recent activity list was always empty.
+import { AuditLogsService } from '../audit-logs/audit-logs.service'
+import { RedisService } from '../infrastructure/redis.service'
 
 const CALENDAR_RESULT_LIMIT = 2_000
 const EXPORT_RESULT_LIMIT = 25_000

@@ -186,10 +186,11 @@ function TeacherDashboard({ user }: { user: User }) {
   }, [sections])
 
   const statCards = [
-    { label: 'My Subjects', value: overview?.counts.subjects ?? 0, icon: BookOpen },
-    { label: 'My Students', value: overview?.counts.students ?? 0, icon: Users },
-    { label: 'Sessions Today', value: overview?.counts.sessionsToday ?? 0, icon: CalendarCheck },
-    { label: 'Disputes', value: overview?.counts.pendingDisputes ?? 0, icon: ClipboardList },
+    { label: 'My Subjects', value: overview?.counts.subjects ?? 0, icon: BookOpen, href: '/faculty/subjects' },
+    // Students are listed per section: the section list further down this page.
+    { label: 'My Students', value: overview?.counts.students ?? 0, icon: Users, href: '#my-sections' },
+    { label: 'Sessions Today', value: overview?.counts.sessionsToday ?? 0, icon: CalendarCheck, href: '/faculty/sessions' },
+    { label: 'Disputes', value: overview?.counts.pendingDisputes ?? 0, icon: ClipboardList, href: '/faculty/disputes' },
   ]
 
   const periodTotals = useMemo(() => summarizeTrends(overview?.trends), [overview?.trends])
@@ -370,7 +371,7 @@ function TeacherDashboard({ user }: { user: User }) {
         {statCards.map((stat, index) => {
           const Icon = stat.icon
           return (
-            <div key={stat.label} className={`p-6 border-zinc-300 dark:border-zinc-800 ${
+            <Link key={stat.label} href={stat.href} className={`group block p-6 border-zinc-300 dark:border-zinc-800 transition-colors hover:bg-maroon/5 dark:hover:bg-golden/5 ${
               index === 0
                 ? ''
                 : index === 1
@@ -380,11 +381,12 @@ function TeacherDashboard({ user }: { user: User }) {
               <div className="flex items-center gap-3 mb-4 text-zinc-400">
                 <Icon className="w-4 h-4" />
                 <p className="text-[10px] font-bold uppercase tracking-widest">{stat.label}</p>
+                <ArrowRight aria-hidden="true" className="ml-auto w-4 h-4 group-hover:text-maroon dark:group-hover:text-golden" />
               </div>
               <p className="text-4xl font-heading font-bold text-foreground">
                 {stat.value}
               </p>
-            </div>
+            </Link>
           )
         })}
       </div>
@@ -487,7 +489,7 @@ function TeacherDashboard({ user }: { user: User }) {
 
       <div className="grid lg:grid-cols-2 gap-8">
         {/* My Subjects List */}
-        <Card className="rounded-none border-zinc-300/80 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden">
+        <Card id="my-sections" className="scroll-mt-24 rounded-none border-zinc-300/80 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden">
           <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0 border-b border-zinc-200 dark:border-zinc-800 p-6 bg-zinc-50 dark:bg-zinc-900/50">
             <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
               <BookOpen className="w-4 h-4 text-maroon dark:text-golden" />

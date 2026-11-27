@@ -81,6 +81,20 @@ void main() {
     expect(find.text('User management'), findsOneWidget);
   });
 
+  testWidgets('the dashboard has a light and dark switch and no back arrow', (
+    tester,
+  ) async {
+    await pumpDashboard(tester, user: testAdmin);
+
+    expect(find.byKey(const ValueKey('admin-back-fallback')), findsNothing);
+    expect(find.byType(BackButton), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('theme-mode-toggle')),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Switch to dark theme'), findsOneWidget);
+  });
+
   testWidgets('the super admin can sign out', (tester) async {
     await pumpDashboard(tester, user: testAdmin);
 

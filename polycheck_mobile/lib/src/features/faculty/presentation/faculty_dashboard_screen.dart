@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -80,6 +82,36 @@ class _FacultyDashboardScreenState
     });
   }
 
+  /// Sections and their students are reached through one list: pick a section
+  /// to open it, with its roster.
+  Future<void> _pickSection(String title) async {
+    if (_sections.isEmpty) {
+      context.go('/faculty/subjects');
+      return;
+    }
+    final subjectNames = <String, String>{
+      for (final subject in _subjects) subject.id: subject.name,
+    };
+    final sectionId = await showCampusBottomSheet<String>(
+      context,
+      title: title,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          for (final section in _sections)
+            _SectionChoice(
+              key: ValueKey<String>('dashboard-section-${section.id}'),
+              subjectName: subjectNames[section.subjectId] ?? 'Subject',
+              section: section,
+            ),
+        ],
+      ),
+    );
+    if (sectionId == null || !mounted) return;
+    context.push('/faculty/sections/$sectionId');
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
@@ -159,11 +191,13 @@ class _FacultyDashboardScreenState
                   label: 'Sections',
                   value: '${counts?.sections ?? _sections.length}',
                   icon: Icons.groups_outlined,
+                  onTap: () => unawaited(_pickSection('Your sections')),
                 ),
                 FacultyStatCard(
                   label: 'Students',
                   value: '${counts?.students ?? 0}',
                   icon: Icons.people_outline,
+                  onTap: () => unawaited(_pickSection('Students by section')),
                 ),
                 FacultyStatCard(
                   label: 'Sessions today',
@@ -362,6 +396,63 @@ class _FacultyDashboardScreenState
                 ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One row of the section picker; pops the sheet with the section's id.
+class _SectionChoice extends StatelessWidget {
+  const _SectionChoice({
+    super.key,
+    required this.subjectName,
+    required this.section,
+  });
+
+  final String subjectName;
+  final Section section;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BrandTheme.of(context);
+    final students = section.studentCount;
+    final course = section.course ?? '';
+    return InkWell(
+      onTap: () => Navigator.of(context).pop(section.id),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 52),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: tokens.borderSubtle)),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    subjectName,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: tokens.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Section ${section.section}'
+                    '${course.isEmpty ? '' : ' · $course'}'
+                    ' · $students ${students == 1 ? 'student' : 'students'}',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: tokens.muted),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: tokens.muted),
           ],
         ),
       ),

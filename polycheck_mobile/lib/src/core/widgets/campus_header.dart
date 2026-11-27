@@ -21,13 +21,15 @@ class CampusHeader extends StatelessWidget implements PreferredSizeWidget {
   final PreferredSizeWidget? bottom;
   final bool automaticallyImplyLeading;
 
+  /// Room for the title, plus a little more when there is a second line.
+  double get _toolbarHeight =>
+      subtitle != null && subtitle!.isNotEmpty ? 60 : kToolbarHeight;
+
+  // The reserved height must match the toolbar's: any difference shows up as
+  // an empty strip under the title.
   @override
-  Size get preferredSize {
-    final hasSubtitle = subtitle != null && subtitle!.isNotEmpty;
-    return Size.fromHeight(
-      56 + (hasSubtitle ? 18 : 0) + (bottom?.preferredSize.height ?? 0),
-    );
-  }
+  Size get preferredSize =>
+      Size.fromHeight(_toolbarHeight + (bottom?.preferredSize.height ?? 0));
 
   @override
   Widget build(BuildContext context) {
@@ -36,6 +38,7 @@ class CampusHeader extends StatelessWidget implements PreferredSizeWidget {
     final foreground = appBarTheme.foregroundColor ?? Colors.white;
 
     return AppBar(
+      toolbarHeight: _toolbarHeight,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
