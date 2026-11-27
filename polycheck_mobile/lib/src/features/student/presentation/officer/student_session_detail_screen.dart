@@ -9,6 +9,7 @@ import '../../data/student_models.dart';
 import '../../../../core/utils/proof_window.dart';
 import '../../../../core/widgets/proof_photo_grid.dart';
 import '../../data/student_providers.dart';
+import 'host_session_panel.dart';
 import 'proof_uploader.dart';
 
 class StudentSessionDetailScreen extends ConsumerStatefulWidget {
@@ -148,6 +149,9 @@ class _SessionBody extends ConsumerWidget {
     );
     void onUploaded() =>
         ref.invalidate(studentSessionDetailProvider(sessionKey));
+    // The president who created this session runs it from here.
+    final isHost =
+        currentUserId != null && session.hostStudentId == currentUserId;
     final activeToken = detail.activeClassToken;
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -210,7 +214,9 @@ class _SessionBody extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 12),
-        if (activeToken != null)
+        if (isHost)
+          HostSessionPanel(sessionId: session.id, onChanged: onUploaded)
+        else if (activeToken != null)
           CampusCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,

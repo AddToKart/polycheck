@@ -67,6 +67,8 @@ abstract class SessionPermission with _$SessionPermission {
     @Default('') String grantedAt,
     required String expiresAt,
     @Default(false) bool isActive,
+    @Default(1) int sessionLimit,
+    @Default(0) int sessionsUsed,
   }) = _SessionPermission;
 
   factory SessionPermission.fromJson(Map<String, dynamic> json) =>

@@ -24,6 +24,7 @@ import {
   getPrimaryDeviceSecurityDispute,
   matchesStoredDeviceSecurityEvidence,
 } from './device-security-policy'
+import { presidentSigningKey } from './session-signing-key'
 
 const MAX_QR_VALIDITY_MINUTES = 15
 const MAX_QR_GRACE_MINUTES = 60
@@ -141,9 +142,12 @@ export class ScanValidatorService {
     if (!enrollment) return failed('absent', 'not_enrolled', 'You are not enrolled in this section')
     // The database key is authoritative on every scan. Cached keys may be
     // stale after rotation/revocation and are intentionally never trusted.
-    const teacherPublicKey = (
-      await this.prisma.user.findUnique({ where: { id: session.teacherId }, select: { teacherPublicKey: true } })
-    )?.teacherPublicKey
+    // A session its section president started is signed with that session's
+    // own key; both columns come from the database row read above.
+    const teacherPublicKey =
+      presidentSigningKey(authoritativeSession!) ??
+      (await this.prisma.user.findUnique({ where: { id: session.teacherId }, select: { teacherPublicKey: true } }))
+        ?.teacherPublicKey
     if (!teacherPublicKey) return failed('disputed', 'invalid_signature', 'Teacher signing key is unavailable')
     const payload = verifyQRTokenNative(evidence.qrToken, teacherPublicKey)
     if (!payload) return failed('disputed', 'invalid_signature', 'QR token signature is invalid')

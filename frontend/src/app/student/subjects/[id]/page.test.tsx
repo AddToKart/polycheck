@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ReactNode } from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import type { Section, Session, Student } from '@polycheck/shared'
 
 // ── Hoisted mock state (mirrors role-pages.test.tsx conventions) ───────────
 const apiMock = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
   getStudentRoles: vi.fn(),
-  checkSessionPermission: vi.fn(),
+  getActiveSessionPermissions: vi.fn(),
   getSection: vi.fn(),
   getSubject: vi.fn(),
   getSessions: vi.fn(),
@@ -103,6 +103,8 @@ const sessions: Session[] = [
   },
 ]
 
+afterEach(cleanup)
+
 beforeEach(() => {
   vi.clearAllMocks()
   apiMock.getCurrentUser.mockReturnValue(student)
@@ -148,8 +150,44 @@ describe('Student subject detail page', () => {
 
     // Roles were fetched, but the president-only permission check never ran
     expect(apiMock.getStudentRoles).toHaveBeenCalledWith('stu-1')
-    expect(apiMock.checkSessionPermission).not.toHaveBeenCalled()
+    expect(apiMock.getActiveSessionPermissions).not.toHaveBeenCalled()
     // No mutation api calls happened
     expect(apiMock.logout).not.toHaveBeenCalled()
+  })
+})
+
+describe("a president's Create Session button", () => {
+  beforeEach(() => {
+    apiMock.getStudentRoles.mockResolvedValue([
+      { id: 'r1', sectionId: 'sec-1', studentId: 'stu-1', role: 'president' },
+    ])
+  })
+  const grant = (sessionLimit: number, sessionsUsed: number) => [
+    { id: 'p1', sectionId: 'sec-1', studentId: 'stu-1', sessionLimit, sessionsUsed, isActive: true, expiresAt: '2026-11-28T09:00:00Z' },
+  ]
+  const button = () => screen.findByRole('button', { name: /create session/i })
+
+  it('says how many sessions are left', async () => {
+    apiMock.getActiveSessionPermissions.mockResolvedValue(grant(2, 1))
+    render(<StudentSubjectDetailPage />)
+
+    expect(await screen.findByText(/You can create 1 more session until/)).toBeInTheDocument()
+    expect(await button()).toBeEnabled()
+  })
+
+  it('is greyed out once every session is used', async () => {
+    apiMock.getActiveSessionPermissions.mockResolvedValue(grant(2, 2))
+    render(<StudentSubjectDetailPage />)
+
+    expect(await screen.findByText(/You have used all 2 of your sessions/)).toBeInTheDocument()
+    expect(await button()).toBeDisabled()
+  })
+
+  it('is greyed out without a running permission', async () => {
+    apiMock.getActiveSessionPermissions.mockResolvedValue([])
+    render(<StudentSubjectDetailPage />)
+
+    expect(await screen.findByText(/No active session permission/)).toBeInTheDocument()
+    expect(await button()).toBeDisabled()
   })
 })

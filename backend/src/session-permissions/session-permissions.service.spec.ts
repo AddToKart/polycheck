@@ -48,6 +48,57 @@ describe('SessionPermissionsService', () => {
     }
   })
 
+  it.each([
+    [undefined, 1],
+    [2, 2],
+  ])('allows the chosen number of sessions and restarts the count (%s → %i)', async (sessionLimit, expected) => {
+    const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(0),
+      section: { findUnique: jest.fn().mockResolvedValue({ teacherId: 'teacher-1' }) },
+      enrollment: { findUnique: jest.fn().mockResolvedValue({ id: 'enrollment-1' }) },
+      sessionPermission: { upsert: jest.fn().mockResolvedValue({ id: 'permission-1' }) },
+    }
+    const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) }
+    const service = new SessionPermissionsService(prisma as never)
+
+    await service.grant(
+      { id: 'teacher-1', role: 'teacher' },
+      { sectionId: 'section-1', studentId: 'student-1', sessionLimit },
+    )
+
+    const { create, update } = tx.sessionPermission.upsert.mock.calls[0][0]
+    for (const data of [create, update]) {
+      expect(data).toEqual(expect.objectContaining({ sessionLimit: expected, sessionsUsed: 0, revokedAt: null }))
+    }
+  })
+
+  it.each([
+    [{ sessionLimit: 2, sessionsUsed: 1 }, true],
+    [{ sessionLimit: 2, sessionsUsed: 2 }, false],
+  ])('says whether another session can be created (%o)', async (permission, expected) => {
+    const prisma = { sessionPermission: { findFirst: jest.fn().mockResolvedValue(permission) } }
+    const service = new SessionPermissionsService(prisma as never)
+
+    await expect(service.check({ id: 'student-1', role: 'student' }, 'section-1', 'student-1')).resolves.toBe(expected)
+  })
+
+  it('records a revoke even after the permission ran out', async () => {
+    const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(0),
+      section: { findUnique: jest.fn().mockResolvedValue({ teacherId: 'teacher-1' }) },
+      sessionPermission: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    }
+    const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) }
+    const service = new SessionPermissionsService(prisma as never)
+
+    await service.revoke({ id: 'teacher-1', role: 'teacher' }, 'section-1', 'student-1')
+
+    expect(tx.sessionPermission.updateMany).toHaveBeenCalledWith({
+      where: { sectionId: 'section-1', studentId: 'student-1' },
+      data: { isActive: false, revokedAt: expect.any(Date) },
+    })
+  })
+
   it('locks membership before revoking a session permission', async () => {
     const tx = {
       $executeRaw: jest.fn().mockResolvedValue(0),

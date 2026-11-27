@@ -8,6 +8,7 @@ import type { RequestUser } from '../auth/authenticated-principal'
 import type { ActivateSessionDto, CreateBulkSessionsDto, CreateSessionDto } from './dto/create-session.dto'
 
 jest.mock('@polycheck/shared', () => ({
+  createSigningKeyPair: jest.requireActual('@polycheck/shared').createSigningKeyPair,
   decodePinHashRecord: jest.fn(),
   haversineDistance: jest.fn(),
 }))
@@ -66,6 +67,8 @@ function makeSession(overrides: any = {}) {
     ...overrides,
   }
 }
+
+process.env.BETTER_AUTH_SECRET ??= 'test-secret-that-is-at-least-32-characters'
 
 describe('SessionsService', () => {
   let service: SessionsService
@@ -288,18 +291,23 @@ describe('SessionsService', () => {
       await expect(service.create(dto, teacherUser)).rejects.toThrow(NotFoundException)
     })
 
+    const presidentTx = (permission: object, used = 1) => ({
+      $executeRaw: jest.fn().mockResolvedValue(0),
+      section: { findUnique: jest.fn().mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } }) },
+      enrollment: { findUnique: jest.fn().mockResolvedValue({ id: 'enrollment-1' }) },
+      sectionRole: { findUnique: jest.fn().mockResolvedValue({ id: 'role-1' }) },
+      sessionPermission: {
+        findFirst: jest.fn().mockResolvedValue(permission),
+        updateMany: jest.fn().mockResolvedValue({ count: used }),
+      },
+      session: {
+        create: jest.fn().mockResolvedValue(makeSession()),
+        update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...makeSession(), ...data })),
+      },
+    })
+
     it('allows student with president role and active session permission', async () => {
-      const tx = {
-        $executeRaw: jest.fn().mockResolvedValue(0),
-        section: { findUnique: jest.fn().mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } }) },
-        enrollment: { findUnique: jest.fn().mockResolvedValue({ id: 'enrollment-1' }) },
-        sectionRole: { findUnique: jest.fn().mockResolvedValue({ id: 'role-1' }) },
-        sessionPermission: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'perm-1' }),
-          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-        },
-        session: { create: jest.fn().mockResolvedValue(makeSession()) },
-      }
+      const tx = presidentTx({ id: 'perm-1', sessionLimit: 2, sessionsUsed: 1 })
       prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
       prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
       const result = await service.create(dto, studentUser)
@@ -307,28 +315,42 @@ describe('SessionsService', () => {
         tx.enrollment.findUnique.mock.invocationCallOrder[0],
       )
       expect(tx.session.create.mock.calls[0][0]?.data.teacherId).toBe('teacher-1')
-      // The permission is good for one session, so creating it ends the permission.
+      // One of the allowed sessions is taken, and only while some are left.
       expect(tx.sessionPermission.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { isActive: false } }),
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 'perm-1', sessionsUsed: { lt: 2 } }),
+          data: { sessionsUsed: { increment: 1 } },
+        }),
       )
-      expect(result).toBeDefined()
+      expect(tx.session.update.mock.calls[0][0].data).toEqual({
+        hostStudentId: studentUser.id,
+        hostPublicKey: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+      })
+      // Until the president starts it, the professor's key is still the one in use.
+      expect(result.teacherPublicKey).toBe('pk')
+      expect(result.hostStudentId).toBe(studentUser.id)
     })
 
-    it('rejects the creation when the permission was already used', async () => {
-      const tx = {
-        $executeRaw: jest.fn().mockResolvedValue(0),
-        section: { findUnique: jest.fn().mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } }) },
-        enrollment: { findUnique: jest.fn().mockResolvedValue({ id: 'enrollment-1' }) },
-        sectionRole: { findUnique: jest.fn().mockResolvedValue({ id: 'role-1' }) },
-        sessionPermission: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'perm-1' }),
-          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
-        },
-        session: { create: jest.fn().mockResolvedValue(makeSession()) },
-      }
+    it('rejects the creation when every allowed session was used', async () => {
+      const tx = presidentTx({ id: 'perm-1', sessionLimit: 2, sessionsUsed: 2 })
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+
+      await expect(service.create(dto, studentUser)).rejects.toThrow('used all the sessions')
+      expect(tx.session.create).not.toHaveBeenCalled()
+    })
+
+    it('rejects the creation when another request took the last session', async () => {
+      const tx = presidentTx({ id: 'perm-1', sessionLimit: 1, sessionsUsed: 0 }, 0)
       prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
 
       await expect(service.create(dto, studentUser)).rejects.toThrow('active president session permission')
+    })
+
+    it('does not let a president create an online session', async () => {
+      await expect(service.create({ ...dto, mode: 'online', geofence: undefined }, studentUser)).rejects.toThrow(
+        'only create in-person sessions',
+      )
+      expect(prisma.$transaction).not.toHaveBeenCalled()
     })
 
     it('forbids student without president role or permission', async () => {

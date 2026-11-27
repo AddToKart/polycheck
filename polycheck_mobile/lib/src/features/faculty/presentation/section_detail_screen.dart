@@ -299,20 +299,22 @@ class _SectionDetailScreenState extends ConsumerState<SectionDetailScreen> {
   }
 
   Future<void> _grantPermission(SectionRole role) async {
-    final hours = await askPermissionHours(context, role.studentName);
-    if (hours == null || !mounted) return;
+    final choice = await askPermission(context, role.studentName);
+    if (choice == null || !mounted) return;
     try {
       await ref
           .read(sectionsApiProvider)
           .grantSessionPermission(
             role.sectionId,
             role.studentId,
-            durationHours: hours,
+            durationHours: choice.hours,
+            sessionLimit: choice.sessions,
           );
       if (!mounted) return;
       CampusToast.showIn(
         context,
-        'Permission given for $hours hours.',
+        'Permission given: ${choice.sessions} session'
+        '${choice.sessions == 1 ? '' : 's'} for ${choice.hours} hours.',
         tone: CampusToastTone.success,
       );
       await _load();

@@ -355,8 +355,8 @@ export class SectionsService {
 
       await tx.sectionRole.deleteMany({ where: { sectionId, studentId } })
       await tx.sessionPermission.updateMany({
-        where: { sectionId, studentId, isActive: true },
-        data: { isActive: false },
+        where: { sectionId, studentId },
+        data: { isActive: false, revokedAt: new Date() },
       })
       await tx.enrollment.delete({ where: { studentId_sectionId: { studentId, sectionId } } })
       // V3 anti-zombie: record the removal so an unexpired enrollment code

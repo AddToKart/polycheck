@@ -16,6 +16,9 @@ import type {
   SessionPermission,
   ProofOfClass,
   QacSection,
+  HostSessionState,
+  HostStartInput,
+  HostStartResult,
 } from "./index";
 import type { RecordTimeline, ScanAttemptView } from "./attendance";
 import type { LedgerVerifyResult } from "../utils/ledger";
@@ -688,12 +691,20 @@ export interface ApiClient {
   getSectionRoles(sectionId: string): Promise<SectionRole[]>;
   getStudentRoles(studentId: string): Promise<SectionRole[]>;
 
-  /** Lets a section president create one session within `durationHours` (default 24). */
+  /**
+   * Lets a section president create and start up to `sessionLimit` sessions
+   * (default 1) within `durationHours` (default 24).
+   */
   grantSessionPermission(
     sectionId: string,
     studentId: string,
     durationHours?: number,
+    sessionLimit?: number,
   ): Promise<SessionPermission>;
+  /** President only: their session's controls and live list. */
+  getHostSession(sessionId: string): Promise<HostSessionState>;
+  startHostSession(sessionId: string, input: HostStartInput): Promise<HostStartResult>;
+  endHostSession(sessionId: string): Promise<HostSessionState>;
   /** The signed-in student's QAC sections with today's classes. */
   getMyQacSections(): Promise<QacSection[]>;
   revokeSessionPermission(

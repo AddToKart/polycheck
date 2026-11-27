@@ -1,3 +1,4 @@
+import '../models/host_session.dart';
 import '../models/api.dart';
 import '../models/session.dart';
 import 'api_base.dart';
@@ -27,6 +28,28 @@ class SessionsApi extends ApiBase {
   Future<Session> getSession(String id) async {
     final data = await getJson('/sessions/$id');
     return Session.fromJson(asMap(data));
+  }
+
+  /// A section president's controls for a session they created.
+  Future<HostSessionState> getHostSession(String sessionId) async {
+    final data = await getJson('/sessions/$sessionId/host');
+    return HostSessionState.fromJson(asMap(data));
+  }
+
+  Future<HostSessionState> startHostSession(
+    String sessionId,
+    Map<String, dynamic> body,
+  ) async {
+    final data = await postJson('/sessions/$sessionId/host/start', body: body);
+    return HostSessionState.fromJson(asMap(data));
+  }
+
+  Future<HostSessionState> endHostSession(String sessionId) async {
+    final data = await postJson(
+      '/sessions/$sessionId/host/end',
+      body: const <String, dynamic>{},
+    );
+    return HostSessionState.fromJson(asMap(data));
   }
 
   Future<Session> createSession(CreateSessionInput input) async {

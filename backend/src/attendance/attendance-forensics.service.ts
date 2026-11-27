@@ -7,6 +7,7 @@ import { decodeTokenPayload } from '@polycheck/shared'
 import { verifyQRTokenNative } from '@polycheck/shared/token-node'
 import { AttendanceScopeService } from './attendance-scope.service'
 import { PrismaService } from '../prisma/prisma.service'
+import { presidentSigningKey } from './session-signing-key'
 
 const MAX_TIMELINE_EVENTS = 200
 // Local evidence older than these thresholds conflicts with its arrival time.
@@ -51,6 +52,8 @@ const FORENSICS_SESSION_SELECT = {
   startQrGeneratedAt: true,
   endQrGeneratedAt: true,
   geofenceRadiusMeters: true,
+  hostPublicKey: true,
+  hostStartedAt: true,
 } satisfies Prisma.SessionSelect
 
 type ForensicsSession = Prisma.SessionGetPayload<{ select: typeof FORENSICS_SESSION_SELECT }>
@@ -117,7 +120,8 @@ export class AttendanceForensicsService {
       orderBy: [{ timestamp: 'asc' }, { id: 'asc' }],
     })
     for (const attempt of attempts) this.collectAttemptEvents(attempt, events)
-    const evidence = this.collectTokenEvidence(record, events, teacher?.teacherPublicKey ?? null)
+    const signingKey = presidentSigningKey(record.session) ?? teacher?.teacherPublicKey ?? null
+    const evidence = this.collectTokenEvidence(record, events, signingKey)
     this.collectRecordEvents(record, events)
 
     events.sort((a, b) => a.at.localeCompare(b.at) || KIND_ORDER[a.kind] - KIND_ORDER[b.kind])

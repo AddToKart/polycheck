@@ -25,6 +25,8 @@ import { adminSessionWhere, assertSectionInAdminScope } from '../common/admin-sc
 import { lockStudentSection } from '../common/student-section-lock'
 import { NotificationsService } from '../notifications/notifications.service'
 import { resolveSessionAttendance } from '../attendance/resolution'
+import { presidentSigningKey } from '../attendance/session-signing-key'
+import { presidentSessionKeyPair } from './president-signer'
 
 const AUTO_END_LOCK_TTL_SECONDS = 5 * 60
 const MAX_QR_VALIDITY_MINUTES = 15
@@ -58,6 +60,14 @@ function envFlag(raw: string | undefined, fallback: boolean): boolean {
   if (raw.toLowerCase() === 'true') return true
   if (raw.toLowerCase() === 'false') return false
   return fallback
+}
+
+export interface ActivationHooks {
+  /** Extra columns written by the same claim that activates the session. */
+  claimData?: Prisma.SessionUpdateManyMutationInput
+  beforeClaim?: (tx: Prisma.TransactionClient) => Promise<void>
+  /** Runs after the roster rows exist, before the transaction commits. */
+  afterSeed?: (tx: Prisma.TransactionClient) => Promise<void>
 }
 
 @Injectable()
@@ -131,10 +141,15 @@ export class SessionsService {
     // Authorization and creation share one transaction so a concurrent removal
     // or permission revocation cannot slip between the authorization reads and
     // the session insert.
+    // A president's session is marked present by location when they start it,
+    // so it needs a class area.
+    if (user.role === 'student' && mode !== 'in_person') {
+      throw new BadRequestException('A section president can only create in-person sessions')
+    }
     const { session, teacherId } = await this.prisma.$transaction(async (tx) => {
       if (user.role === 'student') await lockStudentSection(tx, user.id, dto.sectionId)
       const authorized = await this.authorizeCreator(dto.sectionId, user, tx)
-      const created = await this.createSessionOrThrowConflict(tx, {
+      let created = await this.createSessionOrThrowConflict(tx, {
         ...data,
         mode,
         subjectName: authorized.subjectName,
@@ -147,13 +162,22 @@ export class SessionsService {
         geofenceLongitude: geofence?.longitude ?? null,
         geofenceRadiusMeters: geofence?.radiusMeters ?? null,
       })
-      // A president's permission is good for one session; using it ends it.
-      if (user.role === 'student') {
+      if (user.role === 'student' && authorized.permission) {
+        // Take one of the allowed sessions; the condition makes it atomic.
         const used = await tx.sessionPermission.updateMany({
-          where: { sectionId: dto.sectionId, studentId: user.id, isActive: true, expiresAt: { gt: new Date() } },
-          data: { isActive: false },
+          where: {
+            id: authorized.permission.id,
+            isActive: true,
+            expiresAt: { gt: new Date() },
+            sessionsUsed: { lt: authorized.permission.sessionLimit },
+          },
+          data: { sessionsUsed: { increment: 1 } },
         })
         if (used.count !== 1) throw new ForbiddenException('An active president session permission is required')
+        created = await tx.session.update({
+          where: { id: created.id },
+          data: { hostStudentId: user.id, hostPublicKey: presidentSessionKeyPair(created.id).publicKey },
+        })
       }
       return { session: created, teacherId: authorized.teacherId }
     })
@@ -385,11 +409,17 @@ export class SessionsService {
     })
   }
 
-  private async activateInPerson(
+  /**
+   * Also used by `PresidentHostService`, which passes `hooks` to record the
+   * president's signing key and attendance in the same transaction. A
+   * professor's activation passes none.
+   */
+  async activateInPerson(
     session: Session,
     dto: ActivateSessionDto,
     user: RequestUser,
     teacherPublicKey: string,
+    hooks: ActivationHooks = {},
   ) {
     if (dto.validityMinutes === undefined) {
       throw new BadRequestException('validityMinutes is required for in-person sessions')
@@ -427,9 +457,11 @@ export class SessionsService {
     const expiresAt = new Date(issuedAt.getTime() + dto.validityMinutes * 60_000)
 
     const activated = await this.prisma.$transaction(async (tx) => {
+      await hooks.beforeClaim?.(tx)
       const claim = await tx.session.updateMany({
         where: { id: session.id, isActive: false, endedAt: null, qrToken: null },
         data: {
+          ...hooks.claimData,
           isActive: !expired,
           endedAt: expired ? receivedAt : null,
           qrToken: expired ? null : dto.token,
@@ -472,6 +504,7 @@ export class SessionsService {
           data: { status: 'absent', manuallySet: false },
         })
       }
+      await hooks.afterSeed?.(tx)
       return tx.session.findUniqueOrThrow({ where: { id: session.id } })
     })
     this.realtime.emitSessionState(activated, expired ? 'ended' : 'activated')
@@ -681,6 +714,12 @@ export class SessionsService {
     const session = await this.prisma.session.findUnique({ where: { id } })
     if (!session) throw new NotFoundException('Session not found')
     await this.assertTeacherOwnsSection(session.sectionId, user.id)
+    return this.closeSession(session)
+  }
+
+  /** Ends a running session. The caller must have authorized it already. */
+  async closeSession(session: Session) {
+    const id = session.id
     // Derive BEFORE the ledger claim below nulls endQrToken: the resolver must
     // know whether the teacher ever opened the Checkpoint-2 window.
     const endArmed = Boolean(session.endQrToken ?? session.endQrGeneratedAt)
@@ -903,7 +942,7 @@ export class SessionsService {
     if (user.role === 'teacher') {
       if (section.teacherId !== user.id)
         throw new ForbiddenException('You can only manage sessions in your own sections')
-      return { teacherId: user.id, subjectName: section.subject.name }
+      return { teacherId: user.id, subjectName: section.subject.name, permission: null }
     }
     if (user.role !== 'student') throw new ForbiddenException('You cannot create sessions')
     const [enrollment, officerRole, permission] = await Promise.all([
@@ -920,7 +959,12 @@ export class SessionsService {
     ])
     if (!enrollment) throw new ForbiddenException('You must be enrolled in this section to create sessions')
     if (!officerRole || !permission) throw new ForbiddenException('An active president session permission is required')
-    return { teacherId: section.teacherId, subjectName: section.subject.name }
+    if (permission.sessionsUsed >= permission.sessionLimit) {
+      throw new ForbiddenException(
+        'You have used all the sessions in this permission. Ask your professor for another one.',
+      )
+    }
+    return { teacherId: section.teacherId, subjectName: section.subject.name, permission }
   }
 
   private assertModeShape(mode: SessionMode, geofence: { latitude: number } | undefined) {
@@ -1083,7 +1127,7 @@ export class SessionsService {
       }
       const published = await this.redis.setJson(
         `active-session:${currentSession.id}`,
-        { ...currentSession, teacherPublicKey: currentKey ?? undefined },
+        { ...currentSession, teacherPublicKey: presidentSigningKey(currentSession) ?? currentKey ?? undefined },
         this.cacheTtlSeconds(currentSession),
       )
       if (!published) {
@@ -1141,6 +1185,9 @@ export class SessionsService {
       geofenceLatitude,
       geofenceLongitude,
       geofenceRadiusMeters,
+      hostStudentId,
+      hostPublicKey,
+      hostStartedAt,
       ...safeSession
     } = session
     const pinRequired =
@@ -1152,7 +1199,10 @@ export class SessionsService {
       ...(includeQrToken && qrToken ? { qrToken } : {}),
       ...(includeQrToken && startQrToken ? { startQrToken } : {}),
       ...(includeQrToken && endQrToken ? { endQrToken } : {}),
-      teacherPublicKey: teacherPublicKey ?? undefined,
+      teacherPublicKey: presidentSigningKey(session) ?? teacherPublicKey ?? undefined,
+      ...(hostStudentId ? { hostStudentId } : {}),
+      ...(hostPublicKey ? { hostPublicKey } : {}),
+      ...(hostStartedAt ? { hostStartedAt } : {}),
       ...(geofenceLatitude !== null && geofenceLongitude !== null && geofenceRadiusMeters !== null
         ? {
             geofence: {

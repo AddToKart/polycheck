@@ -349,8 +349,13 @@ export function createPgWriter(pool: Pool, options: PgWriterOptions = {}): Atten
         await client.query("SET LOCAL TIME ZONE 'UTC'")
         // Reads that do not depend on chain order happen BEFORE the lock, so the
         // critical section below is only "read head + write rows".
-        const session = await client.query<{ teacherId: string; sectionId: string }>(
-          'SELECT "teacherId", "sectionId" FROM "Session" WHERE id = $1',
+        const session = await client.query<{
+          teacherId: string
+          sectionId: string
+          hostPublicKey: string | null
+          hostStartedAt: Date | null
+        }>(
+          'SELECT "teacherId", "sectionId", "hostPublicKey", "hostStartedAt" FROM "Session" WHERE id = $1',
           [sessionId],
         )
         const sessionRow = session.rows[0]
@@ -369,7 +374,12 @@ export function createPgWriter(pool: Pool, options: PgWriterOptions = {}): Atten
           'SELECT "teacherPublicKey" FROM "User" WHERE id = $1',
           [teacherId],
         )
-        const teacherPublicKey = teacher.rows[0]?.teacherPublicKey ?? null
+        // A session its section president started is signed with that
+        // session's own key; every other session uses the professor's.
+        const teacherPublicKey =
+          sessionRow.hostStartedAt && sessionRow.hostPublicKey
+            ? sessionRow.hostPublicKey
+            : (teacher.rows[0]?.teacherPublicKey ?? null)
 
         const studentIds = [...new Set(scans.map((scan) => scan.userId))]
         const students = await client.query<{ id: string; fullName: string }>(

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:polycheck_mobile/src/core/polycheck_core.dart';
 
+import '../../student_paths.dart';
+
 import '../../data/officer_session_form.dart';
 import '../../data/student_models.dart';
 import '../../data/student_providers.dart';
@@ -198,7 +200,6 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
   late final TextEditingController _validityController;
   late final TextEditingController _graceController;
 
-  SessionMode _mode = SessionMode.inPerson;
   String _slotValue = customSlotValue;
   double _latitude = _defaultLatitude;
   double _longitude = _defaultLongitude;
@@ -355,13 +356,13 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
         setState(() {
           _submitting = false;
           _error =
-              'Your session permission is no longer active. Ask your instructor to renew it.';
+              'You have no sessions left to create. Ask your instructor for another permission.';
         });
         return;
       }
       final section = widget.detail.section;
       final room = _roomController.text.trim();
-      await ref
+      final created = await ref
           .read(sessionsApiProvider)
           .createSession(
             CreateSessionInput(
@@ -371,16 +372,14 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
               startTime: _startController.text.trim(),
               endTime: _endController.text.trim(),
               room: room.isEmpty ? null : room,
-              mode: _mode,
+              mode: SessionMode.inPerson,
               qrValidityMinutes: int.parse(_validityController.text.trim()),
               gracePeriodMinutes: int.parse(_graceController.text.trim()),
-              geofence: _mode == SessionMode.inPerson
-                  ? GeofenceConfig(
-                      latitude: _latitude,
-                      longitude: _longitude,
-                      radiusMeters: _radius,
-                    )
-                  : null,
+              geofence: GeofenceConfig(
+                latitude: _latitude,
+                longitude: _longitude,
+                radiusMeters: _radius,
+              ),
               teacherId: user.id,
             ),
           );
@@ -388,11 +387,12 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
       if (!mounted) return;
       CampusToast.showIn(
         context,
-        'Session created. Your permission is now used up. Your professor '
-        'starts the QR code.',
+        'Session created. Start it here when the class begins.',
         tone: CampusToastTone.success,
       );
-      context.pop();
+      context.pushReplacement(
+        StudentPaths.subjectSession(section.id, created.id),
+      );
     } on ApiRequestError catch (error) {
       if (!mounted) return;
       setState(() {
@@ -418,53 +418,6 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: <Widget>[
-        CampusCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Text(
-                'SESSION MODE',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: tokens.muted,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: _ModeOption(
-                      label: 'In person',
-                      icon: Icons.location_on_outlined,
-                      selected: _mode == SessionMode.inPerson,
-                      onTap: () => setState(() => _mode = SessionMode.inPerson),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _ModeOption(
-                      label: 'Online',
-                      icon: Icons.wifi,
-                      selected: _mode == SessionMode.online,
-                      onTap: () => setState(() => _mode = SessionMode.online),
-                    ),
-                  ),
-                ],
-              ),
-              if (_mode == SessionMode.online) ...<Widget>[
-                const SizedBox(height: 8),
-                Text(
-                  'Online checkpoints never collect GPS (RA 10173). A meeting PIN can be announced in class.',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: tokens.muted),
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
         CampusCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -591,59 +544,57 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
             ],
           ),
         ),
-        if (_mode == SessionMode.inPerson) ...<Widget>[
-          const SizedBox(height: 12),
-          CampusCard(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        'Students must be within ${_radius.round()} m of the pin.',
-                        style: Theme.of(
-                          context,
-                        ).textTheme.bodySmall?.copyWith(color: tokens.muted),
-                      ),
+        const SizedBox(height: 12),
+        CampusCard(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      'Students must be within ${_radius.round()} m of the pin.',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: tokens.muted),
                     ),
-                    TextButton.icon(
-                      onPressed: _locating ? null : _useMyLocation,
-                      icon: _locating
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.my_location, size: 17),
-                      label: Text(_locating ? 'Locating…' : 'My location'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                OfficerGeofenceMap(
-                  latitude: _latitude,
-                  longitude: _longitude,
-                  radiusMeters: _radius,
-                  onChanged: (latitude, longitude) => setState(() {
-                    _latitude = latitude;
-                    _longitude = longitude;
-                  }),
-                ),
-                const SizedBox(height: 6),
-                Slider(
-                  value: _radius,
-                  min: 10,
-                  max: 500,
-                  divisions: 49,
-                  label: '${_radius.round()} m',
-                  onChanged: (value) => setState(() => _radius = value),
-                ),
-              ],
-            ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _locating ? null : _useMyLocation,
+                    icon: _locating
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.my_location, size: 17),
+                    label: Text(_locating ? 'Locating…' : 'My location'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              OfficerGeofenceMap(
+                latitude: _latitude,
+                longitude: _longitude,
+                radiusMeters: _radius,
+                onChanged: (latitude, longitude) => setState(() {
+                  _latitude = latitude;
+                  _longitude = longitude;
+                }),
+              ),
+              const SizedBox(height: 6),
+              Slider(
+                value: _radius,
+                min: 10,
+                max: 500,
+                divisions: 49,
+                label: '${_radius.round()} m',
+                onChanged: (value) => setState(() => _radius = value),
+              ),
+            ],
           ),
-        ],
+        ),
         if (_error != null) ...<Widget>[
           const SizedBox(height: 12),
           Container(
@@ -678,72 +629,6 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
           ).textTheme.labelSmall?.copyWith(color: tokens.muted),
         ),
       ],
-    );
-  }
-}
-
-class _ModeOption extends StatelessWidget {
-  const _ModeOption({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = BrandTheme.of(context);
-    return Semantics(
-      selected: selected,
-      button: true,
-      label: label,
-      child: Material(
-        color: selected
-            ? (tokens.isDark ? tokens.gold : tokens.maroon)
-            : tokens.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.zero,
-          side: BorderSide(
-            color: selected
-                ? (tokens.isDark ? tokens.gold : tokens.maroon)
-                : tokens.borderSubtle,
-          ),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Icon(
-                  icon,
-                  size: 18,
-                  color: selected
-                      ? (tokens.isDark ? tokens.deepMaroon : Colors.white)
-                      : tokens.muted,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  label.toUpperCase(),
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: selected
-                        ? (tokens.isDark ? tokens.deepMaroon : Colors.white)
-                        : tokens.onSurface,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

@@ -293,8 +293,8 @@ describe('SectionsService', () => {
       where: { sectionId: 'section-1', studentId: 'student-1' },
     })
     expect(tx.sessionPermission.updateMany).toHaveBeenCalledWith({
-      where: { sectionId: 'section-1', studentId: 'student-1', isActive: true },
-      data: { isActive: false },
+      where: { sectionId: 'section-1', studentId: 'student-1' },
+      data: { isActive: false, revokedAt: expect.any(Date) },
     })
     expect(tx.enrollment.delete).toHaveBeenCalledWith({
       where: { studentId_sectionId: { studentId: 'student-1', sectionId: 'section-1' } },

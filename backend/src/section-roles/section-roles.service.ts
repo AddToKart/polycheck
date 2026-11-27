@@ -73,8 +73,8 @@ export class SectionRolesService {
       })
       if (role === 'president') {
         await tx.sessionPermission.updateMany({
-          where: { sectionId, studentId, isActive: true },
-          data: { isActive: false },
+          where: { sectionId, studentId },
+          data: { isActive: false, revokedAt: new Date() },
         })
       }
     })

@@ -10,6 +10,7 @@ interface PermissionInput {
   sectionId: string
   studentId: string
   durationHours?: number
+  sessionLimit?: number
 }
 
 @Injectable()
@@ -26,22 +27,20 @@ export class SessionPermissionsService {
       if (!enrolled) throw new NotFoundException('Student is not enrolled in this section')
       const now = new Date()
       const expiresAt = new Date(now.getTime() + (dto.durationHours ?? SESSION_PERMISSION_DEFAULT_HOURS) * 3_600_000)
+      // A new grant starts a fresh count.
+      const grant = {
+        grantedBy: user.id,
+        grantedAt: now,
+        expiresAt,
+        isActive: true,
+        sessionLimit: dto.sessionLimit ?? 1,
+        sessionsUsed: 0,
+        revokedAt: null,
+      }
       return tx.sessionPermission.upsert({
         where: { sectionId_studentId: { sectionId: dto.sectionId, studentId: dto.studentId } },
-        update: {
-          grantedBy: user.id,
-          grantedAt: now,
-          expiresAt,
-          isActive: true,
-        },
-        create: {
-          sectionId: dto.sectionId,
-          studentId: dto.studentId,
-          grantedBy: user.id,
-          grantedAt: now,
-          expiresAt,
-          isActive: true,
-        },
+        update: grant,
+        create: { sectionId: dto.sectionId, studentId: dto.studentId, ...grant },
       })
     })
   }
@@ -50,9 +49,10 @@ export class SessionPermissionsService {
     await this.prisma.$transaction(async (tx) => {
       await lockStudentSection(tx, studentId, sectionId)
       await this.owns(user.id, sectionId, tx)
+      // Also stops the president ending sessions they already started.
       await tx.sessionPermission.updateMany({
-        where: { sectionId, studentId, isActive: true },
-        data: { isActive: false },
+        where: { sectionId, studentId },
+        data: { isActive: false, revokedAt: new Date() },
       })
     })
     return true
@@ -62,11 +62,11 @@ export class SessionPermissionsService {
     if (user.role === 'student' && user.id !== studentId) throw new ForbiddenException()
     if (user.role === 'teacher') await this.owns(user.id, sectionId)
     if (user.role === 'super_admin') await this.inAdminScope(user, sectionId)
-    return Boolean(
-      await this.prisma.sessionPermission.findFirst({
-        where: { sectionId, studentId, isActive: true, expiresAt: { gt: new Date() } },
-      }),
-    )
+    const permission = await this.prisma.sessionPermission.findFirst({
+      where: { sectionId, studentId, isActive: true, expiresAt: { gt: new Date() } },
+    })
+    // Whether another session can still be created.
+    return Boolean(permission && permission.sessionsUsed < permission.sessionLimit)
   }
 
   async active(user: RequestUser, sectionId: string) {

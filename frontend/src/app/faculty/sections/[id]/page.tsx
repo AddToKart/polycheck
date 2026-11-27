@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { ArrowLeft, FileDown, FileUp, Loader2, Search, Key, RefreshCw, Ban, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle, CalendarDays } from 'lucide-react'
 import { api, requestUserLogout } from '@/lib/api-client'
 import type { User, Section, Session, Student, SectionRole, SessionPermission } from '@polycheck/shared'
-import { SESSION_PERMISSION_MAX_HOURS, SESSION_PERMISSION_PRESET_HOURS } from '@polycheck/shared'
+import { SESSION_PERMISSION_MAX_HOURS, SESSION_PERMISSION_MAX_SESSIONS, SESSION_PERMISSION_PRESET_HOURS } from '@polycheck/shared'
 import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Sidebar } from '@/components/layout/sidebar'
 import { BulkImportDialog } from '@/components/import/BulkImportDialog'
@@ -107,6 +107,7 @@ export default function SectionDetailPage() {
   const [presidentSelectOpen, setPresidentSelectOpen] = useState(false)
   const [permissionLength, setPermissionLength] = useState<'8' | '24' | 'custom'>('24')
   const [customHours, setCustomHours] = useState('')
+  const [sessionCount, setSessionCount] = useState('1')
   const [permissionError, setPermissionError] = useState('')
   const [qacSelectOpen, setQacSelectOpen] = useState(false)
   const [allStudents, setAllStudents] = useState<Student[]>([])
@@ -280,11 +281,16 @@ export default function SectionDetailPage() {
       setPermissionError(`Enter a whole number of hours from 1 to ${SESSION_PERMISSION_MAX_HOURS}.`)
       return
     }
+    const sessions = Number(sessionCount)
+    if (!Number.isInteger(sessions) || sessions < 1 || sessions > SESSION_PERMISSION_MAX_SESSIONS) {
+      setPermissionError(`Enter a number of sessions from 1 to ${SESSION_PERMISSION_MAX_SESSIONS}.`)
+      return
+    }
     setPermissionError('')
     await run(
       'president:grant',
       async () => {
-        await api.grantSessionPermission(id, studentId, hours)
+        await api.grantSessionPermission(id, studentId, hours, sessions)
         applyPermissions(await api.getActiveSessionPermissions(id))
       },
       { errorTitle: 'Could not grant the permission' },
@@ -579,6 +585,9 @@ export default function SectionDetailPage() {
                   if (pres) {
                     const perm = sessionPermissions.find((p) => p.studentId === pres.studentId)
                     const isExpired = perm ? expiredPermissionIds.has(perm.studentId) : true
+                    const isLive = Boolean(perm) && !isExpired
+                    // A new permission can be given when none is running or all its sessions are used.
+                    const canGrant = !isLive || (perm ? perm.sessionsUsed >= perm.sessionLimit : true)
                     return (
                       <div className="mb-2 flex flex-wrap items-center justify-between gap-3 bg-zinc-50 dark:bg-zinc-900 p-3 border border-zinc-200 dark:border-zinc-800">
                         <div className="flex min-w-0 items-center gap-3">
@@ -592,7 +601,8 @@ export default function SectionDetailPage() {
                             <p className="text-[10px] text-maroon dark:text-golden font-medium">
                               {perm && !isExpired ? (
                                 <span className="flex items-center gap-1">
-                                  <Clock className="w-3 h-3" /> Can create 1 session until {new Date(perm.expiresAt).toLocaleString()}
+                                  <Clock className="w-3 h-3 shrink-0" /> {perm.sessionsUsed} of {perm.sessionLimit} session
+                                  {perm.sessionLimit === 1 ? '' : 's'} used · until {new Date(perm.expiresAt).toLocaleString()}
                                 </span>
                               ) : (
                                 <span className="text-zinc-400">No active permission</span>
@@ -601,12 +611,26 @@ export default function SectionDetailPage() {
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {perm && !isExpired ? (
+                          {isLive ? (
                             <Button variant="outline" size="sm" className="min-h-11 text-red-500 border-red-500 text-xs md:min-h-0" disabled={isPending('president:revoke')} onClick={() => handleRevokePermission(pres.studentId)}>
                               <XCircle className="w-3 h-3 mr-1" /> Revoke
                             </Button>
-                          ) : (
+                          ) : null}
+                          {canGrant ? (
                             <>
+                              <label className="flex items-center gap-1 text-xs text-zinc-500">
+                                Sessions
+                                <input
+                                  type="number"
+                                  inputMode="numeric"
+                                  min={1}
+                                  max={SESSION_PERMISSION_MAX_SESSIONS}
+                                  aria-label="Number of sessions allowed"
+                                  value={sessionCount}
+                                  onChange={(event) => setSessionCount(event.target.value)}
+                                  className="h-11 w-16 border border-zinc-300 bg-white px-2 text-base sm:text-xs md:h-9 dark:border-zinc-700 dark:bg-zinc-900"
+                                />
+                              </label>
                               <select
                                 aria-label="How long the permission lasts"
                                 value={permissionLength}
@@ -637,7 +661,7 @@ export default function SectionDetailPage() {
                                 <CheckCircle className="w-3 h-3 mr-1" /> Give permission
                               </Button>
                             </>
-                          )}
+                          ) : null}
                           <Button variant="outline" size="sm" className="min-h-11 text-xs text-red-400 border-red-300 md:min-h-0" disabled={isPending('president:remove')} onClick={() => handleRemovePresident(pres.studentId)}>Remove</Button>
                         </div>
                       </div>
@@ -673,8 +697,8 @@ export default function SectionDetailPage() {
                 <p role="alert" className="-mt-3 mb-4 text-xs text-red-600 dark:text-red-400">{permissionError}</p>
               ) : null}
               <p className="-mt-3 mb-5 text-xs text-zinc-500 dark:text-zinc-400">
-                A permission lets the president create one session. It ends once used or when the time runs out. You still
-                start the QR code.
+                The president can create the number of sessions you allow, and start and end only those, until the time
+                runs out. Revoking also stops them ending a session they started.
               </p>
 
               {/* QAC */}

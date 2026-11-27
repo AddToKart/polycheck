@@ -151,6 +151,37 @@ describe('ScanValidatorService', () => {
       expect(mockedVerify).not.toHaveBeenCalled()
     })
 
+    describe('which key a session is checked against', () => {
+      const keyUsed = async (columns: Record<string, unknown>) => {
+        const row = { ...cached, ...columns }
+        prisma.session.findUnique.mockResolvedValue(row)
+        await service.validateScan(studentUser, makeEvidence(), false, new Date())
+        return mockedVerify.mock.calls[0]?.[1]
+      }
+
+      it("uses the professor's key for an ordinary session", async () => {
+        expect(await keyUsed({ hostStudentId: null, hostPublicKey: null, hostStartedAt: null })).toBe('pk-test')
+      })
+
+      it("uses the professor's key when a president created it but did not start it", async () => {
+        expect(await keyUsed({ hostStudentId: 'pres-1', hostPublicKey: 'session-key', hostStartedAt: null })).toBe(
+          'pk-test',
+        )
+      })
+
+      it("uses only the session's own key once the president started it", async () => {
+        expect(
+          await keyUsed({ hostStudentId: 'pres-1', hostPublicKey: 'session-key', hostStartedAt: new Date() }),
+        ).toBe('session-key')
+        expect(prisma.user.findUnique).not.toHaveBeenCalled()
+      })
+
+      it('never takes the president key from the cache', async () => {
+        redis.getJson.mockResolvedValue({ ...cached, hostPublicKey: 'forged', hostStartedAt: new Date() })
+        expect(await keyUsed({ hostPublicKey: null, hostStartedAt: null })).toBe('pk-test')
+      })
+    })
+
     it('returns disputed for mocked location', async () => {
       const result = await service.validateScan(studentUser, makeEvidence({ mocked: true }), false, new Date())
       expect(result.success).toBe(false)

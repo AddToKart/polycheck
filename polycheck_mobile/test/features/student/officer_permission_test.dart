@@ -17,7 +17,12 @@ class FakeOfficerSectionsApi extends SectionsApi {
     required this.roles,
     this.permissionGranted = false,
     this.failPermissionCheck = false,
+    this.sessionLimit = 1,
+    this.sessionsUsed = 0,
   }) : super(Dio());
+
+  final int sessionLimit;
+  final int sessionsUsed;
 
   final List<SectionRole> roles;
   bool permissionGranted;
@@ -55,6 +60,8 @@ class FakeOfficerSectionsApi extends SectionsApi {
         grantedAt: now.subtract(const Duration(hours: 1)).toIso8601String(),
         expiresAt: now.add(const Duration(hours: 2)).toIso8601String(),
         isActive: true,
+        sessionLimit: sessionLimit,
+        sessionsUsed: sessionsUsed,
       ),
     ];
   }
@@ -73,6 +80,14 @@ class FakeOfficerSubjectsApi extends SubjectsApi {
 
   @override
   Future<Subject> getSubject(String id) async => testSubject;
+}
+
+/// A president always sees the button; it is greyed out when unusable.
+void expectCreateGreyedOut(WidgetTester tester) {
+  final button = tester.widget<CampusButton>(
+    find.byKey(const ValueKey('officer-create-session')),
+  );
+  expect(button.onPressed, isNull);
 }
 
 SectionRole presidentRole() => const SectionRole(
@@ -131,10 +146,7 @@ void main() {
         find.text('No active permission. Ask your instructor to grant access.'),
         findsOneWidget,
       );
-      expect(
-        find.byKey(const ValueKey('officer-create-session')),
-        findsNothing,
-      );
+      expectCreateGreyedOut(tester);
 
       // 2. Away: the screen unmounts and the autoDispose provider is dropped.
       await tester.pumpWidget(app(container, const SizedBox.shrink()));
@@ -188,12 +200,32 @@ void main() {
         find.text('No active permission. Ask your instructor to grant access.'),
         findsNothing,
       );
-      expect(
-        find.byKey(const ValueKey('officer-create-session')),
-        findsNothing,
-      );
+      expectCreateGreyedOut(tester);
     },
   );
+
+  testWidgets('the button greys out once every allowed session is used', (
+    tester,
+  ) async {
+    final sectionsApi = FakeOfficerSectionsApi(
+      roles: <SectionRole>[presidentRole()],
+      permissionGranted: true,
+      sessionLimit: 2,
+      sessionsUsed: 2,
+    );
+    final container = ProviderContainer(
+      overrides: officerOverrides(sectionsApi),
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      app(container, const StudentSectionDetailScreen(sectionId: 'sec-1')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('used all 2 of your sessions'), findsOneWidget);
+    expectCreateGreyedOut(tester);
+  });
 
   testWidgets('authorized officers see the server expiry chip', (tester) async {
     final sectionsApi = FakeOfficerSectionsApi(

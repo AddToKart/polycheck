@@ -127,7 +127,7 @@ export default function StudentCreateSessionPage() {
         return
       }
 
-      await api.createSession({
+      const created = await api.createSession({
         sectionId: section.id,
         subjectName: subject.name,
         date,
@@ -137,8 +137,8 @@ export default function StudentCreateSessionPage() {
         geofence: { latitude, longitude, radiusMeters: radius },
         teacherId: section.teacherId,
       })
-      alert('Session created. Your permission is now used up. Your professor starts the QR code.')
-      router.push(`/student/subjects/${id}`)
+      // Straight to the session, where the president starts it.
+      router.push(`/student/subjects/${id}/sessions/${created.id}`)
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : 'Unable to create session. Please check your inputs.')
     } finally {

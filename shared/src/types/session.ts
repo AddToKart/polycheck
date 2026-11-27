@@ -39,6 +39,14 @@ export interface Session {
   autoEndAt?: string
   teacherId: string
   teacherPublicKey?: string
+  /** The section president who created this session and may run it. */
+  hostStudentId?: string
+  /**
+   * The key that signs QR codes if the president starts this session. Sent
+   * ahead of time so offline-prepared phones can check those codes.
+   */
+  hostPublicKey?: string
+  hostStartedAt?: string
   createdAt: string
   isRescheduled?: boolean
   rescheduledFromDate?: string

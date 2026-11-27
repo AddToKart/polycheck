@@ -12,6 +12,7 @@ import { ErrorDisplay } from '@/lib/hooks'
 import { SESSION_STATUS_LABELS, deriveSessionStatus } from '@/lib/session-status'
 import type { Student, Session, Section, ProofOfClass } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
+import { HostSessionPanel } from '@/components/president/HostSessionPanel'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -144,6 +145,10 @@ export default function StudentSessionDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {user && session.hostStudentId === user.id ? (
+            <HostSessionPanel sessionId={session.id} onChanged={async () => setSession(await api.getSession(sessionId) ?? null)} />
+          ) : null}
 
           {/* Proof of Class */}
           <Card className="rounded-none border-zinc-300 dark:border-zinc-800 shadow-none mb-6">

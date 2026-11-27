@@ -297,7 +297,7 @@ as String,
 /// @nodoc
 mixin _$SessionPermission {
 
- String get id; String get sectionId; String get studentId; String get grantedBy; String get grantedAt; String get expiresAt; bool get isActive;
+ String get id; String get sectionId; String get studentId; String get grantedBy; String get grantedAt; String get expiresAt; bool get isActive; int get sessionLimit; int get sessionsUsed;
 /// Create a copy of SessionPermission
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -310,16 +310,16 @@ $SessionPermissionCopyWith<SessionPermission> get copyWith => _$SessionPermissio
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is SessionPermission&&(identical(other.id, id) || other.id == id)&&(identical(other.sectionId, sectionId) || other.sectionId == sectionId)&&(identical(other.studentId, studentId) || other.studentId == studentId)&&(identical(other.grantedBy, grantedBy) || other.grantedBy == grantedBy)&&(identical(other.grantedAt, grantedAt) || other.grantedAt == grantedAt)&&(identical(other.expiresAt, expiresAt) || other.expiresAt == expiresAt)&&(identical(other.isActive, isActive) || other.isActive == isActive));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SessionPermission&&(identical(other.id, id) || other.id == id)&&(identical(other.sectionId, sectionId) || other.sectionId == sectionId)&&(identical(other.studentId, studentId) || other.studentId == studentId)&&(identical(other.grantedBy, grantedBy) || other.grantedBy == grantedBy)&&(identical(other.grantedAt, grantedAt) || other.grantedAt == grantedAt)&&(identical(other.expiresAt, expiresAt) || other.expiresAt == expiresAt)&&(identical(other.isActive, isActive) || other.isActive == isActive)&&(identical(other.sessionLimit, sessionLimit) || other.sessionLimit == sessionLimit)&&(identical(other.sessionsUsed, sessionsUsed) || other.sessionsUsed == sessionsUsed));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,sectionId,studentId,grantedBy,grantedAt,expiresAt,isActive);
+int get hashCode => Object.hash(runtimeType,id,sectionId,studentId,grantedBy,grantedAt,expiresAt,isActive,sessionLimit,sessionsUsed);
 
 @override
 String toString() {
-  return 'SessionPermission(id: $id, sectionId: $sectionId, studentId: $studentId, grantedBy: $grantedBy, grantedAt: $grantedAt, expiresAt: $expiresAt, isActive: $isActive)';
+  return 'SessionPermission(id: $id, sectionId: $sectionId, studentId: $studentId, grantedBy: $grantedBy, grantedAt: $grantedAt, expiresAt: $expiresAt, isActive: $isActive, sessionLimit: $sessionLimit, sessionsUsed: $sessionsUsed)';
 }
 
 
@@ -330,7 +330,7 @@ abstract mixin class $SessionPermissionCopyWith<$Res>  {
   factory $SessionPermissionCopyWith(SessionPermission value, $Res Function(SessionPermission) _then) = _$SessionPermissionCopyWithImpl;
 @useResult
 $Res call({
- String id, String sectionId, String studentId, String grantedBy, String grantedAt, String expiresAt, bool isActive
+ String id, String sectionId, String studentId, String grantedBy, String grantedAt, String expiresAt, bool isActive, int sessionLimit, int sessionsUsed
 });
 
 
@@ -347,7 +347,7 @@ class _$SessionPermissionCopyWithImpl<$Res>
 
 /// Create a copy of SessionPermission
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? sectionId = null,Object? studentId = null,Object? grantedBy = null,Object? grantedAt = null,Object? expiresAt = null,Object? isActive = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? sectionId = null,Object? studentId = null,Object? grantedBy = null,Object? grantedAt = null,Object? expiresAt = null,Object? isActive = null,Object? sessionLimit = null,Object? sessionsUsed = null,}) {
   return _then(SessionPermission(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,sectionId: null == sectionId ? _self.sectionId : sectionId // ignore: cast_nullable_to_non_nullable
@@ -356,7 +356,9 @@ as String,grantedBy: null == grantedBy ? _self.grantedBy : grantedBy // ignore: 
 as String,grantedAt: null == grantedAt ? _self.grantedAt : grantedAt // ignore: cast_nullable_to_non_nullable
 as String,expiresAt: null == expiresAt ? _self.expiresAt : expiresAt // ignore: cast_nullable_to_non_nullable
 as String,isActive: null == isActive ? _self.isActive : isActive // ignore: cast_nullable_to_non_nullable
-as bool,
+as bool,sessionLimit: null == sessionLimit ? _self.sessionLimit : sessionLimit // ignore: cast_nullable_to_non_nullable
+as int,sessionsUsed: null == sessionsUsed ? _self.sessionsUsed : sessionsUsed // ignore: cast_nullable_to_non_nullable
+as int,
   ));
 }
 
@@ -441,10 +443,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String sectionId,  String studentId,  String grantedBy,  String grantedAt,  String expiresAt,  bool isActive)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String sectionId,  String studentId,  String grantedBy,  String grantedAt,  String expiresAt,  bool isActive,  int sessionLimit,  int sessionsUsed)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _SessionPermission() when $default != null:
-return $default(_that.id,_that.sectionId,_that.studentId,_that.grantedBy,_that.grantedAt,_that.expiresAt,_that.isActive);case _:
+return $default(_that.id,_that.sectionId,_that.studentId,_that.grantedBy,_that.grantedAt,_that.expiresAt,_that.isActive,_that.sessionLimit,_that.sessionsUsed);case _:
   return orElse();
 
 }
@@ -462,10 +464,10 @@ return $default(_that.id,_that.sectionId,_that.studentId,_that.grantedBy,_that.g
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String sectionId,  String studentId,  String grantedBy,  String grantedAt,  String expiresAt,  bool isActive)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String sectionId,  String studentId,  String grantedBy,  String grantedAt,  String expiresAt,  bool isActive,  int sessionLimit,  int sessionsUsed)  $default,) {final _that = this;
 switch (_that) {
 case _SessionPermission():
-return $default(_that.id,_that.sectionId,_that.studentId,_that.grantedBy,_that.grantedAt,_that.expiresAt,_that.isActive);case _:
+return $default(_that.id,_that.sectionId,_that.studentId,_that.grantedBy,_that.grantedAt,_that.expiresAt,_that.isActive,_that.sessionLimit,_that.sessionsUsed);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -482,10 +484,10 @@ return $default(_that.id,_that.sectionId,_that.studentId,_that.grantedBy,_that.g
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String sectionId,  String studentId,  String grantedBy,  String grantedAt,  String expiresAt,  bool isActive)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String sectionId,  String studentId,  String grantedBy,  String grantedAt,  String expiresAt,  bool isActive,  int sessionLimit,  int sessionsUsed)?  $default,) {final _that = this;
 switch (_that) {
 case _SessionPermission() when $default != null:
-return $default(_that.id,_that.sectionId,_that.studentId,_that.grantedBy,_that.grantedAt,_that.expiresAt,_that.isActive);case _:
+return $default(_that.id,_that.sectionId,_that.studentId,_that.grantedBy,_that.grantedAt,_that.expiresAt,_that.isActive,_that.sessionLimit,_that.sessionsUsed);case _:
   return null;
 
 }
@@ -497,7 +499,7 @@ return $default(_that.id,_that.sectionId,_that.studentId,_that.grantedBy,_that.g
 
 @JsonSerializable(fieldRename: FieldRename.none, explicitToJson: true)
 class _SessionPermission implements SessionPermission {
-  const _SessionPermission({required this.id, required this.sectionId, required this.studentId, this.grantedBy = '', this.grantedAt = '', required this.expiresAt, this.isActive = false});
+  const _SessionPermission({required this.id, required this.sectionId, required this.studentId, this.grantedBy = '', this.grantedAt = '', required this.expiresAt, this.isActive = false, this.sessionLimit = 1, this.sessionsUsed = 0});
   factory _SessionPermission.fromJson(Map<String, dynamic> json) => _$SessionPermissionFromJson(json);
 
 @override final  String id;
@@ -507,6 +509,8 @@ class _SessionPermission implements SessionPermission {
 @override@JsonKey() final  String grantedAt;
 @override final  String expiresAt;
 @override@JsonKey() final  bool isActive;
+@override@JsonKey() final  int sessionLimit;
+@override@JsonKey() final  int sessionsUsed;
 
 /// Create a copy of SessionPermission
 /// with the given fields replaced by the non-null parameter values.
@@ -521,16 +525,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _SessionPermission&&(identical(other.id, id) || other.id == id)&&(identical(other.sectionId, sectionId) || other.sectionId == sectionId)&&(identical(other.studentId, studentId) || other.studentId == studentId)&&(identical(other.grantedBy, grantedBy) || other.grantedBy == grantedBy)&&(identical(other.grantedAt, grantedAt) || other.grantedAt == grantedAt)&&(identical(other.expiresAt, expiresAt) || other.expiresAt == expiresAt)&&(identical(other.isActive, isActive) || other.isActive == isActive));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _SessionPermission&&(identical(other.id, id) || other.id == id)&&(identical(other.sectionId, sectionId) || other.sectionId == sectionId)&&(identical(other.studentId, studentId) || other.studentId == studentId)&&(identical(other.grantedBy, grantedBy) || other.grantedBy == grantedBy)&&(identical(other.grantedAt, grantedAt) || other.grantedAt == grantedAt)&&(identical(other.expiresAt, expiresAt) || other.expiresAt == expiresAt)&&(identical(other.isActive, isActive) || other.isActive == isActive)&&(identical(other.sessionLimit, sessionLimit) || other.sessionLimit == sessionLimit)&&(identical(other.sessionsUsed, sessionsUsed) || other.sessionsUsed == sessionsUsed));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,sectionId,studentId,grantedBy,grantedAt,expiresAt,isActive);
+int get hashCode => Object.hash(runtimeType,id,sectionId,studentId,grantedBy,grantedAt,expiresAt,isActive,sessionLimit,sessionsUsed);
 
 @override
 String toString() {
-  return 'SessionPermission(id: $id, sectionId: $sectionId, studentId: $studentId, grantedBy: $grantedBy, grantedAt: $grantedAt, expiresAt: $expiresAt, isActive: $isActive)';
+  return 'SessionPermission(id: $id, sectionId: $sectionId, studentId: $studentId, grantedBy: $grantedBy, grantedAt: $grantedAt, expiresAt: $expiresAt, isActive: $isActive, sessionLimit: $sessionLimit, sessionsUsed: $sessionsUsed)';
 }
 
 
@@ -541,7 +545,7 @@ abstract mixin class _$SessionPermissionCopyWith<$Res> implements $SessionPermis
   factory _$SessionPermissionCopyWith(_SessionPermission value, $Res Function(_SessionPermission) _then) = __$SessionPermissionCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String sectionId, String studentId, String grantedBy, String grantedAt, String expiresAt, bool isActive
+ String id, String sectionId, String studentId, String grantedBy, String grantedAt, String expiresAt, bool isActive, int sessionLimit, int sessionsUsed
 });
 
 
@@ -558,7 +562,7 @@ class __$SessionPermissionCopyWithImpl<$Res>
 
 /// Create a copy of SessionPermission
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? sectionId = null,Object? studentId = null,Object? grantedBy = null,Object? grantedAt = null,Object? expiresAt = null,Object? isActive = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? sectionId = null,Object? studentId = null,Object? grantedBy = null,Object? grantedAt = null,Object? expiresAt = null,Object? isActive = null,Object? sessionLimit = null,Object? sessionsUsed = null,}) {
   return _then(_SessionPermission(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,sectionId: null == sectionId ? _self.sectionId : sectionId // ignore: cast_nullable_to_non_nullable
@@ -567,7 +571,9 @@ as String,grantedBy: null == grantedBy ? _self.grantedBy : grantedBy // ignore: 
 as String,grantedAt: null == grantedAt ? _self.grantedAt : grantedAt // ignore: cast_nullable_to_non_nullable
 as String,expiresAt: null == expiresAt ? _self.expiresAt : expiresAt // ignore: cast_nullable_to_non_nullable
 as String,isActive: null == isActive ? _self.isActive : isActive // ignore: cast_nullable_to_non_nullable
-as bool,
+as bool,sessionLimit: null == sessionLimit ? _self.sessionLimit : sessionLimit // ignore: cast_nullable_to_non_nullable
+as int,sessionsUsed: null == sessionsUsed ? _self.sessionsUsed : sessionsUsed // ignore: cast_nullable_to_non_nullable
+as int,
   ));
 }
 

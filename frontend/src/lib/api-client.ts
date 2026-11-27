@@ -25,6 +25,9 @@ import {
   type SectionRole,
   type SectionRoleType,
   type SessionPermission,
+  type HostSessionState,
+  type HostStartInput,
+  type HostStartResult,
   type ProofOfClass,
   type QacSection,
   type CalendarEvent,
@@ -471,6 +474,23 @@ export function isNetworkFailure(error: unknown): boolean {
   // DNS, CORS, offline) is a connectivity failure that may fall back to cache.
   if (error instanceof ApiHttpError) return error.status >= 500;
   return true;
+}
+
+const hasSigningKey = (session: Session) =>
+  Boolean(session.teacherPublicKey || session.hostPublicKey);
+
+/**
+ * Offline signature check. A session a president created can be signed by the
+ * professor's device or, if the president starts it, by that session's own key,
+ * and the phone may have been prepared before either happened. This only
+ * decides what to queue; the server accepts one key when the scan is synced.
+ */
+function verifySessionToken(token: string, session: Session) {
+  for (const key of [session.teacherPublicKey, session.hostPublicKey]) {
+    const payload = key ? verifyQRToken(token, key) : null;
+    if (payload) return payload;
+  }
+  return null;
 }
 
 async function trustedNow(): Promise<number> {
@@ -1478,17 +1498,13 @@ const apiBase = {
       // off, so a missing session/key/offset fails closed with the not-synced
       // message instead of reporting a misleading signature error.
       const clockOffset = await getServerClockOffset();
-      if (
-        !cachedSession ||
-        !cachedSession.teacherPublicKey ||
-        clockOffset === null
-      ) {
+      if (!cachedSession || !hasSigningKey(cachedSession) || clockOffset === null) {
         return {
           error:
             "Session security time and class data are not available offline. Sync before class.",
         };
       }
-      const tokenPayload = verifyQRToken(qrToken, cachedSession.teacherPublicKey);
+      const tokenPayload = verifySessionToken(qrToken, cachedSession);
       if (!tokenPayload) return { error: "QR token signature is invalid" };
       const online = tokenPayload.mode === "online";
       const checkpoint = tokenPayload.checkpoint;
@@ -1621,12 +1637,7 @@ const apiBase = {
       if (!isNetworkFailure(error)) throw error;
       const session = await getCachedSession(sessionId);
       const clockOffset = await getServerClockOffset();
-      if (
-        !session ||
-        !qrToken ||
-        !session.teacherPublicKey ||
-        clockOffset === null
-      ) {
+      if (!session || !qrToken || !hasSigningKey(session) || clockOffset === null) {
         return {
           success: false,
           status: "absent",
@@ -1635,7 +1646,7 @@ const apiBase = {
             "Session security time and class data are not available offline. Sync before class.",
         };
       }
-      const tokenPayload = verifyQRToken(qrToken, session.teacherPublicKey);
+      const tokenPayload = verifySessionToken(qrToken, session);
       if (
         !tokenPayload ||
         tokenPayload.sessionId !== session.id ||
@@ -2120,8 +2131,26 @@ const apiBase = {
     sectionId: string,
     studentId: string,
     durationHours?: number,
+    sessionLimit?: number,
   ): Promise<SessionPermission> {
-    return post("/session-permissions", { sectionId, studentId, durationHours });
+    return post("/session-permissions", {
+      sectionId,
+      studentId,
+      durationHours,
+      sessionLimit,
+    });
+  },
+  getHostSession(sessionId: string): Promise<HostSessionState> {
+    return get(`/sessions/${sessionId}/host`);
+  },
+  startHostSession(
+    sessionId: string,
+    input: HostStartInput,
+  ): Promise<HostStartResult> {
+    return post(`/sessions/${sessionId}/host/start`, input);
+  },
+  endHostSession(sessionId: string): Promise<HostSessionState> {
+    return post(`/sessions/${sessionId}/host/end`, {});
   },
   revokeSessionPermission(
     sectionId: string,

@@ -36,6 +36,8 @@ _SessionPermission _$SessionPermissionFromJson(Map<String, dynamic> json) =>
       grantedAt: json['grantedAt'] as String? ?? '',
       expiresAt: json['expiresAt'] as String,
       isActive: json['isActive'] as bool? ?? false,
+      sessionLimit: (json['sessionLimit'] as num?)?.toInt() ?? 1,
+      sessionsUsed: (json['sessionsUsed'] as num?)?.toInt() ?? 0,
     );
 
 Map<String, dynamic> _$SessionPermissionToJson(_SessionPermission instance) =>
@@ -47,6 +49,8 @@ Map<String, dynamic> _$SessionPermissionToJson(_SessionPermission instance) =>
       'grantedAt': instance.grantedAt,
       'expiresAt': instance.expiresAt,
       'isActive': instance.isActive,
+      'sessionLimit': instance.sessionLimit,
+      'sessionsUsed': instance.sessionsUsed,
     };
 
 _ProofOfClass _$ProofOfClassFromJson(Map<String, dynamic> json) =>

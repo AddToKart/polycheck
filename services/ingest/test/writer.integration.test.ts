@@ -308,6 +308,33 @@ describeDb('createPgWriter (Postgres integration)', () => {
     )
   })
 
+  it("checks a president-started session against its own key, not the professor's", async () => {
+    const setHost = (publicKey: string | null, startedAt: Date | null) =>
+      pool.query(`UPDATE "Session" SET "hostPublicKey" = $2, "hostStartedAt" = $3 WHERE id = $1`, [
+        ids.session,
+        publicKey,
+        startedAt,
+      ])
+    try {
+      // Created by a president but not started by them: still the professor's key.
+      await setHost(foreignKeys.publicKey, null)
+      await writer.writeBatch(ids.session, [scan(0), scan(1, { qrToken: token(foreignKeys.secretKey) })])
+      // Started by the president: only the session's key is accepted.
+      await setHost(foreignKeys.publicKey, new Date())
+      await writer.writeBatch(ids.session, [scan(2, { qrToken: token(foreignKeys.secretKey) }), scan(3)])
+
+      const byStudent = new Map((await rowsForSession()).map((row) => [row.studentId, row.disputeReason]))
+      expect(ids.students.slice(0, 4).map((id) => byStudent.get(id))).toEqual([
+        null,
+        'invalid_signature',
+        null,
+        'invalid_signature',
+      ])
+    } finally {
+      await setHost(null, null)
+    }
+  })
+
   it('lets an earlier decision win when the roster row was already resolved', async () => {
     await seedRosterRow(0, 'absent')
     const result = await writer.writeBatch(ids.session, [scan(0)])

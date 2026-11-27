@@ -330,6 +330,12 @@ model Session {
   endQrGeneratedAt       DateTime?
   endPinHash             String?
   autoEndAt              DateTime?
+  // A section president may run the sessions they create. `hostPublicKey` is
+  // the server-held signing key of that one session; it verifies scans only
+  // once `hostStartedAt` is set. Every other session uses the professor's key.
+  hostStudentId        String?
+  hostPublicKey        String?
+  hostStartedAt        DateTime?
   geofenceLatitude     Float?
   geofenceLongitude    Float?
   geofenceRadiusMeters Int?
@@ -493,6 +499,10 @@ model SessionPermission {
   grantedAt DateTime @default(now())
   expiresAt DateTime
   isActive  Boolean  @default(true)
+  // How many sessions this grant lets the president create.
+  sessionLimit Int       @default(1)
+  sessionsUsed Int       @default(0)
+  revokedAt    DateTime?
 
   @@unique([sectionId, studentId])
   @@index([sectionId])

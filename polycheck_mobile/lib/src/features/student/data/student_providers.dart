@@ -165,10 +165,18 @@ class StudentSectionDetailView {
     required this.detail,
     required this.permission,
     this.permissionExpiresAt,
+    this.sessionsLeft = 0,
+    this.sessionsAllUsed,
   });
 
   final StudentSectionDetail detail;
   final OfficerPermissionCheck permission;
+
+  /// Sessions the president may still create.
+  final int sessionsLeft;
+
+  /// The allowance, when a running permission has no sessions left.
+  final int? sessionsAllUsed;
 
   /// Server-side expiry of the active session-permission row (when
   /// [permission] is authorized) — mirrors the instructor web console's
@@ -269,6 +277,8 @@ final studentSectionDetailProvider = FutureProvider.autoDispose
       // surface can never disagree with what the instructor sees.
       var permission = OfficerPermissionCheck.denied;
       DateTime? permissionExpiresAt;
+      var sessionsLeft = 0;
+      int? sessionsAllUsed;
       if (roles.any((role) => role.role == SectionRoleType.president)) {
         try {
           final rows = await sectionsApi.getActiveSessionPermissions(sectionId);
@@ -279,9 +289,13 @@ final studentSectionDetailProvider = FutureProvider.autoDispose
           for (final row in mine) {
             final expires = DateTime.tryParse(row.expiresAt)?.toUtc();
             if (expires == null) continue;
-            if (expires.isAfter(trustedNow) &&
-                (latest == null || expires.isAfter(latest))) {
+            if (!expires.isAfter(trustedNow)) continue;
+            final left = row.sessionLimit - row.sessionsUsed;
+            if (left <= 0) {
+              sessionsAllUsed = row.sessionLimit;
+            } else if (latest == null || expires.isAfter(latest)) {
               latest = expires;
+              sessionsLeft = left;
             }
           }
           if (latest != null) {
@@ -305,6 +319,8 @@ final studentSectionDetailProvider = FutureProvider.autoDispose
         ),
         permission: permission,
         permissionExpiresAt: permissionExpiresAt,
+        sessionsLeft: sessionsLeft,
+        sessionsAllUsed: sessionsAllUsed,
       );
     });
 

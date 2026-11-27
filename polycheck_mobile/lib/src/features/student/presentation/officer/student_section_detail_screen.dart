@@ -99,6 +99,8 @@ class _StudentSectionDetailScreenState
             detail: view.detail,
             permission: view.permission,
             permissionExpiresAt: view.permissionExpiresAt,
+            sessionsLeft: view.sessionsLeft,
+            sessionsAllUsed: view.sessionsAllUsed,
             attendance: attendance
                 .where((record) => record.sectionId == view.detail.section.id)
                 .toList(growable: false),
@@ -115,7 +117,12 @@ class _SectionBody extends ConsumerWidget {
     required this.permission,
     required this.permissionExpiresAt,
     required this.attendance,
+    required this.sessionsLeft,
+    required this.sessionsAllUsed,
   });
+
+  final int sessionsLeft;
+  final int? sessionsAllUsed;
 
   final StudentSectionDetail detail;
   final OfficerPermissionCheck permission;
@@ -208,9 +215,13 @@ class _SectionBody extends ConsumerWidget {
                           Text(
                             switch (permission) {
                               OfficerPermissionCheck.authorized =>
-                                'Your instructor authorized you to create a session for this class.',
+                                'You can create $sessionsLeft more session'
+                                    '${sessionsLeft == 1 ? '' : 's'} for this class.',
                               OfficerPermissionCheck.denied =>
-                                'No active permission. Ask your instructor to grant access.',
+                                sessionsAllUsed == null
+                                    ? 'No active permission. Ask your instructor to grant access.'
+                                    : 'You have used all $sessionsAllUsed of your sessions. '
+                                          'Ask your instructor for another permission.',
                               OfficerPermissionCheck.errored =>
                                 "Couldn't verify permission — tap to retry.",
                             },
@@ -243,15 +254,18 @@ class _SectionBody extends ConsumerWidget {
                         ],
                       ),
                     ),
-                  const SizedBox(height: 12),
-                  CampusButton(
-                    key: const ValueKey('officer-create-session'),
-                    label: 'Create class session',
-                    icon: Icons.add,
-                    onPressed: () =>
-                        context.push(StudentPaths.createSession(section.id)),
-                  ),
                 ],
+                const SizedBox(height: 12),
+                // Greyed out once the allowed sessions or the time run out.
+                CampusButton(
+                  key: const ValueKey('officer-create-session'),
+                  label: 'Create class session',
+                  icon: Icons.add,
+                  onPressed: hasActivePermission
+                      ? () =>
+                            context.push(StudentPaths.createSession(section.id))
+                      : null,
+                ),
                 if (!hasActivePermission) ...<Widget>[
                   const SizedBox(height: 12),
                   CampusButton(

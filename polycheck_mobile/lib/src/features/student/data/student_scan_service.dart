@@ -471,11 +471,16 @@ class StudentScanService {
         // signature still fail closed exactly like the RN clients — only the
         // diagnosis splits (SW-6): no cached key means the device was never
         // prepared for this class, not that the token was forged.
-        final publicKey = session?.teacherPublicKey?.trim() ?? '';
-        if (!isVerifiableTeacherPublicKey(publicKey)) {
+        final publicKeys = session == null
+            ? const <String>[]
+            : sessionSigningKeys(session);
+        if (publicKeys.isEmpty) {
           return _rejected(offlineVerificationKeyMissingMessage);
         }
-        final verified = await verifyToken(token, publicKey);
+        var verified = false;
+        for (final publicKey in publicKeys) {
+          verified = verified || await verifyToken(token, publicKey);
+        }
         if (!verified) {
           return _rejected(qrTokenSignatureInvalidMessage);
         }

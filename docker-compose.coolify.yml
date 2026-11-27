@@ -168,6 +168,9 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      # The scan writer reads new Session columns, so migrate first.
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       PORT: 4001
@@ -216,6 +219,9 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      # The scan writer reads new Session columns, so migrate first.
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       INGEST_ROLE: drain

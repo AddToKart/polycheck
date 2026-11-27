@@ -265,9 +265,10 @@ test.describe('Student Officer Session Creation', () => {
       await page.getByLabel('Date').fill(iso)
       await page.getByLabel('Room').fill('E2E Officer Room')
 
-      page.once('dialog', (dialog) => dialog.accept())
       await page.getByRole('button', { name: 'Create Session', exact: true }).click()
-      await page.waitForURL((url) => url.pathname === '/student/subjects/sec-001', { timeout: 20_000 })
+      // Straight to the new session, where the president starts it.
+      await page.waitForURL((url) => url.pathname.startsWith('/student/subjects/sec-001/sessions/'), { timeout: 20_000 })
+      await expect(page.getByRole('button', { name: 'Start session' })).toBeVisible({ timeout: 20_000 })
 
       // The session is persisted with the expected date.
       const sessions = (await (await apiContext.get(`${API}/sessions?sectionId=sec-001`)).json()) as Array<{

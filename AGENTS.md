@@ -128,9 +128,9 @@ Primary interface is the mobile app, with a web dashboard for schedule and subje
 
 ### Section Roles (President / QAC)
 - Teachers assign student officers per section: President and QAC (Quality Assurance Coordinator)
-- A President with an active permission can create **one** session (and set its geofence); the professor still starts the QR code
+- A President with an active permission can create as many **in-person** sessions as the professor allows (default 1), and start and end only those; the professor can still run them too
 - QAC members (several per section) upload class photos while a class is ongoing
-- Session permissions last 8 hours, 24 hours or a custom 1-168 hours, can be revoked, and are used up by creating a session
+- Session permissions last 8 hours, 24 hours or a custom 1-168 hours and allow 1-20 sessions; they can be revoked
 
 ### Proof of Class
 - Only QAC members of the section (and the session's teacher) can upload classroom photos
@@ -712,6 +712,14 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - **Why it looked broken:** web showed a camera icon instead of the photo, the app teacher had no photo view, and the app student view only rendered `data:` URLs while the server returns an endpoint path. Web and app now show the real images (teacher can delete).
   - **Super admin sign-out (app):** header button plus a sign-out card on the admin dashboard.
   - Browser journey: `e2e/officers.spec.ts`. These changes are **not** in the published APK 1.1.6.
+
+- **President runs their own sessions (2026-11-27):** supersedes the "one session per grant / president cannot start the QR" notes above.
+  - **Quota:** `SessionPermission.sessionLimit`/`sessionsUsed` (professor chooses 1-20; a new grant restarts the count). `revokedAt` records a revoke apart from expiry: the time limit covers **creating and starting**; a session already started can still be ended after it, but not after a revoke, role removal or enrollment removal. The Create Session button is greyed out when none are left.
+  - **Signing:** the professor's flow is unchanged (own device key, offline activation included; `POST /sessions/:id/activate` and `/end` stay teacher-only). For a president start the **server** signs the same token format with a key derived from `BETTER_AUTH_SECRET` + session id (`sessions/president-signer.ts`); no private key is stored or sent anywhere. `Session.hostStudentId`/`hostPublicKey` are set at creation, `hostStartedAt` only by a president start. Verification uses the session key **only when `hostStartedAt` is set** (`attendance/session-signing-key.ts`, used by the scan validator and forensics, mirrored in the ingest writer); otherwise the professor's key exactly as before. Changing `BETTER_AUTH_SECRET` does not break stored public keys.
+  - **Routes:** `GET /sessions/:id/host`, `POST .../host/start`, `POST .../host/end` (student only; host + president + enrolled + not revoked on every call). The live list is names, status and check-in time only; no editing.
+  - **President attendance:** marked present at start only if their location passes the scan rules (inside the class area, accurate, fresh, not mocked or rooted), appended to the ledger in the activation transaction (lock order: session ledger, then student-section). Starting never requires location.
+  - **Offline:** sessions carry `hostPublicKey` ahead of time and both clients accept either key when queueing. **APK 1.1.6 does not know `hostPublicKey`:** its offline scan of a president's QR works only if the phone refreshed the session after the president started it; online scanning works.
+  - Needs migration `20261127120000_president_hosted_sessions` before the new server or ingest images serve traffic.
 
 ### Blocked
 - (none)

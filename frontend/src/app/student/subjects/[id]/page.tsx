@@ -8,7 +8,7 @@ import { ArrowLeft, BookOpen, CalendarDays, MapPin, User, GraduationCap, Clock, 
 import { api, requestUserLogout } from '@/lib/api-client'
 import { describeMutationError } from '@/lib/run-mutation'
 import { ErrorDisplay } from '@/lib/hooks'
-import type { Student, Section, Session, SectionRole } from '@polycheck/shared'
+import type { Student, Section, Session, SectionRole, SessionPermission } from '@polycheck/shared'
 import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,7 +23,7 @@ export default function StudentSubjectDetailPage() {
   const [section, setSection] = useState<Section | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const [roles, setRoles] = useState<SectionRole[]>([])
-  const [hasPermission, setHasPermission] = useState(false)
+  const [permission, setPermission] = useState<SessionPermission | null>(null)
   const [subject, setSubject] = useState<{ name: string; code: string } | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
@@ -43,8 +43,9 @@ export default function StudentSubjectDetailPage() {
         if (!active) return
         setRoles(studentRoles)
         if (studentRoles.find(r => r.sectionId === id && r.role === 'president')) {
-          const perm = await api.checkSessionPermission(id, student.id)
-          if (active) setHasPermission(perm)
+          // The server only returns this student's own running permission.
+          const permissions = await api.getActiveSessionPermissions(id)
+          if (active) setPermission(permissions[0] ?? null)
         }
       } catch (error) {
         if (active) {
@@ -106,6 +107,12 @@ export default function StudentSubjectDetailPage() {
   const studentRoles = roles.filter(r => r.sectionId === id)
   const isPresident = studentRoles.some(r => r.role === 'president')
   const isQac = studentRoles.some(r => r.role === 'qac')
+  const sessionsLeft = permission ? Math.max(0, permission.sessionLimit - permission.sessionsUsed) : 0
+  const permissionText = !permission
+    ? 'No active session permission. Ask your teacher to grant it.'
+    : sessionsLeft === 0
+      ? `You have used all ${permission.sessionLimit} of your sessions. Ask your professor for another permission.`
+      : `You can create ${sessionsLeft} more session${sessionsLeft === 1 ? '' : 's'} until ${new Date(permission.expiresAt).toLocaleString()}.`
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
@@ -144,23 +151,26 @@ export default function StudentSubjectDetailPage() {
           {isPresident && (
             <Card className="rounded-none border-zinc-300 dark:border-zinc-800 shadow-none mb-6">
               <CardContent className="py-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <Crown className="w-5 h-5 shrink-0 text-maroon dark:text-golden" />
                     <div className="min-w-0">
                       <p className="text-sm font-bold text-foreground">Section President</p>
-                      <p className="text-xs text-zinc-500">
-                        {hasPermission
-                          ? 'You can create one session for this section'
-                          : 'No active session permission. Ask your teacher to grant it.'}
+                      <p id="president-permission" className="text-xs text-zinc-500">
+                        {permissionText}
                       </p>
                     </div>
                   </div>
-                  {hasPermission && (
-                    <Button className="bg-maroon hover:bg-maroon-dark text-white" size="sm" onClick={() => router.push(`/student/subjects/${id}/create-session`)}>
-                      <Plus className="w-4 h-4 mr-1" /> Create Session
-                    </Button>
-                  )}
+                  {/* Greyed out once the allowed sessions or the time run out. */}
+                  <Button
+                    className="min-h-11 bg-maroon hover:bg-maroon-dark text-white disabled:bg-zinc-300 disabled:text-zinc-600 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-500 md:min-h-0"
+                    size="sm"
+                    disabled={sessionsLeft === 0}
+                    aria-describedby="president-permission"
+                    onClick={() => router.push(`/student/subjects/${id}/create-session`)}
+                  >
+                    <Plus className="w-4 h-4 mr-1" /> Create Session
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -239,6 +249,11 @@ export default function StudentSubjectDetailPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           {session.isActive && <span className="w-2 h-2 bg-green-500 rounded-full" />}
+                          {session.hostStudentId === user.id && (
+                            <span className="flex items-center gap-1 text-[10px] text-maroon dark:text-golden font-bold">
+                              <Crown className="w-3 h-3" /> You run this
+                            </span>
+                          )}
                           <span className="text-[10px] text-zinc-400">{SESSION_STATUS_LABELS[deriveSessionStatus(session)]}</span>
                           {isQac && (
                             <span className="flex items-center gap-1 text-[10px] text-maroon dark:text-golden font-medium">

@@ -162,6 +162,14 @@ abstract class Session with _$Session {
     String? autoEndAt,
     required String teacherId,
     String? teacherPublicKey,
+
+    /// The section president who created this session and may run it.
+    String? hostStudentId,
+
+    /// Signs the QR code if the president starts it; sent ahead of time so a
+    /// prepared phone can check that code offline.
+    String? hostPublicKey,
+    String? hostStartedAt,
     @Default('') String createdAt,
     @Default(false) bool isRescheduled,
     String? rescheduledFromDate,

@@ -82,6 +82,15 @@ class OfflineReadiness {
       'keys: $hasVerifiableKeys)';
 }
 
+/// The cached keys that may have signed this session's QR code. A session a
+/// president created can be signed by the professor's device or, once the
+/// president starts it, by the session's own key; the phone may have been
+/// prepared before either happened. The server accepts only one on sync.
+List<String> sessionSigningKeys(Session session) => <String>[
+  for (final key in <String?>[session.teacherPublicKey, session.hostPublicKey])
+    if (isVerifiableTeacherPublicKey(key?.trim())) key!.trim(),
+];
+
 /// True when the value is a teacher key the local Ed25519 verifier can use:
 /// non-empty and base64url-decoding to exactly 32 bytes.
 ///
@@ -99,7 +108,7 @@ bool isVerifiableTeacherPublicKey(String? value) {
 
 /// Convenience for a cached session's key.
 bool hasVerifiableTeacherKey(Session session) =>
-    isVerifiableTeacherPublicKey(session.teacherPublicKey);
+    sessionSigningKeys(session).isNotEmpty;
 
 /// Cached sessions inside the pre-session window (today or tomorrow), using
 /// the same campus-date convention as the cache rows.
