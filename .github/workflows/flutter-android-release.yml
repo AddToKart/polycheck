@@ -101,7 +101,7 @@ jobs:
         run: 'echo "tag=$(sed -n ''s/^version: \([0-9][0-9.]*\).*/apk-v\1/p'' polycheck_mobile/pubspec.yaml)" >> "$GITHUB_OUTPUT"'
 
       - name: "Create/update the latest GitHub Release"
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: "PolyCheck Android ${{ steps.tag.outputs.tag }}"
