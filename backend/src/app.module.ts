@@ -46,6 +46,7 @@ import { AccountActivationModule } from './account-activation/account-activation
 import { MailModule } from './mail/mail.module'
 import { PasswordResetModule } from './password-reset/password-reset.module'
 import { ImportProfilesModule } from './import-profiles/import-profiles.module'
+import { RegistrationsModule } from './registrations/registrations.module'
 
 @Module({
   imports: [
@@ -95,6 +96,7 @@ import { ImportProfilesModule } from './import-profiles/import-profiles.module'
     PasswordResetModule,
     MailModule,
     ImportProfilesModule,
+    RegistrationsModule,
     MaintenanceModule,
     MaintenanceModeModule,
   ],

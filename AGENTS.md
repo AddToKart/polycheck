@@ -721,6 +721,14 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - **Offline:** sessions carry `hostPublicKey` ahead of time and both clients accept either key when queueing. **APK 1.1.6 does not know `hostPublicKey`:** its offline scan of a president's QR works only if the phone refreshed the session after the president started it; online scanning works.
   - Needs migration `20261127120000_president_hosted_sessions` before the new server or ingest images serve traffic.
 
+- **Temporary sign-up for data gathering (2026-11-27):** remove or keep closed once data gathering ends.
+  - Form: `polycheck.live/register` (landing repo, static export) → `GET /registrations/public/status`, `POST /registrations/public`. Off by default (`registration_enabled` setting); the landing page shows its Sign up buttons only while open.
+  - **No account without approval.** Institution super admins review at `/faculty/users/registrations` (User Management → Sign-up requests): open/close switch, students approvable in bulk, **teachers one at a time** (server-enforced; a teacher account can list students). Rejected requests are deleted; approval creates the account with the chosen password and clears the stored hash. Nobody is enrolled automatically.
+  - **Emails and student numbers are not verified.** Check each against the class list before approving: whoever is approved owns that student number, and class-list import can match students by account email.
+  - The public reply never says whether an account exists. Limits (in the service, since public routes skip the global limiter): 400/hour per IP so a class on one Wi-Fi is not blocked, 5/hour per person, 900/hour overall, 1000 waiting; hidden honeypot field.
+  - **CORS:** `common/cors.ts` lets `REGISTRATION_ORIGINS` (default `https://polycheck.live,https://www.polycheck.live`) call only the two public routes, without cookies; `CORS_ORIGINS` is unchanged.
+  - Web-only by design (the form is on the landing page, review is a super-admin console task). Needs migration `20261127130000_registration_requests`. **Deploy the backend before pushing the landing page**, and set sign-up open only after both are live. Browser journey: `e2e/registration.spec.ts` (uses the real landing form when its export is served on :3100).
+
 ### Blocked
 - (none)
 

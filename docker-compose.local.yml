@@ -77,6 +77,8 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-polycheck-local-better-auth-secret-2026}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4000}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # The landing page; may call only the public sign-up routes.
+      REGISTRATION_ORIGINS: ${REGISTRATION_ORIGINS:-http://localhost:3100}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       TRUST_PROXY: "false"
       COURSE_SCOPE_MODE: ${COURSE_SCOPE_MODE:-legacy}

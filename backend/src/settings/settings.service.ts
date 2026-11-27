@@ -46,6 +46,7 @@ const BOOLEAN_SETTING_KEYS = [
   'ai_assistant_student_enabled',
   'maintenance_mode_enabled',
   'activation_email_enabled',
+  'registration_enabled',
 ] as const
 
 const OPTIONAL_STRING_SETTING_KEYS = ['ai_base_url', 'ai_model'] as const

@@ -17,6 +17,8 @@ export const envSchema = z
     REDIS_URL: z.string().url().optional().or(z.literal('')),
     FRONTEND_URL: z.string().url().optional().or(z.literal('')),
     CORS_ORIGINS: z.string().optional().default('http://localhost:3000,http://localhost:8081'),
+    // The landing page: allowed to call only the public sign-up routes.
+    REGISTRATION_ORIGINS: z.string().optional().default('https://polycheck.live,https://www.polycheck.live'),
     TRUST_PROXY: booleanValue.default(false),
     TRUST_PROXY_HOPS: z.coerce.number().int().min(1).max(8).default(1),
     ENABLE_API_DOCS: booleanValue.optional(),
@@ -156,7 +158,12 @@ export const envSchema = z
     }
     if (
       env.NODE_ENV === 'production' &&
-      [env.BETTER_AUTH_URL, env.FRONTEND_URL, ...productionOrigins].some((url) => url && !url.startsWith('https://'))
+      [
+        env.BETTER_AUTH_URL,
+        env.FRONTEND_URL,
+        ...productionOrigins,
+        ...env.REGISTRATION_ORIGINS.split(',').map((o) => o.trim()),
+      ].some((url) => url && !url.startsWith('https://'))
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

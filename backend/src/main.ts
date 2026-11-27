@@ -9,6 +9,8 @@ import { AppModule } from './app.module'
 import { RedisIoAdapter } from './infrastructure/redis-io.adapter'
 import { validateEnv } from './common/config/env-validation'
 import { registerApiDocs } from './common/swagger'
+import { corsOptionsFor, splitOrigins } from './common/cors'
+import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface'
 
 async function bootstrap() {
   const env = validateEnv(process.env)
@@ -44,10 +46,9 @@ async function bootstrap() {
     : ['http://localhost:3000', 'http://localhost:8081']
   if (env.FRONTEND_URL && !origins.includes(env.FRONTEND_URL)) origins.push(env.FRONTEND_URL)
 
-  app.enableCors({
-    origin: origins,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT'],
-    credentials: true,
+  const registrationOrigins = splitOrigins(env.REGISTRATION_ORIGINS)
+  app.enableCors((request: { url?: string }, callback: (error: Error | null, options: CorsOptions) => void) => {
+    callback(null, corsOptionsFor(request.url ?? '', origins, registrationOrigins))
   })
 
   app.setGlobalPrefix('api')

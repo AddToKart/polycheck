@@ -25,6 +25,9 @@ import {
   type SectionRole,
   type SectionRoleType,
   type SessionPermission,
+  type RegistrationApprovalResult,
+  type RegistrationList,
+  type RegistrationStatus,
   type HostSessionState,
   type HostStartInput,
   type HostStartResult,
@@ -2059,6 +2062,15 @@ const apiBase = {
       data,
       data.idempotencyKey,
     );
+  },
+  getRegistrations(status: RegistrationStatus): Promise<RegistrationList> {
+    return get(`/registrations?status=${status}`);
+  },
+  approveRegistrations(ids: string[]): Promise<RegistrationApprovalResult> {
+    return post("/registrations/approve", { ids });
+  },
+  rejectRegistrations(ids: string[]): Promise<{ rejected: number }> {
+    return post("/registrations/reject", { ids });
   },
   getSettings(): Promise<{ key: string; value: string; updatedAt: string }[]> {
     return get("/settings");

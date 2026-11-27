@@ -98,6 +98,8 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set in Coolify environment variables}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://api.polycheck.live}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://app.polycheck.live}
+      # The landing page; may call only the public sign-up routes.
+      REGISTRATION_ORIGINS: ${REGISTRATION_ORIGINS:-https://polycheck.live,https://www.polycheck.live}
       FRONTEND_URL: ${FRONTEND_URL:-https://app.polycheck.live}
       TRUST_PROXY: "true"
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-2}

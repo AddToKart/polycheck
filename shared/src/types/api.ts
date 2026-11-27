@@ -20,6 +20,11 @@ import type {
   HostStartInput,
   HostStartResult,
 } from "./index";
+import type {
+  RegistrationApprovalResult,
+  RegistrationList,
+  RegistrationStatus,
+} from "./registration";
 import type { RecordTimeline, ScanAttemptView } from "./attendance";
 import type { LedgerVerifyResult } from "../utils/ledger";
 import type {
@@ -701,6 +706,10 @@ export interface ApiClient {
     durationHours?: number,
     sessionLimit?: number,
   ): Promise<SessionPermission>;
+  /** Institution super admin only: temporary sign-up requests. */
+  getRegistrations(status: RegistrationStatus): Promise<RegistrationList>;
+  approveRegistrations(ids: string[]): Promise<RegistrationApprovalResult>;
+  rejectRegistrations(ids: string[]): Promise<{ rejected: number }>;
   /** President only: their session's controls and live list. */
   getHostSession(sessionId: string): Promise<HostSessionState>;
   startHostSession(sessionId: string, input: HostStartInput): Promise<HostStartResult>;

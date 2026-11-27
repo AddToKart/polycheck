@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   FileUp,
   GraduationCap,
@@ -14,6 +15,7 @@ import {
   Search,
   ShieldPlus,
   UserCog,
+  UserPlus,
 } from 'lucide-react'
 import { api, requestUserLogout } from '@/lib/api-client'
 import { canAccessUserAdmin } from '@polycheck/shared'
@@ -538,6 +540,14 @@ export default function UsersPage() {
                 <Button variant="outline" onClick={() => setShowImportStudents(true)}>
                   <FileUp className="w-4 h-4" />
                   Import Students
+                </Button>
+              ) : null}
+              {institutionAdmin ? (
+                <Button variant="outline" asChild>
+                  <Link href="/faculty/users/registrations">
+                    <UserPlus className="w-4 h-4" />
+                    Sign-up requests
+                  </Link>
                 </Button>
               ) : null}
               {institutionAdmin ? (

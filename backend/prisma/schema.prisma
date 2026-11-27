@@ -14,6 +14,34 @@ enum UserRole {
   student
 }
 
+enum RegistrationStatus {
+  pending
+  approved
+}
+
+// Temporary self sign-up for data gathering. An account exists only after a
+// super admin approves the request.
+model RegistrationRequest {
+  id             String             @id @default(cuid())
+  role           UserRole
+  fullName       String
+  email          String
+  studentId      String?
+  program        String?
+  yearLevel      Int?
+  passwordHash   String?
+  status         RegistrationStatus @default(pending)
+  consentVersion String
+  createdAt      DateTime           @default(now())
+  reviewedAt     DateTime?
+  reviewedBy     String?
+  createdUserId  String?
+
+  @@index([status, createdAt])
+  @@index([studentId])
+  @@index([email])
+}
+
 enum DayOfWeek {
   Mon
   Tue

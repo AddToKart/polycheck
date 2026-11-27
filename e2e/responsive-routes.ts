@@ -56,6 +56,7 @@ export const SUPER_ADMIN_ROUTES: RouteCase[] = [
   { name: 'dashboard', path: '/faculty', settleMs: 1200 },
   { name: 'profile', path: '/profile', settleMs: 1200 },
   { name: 'users', path: '/faculty/users', settleMs: 1200 },
+  { name: 'registrations', path: '/faculty/users/registrations', settleMs: 1200 },
   { name: 'reports', path: '/faculty/reports', settleMs: 1500 },
   { name: 'audit-logs', path: '/faculty/audit-logs', settleMs: 1200 },
   { name: 'server-status', path: '/faculty/server-status', settleMs: 1200 },
