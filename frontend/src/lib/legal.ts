@@ -6,3 +6,5 @@ const LEGAL_SITE_URL = (process.env.NEXT_PUBLIC_LEGAL_SITE_URL?.trim() || 'https
 
 export const PRIVACY_POLICY_URL = `${LEGAL_SITE_URL}/privacy`
 export const TERMS_URL = `${LEGAL_SITE_URL}/terms`
+/** The temporary sign-up form lives on the same landing site. */
+export const SIGN_UP_URL = `${LEGAL_SITE_URL}/register`

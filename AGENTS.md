@@ -722,6 +722,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - Needs migration `20261127120000_president_hosted_sessions` before the new server or ingest images serve traffic.
 
 - **Temporary sign-up for data gathering (2026-11-27):** remove or keep closed once data gathering ends.
+  - Both web login pages show **Sign up** (to `<LEGAL_SITE_URL>/register`) only while sign-up is open. The "First time signing in? Activate your account" link was removed from the student login: it only served imported accounts awaiting activation and looked like sign-up. `/activate` itself stays, because emailed activation links open it.
   - Form: `polycheck.live/register` (landing repo, static export) → `GET /registrations/public/status`, `POST /registrations/public`. Off by default (`registration_enabled` setting); the landing page shows its Sign up buttons only while open.
   - **No account without approval.** Institution super admins review at `/faculty/users/registrations` (User Management → Sign-up requests): open/close switch, students approvable in bulk, **teachers one at a time** (server-enforced; a teacher account can list students). Rejected requests are deleted; approval creates the account with the chosen password and clears the stored hash. Nobody is enrolled automatically.
   - **Emails and student numbers are not verified.** Check each against the class list before approving: whoever is approved owns that student number, and class-list import can match students by account email.

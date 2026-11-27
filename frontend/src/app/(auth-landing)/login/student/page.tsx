@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, ApiHttpError } from "@/lib/api-client";
 import { PendingPasswordChange } from "@/components/auth/PendingPasswordChange";
+import { SignUpButton } from "@/components/auth/SignUpButton";
 import {
   StudentLoginDeviceGate,
   type StudentLoginGate,
@@ -246,12 +247,7 @@ export default function StudentLoginPage() {
           </form>
         )}
 
-        <p className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
-          First time signing in?{" "}
-          <Link href="/activate" className="font-semibold text-maroon underline underline-offset-2 dark:text-golden">
-            Activate your account
-          </Link>
-        </p>
+        <SignUpButton />
       </div>
     </div>
   );

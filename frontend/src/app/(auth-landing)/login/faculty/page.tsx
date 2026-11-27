@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { PendingPasswordChange } from "@/components/auth/PendingPasswordChange";
+import { SignUpButton } from "@/components/auth/SignUpButton";
 import { MaintenancePage } from "@/components/maintenance/MaintenancePage";
 import { useLanding } from "../../layout";
 import type { User } from "@polycheck/shared";
@@ -175,6 +176,8 @@ export default function FacultyLoginPage() {
             </Button>
           </div>
         </form>
+
+        <SignUpButton />
       </div>
     </div>
   );

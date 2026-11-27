@@ -57,12 +57,31 @@ test.describe('Temporary sign-up', () => {
         await expect(landing.getByRole('heading', { name: 'Sign-up is closed' })).toBeVisible({ timeout: 20_000 })
       }
 
+      // The login pages offer no sign-up while it is closed, and no activation link.
+      await landing.goto('http://localhost:3000/login/student')
+      await expect(landing.getByRole('link', { name: 'Forgot password?' })).toBeVisible({ timeout: 20_000 })
+      await expect(landing.getByRole('link', { name: 'Activate your account' })).toHaveCount(0)
+      await expect(landing.getByRole('link', { name: 'Sign up' })).toHaveCount(0)
+
       // ---------- the admin opens it on the real screen
       await page.goto('/faculty/users')
       await page.getByRole('link', { name: 'Sign-up requests' }).click()
       await expect(page.getByText('Sign-up is closed')).toBeVisible()
       await page.getByRole('button', { name: 'Open sign-up' }).click()
       await expect(page.getByText('Sign-up is open')).toBeVisible()
+
+      // ---------- both login pages now lead to the landing page form
+      for (const login of ['student', 'faculty']) {
+        await landing.goto(`http://localhost:3000/login/${login}`)
+        const button = landing.getByRole('link', { name: 'Sign up' })
+        await expect(button).toBeVisible({ timeout: 20_000 })
+        expect(await button.getAttribute('href')).toMatch(/\/register$/)
+        await landing.setViewportSize({ width: 320, height: 700 })
+        const scroll = await landing.evaluate(() => document.documentElement.scrollWidth)
+        expect(scroll, `${login} login scrolls sideways at 320px`).toBeLessThanOrEqual(321)
+        await landing.screenshot({ path: `e2e/captures/registration/login-${login}.png`, fullPage: true })
+        await landing.setViewportSize({ width: 390, height: 844 })
+      }
 
       // ---------- a student and a teacher send requests
       if (landingUp) {
