@@ -8,7 +8,6 @@
     "lint": "turbo lint",
     "clean": "turbo clean",
     "security:audit": "pnpm audit --prod --audit-level high",
-    "test:e2e:mobile": "pnpm --dir android e2e",
     "docker:local:prepare-env": "node -e \"const fs=require('fs'); if (!fs.existsSync('.env.docker.local') && fs.existsSync('.env.docker.local.example')) fs.copyFileSync('.env.docker.local.example', '.env.docker.local')\"",
     "docker:local:setup": "pnpm docker:local:prepare-env && pnpm docker:local:up",
     "docker:local:up": "pnpm docker:local:prepare-env && docker compose -f docker-compose.local.yml --env-file .env.docker.local up -d --build",

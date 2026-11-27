@@ -1,7 +1,6 @@
 packages:
   - "shared"
   - "frontend"
-  - "android"
   - "backend"
   - "services/ingest"
 allowBuilds:
@@ -15,32 +14,7 @@ allowBuilds:
   prisma: true
   sharp: true
   unrs-resolver: true
-auditConfig:
-  ignoreGhsas:
-    # query-string@7 (via expo-router) requires decode-uri-component as CJS.
-    # The only patched release (0.5.1) is ESM-only with no `require` export,
-    # so the override would break Expo Router deep-link parsing. Residual risk
-    # is a bounded CPU DoS from oversized percent-encoded links; no data exposure.
-    - GHSA-qr28-fpjm-wq7f
 minimumReleaseAgeExclude:
-  - '@expo/cli@57.0.11 || 57.0.12'
-  - '@expo/inline-modules@0.1.4'
-  - '@expo/local-build-cache-provider@57.0.5'
-  - '@expo/log-box@57.0.2'
-  - '@expo/metro-runtime@57.0.8'
-  - '@expo/prebuild-config@57.0.10'
-  - '@expo/ui@57.0.8 || 57.0.9'
-  - babel-preset-expo@57.0.5
-  - expo-asset@57.0.8
-  - expo-constants@57.0.8 || 57.0.9
-  - expo-image-picker@57.0.7
-  - expo-location@57.0.7
-  - expo-modules-core@57.0.8 || 57.0.9
-  - expo-router@57.0.9 || 57.0.10
-  - expo-sharing@57.0.8
-  - expo@57.0.9 || 57.0.10
-  - '@expo/router-server@57.0.5'
-  - expo-linking@57.0.5
   - maplibre-gl@6.13.0
 overrides:
   "@nestjs/swagger>js-yaml": 5.4.3

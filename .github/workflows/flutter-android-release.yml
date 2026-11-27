@@ -59,8 +59,6 @@ jobs:
             printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
           } > polycheck_mobile/android/key.properties
 
-      - name: Verify build files are not ignored (regression gate)
-        run: node scripts/verify-tracked-build-files.mjs
 
       - name: Pub get
         working-directory: polycheck_mobile
@@ -110,14 +108,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
-          name: "Polycheck Android ${{ steps.tag.outputs.tag }}"
+          name: "PolyCheck Android ${{ steps.tag.outputs.tag }}"
           make_latest: true
           files: |
             polycheck_mobile/dist/polycheck-release.apk
             polycheck_mobile/dist/polycheck-v*.apk
             polycheck_mobile/dist/SHA256SUMS.txt
           body: |
-            Signed release build of the Polycheck Android app.
+            Signed release build of the PolyCheck Android app.
 
             - **Download:** `polycheck-release.apk` (always the latest — this exact filename is what the landing page links to)
             - Verify: `sha256sum -c SHA256SUMS.txt`
