@@ -711,7 +711,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - **Compression:** both clients re-encode before upload (web canvas, app `image` package), apply camera rotation and drop EXIF (including location); the server cap for class photos is 1.5 MB. A 788 KB+ test image stored at 193 KB or less.
   - **Why it looked broken:** web showed a camera icon instead of the photo, the app teacher had no photo view, and the app student view only rendered `data:` URLs while the server returns an endpoint path. Web and app now show the real images (teacher can delete).
   - **Super admin sign-out (app):** header button plus a sign-out card on the admin dashboard.
-  - Browser journey: `e2e/officers.spec.ts`. These changes are **not** in the published APK 1.1.6.
+  - Browser journey: `e2e/officers.spec.ts`. Released in APK 1.1.7.
 
 - **President runs their own sessions (2026-11-27):** supersedes the "one session per grant / president cannot start the QR" notes above.
   - **Quota:** `SessionPermission.sessionLimit`/`sessionsUsed` (professor chooses 1-20; a new grant restarts the count). `revokedAt` records a revoke apart from expiry: the time limit covers **creating and starting**; a session already started can still be ended after it, but not after a revoke, role removal or enrollment removal. The Create Session button is greyed out when none are left.
