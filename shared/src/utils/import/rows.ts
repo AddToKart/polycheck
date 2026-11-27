@@ -37,7 +37,7 @@ export function buildStudentRows(
         code: studentIdResult.issue,
         message:
           studentIdResult.issue === 'EXCEL_MANGLED_STUDENT_NUMBER'
-            ? 'Student number looks mangled by Excel. Re-export the CSV with the SN column formatted as text.'
+            ? 'Excel changed this student number. Save your file again with the student number column formatted as text.'
             : 'Enter a valid student number (e.g. 2024-00001-MN-0).',
       })
     }
@@ -121,7 +121,7 @@ export function buildEnrollRows(
         code: studentIdResult.issue,
         message:
           studentIdResult.issue === 'EXCEL_MANGLED_STUDENT_NUMBER'
-            ? 'Student number looks mangled by Excel. Re-export the CSV with the SN column formatted as text.'
+            ? 'Excel changed this student number. Save your file again with the student number column formatted as text.'
             : 'Enter a valid student number (e.g. 2024-00001-MN-0).',
       })
       return

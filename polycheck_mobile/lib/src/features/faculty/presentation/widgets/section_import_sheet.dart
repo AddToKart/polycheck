@@ -224,7 +224,7 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
                             'columns holds each detail. Students are matched by '
                             'student number, or by school email.',
                       _ImportStep.review =>
-                        'Review the server validation summary before committing.',
+                        'Nothing is saved yet. Check the totals, then enroll.',
                       _ImportStep.report => 'Import finished.',
                     },
                     style: Theme.of(
@@ -424,9 +424,12 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
             children: [
               for (final entry in <({String label, int value})>[
                 (label: 'Rows', value: validation.summary.total),
-                (label: 'Enrollable', value: validation.summary.enrollable),
-                (label: 'Skipped', value: validation.summary.skip),
-                (label: 'Invalid', value: validation.summary.invalid),
+                (
+                  label: 'Will be enrolled',
+                  value: validation.summary.enrollable,
+                ),
+                (label: 'Already enrolled', value: validation.summary.skip),
+                (label: 'Cannot enroll', value: validation.summary.invalid),
               ])
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
@@ -512,8 +515,8 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
               const SizedBox(height: 8),
               for (final entry in <({String label, int value})>[
                 (label: 'Enrolled', value: result.summary.enrollable),
-                (label: 'Skipped', value: result.summary.skip),
-                (label: 'Invalid', value: result.summary.invalid),
+                (label: 'Already enrolled', value: result.summary.skip),
+                (label: 'Could not enroll', value: result.summary.invalid),
               ])
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),

@@ -26,9 +26,8 @@ version: 1.0.0+1
   `versionName` is unchanged.
 - Bump `versionName` for user-visible releases (`1.0.1`, `1.1.0`, ...).
 - `flutter.versionCode` / `flutter.versionName` in Gradle come from this field.
-- Keep `lib/src/core/app_info.dart` (`APP_VERSION`) aligned when displaying
-  the version in-app; release pipelines can stamp
-  `--dart-define=APP_VERSION=1.0.0+12`.
+- Set the default in `lib/src/core/app_info.dart` to the same `versionName`;
+  `test/core/app_info_test.dart` fails if they differ.
 
 ## 2. Environment
 
@@ -39,8 +38,7 @@ flutter pub get
 ```
 
 `android/local.properties` is machine-specific and git-ignored; Flutter
-regenerates it. Release builds require the deployed API (the default is the
-staging API used by the React Native app):
+regenerates it. Release builds use the deployed API:
 
 ```powershell
 flutter build appbundle --release `
@@ -52,11 +50,11 @@ Optional release flags:
 
 | Define | Default | Purpose |
 |---|---|---|
-| `API_BASE_URL` | staging API | NestJS base URL including `/api` |
+| `API_BASE_URL` | `https://api.polycheck.live/api` | NestJS base URL including `/api` |
 | `WS_BASE_URL` | derived from API URL | Socket.IO namespace URL |
 | `ALLOW_QR_FALLBACKS` | `false` | In-person screenshot/manual QR fallbacks (online sessions always allow them) |
 | `ENABLE_OUTAGE_SIMULATOR` | `false` | Demo-only offline simulator pill |
-| `APP_VERSION` | `1.0.0` | Footer/app-info display version |
+| `APP_VERSION` | the `pubspec.yaml` version | Footer/app-info display version |
 
 **Never enable the outage simulator or QR fallbacks in a production build.**
 
@@ -141,6 +139,25 @@ apkanalyzer files list build\app\outputs\bundle\release\app-release.aab |
 > `Release app bundle failed to strip debug symbols from native libraries`
 > and exits 1 **after** writing a valid, already-stripped `.aab`. Install
 > cmdline-tools to make the command exit 0. The bundle is not affected.
+
+## Publishing the APK for download
+
+APKs are built on a developer machine with the release key and uploaded by hand,
+so publishing does not depend on GitHub Actions. The Actions workflow only runs
+when started manually. The landing page serves whichever release is marked
+latest and expects the file name `polycheck-release.apk`.
+
+1. Bump `version:` in `pubspec.yaml` and the default in `app_info.dart`; run
+   `flutter analyze` and `flutter test`.
+2. `flutter build apk --release --dart-define=API_BASE_URL=https://api.polycheck.live/api --dart-define=APP_VERSION=<version>`
+3. Check it with `apksigner verify --print-certs` (never "Android Debug") and
+   `aapt2 dump badging` (package, version name and code).
+4. Copy it to `polycheck-release.apk` and `polycheck-v<version>.apk`, write
+   `SHA256SUMS.txt`, then:
+   `gh release create apk-v<version> polycheck-release.apk polycheck-v<version>.apk SHA256SUMS.txt --target <commit> --latest`
+5. Download from
+   `https://github.com/AddToKart/polycheck/releases/latest/download/polycheck-release.apk`
+   and compare its checksum with the file you built.
 
 ## 5. App identity and branding
 

@@ -1,17 +1,13 @@
 name: Flutter Android release APK
 
-# Builds the signed Flutter APK on every push to main/dev and attaches it to
-# a GitHub Release with a FIXED filename. The landing page's download button
-# points at the permanent permalink
+# Optional: builds the signed Flutter APK and attaches it to a GitHub Release
+# with a FIXED filename. The landing page's download button points at
 #   https://github.com/AddToKart/polycheck/releases/latest/download/polycheck-release.apk
-# so the "latest" release is always what visitors get — the landing page never
-# needs to change when a new build ships.
+#
+# Releases are normally built and uploaded by hand (polycheck_mobile/RELEASE.md).
+# This runs only when started manually, so a push or merge can never replace the
+# published APK.
 on:
-  push:
-    branches: [main, dev]
-    paths:
-      - "polycheck_mobile/**"
-      - ".github/workflows/flutter-android-release.yml"
   workflow_dispatch:
 
 concurrency:

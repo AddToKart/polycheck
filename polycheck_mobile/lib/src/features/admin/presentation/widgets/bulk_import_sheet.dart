@@ -221,8 +221,8 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
       setState(() {
         _busy = false;
         _error =
-            '$error Committed chunks are safe to retry — already-imported '
-            'rows are skipped.';
+            '$error Anything already saved stays saved; trying again skips '
+            'those students.';
       });
     }
   }
@@ -461,8 +461,8 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Text(
-          'Review the validation summary before committing. Only importable '
-          'rows are written.',
+          'Nothing is saved yet. Check the totals, then confirm. Rows with '
+          'problems are not imported.',
           style: Theme.of(
             context,
           ).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor),
@@ -473,10 +473,19 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
           runSpacing: 8,
           children: <Widget>[
             _CountChip(label: 'Rows', value: summary?.total ?? 0),
-            _CountChip(label: 'Valid', value: summary?.valid ?? 0),
-            _CountChip(label: 'Skip', value: summary?.skip ?? 0),
-            _CountChip(label: 'Invalid', value: summary?.invalid ?? 0),
-            _CountChip(label: 'Issues', value: issues.length),
+            _CountChip(label: 'New', value: summary?.newCount ?? 0),
+            _CountChip(
+              label: 'Already exist',
+              value: (summary?.skip ?? 0) + (summary?.update ?? 0),
+            ),
+            _CountChip(
+              label: 'Cannot import',
+              // Rows dropped before sending, plus the ones the server refused.
+              value:
+                  _state.sourceRows.length -
+                  (summary?.total ?? 0) +
+                  (summary?.invalid ?? 0),
+            ),
           ],
         ),
         if (issues.isNotEmpty) ...<Widget>[
@@ -523,7 +532,9 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Committing ${_state.chunksDone} of ${_state.chunksTotal} chunks…',
+            _state.chunksTotal > 1
+                ? 'Saving group ${_state.chunksDone} of ${_state.chunksTotal}…'
+                : 'Saving…',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
@@ -536,7 +547,7 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
           )
         else
           CampusButton(
-            label: 'Stop after this chunk',
+            label: 'Stop after this group',
             icon: Icons.stop_circle_outlined,
             variant: CampusButtonVariant.outline,
             onPressed: () => setState(() => _stopRequested = true),

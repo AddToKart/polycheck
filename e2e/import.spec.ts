@@ -32,7 +32,7 @@ test.describe('Bulk import wizards', () => {
     await page.getByRole('button', { name: 'Validate rows' }).click()
 
     await expect(page.getByText('Rows in file')).toBeVisible({ timeout: 20_000 })
-    await expect(page.getByText('Importable')).toBeVisible()
+    await expect(page.getByText('New accounts')).toBeVisible()
     // Validation only: never execute in this smoke test.
     await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible()
 
@@ -75,7 +75,7 @@ test.describe('Bulk import wizards', () => {
     await page.getByRole('button', { name: 'Validate rows' }).click()
 
     await expect(page.getByText('Rows in file')).toBeVisible({ timeout: 20_000 })
-    await expect(page.getByText('Importable')).toBeVisible()
+    await expect(page.getByText('New accounts')).toBeVisible()
     // Validation only: never execute in this smoke test.
     await page.keyboard.press('Escape')
     await expect(page.getByRole('dialog')).not.toBeVisible()

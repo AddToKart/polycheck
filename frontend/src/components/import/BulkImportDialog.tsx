@@ -446,7 +446,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
         setProgress(index + 1)
         if (stopRequestedRef.current) break
       } catch (cause) {
-        failure = cause instanceof Error ? cause.message : 'Import chunk failed.'
+        failure = cause instanceof Error ? cause.message : 'Part of the import failed.'
         break
       }
     }
@@ -456,11 +456,11 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     setReports(collectedReports)
     setExecuting(false)
     if (failure) {
-      setError(`${failure} Chunks already committed are safe to retry; the import is idempotent.`)
+      setError(`${failure} Anything already saved stays saved, so it is safe to try again.`)
       return
     }
     if (stopRequestedRef.current && collectedReports.length < plans.length - startIndex) {
-      setError('Import stopped after the current chunk. The remaining rows were not imported.')
+      setError('Import stopped. The remaining rows were not imported.')
       return
     }
     setStep('report')
@@ -567,6 +567,15 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   )
   const sampleValue = (column: number) => rawRows.find((row) => row[column]?.trim())?.[column]?.trim()
   const currentStepIndex = steps.findIndex((item) => item.id === step)
+  const sentRows = chunks.reduce((total, item) => total + item.rows.length, 0)
+  const updateCount = validatedConflictMode === 'update_existing' ? (summary.update ?? 0) : 0
+  const totals = {
+    adding: mode === 'students' ? (summary.new ?? 0) : (summary.enrollable ?? 0) + (summary.provisioning ?? 0),
+    existing: (summary.skip ?? 0) + (mode === 'students' ? (summary.update ?? 0) : 0),
+    // Rows the checks here dropped before sending, plus the ones the server turned down.
+    rejected: Math.max(0, rawRows.length - sentRows) + (summary.invalid ?? 0),
+  }
+  const plural = (count: number, word: string) => `${count.toLocaleString()} ${word}${count === 1 ? '' : 's'}`
 
   return (
     <Dialog open={open} onOpenChange={close}>
@@ -770,9 +779,9 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
           <div className="mt-5 space-y-4">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <SummaryTile label="Rows in file" value={rawRows.length} />
-              <SummaryTile label="Importable" value={chunks.reduce((total, item) => total + item.rows.length, 0)} />
-              <SummaryTile label="Passed checks" value={summary.valid ?? 0} />
-              <SummaryTile label="Notes and problems" value={allIssues.length} />
+              <SummaryTile label={mode === 'students' ? 'New accounts' : 'Will be enrolled'} value={totals.adding} />
+              <SummaryTile label={mode === 'students' ? 'Already have accounts' : 'Already enrolled'} value={totals.existing} />
+              <SummaryTile label={mode === 'students' ? 'Cannot be imported' : 'Cannot be enrolled'} value={totals.rejected} />
             </div>
 
             {mode === 'students' ? (
@@ -784,7 +793,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
                 </label>
                 <label className="flex items-start gap-2 text-sm">
                   <input type="radio" checked={conflictMode === 'update_existing'} onChange={() => setConflictMode('update_existing')} className="mt-1" />
-                  <span>Update profile fields (name, email, program, year, department) without touching passwords.</span>
+                  <span>Update their name, email, program and year level. Passwords stay the same.</span>
                 </label>
                 {conflictMode !== validatedConflictMode ? (
                   <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Re-validate to apply the new rule before continuing.</p>
@@ -825,7 +834,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
                   <AlertTriangle className="h-4 w-4" aria-hidden="true" />
                   {blockingIssues.length} row{blockingIssues.length === 1 ? '' : 's'} cannot be imported
                 </p>
-                <p className="mt-1 text-xs">Fix them in the CSV and re-upload, or explicitly continue with the valid rows only.</p>
+                <p className="mt-1 text-xs">Fix them in your file and upload it again, or continue with the other rows.</p>
                 <label className="mt-2 flex items-center gap-2 text-xs font-semibold">
                   <input type="checkbox" checked={skipInvalid} onChange={(event) => setSkipInvalid(event.target.checked)} />
                   Continue with the valid rows only
@@ -865,17 +874,27 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
             <div className="border border-zinc-200 bg-zinc-50 p-4 text-sm dark:border-zinc-700 dark:bg-zinc-800/40">
               <p className="flex items-center gap-2 font-bold text-zinc-900 dark:text-zinc-100">
                 <FileSpreadsheet className="h-4 w-4" aria-hidden="true" />
-                Ready to import {chunks.reduce((total, item) => total + item.rows.length, 0).toLocaleString()} students in {chunks.length} chunk{chunks.length === 1 ? '' : 's'}
+                {mode === 'students'
+                  ? `Ready to create ${plural(totals.adding, 'student account')}${updateCount > 0 ? ` and update ${updateCount.toLocaleString()}` : ''}`
+                  : `Ready to enroll ${plural(totals.adding, 'student')}`}
               </p>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-zinc-600 dark:text-zinc-400">
-                <li>Each chunk commits atomically; stopping after a chunk keeps earlier chunks.</li>
+                {mode === 'students' && (summary.skip ?? 0) > 0 ? (
+                  <li>Students who already have an account and are skipped: {(summary.skip ?? 0).toLocaleString()}. Their accounts stay as they are.</li>
+                ) : null}
                 {mode === 'students' && validatedDeliveryMode === 'activation_email' ? (
-                  <li>Students with an email receive a single-use activation link; the others get a temporary password shown once in the report.</li>
+                  <li>New students with an email get a single-use activation link. The others get a temporary password, shown once on the next screen.</li>
                 ) : mode === 'students' ? (
-                  <li>Temporary passwords are generated server-side and shown once in the report.</li>
+                  <li>Each new student gets a temporary password. You will see them once, on the next screen.</li>
+                ) : (summary.provisioning ?? 0) > 0 ? (
+                  <li>Students without an account get an inactive one that an administrator has to activate.</li>
                 ) : (
-                  <li>Students without accounts are reported, not auto-created, unless the institution enables provisioning.</li>
+                  <li>Only students who already have an account are added.</li>
                 )}
+                {totals.rejected > 0 ? <li>Rows with problems are left out: {totals.rejected.toLocaleString()}.</li> : null}
+                {chunks.length > 1 ? (
+                  <li>Large lists are saved in groups of {IMPORT_CHUNK_SIZE}. If you stop partway, the groups already saved stay saved.</li>
+                ) : null}
               </ul>
             </div>
 
@@ -885,7 +904,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
                   <div className="h-2 bg-maroon dark:bg-golden" style={{ width: `${Math.round((progress / Math.max(1, chunks.length)) * 100)}%` }} />
                 </div>
                 <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
-                  Chunk {Math.min(progress + 1, chunks.length)} of {chunks.length}…
+                  {chunks.length === 1 ? 'Saving…' : `Saving group ${Math.min(progress + 1, chunks.length)} of ${chunks.length}…`}
                 </p>
               </div>
             ) : null}
@@ -904,7 +923,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
                     }}
                     disabled={stopped}
                   >
-                    {stopped ? 'Stopping…' : 'Stop after this chunk'}
+                    {stopped ? 'Stopping…' : 'Stop after this group'}
                   </Button>
                 ) : null}
                 <Button onClick={() => void runCommit()} disabled={executing || validating}>
@@ -916,7 +935,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
             {error && progress > 0 && progress < chunks.length ? (
               <div className="flex justify-end">
                 <Button variant="outline" onClick={() => void retryRemaining()} disabled={validating || executing}>
-                  {validating ? 'Re-validating…' : 'Retry remaining chunks'}
+                  {validating ? 'Re-validating…' : 'Retry the rest'}
                 </Button>
               </div>
             ) : null}

@@ -1,10 +1,11 @@
 /// Application identity surfaced on the portal footer.
 ///
-/// Keep in sync with `pubspec.yaml` (`version:`). Overridable at build time so
-/// release pipelines can stamp the CI build number without editing Dart.
+/// The default must match `pubspec.yaml` (`version:`); `app_info_test.dart`
+/// fails when it does not, so a build made without the override is still
+/// labelled correctly.
 const String appVersion = String.fromEnvironment(
   'APP_VERSION',
-  defaultValue: '1.0.0',
+  defaultValue: '1.1.6',
 );
 
 String get appVersionLabel => 'Version $appVersion';

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:polycheck_mobile/main.dart';
+import 'package:polycheck_mobile/src/core/app_info.dart';
 import 'package:polycheck_mobile/src/core/network/dio_client.dart';
 import 'package:polycheck_mobile/src/core/providers/maintenance_provider.dart';
 
@@ -25,7 +26,7 @@ void main() {
     expect(find.text('PolyCheck'), findsOneWidget);
     expect(find.text('Student'), findsOneWidget);
     expect(find.text('Faculty & Staff'), findsOneWidget);
-    expect(find.text('Version 1.0.0'), findsOneWidget);
+    expect(find.text(appVersionLabel), findsOneWidget);
   });
 
   testWidgets('the portal and sign-in screens show the configured institution, '
