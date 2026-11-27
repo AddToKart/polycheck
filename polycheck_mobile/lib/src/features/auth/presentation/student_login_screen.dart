@@ -86,7 +86,7 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
           if (maintenance.enabled) ...[
             AuthInfoBanner(
               message:
-                  'Polycheck is under scheduled maintenance. Only exempt '
+                  'PolyCheck is under scheduled maintenance. Only exempt '
                   'administrators can sign in right now.',
               icon: Icons.build_outlined,
             ),
@@ -296,7 +296,7 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
         _error = error.message;
       } else if (error.isNetworkFailure) {
         _error =
-            'Cannot reach the Polycheck server. Check your connection and try '
+            'Cannot reach the PolyCheck server. Check your connection and try '
             'again.';
       } else {
         _error = error.message.isEmpty

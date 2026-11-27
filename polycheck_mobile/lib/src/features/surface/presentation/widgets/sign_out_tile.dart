@@ -16,7 +16,7 @@ class ProfileSignOutTile extends ConsumerWidget {
     return CampusCard(
       key: const ValueKey('profile-sign-out'),
       onTap: () => confirmSignOut(context, ref),
-      semanticLabel: 'Sign out of Polycheck',
+      semanticLabel: 'Sign out of PolyCheck',
       padding: const EdgeInsets.all(12),
       child: Row(
         children: <Widget>[

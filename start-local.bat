@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ========================================================
-echo       Polycheck Attendance System - Local Setup
+echo       PolyCheck Attendance System - Local Setup
 echo ========================================================
 echo.
 
@@ -25,7 +25,7 @@ if not exist ".env.docker.local" (
 )
 
 :: 3. Run docker compose up with build
-echo [INFO] Starting Polycheck stack (Postgres, Redis, Migrations, Seed, Backend, Frontend)...
+echo [INFO] Starting PolyCheck stack (Postgres, Redis, Migrations, Seed, Backend, Frontend)...
 echo [INFO] Building images and initializing services...
 echo.
 
@@ -57,7 +57,7 @@ for /l %%i in (1,1,30) do (
 :ready
 echo.
 echo ========================================================
-echo       Polycheck is LIVE!
+echo       PolyCheck is LIVE!
 echo ========================================================
 echo.
 echo   Web Dashboard:  http://localhost:3000/login

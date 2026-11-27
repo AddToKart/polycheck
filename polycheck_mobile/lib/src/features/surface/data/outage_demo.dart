@@ -34,7 +34,7 @@ abstract final class OutageDemo {
       'Requests fail immediately and existing offline paths handle the '
       'failure exactly like a real campus outage.';
   static const String disarmedCopy =
-      'Requests pass through to the Polycheck API again.';
+      'Requests pass through to the PolyCheck API again.';
   static const String replayNotice =
       'Reconnect simulated. Attendance saved on this device will sync when '
       'the offline sync worker next drains the queue.';

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Forgot password · Polycheck',
+  title: 'Forgot password · PolyCheck',
   robots: { index: false, follow: false },
 }
 

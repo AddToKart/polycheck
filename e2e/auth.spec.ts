@@ -19,7 +19,7 @@ test.describe('Auth & Session', () => {
   test('landing page renders branding and role selection', async ({ page }) => {
     const errors = trackErrors(page)
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'Polycheck.' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'PolyCheck.' })).toBeVisible()
     await expect(page.getByText('Example Polytechnic of the Province • Attendance System')).toBeVisible()
     await expect(page.getByAltText(/logo$/i).first()).toBeVisible()
     // Role selection cards are <button>s
@@ -92,7 +92,7 @@ test.describe('Auth & Session', () => {
     await page.getByRole('button', { name: /Disconnect/i }).click()
     await expect(page).toHaveURL((url) => url.pathname === '/', { timeout: 20_000 })
     // Next's route announcer also carries the page title; target the heading.
-    await expect(page.getByRole('heading', { name: 'Polycheck.' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'PolyCheck.' })).toBeVisible()
   })
 
   test('session persists across reload (cookie auth)', async ({ page }) => {

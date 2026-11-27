@@ -203,7 +203,7 @@ describe('Institution Settings tabs', () => {
     await renderLoaded()
 
     fireEvent.change(screen.getByLabelText('Institution name'), {
-      target: { value: 'Polycheck University' },
+      target: { value: 'PolyCheck University' },
     })
 
     expect(

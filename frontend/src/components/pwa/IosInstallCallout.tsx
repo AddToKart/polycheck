@@ -50,7 +50,7 @@ export function IosInstallCallout() {
 
   return (
     <aside
-      aria-label="Install Polycheck on this device"
+      aria-label="Install PolyCheck on this device"
       className="relative border border-golden/40 bg-golden/10 p-4 pr-10 text-sm dark:border-golden/25 dark:bg-golden/5"
     >
       <button
@@ -61,10 +61,10 @@ export function IosInstallCallout() {
       >
         <X size={16} aria-hidden="true" />
       </button>
-      <p className="font-bold text-maroon-dark dark:text-golden">Add Polycheck to your Home Screen</p>
+      <p className="font-bold text-maroon-dark dark:text-golden">Add PolyCheck to your Home Screen</p>
       <ol className="mt-2 list-decimal space-y-1 pl-5 text-zinc-700 dark:text-zinc-300">
         <li>Tap the Share button in Safari.</li>
-        <li>Choose &quot;Add to Home Screen&quot;, then open Polycheck from the new icon.</li>
+        <li>Choose &quot;Add to Home Screen&quot;, then open PolyCheck from the new icon.</li>
       </ol>
       <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
         Installing keeps your offline class data available for longer between sessions.

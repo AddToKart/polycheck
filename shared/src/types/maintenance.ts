@@ -15,7 +15,7 @@ export interface MaintenanceStatus {
 }
 
 export const DEFAULT_MAINTENANCE_MESSAGE =
-  'Polycheck is undergoing scheduled maintenance. Attendance taken during class still works offline — your records are safely stored on this device and will sync when servers reopen.'
+  'PolyCheck is undergoing scheduled maintenance. Attendance taken during class still works offline — your records are safely stored on this device and will sync when servers reopen.'
 
 export const MAINTENANCE_SETTING_KEYS = [
   'maintenance_mode_enabled',

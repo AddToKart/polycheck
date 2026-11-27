@@ -39,8 +39,34 @@ void main() {
       expect(mapping[ImportField.email], 2);
       expect(mapping[ImportField.program], 3);
       expect(mapping[ImportField.yearLevel], 4);
-      expect(mapping[ImportField.department], 5);
+      // Students have no department, so that column is left alone.
+      expect(mapping.values, isNot(contains(5)));
       expect(isMappingComplete(mapping), isTrue);
+    });
+
+    test('recognises unfamiliar headings by their contents', () {
+      final mapping = suggestColumnMapping(
+        <String>['Learner Ref', 'Learner', 'Contact', 'Track'],
+        const <List<String>>[
+          <String>['2023-00101-SM-0', 'Maria', 'maria@example.com', 'BSHM'],
+        ],
+      );
+      expect(mapping[ImportField.studentId], 0);
+      expect(mapping[ImportField.email], 2);
+      expect(mapping[ImportField.program], 3);
+    });
+
+    test('names the missing column and never fills two fields from one', () {
+      const noNumbers = 'Name,Email Address\nMaria Santos,maria@example.com\n';
+      var state = const BulkImportState().withPaste(noNumbers);
+      expect(
+        missingColumnMessage(state.mapping),
+        contains('holds: Student number'),
+      );
+
+      state = state.withMapping(ImportField.studentId, 0);
+      expect(state.mapping[ImportField.studentId], 0);
+      expect(state.mapping.containsKey(ImportField.fullName), isFalse);
     });
 
     test('requires student number and full name', () {

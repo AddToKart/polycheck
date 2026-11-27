@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 // The activation link carries a single-use token in the URL fragment. Never leak
 // the page address through the Referer header, and keep it out of search indexes.
 export const metadata: Metadata = {
-  title: 'Activate your account · Polycheck',
+  title: 'Activate your account · PolyCheck',
   referrer: 'no-referrer',
   robots: { index: false, follow: false },
 }

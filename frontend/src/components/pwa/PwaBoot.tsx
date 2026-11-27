@@ -30,7 +30,7 @@ export function PwaBoot() {
       addNotification(
         'info',
         'Update ready',
-        'Reload the page to use the latest version of Polycheck.',
+        'Reload the page to use the latest version of PolyCheck.',
       )
     }
     window.addEventListener(PWA_UPDATE_EVENT, onUpdate)

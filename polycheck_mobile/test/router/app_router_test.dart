@@ -291,7 +291,7 @@ void main() {
     );
     expect(find.byType(MaintenanceScreen), findsOneWidget);
     expect(
-      find.text('Polycheck is under scheduled maintenance'),
+      find.text('PolyCheck is under scheduled maintenance'),
       findsOneWidget,
     );
 

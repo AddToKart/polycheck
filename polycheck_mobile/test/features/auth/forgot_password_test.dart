@@ -125,7 +125,7 @@ void main() {
     await tester.tap(find.widgetWithText(CampusButton, 'Send reset link'));
     await tester.pumpAndSettle();
     expect(
-      find.textContaining('Cannot reach the Polycheck server'),
+      find.textContaining('Cannot reach the PolyCheck server'),
       findsOneWidget,
     );
   });

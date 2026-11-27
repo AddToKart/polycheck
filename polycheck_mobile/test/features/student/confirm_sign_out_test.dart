@@ -136,7 +136,7 @@ void main() {
 
     expect(find.text('Sign out?'), findsOneWidget);
     expect(
-      find.text('You will need to sign in again to use Polycheck.'),
+      find.text('You will need to sign in again to use PolyCheck.'),
       findsOneWidget,
     );
     expect(find.text('Cancel'), findsOneWidget);

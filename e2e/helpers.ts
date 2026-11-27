@@ -367,7 +367,7 @@ export async function loginFaculty(page: Page, email = FACULTY_EMAIL) {
   // Brand renders in the desktop sidebar (h1) or the mobile top header (span).
   // Both can exist in the DOM simultaneously, so filter to the visible one.
   const brand = page
-    .locator('h1:has-text("Polycheck"), span:has-text("Polycheck")')
+    .locator('h1:has-text("PolyCheck"), span:has-text("PolyCheck")')
     .filter({ visible: true })
     .first()
   await expect(brand).toBeVisible({ timeout: 20_000 })

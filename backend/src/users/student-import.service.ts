@@ -16,7 +16,7 @@ import {
   type StudentImportSummary,
   normalizeCourse,
 } from '@polycheck/shared'
-import { courseInScope } from '../common/course-scope'
+import { courseInScope, courseScopeMode } from '../common/course-scope'
 import { PrismaService } from '../prisma/prisma.service'
 import { AccountActivationService } from '../account-activation/account-activation.service'
 import { MailService } from '../mail/mail.service'
@@ -235,6 +235,13 @@ export class StudentImportService {
           if (planned.changedFields.includes('program')) data.program = planned.row.program ?? null
           if (planned.changedFields.includes('yearLevel')) data.yearLevel = planned.row.yearLevel ?? null
           if (planned.changedFields.includes('department')) data.department = planned.row.department
+          else if (planned.changedFields.includes('program') && planned.row.program) {
+            // Students have no department of their own: the column mirrors the course.
+            const { department, program } = planned.existing
+            if (courseScopeMode() === 'course' || !department?.trim() || department === program) {
+              data.department = planned.row.program
+            }
+          }
           // Password, role, isActive, and studentId are intentionally never
           // changed by imports.
           if (Object.keys(data).length > 0) {
@@ -345,7 +352,7 @@ export class StudentImportService {
             rowNumber: row.rowNumber,
             column: 'email',
             code: 'ACCOUNT_ALREADY_EXISTS',
-            message: `${row.email} is already linked to another Polycheck account.`,
+            message: `${row.email} is already linked to another PolyCheck account.`,
           })
           blocked = true
         }

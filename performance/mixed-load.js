@@ -1,5 +1,5 @@
 /**
- * Polycheck — blended load (all 10 flows running at once).
+ * PolyCheck — blended load (all 10 flows running at once).
  *
  * One weighted arrival-rate scenario drives scan/login/faculty_read/admin_read/
  * dispute/sync/excuse, while `proof_upload` (≤20 uploads) and

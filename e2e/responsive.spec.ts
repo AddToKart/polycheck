@@ -31,6 +31,7 @@ installSessionCleanup()
  */
 
 const VIEWPORTS = [
+  { label: 'small-phone-320x640', width: 320, height: 640 },
   { label: 'phone-375x812', width: 375, height: 812 },
   { label: 'phone-390x844', width: 390, height: 844 },
   { label: 'android-412x915', width: 412, height: 915 },
@@ -118,6 +119,27 @@ function describeViolations(violations: Violation[]): string {
     .join('\n\n')
 }
 
+/**
+ * A page can fit the screen and still be unusable: laid out beside the menu bar, its content is squeezed to a
+ * sliver and nothing overflows. On phones, the area that scrolls the page heading must use most of the width.
+ */
+async function squeezedContentWidth(page: Page): Promise<number | null> {
+  return page.evaluate(() => {
+    const viewportWidth = document.documentElement.clientWidth
+    if (viewportWidth >= 768) return null
+    // The desktop sidebar has its own hidden heading; take the page's.
+    const heading = [...document.querySelectorAll('h1')].find((node) => !node.closest('aside'))
+    if (!heading || heading.closest('[role="dialog"]')) return null
+    for (let node = heading.parentElement; node && node !== document.body; node = node.parentElement) {
+      if (node.tagName === 'MAIN' || /(auto|scroll)/.test(getComputedStyle(node).overflowY)) {
+        const width = node.getBoundingClientRect().width
+        return width < viewportWidth * 0.6 ? Math.round(width) : null
+      }
+    }
+    return null
+  })
+}
+
 async function auditRoutes(
   page: Page,
   routes: RouteCase[],
@@ -133,6 +155,15 @@ async function auditRoutes(
       const measurement = await measureOverflow(page)
       if (measurement.docWidth > measurement.viewportWidth + 1) {
         violations.push({ route: `${route.name} (${route.path})`, viewport, ...measurement })
+      }
+      const squeezed = await squeezedContentWidth(page)
+      if (squeezed !== null) {
+        violations.push({
+          route: `${route.name} (${route.path})`,
+          viewport,
+          ...measurement,
+          offenders: [`page content is squeezed to ${squeezed}px`],
+        })
       }
     })
   }
@@ -165,6 +196,62 @@ for (const viewport of VIEWPORTS) {
       await loginFaculty(page, ADMIN_EMAIL)
       const violations = await auditRoutes(page, SUPER_ADMIN_ROUTES, viewport.label)
       expect(violations, `Horizontal overflow detected:\n\n${describeViolations(violations)}`).toEqual([])
+    })
+
+    test('account and import popups fit', async ({ page }) => {
+      await loginFaculty(page, ADMIN_EMAIL)
+      await page.goto('/faculty/users')
+      await page.getByRole('button', { name: 'Students', exact: true }).click()
+      const violations: Violation[] = []
+      const check = async (name: string) => {
+        const dialog = page.getByRole('dialog')
+        await expect(dialog).toBeVisible()
+        await page.waitForTimeout(400)
+        // The popup must sit inside the screen and never need sideways scrolling.
+        const popup = await dialog.evaluate((node) => {
+          const rect = node.getBoundingClientRect()
+          return { left: rect.left, right: rect.right, scroll: node.scrollWidth, client: node.clientWidth }
+        })
+        const page_ = await measureOverflow(page)
+        if (popup.left < -1 || popup.right > viewport.width + 1 || popup.scroll > popup.client + 1) {
+          violations.push({
+            route: name,
+            viewport: viewport.label,
+            docWidth: popup.scroll,
+            viewportWidth: popup.client,
+            offenders: [`dialog left=${Math.round(popup.left)} right=${Math.round(popup.right)}`, ...page_.offenders],
+          })
+        }
+        await page.screenshot({ path: `e2e/captures/dialogs/${viewport.label}-${name}.png` })
+      }
+
+      await page.getByRole('button', { name: /Add Student|Create Student|New Student/ }).first().click()
+      await check('create-student')
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('dialog')).not.toBeVisible()
+
+      await page.getByRole('button', { name: 'Import Students' }).click()
+      await check('import-upload')
+      // Long headings and values are what stretch the matching step.
+      await page.locator('input[type="file"]').setInputFiles({
+        name: 'a-very-long-master-list-file-name-from-the-registrar.csv',
+        mimeType: 'text/csv',
+        buffer: Buffer.from(
+          [
+            'Student Number,Complete Name Of The Student,Institutional Email Address,Course,Year Level',
+            '2024-00931-MN-0,Responsive Check With A Very Long Family Name,responsive.check.long.address@student.example.edu.ph,BSIT,1',
+          ].join(String.fromCharCode(10)),
+        ),
+      })
+      await expect(page.getByText(/Confirm the mapping/i)).toBeVisible()
+      await check('import-match-columns')
+      await page.getByRole('button', { name: 'Validate rows' }).click()
+      await expect(page.getByText('Rows in file')).toBeVisible({ timeout: 20_000 })
+      await check('import-check-rows')
+
+      expect(violations, `Popup overflow detected:
+
+${describeViolations(violations)}`).toEqual([])
     })
 
     test('student routes fit', async ({ page }) => {

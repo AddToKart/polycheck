@@ -74,7 +74,7 @@ class _FacultyDashboardScreenState
       _loading = false;
       if (overview == null && subjects == null && sections == null) {
         _error =
-            'Cannot reach the Polycheck server. Check your connection and try '
+            'Cannot reach the PolyCheck server. Check your connection and try '
             'again.';
       }
     });

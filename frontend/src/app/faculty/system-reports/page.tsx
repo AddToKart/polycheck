@@ -151,9 +151,9 @@ export default function SystemReportsPage() {
       />
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-5xl p-6 sm:p-8">
-          <div className="mb-6 flex items-center gap-3">
+          <div className="mb-6 flex flex-wrap items-center gap-3">
             <MonitorSmartphone className="h-7 w-7 text-maroon dark:text-golden" aria-hidden="true" />
-            <div className="flex-1">
+            <div className="min-w-0 flex-1 basis-52">
               <h1 className="font-heading text-2xl font-bold text-maroon dark:text-white">System Reports</h1>
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
                 Triage campus issue reports and feedback submitted by students and teachers.
@@ -194,12 +194,12 @@ export default function SystemReportsPage() {
             </div>
           ) : null}
 
-          <div className="mb-4 flex flex-wrap items-end gap-3" data-testid="report-filters">
-            <div className="space-y-1">
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end" data-testid="report-filters">
+            <div className="flex min-w-0 flex-col gap-1">
               <Label className="text-[10px] uppercase">Category</Label>
               <select
                 aria-label="Filter by category"
-                className="h-9 rounded-md border border-zinc-200 bg-white px-2 text-xs dark:border-zinc-800 dark:bg-zinc-950"
+                className="h-9 w-full rounded-md border border-zinc-200 bg-white px-2 text-xs dark:border-zinc-800 dark:bg-zinc-950"
                 value={filters.category ?? ''}
                 onChange={(event) =>
                   setFilters((c) => ({ ...c, category: (event.target.value || undefined) as ReportCategory | undefined, offset: 0 }))
@@ -212,11 +212,11 @@ export default function SystemReportsPage() {
                 ))}
               </select>
             </div>
-            <div className="space-y-1">
+            <div className="flex min-w-0 flex-col gap-1">
               <Label className="text-[10px] uppercase">Severity</Label>
               <select
                 aria-label="Filter by severity"
-                className="h-9 rounded-md border border-zinc-200 bg-white px-2 text-xs dark:border-zinc-800 dark:bg-zinc-950"
+                className="h-9 w-full rounded-md border border-zinc-200 bg-white px-2 text-xs dark:border-zinc-800 dark:bg-zinc-950"
                 value={filters.severity ?? ''}
                 onChange={(event) =>
                   setFilters((c) => ({ ...c, severity: (event.target.value || undefined) as ReportSeverity | undefined, offset: 0 }))
@@ -229,11 +229,11 @@ export default function SystemReportsPage() {
                 ))}
               </select>
             </div>
-            <div className="space-y-1">
+            <div className="flex min-w-0 flex-col gap-1">
               <Label className="text-[10px] uppercase">Status</Label>
               <select
                 aria-label="Filter by status"
-                className="h-9 rounded-md border border-zinc-200 bg-white px-2 text-xs dark:border-zinc-800 dark:bg-zinc-950"
+                className="h-9 w-full rounded-md border border-zinc-200 bg-white px-2 text-xs dark:border-zinc-800 dark:bg-zinc-950"
                 value={filters.status ?? ''}
                 onChange={(event) =>
                   setFilters((c) => ({ ...c, status: (event.target.value || undefined) as ReportStatus | undefined, offset: 0 }))
@@ -246,11 +246,11 @@ export default function SystemReportsPage() {
                 ))}
               </select>
             </div>
-            <div className="space-y-1">
+            <div className="flex min-w-0 flex-col gap-1">
               <Label className="text-[10px] uppercase">Role</Label>
               <select
                 aria-label="Filter by role"
-                className="h-9 rounded-md border border-zinc-200 bg-white px-2 text-xs dark:border-zinc-800 dark:bg-zinc-950"
+                className="h-9 w-full rounded-md border border-zinc-200 bg-white px-2 text-xs dark:border-zinc-800 dark:bg-zinc-950"
                 value={filters.role ?? ''}
                 onChange={(event) =>
                   setFilters((c) => ({ ...c, role: (event.target.value || undefined) as 'student' | 'teacher' | undefined, offset: 0 }))
@@ -263,12 +263,12 @@ export default function SystemReportsPage() {
                 ))}
               </select>
             </div>
-            <div className="space-y-1">
+            <div className="flex min-w-0 flex-col gap-1">
               <Label className="text-[10px] uppercase">From</Label>
               <Input
                 type="date"
                 aria-label="Reports from date"
-                className="h-9 w-36 text-xs"
+                className="h-9 w-full text-xs sm:w-36"
                 value={startDate}
                 onChange={(event) => {
                   setStartDate(event.target.value)
@@ -276,12 +276,12 @@ export default function SystemReportsPage() {
                 }}
               />
             </div>
-            <div className="space-y-1">
+            <div className="flex min-w-0 flex-col gap-1">
               <Label className="text-[10px] uppercase">To</Label>
               <Input
                 type="date"
                 aria-label="Reports to date"
-                className="h-9 w-36 text-xs"
+                className="h-9 w-full text-xs sm:w-36"
                 value={endDate}
                 onChange={(event) => {
                   setEndDate(event.target.value)

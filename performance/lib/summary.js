@@ -19,7 +19,7 @@ export function summarize(data, context) {
   const { label, profile, shape, fixture } = context
   const lines = []
   lines.push('')
-  lines.push(`Polycheck load test — ${label}`)
+  lines.push(`PolyCheck load test — ${label}`)
   lines.push(
     `profile=${profile} shape=${shape} runId=${fixture.runId} students=${fixture.studentCount}/${fixture.students.length} sections=${fixture.sections.length}`,
   )

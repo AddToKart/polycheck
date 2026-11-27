@@ -202,7 +202,7 @@ void main() {
       await database.writeClockOffset(97);
 
       const offline = ApiRequestError(
-        message: 'Cannot reach the Polycheck server. Check your connection.',
+        message: 'Cannot reach the PolyCheck server. Check your connection.',
         status: 0,
       );
       final sectionsApi = _StubSectionsApi(error: offline);

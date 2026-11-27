@@ -2,7 +2,7 @@
 set -e
 
 echo "========================================================"
-echo "      Polycheck Attendance System - Local Setup"
+echo "      PolyCheck Attendance System - Local Setup"
 echo "========================================================"
 echo ""
 
@@ -20,7 +20,7 @@ if [ ! -f ".env.docker.local" ] && [ -f ".env.docker.local.example" ]; then
 fi
 
 # 3. Boot compose
-echo "[INFO] Starting Polycheck stack (Postgres, Redis, Migrations, Seed, Backend, Frontend)..."
+echo "[INFO] Starting PolyCheck stack (Postgres, Redis, Migrations, Seed, Backend, Frontend)..."
 docker compose -f docker-compose.local.yml up -d --build
 
 echo ""
@@ -35,7 +35,7 @@ done
 
 echo ""
 echo "========================================================"
-echo "      Polycheck is LIVE!"
+echo "      PolyCheck is LIVE!"
 echo "========================================================"
 echo ""
 echo "  Web Dashboard:  http://localhost:3000/login"

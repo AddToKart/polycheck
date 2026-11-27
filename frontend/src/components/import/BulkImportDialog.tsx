@@ -70,23 +70,51 @@ const STUDENT_FIELDS: Array<{ key: keyof ImportColumnMapping; required?: boolean
   { key: 'email' },
   { key: 'program' },
   { key: 'yearLevel' },
-  { key: 'department' },
 ]
 
+// A class list identifies each student by student number or by school email, so neither is required alone.
 const ENROLL_FIELDS: Array<{ key: keyof ImportColumnMapping; required?: boolean }> = [
-  { key: 'studentId', required: true },
+  { key: 'studentId' },
+  { key: 'email' },
   { key: 'fullName' },
   { key: 'program' },
   { key: 'yearLevel' },
 ]
 
 const FIELD_LABELS: Record<ImportMode, Partial<Record<keyof ImportColumnMapping, string>>> = {
-  students: {},
+  students: { email: 'Email (needed to email the login)' },
   enrollments: {
-    fullName: 'Student name (verification)',
-    program: 'Program (verification)',
-    yearLevel: 'Year level (verification)',
+    email: 'School email (used when there is no student number)',
+    fullName: 'Student name (to double-check)',
+    program: 'Program (to double-check)',
+    yearLevel: 'Year level (to double-check)',
   },
+}
+
+const TEMPLATE_HEADERS: Record<ImportMode, string[]> = {
+  students: ['Student Number', 'Full Name', 'Email', 'Program', 'Year Level'],
+  enrollments: ['Student Number', 'Full Name', 'Email'],
+}
+
+const fieldLabel = (mode: ImportMode, key: keyof ImportColumnMapping) =>
+  FIELD_LABELS[mode][key] ?? mappingFieldLabel(key)
+
+/** What still has to be matched before the rows can be checked, in plain words; null when nothing is. */
+function missingColumnMessage(mode: ImportMode, mapping: ImportColumnMapping): string | null {
+  if (mode === 'enrollments') {
+    return mapping.studentId === undefined && mapping.email === undefined
+      ? 'Choose the Student number column. If your class list has no student numbers, choose the School email column instead.'
+      : null
+  }
+  const missing = [
+    ...(mapping.studentId === undefined ? ['Student number'] : []),
+    ...(mapping.fullName === undefined ? ['Full name'] : []),
+  ]
+  if (missing.length === 0) return null
+  const base = `Choose which column holds: ${missing.join(' and ')}.`
+  return mapping.studentId === undefined
+    ? `${base} If your file has no student numbers, add a "Student Number" column to it and upload it again: an account cannot be created without one.`
+    : base
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -222,7 +250,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     const nextMapping =
       loadMappingProfile(parsed.headers) ??
       (await loadSharedMapping(mode, parsed.headers)) ??
-      suggestColumnMapping(parsed.headers)
+      suggestColumnMapping(parsed.headers, parsed.rows)
     setFileName(name)
     setHeaders(parsed.headers)
     setRawRows(parsed.rows)
@@ -282,8 +310,9 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   }
 
   const runValidation = async () => {
-    if (mapping.studentId === undefined || (mode === 'students' && mapping.fullName === undefined)) {
-      setError('Map the required columns before validating.')
+    const missing = missingColumnMessage(mode, mapping)
+    if (missing) {
+      setError(missing)
       return
     }
     setError('')
@@ -504,19 +533,39 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   const mergeColumn = (key: keyof ImportColumnMapping, value: string) => {
     setMapping((current) => {
       const next = { ...current }
-      if (value === '') delete next[key]
-      else next[key] = Number(value)
+      if (value === '') {
+        delete next[key]
+        return next
+      }
+      // One column holds one detail: choosing it here takes it away from wherever it was.
+      const column = Number(value)
+      for (const other of Object.keys(next) as Array<keyof ImportColumnMapping>) {
+        if (next[other] === column) delete next[other]
+      }
+      next[key] = column
       return next
     })
   }
 
   const steps: Array<{ id: Step; label: string }> = [
-    { id: 'upload', label: 'Upload' },
-    { id: 'map', label: 'Map columns' },
-    { id: 'validate', label: 'Validate' },
+    { id: 'upload', label: 'Upload file' },
+    { id: 'map', label: 'Match columns' },
+    { id: 'validate', label: 'Check rows' },
     { id: 'confirm', label: 'Confirm' },
-    { id: 'report', label: 'Report' },
+    { id: 'report', label: 'Results' },
   ]
+  const stepHelp: Record<Step, string> = {
+    upload: 'Choose the list you were given. Nothing is saved until you press Import now in step 4.',
+    map: 'Tell PolyCheck which column of your file holds each detail. It has already guessed what it could.',
+    validate: 'PolyCheck checked every row against the system. Nothing has been saved yet.',
+    confirm: 'Last check. Press Import now to save.',
+    report: 'The import is done. This is what happened.',
+  }
+  const missingColumn = missingColumnMessage(mode, mapping)
+  const mappedFieldByColumn = new Map(
+    fields.flatMap(({ key }) => (mapping[key] === undefined ? [] : [[mapping[key] as number, key] as const])),
+  )
+  const sampleValue = (column: number) => rawRows.find((row) => row[column]?.trim())?.[column]?.trim()
   const currentStepIndex = steps.findIndex((item) => item.id === step)
 
   return (
@@ -528,8 +577,8 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
           </DialogTitle>
           <DialogDescription>
             {mode === 'students'
-              ? 'Register students from a CSV master list. Passwords are generated once and must be handed out in person.'
-              : 'Enroll your section from a CSV class list. Existing accounts are matched by student number.'}
+              ? 'Create student accounts from your master list (CSV, Excel or PDF).'
+              : 'Add students who already have accounts to this section, from your class list (CSV, Excel or PDF).'}
           </DialogDescription>
         </DialogHeader>
 
@@ -550,6 +599,12 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
             </li>
           ))}
         </ol>
+        <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+          <span className="font-bold text-zinc-900 dark:text-zinc-100">
+            Step {currentStepIndex + 1} of {steps.length}.
+          </span>{' '}
+          {stepHelp[step]}
+        </p>
 
         {error ? (
           <div role="alert" className="mt-4 border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
@@ -592,13 +647,46 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
               />
             </div>
             {fileName ? <p className="text-xs text-zinc-500 dark:text-zinc-400">Selected: {fileName}</p> : null}
+            <div className="space-y-2 border border-zinc-200 p-3 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
+              <p className="font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">What your file needs</p>
+              {mode === 'students' ? (
+                <ul className="list-disc space-y-1 pl-4">
+                  <li>
+                    One row per student, with a header row. <strong>Required:</strong> Student number (like
+                    2024-00001-MN-0) and Full name.
+                  </li>
+                  <li>
+                    <strong>Optional:</strong> Email (needed to email students their login), Program (like BSIT) and Year
+                    level.
+                  </li>
+                </ul>
+              ) : (
+                <ul className="list-disc space-y-1 pl-4">
+                  <li>
+                    One row per student, with a header row, and a <strong>Student number</strong> or a{' '}
+                    <strong>School email</strong> column.
+                  </li>
+                  <li>
+                    Students must already have accounts. The registrar or administrator creates them from User
+                    Management.
+                  </li>
+                </ul>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => downloadCsv(`polycheck-${mode}-template.csv`, [TEMPLATE_HEADERS[mode]])}
+              >
+                Download blank template (CSV)
+              </Button>
+            </div>
           </div>
         ) : null}
 
         {step === 'map' ? (
           <div className="mt-5 space-y-4">
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Found {rawRows.length.toLocaleString()} rows and {headers.length} columns in <span className="font-semibold">{fileName}</span>. Confirm the mapping:
+              Found {rawRows.length.toLocaleString()} rows and {headers.length} columns in <span className="break-all font-semibold">{fileName}</span>. Confirm the mapping:
             </p>
             {fileName.toLowerCase().endsWith('.pdf') ? (
               <p role="note" className="border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
@@ -629,30 +717,45 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
               </div>
             ) : null}
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {fields.map(({ key, required }) => (
-                <div key={key} className="space-y-1.5">
+                <div key={key} className="min-w-0 space-y-1.5">
                   <Label htmlFor={`map-${key}`}>
-                    {FIELD_LABELS[mode][key] ?? mappingFieldLabel(key)}
+                    {fieldLabel(mode, key)}
                     {required ? <span className="text-red-500"> *</span> : null}
                   </Label>
                   <select
                     id={`map-${key}`}
                     value={mapping[key] ?? ''}
                     onChange={(event) => mergeColumn(key, event.target.value)}
-                    className="h-10 w-full border border-zinc-300 bg-white px-3 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                    className="h-10 w-full min-w-0 border border-zinc-300 bg-white px-3 text-base sm:text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                    aria-describedby={`map-${key}-sample`}
                   >
-                    <option value="">Not mapped</option>
-                    {headers.map((header, index) => (
-                      <option key={`${header}-${index}`} value={index}>
-                        {header || `Column ${index + 1}`}
-                      </option>
-                    ))}
+                    <option value="">Not in my file</option>
+                    {headers.map((header, index) => {
+                      const usedBy = mappedFieldByColumn.get(index)
+                      return (
+                        <option key={`${header}-${index}`} value={index}>
+                          {header || `Column ${index + 1}`}
+                          {usedBy && usedBy !== key ? ` (now used for ${mappingFieldLabel(usedBy)})` : ''}
+                        </option>
+                      )
+                    })}
                   </select>
+                  <p id={`map-${key}-sample`} className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                    {mapping[key] === undefined
+                      ? 'Nothing will be read for this.'
+                      : `First value: ${sampleValue(mapping[key] as number) ?? '(this column is empty)'}`}
+                  </p>
                 </div>
               ))}
             </div>
-            <div className="flex justify-between gap-3 pt-2">
+            {missingColumn ? (
+              <p role="note" className="border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                {missingColumn}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap justify-between gap-3 pt-2">
               <Button variant="outline" onClick={() => setStep('upload')}>
                 <ArrowLeft className="mr-2 h-4 w-4" /> Back
               </Button>
@@ -665,11 +768,11 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
 
         {step === 'validate' ? (
           <div className="mt-5 space-y-4">
-            <div className="grid gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <SummaryTile label="Rows in file" value={rawRows.length} />
               <SummaryTile label="Importable" value={chunks.reduce((total, item) => total + item.rows.length, 0)} />
-              <SummaryTile label="Server-valid" value={summary.valid ?? 0} />
-              <SummaryTile label="Issues" value={allIssues.length} />
+              <SummaryTile label="Passed checks" value={summary.valid ?? 0} />
+              <SummaryTile label="Notes and problems" value={allIssues.length} />
             </div>
 
             {mode === 'students' ? (
@@ -689,20 +792,27 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
               </fieldset>
             ) : null}
 
-            {mode === 'students' && activationAvailable ? (
+            {mode === 'students' && activationStatus ? (
               <fieldset className="space-y-2 border border-zinc-200 p-3 dark:border-zinc-700">
                 <legend className="px-1 text-xs font-bold uppercase tracking-widest text-zinc-500">How new students get access</legend>
                 <label className="flex items-start gap-2 text-sm">
                   <input type="radio" checked={deliveryMode === 'temporary_password'} onChange={() => setDeliveryMode('temporary_password')} className="mt-1" />
-                  <span>Temporary passwords (shown once, hand them out in person).</span>
+                  <span>Temporary passwords (shown once; you give them to the students yourself).</span>
                 </label>
-                <label className="flex items-start gap-2 text-sm">
-                  <input type="radio" checked={deliveryMode === 'activation_email'} onChange={() => setDeliveryMode('activation_email')} className="mt-1" />
+                <label className={`flex items-start gap-2 text-sm ${activationAvailable ? '' : 'opacity-60'}`}>
+                  <input type="radio" checked={deliveryMode === 'activation_email'} onChange={() => setDeliveryMode('activation_email')} disabled={!activationAvailable} className="mt-1" />
                   <span>
-                    Email an activation link. Students choose their own password. Rows without an email still get a
-                    temporary password.
+                    Email an activation link to each student. They choose their own password and sign in with their
+                    student number. Rows without an email still get a temporary password.
                   </span>
                 </label>
+                {activationAvailable ? null : (
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400">
+                    {activationStatus.configured
+                      ? 'Emailing is switched off. Turn on "Email activation links for imported students" in Institution Settings, under Accounts & access.'
+                      : 'Emailing is not set up on the server yet. Whoever manages the server has to add the email provider settings first.'}
+                  </p>
+                )}
                 {deliveryMode !== validatedDeliveryMode ? (
                   <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Re-validate to apply the new delivery method before continuing.</p>
                 ) : null}
@@ -820,7 +930,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
               Import finished
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <SummaryTile label="Created" value={reports.reduce((total, item) => total + item.created, 0)} />
               <SummaryTile label="Updated" value={reports.reduce((total, item) => total + item.updated, 0)} />
               <SummaryTile label="Skipped" value={reports.reduce((total, item) => total + item.skipped, 0)} />
@@ -845,7 +955,9 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
               <section className="space-y-2 border border-golden/50 bg-golden/10 p-4 dark:bg-golden/5">
                 <h3 className="text-sm font-bold text-maroon-dark dark:text-golden">Temporary credentials — display once</h3>
                 <p className="text-xs text-zinc-700 dark:text-zinc-300">
-                  Print or hand these out in person. Do not email or message them. Lost passwords require an admin reset.
+                  Download this now: it cannot be shown again. Give each student only their own password, privately. A
+                  lost password needs an admin reset. To have PolyCheck email students instead, choose the activation
+                  link option before importing.
                 </p>
                 <div className="max-h-48 overflow-y-auto border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-surface-dark">
                   <table className="w-full text-xs">
@@ -926,7 +1038,7 @@ function MissingAccountsNotice({ issues }: { issues: ImportIssue[] }) {
     <div role="status" className="flex items-start gap-2 border border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
       <p>
-        <span className="font-bold">{missing.toLocaleString()}</span> student{missing === 1 ? ' has' : 's have'} no Polycheck
+        <span className="font-bold">{missing.toLocaleString()}</span> student{missing === 1 ? ' has' : 's have'} no PolyCheck
         account yet. Ask the registrar to import the master list first (accounts and activation emails), then run this
         import again — students who are already enrolled are skipped.
       </p>
@@ -955,15 +1067,13 @@ function IssueTable({ issues, onDownload }: { issues: ImportIssue[]; onDownload:
           <thead className="sticky top-0 bg-zinc-50 dark:bg-zinc-800">
             <tr>
               <th className="px-3 py-2 text-left">Row</th>
-              <th className="px-3 py-2 text-left">Code</th>
-              <th className="px-3 py-2 text-left">Message</th>
+              <th className="px-3 py-2 text-left">What happened</th>
             </tr>
           </thead>
           <tbody>
             {visible.map((issue, index) => (
               <tr key={`${issue.rowNumber}-${issue.code}-${index}`} className="border-t border-zinc-100 dark:border-zinc-800">
                 <td className="px-3 py-1.5">{issue.rowNumber || '—'}</td>
-                <td className="px-3 py-1.5 font-mono">{issue.code}</td>
                 <td className="px-3 py-1.5">{issue.message}</td>
               </tr>
             ))}

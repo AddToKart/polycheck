@@ -111,7 +111,7 @@ class MaintenanceController extends Notifier<MaintenanceState> {
         state = state.copyWith(
           probing: false,
           error:
-              'Unable to reach the Polycheck server. Check your connection '
+              'Unable to reach the PolyCheck server. Check your connection '
               'and try again.',
         );
       }

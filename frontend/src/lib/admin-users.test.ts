@@ -80,7 +80,7 @@ describe('admin user helpers', () => {
 
   it('exposes role-specific edit fields', () => {
     expect(editableFieldsForRole('teacher')).toEqual(['fullName', 'department', 'email'])
-    expect(editableFieldsForRole('student')).toEqual(['fullName', 'department', 'program', 'yearLevel'])
+    expect(editableFieldsForRole('student')).toEqual(['fullName', 'program', 'yearLevel'])
     expect(editableFieldsForRole('super_admin')).toEqual([])
   })
 
@@ -127,7 +127,8 @@ describe('admin user helpers', () => {
 
     const student = makeUser({ role: 'student', program: 'BSIT', yearLevel: 2 })
     const studentValues = editableValuesForUser(student)
-    expect(validateUserUpdate(student, { ...studentValues, department: '' })).toContain('Department is required')
+    // Students have no department field, so an empty one never blocks saving.
+    expect(validateUserUpdate(student, { ...studentValues, department: '' })).toBeNull()
     expect(validateUserUpdate(student, { ...studentValues, yearLevel: '9' })).toContain('between 1 and 8')
     expect(validateUserUpdate(student, { ...studentValues, program: '' })).toContain('Program')
   })

@@ -1,5 +1,5 @@
 /**
- * Polycheck — student / professor / admin service matrix.
+ * PolyCheck — student / professor / admin service matrix.
  *
  * Every user-facing service the web and mobile clients call, exercised once per
  * iteration and reported under its own `flow` tag. The AI assistant is
@@ -573,7 +573,7 @@ function classCompose(index) {
     body: {
       name: `Load test subject ${stamp}`,
       code: `LT${String(Date.now()).slice(-8)}${index}`.slice(0, 30),
-      description: 'Created by the Polycheck service matrix',
+      description: 'Created by the PolyCheck service matrix',
     },
   })
   const subject = jsonOf(subjectResponse)

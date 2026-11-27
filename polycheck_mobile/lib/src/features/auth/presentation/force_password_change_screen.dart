@@ -173,7 +173,9 @@ class _ForcePasswordChangeScreenState
             currentPassword: current.isEmpty ? null : current,
             newPassword: newPassword,
           );
-      await ref.read(sessionProvider.notifier).refreshMe();
+      // The change call returns the updated profile. Applying it directly means
+      // a weak second request can never report a saved password as a failure.
+      await ref.read(sessionProvider.notifier).applyProfile(updated);
       if (!mounted) return;
       final role = resolveAppRole(
         updated,
@@ -188,7 +190,7 @@ class _ForcePasswordChangeScreenState
           _error = 'Current password is incorrect.';
         } else if (error.isNetworkFailure) {
           _error =
-              'Cannot reach the Polycheck server. Check your connection and '
+              'Cannot reach the PolyCheck server. Check your connection and '
               'try again.';
         } else {
           _error = error.message.isEmpty

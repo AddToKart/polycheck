@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@/components/ui/input'
 import { CourseScopeEditor, type CourseScopeValue } from '@/components/admin/course-scope-editor'
 import { Label } from '@/components/ui/label'
+import { ProgramSelect } from '@/components/admin/ProgramSelect'
 import { Check, Ban, ShieldCheck, Wrench, GraduationCap, ClipboardList } from 'lucide-react'
 
 type PermissionChoice = 'inherit' | 'allow' | 'deny'
@@ -265,13 +266,11 @@ export function UserProfileDialog({
             {fields.has('program') ? (
               <div className="space-y-2">
                 <Label htmlFor="edit-user-program" className="text-xs uppercase tracking-wider text-zinc-500 font-bold">Program</Label>
-                <Input
+                <ProgramSelect
                   id="edit-user-program"
                   value={values.program}
-                  onChange={(event) => setValues((current) => ({ ...current, program: event.target.value }))}
-                  minLength={2}
-                  required
-                  className="rounded-none border-zinc-300 dark:border-zinc-700"
+                  onChange={(program) => setValues((current) => ({ ...current, program }))}
+                  className="rounded-none"
                 />
               </div>
             ) : null}

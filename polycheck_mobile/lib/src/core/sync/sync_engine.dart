@@ -859,7 +859,7 @@ String syncDrainMessage(SyncDrainReport report) {
     return 'Accept the updated privacy notice to sync saved check-ins.';
   }
   if (report.abortReason == SyncAbortReason.maintenance) {
-    return 'Polycheck is under maintenance. Saved check-ins stay on this device.';
+    return 'PolyCheck is under maintenance. Saved check-ins stay on this device.';
   }
   if (report.abortReason == SyncAbortReason.ownerChanged) {
     // Never "already synced": the drain belonged to the previous account, and

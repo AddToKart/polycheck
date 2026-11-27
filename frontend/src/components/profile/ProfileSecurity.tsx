@@ -140,7 +140,7 @@ export function DevicePanel({
           </div>
         ) : (
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
-            No device is bound. Sign in on the Polycheck Android app to bind this account to a device.
+            No device is bound. Sign in on the PolyCheck Android app to bind this account to a device.
           </p>
         )}
         {cooldownMinutes !== null ? (

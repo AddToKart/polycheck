@@ -1,12 +1,12 @@
 @echo off
 echo ========================================================
-echo       Stopping Polycheck Local Stack
+echo       Stopping PolyCheck Local Stack
 echo ========================================================
 echo.
 
 docker compose -f docker-compose.local.yml down
 
 echo.
-echo Polycheck local stack has been stopped.
+echo PolyCheck local stack has been stopped.
 pause
 

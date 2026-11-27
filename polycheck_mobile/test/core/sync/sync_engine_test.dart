@@ -513,7 +513,7 @@ void main() {
     test('maintenance 503 keeps evidence pending', () async {
       await seed();
       transport.onSubmit = (_, _) async => throw const ApiRequestError(
-        message: 'Polycheck is under maintenance',
+        message: 'PolyCheck is under maintenance',
         status: 503,
         code: 'system_maintenance',
       );

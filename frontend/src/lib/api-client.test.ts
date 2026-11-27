@@ -54,6 +54,27 @@ describe('real API client', () => {
     expect(JSON.stringify(localStorage)).not.toContain('must-not-be-persisted')
   })
 
+  it('keeps saved contacts in memory and storage without dropping what the reply omits', async () => {
+    const consented = { ...student, program: 'BSIT', privacyConsentVersion: '2026-11-26', privacyConsentedAt: '2026-11-26T00:00:00.000Z' }
+    localStorage.setItem('polycheck-user', JSON.stringify(consented))
+    const { api } = await import('./api-client')
+    // Signed in already: the profile is held in memory, as it is while moving between pages.
+    expect(api.getCurrentUser()?.id).toBe(student.id)
+    // The contacts reply carries no privacy consent fields.
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse({ ...student, program: 'BSIT', contactEmail: 'maria@example.com', contactPhone: null }),
+    )
+
+    await api.updateContacts({ contactEmail: 'maria@example.com', contactPhone: '' })
+
+    for (const profile of [api.getCurrentUser(), JSON.parse(localStorage.getItem('polycheck-user') ?? 'null')]) {
+      expect(profile?.contactEmail).toBe('maria@example.com')
+      // Losing these would bring the privacy consent popup back.
+      expect(profile?.privacyConsentVersion).toBe('2026-11-26')
+      expect(profile?.privacyConsentedAt).toBe('2026-11-26T00:00:00.000Z')
+    }
+  })
+
   it('sends the stable web installation id with student logins', async () => {
     localStorage.setItem('polycheck.installation-id.v1', 'web-existing-device')
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ user: student }))

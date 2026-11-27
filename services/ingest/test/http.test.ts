@@ -368,7 +368,7 @@ describe('ingest HTTP surface', () => {
         url: '/attendance/scan',
         headers: {
           authorization: 'Bearer student-token',
-          'user-agent': 'Polycheck-Android/1.0',
+          'user-agent': 'PolyCheck-Android/1.0',
           'x-forwarded-for': '203.0.113.195',
         },
         payload: acceptedScan(),
@@ -385,7 +385,7 @@ describe('ingest HTTP surface', () => {
           method: 'POST',
           headers: expect.objectContaining({
             authorization: 'Bearer student-token',
-            'user-agent': 'Polycheck-Android/1.0',
+            'user-agent': 'PolyCheck-Android/1.0',
             'x-forwarded-for': expect.stringContaining('203.0.113.195'),
             'content-type': 'application/json',
           }),

@@ -153,7 +153,7 @@ class ApiRequestError implements Exception {
       DioExceptionType.sendTimeout ||
       DioExceptionType.receiveTimeout => 'The server took too long to respond.',
       DioExceptionType.connectionError =>
-        'Cannot reach the Polycheck server. Check your connection.',
+        'Cannot reach the PolyCheck server. Check your connection.',
       DioExceptionType.cancel => 'The request was cancelled.',
       _ => 'Request failed',
     };

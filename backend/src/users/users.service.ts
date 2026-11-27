@@ -797,7 +797,7 @@ export class UsersService {
     await this.notifications?.notify(id, {
       type: 'account_status_changed',
       title: `Account ${isActive ? 'enabled' : 'disabled'}`,
-      body: `Your Polycheck account has been ${isActive ? 'enabled' : 'disabled'} by an administrator.`,
+      body: `Your PolyCheck account has been ${isActive ? 'enabled' : 'disabled'} by an administrator.`,
       link: updated.role === 'student' ? '/student/dashboard' : '/faculty',
     })
     return updated
@@ -909,7 +909,14 @@ export class UsersService {
       const program = dto.program.trim()
       if (program.length < 2) throw new BadRequestException('program must be at least 2 characters')
       const course = normalizeCourse(program)
-      data.program = course.matched ? course.code : program
+      const nextProgram = course.matched ? (course.code ?? program) : program
+      data.program = nextProgram
+      // Students have no department of their own: the column mirrors the course. Follow a program
+      // change when the campus scopes by course, or when the old value was itself that mirror.
+      const mirrorsCourse = !target.department?.trim() || target.department === target.program
+      if (dto.department === undefined && (courseScopeMode() === 'course' || mirrorsCourse)) {
+        data.department = nextProgram
+      }
     }
     if (dto.yearLevel !== undefined) data.yearLevel = dto.yearLevel
     if (target.role === 'student' && dto.department !== undefined && !dto.department.trim()) {
@@ -1068,7 +1075,7 @@ export class UsersService {
     await this.notifications?.notify(id, {
       type: 'role_changed',
       title: 'Account role updated',
-      body: `Your Polycheck role is now ${role === 'teacher' ? 'Teacher' : 'Student'}.`,
+      body: `Your PolyCheck role is now ${role === 'teacher' ? 'Teacher' : 'Student'}.`,
       link: role === 'student' ? '/student/dashboard' : '/faculty',
     })
     return updated
@@ -1120,7 +1127,7 @@ export class UsersService {
     await this.notifications?.notify(target.id, {
       type: 'role_changed',
       title: 'Super Admin access granted',
-      body: 'Your Polycheck account has been promoted to Super Admin.',
+      body: 'Your PolyCheck account has been promoted to Super Admin.',
       link: '/faculty',
     })
     return updated
@@ -1174,7 +1181,7 @@ export class UsersService {
       await this.notifications?.notify(created.id, {
         type: 'role_changed',
         title: 'Super Admin access granted',
-        body: 'Your Polycheck Super Admin account is ready.',
+        body: 'Your PolyCheck Super Admin account is ready.',
         link: '/faculty',
       })
       return created

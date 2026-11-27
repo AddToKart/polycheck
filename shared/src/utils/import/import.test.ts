@@ -30,7 +30,6 @@ describe('Master-list parsing', () => {
       fullName: 1,
       program: 2,
       yearLevel: 3,
-      department: 4,
       email: 5,
     })
 
@@ -44,7 +43,6 @@ describe('Master-list parsing', () => {
         email: 'juan@example.edu.ph',
         program: 'BSIT',
         yearLevel: 1,
-        department: 'CCIS',
       },
       {
         rowNumber: 3,
@@ -53,7 +51,6 @@ describe('Master-list parsing', () => {
         email: 'maria@example.edu.ph',
         program: 'BSIT',
         yearLevel: 2,
-        department: 'CCIS',
       },
     ])
   })
@@ -148,5 +145,64 @@ describe('row checksum', () => {
       computeRowChecksum([{ ...first[0], fullName: 'C' }, first[1]]),
     )
     expect(computeRowChecksum(first)).toMatch(/^[a-f0-9]{16}$/)
+  })
+})
+
+describe('suggestColumnMapping with the data rows', () => {
+  const rows = [
+    ['1', '2023-00101-SM-0', 'Dela Cruz, Juan', 'juan@example.com', 'BS Information Technology', '1st Year'],
+    ['2', '2023-00102-SM-0', 'Santos, Maria', 'maria@example.com', 'BSHM', '2nd Year'],
+  ]
+
+  it('recognises columns by their contents when the headings are unfamiliar', () => {
+    const mapping = suggestColumnMapping(['#', 'Learner Ref', 'Learner', 'Contact', 'Track', 'Level'], rows)
+    expect(mapping).toEqual(expect.objectContaining({ studentId: 1, email: 3, program: 4, yearLevel: 5 }))
+  })
+
+  it('never reads a running row number as a year level', () => {
+    const mapping = suggestColumnMapping(['#', 'Learner Ref'], [['1', '2023-00101-SM-0'], ['2', '2023-00102-SM-0']])
+    expect(mapping.yearLevel).toBeUndefined()
+  })
+
+  it('finds no student number in a list that has none, instead of guessing one', () => {
+    const mapping = suggestColumnMapping(
+      ['Name', 'Email Address', 'Mobile', 'Delivery'],
+      [['Dela Cruz, Juan', 'juan@example.com', '09171234567', 'Online']],
+    )
+    expect(mapping.studentId).toBeUndefined()
+    expect(mapping.fullName).toBe(0)
+    expect(mapping.email).toBe(1)
+    const used = Object.values(mapping)
+    expect(new Set(used).size).toBe(used.length)
+  })
+})
+
+describe('class lists without student numbers', () => {
+  const parsed = parseCsv(
+    [
+      'Name,Email Address,Mobile,Delivery',
+      '"Dela Cruz, Juan",JUAN@example.edu.ph,09171234567,Online',
+      '"Santos, Maria",maria@example.edu.ph,09179876543,Online',
+      '"Santos, Maria",maria@example.edu.ph,09179876543,Online',
+      '"Reyes, Ana",,09170000000,Online',
+    ].join(String.fromCharCode(10)),
+  )
+
+  it('matches roster rows by school email and says which rows cannot be matched', () => {
+    const built = buildEnrollRows(parsed.rows, suggestColumnMapping(parsed.headers, parsed.rows))
+
+    expect(built.rows).toEqual([
+      { rowNumber: 2, email: 'juan@example.edu.ph', studentName: 'Dela Cruz, Juan' },
+      { rowNumber: 3, email: 'maria@example.edu.ph', studentName: 'Santos, Maria' },
+    ])
+    expect(built.issues.map((issue) => [issue.rowNumber, issue.code])).toEqual([
+      [4, 'DUPLICATE_IN_FILE'],
+      [5, 'MISSING_REQUIRED_FIELD'],
+    ])
+  })
+
+  it('sends only the student number when a row has one', () => {
+    const built = buildEnrollRows([['2024-00001-MN-0', 'juan@example.edu.ph']], { studentId: 0, email: 1 })
+    expect(built.rows).toEqual([{ rowNumber: 2, studentId: '2024-00001-MN-0' }])
   })
 })

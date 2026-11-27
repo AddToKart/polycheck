@@ -163,11 +163,11 @@ export default function SubjectDetailPage() {
                   </CardHeader>
                   <CardContent className="px-6 pb-6 flex-1 flex flex-col">
                     <div className="space-y-3 text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-6 flex-1 uppercase tracking-wider">
-                      <div className="flex justify-between border-b border-zinc-300/60 dark:border-zinc-800 pb-2">
+                      <div className="flex justify-between gap-3 border-b border-zinc-300/60 dark:border-zinc-800 pb-2">
                         <span className="text-zinc-400">Instructor</span>
                         <span className="text-foreground text-right">{section.teacherName}</span>
                       </div>
-                      <div className="flex justify-between border-b border-zinc-300/60 dark:border-zinc-800 pb-2">
+                      <div className="flex justify-between gap-3 border-b border-zinc-300/60 dark:border-zinc-800 pb-2">
                         <span className="text-zinc-400">Schedule</span>
                         <span className="text-foreground text-right">
                           {section.schedule.map((s) => `${s.day} ${s.startTime}-${s.endTime}${s.room ? ` (${s.room})` : ''}`).join(', ')}

@@ -297,7 +297,7 @@ as String?,
 /// @nodoc
 mixin _$EnrollImportRow {
 
- int get rowNumber; String get studentId; String? get studentName; String? get expectedProgram; int? get expectedYearLevel;
+ int get rowNumber; String? get studentId; String? get email; String? get studentName; String? get expectedProgram; int? get expectedYearLevel;
 /// Create a copy of EnrollImportRow
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -310,16 +310,16 @@ $EnrollImportRowCopyWith<EnrollImportRow> get copyWith => _$EnrollImportRowCopyW
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is EnrollImportRow&&(identical(other.rowNumber, rowNumber) || other.rowNumber == rowNumber)&&(identical(other.studentId, studentId) || other.studentId == studentId)&&(identical(other.studentName, studentName) || other.studentName == studentName)&&(identical(other.expectedProgram, expectedProgram) || other.expectedProgram == expectedProgram)&&(identical(other.expectedYearLevel, expectedYearLevel) || other.expectedYearLevel == expectedYearLevel));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is EnrollImportRow&&(identical(other.rowNumber, rowNumber) || other.rowNumber == rowNumber)&&(identical(other.studentId, studentId) || other.studentId == studentId)&&(identical(other.email, email) || other.email == email)&&(identical(other.studentName, studentName) || other.studentName == studentName)&&(identical(other.expectedProgram, expectedProgram) || other.expectedProgram == expectedProgram)&&(identical(other.expectedYearLevel, expectedYearLevel) || other.expectedYearLevel == expectedYearLevel));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,rowNumber,studentId,studentName,expectedProgram,expectedYearLevel);
+int get hashCode => Object.hash(runtimeType,rowNumber,studentId,email,studentName,expectedProgram,expectedYearLevel);
 
 @override
 String toString() {
-  return 'EnrollImportRow(rowNumber: $rowNumber, studentId: $studentId, studentName: $studentName, expectedProgram: $expectedProgram, expectedYearLevel: $expectedYearLevel)';
+  return 'EnrollImportRow(rowNumber: $rowNumber, studentId: $studentId, email: $email, studentName: $studentName, expectedProgram: $expectedProgram, expectedYearLevel: $expectedYearLevel)';
 }
 
 
@@ -330,7 +330,7 @@ abstract mixin class $EnrollImportRowCopyWith<$Res>  {
   factory $EnrollImportRowCopyWith(EnrollImportRow value, $Res Function(EnrollImportRow) _then) = _$EnrollImportRowCopyWithImpl;
 @useResult
 $Res call({
- int rowNumber, String studentId, String? studentName, String? expectedProgram, int? expectedYearLevel
+ int rowNumber, String? studentId, String? email, String? studentName, String? expectedProgram, int? expectedYearLevel
 });
 
 
@@ -347,11 +347,12 @@ class _$EnrollImportRowCopyWithImpl<$Res>
 
 /// Create a copy of EnrollImportRow
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? rowNumber = null,Object? studentId = null,Object? studentName = freezed,Object? expectedProgram = freezed,Object? expectedYearLevel = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? rowNumber = null,Object? studentId = freezed,Object? email = freezed,Object? studentName = freezed,Object? expectedProgram = freezed,Object? expectedYearLevel = freezed,}) {
   return _then(EnrollImportRow(
 rowNumber: null == rowNumber ? _self.rowNumber : rowNumber // ignore: cast_nullable_to_non_nullable
-as int,studentId: null == studentId ? _self.studentId : studentId // ignore: cast_nullable_to_non_nullable
-as String,studentName: freezed == studentName ? _self.studentName : studentName // ignore: cast_nullable_to_non_nullable
+as int,studentId: freezed == studentId ? _self.studentId : studentId // ignore: cast_nullable_to_non_nullable
+as String?,email: freezed == email ? _self.email : email // ignore: cast_nullable_to_non_nullable
+as String?,studentName: freezed == studentName ? _self.studentName : studentName // ignore: cast_nullable_to_non_nullable
 as String?,expectedProgram: freezed == expectedProgram ? _self.expectedProgram : expectedProgram // ignore: cast_nullable_to_non_nullable
 as String?,expectedYearLevel: freezed == expectedYearLevel ? _self.expectedYearLevel : expectedYearLevel // ignore: cast_nullable_to_non_nullable
 as int?,
@@ -439,10 +440,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int rowNumber,  String studentId,  String? studentName,  String? expectedProgram,  int? expectedYearLevel)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int rowNumber,  String? studentId,  String? email,  String? studentName,  String? expectedProgram,  int? expectedYearLevel)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _EnrollImportRow() when $default != null:
-return $default(_that.rowNumber,_that.studentId,_that.studentName,_that.expectedProgram,_that.expectedYearLevel);case _:
+return $default(_that.rowNumber,_that.studentId,_that.email,_that.studentName,_that.expectedProgram,_that.expectedYearLevel);case _:
   return orElse();
 
 }
@@ -460,10 +461,10 @@ return $default(_that.rowNumber,_that.studentId,_that.studentName,_that.expected
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int rowNumber,  String studentId,  String? studentName,  String? expectedProgram,  int? expectedYearLevel)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int rowNumber,  String? studentId,  String? email,  String? studentName,  String? expectedProgram,  int? expectedYearLevel)  $default,) {final _that = this;
 switch (_that) {
 case _EnrollImportRow():
-return $default(_that.rowNumber,_that.studentId,_that.studentName,_that.expectedProgram,_that.expectedYearLevel);case _:
+return $default(_that.rowNumber,_that.studentId,_that.email,_that.studentName,_that.expectedProgram,_that.expectedYearLevel);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -480,10 +481,10 @@ return $default(_that.rowNumber,_that.studentId,_that.studentName,_that.expected
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int rowNumber,  String studentId,  String? studentName,  String? expectedProgram,  int? expectedYearLevel)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int rowNumber,  String? studentId,  String? email,  String? studentName,  String? expectedProgram,  int? expectedYearLevel)?  $default,) {final _that = this;
 switch (_that) {
 case _EnrollImportRow() when $default != null:
-return $default(_that.rowNumber,_that.studentId,_that.studentName,_that.expectedProgram,_that.expectedYearLevel);case _:
+return $default(_that.rowNumber,_that.studentId,_that.email,_that.studentName,_that.expectedProgram,_that.expectedYearLevel);case _:
   return null;
 
 }
@@ -493,13 +494,14 @@ return $default(_that.rowNumber,_that.studentId,_that.studentName,_that.expected
 
 /// @nodoc
 
-@JsonSerializable(fieldRename: FieldRename.none, explicitToJson: true)
+@JsonSerializable(fieldRename: FieldRename.none, explicitToJson: true, includeIfNull: false)
 class _EnrollImportRow implements EnrollImportRow {
-  const _EnrollImportRow({required this.rowNumber, required this.studentId, this.studentName, this.expectedProgram, this.expectedYearLevel});
+  const _EnrollImportRow({required this.rowNumber, this.studentId, this.email, this.studentName, this.expectedProgram, this.expectedYearLevel});
   factory _EnrollImportRow.fromJson(Map<String, dynamic> json) => _$EnrollImportRowFromJson(json);
 
 @override final  int rowNumber;
-@override final  String studentId;
+@override final  String? studentId;
+@override final  String? email;
 @override final  String? studentName;
 @override final  String? expectedProgram;
 @override final  int? expectedYearLevel;
@@ -517,16 +519,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _EnrollImportRow&&(identical(other.rowNumber, rowNumber) || other.rowNumber == rowNumber)&&(identical(other.studentId, studentId) || other.studentId == studentId)&&(identical(other.studentName, studentName) || other.studentName == studentName)&&(identical(other.expectedProgram, expectedProgram) || other.expectedProgram == expectedProgram)&&(identical(other.expectedYearLevel, expectedYearLevel) || other.expectedYearLevel == expectedYearLevel));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _EnrollImportRow&&(identical(other.rowNumber, rowNumber) || other.rowNumber == rowNumber)&&(identical(other.studentId, studentId) || other.studentId == studentId)&&(identical(other.email, email) || other.email == email)&&(identical(other.studentName, studentName) || other.studentName == studentName)&&(identical(other.expectedProgram, expectedProgram) || other.expectedProgram == expectedProgram)&&(identical(other.expectedYearLevel, expectedYearLevel) || other.expectedYearLevel == expectedYearLevel));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,rowNumber,studentId,studentName,expectedProgram,expectedYearLevel);
+int get hashCode => Object.hash(runtimeType,rowNumber,studentId,email,studentName,expectedProgram,expectedYearLevel);
 
 @override
 String toString() {
-  return 'EnrollImportRow(rowNumber: $rowNumber, studentId: $studentId, studentName: $studentName, expectedProgram: $expectedProgram, expectedYearLevel: $expectedYearLevel)';
+  return 'EnrollImportRow(rowNumber: $rowNumber, studentId: $studentId, email: $email, studentName: $studentName, expectedProgram: $expectedProgram, expectedYearLevel: $expectedYearLevel)';
 }
 
 
@@ -537,7 +539,7 @@ abstract mixin class _$EnrollImportRowCopyWith<$Res> implements $EnrollImportRow
   factory _$EnrollImportRowCopyWith(_EnrollImportRow value, $Res Function(_EnrollImportRow) _then) = __$EnrollImportRowCopyWithImpl;
 @override @useResult
 $Res call({
- int rowNumber, String studentId, String? studentName, String? expectedProgram, int? expectedYearLevel
+ int rowNumber, String? studentId, String? email, String? studentName, String? expectedProgram, int? expectedYearLevel
 });
 
 
@@ -554,11 +556,12 @@ class __$EnrollImportRowCopyWithImpl<$Res>
 
 /// Create a copy of EnrollImportRow
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? rowNumber = null,Object? studentId = null,Object? studentName = freezed,Object? expectedProgram = freezed,Object? expectedYearLevel = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? rowNumber = null,Object? studentId = freezed,Object? email = freezed,Object? studentName = freezed,Object? expectedProgram = freezed,Object? expectedYearLevel = freezed,}) {
   return _then(_EnrollImportRow(
 rowNumber: null == rowNumber ? _self.rowNumber : rowNumber // ignore: cast_nullable_to_non_nullable
-as int,studentId: null == studentId ? _self.studentId : studentId // ignore: cast_nullable_to_non_nullable
-as String,studentName: freezed == studentName ? _self.studentName : studentName // ignore: cast_nullable_to_non_nullable
+as int,studentId: freezed == studentId ? _self.studentId : studentId // ignore: cast_nullable_to_non_nullable
+as String?,email: freezed == email ? _self.email : email // ignore: cast_nullable_to_non_nullable
+as String?,studentName: freezed == studentName ? _self.studentName : studentName // ignore: cast_nullable_to_non_nullable
 as String?,expectedProgram: freezed == expectedProgram ? _self.expectedProgram : expectedProgram // ignore: cast_nullable_to_non_nullable
 as String?,expectedYearLevel: freezed == expectedYearLevel ? _self.expectedYearLevel : expectedYearLevel // ignore: cast_nullable_to_non_nullable
 as int?,

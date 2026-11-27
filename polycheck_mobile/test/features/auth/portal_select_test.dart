@@ -22,7 +22,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Polycheck'), findsOneWidget);
+    expect(find.text('PolyCheck'), findsOneWidget);
     expect(find.text('Student'), findsOneWidget);
     expect(find.text('Faculty & Staff'), findsOneWidget);
     expect(find.text('Version 1.0.0'), findsOneWidget);
@@ -128,7 +128,7 @@ void main() {
     await tester.pump();
 
     expect(
-      find.text('Polycheck is under scheduled maintenance'),
+      find.text('PolyCheck is under scheduled maintenance'),
       findsOneWidget,
     );
     expect(find.text('YOUR RECORDS ARE SAFE'), findsOneWidget);

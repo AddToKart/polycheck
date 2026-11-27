@@ -1,4 +1,4 @@
-# Polycheck 🎓
+# PolyCheck 🎓
 
 > **Unified Attendance Management System with Geolocation Gating & Cryptographic Verification**
 >
@@ -15,15 +15,15 @@
 
 ## 📌 Project Goal & Vision
 
-**Polycheck** is a secure, offline-first attendance management ecosystem designed specifically for the **Polytechnic University of the Philippines (PUP)**.
+**PolyCheck** is a secure, offline-first attendance management ecosystem designed specifically for the **Polytechnic University of the Philippines (PUP)**.
 
 The primary goal of this capstone project is to replace traditional, manual, and paper-based class monitoring forms (F-1/F-2 equivalent) used by faculty and department chairs. Manual tracking in large university settings is vulnerable to proxy signing ("attendance cheating"), lost paper sheets, manual calculation errors, lack of real-time visibility, and cellular dead zones in concrete campus buildings.
 
-Polycheck solves this by introducing a robust digital platform that operates **100% offline inside classrooms** and features a multi-layered anti-cheat system powered by cryptographically signed QR tokens, client-side geolocation validation, and server-side verification upon sync.
+PolyCheck solves this by introducing a robust digital platform that operates **100% offline inside classrooms** and features a multi-layered anti-cheat system powered by cryptographically signed QR tokens, client-side geolocation validation, and server-side verification upon sync.
 
 ### Problem vs. Solution
 
-| Challenge in Paper-Based Monitoring                              | Polycheck Digital Solution                                                                                |
+| Challenge in Paper-Based Monitoring                              | PolyCheck Digital Solution                                                                                |
 | :--------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
 | **Proxy Attendance** (Classmates signing for absent friends)     | Cryptographic QR tokens with dynamic expiry (1–15 min + up to 60 min grace) + Geolocation gating.         |
 | **Connectivity Dead Zones** (Unreliable campus WiFi/mobile data) | **Offline-First Architecture**: QR scanning and coordinate gating execute locally without network access. |
@@ -41,7 +41,7 @@ Polycheck solves this by introducing a robust digital platform that operates **1
 | **Monorepo Architecture** | `pnpm` workspaces + `Turborepo`   | Workspace isolation, fast cached builds, shared package compilation.                  |
 | **Shared Library**        | `@polycheck/shared`               | TypeScript domain types, Zod schemas, Haversine formula, token decoders.              |
 | **Web Application**       | Next.js 15 (App Router), React 19 | shadcn/ui, Tailwind CSS v4, Lucide Icons, MapLibre GL, standalone output.             |
-| **Mobile Application**    | Expo SDK 52+, Expo Router v4      | NativeWind v4, react-native-reusables, expo-sqlite, expo-location, expo-camera.       |
+| **Mobile Application**    | Flutter (Dart), Riverpod, go_router | drift (SQLite), dio, mobile_scanner, geolocator, offline sync queue.            |
 | **Backend API**           | NestJS 11 (Node.js 22)            | Prisma ORM 5.22, Socket.IO WebSockets, Better Auth, Pino logging, Prometheus metrics. |
 | **Database & Caching**    | PostgreSQL 16 & Redis 7.4         | PgBouncer transaction connection pooling, Redis Pub/Sub adapter, BullMQ async queues. |
 | **Edge & Proxy**          | Nginx 1.28 (Unprivileged)         | Reverse proxy, TLS termination, path routing, health checks.                          |
@@ -51,7 +51,7 @@ Polycheck solves this by introducing a robust digital platform that operates **1
 
 ## 👥 User Roles & Access Control
 
-Polycheck implements strict Role-Based Access Control (RBAC) across three distinct user roles:
+PolyCheck implements strict Role-Based Access Control (RBAC) across three distinct user roles:
 
 ```mermaid
 graph TD
@@ -91,7 +91,7 @@ graph TD
 
 ## 📐 System Architecture & Offline-First Flow
 
-Polycheck is engineered for **100% offline classroom execution**. Students do not need internet connection during class to scan QR codes or verify coordinates.
+PolyCheck is engineered for **100% offline classroom execution**. Students do not need internet connection during class to scan QR codes or verify coordinates.
 
 ```mermaid
 sequenceDiagram
@@ -139,7 +139,7 @@ sequenceDiagram
 
 ## 🎨 Brand Design System
 
-Polycheck adheres strictly to the official brand guidelines of the **Polytechnic University of the Philippines**:
+PolyCheck adheres strictly to the official brand guidelines of the **Polytechnic University of the Philippines**:
 
 - **Primary Maroon** (`#7B1113`): Buttons, active navigation headers, primary branding states.
 - **Deep Maroon** (`#4A0A0B`): Dark mode cards, sidebar backgrounds, hover/pressed states.
@@ -166,11 +166,10 @@ polycheck/
 │       ├── app/            # App Router pages (Faculty, Admin & Student dashboards)
 │       ├── components/     # UI Components built using shadcn/ui & Tailwind CSS
 │       └── lib/            # API client, WebSockets, Better Auth state
-├── android/                # Expo React Native App (@polycheck/android)
-│   └── src/
-│       ├── app/            # Expo Router screens (Tabs, Scan, ID Card, Subject Info)
-│       ├── components/     # Mobile UI styled via NativeWind v4 & react-native-reusables
-│       └── services/       # SQLite database, sync engine, location & camera services
+├── polycheck_mobile/       # Flutter Android app (the mobile client)
+│   └── lib/src/
+│       ├── core/           # API client, offline database and sync engine, router, theme
+│       └── features/       # Student, faculty, admin and shared screens
 ├── backend/                # NestJS API Backend (@polycheck/backend)
 │   ├── src/
 │   │   ├── auth/           # Better Auth strategies, RBAC guards
@@ -202,7 +201,7 @@ Make sure you have the following installed:
 - [Node.js](https://nodejs.org/) (v18.x or higher)
 - [pnpm](https://pnpm.io/) (v9.x or higher)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (with Compose v2)
-- [Expo Go](https://expo.dev/client) app installed on your phone, or Android Studio / iOS Simulator.
+- [Flutter](https://docs.flutter.dev/get-started/install) 3.44 or newer with an Android emulator or phone (mobile app only).
 
 ---
 
@@ -247,28 +246,23 @@ All seeded accounts use the default password: **`PolycheckLocal1!`**
 
 ### 📱 Connecting Android Mobile App to Local Stack
 
-Keep your Docker stack running while launching the mobile app outside Docker:
+Keep your Docker stack running while launching the mobile app outside Docker. The API address is set at build time and must end in `/api`.
 
 #### 1. Android Studio Emulator
 
-The emulator automatically connects to the backend at `http://10.0.2.2:4000/api`.
-
 ```bash
-pnpm --filter android start
+cd polycheck_mobile
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:4000/api
 ```
-
-Press `a` to open the Android emulator.
 
 #### 2. Physical Phone (over Campus / Home WiFi)
 
-Set your computer's local LAN IP address and start Expo:
-
-```powershell
-$env:EXPO_PUBLIC_API_URL="http://192.168.1.10:4000/api"
-pnpm --filter android start
+```bash
+cd polycheck_mobile
+flutter run --dart-define=API_BASE_URL=http://192.168.1.10:4000/api
 ```
 
-_(Replace `192.168.1.10` with your machine's actual local IPv4 address)._
+_(Replace `192.168.1.10` with your machine's actual local IPv4 address). Release builds are covered in `polycheck_mobile/RELEASE.md`._
 
 ---
 
@@ -283,7 +277,7 @@ pnpm install
 # 2. Build the shared package
 pnpm --filter @polycheck/shared build
 
-# 3. Start Next.js, Expo, and shared compiler concurrently
+# 3. Start Next.js, the API and the shared compiler concurrently
 pnpm dev
 ```
 
@@ -301,7 +295,6 @@ pnpm dev
 | `pnpm dev`                   | Starts all monorepo workspaces in development watch mode.                                                       |
 | `pnpm build`                 | Compiles production builds for all workspace packages.                                                          |
 | `pnpm lint`                  | Executes ESLint across all workspace apps and packages.                                                         |
-| `pnpm test:e2e:mobile`       | Runs the installed Android app's Maestro E2E journeys. See [the mobile E2E guide](documentation/MOBILE_E2E.md). |
 | `pnpm load:attendance:smoke` | Runs k6 smoke load test against attendance check-in endpoints.                                                  |
 | `pnpm load:attendance:full`  | Runs k6 full load test against attendance check-in endpoints.                                                   |
 
@@ -310,11 +303,11 @@ pnpm dev
 ## 🎓 Capstone Project Context
 
 - **Institution:** Polytechnic University of the Philippines (PUP)
-- **Project Name:** Polycheck Attendance System
+- **Project Name:** PolyCheck Attendance System
 - **Target Users:** PUP Department Chairs (Super Admin), PUP Faculty Members (Admin), PUP Students (User)
 - **Target Platforms:** Responsive Web Dashboard (Teachers & Chairs) and Native Mobile Apps (Students & Classroom Scanners).
 - **Academic Year:** 2026
 
 ---
 
-_Made with ❤️ by the Polycheck Capstone Development Team._
+_Made with ❤️ by the PolyCheck Capstone Development Team._

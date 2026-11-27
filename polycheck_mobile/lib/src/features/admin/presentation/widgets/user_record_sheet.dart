@@ -20,6 +20,7 @@ import '../../domain/admin_access.dart';
 import '../../domain/admin_users.dart';
 import 'admin_common.dart';
 import 'credential_result_dialog.dart';
+import '../../../../core/widgets/program_dropdown.dart';
 
 Future<void> showUserRecordSheet(
   BuildContext context, {
@@ -428,10 +429,8 @@ class _UserRecordSheetState extends ConsumerState<UserRecordSheet> {
           ],
           if (fields.contains(EditableUserField.program)) ...<Widget>[
             const SizedBox(height: 12),
-            CampusTextField(
-              controller: _controllers[EditableUserField.program],
-              label: 'Program',
-              textCapitalization: TextCapitalization.characters,
+            ProgramDropdown(
+              controller: _controllers[EditableUserField.program]!,
               enabled: !_busy,
             ),
           ],

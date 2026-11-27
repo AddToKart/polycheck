@@ -5,7 +5,7 @@ part 'maintenance.g.dart';
 
 /// Mirrors `shared/src/types/maintenance.ts`.
 const String defaultMaintenanceMessage =
-    'Polycheck is undergoing scheduled maintenance. Attendance taken during '
+    'PolyCheck is undergoing scheduled maintenance. Attendance taken during '
     'class still works offline - your records are safely stored on this device '
     'and will sync when servers reopen.';
 

@@ -65,7 +65,7 @@ export function useBranding(): InstitutionBranding {
   return useContext(BrandingContext)
 }
 
-/** The institution's uploaded logo, or the neutral Polycheck mark when none is set. */
+/** The institution's uploaded logo, or the neutral PolyCheck mark when none is set. */
 export function BrandLogo({ size, className, alt }: { size: number; className?: string; alt?: string }) {
   const { logoDataUrl, name } = useBranding()
   const label = useMemo(() => alt ?? `${name} logo`, [alt, name])

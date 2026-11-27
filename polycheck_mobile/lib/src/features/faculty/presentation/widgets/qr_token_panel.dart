@@ -258,7 +258,7 @@ class QrTokenPanel extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             note ??
-                'Students scan this QR with the Polycheck scanner. If a device '
+                'Students scan this QR with the PolyCheck scanner. If a device '
                     'cannot scan, copy the token for manual entry.',
             style: Theme.of(
               context,
@@ -387,7 +387,7 @@ Future<void> showTokenFullscreen(
                       ),
                     ),
                   const Text(
-                    'Students scan this QR from the Polycheck scanner. If a '
+                    'Students scan this QR from the PolyCheck scanner. If a '
                     'device cannot scan, copy the token for manual entry.',
                     textAlign: TextAlign.center,
                     style: TextStyle(

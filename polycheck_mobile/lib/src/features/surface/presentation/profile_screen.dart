@@ -50,6 +50,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _user = ref.read(sessionProvider).user;
     _tab = _normalizeTab(widget.tab);
     unawaited(_loadAssistantCapability());
+    // Show what the server has now (for example contacts added on the website).
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => unawaited(_refreshProfile()),
+    );
+  }
+
+  Future<void> _refreshProfile() async {
+    if (!mounted) return;
+    try {
+      await ref.read(sessionProvider.notifier).refreshMe();
+    } on Object {
+      // Offline: the stored profile stays on screen.
+    }
   }
 
   @override
@@ -143,11 +156,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void _updateUser(User user) {
     if (!mounted) return;
     setState(() => _user = user);
+    // The stored profile is what every screen reads, so a save has to reach it.
+    unawaited(ref.read(sessionProvider.notifier).mergeProfile(user));
   }
 
   @override
   Widget build(BuildContext context) {
-    final user = _user;
+    // The local copy only covers the moment of signing out.
+    final user =
+        ref.watch(sessionProvider.select((state) => state.user)) ?? _user;
     if (user == null) {
       return const Scaffold(body: CampusLoading(label: 'Loading profile.'));
     }
@@ -348,7 +365,7 @@ class _ProfileHeader extends ConsumerWidget {
                               const SizedBox(height: 2),
                               Text(
                                 '${_roleLabel(user.role)}'
-                                '${user.department == null ? '' : ' \u00b7 ${user.department}'}',
+                                '${_identitySuffix(user)}',
                                 style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(color: tokens.muted),
                               ),
@@ -388,11 +405,13 @@ class _ProfileHeader extends ConsumerWidget {
                         'INSTITUTIONAL EMAIL',
                         user.email ?? '\u2014',
                       ),
-                      _identityRow(
-                        context,
-                        'DEPARTMENT',
-                        user.department ?? '\u2014',
-                      ),
+                      // Students have no department; their program says it.
+                      if (user.role != UserRole.student)
+                        _identityRow(
+                          context,
+                          'DEPARTMENT',
+                          user.department ?? '\u2014',
+                        ),
                       if (user.role == UserRole.student) ...[
                         _identityRow(
                           context,
@@ -665,6 +684,13 @@ class _DelegatedPermissions extends StatelessWidget {
       ),
     );
   }
+}
+
+/// What follows the role under the name: a student's program, or a staff
+/// member's department.
+String _identitySuffix(User user) {
+  final value = user.role == UserRole.student ? user.program : user.department;
+  return value == null || value.trim().isEmpty ? '' : ' · $value';
 }
 
 String _roleLabel(UserRole role) {

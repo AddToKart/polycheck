@@ -110,7 +110,7 @@ describe('SessionGuard storage failure handling', () => {
     render(<SessionGuard area="faculty"><div>Protected QR content</div></SessionGuard>)
 
     expect(
-      await screen.findByRole('heading', { name: 'Polycheck is under scheduled maintenance' }),
+      await screen.findByRole('heading', { name: 'PolyCheck is under scheduled maintenance' }),
     ).toBeInTheDocument()
     expect(screen.getByText('Campus maintenance')).toBeInTheDocument()
     expect(screen.queryByText('Protected QR content')).not.toBeInTheDocument()

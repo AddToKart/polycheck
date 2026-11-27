@@ -14,7 +14,7 @@ import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/designations.dart';
 import '../../../core/utils/maintenance_time.dart';
 import '../../../core/widgets/campus_card.dart';
-import '../../../core/branding/branding.dart';
+import '../../../core/widgets/product_logo.dart';
 
 /// Branded maintenance surface (route, portal replacement, and login embed).
 ///
@@ -98,22 +98,7 @@ class _MaintenanceScreenState extends ConsumerState<MaintenanceScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: tokens.maroon,
-                        border: Border.all(color: tokens.gold, width: 2),
-                      ),
-                      child: Text(
-                        BrandingScope.of(context).monogram,
-                        style: textTheme.titleSmall?.copyWith(
-                          color: tokens.gold,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
+                    const ProductLogo(size: 64),
                     const SizedBox(width: 14),
                     Icon(Icons.build_outlined, size: 38, color: tokens.gold),
                   ],
@@ -131,8 +116,8 @@ class _MaintenanceScreenState extends ConsumerState<MaintenanceScreen> {
                 const SizedBox(height: 8),
                 Text(
                   active
-                      ? 'Polycheck is under scheduled maintenance'
-                      : 'Polycheck is available',
+                      ? 'PolyCheck is under scheduled maintenance'
+                      : 'PolyCheck is available',
                   textAlign: TextAlign.center,
                   style: textTheme.headlineSmall?.copyWith(
                     color: tokens.onMaroon,

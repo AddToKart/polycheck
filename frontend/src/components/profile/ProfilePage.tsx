@@ -43,9 +43,9 @@ export function ProfilePage({
       <Sidebar user={user} onLogout={onLogout} />
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl p-6 sm:p-8">
-          <div className="mb-8 flex items-center gap-3">
+          <div className="mb-8 flex flex-wrap items-center gap-3">
             <UserRound className="h-7 w-7 text-maroon dark:text-golden" aria-hidden="true" />
-            <div className="flex-1">
+            <div className="min-w-0 flex-1 basis-52">
               <h1 className="font-heading text-2xl font-bold text-maroon dark:text-white">My Profile</h1>
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
                 Your institutional identity, credentials, contacts, and device security.
@@ -76,10 +76,12 @@ export function ProfilePage({
                     .join('')}
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate font-heading text-xl font-bold text-foreground">{user.fullName}</p>
+                  <p className="break-words font-heading text-xl font-bold text-foreground">{user.fullName}</p>
                   <p className="text-sm text-zinc-500 dark:text-zinc-400">
                     {roleLabel(user.role)}
-                    {user.department ? ` · ${user.department}` : ''}
+                    {isStudent
+                      ? user.program ? ` · ${user.program}` : ''
+                      : user.department ? ` · ${user.department}` : ''}
                   </p>
                 </div>
               </div>
@@ -93,10 +95,12 @@ export function ProfilePage({
                   <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Role</dt>
                   <dd className="mt-1 font-medium text-foreground">{roleLabel(user.role)}</dd>
                 </div>
-                <div>
-                  <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Department</dt>
-                  <dd className="mt-1 font-medium text-foreground">{user.department ?? '—'}</dd>
-                </div>
+                {isStudent ? null : (
+                  <div>
+                    <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Department</dt>
+                    <dd className="mt-1 font-medium text-foreground">{user.department ?? '—'}</dd>
+                  </div>
+                )}
                 <div>
                   <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Institutional email</dt>
                   <dd className="mt-1 font-medium text-foreground">{user.email ?? '—'}</dd>

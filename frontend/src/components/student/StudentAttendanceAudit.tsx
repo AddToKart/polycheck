@@ -89,8 +89,8 @@ export function StudentAttendanceAudit(props: StudentAttendanceAuditProps) {
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
+          <table className="block w-full text-sm sm:table">
+            <thead className="hidden sm:table-header-group">
               <tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30">
                 <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Subject</th>
                 <th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Date/Time</th>
@@ -98,7 +98,7 @@ export function StudentAttendanceAudit(props: StudentAttendanceAuditProps) {
                 <th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Action</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="block sm:table-row-group">
               {props.records.map((record) => (
                 <AttendanceRow
                   key={record.id}
@@ -109,8 +109,8 @@ export function StudentAttendanceAudit(props: StudentAttendanceAuditProps) {
                 />
               ))}
               {props.filteredCount === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-6 py-16 text-center text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest">
+                <tr className="block sm:table-row">
+                  <td colSpan={4} className="block px-6 py-16 sm:table-cell text-center text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest">
                     No {props.filter === 'all' ? '' : `${props.filter} `}attendance records
                   </td>
                 </tr>

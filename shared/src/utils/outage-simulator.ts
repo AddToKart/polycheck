@@ -16,7 +16,7 @@
 
 /** Exact message of the simulated failure thrown by the guarded fetchers. */
 export const SIMULATED_NETWORK_OUTAGE_MESSAGE =
-  'Simulated network outage (Polycheck simulator)' as const
+  'Simulated network outage (PolyCheck simulator)' as const
 
 type OutageListener = (armed: boolean) => void
 

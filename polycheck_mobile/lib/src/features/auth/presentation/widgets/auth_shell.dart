@@ -5,6 +5,7 @@ import '../../../../core/router/routes/app_routes.dart';
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/widgets/campus_header.dart';
 import '../../../../core/widgets/legal_links_row.dart';
+import '../../../../core/widgets/product_logo.dart';
 import '../../../../core/widgets/theme_mode_toggle.dart';
 import '../../../../core/branding/branding.dart';
 
@@ -34,7 +35,7 @@ class AuthShell extends StatelessWidget {
 
     return Scaffold(
       appBar: CampusHeader(
-        title: 'Polycheck',
+        title: 'PolyCheck',
         subtitle: BrandingScope.of(context).name,
         automaticallyImplyLeading: false,
         leading: showBack
@@ -56,20 +57,36 @@ class AuthShell extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    eyebrow.toUpperCase(),
-                    style: textTheme.labelSmall?.copyWith(
-                      color: tokens.muted,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.6,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    title,
-                    style: textTheme.headlineMedium?.copyWith(
-                      color: tokens.onSurface,
-                    ),
+                  // The logo sits beside the heading so it adds no height:
+                  // the sign-in button must stay in view on small phones.
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              eyebrow.toUpperCase(),
+                              style: textTheme.labelSmall?.copyWith(
+                                color: tokens.muted,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.6,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              title,
+                              style: textTheme.headlineMedium?.copyWith(
+                                color: tokens.onSurface,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const ProductLogo(size: 52),
+                    ],
                   ),
                   if (subtitle != null && subtitle!.isNotEmpty) ...[
                     const SizedBox(height: 8),

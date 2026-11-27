@@ -43,7 +43,7 @@ if (typeof privacy.body.url !== 'string' || !privacy.body.url.startsWith('https:
 
 const login = await request('/login')
 const loginHtml = await login.text()
-if (!loginHtml.toLowerCase().includes('polycheck')) throw new Error('/login did not render the Polycheck application')
+if (!loginHtml.toLowerCase().includes('polycheck')) throw new Error('/login did not render the PolyCheck application')
 
 const requiredHeaders = {
   'content-security-policy': login.headers.get('content-security-policy'),

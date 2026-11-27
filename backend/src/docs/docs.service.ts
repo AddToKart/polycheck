@@ -735,10 +735,10 @@ export class DocsService {
       size: 'A4',
       margins: { top: PDF_BODY_TOP, bottom: PDF_BOTTOM, left: PDF_MARGIN_X, right: PDF_MARGIN_X },
       bufferPages: true,
-      info: { Title: DPO_SUMMARY_INFO_TITLE, Author: meta.institutionName, Creator: 'Polycheck' },
+      info: { Title: DPO_SUMMARY_INFO_TITLE, Author: meta.institutionName, Creator: 'PolyCheck' },
     })
     const completed = this.openPdfSink(doc)
-    let y = this.drawPdfSectionHeading(doc, 'Data inventory — what Polycheck stores and why', PDF_BODY_TOP)
+    let y = this.drawPdfSectionHeading(doc, 'Data inventory — what PolyCheck stores and why', PDF_BODY_TOP)
     y = this.drawInventoryPdfTable(doc, y + 6)
     y += 12
     y = this.drawPdfSectionHeading(doc, 'Retention attestation', y)
@@ -870,7 +870,7 @@ export class DocsService {
         children: [new TextRun({ text, size: 16, font: DOCX_FONT })],
       })
     const document = new Document({
-      creator: 'Polycheck',
+      creator: 'PolyCheck',
       title: DPO_SUMMARY_TITLE,
       styles: { default: { document: { run: { font: DOCX_FONT, size: 20 } } } },
       sections: [
@@ -956,7 +956,7 @@ export class DocsService {
       layout: 'landscape',
       margins: { top: LANDSCAPE_BODY_TOP, bottom: PDF_BOTTOM, left: LANDSCAPE_MARGIN_X, right: LANDSCAPE_MARGIN_X },
       bufferPages: true,
-      info: { Title: CLASS_RECORD_TITLE, Author: meta.institutionName, Creator: 'Polycheck' },
+      info: { Title: CLASS_RECORD_TITLE, Author: meta.institutionName, Creator: 'PolyCheck' },
     })
     const completed = this.openPdfSink(doc)
     const columns = this.classRecordColumns(grid.weeks)
@@ -1175,7 +1175,7 @@ export class DocsService {
       size: 'A4',
       margins: { top: PDF_BODY_TOP, bottom: PDF_BOTTOM, left: PDF_MARGIN_X, right: PDF_MARGIN_X },
       bufferPages: true,
-      info: { Title: AT_RISK_NOTICE_INFO_TITLE, Author: meta.institutionName, Creator: 'Polycheck' },
+      info: { Title: AT_RISK_NOTICE_INFO_TITLE, Author: meta.institutionName, Creator: 'PolyCheck' },
     })
     const completed = this.openPdfSink(doc)
     const bottomLimit = doc.page.height - PDF_BOTTOM - 24
@@ -1298,7 +1298,7 @@ export class DocsService {
       ...(meta.note ? [`Referral note: ${meta.note}`] : []),
     ]
     const document = new Document({
-      creator: 'Polycheck',
+      creator: 'PolyCheck',
       title: AT_RISK_NOTICE_TITLE,
       styles: { default: { document: { run: { font: DOCX_FONT, size: 20 } } } },
       sections: [
@@ -1378,7 +1378,7 @@ export class DocsService {
         children: [new TextRun({ text, bold, size, font: DOCX_FONT, ...(color ? { color } : {}) })],
       })
     const document = new Document({
-      creator: 'Polycheck',
+      creator: 'PolyCheck',
       title: CLASS_RECORD_TITLE,
       styles: { default: { document: { run: { font: DOCX_FONT, size: 18 } } } },
       sections: [
@@ -1537,7 +1537,7 @@ export class DocsService {
       info: {
         Title: options.title,
         Author: options.institutionName,
-        Creator: 'Polycheck',
+        Creator: 'PolyCheck',
       },
     })
     const chunks: Buffer[] = []
@@ -1693,7 +1693,7 @@ export class DocsService {
 
   private renderMasterListDocx(meta: MasterListMeta, rows: MasterListRow[]): Promise<Buffer> {
     const document = new Document({
-      creator: 'Polycheck',
+      creator: 'PolyCheck',
       title: MASTER_LIST_TITLE,
       styles: {
         default: {

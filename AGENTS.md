@@ -1,5 +1,9 @@
 # Polycheck — Unified Development Guide
 
+> **Mobile is Flutter only (2026-11-27).** The React Native app that lived in `android/` was deleted. Ignore
+> older notes in this file about it, React Native parity, Expo, NativeWind or EAS; they are history. Mobile
+> work happens in `polycheck_mobile/`.
+
 ## Project Overview
 
 Polycheck is a unified web and mobile attendance management system for the Polytechnic University of the Philippines (PUP). It digitizes attendance through QR code scanning and geolocation verification. It is built as an offline-first system, working fully without internet and syncing to the cloud when connectivity is available.
@@ -27,12 +31,11 @@ polycheck/
 │       ├── app/            # Next.js App Router pages
 │       ├── components/     # React components
 │       └── lib/            # API client, hooks
-├── android/                # Expo React Native mobile app
-│   ├── package.json
-│   └── src/
-│       ├── app/            # Expo Router screens
-│       ├── components/     # React Native components
-│       └── services/       # API client, local DB, sync engine
+├── polycheck_mobile/       # Flutter Android app (the only mobile client)
+│   ├── pubspec.yaml
+│   └── lib/src/
+│       ├── core/           # API client, offline database + sync, router, theme
+│       └── features/       # Student, faculty, admin and shared screens
 ├── backend/                # NestJS API (30+ modules, Prisma, Swagger)
 │   ├── src/
 │   │   ├── main.ts         # Bootstrap, Swagger, CORS, health checks
@@ -66,10 +69,10 @@ polycheck/
 | Layer | Technology |
 |---|---|
 | Web dashboard | Next.js 15 (App Router), shadcn/ui, Tailwind CSS |
-| Mobile app | Expo SDK 52+, Expo Router, NativeWind, react-native-reusables |
+| Mobile app | Flutter (Dart), Riverpod, go_router, freezed, drift, dio |
 | Backend API | NestJS (Node.js) |
 | Database | PostgreSQL (via Prisma ORM) |
-| Local database | SQLite via expo-sqlite |
+| Local database | SQLite via drift |
 | Real-time Updates | WebSockets (Socket.IO) |
 | Caching & Queues | Redis (WebSocket Adapter, Cache Store, BullMQ) |
 | Authentication | Better Auth (HttpOnly web cookie + signed mobile bearer) |
@@ -249,7 +252,7 @@ For real-time updates and low-latency validation during peak attendance check-in
 ### Package naming
 - `@polycheck/shared` — shared types, validation, and utilities
 - `@polycheck/frontend` — web dashboard
-- `@polycheck/android` — mobile app
+- `polycheck_mobile` — Flutter mobile app (not a pnpm package)
 
 ### NPM Scripts (root)
 - `pnpm dev` — run all apps in dev mode
@@ -257,11 +260,8 @@ For real-time updates and low-latency validation during peak attendance check-in
 - `pnpm lint` — lint all packages
 
 ### Mobile styling
-- **Use NativeWind classNames for all new mobile UI** (e.g. `className="flex-1 bg-white dark:bg-black"`)
-- Use `StyleSheet.create()` only when NativeWind cannot express the style (dynamic values, complex transforms)
-- Color tokens are defined in Tailwind config; reference them by name (`text-maroon`, `bg-golden`, etc.)
-- Never mix `className` and `style` props on the same element
-- Prefer `gap` over margin/padding for spacing between siblings
+- Use the shared theme tokens (`BrandTheme.of(context)`) and the widgets in `polycheck_mobile/lib/src/core/widgets/`
+- Zero-radius corners and 1px borders, matching the web
 
 ### Shared package imports
 ```typescript
@@ -272,7 +272,7 @@ import { haversineDistance } from '@polycheck/shared/utils'
 ### API Client Pattern (both apps)
 ```typescript
 // Web: NEXT_PUBLIC_API_URL=http://localhost:4000/api
-// Mobile: EXPO_PUBLIC_API_URL must be reachable from the device.
+// Mobile: --dart-define=API_BASE_URL=... must be reachable from the device and end in /api.
 // Both clients always call the NestJS API; offline mobile reads use SQLite cache.
 ```
 
@@ -281,12 +281,10 @@ import { haversineDistance } from '@polycheck/shared/utils'
 - Imperative mood, no period
 - Max 72 chars subject line
 
-### Feature Parity Gate (both platforms)
-- **Shared contract first:** any new capability starts as types/schemas/validation in `@polycheck/shared` (and `ApiClient` methods) before either UI exists.
-- **Every UI feature ships on web *and* mobile** — or the PR states a one-line justification ("super-admin-only", "native-only", "PWA follow-up") in the PR body. A web-only wizard is not complete until `BM6`-style mobile adoption lands.
-- **Paired E2E:** role journeys get both a Playwright spec (web) and a Maestro flow (mobile). Shared journeys: login, schedule, section roster, session cockpit, scan, disputes, import.
-- **Quarterly parity audit:** re-run the full capability matrix (web vs mobile vs PWA) and append results to `plan/mobile-improvement-plan.md`'s addendum.
-- **Shared behavior changes require both clients:** when `ApiClient` or shared validation changes, update frontend + android consumers and their tests in the same change.
+### Feature Parity Gate (web + Flutter)
+- **Shared contract first:** a new capability starts as types/schemas/validation in `@polycheck/shared`, mirrored by the Dart models.
+- **Every UI feature ships on web *and* in the Flutter app**, or the PR states a one-line justification ("super-admin-only", "native-only", "web-only").
+- **Shared behavior changes require both clients:** update the web and Flutter consumers and their tests in the same change.
 
 ### Offline-first contract (web + mobile)
 - Reads: network-first, fall back to the local cache (IndexedDB on web, SQLite on mobile).
@@ -696,6 +694,15 @@ import { haversineDistance } from '@polycheck/shared/utils'
 
 ### Done (cont.)
 - **Forgot password by email (2026-11-26)**: a student who bound a contact email on their profile (`User.contactEmail`, set via `PATCH /users/me/contacts`) can reset their own password. Public `POST /password-reset/request` (student number only), `/password-reset/validate`, `/password-reset/complete` (`backend/src/password-reset/`, new `PasswordResetToken` table, migration `20261126120000_password_reset`). The request answers `{ ok, delivery: 'email' | 'unavailable' }`: `unavailable` covers an unknown number, nothing bound, an inactive or not-yet-activated account, and mail not configured, so the endpoint never confirms a student number exists (it does reveal whether a *known* number has a bound email, by product request). The link goes only to the bound address through the existing `AccountMail` outbox (new `password_reset` kind, shared daily cap, sweeper, bounce receipts), is single use, stored as sha256, valid 60 minutes (`PASSWORD_RESET_TTL_MINUTES`), and opens `/reset-password#token=...` on the web app. Completing it sets the password on `User` and the credential row, bumps `authVersion`, deletes every session, emits `auth.session-replaced`, writes `account.password_reset_*` audits and notifies the student; device binding and cooldown are untouched. Per-IP, per-account (5 min cooldown, 5/day) and per-token limits live in the service. Web: `/forgot-password`, `/reset-password`, "Forgot password?" on the student login. Flutter: `/forgot-password` screen only requests the email (the reset itself is web-only by design). **Students with no bound email use the teacher temporary-password reset (GOV), unchanged.** Known gap: the bound email is not verified at bind time, so a mistyped address would receive the link; verifying contact emails is the recommended follow-up. Needs `MAIL_DRIVER=resend` + `RESEND_API_KEY` + `MAIL_FROM`.
+
+- **Pilot feedback wave (2026-11-27)**:
+  - **Naming and logo:** user-facing text says **PolyCheck** (identifiers, package ids, URLs, the `X-Polycheck-Device-Id` header and the `POLYCHECK` watermark are unchanged). Every logo raster comes from `scripts/brand/polycheck-logo-source.png` (360px source; replace with a larger export when available) via `python scripts/generate-brand-assets.py` then `dart run flutter_launcher_icons`. The product logo is the web default `BrandLogo` and the Flutter `ProductLogo` (portal, login, maintenance); an uploaded institution logo still replaces it on web, and ID cards keep the institution monogram.
+  - **`SessionApi.me()` parsed its reply twice** and threw on every call since the first Flutter commit: forced password change "failed" although saved, reopening the app while online signed the student out, and privacy consent errored. Every test had replaced `me()` with a fake; `test/core/session_api_profile_test.dart` now runs the real method.
+  - **Saved contacts** were stored server-side but neither client kept them: Flutter now merges them into the session (`mergeProfile`) and refreshes the profile on open; web `updateContacts` merges the partial reply so consent fields survive.
+  - **React Native removed:** root `android/`, its CI jobs, Maestro job, verification scripts and workspace entry are deleted. `polycheck_mobile/android/` is Flutter's own Android project.
+  - **Phone layout:** the session cockpit was unusable on phones (menu bar laid out beside the page, content 0px wide); `e2e/responsive.spec.ts` now covers 320px, popups, the account-recovery pages and fails when page content is squeezed.
+  - **Students have no department field.** Create/edit use a program dropdown (the campus catalog); `User.department` mirrors the program (follows changes in course mode, or in legacy mode when it was already a copy). Import mapping no longer reads a department column. In `COURSE_SCOPE_MODE=legacy`, department-pinned registrars/heads will not see newly created students, so use `course` mode.
+  - **Imports:** a class list row may identify a student by **school email** (`User.email` only, never `contactEmail`) when it has no student number; email-only rows never provision accounts. One column fills one field, the missing required column is named, unfamiliar headings are recognised by content, and the web dialog explains each step with a blank CSV template. The activation-link option is always shown to account admins (disabled with the reason until `activation_email_enabled` and a mail provider are set).
 
 ### Blocked
 - (none)

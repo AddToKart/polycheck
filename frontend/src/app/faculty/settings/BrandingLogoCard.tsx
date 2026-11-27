@@ -18,7 +18,7 @@ function readAsDataUrl(file: File): Promise<string> {
   })
 }
 
-/** Institution logo: shown on the login screen, ID cards, kiosk and sidebar. Falls back to the Polycheck mark. */
+/** Institution logo: shown on the login screen, ID cards, kiosk and sidebar. Falls back to the PolyCheck mark. */
 export function BrandingLogoCard({ disabled }: { disabled: boolean }) {
   const { logoDataUrl } = useBranding()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -50,7 +50,7 @@ export function BrandingLogoCard({ disabled }: { disabled: boolean }) {
     setBusy(true)
     try {
       await api.clearBrandingLogo()
-      finish('Logo removed. The default Polycheck mark is shown.', 'success')
+      finish('Logo removed. The default PolyCheck mark is shown.', 'success')
     } catch (error) {
       finish(describeMutationError(error), 'error')
     } finally {
@@ -64,7 +64,7 @@ export function BrandingLogoCard({ disabled }: { disabled: boolean }) {
       <div className="min-w-0 flex-1 space-y-1">
         <p className="text-sm font-semibold">Institution logo</p>
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          PNG, JPEG or WebP, up to 256 KB. A square image works best. Without one, the default Polycheck mark is used.
+          PNG, JPEG or WebP, up to 256 KB. A square image works best. Without one, the default PolyCheck mark is used.
         </p>
         {message ? (
           <p role={message.tone === 'error' ? 'alert' : 'status'} className={message.tone === 'error' ? 'text-xs text-red-600' : 'text-xs text-green-700'}>

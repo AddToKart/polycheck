@@ -184,7 +184,7 @@ const List<SettingFieldDef> settingFields = <SettingFieldDef>[
     type: SettingFieldType.textarea,
     defaultValue: '',
     optional: true,
-    placeholder: 'Polycheck is undergoing scheduled server maintenance…',
+    placeholder: 'PolyCheck is undergoing scheduled server maintenance…',
     caption:
         'Shown on the branded maintenance screen. Leave blank to use the '
         'built-in copy about offline attendance preservation.',
@@ -273,7 +273,7 @@ const List<SettingSwitchDef> settingSwitches = <SettingSwitchDef>[
     tab: SettingsTab.system,
     label: 'Maintenance mode',
     caption:
-        'Closes Polycheck for students and non-designated teachers. Super '
+        'Closes PolyCheck for students and non-designated teachers. Super '
         'admins and IT coordinators stay signed in; health probes remain open.',
     defaultValue: false,
   ),
@@ -473,7 +473,7 @@ class MaintenanceTrio {
 }
 
 const String defaultMaintenanceMessage =
-    'Polycheck is undergoing scheduled maintenance. Attendance taken during '
+    'PolyCheck is undergoing scheduled maintenance. Attendance taken during '
     'class still works offline — your records are safely stored on this device '
     'and will sync when servers reopen.';
 

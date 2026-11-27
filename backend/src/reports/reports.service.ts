@@ -270,7 +270,7 @@ export class ReportsService {
       await this.notifications?.notify(result.updated.userId, {
         type: 'system_report_resolved',
         title: 'Your report was resolved',
-        body: `"${result.updated.title}" — thanks for helping improve Polycheck.`,
+        body: `"${result.updated.title}" — thanks for helping improve PolyCheck.`,
         link: '/profile',
       })
     }

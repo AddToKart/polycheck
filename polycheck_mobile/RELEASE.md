@@ -1,4 +1,4 @@
-# Polycheck Mobile - Android Release Runbook
+# PolyCheck Mobile - Android Release Runbook
 
 Play Store submission target: **November 18-20, 2026** (`.aab` upload).
 Package: `app.polycheck.mobile` (coexists with the React Native app
@@ -146,10 +146,10 @@ apkanalyzer files list build\app\outputs\bundle\release\app-release.aab |
 
 | Item | Value |
 |---|---|
-| App label | `Polycheck` (`AndroidManifest.xml`) |
+| App label | `PolyCheck` (`AndroidManifest.xml`) |
 | Application ID | `app.polycheck.mobile` |
 | minSdk / targetSdk | 26 (Android 8) / 36 (Play requirement) |
-| Launcher icon | Polycheck mark on maroon `#7B1113` (legacy + adaptive + monochrome) |
+| Launcher icon | PolyCheck mark on maroon `#7B1113` (legacy + adaptive + monochrome) |
 | Icon source | `assets/branding/` (derived from `android/assets/brand-mark*.png`) |
 | Regenerate icons | `dart run flutter_launcher_icons` |
 | Splash | `LaunchTheme` window background `#7B1113` (light) / `#0A0A0A` (night); Android 12+ uses `windowSplashScreenBackground` |

@@ -20,7 +20,7 @@ export const registerApiDocs = (
   }
 
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('Polycheck API')
+    .setTitle('PolyCheck API')
     .setDescription('Unified web and mobile attendance management system')
     .setVersion('1.0')
     .addBearerAuth()
@@ -28,7 +28,7 @@ export const registerApiDocs = (
   const document = SwaggerModule.createDocument(app, swaggerConfig)
   SwaggerModule.setup('api/docs', app, document, {
     swaggerOptions: { persistAuthorization: env.NODE_ENV !== 'production' },
-    customSiteTitle: 'Polycheck API Docs',
+    customSiteTitle: 'PolyCheck API Docs',
     jsonDocumentUrl: 'api/docs-json',
     yamlDocumentUrl: 'api/docs-yaml',
   })

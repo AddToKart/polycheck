@@ -41,7 +41,7 @@ export function CredentialResultDialog({
   const copyAll = async () => {
     if (!credentials) return
     const text = [
-      'Polycheck credentials',
+      'PolyCheck credentials',
       `Role: ${credentials.role}`,
       `Name: ${credentials.name}`,
       `Identifier: ${credentials.identifier}`,

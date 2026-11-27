@@ -769,7 +769,7 @@ export default function CreateSessionPage() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                    Polycheck will not request, read, or store student location for online sessions
+                    PolyCheck will not request, read, or store student location for online sessions
                     (Data Privacy Act RA 10173, data-minimization principle). Attendance is verified by
                     dual QR checkpoints and the announced meeting PIN.
                   </p>

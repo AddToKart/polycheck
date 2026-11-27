@@ -34,7 +34,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <main className="min-h-dvh bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <header className="bg-maroon px-4 py-4 text-white">
         <div className="mx-auto flex max-w-md items-center gap-3">
-          <span className="font-heading text-xl font-bold">Polycheck</span>
+          <span className="font-heading text-xl font-bold">PolyCheck</span>
           <span className="text-xs uppercase tracking-widest text-golden">Account activation</span>
           <ThemeToggle className="ml-auto rounded-none p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-golden" />
         </div>
@@ -75,7 +75,7 @@ function RequestLinkForm({ heading }: { heading: string }) {
     } catch (cause) {
       setError(describeActivationFailure(cause).kind === 'rate_limited'
         ? 'Too many requests from this connection. Please wait a few minutes and try again.'
-        : 'We could not reach Polycheck. Check your connection and try again.')
+        : 'We could not reach PolyCheck. Check your connection and try again.')
     } finally {
       setPending(false)
     }

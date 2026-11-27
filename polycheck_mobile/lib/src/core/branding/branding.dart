@@ -9,7 +9,7 @@ import '../api/api_base.dart';
 import '../network/dio_client.dart';
 
 /// Institution identity shown across the app. Mirrors `shared/src/types/branding.ts`:
-/// Polycheck is the product name; the institution's name, short name and campus are
+/// PolyCheck is the product name; the institution's name, short name and campus are
 /// administrator-editable runtime data served by the public `GET /branding` endpoint.
 @immutable
 class InstitutionBranding {

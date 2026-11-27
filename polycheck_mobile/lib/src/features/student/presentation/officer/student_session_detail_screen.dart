@@ -58,7 +58,7 @@ class _StudentSessionDetailScreenState
   Future<void> _shareToken(String token) async {
     try {
       await SharePlus.instance.share(
-        ShareParams(text: token, subject: 'Polycheck class token'),
+        ShareParams(text: token, subject: 'PolyCheck class token'),
       );
     } on Object {
       if (!mounted) return;
@@ -342,7 +342,7 @@ class _SessionBody extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Live while this session is active. Classmates scan this QR with the Polycheck scanner, or copy the manual-entry token below.',
+                  'Live while this session is active. Classmates scan this QR with the PolyCheck scanner, or copy the manual-entry token below.',
                   style: Theme.of(
                     context,
                   ).textTheme.bodySmall?.copyWith(color: tokens.muted),

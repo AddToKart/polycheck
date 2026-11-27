@@ -62,7 +62,7 @@ class PolycheckApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final appRouter = router ?? ref.watch(appRouterProvider);
     return MaterialApp.router(
-      title: 'Polycheck',
+      title: 'PolyCheck',
       debugShowCheckedModeBanner: false,
       theme: BrandTheme.light,
       darkTheme: BrandTheme.dark,

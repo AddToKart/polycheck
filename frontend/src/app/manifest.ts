@@ -8,8 +8,8 @@ export const dynamic = 'force-static'
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Polycheck',
-    short_name: 'Polycheck',
+    name: 'PolyCheck',
+    short_name: 'PolyCheck',
     description: 'Attendance Management System',
     start_url: '/',
     scope: '/',
@@ -32,7 +32,7 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: 'any',
       },
       {
-        src: '/icons/icon-512.png',
+        src: '/icons/icon-maskable-512.png',
         sizes: '512x512',
         type: 'image/png',
         purpose: 'maskable',

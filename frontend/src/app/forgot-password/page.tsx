@@ -19,7 +19,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <main className="min-h-dvh bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <header className="bg-maroon px-4 py-4 text-white">
         <div className="mx-auto flex max-w-md items-center gap-3">
-          <span className="font-heading text-xl font-bold">Polycheck</span>
+          <span className="font-heading text-xl font-bold">PolyCheck</span>
           <span className="text-xs uppercase tracking-widest text-golden">Password help</span>
           <ThemeToggle className="ml-auto rounded-none p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-golden" />
         </div>
@@ -30,7 +30,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
         <p className="mt-4 text-center text-xs text-zinc-500 dark:text-zinc-400">
           {branding.name}
-          {branding.campus ? ` · ${branding.campus}` : ''} · Polycheck never asks for your password by email.
+          {branding.campus ? ` · ${branding.campus}` : ''} · PolyCheck never asks for your password by email.
         </p>
       </div>
     </main>
@@ -59,7 +59,7 @@ export default function ForgotPasswordPage() {
     } catch (cause) {
       setError(describeResetFailure(cause).kind === 'rate_limited'
         ? 'Too many requests from this connection. Please wait a few minutes and try again.'
-        : 'We could not reach Polycheck. Check your connection and try again.')
+        : 'We could not reach PolyCheck. Check your connection and try again.')
     } finally {
       setPending(false)
     }
@@ -105,7 +105,7 @@ export default function ForgotPasswordPage() {
             We could not find an email address added to this student account, so we could not send a reset link.
           </p>
           <p className="text-sm text-zinc-600 dark:text-zinc-300">
-            Ask your instructor to reset your password. They can give you a temporary password in Polycheck, and you
+            Ask your instructor to reset your password. They can give you a temporary password in PolyCheck, and you
             will choose your own right after you sign in.
           </p>
           <p className="text-sm text-zinc-600 dark:text-zinc-300">

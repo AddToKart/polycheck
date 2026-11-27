@@ -21,6 +21,7 @@ import type { AdminUserPage, User } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { BulkImportDialog } from '@/components/import/BulkImportDialog'
 import { CreateAdminDialog } from '@/components/admin/create-admin-dialog'
+import { ProgramSelect } from '@/components/admin/ProgramSelect'
 import { CredentialResultDialog, type CredentialSummary } from '@/components/admin/credential-result-dialog'
 import { UserProfileDialog } from '@/components/admin/user-profile-dialog'
 import { UserRoleDialog } from '@/components/admin/user-role-dialog'
@@ -187,7 +188,6 @@ export default function UsersPage() {
     email: '',
     program: '',
     yearLevel: '1',
-    department: '',
   })
   const firstFilterRender = useRef(true)
   const desktopLayout = useDesktopLayout()
@@ -349,9 +349,8 @@ export default function UsersPage() {
         email: studentForm.email.trim() || undefined,
         program: studentForm.program,
         yearLevel: Number(studentForm.yearLevel),
-        department: studentForm.department.trim() || undefined,
       })
-      setStudentForm({ fullName: '', studentId: '', email: '', program: '', yearLevel: '1', department: '' })
+      setStudentForm({ fullName: '', studentId: '', email: '', program: '', yearLevel: '1' })
       setShowCreateStudent(false)
       setOffset(0)
       refresh()
@@ -515,10 +514,6 @@ export default function UsersPage() {
       }))
       setShowCreateTeacher(true)
     } else if (tab === 'student') {
-      setStudentForm((form) => ({
-        ...form,
-        department: form.department || (courseScopedRegistrar ? '' : (user.department ?? '')),
-      }))
       setShowCreateStudent(true)
     }
   }
@@ -718,7 +713,9 @@ export default function UsersPage() {
                         ) : (
                           <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">Email</th>
                         )}
-                        <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">Department</th>
+                        {tab === 'student' ? null : (
+                          <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">Department</th>
+                        )}
                         <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">Role</th>
                         <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">Status</th>
                         <th className="px-5 py-3 text-right font-medium text-zinc-500 dark:text-zinc-400">Actions</th>
@@ -740,7 +737,9 @@ export default function UsersPage() {
                           ) : (
                             <td className="px-5 py-3 text-zinc-600 dark:text-zinc-400">{row.email ?? '—'}</td>
                           )}
-                          <td className="px-5 py-3 text-zinc-600 dark:text-zinc-400">{row.department ?? '—'}</td>
+                          {tab === 'student' ? null : (
+                            <td className="px-5 py-3 text-zinc-600 dark:text-zinc-400">{row.department ?? '—'}</td>
+                          )}
                           <td className="px-5 py-3">
                             <Badge variant="default">{roleLabel(row.role)}</Badge>
                           </td>
@@ -801,10 +800,6 @@ export default function UsersPage() {
                             <div className="min-w-0">
                               <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Year</dt>
                               <dd className="mt-0.5 text-zinc-600 dark:text-zinc-400">{row.yearLevel ? `Year ${row.yearLevel}` : '—'}</dd>
-                            </div>
-                            <div className="min-w-0">
-                              <dt className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Department</dt>
-                              <dd className="mt-0.5 break-words text-zinc-600 dark:text-zinc-400">{row.department ?? '—'}</dd>
                             </div>
                           </>
                         ) : (
@@ -920,15 +915,11 @@ export default function UsersPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="student-program">Program</Label>
-              <Input id="student-program" value={studentForm.program} onChange={(e) => setStudentForm((form) => ({ ...form, program: e.target.value }))} placeholder="BS Computer Science" minLength={2} required />
+              <ProgramSelect id="student-program" value={studentForm.program} onChange={(program) => setStudentForm((form) => ({ ...form, program }))} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="student-year">Year level</Label>
               <Input id="student-year" type="number" min={1} max={8} value={studentForm.yearLevel} onChange={(e) => setStudentForm((form) => ({ ...form, yearLevel: e.target.value }))} required />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="student-department">Department (optional)</Label>
-              <Input id="student-department" value={studentForm.department} onChange={(e) => setStudentForm((form) => ({ ...form, department: e.target.value }))} minLength={2} placeholder="Defaults to the course code" />
             </div>
             <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 sm:col-span-2 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
               Share the generated temporary password in person. The student must change it on first sign-in.

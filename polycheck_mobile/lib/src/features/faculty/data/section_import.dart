@@ -115,17 +115,37 @@ String importCell(List<String> row, int? index) {
 class ImportColumnMapping {
   const ImportColumnMapping({
     this.studentId,
+    this.email,
     this.fullName,
     this.program,
     this.yearLevel,
   });
 
   final int? studentId;
+  final int? email;
   final int? fullName;
   final int? program;
   final int? yearLevel;
 
-  bool get canImport => studentId != null;
+  /// A class list identifies students by student number or by school email.
+  bool get canImport => studentId != null || email != null;
+
+  /// The mapping with [field] read from [column]. One column holds one detail,
+  /// so choosing it here takes it away from wherever it was.
+  ImportColumnMapping withColumn(String field, int? column) {
+    int? next(String key, int? current) {
+      if (key == field) return column;
+      return column != null && current == column ? null : current;
+    }
+
+    return ImportColumnMapping(
+      studentId: next('studentId', studentId),
+      email: next('email', email),
+      fullName: next('fullName', fullName),
+      program: next('program', program),
+      yearLevel: next('yearLevel', yearLevel),
+    );
+  }
 }
 
 const Map<String, List<String>> _headerAliases = {
@@ -137,6 +157,13 @@ const Map<String, List<String>> _headerAliases = {
     'pupstudentnumber',
     'pupstudentid',
     'idnumber',
+  ],
+  'email': [
+    'email',
+    'emailaddress',
+    'schoolemail',
+    'institutionalemail',
+    'studentemail',
   ],
   'fullName': [
     'name',
@@ -154,8 +181,45 @@ const Map<String, List<String>> _headerAliases = {
 String _canonicalHeader(String value) =>
     value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
 
-/// Suggests the automatic mapping for known registrar SIS headers.
-ImportColumnMapping suggestImportMapping(List<String> headers) {
+/// The first unused column whose filled-in cells mostly satisfy [matches], for
+/// files with unfamiliar headings.
+int? _columnByContent(
+  List<List<String>> rows,
+  int columns,
+  Set<int> used,
+  bool Function(String) matches,
+) {
+  for (var index = 0; index < columns; index += 1) {
+    if (used.contains(index)) continue;
+    final values = rows
+        .take(50)
+        .map((row) => importCell(row, index))
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
+    if (values.isEmpty) continue;
+    if (values.where(matches).length / values.length >= 0.8) {
+      used.add(index);
+      return index;
+    }
+  }
+  return null;
+}
+
+final RegExp _schoolEmailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+
+String? _normalizeRosterEmail(String raw) {
+  final value = raw.trim().toLowerCase();
+  return value.length <= 254 && _schoolEmailPattern.hasMatch(value)
+      ? value
+      : null;
+}
+
+/// Suggests the automatic mapping for known registrar SIS headers. With the
+/// data rows it also finds the student number and email by their contents.
+ImportColumnMapping suggestImportMapping(
+  List<String> headers, [
+  List<List<String>> sampleRows = const <List<String>>[],
+]) {
   final canonical = headers.map(_canonicalHeader).toList(growable: false);
   final used = <int>{};
   int? find(List<String> aliases, {bool containsName = false}) {
@@ -180,11 +244,30 @@ ImportColumnMapping suggestImportMapping(List<String> headers) {
     return null;
   }
 
+  var studentId = find(_headerAliases['studentId']!);
+  var email = find(_headerAliases['email']!);
+  final fullName = find(_headerAliases['fullName']!, containsName: true);
+  final program = find(_headerAliases['program']!);
+  final yearLevel = find(_headerAliases['yearLevel']!);
+  studentId ??= _columnByContent(
+    sampleRows,
+    headers.length,
+    used,
+    (value) => normalizeStudentNumber(value).value != null,
+  );
+  email ??= _columnByContent(
+    sampleRows,
+    headers.length,
+    used,
+    (value) => _normalizeRosterEmail(value) != null,
+  );
+
   return ImportColumnMapping(
-    studentId: find(_headerAliases['studentId']!),
-    fullName: find(_headerAliases['fullName']!, containsName: true),
-    program: find(_headerAliases['program']!),
-    yearLevel: find(_headerAliases['yearLevel']!),
+    studentId: studentId,
+    email: email,
+    fullName: fullName,
+    program: program,
+    yearLevel: yearLevel,
   );
 }
 
@@ -244,8 +327,26 @@ BuiltEnrollRows buildEnrollImportRows(
     final raw = rawRows[index];
     final rowNumber = index + 2;
     final id = normalizeStudentNumber(importCell(raw, mapping.studentId));
-    if (id.issue == NormalizedIdIssue.missing) continue;
-    if (id.issue != null) {
+    // Without a student number, the row can still be matched by school email.
+    final email = id.value != null
+        ? null
+        : _normalizeRosterEmail(importCell(raw, mapping.email));
+    if (id.issue == NormalizedIdIssue.missing && email == null) {
+      if (raw.any((cell) => cell.trim().isNotEmpty)) {
+        issues.add(
+          ImportIssue(
+            rowNumber: rowNumber,
+            column: 'studentId',
+            code: ImportIssueCode.missingRequiredField,
+            message:
+                'This row has no student number or school email, so no student '
+                'can be matched.',
+          ),
+        );
+      }
+      continue;
+    }
+    if (id.issue != null && email == null) {
       issues.add(
         ImportIssue(
           rowNumber: rowNumber,
@@ -261,19 +362,20 @@ BuiltEnrollRows buildEnrollImportRows(
       );
       continue;
     }
-    final duplicateOf = seen[id.value];
+    final key = id.value ?? email!;
+    final duplicateOf = seen[key];
     if (duplicateOf != null) {
       issues.add(
         ImportIssue(
           rowNumber: rowNumber,
-          column: 'studentId',
+          column: id.value != null ? 'studentId' : 'email',
           code: ImportIssueCode.duplicateInFile,
           message: 'Duplicate of row $duplicateOf.',
         ),
       );
       continue;
     }
-    seen[id.value!] = rowNumber;
+    seen[key] = rowNumber;
 
     final name = _capImportField(
       _collapseImportWhitespace(importCell(raw, mapping.fullName)),
@@ -287,7 +389,8 @@ BuiltEnrollRows buildEnrollImportRows(
     rows.add(
       EnrollImportRow(
         rowNumber: rowNumber,
-        studentId: id.value!,
+        studentId: id.value,
+        email: email,
         studentName: name.isEmpty ? null : name,
         expectedProgram: program.isEmpty ? null : program,
         expectedYearLevel: year,

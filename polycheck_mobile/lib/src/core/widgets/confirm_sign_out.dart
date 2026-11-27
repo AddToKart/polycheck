@@ -15,7 +15,7 @@ import 'campus_dialog.dart';
 
 const String confirmSignOutTitle = 'Sign out?';
 const String confirmSignOutMessage =
-    'You will need to sign in again to use Polycheck.';
+    'You will need to sign in again to use PolyCheck.';
 
 /// Destructive confirm dialog. Returns `true` only when the person tapped
 /// "Sign out"; false for cancel/dismiss (tests drive both paths directly).

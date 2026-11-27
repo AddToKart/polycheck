@@ -69,7 +69,7 @@ export function MaintenanceScreen({
             tabIndex={-1}
             className="font-heading text-2xl font-bold leading-tight text-white outline-none sm:text-3xl"
           >
-            Polycheck is under scheduled maintenance
+            PolyCheck is under scheduled maintenance
           </h1>
           <p className="text-sm leading-relaxed text-white/80">{message?.trim() || DEFAULT_MAINTENANCE_MESSAGE}</p>
         </div>

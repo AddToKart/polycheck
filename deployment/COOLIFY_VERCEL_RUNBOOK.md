@@ -97,7 +97,7 @@ Optional (all default to today's behaviour): `COURSE_SCOPE_MODE`, `SYNC_WORKER_E
 ### Email: activation and "forgot password"
 
 Both flows send through Resend. Set `MAIL_DRIVER=resend`, `RESEND_API_KEY` and `MAIL_FROM` (a sender on a domain verified
-at Resend, for example `Polycheck <no-reply@polycheck.live>`) in the Coolify environment and redeploy; with
+at Resend, for example `PolyCheck <no-reply@polycheck.live>`) in the Coolify environment and redeploy; with
 `MAIL_DRIVER=resend` the backend refuses to start if the key or sender is missing. The daily cap (`MAIL_DAILY_CAP`,
 default 100) is shared by activation and reset emails.
 
@@ -114,7 +114,7 @@ The only copies live on the landing site (`polycheck-landing-page`: `/privacy`, 
 `https://polycheck.live/privacy`) and `PRIVACY_NOTICE_VERSION` (default `2026-11-26`). **Raising the version makes every
 student accept again** before they can check in, so raise it only when the policy changes materially, together with
 `LEGAL_UPDATED`/`LEGAL_VERSION` in the landing repo. A value set in the Coolify environment overrides the default.
-The policy says Polycheck does not create backups by itself: if you set up database backups, update that row.
+The policy says PolyCheck does not create backups by itself: if you set up database backups, update that row.
 
 ## 3. Vercel (web app)
 

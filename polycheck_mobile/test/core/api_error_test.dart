@@ -53,7 +53,7 @@ void main() {
       final error = ApiRequestError.fromDio(
         _dioError(503, <String, dynamic>{
           'statusCode': 503,
-          'message': ['Polycheck is under maintenance.', 'Try again later.'],
+          'message': ['PolyCheck is under maintenance.', 'Try again later.'],
           'code': 'system_maintenance',
           'estimatedEnd': '2026-11-10T12:00:00.000Z',
         }),
@@ -63,7 +63,7 @@ void main() {
       expect(error.isNetworkFailure, isTrue);
       expect(
         error.message,
-        'Polycheck is under maintenance.. Try again later.',
+        'PolyCheck is under maintenance.. Try again later.',
       );
       expect(error.estimatedEnd, '2026-11-10T12:00:00.000Z');
     });

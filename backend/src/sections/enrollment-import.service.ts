@@ -28,7 +28,9 @@ interface OwnedSection {
 
 interface NormalizedEnrollRow {
   rowNumber: number
+  /** Empty when the row is matched by school email. */
   studentId: string
+  email?: string
   studentName?: string
   expectedProgram?: string
   expectedYearLevel?: number
@@ -151,16 +153,11 @@ export class EnrollmentImportService {
           await tx.authAccount.createMany({ data: authAccounts })
         }
 
-        for (const planned of plan.rows) {
-          if (planned.action === 'enroll' && planned.userId) {
-            userIdByStudentId.set(planned.row.studentId, planned.userId)
-          }
-        }
-
         const enrollmentData = plan.rows
           .filter((planned) => planned.action === 'enroll' || planned.action === 'provision')
           .map((planned) => {
-            const studentId = userIdByStudentId.get(planned.row.studentId)
+            // A matched account carries its id; only a provisioned one is looked up by student number.
+            const studentId = planned.userId ?? userIdByStudentId.get(planned.row.studentId)
             if (!studentId) return null
             return { studentId, sectionId }
           })
@@ -259,13 +256,23 @@ export class EnrollmentImportService {
     provisioningEnabled: boolean,
   ): Promise<EnrollmentImportPlan> {
     const normalized = this.normalizeRows(rows)
-    const studentIds = [...new Set(normalized.map((row) => row.studentId))]
+    const studentIds = [...new Set(normalized.map((row) => row.studentId).filter(Boolean))]
+    const emails = [...new Set(normalized.flatMap((row) => (row.email ? [row.email] : [])))]
     const [students, enrollments] = await Promise.all([
       db.user.findMany({
-        where: { studentId: { in: studentIds } },
+        where: emails.length
+          ? {
+              OR: [
+                { studentId: { in: studentIds } },
+                // Only the school email an administrator set; never the self-entered contact email.
+                { role: 'student', email: { in: emails, mode: 'insensitive' } },
+              ],
+            }
+          : { studentId: { in: studentIds } },
         select: {
           id: true,
           studentId: true,
+          email: true,
           fullName: true,
           program: true,
           yearLevel: true,
@@ -279,13 +286,43 @@ export class EnrollmentImportService {
     const studentByNumber = new Map(
       students.filter((student) => student.studentId).map((student) => [student.studentId!, student]),
     )
+    const studentByEmail = new Map(
+      students.flatMap((student) =>
+        student.role === 'student' && student.email ? [[student.email.toLowerCase(), student] as const] : [],
+      ),
+    )
     const enrolled = new Set(enrollments.map((enrollment) => enrollment.studentId))
+    const rowByAccount = new Map<string, number>()
 
     const planned: PlannedEnrollRow[] = normalized.map((row) => {
       if (row.blocked) return { row, action: 'invalid' }
-      const student = studentByNumber.get(row.studentId)
+      const student = row.studentId ? studentByNumber.get(row.studentId) : studentByEmail.get(row.email ?? '')
+
+      // A list can name one account twice: once by student number, once by email.
+      const firstRow = student ? rowByAccount.get(student.id) : undefined
+      if (firstRow !== undefined) {
+        row.issues.push({
+          rowNumber: row.rowNumber,
+          column: row.studentId ? 'studentId' : 'email',
+          code: 'DUPLICATE_IN_FILE',
+          message: `Same student as row ${firstRow}.`,
+        })
+        return { row, action: 'invalid' }
+      }
+      if (student) rowByAccount.set(student.id, row.rowNumber)
 
       if (!student) {
+        if (!row.studentId) {
+          // An account cannot be created without a student number.
+          row.issues.push({
+            rowNumber: row.rowNumber,
+            column: 'email',
+            code: 'STUDENT_NOT_FOUND',
+            message:
+              'No student account has this school email. Ask the registrar to create the account with this email, or add the student number to the list.',
+          })
+          return { row, action: 'invalid' }
+        }
         if (provisioningEnabled && section.teacher.department) return { row, action: 'provision' }
         row.issues.push({
           rowNumber: row.rowNumber,
@@ -294,7 +331,7 @@ export class EnrollmentImportService {
           message:
             provisioningEnabled && !section.teacher.department
               ? 'This section teacher has no department configured, so a minimal account cannot be provisioned. Ask a Super Admin to import the roster.'
-              : 'No Polycheck account exists for this student number yet. Ask the registrar to import the master list first (it also emails each student an activation link), then run this import again.',
+              : 'No PolyCheck account exists for this student number yet. Ask the registrar to import the master list first (it also emails each student an activation link), then run this import again.',
         })
         return { row, action: 'invalid' }
       }
@@ -381,8 +418,9 @@ export class EnrollmentImportService {
       const studentName = raw.studentName?.replace(/\s+/g, ' ').trim() || undefined
       const expectedProgram = raw.expectedProgram?.replace(/\s+/g, ' ').trim() || undefined
       const expectedYearLevel = raw.expectedYearLevel
+      const email = studentId ? undefined : raw.email?.trim().toLowerCase() || undefined
 
-      if (!STUDENT_ID_PATTERN.test(studentId)) {
+      if (studentId ? !STUDENT_ID_PATTERN.test(studentId) : !email) {
         issues.push({
           rowNumber,
           column: 'studentId',
@@ -404,22 +442,24 @@ export class EnrollmentImportService {
         blocked = true
       }
 
-      const firstRow = seen.get(studentId)
+      const key = studentId || email
+      const firstRow = key ? seen.get(key) : undefined
       if (firstRow !== undefined) {
         issues.push({
           rowNumber,
-          column: 'studentId',
+          column: studentId ? 'studentId' : 'email',
           code: 'DUPLICATE_IN_FILE',
           message: `Duplicate of row ${firstRow}.`,
         })
         blocked = true
-      } else if (studentId) {
-        seen.set(studentId, rowNumber)
+      } else if (key) {
+        seen.set(key, rowNumber)
       }
 
       return {
         rowNumber,
         studentId,
+        ...(email ? { email } : {}),
         ...(studentName ? { studentName } : {}),
         ...(expectedProgram ? { expectedProgram } : {}),
         ...(expectedYearLevel !== undefined ? { expectedYearLevel } : {}),
@@ -433,6 +473,7 @@ export class EnrollmentImportService {
     return {
       rowNumber: row.rowNumber,
       studentId: row.studentId,
+      ...(row.email ? { email: row.email } : {}),
       ...(row.studentName ? { studentName: row.studentName } : {}),
       ...(row.expectedProgram ? { expectedProgram: row.expectedProgram } : {}),
       ...(row.expectedYearLevel !== undefined ? { expectedYearLevel: row.expectedYearLevel } : {}),

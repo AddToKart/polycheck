@@ -147,7 +147,7 @@ clock/drain timers) is skipped.
 
 ## Local troubleshooting
 
-- `Cannot reach the Polycheck server` — confirm the backend answers on the host
+- `Cannot reach the PolyCheck server` — confirm the backend answers on the host
   (`curl http://localhost:4000/api/health`), then from the device. If
   `10.0.2.2` is blocked, run `adb reverse tcp:4000 tcp:4000` and switch the
   define to `http://localhost:4000/api`. A single connection failure is retried

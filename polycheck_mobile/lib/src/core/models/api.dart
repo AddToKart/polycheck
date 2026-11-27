@@ -50,7 +50,8 @@ abstract class CreateStudentInput with _$CreateStudentInput {
     String? password,
     required String program,
     required int yearLevel,
-    required String department,
+    // Students have no department; the server derives it from the program.
+    String? department,
   }) = _CreateStudentInput;
 
   factory CreateStudentInput.fromJson(Map<String, dynamic> json) =>

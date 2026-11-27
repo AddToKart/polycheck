@@ -25,7 +25,7 @@ afterEach(() => {
 })
 
 describe('BrandingProvider', () => {
-  it('shows the neutral defaults and the Polycheck mark before anything is configured', async () => {
+  it('shows the neutral defaults and the PolyCheck mark before anything is configured', async () => {
     vi.mocked(api.getBranding).mockResolvedValue(null)
     render(
       <BrandingProvider>

@@ -8,7 +8,7 @@ import { validateEnv } from '../common/config/env-validation'
 
 const message = {
   to: 'maria@example.com',
-  subject: 'Activate your Polycheck account',
+  subject: 'Activate your PolyCheck account',
   html: '<p>hi</p>',
   text: 'hi',
   idempotencyKey: 'account-mail-m1-1',
@@ -27,7 +27,7 @@ function errorResponse(status: number) {
 }
 
 describe('ResendMailDriver', () => {
-  const options = { apiKey: 're_test_key', from: 'Polycheck <no-reply@polycheck.live>', replyTo: 'help@polycheck.live' }
+  const options = { apiKey: 're_test_key', from: 'PolyCheck <no-reply@polycheck.live>', replyTo: 'help@polycheck.live' }
 
   it('posts the documented request shape with the key and an idempotency header', async () => {
     const fetchImpl = jest.fn().mockResolvedValue(okResponse())
@@ -132,7 +132,7 @@ describe('activation email', () => {
 
   it('contains the link, the expiry and no sensitive account data', () => {
     const email = buildActivationEmail({ fullName: 'Dela Cruz, Maria Elena', link, expiresAt })
-    expect(email.subject).toBe('Activate your Polycheck account')
+    expect(email.subject).toBe('Activate your PolyCheck account')
     expect(email.text).toContain(link)
     expect(email.html).toContain(link)
     expect(email.text).toContain('Hi Maria,')

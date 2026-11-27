@@ -31,7 +31,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <main className="min-h-dvh bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <header className="bg-maroon px-4 py-4 text-white">
         <div className="mx-auto flex max-w-md items-center gap-3">
-          <span className="font-heading text-xl font-bold">Polycheck</span>
+          <span className="font-heading text-xl font-bold">PolyCheck</span>
           <span className="text-xs uppercase tracking-widest text-golden">Reset password</span>
           <ThemeToggle className="ml-auto rounded-none p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-golden" />
         </div>
@@ -185,7 +185,7 @@ export default function ResetPasswordPage() {
           <p className="text-sm text-zinc-600 dark:text-zinc-300">
             {phase.already
               ? 'This link was already used. Sign in with the password you chose.'
-              : 'Your password was changed and every device was signed out. Sign in again on the website or in the Polycheck app with your student number and the new password.'}
+              : 'Your password was changed and every device was signed out. Sign in again on the website or in the PolyCheck app with your student number and the new password.'}
           </p>
           <Button asChild className="min-h-11 w-full">
             <Link href="/login/student">Go to login</Link>

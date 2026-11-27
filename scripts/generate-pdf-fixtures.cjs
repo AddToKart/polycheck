@@ -4,7 +4,7 @@
  *   node scripts/generate-pdf-fixtures.cjs
  *
  * Never put real student data here: names are placeholders and student numbers use the 2099 intake.
- * pdfkit comes from the backend workspace (it already builds Polycheck's own PDFs).
+ * pdfkit comes from the backend workspace (it already builds PolyCheck's own PDFs).
  */
 const fs = require('node:fs')
 const path = require('node:path')

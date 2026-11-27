@@ -230,7 +230,7 @@ export default function StudentDetailPage() {
           <div className="mb-8 flex flex-col items-center">
             {/* Flip Card Container */}
             <div
-              className="relative w-full max-w-xl aspect-[1.586/1] cursor-pointer group perspective-[2000px]"
+              className="relative h-[18rem] w-full max-w-xl cursor-pointer group perspective-[2000px] sm:h-auto sm:aspect-[1.586/1]"
               onClick={() => setFlipped(!flipped)}
             >
               <div className={`w-full h-full relative transition-transform duration-700 [transform-style:preserve-3d] ${flipped ? '[transform:rotateY(180deg)]' : ''}`}>
@@ -238,7 +238,7 @@ export default function StudentDetailPage() {
                 {/* Front Face */}
                 <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] bg-white dark:bg-id-paper-dark border-2 border-maroon dark:border-golden shadow-xl overflow-hidden flex flex-col rounded-none">
                   {/* Institution header */}
-                  <div className="bg-maroon px-5 py-3 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800">
+                  <div className="bg-maroon px-3 py-3 sm:px-5 flex items-center justify-between gap-2 border-b border-zinc-200 dark:border-zinc-800">
                     <InstitutionHeaderLines
                       nameClassName="text-xs font-bold text-golden tracking-wider"
                       campusClassName="text-[10px] font-medium text-white/80 tracking-[3px] mt-0.5"
@@ -249,18 +249,18 @@ export default function StudentDetailPage() {
                   </div>
 
                   {/* Body */}
-                  <div className="flex-1 flex flex-wrap p-5 items-center gap-6 relative bg-id-paper dark:bg-id-paper-dark">
+                  <div className="flex-1 flex p-3 sm:p-5 items-center gap-3 sm:gap-6 relative bg-id-paper dark:bg-id-paper-dark">
                     <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]" style={{ backgroundImage: 'url(/brand-mark.png)', backgroundPosition: 'center', backgroundSize: 'contain', backgroundRepeat: 'no-repeat' }}></div>
-                    <div className="w-24 h-32 bg-maroon dark:bg-golden flex items-center justify-center shrink-0 border-2 border-zinc-300 dark:border-zinc-800 shadow-md">
+                    <div className="w-16 h-20 sm:w-24 sm:h-32 bg-maroon dark:bg-golden flex items-center justify-center shrink-0 border-2 border-zinc-300 dark:border-zinc-800 shadow-md">
                       <span className="text-2xl font-heading font-bold text-white dark:text-maroon-dark">
                         {student.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                       </span>
                     </div>
                     <div className="min-w-0 flex-1 flex flex-col justify-center">
-                      <h2 className="break-words text-lg font-heading font-bold text-zinc-900 dark:text-white leading-tight uppercase">{student.fullName}</h2>
-                      <p className="text-sm font-mono font-bold text-maroon dark:text-golden mt-1">{student.studentId}</p>
-                      <hr className="my-3 border-zinc-200 dark:border-zinc-700" />
-                      <div className="grid grid-cols-2 gap-4">
+                      <h2 className="break-words text-sm sm:text-lg font-heading font-bold text-zinc-900 dark:text-white leading-tight uppercase">{student.fullName}</h2>
+                      <p className="text-xs sm:text-sm font-mono font-bold text-maroon dark:text-golden mt-1">{student.studentId}</p>
+                      <hr className="my-2 sm:my-3 border-zinc-200 dark:border-zinc-700" />
+                      <div className="grid grid-cols-2 gap-2 sm:gap-4">
                         <div>
                           <p className="text-[8px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Program</p>
                           <p className="text-xs font-bold text-zinc-900 dark:text-white">{student.program}</p>

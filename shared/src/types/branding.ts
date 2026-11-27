@@ -1,5 +1,5 @@
 /**
- * Institution identity shown across the product. Polycheck is the product name and never changes;
+ * Institution identity shown across the product. PolyCheck is the product name and never changes;
  * the institution's own name, short name, campus and logo are administrator-editable runtime data so the
  * same build can serve any campus without code changes.
  */
@@ -10,7 +10,7 @@ export interface InstitutionBranding {
   shortName: string
   /** Campus or branch label; empty when the institution has a single site. */
   campus: string
-  /** Uploaded logo as a PNG/JPEG/WebP data URL, or null to show the neutral Polycheck mark. */
+  /** Uploaded logo as a PNG/JPEG/WebP data URL, or null to show the neutral PolyCheck mark. */
   logoDataUrl: string | null
 }
 

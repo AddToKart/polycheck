@@ -268,11 +268,11 @@ function SubjectSessionsContent() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
-                          <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Date</th>
-                          <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Time</th>
-                          <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Room</th>
-                          <th className="text-left px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Status</th>
-                          <th className="text-right px-6 py-3 font-medium text-zinc-500 dark:text-zinc-400">Actions</th>
+                          <th className="text-left px-3 py-3 sm:px-6 font-medium text-zinc-500 dark:text-zinc-400">Date</th>
+                          <th className="text-left px-3 py-3 sm:px-6 font-medium text-zinc-500 dark:text-zinc-400">Time</th>
+                          <th className="text-left px-3 py-3 sm:px-6 font-medium text-zinc-500 dark:text-zinc-400">Room</th>
+                          <th className="text-left px-3 py-3 sm:px-6 font-medium text-zinc-500 dark:text-zinc-400">Status</th>
+                          <th className="text-right px-3 py-3 sm:px-6 font-medium text-zinc-500 dark:text-zinc-400">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -282,7 +282,7 @@ function SubjectSessionsContent() {
                             className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
                             onClick={() => router.push(`/faculty/sessions/${session.id}`)}
                           >
-                            <td className="px-6 py-3 text-zinc-900 dark:text-zinc-100">
+                            <td className="px-3 py-3 sm:px-6 text-zinc-900 dark:text-zinc-100">
                               {new Date(session.date).toLocaleDateString('en-US', {
                                 weekday: 'short',
                                 year: 'numeric',
@@ -290,18 +290,18 @@ function SubjectSessionsContent() {
                                 day: 'numeric',
                               })}
                             </td>
-                            <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400">
+                            <td className="px-3 py-3 sm:px-6 text-zinc-600 dark:text-zinc-400">
                               {session.startTime} - {session.endTime}
                             </td>
-                            <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400 text-xs">
+                            <td className="px-3 py-3 sm:px-6 text-zinc-600 dark:text-zinc-400 text-xs">
                               {session.room || '\u2014'}
                             </td>
-                            <td className="px-6 py-3">
+                            <td className="px-3 py-3 sm:px-6">
                               <Badge variant={session.isActive ? 'active' : 'inactive'}>
                                 {session.isActive ? 'Active' : 'Inactive'}
                               </Badge>
                             </td>
-                            <td className="px-6 py-3 text-right">
+                            <td className="px-3 py-3 sm:px-6 text-right">
                               {!session.isActive && (
                                 <Button
                                   size="sm"

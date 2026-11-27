@@ -37,7 +37,7 @@ class FakeOfficerSectionsApi extends SectionsApi {
     checkCalls += 1;
     if (failPermissionCheck) {
       throw const ApiRequestError(
-        message: 'Cannot reach the Polycheck server. Check your connection.',
+        message: 'Cannot reach the PolyCheck server. Check your connection.',
         status: 0,
       );
     }

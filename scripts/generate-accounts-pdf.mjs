@@ -10,7 +10,7 @@ const htmlContent = `
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Polycheck — Official Seeded Test Accounts Guide</title>
+  <title>PolyCheck — Official Seeded Test Accounts Guide</title>
   <style>
     @page {
       size: A4;
@@ -245,14 +245,14 @@ const htmlContent = `
 
   <div class="header-banner">
     <div class="institution-tag">Example Polytechnic of the Province — Main Campus</div>
-    <h1>Polycheck Seeded Test Accounts Guide</h1>
+    <h1>PolyCheck Seeded Test Accounts Guide</h1>
     <div class="header-sub">Official Role-Based Access Control (RBAC), Dual-Hat Faculty Designations & Demonstration Directory</div>
   </div>
 
   <div class="credentials-box">
     <strong>Universal Master Credentials:</strong>
     <div style="margin-top: 4px; font-size: 8.5pt;">
-      <div>• <strong>Master Password:</strong> <span class="code-pill">PolycheckSeed123!</span> <em>(or <span class="code-pill">Polycheck@2026!</span> on local dev)</em></div>
+      <div>• <strong>Master Password:</strong> <span class="code-pill">PolycheckSeed123!</span> <em>(or <span class="code-pill">PolyCheck@2026!</span> on local dev)</em></div>
       <div>• <strong>Faculty / Admin Login Portal:</strong> <span class="code-pill">/login/faculty</span> (Web) or Campus Faculty Screen (Mobile)</div>
       <div>• <strong>Student Login Portal:</strong> <span class="code-pill">/login/student</span> (Web) or Campus Student Screen (Mobile)</div>
       <div>• <strong>Live Production API:</strong> <span class="code-pill">https://api.polycheck.live/api</span></div>

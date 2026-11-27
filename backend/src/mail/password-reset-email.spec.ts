@@ -5,7 +5,7 @@ const LINK = 'https://app.polycheck.live/reset-password#token=abc123'
 describe('buildPasswordResetEmail', () => {
   it('greets by first name, carries the link in both parts and states the lifetime', () => {
     const email = buildPasswordResetEmail({ fullName: 'Dela Cruz, Maria Elena', link: LINK, validMinutes: 60 })
-    expect(email.subject).toBe('Reset your Polycheck password')
+    expect(email.subject).toBe('Reset your PolyCheck password')
     expect(email.text).toContain('Hi Maria,')
     expect(email.text).toContain(LINK)
     expect(email.text).toContain('expires in 1 hour')

@@ -31,7 +31,8 @@ installSessionCleanup()
  */
 
 const MOBILE_CAPTURE_DIR = path.join('e2e', 'captures', 'mobile')
-const MOBILE_VIEWPORT = { width: 375, height: 812 }
+// CAPTURE_WIDTH=320 captures the smallest common phone instead.
+const MOBILE_VIEWPORT = { width: Number(process.env.CAPTURE_WIDTH ?? 375), height: 812 }
 
 interface MobileCaptureGroup {
   role: string

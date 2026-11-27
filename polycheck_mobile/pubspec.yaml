@@ -1,5 +1,5 @@
 name: polycheck_mobile
-description: "Polycheck — attendance management (Flutter mobile client)."
+description: "PolyCheck — attendance management (Flutter mobile client)."
 publish_to: 'none'
 
 version: 1.1.4+6
@@ -76,6 +76,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/branding/brand-mark.png
 
 # Android launcher icons (legacy + adaptive + Android 13 themed monochrome).
 # Regenerate with: dart run flutter_launcher_icons
@@ -83,7 +85,7 @@ flutter_launcher_icons:
   android: "ic_launcher"
   ios: false
   image_path: "assets/branding/brand-mark-maroon.png"
-  adaptive_icon_background: "#7B1113"
+  adaptive_icon_background: "#680918"
   adaptive_icon_foreground: "assets/branding/android-icon-foreground.png"
   adaptive_icon_monochrome: "assets/branding/android-icon-monochrome.png"
   min_sdk_android: 26

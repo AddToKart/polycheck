@@ -13,9 +13,12 @@ export interface StudentImportRow {
   department?: string
 }
 
+/** A class list row. It identifies the student by student number, or by school email when it has none. */
 export interface EnrollImportRow {
   rowNumber: number
-  studentId: string
+  studentId?: string
+  /** The account's school email. Sent only when the row has no student number. */
+  email?: string
   /** Verification only — never stored from the list. */
   studentName?: string
   /** Verification warning when it differs from the account. */

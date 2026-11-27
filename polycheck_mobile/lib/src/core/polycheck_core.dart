@@ -1,4 +1,4 @@
-/// Polycheck core barrel for the Flutter foundation.
+/// PolyCheck core barrel for the Flutter foundation.
 ///
 /// Feature waves import this single library:
 /// `import 'package:polycheck_mobile/src/core/polycheck_core.dart';`

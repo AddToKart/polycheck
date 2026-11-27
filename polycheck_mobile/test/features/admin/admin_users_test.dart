@@ -88,22 +88,16 @@ void main() {
       ]);
       expect(editableFieldsForRole(UserRole.student), <EditableUserField>[
         EditableUserField.fullName,
-        EditableUserField.department,
         EditableUserField.program,
         EditableUserField.yearLevel,
       ]);
       expect(editableFieldsForRole(UserRole.superAdmin), isEmpty);
     });
 
-    test('validation covers department and year range', () {
+    test('students need no department; the year range is checked', () {
       final values = editableValuesForUser(student)
         ..[EditableUserField.department] = ''
         ..[EditableUserField.yearLevel] = '9';
-      expect(
-        validateUserUpdate(student, values),
-        'Department is required for student accounts.',
-      );
-      values[EditableUserField.department] = 'CCIS';
       expect(
         validateUserUpdate(student, values),
         'Year level must be between 1 and 8.',
@@ -228,7 +222,6 @@ void main() {
           email: '',
           program: '',
           yearLevel: '1',
-          department: '',
         ),
         'Enter the full name.',
       );

@@ -1,5 +1,5 @@
 /**
- * Thin HTTP wrapper shared by every Polycheck k6 script.
+ * Thin HTTP wrapper shared by every PolyCheck k6 script.
  *
  * Every request carries an `operation` tag so `http_req_duration{operation:...}`
  * submetrics exist for each flow (k6 exports tagged submetrics only when a

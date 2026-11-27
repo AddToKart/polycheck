@@ -31,7 +31,8 @@ Map<String, dynamic> _$StudentImportRowToJson(_StudentImportRow instance) =>
 _EnrollImportRow _$EnrollImportRowFromJson(Map<String, dynamic> json) =>
     _EnrollImportRow(
       rowNumber: (json['rowNumber'] as num).toInt(),
-      studentId: json['studentId'] as String,
+      studentId: json['studentId'] as String?,
+      email: json['email'] as String?,
       studentName: json['studentName'] as String?,
       expectedProgram: json['expectedProgram'] as String?,
       expectedYearLevel: (json['expectedYearLevel'] as num?)?.toInt(),
@@ -40,10 +41,11 @@ _EnrollImportRow _$EnrollImportRowFromJson(Map<String, dynamic> json) =>
 Map<String, dynamic> _$EnrollImportRowToJson(_EnrollImportRow instance) =>
     <String, dynamic>{
       'rowNumber': instance.rowNumber,
-      'studentId': instance.studentId,
-      'studentName': instance.studentName,
-      'expectedProgram': instance.expectedProgram,
-      'expectedYearLevel': instance.expectedYearLevel,
+      'studentId': ?instance.studentId,
+      'email': ?instance.email,
+      'studentName': ?instance.studentName,
+      'expectedProgram': ?instance.expectedProgram,
+      'expectedYearLevel': ?instance.expectedYearLevel,
     };
 
 _ImportIssue _$ImportIssueFromJson(Map<String, dynamic> json) => _ImportIssue(

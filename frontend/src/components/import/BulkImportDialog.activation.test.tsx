@@ -81,17 +81,17 @@ describe('BulkImportDialog email delivery', () => {
     expect(screen.getByText('PCK-TEMP0001-xy!')).toBeInTheDocument()
   })
 
-  it('offers the email option only when the server says it is enabled and configured', async () => {
-    for (const status of [
-      { enabled: false, configured: true, driver: 'resend' },
-      { enabled: true, configured: false, driver: 'disabled' },
-    ]) {
+  it('allows emailing only when it is enabled and configured, and otherwise says how to get it', async () => {
+    for (const [status, reason] of [
+      [{ enabled: false, configured: true, driver: 'resend' }, /switched off.*Institution Settings/],
+      [{ enabled: true, configured: false, driver: 'disabled' }, /not set up on the server/],
+    ] as const) {
       cleanup()
       apiMock.getActivationStatus.mockResolvedValue(status)
       setup()
       await uploadAndValidate()
-      await waitFor(() => expect(apiMock.getActivationStatus).toHaveBeenCalled())
-      expect(screen.queryByText('How new students get access')).not.toBeInTheDocument()
+      expect(await screen.findByText(reason)).toBeInTheDocument()
+      expect(screen.getByLabelText(/Email an activation link/)).toBeDisabled()
     }
     cleanup()
     apiMock.getActivationStatus.mockRejectedValue(new Error('forbidden'))
@@ -250,7 +250,7 @@ describe('BulkImportDialog roster enrollment hand-off', () => {
       rowNumber,
       column: 'studentId',
       code: 'STUDENT_NOT_FOUND',
-      message: 'No Polycheck account exists for this student number yet.',
+      message: 'No PolyCheck account exists for this student number yet.',
     })
     apiMock.previewEnrollImport.mockResolvedValue({
       mode: 'validate',
@@ -265,7 +265,7 @@ describe('BulkImportDialog roster enrollment hand-off', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Validate rows' }))
 
     const notice = await screen.findByRole('status')
-    expect(notice).toHaveTextContent('2 students have no Polycheck account yet')
+    expect(notice).toHaveTextContent('2 students have no PolyCheck account yet')
     expect(notice).toHaveTextContent(/registrar/i)
     expect(notice).toHaveTextContent(/already enrolled are skipped/i)
   })
@@ -283,7 +283,63 @@ describe('BulkImportDialog roster enrollment hand-off', () => {
     fireEvent.change(input, { target: { files: [new File([CSV], 'roster.csv', { type: 'text/csv' })] } })
     fireEvent.click(await screen.findByRole('button', { name: 'Validate rows' }))
     await waitFor(() => expect(apiMock.previewEnrollImport).toHaveBeenCalled())
-    expect(screen.queryByText(/have no Polycheck account yet/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/have no PolyCheck account yet/)).not.toBeInTheDocument()
+  })
+})
+
+describe('BulkImportDialog column matching', () => {
+  const upload = (csv: string) => {
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File([csv], 'class-list.csv', { type: 'text/csv' })] } })
+  }
+  const NO_NUMBERS = [
+    'Name,Email Address,Mobile,Delivery',
+    '"Dela Cruz, Juan",juan@example.com,09171234567,Online',
+  ].join(String.fromCharCode(10))
+
+  beforeEach(() => {
+    window.localStorage.clear()
+    apiMock.getImportMappingProfile.mockResolvedValue({ mapping: null })
+  })
+
+  it('says which column is missing when a master list has no student numbers', async () => {
+    setup()
+    upload(NO_NUMBERS)
+
+    expect(await screen.findByRole('note')).toHaveTextContent(/Student number.*add a "Student Number" column/)
+    fireEvent.click(screen.getByRole('button', { name: 'Validate rows' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Student number')
+    expect(apiMock.importStudents).not.toHaveBeenCalled()
+  })
+
+  it('moves a column instead of letting it fill two fields', async () => {
+    setup()
+    upload(NO_NUMBERS)
+    const studentNumber = await screen.findByLabelText(/Student number/)
+
+    fireEvent.change(studentNumber, { target: { value: '0' } })
+
+    expect(studentNumber).toHaveValue('0')
+    expect(screen.getByLabelText(/Full name/)).toHaveValue('')
+  })
+
+  it('lets a teacher import a class list that only has school emails', async () => {
+    apiMock.previewEnrollImport.mockResolvedValue({
+      mode: 'validate',
+      rowChecksum: CHECKSUM,
+      summary: { total: 1, valid: 1, enrollable: 1, skip: 0, invalid: 0 },
+      issues: [],
+      hasMoreIssues: false,
+    })
+    render(<BulkImportDialog open onOpenChange={() => undefined} mode="enrollments" sectionId="sec-1" />)
+    upload(NO_NUMBERS)
+    fireEvent.click(await screen.findByRole('button', { name: 'Validate rows' }))
+
+    await waitFor(() =>
+      expect(apiMock.previewEnrollImport).toHaveBeenCalledWith('sec-1', [
+        { rowNumber: 2, email: 'juan@example.com', studentName: 'Dela Cruz, Juan' },
+      ]),
+    )
   })
 })
 

@@ -557,7 +557,7 @@ as String?,
 /// @nodoc
 mixin _$CreateStudentInput {
 
- String get fullName; String get studentId; String? get email; String? get password; String get program; int get yearLevel; String get department;
+ String get fullName; String get studentId; String? get email; String? get password; String get program; int get yearLevel; String? get department;
 /// Create a copy of CreateStudentInput
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -590,7 +590,7 @@ abstract mixin class $CreateStudentInputCopyWith<$Res>  {
   factory $CreateStudentInputCopyWith(CreateStudentInput value, $Res Function(CreateStudentInput) _then) = _$CreateStudentInputCopyWithImpl;
 @useResult
 $Res call({
- String fullName, String studentId, String? email, String? password, String program, int yearLevel, String department
+ String fullName, String studentId, String? email, String? password, String program, int yearLevel, String? department
 });
 
 
@@ -607,7 +607,7 @@ class _$CreateStudentInputCopyWithImpl<$Res>
 
 /// Create a copy of CreateStudentInput
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? fullName = null,Object? studentId = null,Object? email = freezed,Object? password = freezed,Object? program = null,Object? yearLevel = null,Object? department = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? fullName = null,Object? studentId = null,Object? email = freezed,Object? password = freezed,Object? program = null,Object? yearLevel = null,Object? department = freezed,}) {
   return _then(CreateStudentInput(
 fullName: null == fullName ? _self.fullName : fullName // ignore: cast_nullable_to_non_nullable
 as String,studentId: null == studentId ? _self.studentId : studentId // ignore: cast_nullable_to_non_nullable
@@ -615,8 +615,8 @@ as String,email: freezed == email ? _self.email : email // ignore: cast_nullable
 as String?,password: freezed == password ? _self.password : password // ignore: cast_nullable_to_non_nullable
 as String?,program: null == program ? _self.program : program // ignore: cast_nullable_to_non_nullable
 as String,yearLevel: null == yearLevel ? _self.yearLevel : yearLevel // ignore: cast_nullable_to_non_nullable
-as int,department: null == department ? _self.department : department // ignore: cast_nullable_to_non_nullable
-as String,
+as int,department: freezed == department ? _self.department : department // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 
@@ -701,7 +701,7 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String fullName,  String studentId,  String? email,  String? password,  String program,  int yearLevel,  String department)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String fullName,  String studentId,  String? email,  String? password,  String program,  int yearLevel,  String? department)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _CreateStudentInput() when $default != null:
 return $default(_that.fullName,_that.studentId,_that.email,_that.password,_that.program,_that.yearLevel,_that.department);case _:
@@ -722,7 +722,7 @@ return $default(_that.fullName,_that.studentId,_that.email,_that.password,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String fullName,  String studentId,  String? email,  String? password,  String program,  int yearLevel,  String department)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String fullName,  String studentId,  String? email,  String? password,  String program,  int yearLevel,  String? department)  $default,) {final _that = this;
 switch (_that) {
 case _CreateStudentInput():
 return $default(_that.fullName,_that.studentId,_that.email,_that.password,_that.program,_that.yearLevel,_that.department);case _:
@@ -742,7 +742,7 @@ return $default(_that.fullName,_that.studentId,_that.email,_that.password,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String fullName,  String studentId,  String? email,  String? password,  String program,  int yearLevel,  String department)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String fullName,  String studentId,  String? email,  String? password,  String program,  int yearLevel,  String? department)?  $default,) {final _that = this;
 switch (_that) {
 case _CreateStudentInput() when $default != null:
 return $default(_that.fullName,_that.studentId,_that.email,_that.password,_that.program,_that.yearLevel,_that.department);case _:
@@ -757,7 +757,7 @@ return $default(_that.fullName,_that.studentId,_that.email,_that.password,_that.
 
 @JsonSerializable(fieldRename: FieldRename.none, explicitToJson: true)
 class _CreateStudentInput implements CreateStudentInput {
-  const _CreateStudentInput({required this.fullName, required this.studentId, this.email, this.password, required this.program, required this.yearLevel, required this.department});
+  const _CreateStudentInput({required this.fullName, required this.studentId, this.email, this.password, required this.program, required this.yearLevel, this.department});
   factory _CreateStudentInput.fromJson(Map<String, dynamic> json) => _$CreateStudentInputFromJson(json);
 
 @override final  String fullName;
@@ -766,7 +766,7 @@ class _CreateStudentInput implements CreateStudentInput {
 @override final  String? password;
 @override final  String program;
 @override final  int yearLevel;
-@override final  String department;
+@override final  String? department;
 
 /// Create a copy of CreateStudentInput
 /// with the given fields replaced by the non-null parameter values.
@@ -801,7 +801,7 @@ abstract mixin class _$CreateStudentInputCopyWith<$Res> implements $CreateStuden
   factory _$CreateStudentInputCopyWith(_CreateStudentInput value, $Res Function(_CreateStudentInput) _then) = __$CreateStudentInputCopyWithImpl;
 @override @useResult
 $Res call({
- String fullName, String studentId, String? email, String? password, String program, int yearLevel, String department
+ String fullName, String studentId, String? email, String? password, String program, int yearLevel, String? department
 });
 
 
@@ -818,7 +818,7 @@ class __$CreateStudentInputCopyWithImpl<$Res>
 
 /// Create a copy of CreateStudentInput
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? fullName = null,Object? studentId = null,Object? email = freezed,Object? password = freezed,Object? program = null,Object? yearLevel = null,Object? department = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? fullName = null,Object? studentId = null,Object? email = freezed,Object? password = freezed,Object? program = null,Object? yearLevel = null,Object? department = freezed,}) {
   return _then(_CreateStudentInput(
 fullName: null == fullName ? _self.fullName : fullName // ignore: cast_nullable_to_non_nullable
 as String,studentId: null == studentId ? _self.studentId : studentId // ignore: cast_nullable_to_non_nullable
@@ -826,8 +826,8 @@ as String,email: freezed == email ? _self.email : email // ignore: cast_nullable
 as String?,password: freezed == password ? _self.password : password // ignore: cast_nullable_to_non_nullable
 as String?,program: null == program ? _self.program : program // ignore: cast_nullable_to_non_nullable
 as String,yearLevel: null == yearLevel ? _self.yearLevel : yearLevel // ignore: cast_nullable_to_non_nullable
-as int,department: null == department ? _self.department : department // ignore: cast_nullable_to_non_nullable
-as String,
+as int,department: freezed == department ? _self.department : department // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 

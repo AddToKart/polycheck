@@ -149,7 +149,7 @@ void main() {
     await _submitManual(tester, 'not-a-token');
 
     // The policy gate keys on a decoded payload; a garbage token is left to
-    // the service, which owns the "not a Polycheck token" copy.
+    // the service, which owns the "not a PolyCheck token" copy.
     expect(service.calls, 1);
     expect(find.text('MANUAL ENTRY DISABLED'), findsNothing);
 

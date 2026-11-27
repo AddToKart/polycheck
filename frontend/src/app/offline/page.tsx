@@ -2,7 +2,7 @@ import Link from 'next/link'
 import ThemeToggle from '@/components/ThemeToggle'
 
 export const metadata = {
-  title: 'Offline — Polycheck',
+  title: 'Offline — PolyCheck',
 }
 
 export default function OfflinePage() {
@@ -16,10 +16,10 @@ export default function OfflinePage() {
           No connection
         </p>
         <h1 className="font-heading text-2xl font-bold text-maroon-dark dark:text-white">
-          Polycheck is offline
+          PolyCheck is offline
         </h1>
         <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
-          This page isn’t available offline yet. If you already opened Polycheck on this device,
+          This page isn’t available offline yet. If you already opened PolyCheck on this device,
           go back and continue — attendance actions you take are saved locally and sync when the
           connection returns.
         </p>

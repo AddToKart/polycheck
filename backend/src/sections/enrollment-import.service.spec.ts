@@ -14,6 +14,7 @@ interface FakeStudent {
   role: string
   isActive: boolean
   department: string | null
+  email?: string | null
   mustChangePassword?: boolean
   password?: string
 }
@@ -41,11 +42,16 @@ function createFakePrisma(options: { teacherDepartment?: string | null; students
       }),
     },
     user: {
-      findMany: jest.fn(async ({ where }: any) =>
-        [...students.values()].filter(
-          (student) => student.studentId && where?.studentId?.in?.includes(student.studentId),
-        ),
-      ),
+      findMany: jest.fn(async ({ where }: any) => {
+        const clauses: any[] = where?.OR ?? [where]
+        return [...students.values()].filter((student) =>
+          clauses.some((clause) =>
+            clause.email
+              ? student.role === clause.role && clause.email.in.includes(student.email?.toLowerCase())
+              : Boolean(student.studentId) && clause.studentId?.in?.includes(student.studentId),
+          ),
+        )
+      }),
       create: jest.fn(async ({ data }: any) => {
         const student: FakeStudent = { ...data, isActive: data.isActive ?? true }
         students.set(student.id, student)
@@ -141,6 +147,72 @@ const inactiveStudent: FakeStudent = {
 }
 
 describe('EnrollmentImportService', () => {
+  describe('class lists without student numbers', () => {
+    const settings = { getBoolean: jest.fn().mockResolvedValue(true) }
+    const emailRow = (rowNumber: number, email: string) =>
+      ({ rowNumber, email }) as EnrollImportRequestDto['rows'][number]
+    const withEmail: FakeStudent = { ...activeStudent, email: 'Maria.Santos@example.edu.ph' }
+
+    it('enrolls the account that has that school email, whatever its capitalisation', async () => {
+      const { db, enrollments } = createFakePrisma({ students: [withEmail] })
+      const service = new EnrollmentImportService(db as never, settings as never)
+      const rows = [emailRow(2, 'maria.santos@example.edu.ph')]
+      const validation = await service.importEnrollments('section-1', enrollRequest(rows), teacher)
+      expect(validation.summary).toMatchObject({ enrollable: 1, invalid: 0 })
+
+      await service.importEnrollments(
+        'section-1',
+        enrollRequest(rows, { mode: 'execute', rowChecksum: validation.rowChecksum }),
+        teacher,
+      )
+
+      expect(enrollments).toEqual([{ studentId: 'user-1', sectionId: 'section-1' }])
+    })
+
+    it('never creates an account from an email alone, even with provisioning on', async () => {
+      const { db } = createFakePrisma({ students: [] })
+      const service = new EnrollmentImportService(db as never, settings as never)
+
+      const result = await service.importEnrollments(
+        'section-1',
+        enrollRequest([emailRow(2, 'nobody@example.edu.ph')]),
+        teacher,
+      )
+
+      expect(result.summary).toMatchObject({ enrollable: 0, provisioning: 0, invalid: 1 })
+      expect(result.issues[0]).toMatchObject({ column: 'email', code: 'STUDENT_NOT_FOUND' })
+      expect(db.user.create).not.toHaveBeenCalled()
+    })
+
+    it('does not match a staff email, and flags one student listed twice', async () => {
+      const staff: FakeStudent = {
+        ...activeStudent,
+        id: 'teacher-9',
+        studentId: null,
+        role: 'teacher',
+        email: 'prof@example.edu.ph',
+      }
+      const { db } = createFakePrisma({ students: [withEmail, staff] })
+      const service = new EnrollmentImportService(db as never, settings as never)
+
+      const result = await service.importEnrollments(
+        'section-1',
+        enrollRequest([
+          enrollRow(2, '2024-00001-MN-0'),
+          emailRow(3, 'maria.santos@example.edu.ph'),
+          emailRow(4, 'prof@example.edu.ph'),
+        ]),
+        teacher,
+      )
+
+      expect(result.summary).toMatchObject({ enrollable: 1, invalid: 2 })
+      expect(result.issues.map((issue) => [issue.rowNumber, issue.code])).toEqual([
+        [3, 'DUPLICATE_IN_FILE'],
+        [4, 'STUDENT_NOT_FOUND'],
+      ])
+    })
+  })
+
   it('validates enrollable, skipped, inactive, and missing rows without writing', async () => {
     const { db, enrollments } = createFakePrisma({
       students: [activeStudent, enrolledStudent, inactiveStudent],

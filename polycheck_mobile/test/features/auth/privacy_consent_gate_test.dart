@@ -15,7 +15,7 @@ import '../../helpers/auth_harness.dart';
 const _notice = PrivacyNotice(
   version: '2026-11-26',
   url: 'https://polycheck.live/privacy',
-  summary: 'Polycheck stores attendance evidence.',
+  summary: 'PolyCheck stores attendance evidence.',
 );
 
 void main() {
@@ -155,7 +155,7 @@ void main() {
   test('describes network and unexpected failures plainly', () {
     expect(
       describeConsentError(const ApiRequestError(message: 'x', status: 0)),
-      contains('Cannot reach the Polycheck server'),
+      contains('Cannot reach the PolyCheck server'),
     );
     expect(
       describeConsentError(const ApiRequestError(message: '', status: 502)),

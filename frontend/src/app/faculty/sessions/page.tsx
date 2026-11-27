@@ -311,11 +311,11 @@ function SessionsContent() {
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
-                              <th className="text-left px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">Date</th>
-                              <th className="text-left px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">Time</th>
-                              <th className="text-left px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">Room</th>
-                              <th className="text-left px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">Status</th>
-                              <th className="text-right px-6 py-3 font-bold text-zinc-500 dark:text-zinc-400">Actions</th>
+                              <th className="text-left px-3 py-3 sm:px-6 font-bold text-zinc-500 dark:text-zinc-400">Date</th>
+                              <th className="text-left px-3 py-3 sm:px-6 font-bold text-zinc-500 dark:text-zinc-400">Time</th>
+                              <th className="text-left px-3 py-3 sm:px-6 font-bold text-zinc-500 dark:text-zinc-400">Room</th>
+                              <th className="text-left px-3 py-3 sm:px-6 font-bold text-zinc-500 dark:text-zinc-400">Status</th>
+                              <th className="text-right px-3 py-3 sm:px-6 font-bold text-zinc-500 dark:text-zinc-400">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -335,7 +335,7 @@ function SessionsContent() {
                                     }
                                   }}
                                 >
-                                  <td className="px-6 py-3 text-zinc-900 dark:text-zinc-100">
+                                  <td className="px-3 py-3 sm:px-6 text-zinc-900 dark:text-zinc-100">
                                     {new Date(session.date).toLocaleDateString('en-US', {
                                       weekday: 'short',
                                       year: 'numeric',
@@ -343,18 +343,18 @@ function SessionsContent() {
                                       day: 'numeric',
                                     })}
                                   </td>
-                                  <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400">
+                                  <td className="px-3 py-3 sm:px-6 text-zinc-600 dark:text-zinc-400">
                                     {session.startTime} - {session.endTime}
                                   </td>
-                                  <td className="px-6 py-3 text-zinc-600 dark:text-zinc-400 text-xs">
+                                  <td className="px-3 py-3 sm:px-6 text-zinc-600 dark:text-zinc-400 text-xs">
                                     {session.room || '\u2014'}
                                   </td>
-                                  <td className="px-6 py-3">
+                                  <td className="px-3 py-3 sm:px-6">
                                     <Badge className={STATUS_BADGE_CLASSES[sessionStatus]}>
                                       {SESSION_STATUS_LABELS[sessionStatus]}
                                     </Badge>
                                   </td>
-                                  <td className="px-6 py-3 text-right">
+                                  <td className="px-3 py-3 sm:px-6 text-right">
                                     {user.role === 'teacher' && !session.isActive && (
                                       <Button
                                         size="sm"

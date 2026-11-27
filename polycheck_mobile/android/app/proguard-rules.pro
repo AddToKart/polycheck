@@ -1,4 +1,4 @@
-# Polycheck R8 rules.
+# PolyCheck R8 rules.
 #
 # Flutter's own embedding rules are applied by the Flutter Gradle plugin.
 # The entries below protect reflection/metadata-driven APIs used by plugins

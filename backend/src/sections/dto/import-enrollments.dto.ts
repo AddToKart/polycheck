@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsEmail,
   IsIn,
   IsInt,
   IsOptional,
@@ -21,6 +22,7 @@ const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{8,128}$/
 const ROW_CHECKSUM_PATTERN = /^[a-f0-9]{16}$/
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value)
+const trimLower = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim().toLowerCase() : value)
 const trimUpper = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.replace(/\s+/g, '').trim().toUpperCase() : value
 
@@ -30,10 +32,18 @@ export class EnrollImportRowDto {
   @Min(1)
   rowNumber!: number
 
+  /** Required unless the row identifies the student by school email instead. */
+  @ValidateIf((row: EnrollImportRowDto) => Boolean(row.studentId) || !row.email)
   @Transform(trimUpper)
   @IsString()
   @Matches(STUDENT_ID_PATTERN, { message: 'studentId must use the format 2024-00001-MN-0' })
-  studentId!: string
+  studentId?: string
+
+  @IsOptional()
+  @Transform(trimLower)
+  @IsEmail()
+  @MaxLength(254)
+  email?: string
 
   /** Verification only — never stored from the list. */
   @IsOptional()

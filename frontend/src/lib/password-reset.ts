@@ -37,6 +37,6 @@ export function describeResetFailure(error: unknown): ResetFailure {
   }
   return {
     kind: 'network',
-    message: 'We could not reach Polycheck. Check your connection and try again. It is safe to retry.',
+    message: 'We could not reach PolyCheck. Check your connection and try again. It is safe to retry.',
   }
 }

@@ -18,7 +18,7 @@ import '../../../../core/widgets/campus_loading.dart';
 String describeConsentError(Object error) {
   if (error is ApiRequestError) {
     if (error.status == 0) {
-      return 'Cannot reach the Polycheck server. Check your connection and '
+      return 'Cannot reach the PolyCheck server. Check your connection and '
           'try again.';
     }
     final reason = error.message.trim();

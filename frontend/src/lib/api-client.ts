@@ -1974,8 +1974,14 @@ const apiBase = {
   },
   async updateContacts(input: UpdateContactsInput): Promise<User> {
     const updated = await patch<User>("/users/me/contacts", input);
-    saveUser(updated);
-    return updated;
+    // The reply leaves out the privacy consent, scope and permission fields, so
+    // merge it over the signed-in profile instead of replacing it, and update
+    // the in-memory copy too (it is what pages read while you move around).
+    const current = this.getCurrentUser();
+    if (!current || current.id !== updated.id) return updated;
+    currentUser = { ...current, ...updated };
+    saveUser(currentUser);
+    return currentUser;
   },
 
   // ── System issue & feedback reporting (SR) ──

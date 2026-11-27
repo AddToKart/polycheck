@@ -79,7 +79,7 @@ class _FacultyLoginScreenState extends ConsumerState<FacultyLoginScreen> {
           if (maintenance.enabled) ...[
             AuthInfoBanner(
               message:
-                  'Polycheck is under scheduled maintenance. Only exempt '
+                  'PolyCheck is under scheduled maintenance. Only exempt '
                   'administrators can sign in right now.',
               icon: Icons.build_outlined,
             ),
@@ -190,7 +190,7 @@ class _FacultyLoginScreenState extends ConsumerState<FacultyLoginScreen> {
           _error = 'Invalid email or password.';
         } else if (error.isNetworkFailure) {
           _error =
-              'Cannot reach the Polycheck server. Check your connection and '
+              'Cannot reach the PolyCheck server. Check your connection and '
               'try again.';
         } else {
           _error = error.message.isEmpty

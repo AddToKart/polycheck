@@ -9,7 +9,7 @@ export function MaintenanceOverlay({ status }: { status: MaintenanceStatus }) {
     <div
       role="alertdialog"
       aria-modal="true"
-      aria-label="Polycheck is under scheduled maintenance"
+      aria-label="PolyCheck is under scheduled maintenance"
       className="fixed inset-0 z-[100] overflow-y-auto bg-maroon dark:bg-surface-dark"
     >
       <MaintenanceScreen

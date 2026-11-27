@@ -2,7 +2,6 @@ import type { EnrollImportRow, ImportIssue, StudentImportRow } from '../../types
 import type { ImportColumnMapping } from './map'
 import { cell } from './parse'
 import {
-  normalizeDepartment,
   normalizeEmail,
   normalizeFullName,
   normalizeProgram,
@@ -85,7 +84,6 @@ export function buildStudentRows(
       ...(emailResult.value ? { email: emailResult.value } : {}),
       ...(programResult.value ? { program: programResult.value } : {}),
       ...(yearResult.value ? { yearLevel: yearResult.value } : {}),
-      ...(normalizeDepartment(cell(raw, mapping.department)) ? { department: normalizeDepartment(cell(raw, mapping.department)) } : {}),
     })
   })
 
@@ -103,8 +101,20 @@ export function buildEnrollRows(
   rawRows.forEach((raw, index) => {
     const rowNumber = index + 2
     const studentIdResult = normalizeStudentId(cell(raw, mapping.studentId))
-    if (studentIdResult.issue === 'MISSING_REQUIRED_FIELD') return
-    if (studentIdResult.issue) {
+    // Without a student number, the row can still be matched by the account's school email.
+    const email = studentIdResult.value ? undefined : normalizeEmail(cell(raw, mapping.email)).value
+    if (studentIdResult.issue === 'MISSING_REQUIRED_FIELD' && !email) {
+      if (raw.some((value) => value.trim() !== '')) {
+        issues.push({
+          rowNumber,
+          column: 'studentId',
+          code: 'MISSING_REQUIRED_FIELD',
+          message: 'This row has no student number or school email, so no student can be matched.',
+        })
+      }
+      return
+    }
+    if (studentIdResult.issue && !email) {
       issues.push({
         rowNumber,
         column: 'studentId',
@@ -116,19 +126,20 @@ export function buildEnrollRows(
       })
       return
     }
-    if (!studentIdResult.value) return
+    const key = studentIdResult.value ?? email
+    if (!key) return
 
-    const duplicateOf = seen.get(studentIdResult.value)
+    const duplicateOf = seen.get(key)
     if (duplicateOf !== undefined) {
       issues.push({
         rowNumber,
-        column: 'studentId',
+        column: studentIdResult.value ? 'studentId' : 'email',
         code: 'DUPLICATE_IN_FILE',
         message: `Duplicate of row ${duplicateOf}.`,
       })
       return
     }
-    seen.set(studentIdResult.value, rowNumber)
+    seen.set(key, rowNumber)
 
     const name = normalizeFullName(cell(raw, mapping.fullName))
     const program = normalizeProgram(cell(raw, mapping.program))
@@ -136,7 +147,7 @@ export function buildEnrollRows(
 
     rows.push({
       rowNumber,
-      studentId: studentIdResult.value,
+      ...(studentIdResult.value ? { studentId: studentIdResult.value } : { email }),
       ...(name.value ? { studentName: name.value } : {}),
       ...(program.value ? { expectedProgram: program.value } : {}),
       ...(year.value ? { expectedYearLevel: year.value } : {}),

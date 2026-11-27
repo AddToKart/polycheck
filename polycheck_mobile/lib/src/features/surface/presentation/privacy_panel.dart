@@ -77,7 +77,7 @@ class _PrivacyPanelState extends ConsumerState<PrivacyPanel> {
         bytes: document.bytes,
         filename: document.filename,
         mimeType: document.contentType,
-        title: 'Polycheck DPO summary',
+        title: 'PolyCheck DPO summary',
       );
       if (!mounted) return;
       setState(() => _exporting = false);
@@ -144,7 +144,7 @@ class _PrivacyPanelState extends ConsumerState<PrivacyPanel> {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        'Polycheck processes identity, attendance, and '
+                        'PolyCheck processes identity, attendance, and '
                         'geolocation evidence only for official class records '
                         'and anti-proxy check-in. This page is read-only.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(

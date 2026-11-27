@@ -485,7 +485,7 @@ export default function ReportsPage() {
           </Card>
 
           {/* Phones get 3-up; the md reset keeps the existing tablet layout (3-up) unchanged. */}
-          <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-3 lg:grid-cols-7 gap-4 mb-8">
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-3 lg:grid-cols-7 gap-4 mb-8">
             <Card>
               <CardContent className="p-5">
                 <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Total Records</p>

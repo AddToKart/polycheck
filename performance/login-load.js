@@ -1,5 +1,5 @@
 /**
- * Polycheck — student login capacity (flow: `login`).
+ * PolyCheck — student login capacity (flow: `login`).
  *
  * Measures POST /api/auth/mobile/login/student for every student in the
  * fixture. The login path is deliberately isolated from attendance so bcrypt +

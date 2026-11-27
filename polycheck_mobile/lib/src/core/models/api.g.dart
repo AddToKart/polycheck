@@ -44,7 +44,7 @@ _CreateStudentInput _$CreateStudentInputFromJson(Map<String, dynamic> json) =>
       password: json['password'] as String?,
       program: json['program'] as String,
       yearLevel: (json['yearLevel'] as num).toInt(),
-      department: json['department'] as String,
+      department: json['department'] as String?,
     );
 
 Map<String, dynamic> _$CreateStudentInputToJson(_CreateStudentInput instance) =>

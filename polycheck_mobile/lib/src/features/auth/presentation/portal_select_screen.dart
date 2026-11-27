@@ -11,6 +11,7 @@ import '../../../core/widgets/campus_card.dart';
 import '../../../core/widgets/theme_mode_toggle.dart';
 import 'maintenance_screen.dart';
 import '../../../core/branding/branding.dart';
+import '../../../core/widgets/product_logo.dart';
 
 /// Branded portal selection (public landing).
 class PortalSelectScreen extends ConsumerWidget {
@@ -106,7 +107,7 @@ class PortalSelectScreen extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          'Polycheck - ${BrandingScope.of(context).name} attendance management',
+                          'PolyCheck - ${BrandingScope.of(context).name} attendance management',
                           style: textTheme.bodySmall?.copyWith(
                             color: tokens.onMaroon.withValues(alpha: 0.7),
                           ),
@@ -155,23 +156,7 @@ class _BrandBlock extends StatelessWidget {
       children: [
         Row(
           children: [
-            Container(
-              width: 58,
-              height: 58,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: tokens.deepMaroon,
-                border: Border.all(color: tokens.gold, width: 2),
-              ),
-              child: Text(
-                BrandingScope.of(context).monogram,
-                style: textTheme.titleMedium?.copyWith(
-                  color: tokens.gold,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
+            const ProductLogo(size: 64),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -201,7 +186,7 @@ class _BrandBlock extends StatelessWidget {
         ),
         const SizedBox(height: 28),
         Text(
-          'Polycheck',
+          'PolyCheck',
           style: textTheme.displayMedium?.copyWith(color: tokens.onMaroon),
         ),
         const SizedBox(height: 8),

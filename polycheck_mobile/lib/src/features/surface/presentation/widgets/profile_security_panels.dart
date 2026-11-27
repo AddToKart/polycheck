@@ -505,7 +505,7 @@ class _DeviceBindingPanelState extends ConsumerState<DeviceBindingPanel> {
           ),
         ] else
           Text(
-            'No device is bound. Sign in on the Polycheck mobile app to bind '
+            'No device is bound. Sign in on the PolyCheck mobile app to bind '
             'this account to a device.',
             style: Theme.of(
               context,

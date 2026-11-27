@@ -80,14 +80,14 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         _error = error.status == 429
             ? 'Too many requests from this connection. Please wait a few '
                   'minutes and try again.'
-            : 'Cannot reach the Polycheck server. Check your connection and '
+            : 'Cannot reach the PolyCheck server. Check your connection and '
                   'try again.';
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _error =
-            'Cannot reach the Polycheck server. Check your connection and try '
+            'Cannot reach the PolyCheck server. Check your connection and try '
             'again.';
       });
     } finally {
@@ -209,7 +209,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         const SizedBox(height: 14),
         Text(
           'Ask your instructor to reset your password. They can give you a '
-          'temporary password in Polycheck, and you will choose your own '
+          'temporary password in PolyCheck, and you will choose your own '
           'right after you sign in.',
           style: style,
         ),

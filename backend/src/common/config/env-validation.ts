@@ -115,7 +115,7 @@ export const envSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['TRUST_PROXY'],
-        message: 'TRUST_PROXY must be enabled in production behind the Polycheck proxy topology',
+        message: 'TRUST_PROXY must be enabled in production behind the PolyCheck proxy topology',
       })
     }
     if (env.NODE_ENV === 'production' && !env.DATABASE_URL.includes('pgbouncer=true')) {

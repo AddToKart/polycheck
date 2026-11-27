@@ -174,7 +174,7 @@ describe('service worker cache policy', () => {
     dispatch(worker, 'fetch', event)
     await response
 
-    const shell = worker.caches.get('polycheck-v3-shell') ?? []
+    const shell = worker.caches.get('polycheck-v4-shell') ?? []
     expect(shell.some((entry) => entry.url.includes('/faculty/dashboard'))).toBe(false)
     expect(worker.fetchCalls).toContain('https://polycheck.test/faculty/dashboard')
   })
@@ -188,7 +188,7 @@ describe('service worker cache policy', () => {
     dispatch(worker, 'fetch', event)
     await response
 
-    const shell = worker.caches.get('polycheck-v3-shell') ?? []
+    const shell = worker.caches.get('polycheck-v4-shell') ?? []
     expect(shell.some((entry) => entry.url.includes('/student/dashboard'))).toBe(false)
   })
 
@@ -200,7 +200,7 @@ describe('service worker cache policy', () => {
     await response
     await settleCacheWrites()
 
-    const shell = worker.caches.get('polycheck-v3-shell') ?? []
+    const shell = worker.caches.get('polycheck-v4-shell') ?? []
     expect(shell.some((entry) => entry.url.endsWith('/login'))).toBe(true)
 
     const iconRequest = new Request('https://polycheck.test/icons/icon-192.png')
@@ -209,7 +209,7 @@ describe('service worker cache policy', () => {
     await iconEvent.response
     await settleCacheWrites()
     expect(
-      (worker.caches.get('polycheck-v3-shell') ?? []).some((entry) =>
+      (worker.caches.get('polycheck-v4-shell') ?? []).some((entry) =>
         entry.url.endsWith('/icons/icon-192.png'),
       ),
     ).toBe(true)
@@ -219,8 +219,8 @@ describe('service worker cache policy', () => {
     const worker = bootWorker()
     // Write a legacy authenticated document into the shell cache plus the
     // precache markers that must survive.
-    const shell = worker.caches.get('polycheck-v3-shell') ?? []
-    worker.caches.set('polycheck-v3-shell', shell)
+    const shell = worker.caches.get('polycheck-v4-shell') ?? []
+    worker.caches.set('polycheck-v4-shell', shell)
     shell.push(
       { url: 'https://polycheck.test/faculty/users' },
       { url: 'https://polycheck.test/icons/icon-192.png' },
@@ -234,7 +234,7 @@ describe('service worker cache policy', () => {
     })
     await Promise.all(waits)
 
-    const remaining = worker.caches.get('polycheck-v3-shell') ?? []
+    const remaining = worker.caches.get('polycheck-v4-shell') ?? []
     expect(remaining.some((entry) => entry.url.endsWith('/faculty/users'))).toBe(false)
     expect(remaining.some((entry) => entry.url.endsWith('/icons/icon-192.png'))).toBe(true)
     expect(remaining.some((entry) => entry.url.endsWith('/offline'))).toBe(true)
@@ -242,8 +242,8 @@ describe('service worker cache policy', () => {
 
   it('keeps immutable /_next/static and font assets through the clear (static caching unchanged)', async () => {
     const worker = bootWorker()
-    const shell = worker.caches.get('polycheck-v3-shell') ?? []
-    worker.caches.set('polycheck-v3-shell', shell)
+    const shell = worker.caches.get('polycheck-v4-shell') ?? []
+    worker.caches.set('polycheck-v4-shell', shell)
     shell.push(
       { url: 'https://polycheck.test/_next/static/chunks/app.js' },
       { url: 'https://polycheck.test/fonts/dm-sans.woff2' },
@@ -258,7 +258,7 @@ describe('service worker cache policy', () => {
     })
     await Promise.all(waits)
 
-    const remaining = worker.caches.get('polycheck-v3-shell') ?? []
+    const remaining = worker.caches.get('polycheck-v4-shell') ?? []
     expect(remaining.some((entry) => entry.url.endsWith('/_next/static/chunks/app.js'))).toBe(true)
     expect(remaining.some((entry) => entry.url.endsWith('/fonts/dm-sans.woff2'))).toBe(true)
     expect(remaining.some((entry) => entry.url.endsWith('/brand-mark.png'))).toBe(true)
@@ -269,7 +269,7 @@ describe('service worker cache policy', () => {
   it('bumps the cache version so older unsafe files are purged on activate', () => {
     // The document-caching fix requires a version bump; a stale v2 shell would
     // keep serving cached authenticated HTML.
-    expect(source).toContain("const VERSION = 'polycheck-v3'")
+    expect(source).toContain("const VERSION = 'polycheck-v4'")
   })
 
   it('leaves the /api/health read behaviour unchanged', () => {

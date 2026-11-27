@@ -119,6 +119,37 @@ test.describe('Bulk import wizards', () => {
     await expect(page.getByText(/this PDF is a scan/i)).toBeVisible({ timeout: 30_000 })
   })
 
+  test('teacher checks a class list that has school emails but no student numbers', async ({ page }) => {
+    await loginFaculty(page)
+    const errors = trackErrors(page)
+    await page.goto('/faculty/sections/sec-001')
+    await page.getByText('Enroll Student', { exact: true }).click()
+    await page.getByRole('button', { name: 'Import from master list' }).click()
+    // Same columns as a registrar class list with no student numbers. The first address belongs to a seeded
+    // student who is already in this section; the second belongs to nobody. Validation only: nothing is saved.
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'class-list.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(
+        [
+          'Name,Email Address,Mobile,Delivery',
+          '"Reyes, Alexandra Marie",AMReyes@student.example.edu.ph,09170000001,Online',
+          '"Nobody, Example",nobody.example@student.example.edu.ph,09170000002,Online',
+        ].join(String.fromCharCode(10)),
+      ),
+    })
+
+    await expect(page.getByLabel(/School email/)).toHaveValue('1')
+    await page.getByRole('button', { name: 'Validate rows' }).click()
+
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByText(/already enrolled in this section/)).toBeVisible({ timeout: 20_000 })
+    await expect(dialog.getByText(/No student account has this school email/)).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(dialog).not.toBeVisible()
+    assertNoErrors(errors)
+  })
+
   test('teacher opens the section roster import', async ({ page }) => {
     await loginFaculty(page)
     const errors = trackErrors(page)

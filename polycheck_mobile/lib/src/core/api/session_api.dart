@@ -88,10 +88,10 @@ class SessionApi extends ApiBase {
     );
   }
 
-  Future<User> me({Duration? timeout}) async {
-    final data = await _getProfile('/auth/me', timeout: timeout);
-    return User.fromJson(asMap(data));
-  }
+  /// `_getProfile` already returns a parsed [User]. Parsing its result again
+  /// reads an empty map and throws, which broke every profile reload.
+  Future<User> me({Duration? timeout}) =>
+      _getProfile('/auth/me', timeout: timeout);
 
   Future<User> _getProfile(String path, {Duration? timeout}) async {
     try {

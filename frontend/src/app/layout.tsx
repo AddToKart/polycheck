@@ -11,13 +11,13 @@ import { fetchServerBranding } from "@/lib/server-branding";
 import { PrivacyConsentGate } from "@/components/PrivacyConsentGate";
 
 export const metadata: Metadata = {
-  title: "Polycheck",
+  title: "PolyCheck",
   description: "Attendance Management System",
   icons: [{ rel: "icon", url: "/brand-mark.png" }],
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Polycheck",
+    title: "PolyCheck",
   },
 };
 

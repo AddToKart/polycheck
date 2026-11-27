@@ -612,9 +612,10 @@ export default function SessionDetailPage() {
   }
 
   return (
-    <div className="flex h-screen bg-zinc-100 dark:bg-brand-black">
+    /* On phones the menu bar sits above the page; side by side it would squeeze the cockpit to nothing. */
+    <div className="flex h-dvh flex-col bg-zinc-100 md:flex-row dark:bg-brand-black">
       <Sidebar user={user} onLogout={handleLogout} backHref="/faculty/sessions" backLabel="Back to Sessions" />
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white dark:bg-brand-black border-b border-zinc-200 dark:border-zinc-800">
           <div className="flex min-w-0 items-center gap-3">
             <Link href="/faculty/sessions" aria-label="Back to sessions" className="inline-flex min-h-11 min-w-11 items-center justify-center p-1 hover:opacity-70 md:min-h-0 md:min-w-0">

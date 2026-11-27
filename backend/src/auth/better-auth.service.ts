@@ -102,7 +102,7 @@ export class BetterAuthService implements OnModuleInit {
       .filter(Boolean)
 
     const options: BetterAuthOptions = {
-      appName: 'Polycheck',
+      appName: 'PolyCheck',
       baseURL:
         this.config.get<string>('BETTER_AUTH_URL') ?? `http://localhost:${this.config.get<number>('PORT') ?? 4000}`,
       basePath: '/api/auth/better-auth',

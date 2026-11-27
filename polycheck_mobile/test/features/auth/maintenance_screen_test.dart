@@ -42,7 +42,7 @@ void main() {
     await tester.pump();
 
     expect(
-      find.text('Polycheck is under scheduled maintenance'),
+      find.text('PolyCheck is under scheduled maintenance'),
       findsOneWidget,
     );
     expect(find.text('Scheduled database upgrade.'), findsOneWidget);

@@ -277,3 +277,32 @@ describe('UsersService course scope', () => {
     })
   })
 })
+
+describe('UsersService student program changes', () => {
+  const original = process.env.COURSE_SCOPE_MODE
+  afterEach(() => {
+    if (original === undefined) delete process.env.COURSE_SCOPE_MODE
+    else process.env.COURSE_SCOPE_MODE = original
+  })
+
+  const updatedData = async (target: unknown, mode: string) => {
+    process.env.COURSE_SCOPE_MODE = mode
+    const prisma = buildPrisma(target)
+    await new UsersService(prisma as never).updateUser('s-1', { program: 'BSHM' }, institutionAdmin)
+    return prisma.user.update.mock.calls[0][0].data
+  }
+
+  it('moves the hidden department with the program in course mode', async () => {
+    const data = await updatedData({ ...bsitStudent, department: 'CCIS' }, 'course')
+    expect(data).toEqual(expect.objectContaining({ program: 'BSHM', department: 'BSHM' }))
+  })
+
+  it('moves it in legacy mode only when it was a copy of the old program', async () => {
+    expect(await updatedData(bsitStudent, 'legacy')).toEqual(
+      expect.objectContaining({ program: 'BSHM', department: 'BSHM' }),
+    )
+    const kept = await updatedData({ ...bsitStudent, department: 'CCIS' }, 'legacy')
+    expect(kept.program).toBe('BSHM')
+    expect(kept.department).toBeUndefined()
+  })
+})

@@ -79,6 +79,6 @@ describe('/forgot-password page', () => {
 
     apiMock.passwordResetRequest.mockRejectedValueOnce(new Error('network'))
     fireEvent.click(screen.getByRole('button', { name: 'Send reset link' }))
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/could not reach Polycheck/i))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/could not reach PolyCheck/i))
   })
 })

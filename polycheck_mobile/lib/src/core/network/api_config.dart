@@ -1,4 +1,4 @@
-/// Network configuration for the NestJS Polycheck API.
+/// Network configuration for the NestJS PolyCheck API.
 ///
 /// The defaults mirror the Android client (`android/services/api-config.ts`
 /// plus the staging URL pinned in `android/eas.json`). Override at build time:

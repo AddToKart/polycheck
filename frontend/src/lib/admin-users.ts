@@ -94,7 +94,8 @@ export type EditableUserField = 'fullName' | 'department' | 'email' | 'program' 
 
 export function editableFieldsForRole(role: UserRole): EditableUserField[] {
   if (role === 'teacher') return ['fullName', 'department', 'email']
-  if (role === 'student') return ['fullName', 'department', 'program', 'yearLevel']
+  // Students have no department field: their program is the campus course.
+  if (role === 'student') return ['fullName', 'program', 'yearLevel']
   return []
 }
 
@@ -116,9 +117,6 @@ export function validateUserUpdate(
   if (!fields.size) return 'This account type cannot be edited from the console.'
   if (fields.has('fullName') && values.fullName.trim().length < 2) {
     return 'Full name must be at least 2 characters.'
-  }
-  if (fields.has('department') && target.role === 'student' && values.department.trim().length < 2) {
-    return 'Department is required for student accounts.'
   }
   if (fields.has('email') && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) {
     return 'Enter a valid email address.'

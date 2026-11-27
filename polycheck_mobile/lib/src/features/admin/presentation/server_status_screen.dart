@@ -143,7 +143,7 @@ class _ServerStatusScreenState extends ConsumerState<ServerStatusScreen> {
     final snapshot = _snapshot;
     return AdminScaffold(
       title: 'Server status',
-      subtitle: 'Live health and latency for this Polycheck instance',
+      subtitle: 'Live health and latency for this PolyCheck instance',
       section: AdminSection.serverStatus,
       actions: <Widget>[
         IconButton(

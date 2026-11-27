@@ -106,11 +106,11 @@ export function StudentDashboardOverview(props: StudentDashboardOverviewProps) {
         <Card className="rounded-none border-zinc-300 dark:border-zinc-800 border-t-4 border-t-maroon dark:border-t-golden">
           <CardHeader className="border-b border-zinc-300 dark:border-zinc-800 p-6"><CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2"><Clock className="w-4 h-4 text-maroon dark:text-golden" />Recent Scans</CardTitle></CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto"><table className="w-full text-sm">
-              <thead><tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30"><th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Subject</th><th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Date/Time</th><th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Result</th><th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Action</th></tr></thead>
-              <tbody>
+            <div className="overflow-x-auto"><table className="block w-full text-sm sm:table">
+              <thead className="hidden sm:table-header-group"><tr className="border-b-2 border-zinc-300/60 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/30"><th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Subject</th><th className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Date/Time</th><th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Result</th><th className="text-right px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Action</th></tr></thead>
+              <tbody className="block sm:table-row-group">
                 {records.map((record) => <AttendanceRow key={record.id} record={record} subjectName={sectionSubjectName(record.sectionId)} onReportIssue={props.onReportIssue} onRequestExcuse={props.onRequestExcuse} />)}
-                {records.length === 0 ? <tr><td colSpan={4} className="px-6 py-16 text-center text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest">Audit log is empty</td></tr> : null}
+                {records.length === 0 ? <tr className="block sm:table-row"><td colSpan={4} className="block px-6 py-16 sm:table-cell text-center text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest">Audit log is empty</td></tr> : null}
               </tbody>
             </table></div>
           </CardContent>
@@ -142,12 +142,12 @@ export function AttendanceRow({
     (!record.excuseStatus || record.excuseStatus === 'rejected')
 
   return (
-    <tr className="border-b border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors">
-      <td className="px-6 py-4 font-bold text-foreground">{subjectName}</td>
-      <td className="px-6 py-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+    <tr className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 px-4 py-3 border-b border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 transition-colors sm:table-row sm:p-0">
+      <td className="col-start-1 row-start-1 font-bold text-foreground sm:px-6 sm:py-4">{subjectName}</td>
+      <td className="col-start-1 row-start-2 text-xs font-medium text-zinc-600 dark:text-zinc-400 sm:px-6 sm:py-4">
         {new Date(record.timestamp).toLocaleDateString()} &mdash; {new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
       </td>
-      <td className="px-6 py-4 text-right">
+      <td className="col-start-2 row-start-1 text-right sm:px-6 sm:py-4">
         <div className="flex flex-col items-end gap-1">
           <StatusBadge status={record.status} />
           {record.excuseStatus ? <ExcuseStatusBadge status={record.excuseStatus} /> : null}
@@ -158,8 +158,8 @@ export function AttendanceRow({
           ) : null}
         </div>
       </td>
-      <td className="px-6 py-4 text-right">
-        <div className="flex flex-col items-end gap-1">
+      <td className="col-start-2 row-start-2 text-right sm:px-6 sm:py-4">
+        <div className="flex flex-col items-end gap-2 sm:gap-1">
           {record.status === 'disputed' ? (
             <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-maroon dark:text-golden">
               <AlertTriangle className="w-3 h-3" />Disputed

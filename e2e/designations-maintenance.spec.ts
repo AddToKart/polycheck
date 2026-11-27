@@ -140,7 +140,7 @@ test.describe('Campus designations & maintenance mode', () => {
     await page.getByLabel('Password').fill(SEED_PASSWORD)
     await page.getByRole('button', { name: /Authenticate/i }).click()
     await expect(
-      page.getByRole('heading', { name: 'Polycheck is under scheduled maintenance' }),
+      page.getByRole('heading', { name: 'PolyCheck is under scheduled maintenance' }),
     ).toBeVisible({ timeout: 20_000 })
 
     // IT coordinator remains exempt and lands on the dashboard with the pill.
@@ -154,7 +154,7 @@ test.describe('Campus designations & maintenance mode', () => {
     await page.getByLabel('Password').fill(SEED_PASSWORD)
     await page.getByRole('button', { name: /Authenticate/i }).click()
     await expect(
-      page.getByRole('heading', { name: 'Polycheck is under scheduled maintenance' }),
+      page.getByRole('heading', { name: 'PolyCheck is under scheduled maintenance' }),
     ).toBeVisible({ timeout: 20_000 })
 
     // Reopen as the super admin; the wall disappears without a client release.

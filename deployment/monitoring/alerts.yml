@@ -7,8 +7,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: No Polycheck backend instance is ready
-          description: Prometheus cannot scrape a ready Polycheck backend instance.
+          summary: No PolyCheck backend instance is ready
+          description: Prometheus cannot scrape a ready PolyCheck backend instance.
 
       - alert: PolycheckRedisUnavailable
         expr: min(polycheck_dependency_ready{job="polycheck-backend",dependency="redis"}) < 1
@@ -36,7 +36,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: Polycheck HTTP 5xx rate exceeds 5 percent
+          summary: PolyCheck HTTP 5xx rate exceeds 5 percent
           description: More than 5 percent of backend requests have failed for five minutes.
 
       - alert: PolycheckHighHttpLatency
@@ -45,7 +45,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: Polycheck p95 HTTP latency exceeds one second
+          summary: PolyCheck p95 HTTP latency exceeds one second
           description: Aggregate backend p95 latency has exceeded one second for ten minutes.
 
   - name: polycheck-runtime
@@ -56,7 +56,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: A Polycheck backend is nearing its memory limit
+          summary: A PolyCheck backend is nearing its memory limit
           description: Resident memory exceeds 650 MiB on instance {{ $labels.instance }}.
 
       - alert: PolycheckEventLoopLag
@@ -65,7 +65,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: Polycheck event-loop lag is elevated
+          summary: PolyCheck event-loop lag is elevated
           description: Event-loop p99 lag exceeds 100 ms on instance {{ $labels.instance }}.
 
   - name: polycheck-queue

@@ -26,6 +26,10 @@ export const ANONYMOUS_ROUTES: RouteCase[] = [
   { name: 'login-faculty', path: '/login/faculty' },
   { name: 'login-student', path: '/login/student' },
   { name: 'offline-fallback', path: '/offline' },
+  { name: 'forgot-password', path: '/forgot-password' },
+  // Opened without a token these show their "link is not usable" states.
+  { name: 'reset-password', path: '/reset-password', settleMs: 1200 },
+  { name: 'activate', path: '/activate', settleMs: 1200 },
 ]
 
 export const FACULTY_ROUTES: RouteCase[] = [

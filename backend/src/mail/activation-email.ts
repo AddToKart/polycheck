@@ -31,11 +31,11 @@ export function buildActivationEmail({ fullName, link, expiresAt, institutionNam
     month: 'long',
     day: 'numeric',
   })
-  const subject = 'Activate your Polycheck account'
+  const subject = 'Activate your PolyCheck account'
   const text = [
     `Hi ${name},`,
     '',
-    `An account was prepared for you on Polycheck, ${system}.`,
+    `An account was prepared for you on PolyCheck, ${system}.`,
     'Open this link to choose your password and activate it:',
     '',
     link,
@@ -47,9 +47,9 @@ export function buildActivationEmail({ fullName, link, expiresAt, institutionNam
   ].join('\n')
   const html = `<!doctype html><html><body style="margin:0;padding:24px;background:#f6f6f6;font-family:Arial,Helvetica,sans-serif;color:#1a1a1a">
 <table role="presentation" width="100%" style="max-width:520px;margin:0 auto;background:#ffffff;border-top:4px solid #7B1113"><tr><td style="padding:24px">
-<h1 style="margin:0 0 16px;font-size:20px;color:#7B1113">Activate your Polycheck account</h1>
+<h1 style="margin:0 0 16px;font-size:20px;color:#7B1113">Activate your PolyCheck account</h1>
 <p style="margin:0 0 12px;font-size:15px;line-height:1.5">Hi ${escapeHtml(name)},</p>
-<p style="margin:0 0 20px;font-size:15px;line-height:1.5">An account was prepared for you on Polycheck, ${escapeHtml(system)}. Choose your password to activate it.</p>
+<p style="margin:0 0 20px;font-size:15px;line-height:1.5">An account was prepared for you on PolyCheck, ${escapeHtml(system)}. Choose your password to activate it.</p>
 <p style="margin:0 0 20px"><a href="${escapeHtml(link)}" style="display:inline-block;background:#7B1113;color:#ffffff;text-decoration:none;padding:12px 20px;font-size:15px;font-weight:bold">Activate account</a></p>
 <p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#555">The link works once and expires on ${escapeHtml(expires)}. You will be asked for your student number. If it expires, open it and request a new one.</p>
 <p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#555">Button not working? Copy this address into your browser:<br><span style="word-break:break-all">${escapeHtml(link)}</span></p>

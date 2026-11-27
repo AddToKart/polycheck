@@ -31,7 +31,7 @@ describe('CredentialResultDialog', () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
     const copied = writeText.mock.calls[0][0] as string
-    expect(copied).toContain('Polycheck credentials')
+    expect(copied).toContain('PolyCheck credentials')
     expect(copied).toContain('Role: student')
     expect(copied).toContain('Juan Dela Cruz')
     expect(copied).toContain('2024-00001-MN-0')

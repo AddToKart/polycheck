@@ -643,11 +643,11 @@ function InstitutionSettingsPageInner() {
         }}
       />
       <main className="flex-1 overflow-y-auto">
-        <div className="p-8 max-w-3xl mx-auto">
+        <div className="p-4 sm:p-8 max-w-3xl mx-auto">
           <div className="mb-8 flex items-center gap-3">
             <Settings className="h-7 w-7 text-maroon dark:text-golden" />
             <div>
-              <h1 className="text-3xl font-heading font-bold text-maroon dark:text-white">
+              <h1 className="text-2xl sm:text-3xl font-heading font-bold text-maroon dark:text-white">
                 Institution Settings
               </h1>
               <p className="mt-1 text-sm text-zinc-500">

@@ -1,3 +1,6 @@
+import { normalizeCourse } from '../course'
+import { normalizeEmail, normalizeStudentId, normalizeYearLevel } from './normalize'
+
 export interface ImportColumnMapping {
   studentId?: number
   fullName?: number
@@ -31,7 +34,8 @@ const ALIASES: Record<keyof ImportColumnMapping, string[]> = {
   email: ['email', 'emailaddress', 'pupemail', 'studentemail'],
   program: ['program', 'course', 'degree', 'degreeprogram', 'curriculum'],
   yearLevel: ['yearlevel', 'year', 'yr', 'yrlevel', 'yearofstudy', 'yearstanding'],
-  department: ['department', 'dept', 'college', 'collegedepartment', 'departmentcollege'],
+  // Never suggested: students have no department, their program is the course.
+  department: [],
 }
 
 function canonicalHeader(value: string): string {
@@ -69,8 +73,6 @@ function scoreHeader(field: keyof ImportColumnMapping, header: string): number {
       if (canonical.includes('yearlevel') || canonical.includes('yearofstudy')) return 80
       return 0
     case 'department':
-      if (canonical.includes('department') || canonical.includes('dept')) return 85
-      if (canonical.includes('college')) return 75
       return 0
   }
 }
@@ -84,11 +86,41 @@ const FIELD_ORDER: (keyof ImportColumnMapping)[] = [
   'fullName',
 ]
 
+/** Fields that can be recognised from what a column holds, whatever its heading says. */
+export type ContentDetectableField = 'studentId' | 'email' | 'program' | 'yearLevel'
+
+const CONTENT_SAMPLE_ROWS = 50
+const CONTENT_MATCH_SHARE = 0.8
+
+const CONTENT_DETECTORS: Record<ContentDetectableField, (value: string) => boolean> = {
+  studentId: (value) => normalizeStudentId(value).value !== undefined,
+  email: (value) => normalizeEmail(value).value !== undefined,
+  program: (value) => normalizeCourse(value).matched,
+  // Bare digits are left alone: a "No." column of 1, 2, 3 is not a year level.
+  yearLevel: (value) => /[a-z]/i.test(value) && normalizeYearLevel(value).value !== undefined,
+}
+
+/** Does most of this column's filled-in data look like the field? */
+export function columnMatchesContent(
+  rows: readonly (readonly string[])[],
+  index: number,
+  field: ContentDetectableField,
+): boolean {
+  const values = rows
+    .slice(0, CONTENT_SAMPLE_ROWS)
+    .map((row) => (row[index] ?? '').trim())
+    .filter(Boolean)
+  if (values.length === 0) return false
+  const matches = values.filter(CONTENT_DETECTORS[field]).length
+  return matches / values.length >= CONTENT_MATCH_SHARE
+}
+
 /**
- * Suggests the automatic mapping for known registrar SIS headers. The import wizard
- * always shows the result for visual confirmation before parsing continues.
+ * Suggests the automatic mapping for known registrar SIS headers. With the data rows it also recognises
+ * columns by their contents when the headings are unfamiliar. The import wizard always shows the result for
+ * visual confirmation before parsing continues. One column is never suggested for two fields.
  */
-export function suggestColumnMapping(headers: string[]): ImportColumnMapping {
+export function suggestColumnMapping(headers: string[], rows?: readonly (readonly string[])[]): ImportColumnMapping {
   const mapping: ImportColumnMapping = {}
   const used = new Set<number>()
 
@@ -106,6 +138,17 @@ export function suggestColumnMapping(headers: string[]): ImportColumnMapping {
     if (bestIndex !== undefined && bestScore >= 60) {
       mapping[field] = bestIndex
       used.add(bestIndex)
+    }
+  }
+
+  if (rows) {
+    for (const field of Object.keys(CONTENT_DETECTORS) as ContentDetectableField[]) {
+      if (mapping[field] !== undefined) continue
+      const index = headers.findIndex((_, column) => !used.has(column) && columnMatchesContent(rows, column, field))
+      if (index >= 0) {
+        mapping[field] = index
+        used.add(index)
+      }
     }
   }
 

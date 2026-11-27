@@ -1,21 +1,14 @@
-# Polycheck Mobile (Flutter)
+# PolyCheck Mobile (Flutter)
 
-Production Flutter client for **Polycheck**, the campus attendance
-management system. This package is a 1:1 port of the shipped React Native app
-in `../android/` and talks to the same NestJS API and shared contracts.
-
-> **Coexistence:** the React Native app in `../android/` is untouched and keeps
-> its own package id (its original package id). This Flutter app is
-> `app.polycheck.mobile`, so both can be installed side-by-side until the
-> team cuts over. Never edit `../android/`, `../backend/`, `../frontend/`, or
-> `../shared/` from this package.
+This is the only mobile client. It talks to the same NestJS API as the web app;
+the earlier React Native app was removed from the repository on 2026-11-27.
 
 ## Requirements
 
 - Flutter 3.44+ / Dart 3.12+
 - Android SDK (compile/target from the Flutter SDK) + Android Studio JBR
   (`flutter config --jdk-dir "C:\Program Files\Android\Android Studio\jbr"`)
-- A reachable Polycheck NestJS backend
+- A reachable PolyCheck NestJS backend
 
 ## Run / verify
 

@@ -1,5 +1,5 @@
 /**
- * Shared metric contract for every Polycheck k6 script.
+ * Shared metric contract for every PolyCheck k6 script.
  *
  * Exported custom metrics (all tagged per flow):
  *   flow_success   Rate     { flow, shape [, phase] }  true = the flow did its job

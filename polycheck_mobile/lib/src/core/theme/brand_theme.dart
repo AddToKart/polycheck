@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'brand_tokens.dart';
 
-/// Polycheck theme: brand maroon/gold, Lora headings, DM Sans body, square
+/// PolyCheck theme: brand maroon/gold, Lora headings, DM Sans body, square
 /// (zero-radius) surfaces, flat (transparent surface tint), 1px borders.
 ///
 /// Use `BrandTheme.of(context)` for the resolved [BrandTokens] and

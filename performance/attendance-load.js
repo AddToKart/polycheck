@@ -1,5 +1,5 @@
 /**
- * Polycheck — attendance-domain load (flows: scan, sync_enqueue, sync_receipt,
+ * PolyCheck — attendance-domain load (flows: scan, sync_enqueue, sync_receipt,
  * dispute, excuse, faculty_read, admin_read, proof_upload, session_lifecycle).
  *
  * `scan` is the bell rush across every section in the fixture (34 sections in

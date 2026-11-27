@@ -84,8 +84,9 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
   }
 
   Future<void> _validate() async {
-    if (!isMappingComplete(_state.mapping)) {
-      setState(() => _error = 'Map the student number and full name columns.');
+    final missing = missingColumnMessage(_state.mapping);
+    if (missing != null) {
+      setState(() => _error = missing);
       return;
     }
     final built = buildStudentRows(_state.sourceRows, _state.mapping);
@@ -305,8 +306,10 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Text(
-          'Paste the master list from Sheets or Files as CSV (header row '
-          'included). Preview the mapping before anything is written.',
+          'Paste the master list as CSV with its header row. Each student needs '
+          'a student number and full name; email, program and year level are '
+          'optional. Nothing is saved until you confirm. To upload a file or '
+          'email students their login, use the website.',
           style: Theme.of(
             context,
           ).textTheme.bodySmall?.copyWith(color: tokens.muted),
@@ -321,7 +324,7 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
             context,
           ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
           decoration: const InputDecoration(
-            hintText: 'Student No,Name,Email,Program,Year Level,Department',
+            hintText: 'Student No,Name,Email,Program,Year Level',
           ),
         ),
         const SizedBox(height: 8),
@@ -363,8 +366,8 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Text(
-          'Confirm how ${_state.headers.length} columns map to Polycheck '
-          'fields. Student number and full name are required.',
+          'Tell PolyCheck which of your ${_state.headers.length} columns holds '
+          'each detail. Student number and full name are required.',
           style: Theme.of(
             context,
           ).textTheme.bodySmall?.copyWith(color: tokens.muted),
@@ -372,7 +375,8 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
         const SizedBox(height: 12),
         for (final field in studentImportFields) ...<Widget>[
           DropdownButtonFormField<int>(
-            key: ValueKey<String>('map-${field.name}'),
+            // Rebuilt when another field takes this column away.
+            key: ValueKey<String>('map-${field.name}-${_state.mapping[field]}'),
             initialValue: _state.mapping[field] ?? -1,
             isExpanded: true,
             decoration: InputDecoration(
@@ -381,7 +385,10 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
                   '${field == ImportField.studentId || field == ImportField.fullName ? ' *' : ''}',
             ),
             items: <DropdownMenuItem<int>>[
-              const DropdownMenuItem<int>(value: -1, child: Text('Not mapped')),
+              const DropdownMenuItem<int>(
+                value: -1,
+                child: Text('Not in my list'),
+              ),
               for (var index = 0; index < _state.headers.length; index++)
                 DropdownMenuItem<int>(
                   value: index,
@@ -490,8 +497,8 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
                 const SizedBox(height: 6),
                 for (final issue in issues.take(8))
                   Text(
-                    'Row ${issue.rowNumber} · ${issue.code.wire} · '
-                    '${issue.message}',
+                    'Row ${issue.rowNumber}: '
+                    '${issue.message.isEmpty ? issue.code.wire : issue.message}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 if (_state.hasMoreIssues) ...<Widget>[

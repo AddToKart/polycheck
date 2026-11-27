@@ -15,6 +15,7 @@ import '../../../../core/widgets/campus_toast.dart';
 import '../../application/admin_users_api.dart';
 import '../../domain/admin_users.dart';
 import 'credential_result_dialog.dart';
+import '../../../../core/widgets/program_dropdown.dart';
 
 Future<void> showCreateAccountSheet(
   BuildContext context, {
@@ -86,7 +87,6 @@ class _CreateAccountSheetState extends ConsumerState<CreateAccountSheet> {
             email: _email.text,
             program: _program.text,
             yearLevel: _yearLevel.text,
-            department: _department.text,
           );
     if (validation != null) {
       setState(() => _error = validation);
@@ -120,7 +120,6 @@ class _CreateAccountSheetState extends ConsumerState<CreateAccountSheet> {
             email: _email.text.trim().isEmpty ? null : _email.text.trim(),
             program: _program.text.trim(),
             yearLevel: int.parse(_yearLevel.text.trim()),
-            department: _department.text.trim(),
           ),
         );
         created = result.user;
@@ -208,12 +207,7 @@ class _CreateAccountSheetState extends ConsumerState<CreateAccountSheet> {
         ),
         if (!_isTeacher) ...<Widget>[
           const SizedBox(height: 12),
-          CampusTextField(
-            controller: _program,
-            label: 'Program',
-            textCapitalization: TextCapitalization.characters,
-            enabled: !_busy,
-          ),
+          ProgramDropdown(controller: _program, enabled: !_busy),
           const SizedBox(height: 12),
           CampusTextField(
             controller: _yearLevel,
@@ -222,13 +216,15 @@ class _CreateAccountSheetState extends ConsumerState<CreateAccountSheet> {
             enabled: !_busy,
           ),
         ],
-        const SizedBox(height: 12),
-        CampusTextField(
-          controller: _department,
-          label: 'Department',
-          textCapitalization: TextCapitalization.characters,
-          enabled: !_busy,
-        ),
+        if (_isTeacher) ...<Widget>[
+          const SizedBox(height: 12),
+          CampusTextField(
+            controller: _department,
+            label: 'Department',
+            textCapitalization: TextCapitalization.characters,
+            enabled: !_busy,
+          ),
+        ],
         const SizedBox(height: 10),
         Text(
           'A secure temporary password is generated automatically and shown '

@@ -20,13 +20,19 @@ export const StudentImportRowSchema = z.object({
   department: z.string().trim().min(2).max(100).optional(),
 })
 
-export const EnrollImportRowSchema = z.object({
-  rowNumber: z.number().int().min(1),
-  studentId: z.string().trim().toUpperCase().regex(STUDENT_ID_PATTERN, 'Invalid student number'),
-  studentName: z.string().trim().min(1).max(150).optional(),
-  expectedProgram: z.string().trim().min(1).max(150).optional(),
-  expectedYearLevel: z.number().int().min(1).max(8).optional(),
-})
+export const EnrollImportRowSchema = z
+  .object({
+    rowNumber: z.number().int().min(1),
+    studentId: z.string().trim().toUpperCase().regex(STUDENT_ID_PATTERN, 'Invalid student number').optional(),
+    email: z.string().trim().toLowerCase().email().max(254).optional(),
+    studentName: z.string().trim().min(1).max(150).optional(),
+    expectedProgram: z.string().trim().min(1).max(150).optional(),
+    expectedYearLevel: z.number().int().min(1).max(8).optional(),
+  })
+  .refine((row) => Boolean(row.studentId || row.email), {
+    message: 'A student number or a school email is required',
+    path: ['studentId'],
+  })
 
 const IdempotencyKeySchema = z
   .string()

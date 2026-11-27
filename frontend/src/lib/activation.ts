@@ -81,6 +81,6 @@ export function describeActivationFailure(error: unknown): ActivationFailure {
   }
   return {
     kind: 'network',
-    message: 'We could not reach Polycheck. Check your connection and try again — it is safe to retry.',
+    message: 'We could not reach PolyCheck. Check your connection and try again — it is safe to retry.',
   }
 }

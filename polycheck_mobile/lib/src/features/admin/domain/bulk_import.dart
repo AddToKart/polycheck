@@ -1,4 +1,5 @@
 import '../../../core/models/bulk_import.dart';
+import '../../../core/utils/campus_courses.dart';
 
 /// Mirrors `shared/src/utils/import/*` for the paste-first student import
 /// wizard (no file picker dependency).
@@ -10,8 +11,7 @@ enum ImportField {
   fullName('Full name'),
   email('Email'),
   program('Program'),
-  yearLevel('Year level'),
-  department('Department');
+  yearLevel('Year level');
 
   const ImportField(this.label);
 
@@ -24,7 +24,6 @@ const List<ImportField> studentImportFields = <ImportField>[
   ImportField.email,
   ImportField.program,
   ImportField.yearLevel,
-  ImportField.department,
 ];
 
 typedef ImportColumnMapping = Map<ImportField, int>;
@@ -188,13 +187,6 @@ const Map<ImportField, List<String>> _aliases = <ImportField, List<String>>{
     'yearofstudy',
     'yearstanding',
   ],
-  ImportField.department: <String>[
-    'department',
-    'dept',
-    'college',
-    'collegedepartment',
-    'departmentcollege',
-  ],
 };
 
 String canonicalHeader(String value) =>
@@ -238,12 +230,6 @@ int _scoreHeader(ImportField field, String header) {
         return 80;
       }
       return 0;
-    case ImportField.department:
-      if (canonical.contains('department') || canonical.contains('dept')) {
-        return 85;
-      }
-      if (canonical.contains('college')) return 75;
-      return 0;
   }
 }
 
@@ -252,11 +238,13 @@ const List<ImportField> _mappingFieldOrder = <ImportField>[
   ImportField.email,
   ImportField.yearLevel,
   ImportField.program,
-  ImportField.department,
   ImportField.fullName,
 ];
 
-ImportColumnMapping suggestColumnMapping(List<String> headers) {
+ImportColumnMapping suggestColumnMapping(
+  List<String> headers, [
+  List<List<String>> sampleRows = const <List<String>>[],
+]) {
   final mapping = <ImportField, int>{};
   final used = <int>{};
   for (final field in _mappingFieldOrder) {
@@ -275,7 +263,44 @@ ImportColumnMapping suggestColumnMapping(List<String> headers) {
       used.add(bestIndex);
     }
   }
+  // Unfamiliar headings: recognise a column by what it holds.
+  final detectors = <ImportField, bool Function(String)>{
+    ImportField.studentId: (value) => normalizeStudentId(value).value != null,
+    ImportField.email: (value) => normalizeEmail(value).value != null,
+    ImportField.program: (value) => normalizeCourse(value).matched,
+  };
+  for (final entry in detectors.entries) {
+    if (mapping.containsKey(entry.key)) continue;
+    for (var index = 0; index < headers.length; index++) {
+      if (used.contains(index)) continue;
+      final values = sampleRows
+          .take(50)
+          .map((row) => index < row.length ? row[index].trim() : '')
+          .where((value) => value.isNotEmpty)
+          .toList(growable: false);
+      if (values.isEmpty) continue;
+      if (values.where(entry.value).length / values.length < 0.8) continue;
+      mapping[entry.key] = index;
+      used.add(index);
+      break;
+    }
+  }
   return mapping;
+}
+
+/// What still has to be matched before the rows can be checked, in plain
+/// words; null when nothing is.
+String? missingColumnMessage(ImportColumnMapping mapping) {
+  final missing = <String>[
+    if (!mapping.containsKey(ImportField.studentId)) 'Student number',
+    if (!mapping.containsKey(ImportField.fullName)) 'Full name',
+  ];
+  if (missing.isEmpty) return null;
+  final base = 'Choose which column holds: ${missing.join(' and ')}.';
+  return mapping.containsKey(ImportField.studentId)
+      ? base
+      : '$base If your list has no student numbers, add them first: an account '
+            'cannot be created without one.';
 }
 
 class NormalizedValue<T> {
@@ -347,12 +372,6 @@ NormalizedValue<String> normalizeProgram(String raw) {
   return NormalizedValue<String>(
     value: value.length > 150 ? value.substring(0, 150) : value,
   );
-}
-
-String? normalizeDepartment(String raw) {
-  final value = _collapseWhitespace(raw);
-  if (value.isEmpty) return null;
-  return value.length > 100 ? value.substring(0, 100) : value;
 }
 
 NormalizedValue<int> normalizeYearLevel(String raw) {
@@ -493,9 +512,6 @@ BuildResult buildStudentRows(
         email: emailResult.value,
         program: programResult.value,
         yearLevel: yearResult.value,
-        department: normalizeDepartment(
-          csvCell(raw, ImportField.department, mapping),
-        ),
       ),
     );
   }
@@ -687,7 +703,7 @@ class BulkImportState {
       step: BulkImportStep.map,
       headers: parsed.headers,
       sourceRows: parsed.rows,
-      mapping: suggestColumnMapping(parsed.headers),
+      mapping: suggestColumnMapping(parsed.headers, parsed.rows),
     );
   }
 
@@ -696,6 +712,8 @@ class BulkImportState {
     if (columnIndex == null) {
       next.remove(field);
     } else {
+      // One column holds one detail: choosing it here frees it elsewhere.
+      next.removeWhere((_, column) => column == columnIndex);
       next[field] = columnIndex;
     }
     return copyWith(mapping: next, clearError: true);

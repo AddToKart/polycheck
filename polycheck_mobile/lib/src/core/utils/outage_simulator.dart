@@ -15,7 +15,7 @@ abstract final class OutageSimulator {
 
   /// Exact message of the simulated failure thrown by guarded clients.
   static const String simulatedMessage =
-      'Simulated network outage (Polycheck simulator)';
+      'Simulated network outage (PolyCheck simulator)';
 
   static void _notify() {
     for (final listener in List<void Function(bool)>.of(_listeners)) {

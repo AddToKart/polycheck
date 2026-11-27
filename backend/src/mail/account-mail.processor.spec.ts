@@ -228,7 +228,7 @@ describe('AccountMailProcessor password_reset mail', () => {
     expect(activation.issueToken).not.toHaveBeenCalled()
     const sent = mail.send.mock.calls[0][0]
     expect(sent.to).toBe('bound@example.com')
-    expect(sent.subject).toBe('Reset your Polycheck password')
+    expect(sent.subject).toBe('Reset your PolyCheck password')
     expect(sent.text).toContain('https://app.polycheck.live/reset-password#token=')
     expect(sent.idempotencyKey).toBe('account-mail-m-9-1')
   })

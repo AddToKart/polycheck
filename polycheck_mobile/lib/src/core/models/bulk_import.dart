@@ -186,10 +186,16 @@ abstract class StudentImportRow with _$StudentImportRow {
 
 @freezed
 abstract class EnrollImportRow with _$EnrollImportRow {
-  @JsonSerializable(fieldRename: FieldRename.none, explicitToJson: true)
+  @JsonSerializable(
+    fieldRename: FieldRename.none,
+    explicitToJson: true,
+    includeIfNull: false,
+  )
   const factory EnrollImportRow({
     required int rowNumber,
-    required String studentId,
+    // A row names the student by student number, or by school email.
+    String? studentId,
+    String? email,
     String? studentName,
     String? expectedProgram,
     int? expectedYearLevel,

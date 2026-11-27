@@ -34,7 +34,7 @@ describe('MaintenanceScreen', () => {
     render(<MaintenanceScreen />)
 
     expect(
-      screen.getByRole('heading', { name: 'Polycheck is under scheduled maintenance' }),
+      screen.getByRole('heading', { name: 'PolyCheck is under scheduled maintenance' }),
     ).toBeInTheDocument()
     expect(screen.getByText(DEFAULT_MAINTENANCE_MESSAGE)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Administrator Login' })).toHaveAttribute(

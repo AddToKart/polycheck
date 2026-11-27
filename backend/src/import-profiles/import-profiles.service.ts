@@ -31,7 +31,7 @@ export class ImportProfilesService {
   }
 
   /** Reject anything but known fields mapped to small non-negative integers. */
-  static sanitizeMapping(raw: Record<string, unknown>): StoredMapping {
+  static sanitizeMapping(raw: Record<string, unknown>, mode: ImportProfileMode = 'students'): StoredMapping {
     const clean: StoredMapping = {}
     for (const [key, value] of Object.entries(raw)) {
       if (!(MAPPING_FIELDS as readonly string[]).includes(key)) {
@@ -43,7 +43,10 @@ export class ImportProfilesService {
       }
       clean[key as keyof StoredMapping] = value
     }
-    if (clean.studentId === undefined) throw new BadRequestException('A mapping must include the student number column')
+    // A class list may identify students by school email when it has no student numbers.
+    if (clean.studentId === undefined && !(mode === 'enrollments' && clean.email !== undefined)) {
+      throw new BadRequestException('A mapping must include the student number column')
+    }
     return clean
   }
 
@@ -62,7 +65,7 @@ export class ImportProfilesService {
 
   async save(user: RequestUser, dto: UpsertImportProfileDto): Promise<{ saved: true }> {
     this.assertMayUse(user, dto.mode)
-    const mapping = ImportProfilesService.sanitizeMapping(dto.mapping)
+    const mapping = ImportProfilesService.sanitizeMapping(dto.mapping, dto.mode)
     const headers = dto.headers.map((header) => header.trim()).slice(0, 100)
     await this.prisma.importMappingProfile.upsert({
       where: { mode_fingerprint: { mode: dto.mode, fingerprint: dto.fingerprint } },

@@ -292,7 +292,7 @@ class StudentScanService {
     final payload = decodeTokenPayload(token);
     if (payload == null) {
       return _rejected(
-        'This QR code is not a valid Polycheck attendance token.',
+        'This QR code is not a valid PolyCheck attendance token.',
       );
     }
 

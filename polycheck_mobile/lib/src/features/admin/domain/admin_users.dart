@@ -105,9 +105,9 @@ List<EditableUserField> editableFieldsForRole(UserRole role) {
     ];
   }
   if (role == UserRole.student) {
+    // No department field: a student's program is the campus course.
     return const <EditableUserField>[
       EditableUserField.fullName,
-      EditableUserField.department,
       EditableUserField.program,
       EditableUserField.yearLevel,
     ];
@@ -180,11 +180,6 @@ String? validateUserUpdate(User target, Map<EditableUserField, String> values) {
   if (fields.contains(EditableUserField.fullName) &&
       (values[EditableUserField.fullName] ?? '').trim().length < 2) {
     return 'Full name must be at least 2 characters.';
-  }
-  if (fields.contains(EditableUserField.department) &&
-      target.role == UserRole.student &&
-      (values[EditableUserField.department] ?? '').trim().length < 2) {
-    return 'Department is required for student accounts.';
   }
   if (fields.contains(EditableUserField.email) &&
       !_emailPattern.hasMatch((values[EditableUserField.email] ?? '').trim())) {
@@ -367,7 +362,6 @@ String? validateCreateStudentForm({
   required String email,
   required String program,
   required String yearLevel,
-  required String department,
 }) {
   if (fullName.trim().length < 2) return 'Enter the full name.';
   if (!studentIdPattern.hasMatch(studentId.trim().toUpperCase())) {
@@ -377,12 +371,11 @@ String? validateCreateStudentForm({
   if (trimmedEmail.isNotEmpty && !_emailPattern.hasMatch(trimmedEmail)) {
     return 'Enter a valid email or leave it blank.';
   }
-  if (program.trim().length < 2) return 'Enter the program.';
+  if (program.trim().length < 2) return 'Select the program.';
   final year = int.tryParse(yearLevel.trim());
   if (year == null || year < 1 || year > 8) {
     return 'Year level must be between 1 and 8.';
   }
-  if (department.trim().length < 2) return 'Enter the department.';
   return null;
 }
 

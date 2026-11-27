@@ -102,7 +102,7 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
           </div>
 
           {/* Persistent Sliding institution logo */}
-          <div className={`absolute rounded-full bg-white dark:bg-maroon-dark border shadow-md flex items-center justify-center p-1.5 transition-all duration-300 ease-in-out hover:scale-105 z-20 ${
+          <div className={`absolute ${branding.logoDataUrl ? 'rounded-full bg-white dark:bg-maroon-dark p-1.5' : 'rounded-2xl p-0'} border shadow-md flex items-center justify-center transition-all duration-300 ease-in-out hover:scale-105 z-20 ${
             isLogin ? 'logo-login border-golden/50 dark:border-maroon/20 shadow-golden/10' : 'logo-home border-zinc-200/50 dark:border-maroon/20'
           }`}>
             <div className="relative w-full h-full">
@@ -111,7 +111,7 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
                 alt={`${branding.name} logo`}
                 fill
                 unoptimized={Boolean(branding.logoDataUrl)}
-                className="object-contain p-0.5"
+                className={branding.logoDataUrl ? 'object-contain p-0.5' : 'object-contain'}
                 priority
               />
             </div>
@@ -123,13 +123,13 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
           }`}>
             <div className="relative w-full h-full flex items-center">
               {/* Home Header Text */}
-              <div className={`absolute left-0 transition-all duration-300 flex flex-col justify-center whitespace-nowrap ${
+              <div className={`absolute inset-x-0 transition-all duration-300 flex flex-col justify-center md:right-auto md:whitespace-nowrap ${
                 !isLogin ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4 pointer-events-none'
               }`}>
-                <p className="text-[10px] font-sans font-bold uppercase tracking-[0.25em] text-golden/90 dark:text-maroon/80 leading-tight">
+                <p className="text-[9px] md:text-[10px] font-sans font-bold uppercase tracking-[0.12em] md:tracking-[0.25em] text-golden/90 dark:text-maroon/80 leading-tight">
                   Republic of the Philippines
                 </p>
-                <h2 className="text-xs md:text-sm font-sans font-bold uppercase tracking-[0.18em] text-white dark:text-maroon-dark leading-tight mt-1">
+                <h2 className="text-[11px] md:text-sm font-sans font-bold uppercase tracking-[0.08em] md:tracking-[0.18em] text-white dark:text-maroon-dark leading-tight mt-1">
                   <span className="block max-w-[14rem] whitespace-normal">{branding.name}</span>
                 </h2>
               </div>
@@ -178,7 +178,7 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
                 }`} darkColor />
               </div>
               <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-heading font-bold text-golden dark:text-maroon-dark leading-[0.95] tracking-tighter mb-2 md:mb-6">
-                Polycheck.
+                PolyCheck.
               </h1>
               <p className="text-xs sm:text-sm md:text-lg font-sans text-zinc-100/80 dark:text-maroon-dark/90 max-w-md leading-relaxed mb-3 md:mb-8 line-clamp-2 md:line-clamp-none">
                 A premium, unified attendance system for {branding.name}. Digitized class tracking with secure geolocation and offline-first capabilities.

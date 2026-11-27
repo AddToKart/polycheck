@@ -45,6 +45,35 @@ void main() {
     });
   });
 
+  group('class lists without student numbers', () {
+    final parsed = parseImportCsv(
+      'Name,Email Address,Mobile\n'
+      '"Dela Cruz, Juan",JUAN@example.edu.ph,0917\n'
+      '"Reyes, Ana",,0917\n',
+    );
+
+    test('matches rows by school email and reports the ones it cannot', () {
+      final mapping = suggestImportMapping(parsed.headers, parsed.rows);
+      expect(mapping.studentId, isNull);
+      expect(mapping.email, 1);
+      expect(mapping.canImport, isTrue);
+
+      final built = buildEnrollImportRows(parsed.rows, mapping);
+      expect(built.rows.single.email, 'juan@example.edu.ph');
+      expect(built.rows.single.toJson().containsKey('studentId'), isFalse);
+      expect(built.issues.single.rowNumber, 3);
+      expect(built.issues.single.code, ImportIssueCode.missingRequiredField);
+    });
+
+    test('moving a column frees it from the field that had it', () {
+      const mapping = ImportColumnMapping(email: 1, fullName: 0);
+      final moved = mapping.withColumn('studentId', 1);
+      expect(moved.studentId, 1);
+      expect(moved.email, isNull);
+      expect(moved.fullName, 0);
+    });
+  });
+
   group('row building', () {
     test('normalizes identifiers and 1st Year labels', () {
       final mapping = const ImportColumnMapping(
@@ -82,8 +111,11 @@ void main() {
       expect(codes, contains(ImportIssueCode.excelMangledStudentNumber));
       expect(codes, contains(ImportIssueCode.invalidStudentNumber));
       expect(built.issues.first.rowNumber, 3);
-      // Missing student number rows are skipped silently.
-      expect(built.issues.any((issue) => issue.rowNumber == 6), isFalse);
+      // A named row with no number or email is reported, not dropped unseen.
+      expect(
+        built.issues.singleWhere((issue) => issue.rowNumber == 6).code,
+        ImportIssueCode.missingRequiredField,
+      );
     });
 
     test('caps at the backend 250-row request limit', () {

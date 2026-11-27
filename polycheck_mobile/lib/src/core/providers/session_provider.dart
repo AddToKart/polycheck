@@ -341,6 +341,31 @@ class SessionController extends Notifier<SessionState> {
     );
   }
 
+  /// Folds a profile returned by an account action (contacts, password,
+  /// device) into the signed-in profile. Some of those replies leave out the
+  /// privacy consent, scope and permission fields, so those are kept rather
+  /// than blanked. Does nothing once signed out, so a late reply can never
+  /// bring a session back.
+  Future<void> mergeProfile(User update) async {
+    final current = state.user;
+    if (current == null || current.id != update.id) return;
+    await applyProfile(
+      update.copyWith(
+        privacyConsentVersion:
+            update.privacyConsentVersion ?? current.privacyConsentVersion,
+        privacyConsentedAt:
+            update.privacyConsentedAt ?? current.privacyConsentedAt,
+        scope: update.scope ?? current.scope,
+        delegatedPermissions:
+            update.delegatedPermissions ?? current.delegatedPermissions,
+        courseScopeMode: update.courseScopeMode ?? current.courseScopeMode,
+        enrolledSectionIds: update.enrolledSectionIds.isEmpty
+            ? current.enrolledSectionIds
+            : update.enrolledSectionIds,
+      ),
+    );
+  }
+
   Future<User> refreshMe() async {
     final profile = await _api.me();
     await _storeProfile(profile);

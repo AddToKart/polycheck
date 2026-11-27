@@ -83,7 +83,7 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
     }
     setState(() {
       _parsed = parsed;
-      _mapping = suggestImportMapping(parsed.headers);
+      _mapping = suggestImportMapping(parsed.headers, parsed.rows);
       _step = _ImportStep.map;
       _error = null;
     });
@@ -93,7 +93,11 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
     final parsed = _parsed;
     if (parsed == null) return;
     if (!_mapping.canImport) {
-      setState(() => _error = 'Map the student number column first.');
+      setState(
+        () => _error =
+            'Choose the Student number column. If your list has no student '
+            'numbers, choose the School email column instead.',
+      );
       return;
     }
     final built = buildEnrollImportRows(parsed.rows, _mapping);
@@ -216,8 +220,9 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
                         'Paste the master list from Sheets or Files as CSV '
                             '(header row included).',
                       _ImportStep.map =>
-                        'Confirm how ${_parsed?.headers.length ?? 0} columns map '
-                            'to Polycheck fields.',
+                        'Tell PolyCheck which of your ${_parsed?.headers.length ?? 0} '
+                            'columns holds each detail. Students are matched by '
+                            'student number, or by school email.',
                       _ImportStep.review =>
                         'Review the server validation summary before committing.',
                       _ImportStep.report => 'Import finished.',
@@ -303,29 +308,26 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
   Widget _mapStep(BuildContext context) {
     final parsed = _parsed!;
     final tokens = BrandTheme.of(context);
-    final fields = <({String key, String label, bool required, int? value})>[
+    final fields = <({String key, String label, int? value})>[
+      (key: 'studentId', label: 'Student number', value: _mapping.studentId),
       (
-        key: 'studentId',
-        label: 'Student number',
-        required: true,
-        value: _mapping.studentId,
+        key: 'email',
+        label: 'School email (if no student number)',
+        value: _mapping.email,
       ),
       (
         key: 'fullName',
-        label: 'Student name (verification)',
-        required: false,
+        label: 'Student name (to double-check)',
         value: _mapping.fullName,
       ),
       (
         key: 'program',
-        label: 'Program (verification)',
-        required: false,
+        label: 'Program (to double-check)',
         value: _mapping.program,
       ),
       (
         key: 'yearLevel',
-        label: 'Year level (verification)',
-        required: false,
+        label: 'Year level (to double-check)',
         value: _mapping.yearLevel,
       ),
     ];
@@ -339,7 +341,7 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${field.label}${field.required ? ' *' : ''}'.toUpperCase(),
+                  field.label.toUpperCase(),
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: tokens.muted,
                     fontWeight: FontWeight.w700,
@@ -348,13 +350,15 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
                 ),
                 const SizedBox(height: 4),
                 DropdownButtonFormField<int?>(
+                  // Rebuilt when another field takes this column away.
+                  key: ValueKey<String>('${field.key}-${field.value}'),
                   initialValue: field.value,
                   isExpanded: true,
                   decoration: const InputDecoration(isDense: true),
                   items: [
                     const DropdownMenuItem<int?>(
                       value: null,
-                      child: Text('Not mapped'),
+                      child: Text('Not in my list'),
                     ),
                     for (
                       var index = 0;
@@ -373,20 +377,7 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
                   ],
                   onChanged: (value) {
                     setState(() {
-                      _mapping = ImportColumnMapping(
-                        studentId: field.key == 'studentId'
-                            ? value
-                            : _mapping.studentId,
-                        fullName: field.key == 'fullName'
-                            ? value
-                            : _mapping.fullName,
-                        program: field.key == 'program'
-                            ? value
-                            : _mapping.program,
-                        yearLevel: field.key == 'yearLevel'
-                            ? value
-                            : _mapping.yearLevel,
-                      );
+                      _mapping = _mapping.withColumn(field.key, value);
                       _error = null;
                     });
                   },

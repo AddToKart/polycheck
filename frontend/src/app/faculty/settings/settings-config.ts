@@ -162,7 +162,7 @@ export const SETTING_FIELDS: readonly SettingFieldDefinition[] = [
     type: 'textarea',
     defaultValue: '',
     optional: true,
-    placeholder: 'Polycheck is undergoing scheduled server maintenance…',
+    placeholder: 'PolyCheck is undergoing scheduled server maintenance…',
     caption:
       'Shown on the branded maintenance screen. Leave blank to use the built-in copy about offline attendance preservation.',
   },
@@ -257,7 +257,7 @@ export const SETTING_SWITCHES: readonly SettingSwitchDefinition[] = [
     tab: 'system',
     label: 'Maintenance mode',
     caption:
-      'Closes Polycheck for students and non-designated teachers. Super admins and IT coordinators stay signed in; health probes remain open.',
+      'Closes PolyCheck for students and non-designated teachers. Super admins and IT coordinators stay signed in; health probes remain open.',
     defaultValue: 'false',
   },
 ]

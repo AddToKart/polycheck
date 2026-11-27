@@ -1,4 +1,4 @@
-/* Polycheck service worker (offline-first web, M1).
+/* PolyCheck service worker (offline-first web, M1).
  *
  * Hand-rolled instead of a build-time SW plugin: Next 16 + Turbopack does not
  * need to participate in caching, and this file stays auditable. Bump VERSION
@@ -15,6 +15,7 @@
  *   with timeout -> cache.
  * - Everything else under /api, API auth routes, writes (non-GET) and
  *   Socket.IO: never intercepted and never cached.
+ * - VERSION bumped to v4 for the new logo, so installed apps drop the old icons.
  * - VERSION bumped to v3: authenticated app-route documents are no longer
  *   cached, and CLEAR_API_CACHE now also purges cached documents.
  * - VERSION bumped to v2 for the PII purge: v1 caches (which held authenticated
@@ -26,7 +27,7 @@
  * cached authenticated body would therefore be served to whichever account
  * opens the browser next — which is why no authenticated read may be cached.
  */
-const VERSION = 'polycheck-v3'
+const VERSION = 'polycheck-v4'
 const SHELL_CACHE = `${VERSION}-shell`
 const API_CACHE = `${VERSION}-api`
 const OFFLINE_URL = '/offline'
@@ -34,6 +35,7 @@ const PRECACHE_URLS = [
   OFFLINE_URL,
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/icons/icon-maskable-512.png',
   '/icons/apple-touch-icon.png',
   '/manifest.webmanifest',
 ]

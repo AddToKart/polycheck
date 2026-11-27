@@ -1,7 +1,7 @@
 /// Thrown when the API sends an enum or union member this client does not
 /// know about.
 ///
-/// The Polycheck contract mirrors the backend exactly (plan K11). A silent
+/// The PolyCheck contract mirrors the backend exactly (plan K11). A silent
 /// fallback to a default member would misrepresent server data on attendance
 /// screens, so unknown wire values fail loudly instead.
 class UnknownApiValue implements Exception {

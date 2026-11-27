@@ -153,7 +153,7 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
         <div>
           <Link href={homeHref} onClick={() => setIsOpen(false)}>
             <h1 className="text-2xl font-heading font-bold tracking-tight text-golden dark:text-maroon-dark">
-              Polycheck
+              PolyCheck
             </h1>
           </Link>
           <p className="text-[10px] uppercase tracking-widest text-white/70 dark:text-maroon-dark/80 mt-1">
@@ -310,7 +310,7 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
       <div className="md:hidden sticky top-0 z-30 w-full h-auto min-h-16 pt-[env(safe-area-inset-top)] bg-maroon dark:bg-zinc-950 text-white dark:text-golden border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between px-6 shrink-0 select-none">
         <div className="flex items-center gap-3">
           <BrandLogo size={24} className="w-6 h-6 shrink-0 object-contain" />
-          <span className="font-heading font-bold text-lg tracking-tight">Polycheck</span>
+          <span className="font-heading font-bold text-lg tracking-tight">PolyCheck</span>
         </div>
         <div className="flex items-center gap-1">
           <NotificationBell
