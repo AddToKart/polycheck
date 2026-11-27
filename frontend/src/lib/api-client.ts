@@ -26,6 +26,7 @@ import {
   type SectionRoleType,
   type SessionPermission,
   type ProofOfClass,
+  type QacSection,
   type CalendarEvent,
   type CreateSubjectInput,
   type CreateSectionInput,
@@ -2118,8 +2119,9 @@ const apiBase = {
   grantSessionPermission(
     sectionId: string,
     studentId: string,
+    durationHours?: number,
   ): Promise<SessionPermission> {
-    return post("/session-permissions", { sectionId, studentId });
+    return post("/session-permissions", { sectionId, studentId, durationHours });
   },
   revokeSessionPermission(
     sectionId: string,
@@ -2152,6 +2154,9 @@ const apiBase = {
       photoData: data.photoData,
       description: data.description,
     });
+  },
+  getMyQacSections(): Promise<QacSection[]> {
+    return get("/proofs/qac/mine");
   },
   getProofsOfClass(sessionId: string): Promise<ProofOfClass[]> {
     return get(`/proofs/${sessionId}`);

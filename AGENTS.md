@@ -128,12 +128,12 @@ Primary interface is the mobile app, with a web dashboard for schedule and subje
 
 ### Section Roles (President / QAC)
 - Teachers assign student officers per section: President and QAC (Quality Assurance Coordinator)
-- Presidents can create sessions and set geofences
-- QAC members can upload proof of class photos during sessions
-- Session permissions can be granted/revoked with 24-hour expiry
+- A President with an active permission can create **one** session (and set its geofence); the professor still starts the QR code
+- QAC members (several per section) upload class photos while a class is ongoing
+- Session permissions last 8 hours, 24 hours or a custom 1-168 hours, can be revoked, and are used up by creating a session
 
 ### Proof of Class
-- QAC members and authorized students can upload classroom photos during a session
+- Only QAC members of the section (and the session's teacher) can upload classroom photos
 - Photos timestamped and associated with the session for audit
 - Teachers can delete proof-of-class submissions
 - Serves as verification that a class meeting actually occurred
@@ -704,6 +704,14 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - **Phone layout:** the session cockpit was unusable on phones (menu bar laid out beside the page, content 0px wide); `e2e/responsive.spec.ts` now covers 320px, popups, the account-recovery pages and fails when page content is squeezed.
   - **Students have no department field.** Create/edit use a program dropdown (the campus catalog); `User.department` mirrors the program (follows changes in course mode, or in legacy mode when it was already a copy). Import mapping no longer reads a department column. In `COURSE_SCOPE_MODE=legacy`, department-pinned registrars/heads will not see newly created students, so use `course` mode.
   - **Imports:** a class list row may identify a student by **school email** (`User.email` only, never `contactEmail`) when it has no student number; email-only rows never provision accounts. One column fills one field, the missing required column is named, unfamiliar headings are recognised by content, and the web dialog explains each step with a blank CSV template. The activation-link option is always shown to account admins (disabled with the reason until `activation_email_enabled` and a mail provider are set).
+
+- **Section officers made to work on web and app (2026-11-27):**
+  - **President:** `POST /session-permissions` accepts `durationHours` (1-168, default 24; web and app offer 8h / 24h / custom). Creating a session consumes the permission in the same transaction (one session per grant); removing the role deactivates it. Bulk creation, activation and ending stay teacher-only, so **a president cannot start the QR** (tokens are signed with the professor's device key).
+  - **QAC:** new pages `/student/qac` (web) and `/student/qac` (app, "Photos" tab), shown only to QAC officers, backed by `GET /proofs/qac/mine`. The upload window is `isProofWindowOpen` (`shared/src/utils/proof-window.ts`, mirrored in Dart): QR live **or** the scheduled class time plus 15 minutes (previously only while the QR was live). At most 4 photos per officer per session, enforced inside a section-locked transaction. A president permission no longer allows photo upload.
+  - **Compression:** both clients re-encode before upload (web canvas, app `image` package), apply camera rotation and drop EXIF (including location); the server cap for class photos is 1.5 MB. A 788 KB+ test image stored at 193 KB or less.
+  - **Why it looked broken:** web showed a camera icon instead of the photo, the app teacher had no photo view, and the app student view only rendered `data:` URLs while the server returns an endpoint path. Web and app now show the real images (teacher can delete).
+  - **Super admin sign-out (app):** header button plus a sign-out card on the admin dashboard.
+  - Browser journey: `e2e/officers.spec.ts`. These changes are **not** in the published APK 1.1.6.
 
 ### Blocked
 - (none)

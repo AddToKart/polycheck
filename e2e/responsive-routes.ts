@@ -93,6 +93,7 @@ export const STUDENT_ROUTES: RouteCase[] = [
   { name: 'dashboard-subjects', path: '/student/dashboard?tab=subjects', settleMs: 1000 },
   { name: 'dashboard-attendance', path: '/student/dashboard?tab=attendance', settleMs: 1000 },
   { name: 'schedule', path: '/student/schedule' },
+  { name: 'qac-photos', path: '/student/qac', settleMs: 1200 },
   { name: 'subject-detail', path: '/student/subjects/sec-001', settleMs: 1000 },
   { name: 'session-detail', path: '/student/subjects/sec-001/sessions/sess-001', settleMs: 1000 },
   { name: 'session-create', path: '/student/subjects/sec-001/create-session', settleMs: 1000 },

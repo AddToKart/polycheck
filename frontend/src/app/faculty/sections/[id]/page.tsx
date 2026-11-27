@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { ArrowLeft, FileDown, FileUp, Loader2, Search, Key, RefreshCw, Ban, UserPlus, ChevronDown, ChevronUp, Crown, Camera, Shield, Clock, XCircle, CheckCircle, CalendarDays } from 'lucide-react'
 import { api, requestUserLogout } from '@/lib/api-client'
 import type { User, Section, Session, Student, SectionRole, SessionPermission } from '@polycheck/shared'
+import { SESSION_PERMISSION_MAX_HOURS, SESSION_PERMISSION_PRESET_HOURS } from '@polycheck/shared'
 import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Sidebar } from '@/components/layout/sidebar'
 import { BulkImportDialog } from '@/components/import/BulkImportDialog'
@@ -104,6 +105,9 @@ export default function SectionDetailPage() {
     )
   }
   const [presidentSelectOpen, setPresidentSelectOpen] = useState(false)
+  const [permissionLength, setPermissionLength] = useState<'8' | '24' | 'custom'>('24')
+  const [customHours, setCustomHours] = useState('')
+  const [permissionError, setPermissionError] = useState('')
   const [qacSelectOpen, setQacSelectOpen] = useState(false)
   const [allStudents, setAllStudents] = useState<Student[]>([])
   const [subjectName, setSubjectName] = useState('')
@@ -271,10 +275,16 @@ export default function SectionDetailPage() {
 
   const handleGrantPermission = async (studentId: string) => {
     if (!id) return
+    const hours = Number(permissionLength === 'custom' ? customHours : permissionLength)
+    if (!Number.isInteger(hours) || hours < 1 || hours > SESSION_PERMISSION_MAX_HOURS) {
+      setPermissionError(`Enter a whole number of hours from 1 to ${SESSION_PERMISSION_MAX_HOURS}.`)
+      return
+    }
+    setPermissionError('')
     await run(
       'president:grant',
       async () => {
-        await api.grantSessionPermission(id, studentId)
+        await api.grantSessionPermission(id, studentId, hours)
         applyPermissions(await api.getActiveSessionPermissions(id))
       },
       { errorTitle: 'Could not grant the permission' },
@@ -582,7 +592,7 @@ export default function SectionDetailPage() {
                             <p className="text-[10px] text-maroon dark:text-golden font-medium">
                               {perm && !isExpired ? (
                                 <span className="flex items-center gap-1">
-                                  <Clock className="w-3 h-3" /> Active until {new Date(perm.expiresAt).toLocaleString()}
+                                  <Clock className="w-3 h-3" /> Can create 1 session until {new Date(perm.expiresAt).toLocaleString()}
                                 </span>
                               ) : (
                                 <span className="text-zinc-400">No active permission</span>
@@ -596,9 +606,37 @@ export default function SectionDetailPage() {
                               <XCircle className="w-3 h-3 mr-1" /> Revoke
                             </Button>
                           ) : (
-                            <Button variant="default" size="sm" className="min-h-11 text-xs md:min-h-0" disabled={isPending('president:grant')} onClick={() => handleGrantPermission(pres.studentId)}>
-                              <CheckCircle className="w-3 h-3 mr-1" /> Grant 24hr
-                            </Button>
+                            <>
+                              <select
+                                aria-label="How long the permission lasts"
+                                value={permissionLength}
+                                onChange={(event) => setPermissionLength(event.target.value as '8' | '24' | 'custom')}
+                                className="h-11 border border-zinc-300 bg-white px-2 text-base sm:text-xs md:h-9 dark:border-zinc-700 dark:bg-zinc-900"
+                              >
+                                {SESSION_PERMISSION_PRESET_HOURS.map((hours) => (
+                                  <option key={hours} value={String(hours)}>
+                                    {hours} hours
+                                  </option>
+                                ))}
+                                <option value="custom">Custom</option>
+                              </select>
+                              {permissionLength === 'custom' ? (
+                                <input
+                                  type="number"
+                                  inputMode="numeric"
+                                  min={1}
+                                  max={SESSION_PERMISSION_MAX_HOURS}
+                                  aria-label="Custom number of hours"
+                                  placeholder="Hours"
+                                  value={customHours}
+                                  onChange={(event) => setCustomHours(event.target.value)}
+                                  className="h-11 w-24 border border-zinc-300 bg-white px-2 text-base sm:text-xs md:h-9 dark:border-zinc-700 dark:bg-zinc-900"
+                                />
+                              ) : null}
+                              <Button variant="default" size="sm" className="min-h-11 text-xs md:min-h-0" disabled={isPending('president:grant')} onClick={() => handleGrantPermission(pres.studentId)}>
+                                <CheckCircle className="w-3 h-3 mr-1" /> Give permission
+                              </Button>
+                            </>
                           )}
                           <Button variant="outline" size="sm" className="min-h-11 text-xs text-red-400 border-red-300 md:min-h-0" disabled={isPending('president:remove')} onClick={() => handleRemovePresident(pres.studentId)}>Remove</Button>
                         </div>
@@ -630,6 +668,14 @@ export default function SectionDetailPage() {
                   )
                 })()}
               </div>
+
+              {permissionError ? (
+                <p role="alert" className="-mt-3 mb-4 text-xs text-red-600 dark:text-red-400">{permissionError}</p>
+              ) : null}
+              <p className="-mt-3 mb-5 text-xs text-zinc-500 dark:text-zinc-400">
+                A permission lets the president create one session. It ends once used or when the time runs out. You still
+                start the QR code.
+              </p>
 
               {/* QAC */}
               <div>

@@ -5,11 +5,12 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import Image from 'next/image'
-import { ArrowLeft, QrCode, Timer, Play, StopCircle, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Trash2, Copy, Download, Check, School, Video, ShieldCheck, KeyRound, Radio, MonitorPlay } from 'lucide-react'
+import { ArrowLeft, QrCode, Timer, Play, StopCircle, Maximize, RefreshCw, Users, ChevronRight, Edit3, Camera, Copy, Download, Check, School, Video, ShieldCheck, KeyRound, Radio, MonitorPlay } from 'lucide-react'
 import { api, isNetworkFailure, ApiHttpError, requestUserLogout } from '@/lib/api-client'
 import { randomMeetingPin } from '@polycheck/shared'
 import type { User, Session, AttendanceRecord, AttendanceStatus, EditableAttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
+import { ProofPhotoGrid } from '@/components/proofs/ProofPhotoGrid'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -959,29 +960,11 @@ export default function SessionDetailPage() {
               {proofsOfClass.length === 0 ? (
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center py-4">No proof photos uploaded yet.</p>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {proofsOfClass.map((poc) => (
-                    <div key={poc.id} className="border border-zinc-200 dark:border-golden/15 p-3 bg-zinc-50 dark:bg-brand-black">
-                      <div className="w-full aspect-video bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center mb-2">
-                        <Camera className="w-8 h-8 text-zinc-400" />
-                      </div>
-                      <p className="text-xs font-medium dark:text-white truncate">{poc.uploadedByStudentName}</p>
-                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{new Date(poc.uploadedAt).toLocaleString()}</p>
-                      {poc.description && <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1 italic">&quot;{poc.description}&quot;</p>}
-                      {isTeacher && (
-                        <button
-                          type="button"
-                          className="mt-2 flex min-h-8 items-center gap-1 text-[10px] text-red-500 hover:text-red-700 disabled:opacity-50"
-                          disabled={isPending(`proof:${poc.id}`)}
-                          onClick={() => void handleDeleteProof(poc)}
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          {isPending(`proof:${poc.id}`) ? 'Deleting…' : 'Delete'}
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <ProofPhotoGrid
+                  proofs={proofsOfClass}
+                  onDelete={isTeacher ? handleDeleteProof : undefined}
+                  isDeleting={(proof) => isPending(`proof:${proof.id}`)}
+                />
               )}
             </CardContent>
           </Card>

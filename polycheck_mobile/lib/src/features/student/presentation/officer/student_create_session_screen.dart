@@ -388,7 +388,8 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
       if (!mounted) return;
       CampusToast.showIn(
         context,
-        'Session created. The class session is ready for activation.',
+        'Session created. Your permission is now used up. Your professor '
+        'starts the QR code.',
         tone: CampusToastTone.success,
       );
       context.pop();

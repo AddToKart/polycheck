@@ -14,6 +14,7 @@ import '../data/teacher_signing_key.dart';
 import 'widgets/cockpit_dialogs.dart';
 import 'widgets/faculty_shell.dart';
 import 'widgets/qr_token_panel.dart';
+import 'widgets/cockpit_proofs_section.dart';
 
 /// Live session cockpit (web parity): locally signed Ed25519 tokens, dual
 /// online checkpoints with meeting PINs, realtime roster, manual overrides,
@@ -1134,6 +1135,8 @@ class _SessionCockpitScreenState extends ConsumerState<SessionCockpitScreen> {
                           ),
                         ),
                       ),
+                  const SizedBox(height: 14),
+                  CockpitProofsSection(sessionId: widget.sessionId),
                   const SizedBox(height: 14),
                   CockpitDeniedAttemptsSection(sessionId: widget.sessionId),
                 ],

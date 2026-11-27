@@ -71,6 +71,12 @@ export class SectionRolesService {
       await tx.sectionRole.delete({
         where: { sectionId_studentId_role: { sectionId, studentId, role: role as SectionRoleType } },
       })
+      if (role === 'president') {
+        await tx.sessionPermission.updateMany({
+          where: { sectionId, studentId, isActive: true },
+          data: { isActive: false },
+        })
+      }
     })
     return true
   }

@@ -16,6 +16,12 @@ class UploadProofDto {
 export class ProofsController {
   constructor(private readonly proofs: ProofsService) {}
 
+  @Get('qac/mine')
+  @Roles('student')
+  mine(@Request() req: AuthenticatedRequest) {
+    return this.proofs.qacSections(req.user)
+  }
+
   @Get(':sessionId')
   list(@Request() req: AuthenticatedRequest, @Param('sessionId') sessionId: string) {
     return this.proofs.list(req.user, sessionId)

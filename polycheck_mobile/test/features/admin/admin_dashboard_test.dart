@@ -9,6 +9,7 @@ import 'package:polycheck_mobile/src/core/models/user.dart';
 import 'package:polycheck_mobile/src/core/providers/session_provider.dart';
 import 'package:polycheck_mobile/src/core/theme/brand_theme.dart';
 import 'package:polycheck_mobile/src/features/admin/presentation/admin_dashboard_screen.dart';
+import 'package:polycheck_mobile/src/features/surface/presentation/widgets/sign_out_tile.dart';
 
 import '../../helpers/auth_harness.dart';
 
@@ -78,6 +79,19 @@ void main() {
     expect(find.text('340'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('User management'), 250);
     expect(find.text('User management'), findsOneWidget);
+  });
+
+  testWidgets('the super admin can sign out', (tester) async {
+    await pumpDashboard(tester, user: testAdmin);
+
+    await tester.tap(find.byKey(const ValueKey('admin-sign-out')));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign out?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.byType(ProfileSignOutTile), 300);
+    expect(find.byType(ProfileSignOutTile), findsOneWidget);
   });
 
   testWidgets('plain teachers are refused the administrator console', (

@@ -19,6 +19,7 @@ void main() {
     User user,
     Widget shell, {
     GoRouter? router,
+    StudentOfficerFlags officer = StudentOfficerFlags.none,
   }) async {
     tester.view.physicalSize = const Size(800, 600);
     tester.view.devicePixelRatio = 1.0;
@@ -30,6 +31,7 @@ void main() {
     final container = ProviderContainer(
       overrides: <Override>[
         sessionProvider.overrideWith(() => FakeSessionController(user)),
+        studentOfficerProvider.overrideWith((ref) async => officer),
       ],
     );
     addTearDown(container.dispose);
@@ -43,6 +45,30 @@ void main() {
     );
     await tester.pump();
   }
+
+  testWidgets('only a QAC officer gets the class photo tab', (tester) async {
+    await pumpShell(
+      tester,
+      testStudent,
+      const StudentShell(
+        location: StudentPaths.qac,
+        child: Text('student body'),
+      ),
+      officer: const StudentOfficerFlags(isQac: true),
+    );
+    await tester.pump();
+
+    final nav = tester.widget<CampusBottomNav>(find.byType(CampusBottomNav));
+    expect(nav.items.map((item) => item.id), <String>[
+      'dashboard',
+      'schedule',
+      'scan',
+      'qac',
+      'history',
+    ]);
+    expect(nav.items[3].selected, isTrue);
+    expect(nav.items[0].selected, isFalse);
+  });
 
   testWidgets('student and faculty shells render the same shared nav', (
     tester,

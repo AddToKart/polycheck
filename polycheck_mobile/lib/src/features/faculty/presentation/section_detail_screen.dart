@@ -7,6 +7,7 @@ import '../data/faculty_logic.dart';
 import '../data/session_wizard.dart';
 import 'widgets/faculty_shell.dart';
 import 'widgets/section_import_sheet.dart';
+import 'widgets/president_permission_tile.dart';
 
 const int _rosterPageSize = 10;
 
@@ -28,6 +29,7 @@ class _SectionDetailScreenState extends ConsumerState<SectionDetailScreen> {
   Subject? _subject;
   List<SectionStudent> _students = const <SectionStudent>[];
   List<SectionRole> _roles = const <SectionRole>[];
+  List<SessionPermission> _permissions = const <SessionPermission>[];
   final TextEditingController _search = TextEditingController();
   int _page = 1;
 
@@ -56,6 +58,11 @@ class _SectionDetailScreenState extends ConsumerState<SectionDetailScreen> {
         ref.read(subjectsApiProvider).getSubject(section.subjectId),
         ref.read(sectionsApiProvider).getSectionStudents(section.id),
         ref.read(sectionsApiProvider).getSectionRoles(section.id),
+        // The permission line is extra detail; the section still loads without it.
+        ref
+            .read(sectionsApiProvider)
+            .getActiveSessionPermissions(section.id)
+            .catchError((Object _) => const <SessionPermission>[]),
       ]);
       if (!mounted) return;
       setState(() {
@@ -63,6 +70,7 @@ class _SectionDetailScreenState extends ConsumerState<SectionDetailScreen> {
         _subject = results[0] as Subject?;
         _students = (results[1] as List<SectionStudent>?) ?? const [];
         _roles = (results[2] as List<SectionRole>?) ?? const [];
+        _permissions = (results[3] as List<SessionPermission>?) ?? const [];
         _loading = false;
       });
     } on ApiRequestError catch (error) {
@@ -267,6 +275,62 @@ class _SectionDetailScreenState extends ConsumerState<SectionDetailScreen> {
         context,
         '${assignment.student.fullName} assigned as '
         '${assignment.role == SectionRoleType.president ? 'President' : 'QAC'}.',
+        tone: CampusToastTone.success,
+      );
+      await _load();
+    } on ApiRequestError catch (error) {
+      if (!mounted) return;
+      CampusToast.showIn(context, error.message, tone: CampusToastTone.error);
+    }
+  }
+
+  SessionPermission? _permissionFor(String studentId) {
+    final now = DateTime.now().toUtc();
+    for (final permission in _permissions) {
+      final expires = DateTime.tryParse(permission.expiresAt)?.toUtc();
+      if (permission.studentId == studentId &&
+          permission.isActive &&
+          expires != null &&
+          expires.isAfter(now)) {
+        return permission;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _grantPermission(SectionRole role) async {
+    final hours = await askPermissionHours(context, role.studentName);
+    if (hours == null || !mounted) return;
+    try {
+      await ref
+          .read(sectionsApiProvider)
+          .grantSessionPermission(
+            role.sectionId,
+            role.studentId,
+            durationHours: hours,
+          );
+      if (!mounted) return;
+      CampusToast.showIn(
+        context,
+        'Permission given for $hours hours.',
+        tone: CampusToastTone.success,
+      );
+      await _load();
+    } on ApiRequestError catch (error) {
+      if (!mounted) return;
+      CampusToast.showIn(context, error.message, tone: CampusToastTone.error);
+    }
+  }
+
+  Future<void> _revokePermission(SectionRole role) async {
+    try {
+      await ref
+          .read(sectionsApiProvider)
+          .revokeSessionPermission(role.sectionId, role.studentId);
+      if (!mounted) return;
+      CampusToast.showIn(
+        context,
+        'Permission revoked.',
         tone: CampusToastTone.success,
       );
       await _load();
@@ -524,6 +588,14 @@ class _SectionDetailScreenState extends ConsumerState<SectionDetailScreen> {
                                 ),
                             ],
                           ),
+                        for (final role in _roles)
+                          if (role.role == SectionRoleType.president)
+                            PresidentPermissionTile(
+                              studentName: role.studentName,
+                              permission: _permissionFor(role.studentId),
+                              onGrant: () => _grantPermission(role),
+                              onRevoke: () => _revokePermission(role),
+                            ),
                       ],
                     ),
                   ),

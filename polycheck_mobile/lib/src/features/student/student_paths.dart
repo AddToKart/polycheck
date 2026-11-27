@@ -9,6 +9,9 @@ abstract final class StudentPaths {
   static const String history = '/student/history';
   static const String scan = '/student/scan';
 
+  /// QAC officers' class-photo page.
+  static const String qac = '/student/qac';
+
   static const String subjectPrefix = '/student/subjects';
 
   /// Full enrolled-class list (dashboard "View all N classes").

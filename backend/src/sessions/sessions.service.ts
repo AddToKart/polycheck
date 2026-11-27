@@ -147,6 +147,14 @@ export class SessionsService {
         geofenceLongitude: geofence?.longitude ?? null,
         geofenceRadiusMeters: geofence?.radiusMeters ?? null,
       })
+      // A president's permission is good for one session; using it ends it.
+      if (user.role === 'student') {
+        const used = await tx.sessionPermission.updateMany({
+          where: { sectionId: dto.sectionId, studentId: user.id, isActive: true, expiresAt: { gt: new Date() } },
+          data: { isActive: false },
+        })
+        if (used.count !== 1) throw new ForbiddenException('An active president session permission is required')
+      }
       return { session: created, teacherId: authorized.teacherId }
     })
     this.realtime.emitSessionState(session, 'created')

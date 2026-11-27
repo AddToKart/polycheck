@@ -186,13 +186,19 @@ class SectionsApi extends ApiBase {
 
   // ── Session permissions ──
 
+  /// Lets a section president create one session within [durationHours].
   Future<SessionPermission> grantSessionPermission(
     String sectionId,
-    String studentId,
-  ) async {
+    String studentId, {
+    int? durationHours,
+  }) async {
     final data = await postJson(
       '/session-permissions',
-      body: <String, dynamic>{'sectionId': sectionId, 'studentId': studentId},
+      body: <String, dynamic>{
+        'sectionId': sectionId,
+        'studentId': studentId,
+        'durationHours': ?durationHours,
+      },
     );
     return SessionPermission.fromJson(asMap(data));
   }

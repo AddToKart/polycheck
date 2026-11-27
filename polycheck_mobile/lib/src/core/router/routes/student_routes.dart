@@ -4,6 +4,7 @@ import '../../../features/student/presentation/common/student_shell.dart';
 import '../../../features/student/presentation/dashboard/student_classes_screen.dart';
 import '../../../features/student/presentation/dashboard/student_dashboard_screen.dart';
 import '../../../features/student/presentation/history/student_history_screen.dart';
+import '../../../features/student/presentation/officer/qac_photos_screen.dart';
 import '../../../features/student/presentation/officer/student_create_session_screen.dart';
 import '../../../features/student/presentation/officer/student_section_detail_screen.dart';
 import '../../../features/student/presentation/officer/student_session_detail_screen.dart';
@@ -32,6 +33,10 @@ final List<RouteBase> studentRoutes = <RouteBase>[
       GoRoute(
         path: StudentPaths.schedule,
         builder: (context, state) => const StudentScheduleScreen(),
+      ),
+      GoRoute(
+        path: StudentPaths.qac,
+        builder: (context, state) => const QacPhotosScreen(),
       ),
       GoRoute(
         path: StudentPaths.history,

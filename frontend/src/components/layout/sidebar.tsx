@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useState } from 'react'
+import { useIsQac } from '@/lib/hooks/use-is-qac'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import {
@@ -31,6 +32,7 @@ import {
   ClipboardCheck,
   UserRound,
   Flag,
+  Camera,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -51,6 +53,15 @@ const studentNav: NavItem[] = [
   { label: 'Assistant', href: '/student/assistant', icon: Sparkles },
   { label: 'Profile', href: '/profile', icon: UserRound },
 ]
+
+// Shown only to students a professor has made Quality Assurance Coordinator.
+const qacNavItem: NavItem = { label: 'Class Photos (QAC)', href: '/student/qac', icon: Camera }
+
+/** The student menu, with the QAC page after Schedule when the student holds that role. */
+const withQac = (items: NavItem[]) => {
+  const at = items.findIndex((item) => item.href === '/student/schedule') + 1
+  return [...items.slice(0, at), qacNavItem, ...items.slice(at)]
+}
 
 // Navigation for standard teachers
 const teacherNav: NavItem[] = [
@@ -136,11 +147,14 @@ export function Sidebar({ user, onLogout, backHref, backLabel }: SidebarProps) {
   const canReport = user.role === 'student' || user.role === 'teacher'
   const notificationCenter = useNotificationCenter(user.id)
   const isSuper = user.role === 'super_admin'
+  const isQac = useIsQac(user.id, user.role === 'student')
   const showSearch = !backHref && (user.role === 'teacher' || user.role === 'super_admin')
   
   const items =
     user.role === 'student'
-      ? studentNav
+      ? isQac
+        ? withQac(studentNav)
+        : studentNav
       : isSuper
         ? superAdminNav
         : buildTeacherNavigation(user)

@@ -12,6 +12,8 @@ import '../../../core/widgets/campus_empty_state.dart';
 import '../domain/admin_access.dart';
 import '../domain/server_metrics.dart';
 import 'widgets/admin_common.dart';
+import '../../../core/widgets/confirm_sign_out.dart';
+import '../../surface/presentation/widgets/sign_out_tile.dart';
 
 class AdminDashboardScreen extends ConsumerStatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -71,6 +73,12 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       subtitle: 'Institution-wide oversight and governance',
       section: AdminSection.dashboard,
       actions: <Widget>[
+        IconButton(
+          key: const ValueKey('admin-sign-out'),
+          tooltip: 'Sign out',
+          onPressed: () => confirmSignOut(context, ref),
+          icon: const Icon(Icons.logout),
+        ),
         IconButton(
           tooltip: 'Refresh overview',
           onPressed: _loading ? null : _load,
@@ -317,6 +325,8 @@ class _DashboardBody extends StatelessWidget {
                   ),
                 ),
               ),
+        const SizedBox(height: 16),
+        const ProfileSignOutTile(),
       ],
     );
   }

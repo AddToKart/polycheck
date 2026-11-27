@@ -294,7 +294,10 @@ describe('SessionsService', () => {
         section: { findUnique: jest.fn().mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } }) },
         enrollment: { findUnique: jest.fn().mockResolvedValue({ id: 'enrollment-1' }) },
         sectionRole: { findUnique: jest.fn().mockResolvedValue({ id: 'role-1' }) },
-        sessionPermission: { findFirst: jest.fn().mockResolvedValue({ id: 'perm-1' }) },
+        sessionPermission: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'perm-1' }),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
         session: { create: jest.fn().mockResolvedValue(makeSession()) },
       }
       prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
@@ -304,7 +307,28 @@ describe('SessionsService', () => {
         tx.enrollment.findUnique.mock.invocationCallOrder[0],
       )
       expect(tx.session.create.mock.calls[0][0]?.data.teacherId).toBe('teacher-1')
+      // The permission is good for one session, so creating it ends the permission.
+      expect(tx.sessionPermission.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { isActive: false } }),
+      )
       expect(result).toBeDefined()
+    })
+
+    it('rejects the creation when the permission was already used', async () => {
+      const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
+        section: { findUnique: jest.fn().mockResolvedValue({ teacherId: 'teacher-1', subject: { name: 'CS 101' } }) },
+        enrollment: { findUnique: jest.fn().mockResolvedValue({ id: 'enrollment-1' }) },
+        sectionRole: { findUnique: jest.fn().mockResolvedValue({ id: 'role-1' }) },
+        sessionPermission: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'perm-1' }),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+        session: { create: jest.fn().mockResolvedValue(makeSession()) },
+      }
+      prisma.$transaction.mockImplementation(async (callback: any) => callback(tx))
+
+      await expect(service.create(dto, studentUser)).rejects.toThrow('active president session permission')
     })
 
     it('forbids student without president role or permission', async () => {

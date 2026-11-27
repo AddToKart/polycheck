@@ -57,6 +57,26 @@ void main() {
     expect(decoded.height, 540);
   });
 
+  test(
+    'turns a rotated phone photo upright and drops its hidden data',
+    () async {
+      final source = _solid(1600, 800);
+      // Orientation 6: the camera was held upright, so the photo must be turned.
+      source.exif.imageIfd.orientation = 6;
+      source.exif.imageIfd['Make'] = 'HiddenCamera';
+      final bytes = Uint8List.fromList(img.encodeJpg(source));
+      expect(String.fromCharCodes(bytes), contains('HiddenCamera'));
+
+      final compressed = await compressImageBytes(bytes, quality: 65);
+
+      final decoded = img.decodeJpg(compressed)!;
+      expect(decoded.width, 800);
+      expect(decoded.height, 1600);
+      expect(decoded.exif.imageIfd.orientation, anyOf(isNull, 1));
+      expect(String.fromCharCodes(compressed), isNot(contains('HiddenCamera')));
+    },
+  );
+
   test('throws a typed error for undecodable bytes', () async {
     await expectLater(
       compressImageBytes(Uint8List.fromList([1, 2, 3, 4])),

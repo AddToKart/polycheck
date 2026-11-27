@@ -23,6 +23,31 @@ describe('SessionPermissionsService', () => {
     )
   })
 
+  it.each([
+    [undefined, 24],
+    [8, 8],
+    [3, 3],
+  ])('lasts for the chosen number of hours (%s → %i)', async (durationHours, expected) => {
+    const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(0),
+      section: { findUnique: jest.fn().mockResolvedValue({ teacherId: 'teacher-1' }) },
+      enrollment: { findUnique: jest.fn().mockResolvedValue({ id: 'enrollment-1' }) },
+      sessionPermission: { upsert: jest.fn().mockResolvedValue({ id: 'permission-1' }) },
+    }
+    const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) }
+    const service = new SessionPermissionsService(prisma as never)
+
+    await service.grant(
+      { id: 'teacher-1', role: 'teacher' },
+      { sectionId: 'section-1', studentId: 'student-1', durationHours },
+    )
+
+    const { create, update } = tx.sessionPermission.upsert.mock.calls[0][0]
+    for (const data of [create, update]) {
+      expect(data.expiresAt.getTime() - data.grantedAt.getTime()).toBe(expected * 3_600_000)
+    }
+  })
+
   it('locks membership before revoking a session permission', async () => {
     const tx = {
       $executeRaw: jest.fn().mockResolvedValue(0),

@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { SESSION_PERMISSION_DEFAULT_HOURS } from '@polycheck/shared'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { assertSectionInAdminScope } from '../common/admin-scope'
@@ -8,6 +9,7 @@ import type { Prisma } from '../prisma/client'
 interface PermissionInput {
   sectionId: string
   studentId: string
+  durationHours?: number
 }
 
 @Injectable()
@@ -23,12 +25,13 @@ export class SessionPermissionsService {
       })
       if (!enrolled) throw new NotFoundException('Student is not enrolled in this section')
       const now = new Date()
+      const expiresAt = new Date(now.getTime() + (dto.durationHours ?? SESSION_PERMISSION_DEFAULT_HOURS) * 3_600_000)
       return tx.sessionPermission.upsert({
         where: { sectionId_studentId: { sectionId: dto.sectionId, studentId: dto.studentId } },
         update: {
           grantedBy: user.id,
           grantedAt: now,
-          expiresAt: new Date(now.getTime() + 86_400_000),
+          expiresAt,
           isActive: true,
         },
         create: {
@@ -36,7 +39,7 @@ export class SessionPermissionsService {
           studentId: dto.studentId,
           grantedBy: user.id,
           grantedAt: now,
-          expiresAt: new Date(now.getTime() + 86_400_000),
+          expiresAt,
           isActive: true,
         },
       })

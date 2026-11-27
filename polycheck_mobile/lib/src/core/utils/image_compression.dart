@@ -49,7 +49,9 @@ Uint8List _compressSync(
     );
   }
 
-  var frame = decoded;
+  // Turn the pixels the way the camera meant, then drop the camera's hidden
+  // data, which can include where the photo was taken.
+  var frame = img.bakeOrientation(decoded)..exif = img.ExifData();
   final width = frame.width;
   final height = frame.height;
   final minW = minWidth ?? 0;

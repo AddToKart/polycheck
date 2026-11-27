@@ -151,7 +151,7 @@ export default function StudentSubjectDetailPage() {
                       <p className="text-sm font-bold text-foreground">Section President</p>
                       <p className="text-xs text-zinc-500">
                         {hasPermission
-                          ? 'You have permission to create sessions for this section'
+                          ? 'You can create one session for this section'
                           : 'No active session permission. Ask your teacher to grant it.'}
                       </p>
                     </div>

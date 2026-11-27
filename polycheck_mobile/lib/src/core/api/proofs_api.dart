@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../models/qac_section.dart';
 import '../models/section_role.dart';
 import 'api_base.dart';
 
@@ -26,6 +27,15 @@ class ProofsApi extends ApiBase {
       },
     );
     return ProofOfClass.fromJson(asMap(data));
+  }
+
+  /// The signed-in student's QAC sections with today's classes.
+  Future<List<QacSection>> getMyQacSections() async {
+    final data = await getJson('/proofs/qac/mine');
+    return asList(data)
+        .whereType<Map>()
+        .map((item) => QacSection.fromJson(asMap(item)))
+        .toList(growable: false);
   }
 
   Future<List<ProofOfClass>> getProofsOfClass(String sessionId) async {

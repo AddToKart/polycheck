@@ -137,7 +137,7 @@ export default function StudentCreateSessionPage() {
         geofence: { latitude, longitude, radiusMeters: radius },
         teacherId: section.teacherId,
       })
-      alert('Session created successfully!')
+      alert('Session created. Your permission is now used up. Your professor starts the QR code.')
       router.push(`/student/subjects/${id}`)
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : 'Unable to create session. Please check your inputs.')

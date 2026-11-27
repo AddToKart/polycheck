@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Request } from '@nestjs/common'
-import { IsString } from 'class-validator'
+import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator'
+import { SESSION_PERMISSION_MAX_HOURS } from '@polycheck/shared'
 import { Roles } from '../common/decorators/roles.decorator'
 import { SessionPermissionsService } from './session-permissions.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
@@ -7,6 +8,8 @@ import type { AuthenticatedRequest } from '../common/types/authenticated-request
 class PermissionDto {
   @IsString() sectionId!: string
   @IsString() studentId!: string
+  /** Hours the permission lasts; omitted means 24. */
+  @IsOptional() @IsInt() @Min(1) @Max(SESSION_PERMISSION_MAX_HOURS) durationHours?: number
 }
 
 @Controller('session-permissions')

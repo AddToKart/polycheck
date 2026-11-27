@@ -15,6 +15,7 @@ import type {
   SectionRoleType,
   SessionPermission,
   ProofOfClass,
+  QacSection,
 } from "./index";
 import type { RecordTimeline, ScanAttemptView } from "./attendance";
 import type { LedgerVerifyResult } from "../utils/ledger";
@@ -687,10 +688,14 @@ export interface ApiClient {
   getSectionRoles(sectionId: string): Promise<SectionRole[]>;
   getStudentRoles(studentId: string): Promise<SectionRole[]>;
 
+  /** Lets a section president create one session within `durationHours` (default 24). */
   grantSessionPermission(
     sectionId: string,
     studentId: string,
+    durationHours?: number,
   ): Promise<SessionPermission>;
+  /** The signed-in student's QAC sections with today's classes. */
+  getMyQacSections(): Promise<QacSection[]>;
   revokeSessionPermission(
     sectionId: string,
     studentId: string,

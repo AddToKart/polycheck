@@ -208,6 +208,7 @@ class StudentDashboardScreen extends ConsumerWidget {
     ref.invalidate(todaySessionsProvider);
     ref.invalidate(studentStandingProvider);
     ref.invalidate(studentClassRolesProvider);
+    ref.invalidate(studentOfficerProvider);
     try {
       await ref.read(todaySessionsProvider.future);
     } catch (_) {

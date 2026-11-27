@@ -39,9 +39,12 @@ class StudentShell extends ConsumerWidget {
       );
     }
 
+    // Only a Quality Assurance Coordinator gets the class-photo tab.
+    final isQac = ref.watch(studentOfficerProvider).value?.isQac ?? false;
     final currentIndex = switch (location) {
       StudentPaths.schedule => 1,
       StudentPaths.history => 3,
+      StudentPaths.qac => 4,
       _ => 0,
     };
 
@@ -73,6 +76,15 @@ class StudentShell extends ConsumerWidget {
             selected: false,
             onTap: () => context.push(StudentPaths.scan),
           ),
+          if (isQac)
+            CampusBottomNavItem(
+              id: 'qac',
+              icon: Icons.photo_camera_outlined,
+              activeIcon: Icons.photo_camera,
+              label: 'Photos',
+              selected: currentIndex == 4,
+              onTap: () => context.go(StudentPaths.qac),
+            ),
           CampusBottomNavItem(
             id: 'history',
             icon: Icons.history_outlined,

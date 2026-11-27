@@ -1,16 +1,15 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:polycheck_mobile/src/core/polycheck_core.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../data/student_images.dart';
 import '../../data/student_models.dart';
+import '../../../../core/utils/proof_window.dart';
+import '../../../../core/widgets/proof_photo_grid.dart';
 import '../../data/student_providers.dart';
+import 'proof_uploader.dart';
 
 class StudentSessionDetailScreen extends ConsumerStatefulWidget {
   const StudentSessionDetailScreen({
@@ -29,21 +28,10 @@ class StudentSessionDetailScreen extends ConsumerStatefulWidget {
 
 class _StudentSessionDetailScreenState
     extends ConsumerState<StudentSessionDetailScreen> {
-  final TextEditingController _descriptionController = TextEditingController();
-  StudentImageEvidence? _evidence;
-  bool _uploading = false;
-  String? _proofError;
-
   StudentSessionKey get _key => StudentSessionKey(
     sectionId: widget.sectionId,
     sessionId: widget.sessionId,
   );
-
-  @override
-  void dispose() {
-    _descriptionController.dispose();
-    super.dispose();
-  }
 
   Future<void> _copyToken(String token) async {
     await Clipboard.setData(ClipboardData(text: token));
@@ -67,95 +55,6 @@ class _StudentSessionDetailScreenState
         'The class token could not be shared.',
         tone: CampusToastTone.error,
       );
-    }
-  }
-
-  Future<void> _pickProofPhoto() async {
-    final source = await showCampusBottomSheet<ImageSource>(
-      context,
-      title: 'Add proof of class',
-      child: Builder(
-        builder: (sheetContext) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              ListTile(
-                leading: const Icon(Icons.photo_camera_outlined),
-                title: const Text('Take a photo'),
-                onTap: () => Navigator.of(sheetContext).pop(ImageSource.camera),
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library_outlined),
-                title: const Text('Choose from gallery'),
-                onTap: () =>
-                    Navigator.of(sheetContext).pop(ImageSource.gallery),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-    if (source == null || !mounted) return;
-    try {
-      final evidence = await pickStudentImage(source: source);
-      if (!mounted || evidence == null) return;
-      setState(() {
-        _evidence = evidence;
-        _proofError = null;
-      });
-    } on StudentImageException catch (error) {
-      if (!mounted) return;
-      setState(() => _proofError = error.message);
-    } on Object {
-      if (!mounted) return;
-      setState(() => _proofError = 'The photo could not be prepared.');
-    }
-  }
-
-  Future<void> _uploadProof() async {
-    final evidence = _evidence;
-    if (evidence == null) return;
-    setState(() {
-      _uploading = true;
-      _proofError = null;
-    });
-    try {
-      await ref
-          .read(proofsApiProvider)
-          .uploadProofOfClass(
-            sectionId: widget.sectionId,
-            sessionId: widget.sessionId,
-            photoData: evidence.dataUrl,
-            description: _descriptionController.text.trim().isEmpty
-                ? null
-                : _descriptionController.text.trim(),
-          );
-      ref.invalidate(studentSessionDetailProvider(_key));
-      if (!mounted) return;
-      setState(() {
-        _uploading = false;
-        _evidence = null;
-        _descriptionController.clear();
-      });
-      CampusToast.showIn(
-        context,
-        'Proof uploaded. The class photo is now attached to this session.',
-        tone: CampusToastTone.success,
-      );
-    } on ApiRequestError catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _uploading = false;
-        _proofError = error.message.trim().isEmpty
-            ? 'Unable to upload the proof photo.'
-            : error.message.trim();
-      });
-    } on Object {
-      if (!mounted) return;
-      setState(() {
-        _uploading = false;
-        _proofError = 'Unable to upload the proof photo.';
-      });
     }
   }
 
@@ -218,15 +117,8 @@ class _StudentSessionDetailScreenState
           data: (detail) => _SessionBody(
             detail: detail,
             sessionKey: _key,
-            descriptionController: _descriptionController,
-            evidence: _evidence,
-            uploading: _uploading,
-            proofError: _proofError,
-            onPickPhoto: _pickProofPhoto,
             onShareToken: _shareToken,
-            onUpload: _uploadProof,
             onCopyToken: _copyToken,
-            onClearEvidence: () => setState(() => _evidence = null),
           ),
         ),
       ),
@@ -234,37 +126,28 @@ class _StudentSessionDetailScreenState
   }
 }
 
-class _SessionBody extends StatelessWidget {
+class _SessionBody extends ConsumerWidget {
   const _SessionBody({
     required this.detail,
     required this.sessionKey,
-    required this.descriptionController,
-    required this.evidence,
-    required this.uploading,
-    required this.proofError,
-    required this.onPickPhoto,
-    required this.onUpload,
     required this.onCopyToken,
     required this.onShareToken,
-    required this.onClearEvidence,
   });
 
   final StudentSessionDetail detail;
   final StudentSessionKey sessionKey;
-  final TextEditingController descriptionController;
-  final StudentImageEvidence? evidence;
-  final bool uploading;
-  final String? proofError;
-  final Future<void> Function() onPickPhoto;
-  final Future<void> Function() onUpload;
   final Future<void> Function(String token) onCopyToken;
   final Future<void> Function(String token) onShareToken;
-  final VoidCallback onClearEvidence;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final tokens = BrandTheme.of(context);
     final session = detail.session;
+    final currentUserId = ref.watch(
+      sessionProvider.select((state) => state.user?.id),
+    );
+    void onUploaded() =>
+        ref.invalidate(studentSessionDetailProvider(sessionKey));
     final activeToken = detail.activeClassToken;
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -477,100 +360,36 @@ class _SessionBody extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Icon(
-                      Icons.camera_alt_outlined,
-                      size: 22,
-                      color: tokens.isDark ? tokens.gold : tokens.maroon,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            'QAC evidence upload',
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(
-                                  color: tokens.onSurface,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'Capture the classroom during this session for the audit record.',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: tokens.muted),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                if (evidence != null) ...<Widget>[
-                  Row(
-                    children: <Widget>[
-                      ClipRect(
-                        child: Image.memory(
-                          evidence!.bytes,
-                          width: 64,
-                          height: 64,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Expanded(child: Text('Photo ready to upload')),
-                      TextButton(
-                        onPressed: uploading ? null : onClearEvidence,
-                        child: const Text('Remove'),
-                      ),
-                    ],
+                Text(
+                  'QAC evidence upload',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: tokens.onSurface,
+                    fontWeight: FontWeight.w700,
                   ),
-                  const SizedBox(height: 8),
-                ],
-                CampusTextField(
-                  label: 'Description',
-                  hint: 'Optional note about this class photo',
-                  controller: descriptionController,
-                  maxLines: 2,
                 ),
-                if (proofError != null) ...<Widget>[
-                  const SizedBox(height: 8),
-                  Text(
-                    proofError!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: tokens.isDark ? tokens.gold : tokens.maroon,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 10),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: CampusButton(
-                        label: evidence == null ? 'Add photo' : 'Replace photo',
-                        icon: Icons.add_a_photo_outlined,
-                        variant: CampusButtonVariant.outline,
-                        onPressed: uploading ? null : onPickPhoto,
+                const SizedBox(height: 8),
+                isProofWindowOpen(
+                      date: session.date,
+                      startTime: session.startTime,
+                      endTime: session.endTime,
+                      isActive: session.isActive,
+                      now: ref.watch(trustedClockProvider).now(),
+                    )
+                    ? ProofUploader(
+                        sectionId: sessionKey.sectionId,
+                        sessionId: sessionKey.sessionId,
+                        alreadyUploaded: detail.proofs
+                            .where((proof) => proof.uploadedBy == currentUserId)
+                            .length,
+                        onUploaded: onUploaded,
+                      )
+                    : Text(
+                        'Photos can be added while this class is ongoing, until '
+                        '$proofGraceAfterClassMinutes minutes after it ends.',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(color: tokens.muted),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: CampusButton(
-                        label: uploading ? 'Uploading…' : 'Upload proof',
-                        icon: Icons.cloud_upload_outlined,
-                        loading: uploading,
-                        onPressed: evidence == null || uploading
-                            ? null
-                            : onUpload,
-                      ),
-                    ),
-                  ],
-                ),
               ],
             ),
           )
@@ -594,10 +413,7 @@ class _SessionBody extends StatelessWidget {
             ),
           )
         else
-          for (final proof in detail.proofs) ...<Widget>[
-            _ProofCard(proof: proof),
-            const SizedBox(height: 10),
-          ],
+          ProofPhotoGrid(proofs: detail.proofs),
       ],
     );
   }
@@ -649,91 +465,6 @@ class _DetailStat extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _ProofCard extends StatelessWidget {
-  const _ProofCard({required this.proof});
-
-  final ProofOfClass proof;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = BrandTheme.of(context);
-    return CampusCard(
-      padding: const EdgeInsets.all(10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          SizedBox(width: 86, height: 64, child: _ProofImage(proof: proof)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  proof.uploadedByStudentName.trim().isEmpty
-                      ? 'QAC officer'
-                      : proof.uploadedByStudentName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: tokens.onSurface,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  proof.uploadedAt,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: tokens.muted,
-                    fontSize: 9,
-                  ),
-                ),
-                if (proof.description?.trim().isNotEmpty == true) ...<Widget>[
-                  const SizedBox(height: 3),
-                  Text(
-                    proof.description!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: tokens.muted),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProofImage extends StatelessWidget {
-  const _ProofImage({required this.proof});
-
-  final ProofOfClass proof;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = BrandTheme.of(context);
-    final data = proof.photoData;
-    if (data.startsWith('data:')) {
-      final comma = data.indexOf(',');
-      if (comma > 0) {
-        try {
-          final bytes = base64Decode(data.substring(comma + 1));
-          return Image.memory(bytes, fit: BoxFit.cover);
-        } on FormatException {
-          // Fall through to the placeholder.
-        }
-      }
-    }
-    return ColoredBox(
-      color: tokens.campus,
-      child: Icon(Icons.image_outlined, color: tokens.muted),
     );
   }
 }
