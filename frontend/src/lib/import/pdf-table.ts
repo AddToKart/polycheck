@@ -35,11 +35,15 @@ const STUDENT_NUMBER = /\b\d{4}-\d{5}-[A-Za-z]{2}-\d\b/
 const LINE_TOLERANCE = 3
 /** Items closer than this belong to the same cell; further apart start a new column fragment. */
 const CELL_GAP = 4
+/** Text runs closer than this are parts of one word (an email split at the "@", a name split at an accent). */
+const WORD_GAP = 1
 /** How far left of a column's header a fragment may start and still belong to it. */
 const COLUMN_TOLERANCE = 6
 
 interface Fragment {
   text: string
+  /** The last text run ended with a space of its own. */
+  openSpace: boolean
   x: number
   /** Right edge, grown as adjacent items merge into the fragment. */
   right: number
@@ -70,10 +74,17 @@ export function linesFromPage(page: PdfPage, pageIndex: number): Line[] {
     for (const item of ordered) {
       const last = fragments[fragments.length - 1]
       if (last && item.x - last.right < CELL_GAP) {
-        last.text = compact(`${last.text} ${item.str}`)
+        const sameWord = item.x - last.right < WORD_GAP && !last.openSpace && !/^\s/.test(item.str)
+        last.text = compact(`${last.text}${sameWord ? '' : ' '}${item.str}`)
+        last.openSpace = /\s$/.test(item.str)
         last.right = Math.max(last.right, item.x + item.width)
       } else {
-        fragments.push({ text: compact(item.str), x: item.x, right: item.x + item.width })
+        fragments.push({
+          text: compact(item.str),
+          openSpace: /\s$/.test(item.str),
+          x: item.x,
+          right: item.x + item.width,
+        })
       }
     }
     return { y: group[0].y, fragments, pageIndex }

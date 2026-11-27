@@ -1,5 +1,6 @@
 export * from './parse'
 export * from './map'
+export * from './prepare'
 export * from './normalize'
 export * from './rows'
 export * from './checksum'

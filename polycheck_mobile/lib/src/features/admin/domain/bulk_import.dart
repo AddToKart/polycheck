@@ -1,5 +1,6 @@
 import '../../../core/models/bulk_import.dart';
 import '../../../core/utils/campus_courses.dart';
+import '../../../core/utils/import_table.dart';
 
 /// Mirrors `shared/src/utils/import/*` for the paste-first student import
 /// wizard (no file picker dependency).
@@ -353,7 +354,7 @@ NormalizedValue<String> normalizeStudentId(String raw) {
 final RegExp _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
 
 NormalizedValue<String> normalizeEmail(String raw) {
-  final value = raw.trim().toLowerCase();
+  final value = raw.replaceAll(RegExp(r'\s+'), '').toLowerCase();
   if (value.isEmpty) return const NormalizedValue<String>();
   if (!_emailPattern.hasMatch(value) || value.length > 254) {
     return const NormalizedValue<String>(issue: ImportIssueCode.invalidEmail);
@@ -699,11 +700,12 @@ class BulkImportState {
     if (parsed.errors.isNotEmpty) {
       return copyWith(error: parsed.errors.first);
     }
+    final table = prepareImportTable(parsed.headers, parsed.rows);
     return BulkImportState(
       step: BulkImportStep.map,
-      headers: parsed.headers,
-      sourceRows: parsed.rows,
-      mapping: suggestColumnMapping(parsed.headers, parsed.rows),
+      headers: table.headers,
+      sourceRows: table.rows,
+      mapping: suggestColumnMapping(table.headers, table.rows),
     );
   }
 

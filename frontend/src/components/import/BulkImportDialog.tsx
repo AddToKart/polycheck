@@ -9,6 +9,7 @@ import {
   IMPORT_MAX_ROWS,
   mappingFieldLabel,
   parseCsv,
+  prepareImportTable,
   suggestColumnMapping,
   type EnrollImportResult,
   type EnrollImportRow,
@@ -24,6 +25,7 @@ import { api, type ActivationStatus } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { ProgramSelect } from '@/components/admin/ProgramSelect'
 import { useNotifications } from '@/lib/notifications'
 import { downloadCsv } from '@/lib/import/csv-download'
 import { fingerprintHeaders, loadMappingProfile, saveMappingProfile } from '@/lib/import/mapping-profiles'
@@ -148,6 +150,10 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   const [fileName, setFileName] = useState('')
   const [workbook, setWorkbook] = useState<{ file: File; sheets: SpreadsheetSheet[]; sheetName: string } | null>(null)
   const [mapping, setMapping] = useState<ImportColumnMapping>({})
+  const [tableNotes, setTableNotes] = useState<string[]>([])
+  // Used for every student when the file has no column for it.
+  const [fileProgram, setFileProgram] = useState('')
+  const [fileYear, setFileYear] = useState('')
   const [conflictMode, setConflictMode] = useState<ImportConflictMode>('skip_existing')
   const [validatedConflictMode, setValidatedConflictMode] = useState<ImportConflictMode>('skip_existing')
   const [deliveryMode, setDeliveryMode] = useState<StudentImportDeliveryMode>('temporary_password')
@@ -186,6 +192,9 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     setFileName('')
     setWorkbook(null)
     setMapping({})
+    setTableNotes([])
+    setFileProgram('')
+    setFileYear('')
     setConflictMode('skip_existing')
     setValidatedConflictMode('skip_existing')
     setDeliveryMode('temporary_password')
@@ -245,15 +254,17 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
       setError(`This file has ${parsed.rows.length} rows. The limit is ${IMPORT_MAX_ROWS.toLocaleString()} per import.`)
       return false
     }
+    const table = prepareImportTable(parsed.headers, parsed.rows)
     // A layout confirmed before maps itself: this browser's memory first, then the shared profiles other
     // administrators confirmed; anything new gets the heuristic suggestion. Never blocks on the network.
     const nextMapping =
-      loadMappingProfile(parsed.headers) ??
-      (await loadSharedMapping(mode, parsed.headers)) ??
-      suggestColumnMapping(parsed.headers, parsed.rows)
+      loadMappingProfile(table.headers) ??
+      (await loadSharedMapping(mode, table.headers)) ??
+      suggestColumnMapping(table.headers, table.rows)
     setFileName(name)
-    setHeaders(parsed.headers)
-    setRawRows(parsed.rows)
+    setHeaders(table.headers)
+    setRawRows(table.rows)
+    setTableNotes(table.notes)
     setMapping(nextMapping)
     setStep('map')
     if (parsed.errors.length > 0) {
@@ -315,14 +326,30 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
       setError(missing)
       return
     }
+    const needsProgram = mode === 'students' && mapping.program === undefined
+    const needsYear = mode === 'students' && mapping.yearLevel === undefined
+    if ((needsProgram && !fileProgram) || (needsYear && !fileYear)) {
+      setError('Choose the program and year level of the students in this file.')
+      return
+    }
     setError('')
     setValidating(true)
     setServerIssues([])
     setSummary({})
     try {
-      const built = mode === 'students'
+      const parsedRows = mode === 'students'
         ? buildStudentRows(rawRows, mapping)
         : buildEnrollRows(rawRows, mapping)
+      const built = needsProgram || needsYear
+        ? {
+            issues: parsedRows.issues,
+            rows: (parsedRows.rows as StudentImportRow[]).map((row) => ({
+              ...row,
+              ...(needsProgram ? { program: fileProgram } : {}),
+              ...(needsYear ? { yearLevel: Number(fileYear) } : {}),
+            })),
+          }
+        : parsedRows
       if (built.rows.length === 0) {
         setLocalIssues(built.issues)
         setError('No importable rows were found. Fix the blocking issues and upload again.')
@@ -697,6 +724,13 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Found {rawRows.length.toLocaleString()} rows and {headers.length} columns in <span className="break-all font-semibold">{fileName}</span>. Confirm the mapping:
             </p>
+            {tableNotes.length > 0 ? (
+              <ul role="note" aria-label="Changes made to read your file" className="list-disc space-y-1 border border-sky-300 bg-sky-50 py-2 pl-7 pr-3 text-xs text-sky-900 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-200">
+                {tableNotes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            ) : null}
             {fileName.toLowerCase().endsWith('.pdf') ? (
               <p role="note" className="border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
                 Read from a PDF: columns are detected from the page layout. Compare a few rows with the original before
@@ -759,6 +793,43 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
                 </div>
               ))}
             </div>
+            {mode === 'students' && (mapping.program === undefined || mapping.yearLevel === undefined) ? (
+              <fieldset className="space-y-3 border border-zinc-200 p-3 dark:border-zinc-700">
+                <legend className="px-1 text-xs font-bold uppercase tracking-widest text-zinc-500">Not in your file</legend>
+                <p className="text-xs text-zinc-600 dark:text-zinc-400">
+                  Choose this once for every student in the file. Import one class at a time.
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {mapping.program === undefined ? (
+                    <div className="min-w-0 space-y-1.5">
+                      <Label htmlFor="import-file-program">Program of these students</Label>
+                      <ProgramSelect id="import-file-program" value={fileProgram} onChange={setFileProgram} />
+                    </div>
+                  ) : null}
+                  {mapping.yearLevel === undefined ? (
+                    <div className="min-w-0 space-y-1.5">
+                      <Label htmlFor="import-file-year">Year level of these students</Label>
+                      <select
+                        id="import-file-year"
+                        value={fileYear}
+                        onChange={(event) => setFileYear(event.target.value)}
+                        className="h-10 w-full min-w-0 border border-zinc-300 bg-white px-3 text-base sm:text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                      >
+                        <option value="" disabled>
+                          Select a year level
+                        </option>
+                        {[1, 2, 3, 4, 5].map((year) => (
+                          <option key={year} value={year}>
+                            Year {year}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+                </div>
+              </fieldset>
+            ) : null}
+
             {missingColumn ? (
               <p role="note" className="border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
                 {missingColumn}

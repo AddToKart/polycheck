@@ -208,7 +208,7 @@ int? _columnByContent(
 final RegExp _schoolEmailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
 
 String? _normalizeRosterEmail(String raw) {
-  final value = raw.trim().toLowerCase();
+  final value = raw.replaceAll(RegExp(r'\s+'), '').toLowerCase();
   return value.length <= 254 && _schoolEmailPattern.hasMatch(value)
       ? value
       : null;

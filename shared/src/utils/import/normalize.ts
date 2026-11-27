@@ -38,7 +38,7 @@ export function normalizeStudentId(raw: string): NormalizedValue<string> {
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export function normalizeEmail(raw: string): NormalizedValue<string> {
-  const value = raw.trim().toLowerCase()
+  const value = raw.replace(/\s+/g, '').toLowerCase()
   if (!value) return {}
   if (!EMAIL_PATTERN.test(value) || value.length > 254) return { issue: 'INVALID_EMAIL' }
   return { value }

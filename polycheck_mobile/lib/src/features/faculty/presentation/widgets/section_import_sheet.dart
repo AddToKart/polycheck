@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/polycheck_core.dart';
+import '../../../../core/utils/import_table.dart';
 import '../../data/section_import.dart';
 import 'faculty_shell.dart';
 
@@ -81,9 +82,10 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
       );
       return;
     }
+    final table = prepareImportTable(parsed.headers, parsed.rows);
     setState(() {
-      _parsed = parsed;
-      _mapping = suggestImportMapping(parsed.headers, parsed.rows);
+      _parsed = ParsedCsv(headers: table.headers, rows: table.rows);
+      _mapping = suggestImportMapping(table.headers, table.rows);
       _step = _ImportStep.map;
       _error = null;
     });

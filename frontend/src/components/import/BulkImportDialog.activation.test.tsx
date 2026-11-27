@@ -343,6 +343,49 @@ describe('BulkImportDialog column matching', () => {
   })
 })
 
+describe('BulkImportDialog registrar class lists', () => {
+  const upload = (csv: string) => {
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File([csv], 'class-list.csv', { type: 'text/csv' })] } })
+  }
+
+  beforeEach(() => {
+    window.localStorage.clear()
+    apiMock.getImportMappingProfile.mockResolvedValue({ mapping: null })
+  })
+
+  it('asks for the program and year when the file has neither, then sends them for every student', async () => {
+    setup()
+    upload(
+      [
+        'Name,Email Address',
+        '"2024-00001-MN-0 Alpha, Student",alpha@exam ple.com',
+        '"2024-00002-MN-0 Beta, Student",beta@example.com',
+      ].join(String.fromCharCode(10)),
+    )
+    expect(await screen.findByRole('note', { name: 'Changes made to read your file' })).toHaveTextContent('were separated')
+    fireEvent.click(screen.getByRole('button', { name: 'Validate rows' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Choose the program and year level')
+    expect(apiMock.importStudents).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('Program of these students'), { target: { value: 'BSIT' } })
+    fireEvent.change(screen.getByLabelText('Year level of these students'), { target: { value: '4' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Validate rows' }))
+    await screen.findByText('Existing students')
+
+    const student = (rowNumber: number, id: string, name: string, email: string) =>
+      expect.objectContaining({ rowNumber, studentId: id, fullName: name, email, program: 'BSIT', yearLevel: 4 })
+    expect(apiMock.importStudents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rows: [
+          student(2, '2024-00001-MN-0', 'Alpha, Student', 'alpha@example.com'),
+          student(3, '2024-00002-MN-0', 'Beta, Student', 'beta@example.com'),
+        ],
+      }),
+    )
+  })
+})
+
 describe('BulkImportDialog shared mapping profiles', () => {
   const REORDERED = ['Name', 'Student No.', 'Email', 'Program', 'Year Level']
   const upload = () => {
