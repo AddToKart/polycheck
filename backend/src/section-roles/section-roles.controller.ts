@@ -3,6 +3,7 @@ import { IsIn, IsString } from 'class-validator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { SectionRolesService } from './section-roles.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
+import { BlocksArchivedSubject } from '../common/guards/archived-subject.guard'
 
 class AssignRoleDto {
   @IsString() sectionId!: string
@@ -25,12 +26,14 @@ export class SectionRolesController {
   }
 
   @Post()
+  @BlocksArchivedSubject('section', 'body.sectionId')
   @Roles('teacher')
   assign(@Request() req: AuthenticatedRequest, @Body() dto: AssignRoleDto) {
     return this.roles.assign(req.user, dto)
   }
 
   @Delete(':sectionId/:studentId/:role')
+  @BlocksArchivedSubject('section', 'params.sectionId')
   @Roles('teacher')
   remove(
     @Request() req: AuthenticatedRequest,

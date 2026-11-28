@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/polycheck_core.dart';
 import '../data/faculty_logic.dart';
+import '../data/record_list.dart';
 import 'widgets/faculty_shell.dart';
 
 enum _ExcuseTab { pending, approved, rejected }
@@ -64,13 +65,23 @@ class _FacultyExcusesScreenState extends ConsumerState<FacultyExcusesScreen> {
     }
   }
 
+  String _query = '';
+  String _sort = '';
+  int _page = 1;
+
+  /// Any change to what is listed starts again from the first page.
+  void _change(VoidCallback change) => setState(() {
+    change();
+    _page = 1;
+  });
+
   @override
   Widget build(BuildContext context) {
     final tokens = BrandTheme.of(context);
     final sectionsById = <String, Section>{
       for (final section in _sections) section.id: section,
     };
-    final filtered = _records
+    final matched = _records
         .where((record) {
           if (_sectionFilter.isNotEmpty && record.sectionId != _sectionFilter) {
             return false;
@@ -83,7 +94,12 @@ class _FacultyExcusesScreenState extends ConsumerState<FacultyExcusesScreen> {
             _ExcuseTab.rejected => record.excuseStatus == ExcuseStatus.rejected,
           };
         })
-        .toList(growable: false);
+        .where(
+          (record) =>
+              recordMatches(_query, record, sectionsById[record.sectionId]),
+        );
+    final page = ListPage<AttendanceRecord>(sortRecords(matched, _sort), _page);
+    final filtered = page.items;
 
     return FacultyScaffold(
       title: 'Excuses',
@@ -101,28 +117,35 @@ class _FacultyExcusesScreenState extends ConsumerState<FacultyExcusesScreen> {
                     labels: const ['Pending', 'Approved', 'Rejected'],
                     selectedIndex: _tab.index,
                     onSelected: (index) =>
-                        setState(() => _tab = _ExcuseTab.values[index]),
+                        _change(() => _tab = _ExcuseTab.values[index]),
                   ),
                   const SizedBox(height: 10),
-                  FacultyDropdown<String>(
-                    label: 'Section',
-                    hint: 'All sections',
-                    value: _sectionFilter.isEmpty ? null : _sectionFilter,
-                    items: [
-                      for (final section in _sections)
-                        DropdownMenuItem<String>(
-                          value: section.id,
-                          child: Text(
-                            formatSectionHeading(
-                              section: section.section,
-                              course: section.course,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                  ListControls(
+                    query: _query,
+                    searchHint: 'Student or section',
+                    onQueryChanged: (value) => _change(() => _query = value),
+                    filters: () => [
+                      ListFilter(
+                        id: 'section',
+                        label: 'Section',
+                        allLabel: 'All sections',
+                        value: _sectionFilter,
+                        options: sectionOptions(
+                          _records.map((record) => record.sectionId),
+                          sectionsById,
                         ),
+                        onChanged: (value) =>
+                            _change(() => _sectionFilter = value),
+                      ),
                     ],
-                    onChanged: (value) =>
-                        setState(() => _sectionFilter = value ?? ''),
+                    sort: _sort,
+                    sortOptions: recordSortOptions,
+                    onSortChanged: (value) => _change(() => _sort = value),
+                    onClear: () => _change(() {
+                      _query = '';
+                      _sectionFilter = '';
+                      _sort = '';
+                    }),
                   ),
                   const SizedBox(height: 10),
                   if (filtered.isEmpty)
@@ -231,6 +254,10 @@ class _FacultyExcusesScreenState extends ConsumerState<FacultyExcusesScreen> {
                           ),
                         ),
                       ),
+                  ListPager(
+                    page: page,
+                    onChanged: (value) => setState(() => _page = value),
+                  ),
                 ],
               ),
             ),

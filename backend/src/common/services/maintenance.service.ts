@@ -8,6 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service'
 import { SessionPermissionsService } from '../../session-permissions/session-permissions.service'
 import { NotificationsService } from '../../notifications/notifications.service'
 import { SettingsService } from '../../settings/settings.service'
+import { SubjectLifecycleService } from '../../subjects/subject-lifecycle.service'
 import { GEOLOCATION_RETENTION_DAYS_KEY, type PrivacyShredRecord } from '../constants/privacy'
 import { ledgerDateOf } from '@polycheck/shared/ledger'
 
@@ -35,7 +36,22 @@ export class MaintenanceService {
     // Optional only for legacy unit specs that construct the service directly;
     // production always injects it (MaintenanceModule imports SettingsModule).
     @Optional() private readonly settings?: SettingsService,
+    @Optional() private readonly subjects?: SubjectLifecycleService,
   ) {}
+
+  /** Erases the evidence of subjects archived 90 days ago or more. Attendance results stay. */
+  @Cron(CronExpression.EVERY_DAY_AT_4AM, { waitForCompletion: true })
+  async purgeArchivedSubjectEvidence() {
+    await this.runLockedJob(
+      'maintenance:purge-archived-subject-evidence',
+      DAILY_JOB_LOCK_TTL_SECONDS,
+      async () => {
+        const purged = (await this.subjects?.purgeDueEvidence()) ?? 0
+        if (purged > 0) this.logger.log(`Erased the evidence of ${purged} archived subject(s)`)
+      },
+      'erase archived subject evidence',
+    )
+  }
 
   @Cron(CronExpression.EVERY_HOUR, { waitForCompletion: true })
   async expireStalePermissions() {

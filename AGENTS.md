@@ -739,6 +739,20 @@ import { haversineDistance } from '@polycheck/shared/utils'
   - **APK 1.1.7 cannot show the consent screen**: with the new server its assistant refuses until that account accepts on the website.
 - **Pilot UI fixes (2026-11-28):** the Flutter header reserved more height than its toolbar (empty strip under every subtitle); faculty stat cards are two per row and all open something (Sections and Students open a section list; web cards are links); the app's administrator dashboard has a light/dark switch and no back arrow. The admin "core service is unavailable" card was a bug: `DashboardService` imported `RedisService` and `AuditLogsService` as types only, so Redis always showed down and recent activity was always empty. **Never `import type` an injected Nest class.**
 
+- **Subject archive and 90-day evidence erasure (2026-11-28):**
+  - `POST /subjects/:id/archive | restore | delete-permanently {confirmCode}`, `GET /subjects/:id/lifecycle`, `GET /subjects?archived=true`. Creator only, refused while another teacher has a section in the subject or a class is running. `Subject.archivedAt/archivedById/evidencePurgedAt`, migration `20261128150000_subject_archive`. Subject codes are unique **among active subjects only** (partial index Prisma cannot express).
+  - Archived subjects are hidden from lists, dashboards, queues, standing, at-risk, AI tools and QAC pages (`IN_ACTIVE_SUBJECT`), and read-only: put `@BlocksArchivedSubject(target, 'params.id' | 'body.x')` on **every new write route** under a subject. Offline check-ins taken before archiving may still sync.
+  - Nightly (4 AM) `SubjectLifecycleService.purgeDueEvidence` erases, 90 days after archiving: class photos, excuse photos, record coordinates and scan attempts. **Attendance results are kept; never rewrite `timestamp`** (ledger preimage). 90 days is `ARCHIVE_EVIDENCE_RETENTION_DAYS`; the published Privacy Policy (landing repo, v1.4) states it, so change both together.
+  - **Delete permanently** removes everything including attendance records. It writes a `ledger.records_removed` audit row so ledger verification accounts for rows an anchor had counted; without it verification reports tampering.
+- **Pilot bug wave (2026-11-28):**
+  - **Starting a class creates a `pending` row for every student.** The row proves nothing: use `hasCheckedIn` (`shared/src/utils/check-in.ts`, mirrored in `student_scan_service.dart`). The old "any cached row" test rejected first scans with "already saved on this device". The app now applies it only offline.
+  - The server sends the QR token to the instructor only; for students a missing token does not mean the class has not started.
+  - Import "Check rows" sends no Idempotency-Key; "Import now" derives it from the request content (`importIdempotencyKey`).
+  - `PATCH /sessions/:id` reschedules a class that has not started (labelled Rescheduled). Class windows are 15 minutes to 12 hours (`sessionTimeIssue`, server and both apps).
+  - `GET /docs/proof-photos?sessionId|sectionId|subjectId&from&to` compiles time-stamped class photos (professor, admin, section QAC); `GET /docs/subject-attendance/:id` exports every record.
+  - Manual status changes always confirm (`StatusChangeDialog` / `showStatusChangeDialog`); disputed and excused rows go through their queues on both clients. Destructive one-click actions confirm. Number fields reject non-digits and show the reason under the field; form problems sit directly above the submit button (`FormProblems` in Flutter).
+  - The assistant is told to answer without tables, and both clients turn any table into a list (`flattenMarkdownTables`). Lists use the shared `ListControls`/`ListPager` (Flutter) and `SearchAndSort` (web).
+
 ### Blocked
 - (none)
 

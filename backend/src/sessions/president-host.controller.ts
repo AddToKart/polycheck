@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, Request } from '@nestjs/common'
 import { Roles } from '../common/decorators/roles.decorator'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
+import { BlocksArchivedSubject } from '../common/guards/archived-subject.guard'
 import { HostStartDto } from './dto/host-session.dto'
 import { PresidentHostService } from './president-host.service'
 
@@ -16,6 +17,7 @@ export class PresidentHostController {
   }
 
   @Post('start')
+  @BlocksArchivedSubject('session', 'params.id')
   @Roles('student')
   start(@Request() req: AuthenticatedRequest, @Param('id') id: string, @Body() dto: HostStartDto) {
     return this.host.start(id, dto, req.user)

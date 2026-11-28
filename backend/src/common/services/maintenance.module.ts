@@ -4,9 +4,10 @@ import { SessionPermissionsModule } from '../../session-permissions/session-perm
 import { NotificationsModule } from '../../notifications/notifications.module'
 import { SettingsModule } from '../../settings/settings.module'
 import { PrismaModule } from '../../prisma/prisma.module'
+import { SubjectsModule } from '../../subjects/subjects.module'
 
 @Module({
-  imports: [PrismaModule, SessionPermissionsModule, NotificationsModule, SettingsModule],
+  imports: [PrismaModule, SessionPermissionsModule, NotificationsModule, SettingsModule, SubjectsModule],
   providers: [MaintenanceService],
 })
 export class MaintenanceModule {}

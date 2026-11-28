@@ -672,14 +672,6 @@ class _ReportDetailSheetState extends ConsumerState<ReportDetailSheet> {
         const SizedBox(height: 14),
         const AdminSectionLabel('Triage'),
         const SizedBox(height: 6),
-        if (_error != null) ...<Widget>[
-          AdminInfoBanner(
-            message: _error!,
-            tone: AdminInfoTone.error,
-            icon: Icons.error_outline,
-          ),
-          const SizedBox(height: 8),
-        ],
         DropdownButtonFormField<ReportStatus>(
           initialValue: _status ?? report.status,
           decoration: const InputDecoration(labelText: 'Status'),
@@ -705,6 +697,14 @@ class _ReportDetailSheetState extends ConsumerState<ReportDetailSheet> {
               : 'Notes appear on the submitter’s “My reports” panel.',
           onChanged: (_) => setState(() {}),
         ),
+        if (_error != null) ...<Widget>[
+          const SizedBox(height: 10),
+          AdminInfoBanner(
+            message: _error!,
+            tone: AdminInfoTone.error,
+            icon: Icons.error_outline,
+          ),
+        ],
         if (!widget.readOnly) ...<Widget>[
           const SizedBox(height: 14),
           CampusButton(

@@ -43,8 +43,9 @@ function makeDb(options: {
   sessions: string[]
   rowsBySession: Record<string, ChainRow[]>
   anchors?: { id: string; metadata: unknown }[]
+  removals?: { id: string; metadata: unknown }[]
 }) {
-  const { sessions, rowsBySession, anchors = [] } = options
+  const { sessions, rowsBySession, anchors = [], removals = [] } = options
   const allRows = Object.values(rowsBySession).flat()
   const hashedRows = allRows.filter((row) => row.recordHash !== null)
   return {
@@ -70,7 +71,13 @@ function makeDb(options: {
           args?.where?.recordHash ? hashedRows.length : allRows.length,
         ),
     },
-    auditLog: { findMany: jest.fn().mockResolvedValue(anchors) },
+    auditLog: {
+      findMany: jest
+        .fn()
+        .mockImplementation(async (args?: { where?: { action?: string } }) =>
+          args?.where?.action === 'ledger.records_removed' ? removals : anchors,
+        ),
+    },
   }
 }
 
@@ -273,6 +280,47 @@ describe('LedgerService.verifyLedger', () => {
       2,
       expect.objectContaining({ where: { sessionId: 'sess-b', recordHash: { not: null } } }),
     )
+  })
+
+  describe('records removed by a permanent subject delete', () => {
+    const kept = chained('k1', 1, null, 'sess-kept', 'stu-1')
+    const gone = chained('g1', 2, null, 'sess-gone', 'stu-2')
+    const anchor = {
+      id: 'anchor-1',
+      metadata: {
+        date: '2026-07-14',
+        recordsCounted: 2,
+        lastRecordHash: gone.recordHash,
+        sessionId: 'sess-gone',
+        recordId: 'g1',
+      },
+    }
+    const db = (removals: { id: string; metadata: unknown }[]) =>
+      makeDb({ sessions: ['sess-kept'], rowsBySession: { 'sess-kept': [kept] }, anchors: [anchor], removals })
+    const removal = (count: number, anchoredHashes: string[]) => ({
+      id: 'removal-1',
+      metadata: { dates: { '2026-07-14': { count, anchoredHashes } } },
+    })
+
+    it('still verifies when the delete recorded what it removed', async () => {
+      const result = await service.verifyLedger(db([removal(1, [gone.recordHash])]) as never)
+      expect(result.status).toBe('verified')
+    })
+
+    it('reports the same loss as broken when nothing recorded it', async () => {
+      const result = await service.verifyLedger(db([]) as never)
+      expect(result.brokenAt?.reason).toBe('anchor_mismatch')
+    })
+
+    it('reports broken when more is missing than the delete recorded', async () => {
+      const result = await service.verifyLedger(db([removal(0, [gone.recordHash])]) as never)
+      expect(result.status).toBe('broken')
+    })
+
+    it('reports broken when the anchored row is not among the recorded ones', async () => {
+      const result = await service.verifyLedger(db([removal(1, [])]) as never)
+      expect(result.status).toBe('broken')
+    })
   })
 
   it('reports hash_mismatch when a stored row no longer recomputes', async () => {

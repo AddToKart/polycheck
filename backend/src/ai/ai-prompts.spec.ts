@@ -1,5 +1,11 @@
 import { CAMPUS_COURSES } from '@polycheck/shared'
-import { STUDENT_SYSTEM_PROMPT, SUPER_ADMIN_SYSTEM_PROMPT, TEACHER_SYSTEM_PROMPT, systemPromptFor } from './ai-prompts'
+import {
+  REPLY_FORMAT,
+  STUDENT_SYSTEM_PROMPT,
+  SUPER_ADMIN_SYSTEM_PROMPT,
+  TEACHER_SYSTEM_PROMPT,
+  systemPromptFor,
+} from './ai-prompts'
 
 describe('AI system prompts', () => {
   it('selects the teacher prompt with scope, privacy, and language rules', () => {
@@ -31,7 +37,7 @@ describe('AI system prompts', () => {
   })
 
   it('selects the student prompt with read-only, own-data, and no-guarantee rules', () => {
-    expect(systemPromptFor('student')).toBe(STUDENT_SYSTEM_PROMPT)
+    expect(systemPromptFor('student')).toBe(`${STUDENT_SYSTEM_PROMPT} ${REPLY_FORMAT}`)
     expect(STUDENT_SYSTEM_PROMPT).toContain('strictly read-only')
     expect(STUDENT_SYSTEM_PROMPT).toContain('Never guarantee a passing outcome')
     expect(STUDENT_SYSTEM_PROMPT).toContain('you will pass')

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/brand_theme.dart';
 
@@ -29,6 +30,7 @@ class CampusTextField extends StatefulWidget {
     this.focusNode,
     this.readOnly = false,
     this.maxLength,
+    this.inputFormatters,
   });
 
   final TextEditingController? controller;
@@ -57,6 +59,9 @@ class CampusTextField extends StatefulWidget {
   /// Hard input cap (optional). Mirrors the backend `@MaxLength` so an
   /// over-length value can never be typed, let alone submitted.
   final int? maxLength;
+
+  /// Keeps out characters the field can never accept.
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   State<CampusTextField> createState() => _CampusTextFieldState();
@@ -103,6 +108,7 @@ class _CampusTextFieldState extends State<CampusTextField> {
           onChanged: widget.onChanged,
           onSubmitted: widget.onSubmitted,
           maxLength: widget.maxLength,
+          inputFormatters: widget.inputFormatters,
           // The cap is enforced silently; the field's helper/error slot already
           // carries the guidance, so the Flutter counter would only add height.
           buildCounter:

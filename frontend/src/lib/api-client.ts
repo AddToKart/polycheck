@@ -35,6 +35,9 @@ import {
   type QacSection,
   type CalendarEvent,
   type CreateSubjectInput,
+  hasCheckedIn,
+  type RescheduleSessionInput,
+  type SubjectLifecycle,
   type CreateSectionInput,
   type CreateSessionInput,
   type SubmitAttendanceResult,
@@ -900,6 +903,24 @@ const apiBase = {
   createSubject(data: CreateSubjectInput): Promise<Subject> {
     return post("/subjects", data);
   },
+  // ── Subject archive ──
+  getArchivedSubjects(): Promise<Subject[]> {
+    return get("/subjects?archived=true");
+  },
+  getSubjectLifecycle(id: string): Promise<SubjectLifecycle> {
+    return get(`/subjects/${encodeURIComponent(id)}/lifecycle`);
+  },
+  archiveSubject(id: string): Promise<SubjectLifecycle> {
+    return post(`/subjects/${encodeURIComponent(id)}/archive`);
+  },
+  restoreSubject(id: string): Promise<SubjectLifecycle> {
+    return post(`/subjects/${encodeURIComponent(id)}/restore`);
+  },
+  deleteArchivedSubject(id: string, confirmCode: string): Promise<void> {
+    return post(`/subjects/${encodeURIComponent(id)}/delete-permanently`, {
+      confirmCode,
+    });
+  },
 
   // ── Sections ──
   async getSections(subjectId?: string): Promise<Section[]> {
@@ -1041,6 +1062,17 @@ const apiBase = {
         throw new Error("Session is not available offline. Sync before class.");
       return cached;
     }
+  },
+  async rescheduleSession(
+    sessionId: string,
+    data: RescheduleSessionInput,
+  ): Promise<Session> {
+    const session = await patch<Session>(
+      `/sessions/${encodeURIComponent(sessionId)}`,
+      data,
+    );
+    await cacheSessions([session]).catch(() => undefined);
+    return session;
   },
   createSession(data: CreateSessionInput): Promise<Session> {
     const { teacherId, ...body } = data;
@@ -1566,15 +1598,12 @@ const apiBase = {
         return { error: "The QR attendance window has expired" };
       }
       const existing = await getCachedAttendanceForSession(sessionId);
-      const alreadySaved = online
-        ? existing.some(
-            (record) =>
-              record.studentId === studentId &&
-              (checkpoint === "end"
-                ? Boolean(record.checkOutTime)
-                : Boolean(record.checkInTime)),
-          )
-        : existing.some((record) => record.studentId === studentId);
+      // The roster's `pending` rows are cached too; they are not check-ins.
+      const alreadySaved = existing.some(
+        (record) =>
+          record.studentId === studentId &&
+          hasCheckedIn(record, online, checkpoint),
+      );
       if (alreadySaved) {
         return {
           error:

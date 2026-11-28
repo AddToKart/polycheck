@@ -127,6 +127,10 @@ class StudentSessionDetail {
   String get sectionLabel =>
       formatSectionHeading(section: section.section, course: section.course);
 
+  /// Attendance is open right now.
+  bool get isLive =>
+      session.isActive && !(session.endedAt?.isNotEmpty ?? false);
+
   String get statusLabel {
     if (session.endedAt != null && session.endedAt!.isNotEmpty) {
       return 'Completed';
@@ -135,8 +139,9 @@ class StudentSessionDetail {
     return 'Scheduled';
   }
 
-  /// Signed class token already delivered to every enrolled client while the
-  /// session is armed (never a locally fabricated token).
+  /// The signed class token, when this client was sent one. The server sends it
+  /// to the instructor only, so for a student a missing token does not mean the
+  /// session has not started: check [isLive].
   String? get activeClassToken {
     if (!session.isActive || (session.endedAt?.isNotEmpty ?? false)) {
       return null;

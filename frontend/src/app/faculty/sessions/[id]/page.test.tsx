@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session } from '@polycheck/shared'
 
@@ -320,10 +320,18 @@ describe('faculty session cockpit', () => {
     expect(screen.getByText('Administrative Controls')).toBeInTheDocument()
     expect(screen.getByText('Click card to flip')).toBeInTheDocument()
 
-    // Selecting a status inside the modal explicitly updates attendance
+    // Pressing a status only asks: nothing is saved yet, and cancelling saves nothing
     const presentButton = screen.getByRole('button', { name: /^present$/i })
     fireEvent.click(presentButton)
+    const confirmation = await screen.findByRole('alertdialog')
+    expect(confirmation).toHaveTextContent('Pending will change to Present')
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Cancel' }))
+    expect(apiMock.addAttendanceRecord).not.toHaveBeenCalled()
 
+    fireEvent.click(screen.getByRole('button', { name: /^present$/i }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Confirm change' }))
+
+    await waitFor(() => expect(apiMock.addAttendanceRecord).toHaveBeenCalled())
     expect(apiMock.addAttendanceRecord).toHaveBeenCalledWith(
       expect.objectContaining({
         studentId: 'student-1',

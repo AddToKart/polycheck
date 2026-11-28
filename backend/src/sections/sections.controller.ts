@@ -8,6 +8,7 @@ import { EnrollStudentDto } from './dto/enroll-student.dto'
 import { EnrollImportRequestDto } from './dto/import-enrollments.dto'
 import { EnrollmentImportService } from './enrollment-import.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
+import { BlocksArchivedSubject } from '../common/guards/archived-subject.guard'
 
 @Controller('sections')
 export class SectionsController {
@@ -27,6 +28,7 @@ export class SectionsController {
   }
 
   @Post()
+  @BlocksArchivedSubject('subject', 'body.subjectId')
   @Roles('teacher')
   create(@Body() dto: CreateSectionDto, @Request() req: AuthenticatedRequest) {
     return this.sections.create(dto, req.user)
@@ -39,12 +41,14 @@ export class SectionsController {
   }
 
   @Patch(':id')
+  @BlocksArchivedSubject('section', 'params.id')
   @Roles('teacher')
   update(@Param('id') id: string, @Body() dto: UpdateSectionDto, @Request() req: AuthenticatedRequest) {
     return this.sections.update(id, dto, req.user)
   }
 
   @Delete(':id')
+  @BlocksArchivedSubject('section', 'params.id')
   @Roles('teacher')
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
@@ -58,18 +62,21 @@ export class SectionsController {
   }
 
   @Post(':id/enroll')
+  @BlocksArchivedSubject('section', 'params.id')
   @Roles('student')
   enrollViaCode(@Param('id') id: string, @Body() dto: EnrollViaCodeDto, @Request() req: AuthenticatedRequest) {
     return this.sections.enrollViaCode(id, req.user.id, dto.enrollmentCode)
   }
 
   @Post(':id/enroll-student')
+  @BlocksArchivedSubject('section', 'params.id')
   @Roles('teacher')
   enrollStudent(@Param('id') id: string, @Body() dto: EnrollStudentDto, @Request() req: AuthenticatedRequest) {
     return this.sections.enrollStudent(id, req.user.id, dto.studentId, dto.studentName)
   }
 
   @Post(':id/enrollments/import')
+  @BlocksArchivedSubject('section', 'params.id')
   @Roles('teacher')
   importEnrollments(
     @Param('id') id: string,
@@ -80,18 +87,21 @@ export class SectionsController {
   }
 
   @Delete(':id/students/:studentId')
+  @BlocksArchivedSubject('section', 'params.id')
   @Roles('teacher')
   removeStudent(@Param('id') id: string, @Param('studentId') studentId: string, @Request() req: AuthenticatedRequest) {
     return this.sections.removeStudent(id, req.user.id, studentId)
   }
 
   @Post(':id/enrollment-code/reset')
+  @BlocksArchivedSubject('section', 'params.id')
   @Roles('teacher')
   resetEnrollmentCode(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
     return this.sections.resetEnrollmentCode(id, req.user.id)
   }
 
   @Post(':id/enrollment-code/disable')
+  @BlocksArchivedSubject('section', 'params.id')
   @Roles('teacher')
   disableEnrollmentCode(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
     return this.sections.disableEnrollmentCode(id, req.user.id)

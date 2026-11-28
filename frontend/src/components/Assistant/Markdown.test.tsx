@@ -13,7 +13,7 @@ describe('Markdown', () => {
     expect(screen.queryByText(/\*\*92%\*\*/)).not.toBeInTheDocument()
   })
 
-  it('renders GFM tables with a header row and cells', () => {
+  it('shows a table as a readable list, one entry per row', () => {
     render(
       <Markdown
         content={[
@@ -25,10 +25,9 @@ describe('Markdown', () => {
       />,
     )
 
-    expect(screen.getByRole('table')).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'Metric' })).toBeInTheDocument()
-    expect(screen.getByRole('cell', { name: '12' })).toBeInTheDocument()
-    expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    const items = screen.getAllByRole('listitem')
+    expect(items.map((item) => item.textContent)).toEqual(['Present: 12', 'Late: 2'])
   })
 
   it('opens links in a new tab with a safe rel', () => {

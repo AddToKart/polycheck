@@ -126,10 +126,6 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_error != null) ...[
-          AuthErrorBanner(message: _error!),
-          const SizedBox(height: 14),
-        ],
         CampusTextField(
           controller: _studentIdController,
           label: 'Student number',
@@ -145,6 +141,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           onSubmitted: (_) => _submit(),
         ),
         const SizedBox(height: 20),
+        if (_error != null) ...[
+          AuthErrorBanner(message: _error!),
+          const SizedBox(height: 14),
+        ],
         CampusButton(
           label: _submitting ? 'Checking...' : 'Send reset link',
           loading: _submitting,

@@ -26,6 +26,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useNotifications } from '@/lib/notifications'
 import { ErrorDisplay, LoadingSpinner } from '@/lib/hooks'
 import { useUrlFilters } from '@/lib/hooks/use-url-filters'
+import { matchesQuery } from '@/lib/list-search'
 import { useRunMutation } from '@/lib/run-mutation'
 import { describeMutationError } from '@/lib/run-mutation'
 import { disputeReasonIcon, disputeReasonLabel } from '@/lib/dispute-reasons'
@@ -65,6 +66,7 @@ function DisputesContent() {
   // Filtering & Tab States
   const [activeTab, setActiveTab] = useState<'pending' | 'resolved'>('pending')
   const [searchQuery, setSearchQuery] = useState('')
+  const [sortOrder, setSortOrder] = useState('')
 
   // Expand/collapse states (collapsed by default)
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({})
@@ -86,7 +88,7 @@ function DisputesContent() {
 
   useEffect(() => {
     setPage(1)
-  }, [activeTab, searchQuery, selectedSubjectId, selectedSectionId, from, to])
+  }, [activeTab, searchQuery, sortOrder, selectedSubjectId, selectedSectionId, from, to])
 
   useEffect(() => {
     let active = true
@@ -225,12 +227,19 @@ function DisputesContent() {
       if (activeTab === 'pending' && r.disputeResolved) return false
       if (activeTab === 'resolved' && !r.disputeResolved) return false
       if (searchQuery) {
-        const q = searchQuery.toLowerCase()
-        if (!r.studentName.toLowerCase().includes(q) && !(r.studentId?.toLowerCase() || '').includes(q)) return false
+        const section = allSections.find((item) => item.id === r.sectionId)
+        const subject = subjects.find((item) => item.id === section?.subjectId)
+        return matchesQuery(searchQuery, [
+          r.studentName,
+          r.studentId,
+          subject?.name,
+          subject?.code,
+          section ? `Section ${section.section}` : undefined,
+        ])
       }
       return true
     }),
-    [allDisputes, activeTab, searchQuery]
+    [allDisputes, activeTab, searchQuery, allSections, subjects]
   )
 
   const records = useMemo(() =>
@@ -244,8 +253,12 @@ function DisputesContent() {
         if (to && recordDate > to) return false
       }
       return true
+    }).sort((left, right) => {
+      if (sortOrder === 'student') return left.studentName.localeCompare(right.studentName)
+      const newest = new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime()
+      return sortOrder === 'oldest' ? -newest : newest
     }),
-    [filteredByTabAndSearch, selectedSubjectId, selectedSectionId, from, to, sectionMap]
+    [filteredByTabAndSearch, selectedSubjectId, selectedSectionId, from, to, sectionMap, sortOrder]
   )
 
   const totalPages = Math.max(1, Math.ceil(records.length / DISPUTES_PER_PAGE))
@@ -419,14 +432,14 @@ function DisputesContent() {
                 htmlFor="dispute-search"
                 className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400"
               >
-                Student
+                Search
               </label>
               <div className="relative flex items-center border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900">
                 <Search className="pointer-events-none absolute left-3 w-4 h-4 text-zinc-400" />
                 <input
                   id="dispute-search"
                   type="search"
-                  placeholder="Search student or ID…"
+                  placeholder="Student, ID or subject…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="h-9 w-full bg-transparent pl-9 pr-3 text-sm outline-none dark:text-white"
@@ -458,6 +471,18 @@ function DisputesContent() {
               to={to}
               onFromChange={(value) => filters.setFilter('from', value)}
               onToChange={(value) => filters.setFilter('to', value)}
+            />
+            <FilterSelect
+              id="dispute-sort"
+              label="Sort by"
+              value={sortOrder}
+              onChange={setSortOrder}
+              options={[
+                { value: '', label: 'Newest first' },
+                { value: 'oldest', label: 'Oldest first' },
+                { value: 'student', label: 'Student (A to Z)' },
+              ]}
+              className="min-w-[11rem]"
             />
           </FilterBar>
 

@@ -261,7 +261,14 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
       children: <Widget>[
         _StepRail(step: _state.step),
         const SizedBox(height: 12),
+        switch (_state.step) {
+          BulkImportStep.input => _buildInput(context),
+          BulkImportStep.map => _buildMapping(context),
+          BulkImportStep.review => _buildReview(context),
+          BulkImportStep.report => _buildReport(context),
+        },
         if (_error != null || _state.error != null) ...<Widget>[
+          const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -276,14 +283,7 @@ class _BulkImportSheetState extends ConsumerState<BulkImportSheet> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
         ],
-        switch (_state.step) {
-          BulkImportStep.input => _buildInput(context),
-          BulkImportStep.map => _buildMapping(context),
-          BulkImportStep.review => _buildReview(context),
-          BulkImportStep.report => _buildReport(context),
-        },
         if (_state.step != BulkImportStep.report) ...<Widget>[
           const SizedBox(height: 10),
           TextButton.icon(

@@ -8,8 +8,10 @@ import {
   Optional,
 } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
-import { decodePinHashRecord } from '@polycheck/shared'
+import { decodePinHashRecord, formatCampusDate, sessionTimeIssue } from '@polycheck/shared'
+import type { RescheduleSessionDto } from './dto/reschedule-session.dto'
 import { verifyQRTokenNative } from '@polycheck/shared/token-node'
+import { IN_ACTIVE_SUBJECT } from '../common/active-subject'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { ActivateSessionDto, CreateBulkSessionsDto, CreateSessionDto } from './dto/create-session.dto'
@@ -80,7 +82,7 @@ export class SessionsService {
   ) {}
 
   async findAll(user: RequestUser, sectionId?: string) {
-    const where = await this.sessionScope(user, sectionId)
+    const where = await this.listScope(user, sectionId)
     const sessions = await this.prisma.session.findMany({
       where,
       orderBy: [{ date: 'desc' }, { startTime: 'desc' }],
@@ -89,7 +91,7 @@ export class SessionsService {
   }
 
   async findPage(user: RequestUser, sectionId: string | undefined, pagination: { limit: number; offset: number }) {
-    const where = await this.sessionScope(user, sectionId)
+    const where = await this.listScope(user, sectionId)
     const [sessions, total] = await Promise.all([
       this.prisma.session.findMany({
         where,
@@ -118,7 +120,7 @@ export class SessionsService {
   async create(dto: CreateSessionDto, user: RequestUser) {
     this.assertDate(dto.date, 'date')
     if (dto.rescheduledFromDate) this.assertDate(dto.rescheduledFromDate, 'rescheduledFromDate')
-    this.assertTimeRange(dto.startTime, dto.endTime)
+    this.assertClassWindow(dto.startTime, dto.endTime)
     const mode: SessionMode = dto.mode ?? 'in_person'
     this.assertModeShape(mode, dto.geofence)
     this.assertOnlineTimingDefaults(dto)
@@ -265,7 +267,7 @@ export class SessionsService {
    */
   private resolveBulkWindows(dto: CreateBulkSessionsDto) {
     if (dto.slots?.length) {
-      for (const slot of dto.slots) this.assertTimeRange(slot.startTime, slot.endTime)
+      for (const slot of dto.slots) this.assertClassWindow(slot.startTime, slot.endTime)
       return dto.slots.map((slot) => ({
         day: slot.day,
         startTime: slot.startTime,
@@ -276,7 +278,7 @@ export class SessionsService {
     if (!dto.daysOfWeek?.length || !dto.startTime || !dto.endTime) {
       throw new BadRequestException('Provide either class slots or daysOfWeek with startTime and endTime')
     }
-    this.assertTimeRange(dto.startTime, dto.endTime)
+    this.assertClassWindow(dto.startTime, dto.endTime)
     return dto.daysOfWeek.map((day) => ({
       day,
       startTime: dto.startTime as string,
@@ -309,6 +311,87 @@ export class SessionsService {
     }
     if (rows.length === 0) throw new BadRequestException('No session dates match the selected days')
     return rows
+  }
+
+  /**
+   * Moves a class that has not started. The first date, time and room it had are kept so every screen
+   * can label it Rescheduled; putting those back removes the label.
+   */
+  async reschedule(id: string, dto: RescheduleSessionDto, user: RequestUser) {
+    this.assertDate(dto.date, 'date')
+    this.assertClassWindow(dto.startTime, dto.endTime)
+    const session = await this.prisma.session.findUnique({
+      where: { id },
+      include: { _count: { select: { attendanceRecords: true } } },
+    })
+    if (!session) throw new NotFoundException('Session not found')
+    if (user.role !== 'teacher' || session.teacherId !== user.id) {
+      throw new ForbiddenException('You can only reschedule your own sessions')
+    }
+    const { _count, ...current } = session
+    const started = Boolean(
+      current.isActive ||
+      current.endedAt ||
+      current.qrToken ||
+      current.startQrToken ||
+      current.endQrToken ||
+      current.autoEndAt ||
+      _count.attendanceRecords > 0,
+    )
+    if (started) {
+      throw new ConflictException({
+        message: 'This class already has attendance or has been started, so it can no longer be moved.',
+        code: 'session_already_started',
+      })
+    }
+
+    const room = dto.room === undefined ? current.room : dto.room.trim() || null
+    const moved = dto.date !== current.date || dto.startTime !== current.startTime || dto.endTime !== current.endTime
+    if (!moved && room === current.room) {
+      throw new BadRequestException('Change the date, time or room first')
+    }
+    // A new date cannot be in the past. Fixing the room of an older, unused class stays possible.
+    if (moved && dto.date < formatCampusDate()) {
+      throw new BadRequestException('A class cannot be moved to a past date')
+    }
+
+    const [originalStart, originalEnd] = current.originalScheduleTime?.split(' - ') ?? [
+      current.startTime,
+      current.endTime,
+    ]
+    const originalDate = current.rescheduledFromDate ?? current.date
+    const originalRoom = current.rescheduledFromDate ? current.originalRoom : current.room
+    const backToOriginal =
+      dto.date === originalDate &&
+      dto.startTime === originalStart &&
+      dto.endTime === originalEnd &&
+      (room ?? '') === (originalRoom ?? '')
+
+    try {
+      // The same conditions again in the write, so a class started a moment ago is not moved.
+      const updated = await this.prisma.session.updateMany({
+        where: { id, isActive: false, endedAt: null, qrToken: null, startQrToken: null, endQrToken: null },
+        data: {
+          date: dto.date,
+          startTime: dto.startTime,
+          endTime: dto.endTime,
+          room,
+          isRescheduled: !backToOriginal,
+          rescheduledFromDate: backToOriginal ? null : originalDate,
+          originalScheduleTime: backToOriginal ? null : `${originalStart} - ${originalEnd}`,
+          originalRoom: backToOriginal ? null : originalRoom,
+        },
+      })
+      if (updated.count !== 1) throw new ConflictException('This class has just started and can no longer be moved')
+    } catch (error) {
+      if (this.isUniqueConflict(error)) {
+        throw new ConflictException('This section already has a session on that date and time')
+      }
+      throw error
+    }
+    const saved = await this.prisma.session.findUniqueOrThrow({ where: { id } })
+    this.realtime.emitSessionState(saved, 'rescheduled')
+    return this.present(saved, await this.teacherPublicKey(saved.teacherId), true)
   }
 
   async activate(id: string, dto: ActivateSessionDto, user: RequestUser) {
@@ -895,6 +978,10 @@ export class SessionsService {
     }
   }
 
+  private async listScope(user: RequestUser, sectionId?: string): Promise<Prisma.SessionWhereInput> {
+    return { AND: [await this.sessionScope(user, sectionId), { section: IN_ACTIVE_SUBJECT }] }
+  }
+
   private async sessionScope(user: RequestUser, sectionId?: string) {
     if (user.role === 'super_admin') {
       return { ...adminSessionWhere(user), ...(sectionId ? { sectionId } : {}) }
@@ -1028,8 +1115,10 @@ export class SessionsService {
     return new Date(issuedAt.getTime() + (duration + ONLINE_AUTO_END_BUFFER_MINUTES) * 60_000)
   }
 
-  private assertTimeRange(startTime: string, endTime: string) {
-    if (endTime <= startTime) throw new BadRequestException('endTime must be after startTime')
+  /** The length limits the apps show, applied to every class a person creates or moves. */
+  private assertClassWindow(startTime: string, endTime: string) {
+    const issue = sessionTimeIssue(startTime, endTime)
+    if (issue) throw new BadRequestException(issue)
   }
 
   private assertDate(value: string, field: string) {

@@ -36,9 +36,16 @@ class _BulkEdit {
 
 /// Create one session or a recurring bulk set.
 class SessionCreateScreen extends ConsumerStatefulWidget {
-  const SessionCreateScreen({super.key, this.initialSectionId});
+  const SessionCreateScreen({
+    super.key,
+    this.initialSectionId,
+    this.initialSubjectId,
+  });
 
   final String? initialSectionId;
+
+  /// Used when the form is opened from a subject without a particular section.
+  final String? initialSubjectId;
 
   @override
   ConsumerState<SessionCreateScreen> createState() =>
@@ -49,6 +56,8 @@ class _SessionCreateScreenState extends ConsumerState<SessionCreateScreen> {
   bool _loading = true;
   String? _error;
   bool _submitting = false;
+  // Set by the first press of the button; from then on missing choices are listed.
+  bool _attempted = false;
 
   List<Subject> _subjects = const <Subject>[];
   List<Section> _sections = const <Section>[];
@@ -154,9 +163,20 @@ class _SessionCreateScreenState extends ConsumerState<SessionCreateScreen> {
         _loading = false;
       });
       final initial = widget.initialSectionId;
-      if (initial != null) {
-        final match = sections.where((section) => section.id == initial);
-        if (match.isNotEmpty) _selectSection(match.first);
+      final match = sections.where((section) => section.id == initial);
+      if (match.isNotEmpty) {
+        _selectSection(match.first);
+        return;
+      }
+      final subjectId = widget.initialSubjectId;
+      if (subjectId == null) return;
+      final ofSubject = sections.where(
+        (section) => section.subjectId == subjectId,
+      );
+      if (ofSubject.length == 1) {
+        _selectSection(ofSubject.first);
+      } else if (ofSubject.isNotEmpty) {
+        _onSubjectChanged(subjectId);
       }
     } on ApiRequestError catch (error) {
       if (!mounted) return;
@@ -292,9 +312,80 @@ class _SessionCreateScreenState extends ConsumerState<SessionCreateScreen> {
     existingDates: _existingSessions.map((session) => session.date).toSet(),
   );
 
-  bool _validTime(String value) => isValidCampusTime(value);
-
   bool _validDate(String value) => parseCampusDate(value) != null;
+
+  String? get _timeIssue =>
+      sessionTimeIssue(_start.text.trim(), _end.text.trim());
+
+  String? get _qrIssue =>
+      rangeIssue(_qrValidity.text, minQrValidityMinutes, maxQrValidityMinutes);
+
+  String? get _graceIssue =>
+      rangeIssue(_grace.text, minGracePeriodMinutes, maxGracePeriodMinutes);
+
+  String? _dateIssue(String value) {
+    if (!_validDate(value)) return 'Choose a date.';
+    if (value.compareTo(formatCampusDate()) < 0) {
+      return 'The date cannot be in the past.';
+    }
+    return null;
+  }
+
+  /// Everything that stops the form, in the order the fields appear.
+  List<String> get _problems {
+    final problems = <String>[];
+    if (_subjectId.isEmpty) {
+      problems.add('Choose a subject.');
+    } else if (_section == null) {
+      problems.add('Choose a section.');
+    }
+    if (_bulkMode) {
+      final first = _bulkStart.text.trim();
+      final last = _bulkEnd.text.trim();
+      final firstIssue = _dateIssue(first);
+      if (firstIssue != null) {
+        problems.add('First date: $firstIssue');
+      } else if (!_validDate(last)) {
+        problems.add('Last date: Choose a date.');
+      } else if (last.compareTo(first) < 0) {
+        problems.add('The last date must be on or after the first date.');
+      } else if (parseCampusDate(
+            last,
+          )!.difference(parseCampusDate(first)!).inDays >
+          366) {
+        problems.add('Recurring sessions are limited to one year.');
+      }
+      if (_section != null) {
+        final selected = _bulkRows.where((row) => row.selected).toList();
+        if (selected.isEmpty) {
+          problems.add('Select at least one class meeting.');
+        }
+        for (final row in selected) {
+          final issue = sessionTimeIssue(row.startTime, row.endTime);
+          if (issue != null) problems.add('${row.day}: $issue');
+        }
+        if (_bulkConflicts.isNotEmpty) {
+          problems.add(
+            '${_bulkConflicts.length} date(s) already have a session for this '
+            'section (${_bulkConflicts.take(3).join(', ')}). Remove them or '
+            'choose a different range.',
+          );
+        }
+      }
+    } else {
+      final dateIssue = _dateIssue(_date.text.trim());
+      if (dateIssue != null) problems.add(dateIssue);
+      final timeIssue = _timeIssue;
+      if (timeIssue != null) problems.add(timeIssue);
+      final duplicate = _duplicateDate;
+      if (duplicate != null) problems.add(duplicate);
+    }
+    if (_mode == SessionMode.inPerson) {
+      if (_qrIssue != null) problems.add('QR validity: $_qrIssue');
+      if (_graceIssue != null) problems.add('Grace period: $_graceIssue');
+    }
+    return problems;
+  }
 
   Future<void> _submit() async {
     if (_submitting) return;
@@ -305,17 +396,18 @@ class _SessionCreateScreenState extends ConsumerState<SessionCreateScreen> {
       setState(() => _error = 'Choose a subject and section first.');
       return;
     }
-    final qrValidity = int.tryParse(_qrValidity.text.trim()) ?? 5;
-    final grace = int.tryParse(_grace.text.trim()) ?? 15;
-    if (qrValidity < minQrValidityMinutes ||
-        qrValidity > maxQrValidityMinutes) {
-      setState(() => _error = 'QR validity must be 1–15 minutes.');
-      return;
-    }
-    if (grace < minGracePeriodMinutes || grace > maxGracePeriodMinutes) {
-      setState(() => _error = 'Grace period must be 0–60 minutes.');
-      return;
-    }
+    setState(() {
+      _attempted = true;
+      _error = null;
+    });
+    if (_problems.isNotEmpty) return;
+    // Online sessions keep their defaults; the fields are only for in-person.
+    final qrValidity = _mode == SessionMode.inPerson
+        ? int.parse(_qrValidity.text.trim())
+        : 5;
+    final grace = _mode == SessionMode.inPerson
+        ? int.parse(_grace.text.trim())
+        : 15;
     final geofence = _mode == SessionMode.inPerson
         ? GeofenceConfig(
             latitude: _latitude,
@@ -329,29 +421,7 @@ class _SessionCreateScreenState extends ConsumerState<SessionCreateScreen> {
     });
     try {
       if (_bulkMode) {
-        if (!_validDate(_bulkStart.text.trim()) ||
-            !_validDate(_bulkEnd.text.trim())) {
-          throw _FormIssue('Choose valid bulk start and end dates.');
-        }
         final rows = _bulkRows;
-        final invalid = firstInvalidSlotRow(rows);
-        if (invalid != null) {
-          throw _FormIssue(
-            'Every selected meeting needs a start/end time with the end after '
-            'the start (${invalid.day}).',
-          );
-        }
-        if (rows.where((row) => row.selected).isEmpty) {
-          throw _FormIssue('Select at least one class meeting.');
-        }
-        final conflicts = _bulkConflicts;
-        if (conflicts.isNotEmpty) {
-          throw _FormIssue(
-            '${conflicts.length} date(s) already have a session for this '
-            'section (${conflicts.take(3).join(', ')}). Remove them or choose '
-            'a different range.',
-          );
-        }
         final input = buildBulkSessionInput(
           section: section,
           subjectName: subject.first.name,
@@ -379,18 +449,6 @@ class _SessionCreateScreenState extends ConsumerState<SessionCreateScreen> {
       }
 
       final date = _date.text.trim();
-      if (!_validDate(date)) {
-        throw _FormIssue('Choose a valid session date.');
-      }
-      if (!_validTime(_start.text) || !_validTime(_end.text)) {
-        throw _FormIssue('Enter start/end times in 24-hour HH:mm form.');
-      }
-      if (_end.text.trim().compareTo(_start.text.trim()) <= 0) {
-        throw _FormIssue('The end time must be after the start time.');
-      }
-      if (_duplicateDate != null) {
-        throw _FormIssue(_duplicateDate!);
-      }
       final duplicate = duplicateSessionOnDate(_existingSessions, date);
       final input = buildSingleSessionInput(
         section: section,
@@ -419,8 +477,6 @@ class _SessionCreateScreenState extends ConsumerState<SessionCreateScreen> {
         tone: CampusToastTone.success,
       );
       context.pushReplacement('/faculty/sessions/${created.id}');
-    } on _FormIssue catch (issue) {
-      if (mounted) setState(() => _error = issue.message);
     } on ApiRequestError catch (error) {
       if (mounted) setState(() => _error = error.message);
     } catch (error) {
@@ -451,7 +507,6 @@ class _SessionCreateScreenState extends ConsumerState<SessionCreateScreen> {
   @override
   Widget build(BuildContext context) {
     final tokens = BrandTheme.of(context);
-    final section = _section;
     final subjectSections = _sections
         .where(
           (candidate) =>
@@ -478,16 +533,6 @@ class _SessionCreateScreenState extends ConsumerState<SessionCreateScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (_error != null) ...[
-                    CampusCard(
-                      borderColor: tokens.gold,
-                      child: Text(
-                        _error!,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
                   CampusCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -619,29 +664,32 @@ class _SessionCreateScreenState extends ConsumerState<SessionCreateScreen> {
                             ),
                           if (slots.isNotEmpty) const SizedBox(height: 10),
                           Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Expanded(
-                                child: CampusTextField(
+                                child: CampusTimeField(
                                   controller: _start,
                                   label: 'Start (HH:mm)',
-                                  keyboardType: TextInputType.datetime,
+                                  onChanged: (_) => setState(() {}),
                                 ),
                               ),
                               const SizedBox(width: 8),
                               Expanded(
-                                child: CampusTextField(
+                                child: CampusTimeField(
                                   controller: _end,
                                   label: 'End (HH:mm)',
-                                  keyboardType: TextInputType.datetime,
+                                  onChanged: (_) => setState(() {}),
                                 ),
                               ),
                             ],
                           ),
+                          if (_timeIssue != null) _FieldError(_timeIssue!),
                           const SizedBox(height: 10),
                           CampusTextField(
                             controller: _room,
                             label: 'Room (optional)',
                             hint: 'e.g. CCIS Lab 3',
+                            maxLength: sessionRoomMaxLength,
                           ),
                           if (_duplicateDate != null) ...[
                             const SizedBox(height: 10),
@@ -757,20 +805,29 @@ class _SessionCreateScreenState extends ConsumerState<SessionCreateScreen> {
                         const SizedBox(height: 8),
                         if (_mode == SessionMode.inPerson) ...[
                           Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Expanded(
                                 child: CampusTextField(
+                                  key: const ValueKey<String>('qr-validity'),
                                   controller: _qrValidity,
                                   label: 'QR validity (1–15 min)',
                                   keyboardType: TextInputType.number,
+                                  inputFormatters: wholeNumberFormatters(2),
+                                  errorText: _qrIssue,
+                                  onChanged: (_) => setState(() {}),
                                 ),
                               ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: CampusTextField(
+                                  key: const ValueKey<String>('qr-grace'),
                                   controller: _grace,
                                   label: 'Grace (0–60 min)',
                                   keyboardType: TextInputType.number,
+                                  inputFormatters: wholeNumberFormatters(2),
+                                  errorText: _graceIssue,
+                                  onChanged: (_) => setState(() {}),
                                 ),
                               ),
                             ],
@@ -831,25 +888,22 @@ class _SessionCreateScreenState extends ConsumerState<SessionCreateScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
+                  FormProblems(
+                    problems: [?_error, if (_attempted) ..._problems],
+                  ),
                   CampusButton(
                     label: _bulkMode
                         ? 'Create $bulkCount session(s)'
                         : 'Create session',
                     icon: Icons.event_available_outlined,
                     loading: _submitting,
-                    onPressed: _submitting || section == null ? null : _submit,
+                    onPressed: _submitting ? null : _submit,
                   ),
                 ],
               ),
             ),
     );
   }
-}
-
-class _FormIssue implements Exception {
-  const _FormIssue(this.message);
-
-  final String message;
 }
 
 class _DateField extends StatelessWidget {
@@ -945,6 +999,7 @@ class _BulkRowEditorState extends State<_BulkRowEditor> {
                 child: TextField(
                   controller: widget.row.start,
                   keyboardType: TextInputType.datetime,
+                  inputFormatters: timeInputFormatters,
                   onChanged: (_) {
                     setState(() {});
                     widget.onChanged();
@@ -960,6 +1015,7 @@ class _BulkRowEditorState extends State<_BulkRowEditor> {
                 child: TextField(
                   controller: widget.row.end,
                   keyboardType: TextInputType.datetime,
+                  inputFormatters: timeInputFormatters,
                   onChanged: (_) {
                     setState(() {});
                     widget.onChanged();
@@ -972,7 +1028,39 @@ class _BulkRowEditorState extends State<_BulkRowEditor> {
               ),
             ],
           ),
+          if (widget.row.selected &&
+              sessionTimeIssue(
+                    widget.row.start.text.trim(),
+                    widget.row.end.text.trim(),
+                  ) !=
+                  null)
+            _FieldError(
+              sessionTimeIssue(
+                widget.row.start.text.trim(),
+                widget.row.end.text.trim(),
+              )!,
+            ),
         ],
+      ),
+    );
+  }
+}
+
+/// A short reason under the fields it is about.
+class _FieldError extends StatelessWidget {
+  const _FieldError(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Text(
+        message,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.error,
+        ),
       ),
     );
   }

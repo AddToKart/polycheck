@@ -6,6 +6,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common'
+import { IN_ACTIVE_SUBJECT } from '../common/active-subject'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { AttendanceRecord, AttendanceStatus, Prisma } from '../prisma/client'
@@ -39,7 +40,7 @@ export class DisputesService {
     search?: string,
   ) {
     const where: Prisma.AttendanceRecordWhereInput = {
-      ...(sessionId ? { sessionId } : {}),
+      ...(sessionId ? { sessionId } : { section: IN_ACTIVE_SUBJECT }),
       ...(user.role === 'student'
         ? { studentId: user.id }
         : user.role === 'teacher'

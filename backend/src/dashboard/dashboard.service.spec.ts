@@ -109,10 +109,13 @@ describe('DashboardService', () => {
     expect(prisma.enrollment.findMany).not.toHaveBeenCalled()
     expect(prisma.user.findMany).not.toHaveBeenCalled()
     expect(prisma.section.findMany.mock.calls[0][0].where.AND[0]).toEqual({
-      enrollments: { some: { studentId: 'student-1' } },
+      AND: [{ enrollments: { some: { studentId: 'student-1' } } }, { subject: { archivedAt: null } }],
     })
     expect(prisma.session.findMany.mock.calls[0][0].where.AND[0]).toEqual({
-      section: { enrollments: { some: { studentId: 'student-1' } } },
+      AND: [
+        { section: { enrollments: { some: { studentId: 'student-1' } } } },
+        { section: { subject: { archivedAt: null } } },
+      ],
     })
   })
 
@@ -252,7 +255,10 @@ describe('DashboardService', () => {
     })
     expect(prisma.attendanceRecord.findMany.mock.calls[0][0].take).toBe(10)
     expect(prisma.attendanceRecord.findMany.mock.calls[0][0].where).toEqual({
-      AND: [{ session: { teacherId: 'teacher-1' } }, { status: { not: 'pending' } }],
+      AND: [
+        { AND: [{ session: { teacherId: 'teacher-1' } }, { section: { subject: { archivedAt: null } } }] },
+        { status: { not: 'pending' } },
+      ],
     })
     expect(prisma.attendanceRecord.findMany.mock.calls[1][0].take).toBe(5)
     expect(prisma.attendanceRecord.groupBy).toHaveBeenCalledWith(
@@ -450,7 +456,7 @@ describe('DashboardService', () => {
         AND: [{}, { isActive: true, endedAt: null }],
       })
       expect(prisma.attendanceRecord.count.mock.calls[0][0].where).toEqual({
-        AND: [{}, { status: 'disputed', disputeResolved: false }],
+        AND: [{}, { status: 'disputed', disputeResolved: false }, { section: { subject: { archivedAt: null } } }],
       })
     })
 
@@ -477,6 +483,7 @@ describe('DashboardService', () => {
         AND: [
           { session: { section: { teacher: { department: { equals: 'CCIS', mode: 'insensitive' } } } } },
           { status: 'disputed', disputeResolved: false },
+          { section: { subject: { archivedAt: null } } },
         ],
       })
     })

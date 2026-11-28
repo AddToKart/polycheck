@@ -58,7 +58,31 @@ void main() {
       ),
     );
 
-    expect(find.text('Awaiting instructor activation'), findsOneWidget);
+    expect(find.text('Not started yet'), findsOneWidget);
+    expect(find.text('Attendance is open'), findsNothing);
     expect(find.text('QAC evidence upload'), findsNothing);
+  });
+
+  // The server never sends a student the QR token, so a running class used to be
+  // reported as not yet started.
+  testWidgets('a running class without a token says attendance is open', (
+    tester,
+  ) async {
+    await pumpSession(
+      tester,
+      StudentSessionDetail(
+        session: testSession(),
+        section: testSection(),
+        subject: testSubject,
+        proofs: const <ProofOfClass>[],
+        isQac: true,
+      ),
+    );
+
+    expect(find.text('Active now'), findsOneWidget);
+    expect(find.text('Attendance is open'), findsOneWidget);
+    expect(find.byKey(const ValueKey('open-scanner')), findsOneWidget);
+    expect(find.text('Not started yet'), findsNothing);
+    expect(find.byType(QrImageView), findsNothing);
   });
 }

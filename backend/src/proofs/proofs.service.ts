@@ -8,6 +8,7 @@ import {
   type QacSection,
 } from '@polycheck/shared'
 import { lockStudentSection } from '../common/student-section-lock'
+import { IN_ACTIVE_SUBJECT } from '../common/active-subject'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { Session } from '../prisma/client'
@@ -43,7 +44,11 @@ export class ProofsService {
   /** The student's QAC sections, each with the classes happening today. */
   async qacSections(user: RequestUser, now = new Date()): Promise<QacSection[]> {
     const roles = await this.prisma.sectionRole.findMany({
-      where: { studentId: user.id, role: 'qac', section: { enrollments: { some: { studentId: user.id } } } },
+      where: {
+        studentId: user.id,
+        role: 'qac',
+        section: { enrollments: { some: { studentId: user.id } }, ...IN_ACTIVE_SUBJECT },
+      },
       include: {
         section: {
           select: {

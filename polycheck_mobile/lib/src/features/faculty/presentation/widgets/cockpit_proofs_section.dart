@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/polycheck_core.dart';
+import '../../../../core/widgets/photo_report_button.dart';
 import '../../../../core/widgets/proof_photo_grid.dart';
 
 final cockpitProofsProvider = FutureProvider.autoDispose
@@ -85,9 +86,16 @@ class CockpitProofsSection extends ConsumerWidget {
                     'No photos yet. Your QAC officers add them during class.',
                     style: muted,
                   )
-                : ProofPhotoGrid(
-                    proofs: items,
-                    onDelete: (proof) => _delete(context, ref, proof),
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      PhotoReportButton(sessionId: sessionId),
+                      const SizedBox(height: 10),
+                      ProofPhotoGrid(
+                        proofs: items,
+                        onDelete: (proof) => _delete(context, ref, proof),
+                      ),
+                    ],
                   ),
             loading: () => Text('Loading photos…', style: muted),
             error: (_, _) => Text(

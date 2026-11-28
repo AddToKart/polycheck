@@ -13,6 +13,7 @@ import '../data/session_wizard.dart';
 import '../data/teacher_signing_key.dart';
 import 'widgets/cockpit_dialogs.dart';
 import 'widgets/faculty_shell.dart';
+import 'widgets/status_change_dialog.dart';
 import 'widgets/qr_token_panel.dart';
 import 'widgets/cockpit_proofs_section.dart';
 
@@ -172,6 +173,13 @@ class _SessionCockpitScreenState extends ConsumerState<SessionCockpitScreen> {
         attendanceApi.getAttendanceRecords(sessionId: session.id),
       ]);
       if (!mounted) return;
+      final loadedSection = results[0] as Section?;
+      if (loadedSection?.subjectArchivedAt != null) {
+        context.pushReplacement(
+          '/faculty/subjects/${loadedSection!.subjectId}',
+        );
+        return;
+      }
       final roster = results[1] as List<SectionStudent>? ?? const [];
       setState(() {
         _session = session;
@@ -511,8 +519,9 @@ class _SessionCockpitScreenState extends ConsumerState<SessionCockpitScreen> {
     }
   }
 
-  Future<void> _cycleStatus(CockpitRosterRow row) async {
-    final session = _session;
+  Future<void> _changeStatus(CockpitRosterRow tapped) async {
+    var row = tapped;
+    var session = _session;
     if (session == null || _busyAction != null || !session.isActive) {
       if (session != null && !session.isActive) {
         CampusToast.showIn(
@@ -537,7 +546,36 @@ class _SessionCockpitScreenState extends ConsumerState<SessionCockpitScreen> {
       );
       return;
     }
-    final next = nextAttendanceStatus(row.status);
+    final next = await showStatusChangeDialog(
+      context,
+      studentName: row.studentName,
+      subject: 'this class meeting',
+      current: row.status,
+    );
+    if (next == null || !mounted) return;
+    // A scan or the class ending may have arrived while the question was open.
+    session = _session;
+    if (session == null || !session.isActive || _busyAction != null) {
+      CampusToast.showIn(
+        context,
+        'The session changed. Nothing was saved.',
+        tone: CampusToastTone.warning,
+      );
+      return;
+    }
+    final latest = buildCockpitRoster(
+      students: _students,
+      records: _records,
+    ).where((candidate) => candidate.studentId == row.studentId);
+    if (latest.isEmpty || latest.first.status != row.status) {
+      CampusToast.showIn(
+        context,
+        "${row.studentName}'s status just changed. Check it and try again.",
+        tone: CampusToastTone.warning,
+      );
+      return;
+    }
+    row = latest.first;
     final existing = row.record;
     if (existing != null) {
       final optimistic = existing.copyWith(status: next, manuallySet: true);
@@ -1039,7 +1077,7 @@ class _SessionCockpitScreenState extends ConsumerState<SessionCockpitScreen> {
                             horizontal: 12,
                             vertical: 8,
                           ),
-                          onTap: () => _cycleStatus(row),
+                          onTap: () => _changeStatus(row),
                           child: Row(
                             children: [
                               Expanded(

@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ProofPhotoGrid } from '@/components/proofs/ProofPhotoGrid'
 import { ProofUploader } from '@/components/proofs/ProofUploader'
+import { PhotoReportButton } from '@/components/proofs/PhotoReportButton'
 
 const heading = (section: QacSection) => formatSectionHeading({ section: section.section, course: section.course })
 const times = (slot: QacSessionSlot) => `${formatTime(slot.startTime)} to ${formatTime(slot.endTime)}`
@@ -179,6 +180,17 @@ export default function QacPhotosPage() {
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">
                       {section.subjectCode} · {heading(section)} · {section.teacherName}
                     </p>
+                  </div>
+                  <div className="space-y-2 border-y border-zinc-200 py-3 dark:border-zinc-800">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Compile this section&rsquo;s class photos, with their date and time stamps, into one PDF.
+                    </p>
+                    <PhotoReportButton
+                      key={section.sectionId}
+                      scope={{ sectionId: section.sectionId }}
+                      label={section.section}
+                      chooseDates
+                    />
                   </div>
                   {open.map((slot) => (
                     <OpenSession key={slot.id} section={section} slot={slot} user={user} onChanged={load} />

@@ -11,13 +11,17 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { FilterBar, FilterChipGroup, FilterDateRange, FilterSelect } from '@/components/FilterBar'
+import { FilterBar, FilterChipGroup, FilterDateRange, FilterField, FilterSelect } from '@/components/FilterBar'
+import { Input } from '@/components/ui/input'
+import { RescheduleSessionDialog } from '@/components/faculty/RescheduleSessionDialog'
+import { canReschedule, SESSION_SORT_OPTIONS, sortSessions } from '@/lib/session-list'
+import { matchesQuery } from '@/lib/list-search'
 import { PaginationBar } from '@/components/ui/pagination-bar'
 import { useUrlFilters } from '@/lib/hooks/use-url-filters'
 import { createSessionHref, sectionContextHref } from '@/lib/section-context'
 import { deriveSessionStatus, SESSION_STATUS_LABELS } from '@/lib/session-status'
 
-const SESSIONS_PER_PAGE = 10
+const PAGE_SIZES = ['10', '25', '50']
 
 const FILTER_SCHEMA = {
   subjectId: { defaultValue: '' },
@@ -25,7 +29,13 @@ const FILTER_SCHEMA = {
   status: { defaultValue: '', allowed: ['active', 'scheduled', 'completed', 'rescheduled'] },
   from: { defaultValue: '' },
   to: { defaultValue: '' },
+  q: { defaultValue: '' },
+  sort: { defaultValue: '', allowed: ['oldest', 'upcoming', 'subject'] },
+  size: { defaultValue: '', allowed: ['25', '50'] },
 } as const
+
+const shortDate = (date: string) =>
+  new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 
 const STATUS_BADGE_CLASSES: Record<ReturnType<typeof deriveSessionStatus>, string> = {
   active: 'bg-golden text-maroon-dark',
@@ -38,7 +48,9 @@ function SessionsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const filters = useUrlFilters(FILTER_SCHEMA)
-  const { subjectId, sectionId, status, from, to } = filters.values
+  const { subjectId, sectionId, status, from, to, q, sort, size } = filters.values
+  const pageSize = Number(size || PAGE_SIZES[0])
+  const [rescheduling, setRescheduling] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const [allSubjects, setAllSubjects] = useState<Subject[]>([])
@@ -48,7 +60,7 @@ function SessionsContent() {
 
   useEffect(() => {
     setPage(1)
-  }, [subjectId, sectionId, status, from, to])
+  }, [subjectId, sectionId, status, from, to, q, sort, size])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -78,24 +90,36 @@ function SessionsContent() {
 
   const filteredSessions = useMemo(
     () =>
-      sessions.filter((session) => {
-        const section = sectionMap.get(session.sectionId)
-        if (subjectId && section?.subjectId !== subjectId) return false
-        if (sectionId && session.sectionId !== sectionId) return false
-        if (status && deriveSessionStatus(session) !== status) return false
-        if (from && session.date < from) return false
-        if (to && session.date > to) return false
-        return true
-      }),
-    [sessions, sectionMap, subjectId, sectionId, status, from, to],
+      sortSessions(
+        sessions.filter((session) => {
+          const section = sectionMap.get(session.sectionId)
+          if (subjectId && section?.subjectId !== subjectId) return false
+          if (sectionId && session.sectionId !== sectionId) return false
+          if (status && deriveSessionStatus(session) !== status) return false
+          if (from && session.date < from) return false
+          if (to && session.date > to) return false
+          if (!q) return true
+          const subject = section ? allSubjects.find((item) => item.id === section.subjectId) : undefined
+          return matchesQuery(q, [
+            session.subjectName,
+            subject?.code,
+            section ? formatSectionHeading(section) : undefined,
+            session.room,
+            session.date,
+            shortDate(session.date),
+          ])
+        }),
+        sort,
+      ),
+    [sessions, sectionMap, allSubjects, subjectId, sectionId, status, from, to, q, sort],
   )
 
-  const totalPages = Math.max(1, Math.ceil(filteredSessions.length / SESSIONS_PER_PAGE))
+  const totalPages = Math.max(1, Math.ceil(filteredSessions.length / pageSize))
   const safePage = Math.min(page, totalPages)
 
   const pagedSessions = useMemo(
-    () => filteredSessions.slice((safePage - 1) * SESSIONS_PER_PAGE, safePage * SESSIONS_PER_PAGE),
-    [filteredSessions, safePage],
+    () => filteredSessions.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [filteredSessions, safePage, pageSize],
   )
 
   type GroupedSessions = Record<string, Session[]>
@@ -275,6 +299,32 @@ function SessionsContent() {
               onFromChange={(value) => filters.setFilter('from', value)}
               onToChange={(value) => filters.setFilter('to', value)}
             />
+            <FilterField id="session-search" label="Search" className="min-w-[12rem] flex-1">
+              <Input
+                id="session-search"
+                type="search"
+                value={q}
+                onChange={(event) => filters.setFilter('q', event.target.value)}
+                placeholder="Subject, section, room or date"
+                className="h-9 rounded-none"
+              />
+            </FilterField>
+            <FilterSelect
+              id="session-sort"
+              label="Sort by"
+              value={sort}
+              onChange={(value) => filters.setFilter('sort', value)}
+              options={SESSION_SORT_OPTIONS.map((option) => ({ ...option }))}
+              className="min-w-[11rem]"
+            />
+            <FilterSelect
+              id="session-page-size"
+              label="Per page"
+              value={size || PAGE_SIZES[0]}
+              onChange={(value) => filters.setFilter('size', value === PAGE_SIZES[0] ? '' : value)}
+              options={PAGE_SIZES.map((value) => ({ value, label: value }))}
+              className="min-w-[6rem]"
+            />
           </FilterBar>
 
           {error ? (
@@ -284,7 +334,6 @@ function SessionsContent() {
           ) : null}
 
           {Object.entries(grouped)
-            .sort(([a], [b]) => a.localeCompare(b))
             .map(([subjectName, group]) => {
               const subject = allSubjects.find((s) => s.id === group.subjectId)
               return (
@@ -342,6 +391,12 @@ function SessionsContent() {
                                       month: 'short',
                                       day: 'numeric',
                                     })}
+                                    {session.isRescheduled && session.rescheduledFromDate ? (
+                                      <span className="mt-0.5 block text-xs font-medium text-maroon dark:text-golden">
+                                        Rescheduled from {shortDate(session.rescheduledFromDate)}
+                                        {session.originalScheduleTime ? `, ${session.originalScheduleTime}` : ''}
+                                      </span>
+                                    ) : null}
                                   </td>
                                   <td className="px-3 py-3 sm:px-6 text-zinc-600 dark:text-zinc-400">
                                     {session.startTime} - {session.endTime}
@@ -355,6 +410,21 @@ function SessionsContent() {
                                     </Badge>
                                   </td>
                                   <td className="px-3 py-3 sm:px-6 text-right">
+                                    <div className="flex flex-wrap justify-end gap-2">
+                                    {user.role === 'teacher' && canReschedule(session) && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        aria-label={`Reschedule session on ${session.date}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setRescheduling(session)
+                                        }}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                      >
+                                        Reschedule
+                                      </Button>
+                                    )}
                                     {user.role === 'teacher' && !session.isActive && (
                                       <Button
                                         size="sm"
@@ -366,6 +436,7 @@ function SessionsContent() {
                                         Activate
                                       </Button>
                                     )}
+                                    </div>
                                   </td>
                                 </tr>
                               )
@@ -384,7 +455,7 @@ function SessionsContent() {
               page={safePage}
               totalPages={totalPages}
               totalItems={filteredSessions.length}
-              pageSize={SESSIONS_PER_PAGE}
+              pageSize={pageSize}
               itemName="sessions"
               onPageChange={setPage}
               showNumbers
@@ -403,7 +474,7 @@ function SessionsContent() {
                 {sectionId ? 'No sessions match this section and filters' : 'No sessions match these filters'}
               </p>
               <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                Adjust the subject, section, status, or dates.
+                Adjust the search, subject, section, status, or dates.
               </p>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                 {sectionId ? (
@@ -419,6 +490,17 @@ function SessionsContent() {
           ) : null}
         </div>
       </main>
+      {rescheduling ? (
+        <RescheduleSessionDialog
+          session={rescheduling}
+          label={`${rescheduling.subjectName}, ${getSectionLabel(rescheduling.sectionId)}`}
+          onClose={() => setRescheduling(null)}
+          onSaved={(saved) => {
+            setSessions((current) => current.map((item) => (item.id === saved.id ? saved : item)))
+            setRescheduling(null)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

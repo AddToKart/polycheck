@@ -3,6 +3,7 @@
 import { Component, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { flattenMarkdownTables } from '@polycheck/shared'
 import { cn } from '@/lib/utils'
 
 /**
@@ -161,7 +162,7 @@ export function Markdown({ content, className }: { content: string; className?: 
     <div className={cn('min-w-0 break-words', className)}>
       <MarkdownBoundary fallback={content} resetKey={content}>
         <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={markdownComponents}>
-          {content}
+          {flattenMarkdownTables(content)}
         </ReactMarkdown>
       </MarkdownBoundary>
     </div>

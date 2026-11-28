@@ -10,7 +10,7 @@ import { AI_TERMS_VERSION } from '@polycheck/shared'
 import type { AiChatAttachment, AiChatMessage, AiStreamEvent, AiThreadSummary } from '@polycheck/shared'
 import { AiAccessService } from './ai-access.service'
 import { AiChatService } from './ai-chat.service'
-import { STUDENT_SYSTEM_PROMPT } from './ai-prompts'
+import { systemPromptFor } from './ai-prompts'
 
 const teacher = { id: 'teacher-1', role: 'teacher' as const }
 const otherTeacher = { id: 'teacher-2', role: 'teacher' as const }
@@ -133,7 +133,7 @@ describe('AiChatService', () => {
 
     expect(registry.toOpenAiTools).toHaveBeenCalledWith('student')
     const sent = provider.chat.mock.calls[0][0] as Array<{ role: string; content: string }>
-    expect(sent[0]).toEqual({ role: 'system', content: STUDENT_SYSTEM_PROMPT })
+    expect(sent[0]).toEqual({ role: 'system', content: systemPromptFor('student') })
     const stored = store.get(`ai:thread:${result.threadId}`) as { role: string; userId: string }
     expect(stored).toMatchObject({ role: 'student', userId: 'student-1' })
   })

@@ -4,6 +4,7 @@ import '../../../../core/models/section_role.dart';
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/widgets/campus_dialog.dart';
 import '../../../../core/widgets/campus_text_field.dart';
+import '../../../../core/widgets/form_feedback.dart';
 
 /// Longest a permission can last and most sessions it can allow, mirroring the
 /// server.
@@ -88,6 +89,7 @@ class _PermissionFormState extends State<_PermissionForm> {
             label: 'Number of sessions',
             controller: _sessions,
             keyboardType: TextInputType.number,
+            inputFormatters: wholeNumberFormatters(2),
           ),
           const SizedBox(height: 12),
           const Text('Choose how long it lasts'),
@@ -106,6 +108,7 @@ class _PermissionFormState extends State<_PermissionForm> {
             hint: 'For example 3',
             controller: _custom,
             keyboardType: TextInputType.number,
+            inputFormatters: wholeNumberFormatters(3),
           ),
           if (_error != null)
             Padding(

@@ -248,16 +248,6 @@ class _SectionCreateScreenState extends ConsumerState<SectionCreateScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (_error != null) ...[
-                    CampusCard(
-                      borderColor: tokens.gold,
-                      child: Text(
-                        _error!,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
                   CampusCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -441,6 +431,7 @@ class _SectionCreateScreenState extends ConsumerState<SectionCreateScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
+                  FormProblems(problems: [?_error]),
                   CampusButton(
                     label: 'Create section',
                     icon: Icons.add,

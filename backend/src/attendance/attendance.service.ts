@@ -10,6 +10,7 @@ import {
   Optional,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { IN_ACTIVE_SUBJECT } from '../common/active-subject'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type {
@@ -198,7 +199,7 @@ export class AttendanceService {
     }
     await assertStudentInAdminScope(user, studentId, this.prisma, sectionId)
     const records = await this.prisma.attendanceRecord.findMany({
-      where: { studentId, ...(sectionId ? { sectionId } : {}) },
+      where: { studentId, ...(sectionId ? { sectionId } : { section: IN_ACTIVE_SUBJECT }) },
       orderBy: { timestamp: 'desc' },
       take: RAW_ATTENDANCE_LIMIT,
     })
@@ -819,6 +820,7 @@ export class AttendanceService {
       AND: [
         scope,
         { excuseStatus: { not: null } },
+        ...(query.sectionId ? [] : [{ section: IN_ACTIVE_SUBJECT }]),
         ...(query.status ? [{ excuseStatus: query.status }] : []),
         ...(query.sectionId ? [{ sectionId: query.sectionId }] : []),
         ...(query.startDate || query.endDate

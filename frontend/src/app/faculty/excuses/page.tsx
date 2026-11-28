@@ -24,6 +24,8 @@ import { resolveEvidenceUrl } from '@/lib/evidence-url'
 import { useNotifications } from '@/lib/notifications'
 import { LoadingSpinner } from '@/lib/hooks'
 import { PaginationBar } from '@/components/ui/pagination-bar'
+import { SearchAndSort } from '@/components/ListControls'
+import { matchesQuery } from '@/lib/list-search'
 
 const EXCUSES_PER_PAGE = 10
 
@@ -31,7 +33,15 @@ const FILTER_SCHEMA = {
   sectionId: { defaultValue: '' },
   from: { defaultValue: '' },
   to: { defaultValue: '' },
+  q: { defaultValue: '' },
+  sort: { defaultValue: '', allowed: ['oldest', 'student'] },
 } as const
+
+const SORT_OPTIONS = [
+  { value: '', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'student', label: 'Student (A to Z)' },
+]
 
 type ExcuseTab = 'pending' | 'resolved'
 
@@ -77,7 +87,7 @@ function ExcusesContent() {
 
   useEffect(() => {
     setPage(1)
-  }, [tab, sectionId, from, to])
+  }, [tab, sectionId, from, to, filters.values.q, filters.values.sort])
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -145,14 +155,30 @@ function ExcusesContent() {
     (record) => record.excuseStatus === 'approved' || record.excuseStatus === 'rejected',
   ).length
 
+  const { q, sort } = filters.values
   const visibleRecords = useMemo(
     () =>
       records
         .filter((record) =>
           tab === 'pending' ? record.excuseStatus === 'requested' : record.excuseStatus !== 'requested',
         )
-        .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime()),
-    [records, tab],
+        .filter((record) => {
+          const section = sections.find((item) => item.id === record.sectionId)
+          const subject = subjects.find((item) => item.id === section?.subjectId)
+          return matchesQuery(q, [
+            record.studentName,
+            record.studentId,
+            section ? `Section ${section.section}` : undefined,
+            subject?.name,
+            subject?.code,
+          ])
+        })
+        .sort((left, right) => {
+          if (sort === 'student') return left.studentName.localeCompare(right.studentName)
+          const newest = new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime()
+          return sort === 'oldest' ? -newest : newest
+        }),
+    [records, tab, q, sort, sections, subjects],
   )
 
   const totalPages = Math.max(1, Math.ceil(visibleRecords.length / EXCUSES_PER_PAGE))
@@ -295,6 +321,15 @@ function ExcusesContent() {
               to={to}
               onFromChange={(value) => filters.setFilter('from', value)}
               onToChange={(value) => filters.setFilter('to', value)}
+            />
+            <SearchAndSort
+              idPrefix="excuse"
+              query={q}
+              onQueryChange={(value) => filters.setFilter('q', value)}
+              placeholder="Student, ID or subject"
+              sort={sort}
+              onSortChange={(value) => filters.setFilter('sort', value)}
+              sortOptions={SORT_OPTIONS}
             />
           </FilterBar>
 

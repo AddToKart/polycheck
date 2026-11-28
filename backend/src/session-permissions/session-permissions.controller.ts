@@ -4,6 +4,7 @@ import { SESSION_PERMISSION_MAX_HOURS, SESSION_PERMISSION_MAX_SESSIONS } from '@
 import { Roles } from '../common/decorators/roles.decorator'
 import { SessionPermissionsService } from './session-permissions.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
+import { BlocksArchivedSubject } from '../common/guards/archived-subject.guard'
 
 class PermissionDto {
   @IsString() sectionId!: string
@@ -19,12 +20,14 @@ export class SessionPermissionsController {
   constructor(private readonly permissions: SessionPermissionsService) {}
 
   @Post()
+  @BlocksArchivedSubject('section', 'body.sectionId')
   @Roles('teacher')
   grant(@Request() req: AuthenticatedRequest, @Body() dto: PermissionDto) {
     return this.permissions.grant(req.user, dto)
   }
 
   @Delete(':sectionId/:studentId')
+  @BlocksArchivedSubject('section', 'params.sectionId')
   @Roles('teacher')
   revoke(
     @Request() req: AuthenticatedRequest,

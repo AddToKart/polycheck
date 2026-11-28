@@ -52,6 +52,26 @@ class SessionsApi extends ApiBase {
     return HostSessionState.fromJson(asMap(data));
   }
 
+  /// Moves a class that has not started; it is then labelled Rescheduled.
+  Future<Session> rescheduleSession(
+    String sessionId, {
+    required String date,
+    required String startTime,
+    required String endTime,
+    required String room,
+  }) async {
+    final data = await patchJson(
+      '/sessions/$sessionId',
+      body: <String, dynamic>{
+        'date': date,
+        'startTime': startTime,
+        'endTime': endTime,
+        'room': room,
+      },
+    );
+    return Session.fromJson(asMap(data));
+  }
+
   Future<Session> createSession(CreateSessionInput input) async {
     final body = input.toJson()..remove('teacherId');
     final data = await postJson('/sessions', body: body);

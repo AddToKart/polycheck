@@ -119,6 +119,20 @@ function missingColumnMessage(mode: ImportMode, mapping: ImportColumnMapping): s
     : base
 }
 
+/**
+ * The key that stops one import being saved twice. It follows the content: sending the same rows with
+ * the same choices again reuses it, and changing either makes a new one. The server refuses a key
+ * reused with different content.
+ */
+export function importIdempotencyKey(runId: string, index: number, content: unknown): string {
+  const text = JSON.stringify(content)
+  let hash = 0x811c9dc5
+  for (let position = 0; position < text.length; position += 1) {
+    hash = Math.imul(hash ^ text.charCodeAt(position), 0x01000193) >>> 0
+  }
+  return `${runId}-execute-${index}-${hash.toString(16).padStart(8, '0')}`
+}
+
 function chunk<T>(items: T[], size: number): T[][] {
   const result: T[][] = []
   for (let index = 0; index < items.length; index += size) result.push(items.slice(index, index + size))
@@ -348,8 +362,6 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     }
     setError('')
     setValidating(true)
-    setServerIssues([])
-    setSummary({})
     try {
       const parsedRows = mode === 'students'
         ? buildStudentRows(rawRows, mapping)
@@ -385,7 +397,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
       let hasMoreIssues = false
 
       for (let index = 0; index < plans.length; index += 1) {
-        const result = await validateChunk(plans[index], index)
+        const result = await validateChunk(plans[index])
         plans[index].rowChecksum = result.rowChecksum
         issues.push(...result.issues)
         summaries.push(result.summary as unknown as Record<string, unknown>)
@@ -416,7 +428,6 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
 
   const validateChunk = async (
     plan: ChunkPlan,
-    index: number,
   ): Promise<StudentImportResult | EnrollImportResult> => {
     if (mode === 'students') {
       return api.importStudents({
@@ -424,7 +435,6 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
         conflictMode,
         ...(deliveryMode === 'activation_email' ? { deliveryMode } : {}),
         rows: plan.rows as StudentImportRow[],
-        idempotencyKey: `${runIdRef.current}-validate-${index}`,
       })
     }
     if (!sectionId) throw new Error('Section is required for enrollment imports.')
@@ -434,22 +444,28 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
   const executeChunk = async (plan: ChunkPlan, index: number): Promise<StudentImportResult | EnrollImportResult> => {
     if (!plan.rowChecksum) throw new Error('Validate the rows again before importing.')
     if (mode === 'students') {
-      return api.importStudents({
-        mode: 'execute',
+      const request = {
+        mode: 'execute' as const,
         conflictMode,
         // The checksum was minted for the validated mode, so execute must use exactly that one.
         ...(validatedDeliveryMode === 'activation_email' ? { deliveryMode: validatedDeliveryMode } : {}),
         rows: plan.rows as StudentImportRow[],
         rowChecksum: plan.rowChecksum,
-        idempotencyKey: `${runIdRef.current}-execute-${index}`,
+      }
+      return api.importStudents({
+        ...request,
+        idempotencyKey: importIdempotencyKey(runIdRef.current, index, request),
       })
     }
     if (!sectionId) throw new Error('Section is required for enrollment imports.')
-    return api.importSectionEnrollments(sectionId, {
-      mode: 'execute',
+    const request = {
+      mode: 'execute' as const,
       rows: plan.rows as EnrollImportRow[],
       rowChecksum: plan.rowChecksum,
-      idempotencyKey: `${runIdRef.current}-execute-${index}`,
+    }
+    return api.importSectionEnrollments(sectionId, {
+      ...request,
+      idempotencyKey: importIdempotencyKey(runIdRef.current, index, request),
     })
   }
 
@@ -528,7 +544,7 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
     try {
       const refreshed: ChunkPlan[] = []
       for (let index = 0; index < remaining.length; index += 1) {
-        const result = await validateChunk(remaining[index], progress + index)
+        const result = await validateChunk(remaining[index])
         refreshed.push({ rows: remaining[index].rows, rowChecksum: result.rowChecksum })
       }
       const nextChunks = [...chunks]
@@ -664,12 +680,6 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
           </span>{' '}
           {stepHelp[step]}
         </p>
-
-        {error ? (
-          <div role="alert" className="mt-4 border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
-            {error}
-          </div>
-        ) : null}
 
         {step === 'upload' ? (
           <div className="mt-5 space-y-4">
@@ -1107,6 +1117,12 @@ export function BulkImportDialog({ open, onOpenChange, mode, sectionId, onComple
             <div className="flex justify-end pt-2">
               <Button onClick={() => close(false)}>Close</Button>
             </div>
+          </div>
+        ) : null}
+
+        {error ? (
+          <div role="alert" className="mt-4 border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+            {error}
           </div>
         ) : null}
       </DialogContent>

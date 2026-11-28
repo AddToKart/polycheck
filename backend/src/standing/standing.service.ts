@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, Optional } from '@nestjs/common'
 import type { AttendanceStanding } from '@polycheck/shared'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { Prisma } from '../prisma/client'
+import { IN_ACTIVE_SUBJECT } from '../common/active-subject'
 import { PrismaService } from '../prisma/prisma.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { attendanceStandingFromRate, computeAttendanceRate } from '../common/utils/attendance-rate'
@@ -56,7 +57,7 @@ export class StandingService {
     const [thresholdPercent, sections] = await Promise.all([
       this.thresholdPercent(),
       this.prisma.section.findMany({
-        where: { enrollments: { some: { studentId: user.id } } },
+        where: { enrollments: { some: { studentId: user.id } }, ...IN_ACTIVE_SUBJECT },
         select: this.sectionSelect(user.id),
         orderBy: [{ subject: { name: 'asc' } }, { section: 'asc' }],
       }),

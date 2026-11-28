@@ -163,23 +163,6 @@ class _CreateAccountSheetState extends ConsumerState<CreateAccountSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        if (_error != null) ...<Widget>[
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: tokens.maroon,
-              border: Border.all(color: tokens.maroon),
-            ),
-            child: Text(
-              _error!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
         CampusTextField(
           controller: _fullName,
           label: 'Full name',
@@ -235,6 +218,23 @@ class _CreateAccountSheetState extends ConsumerState<CreateAccountSheet> {
           ).textTheme.bodySmall?.copyWith(color: tokens.muted),
         ),
         const SizedBox(height: 16),
+        if (_error != null) ...<Widget>[
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: tokens.maroon,
+              border: Border.all(color: tokens.maroon),
+            ),
+            child: Text(
+              _error!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         CampusButton(
           label: _busy
               ? 'Creating…'
@@ -458,23 +458,6 @@ class _AddAdminSheetState extends ConsumerState<AddAdminSheet> {
             ),
           ),
         ),
-        if (_error != null) ...<Widget>[
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: tokens.maroon,
-              border: Border.all(color: tokens.maroon),
-            ),
-            child: Text(
-              _error!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
         const SizedBox(height: 14),
         if (_mode == AdminMode.promote) ...<Widget>[
           CampusTextField(
@@ -592,6 +575,23 @@ class _AddAdminSheetState extends ConsumerState<AddAdminSheet> {
           ),
         ],
         const SizedBox(height: 16),
+        if (_error != null) ...<Widget>[
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: tokens.maroon,
+              border: Border.all(color: tokens.maroon),
+            ),
+            child: Text(
+              _error!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         CampusButton(
           label: _busy
               ? 'Saving…'

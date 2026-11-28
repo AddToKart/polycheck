@@ -316,7 +316,10 @@ export class AttendanceGateway implements OnGatewayInit, OnModuleDestroy {
     return { event: SERVER_UNSUBSCRIBE_EVENT }
   }
 
-  emitSessionState(session: { id: string; sectionId: string }, state: 'created' | 'activated' | 'ended') {
+  emitSessionState(
+    session: { id: string; sectionId: string },
+    state: 'created' | 'activated' | 'ended' | 'rescheduled',
+  ) {
     const payload = { sessionId: session.id, sectionId: session.sectionId, state, timestamp: new Date().toISOString() }
     this.server.to(this.sessionRoom(session.id)).emit('session:state', payload)
   }

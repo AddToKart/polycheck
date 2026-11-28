@@ -5,7 +5,7 @@
 /// labelled correctly.
 const String appVersion = String.fromEnvironment(
   'APP_VERSION',
-  defaultValue: '1.1.7',
+  defaultValue: '1.1.8',
 );
 
 String get appVersionLabel => 'Version $appVersion';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { brandingLabel, brandingMonogram, DEFAULT_BRANDING, deriveShortName, resolveBranding } from './branding'
+import { brandingLabel, brandingMonogram, campusHeading, DEFAULT_BRANDING, deriveShortName, resolveBranding } from './branding'
 
 describe('deriveShortName', () => {
   it('takes initials and skips connector words', () => {
@@ -36,5 +36,16 @@ describe('brandingMonogram / brandingLabel', () => {
   it('collapses the label without a campus', () => {
     expect(brandingLabel({ shortName: 'EPP', campus: 'Santa Maria' })).toBe('EPP · Santa Maria')
     expect(brandingLabel({ shortName: 'EPP', campus: '' })).toBe('EPP')
+  })
+})
+
+describe('campusHeading', () => {
+  it('adds the word Campus only when the value does not already say it', () => {
+    expect(campusHeading('Santa Maria')).toBe('Santa Maria Campus')
+    expect(campusHeading('Main Campus')).toBe('Main Campus')
+    expect(campusHeading('campus of Santa Maria')).toBe('campus of Santa Maria')
+    expect(campusHeading('Campusville')).toBe('Campusville Campus')
+    expect(campusHeading('  ')).toBe('')
+    expect(campusHeading(undefined)).toBe('')
   })
 })

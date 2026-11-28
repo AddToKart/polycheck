@@ -48,7 +48,7 @@ describe('DocsController (F4/F6)', () => {
         },
       ),
     }
-    const controller = new DocsController(docs as unknown as DocsService)
+    const controller = new DocsController(docs as unknown as DocsService, {} as never)
     return { controller, docs }
   }
 

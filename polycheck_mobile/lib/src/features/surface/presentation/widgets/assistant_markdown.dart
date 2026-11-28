@@ -3,11 +3,12 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/theme/brand_tokens.dart';
+import '../../../../core/utils/markdown_tables.dart';
 
 /// Token-styled markdown renderer for assistant replies.
 ///
-/// Maroon/gold accents, zero radius, 1px borders, and zebra-striped tables
-/// (the package's default table renderer has no alternating rows).
+/// Maroon/gold accents, zero radius and 1px borders. Tables are shown as lists:
+/// on a phone their columns shrink to a few letters.
 class AssistantMarkdown extends StatelessWidget {
   const AssistantMarkdown({
     super.key,
@@ -80,139 +81,12 @@ class AssistantMarkdown extends StatelessWidget {
       horizontalRuleDecoration: BoxDecoration(
         border: Border(top: BorderSide(color: tokens.borderSubtle)),
       ),
-      tableHead: body?.copyWith(fontWeight: FontWeight.w700),
-      tableBody: body,
-      tableBorder: TableBorder.all(color: tokens.borderSubtle, width: 1),
-      tableColumnWidth: const FlexColumnWidth(),
-      tableCellsPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      tableCellsDecoration: const BoxDecoration(),
     );
 
     return MarkdownBody(
-      data: content,
+      data: flattenMarkdownTables(content),
       selectable: selectable,
       styleSheet: style,
-      builders: {
-        'table': ZebraMarkdownTableBuilder(
-          isDark: tokens.isDark,
-          tokens: tokens,
-        ),
-      },
-    );
-  }
-}
-
-/// Renders markdown tables with a gold head row and alternating body rows.
-///
-/// Registered only for the `table` tag; if the AST shape is unexpected it
-/// returns null so flutter_markdown falls back to its default renderer.
-class ZebraMarkdownTableBuilder extends MarkdownElementBuilder {
-  ZebraMarkdownTableBuilder({required this.isDark, required this.tokens});
-
-  final bool isDark;
-  final BrandTokens tokens;
-
-  @override
-  bool isBlockElement() => true;
-
-  @override
-  Widget? visitElementAfterWithContext(
-    BuildContext context,
-    dynamic element,
-    TextStyle? preferredStyle,
-    TextStyle? parentStyle,
-  ) {
-    try {
-      final headerRows = <List<String>>[];
-      final bodyRows = <List<String>>[];
-      for (final section in element.children as List<dynamic>) {
-        final tag = section.tag;
-        if (tag == 'thead') {
-          for (final row in section.children as List<dynamic>) {
-            headerRows.add(_cells(row));
-          }
-        } else if (tag == 'tbody') {
-          for (final row in section.children as List<dynamic>) {
-            bodyRows.add(_cells(row));
-          }
-        } else if (tag == 'tr') {
-          bodyRows.add(_cells(section));
-        }
-      }
-      if (headerRows.isEmpty && bodyRows.isEmpty) return null;
-
-      final textStyle = Theme.of(
-        context,
-      ).textTheme.bodySmall?.copyWith(color: tokens.onSurface, height: 1.35);
-      final headerStyle = textStyle?.copyWith(
-        color: tokens.deepMaroon,
-        fontWeight: FontWeight.w700,
-      );
-      final columns = [
-        for (final row in [...headerRows, ...bodyRows])
-          if (row.isNotEmpty) row.length,
-      ].fold<int>(1, (max, length) => length > max ? length : max);
-
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Table(
-            defaultColumnWidth: const FlexColumnWidth(),
-            border: TableBorder.all(color: tokens.borderSubtle, width: 1),
-            children: [
-              for (final row in headerRows)
-                _tableRow(row, columns, headerStyle, tokens.gold, null),
-              for (var index = 0; index < bodyRows.length; index += 1)
-                _tableRow(
-                  bodyRows[index],
-                  columns,
-                  textStyle,
-                  index.isEven ? tokens.surface : tokens.campus,
-                  tokens.borderSubtle,
-                ),
-            ],
-          ),
-        ),
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  List<String> _cells(dynamic row) {
-    final cells = <String>[];
-    for (final cell in row.children as List<dynamic>) {
-      final text = (cell.textContent as String).trim();
-      cells.add(text);
-    }
-    return cells;
-  }
-
-  TableRow _tableRow(
-    List<String> values,
-    int columns,
-    TextStyle? style,
-    Color background,
-    Color? borderColor,
-  ) {
-    return TableRow(
-      decoration: BoxDecoration(
-        color: background,
-        border: borderColor == null
-            ? null
-            : Border(bottom: BorderSide(color: borderColor)),
-      ),
-      children: [
-        for (var index = 0; index < columns; index += 1)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            child: Text(
-              index < values.length ? values[index] : '',
-              style: style,
-            ),
-          ),
-      ],
     );
   }
 }

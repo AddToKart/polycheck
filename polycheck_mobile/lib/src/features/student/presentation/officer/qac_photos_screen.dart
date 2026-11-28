@@ -6,6 +6,7 @@ import '../../../../core/models/qac_section.dart';
 import '../../../../core/widgets/proof_photo_grid.dart';
 import '../../../../core/utils/proof_window.dart';
 import 'proof_uploader.dart';
+import '../../../../core/widgets/photo_report_button.dart';
 
 final qacSectionsProvider = FutureProvider.autoDispose<List<QacSection>>(
   (ref) => ref.read(proofsApiProvider).getMyQacSections(),
@@ -201,6 +202,13 @@ class _QacPhotosScreenState extends ConsumerState<QacPhotosScreen> {
         '${section.subjectCode} · ${_heading(section)} · '
         '${section.teacherName}',
         style: muted,
+      ),
+      const SizedBox(height: 10),
+      PhotoReportButton(
+        key: ValueKey('qac-pdf-${section.sectionId}'),
+        sectionId: section.sectionId,
+        label: 'Photos to PDF',
+        chooseDates: true,
       ),
       const SizedBox(height: 10),
       for (final slot in open) ...<Widget>[

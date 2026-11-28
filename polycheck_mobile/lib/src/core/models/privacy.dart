@@ -146,6 +146,18 @@ const List<PrivacyDataInventoryRow> privacyDataInventory = [
   ),
   PrivacyDataInventoryRow(
     data:
+        'Evidence of an archived subject (class photos, excuse photos, '
+        'check-in coordinates and scan-attempt logs)',
+    purpose:
+        'Close out a finished semester without keeping evidence that is no '
+        'longer needed',
+    lawfulBasis: 'RA 10173 §11(e) - kept only as long as necessary',
+    lifetime:
+        'Erased 90 days after the subject is archived; attendance results are '
+        'kept. The teacher may delete the whole archived subject sooner',
+  ),
+  PrivacyDataInventoryRow(
+    data:
         'Audit trail (who did what, from where, when - including institution '
         'settings changes)',
     purpose: 'Tamper-evident accountability log with daily external anchors',

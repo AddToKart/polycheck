@@ -12,6 +12,8 @@ import { formatSectionHeading } from '@polycheck/shared/utils'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { ArchiveSubjectButton } from '@/components/subjects/ArchiveSubjectButton'
+import { ArchivedSubjectDialog } from '@/components/subjects/ArchivedSubjectDialog'
 
 export default function SubjectDetailPage() {
   const params = useParams()
@@ -91,7 +93,8 @@ export default function SubjectDetailPage() {
     <div className="min-h-screen flex flex-col md:flex-row bg-zinc-50 dark:bg-brand-black">
       <Sidebar user={user} onLogout={handleLogout} backHref="/faculty/subjects" backLabel="Back to Subjects" />
 
-      <main className="flex-1 overflow-y-auto">
+      {/* An archived subject is shown behind the archive screen, with nothing in it usable. */}
+      <main className={`flex-1 overflow-y-auto ${subject.archivedAt ? 'opacity-40' : ''}`} inert={Boolean(subject.archivedAt)}>
         <div className="p-8 max-w-6xl mx-auto">
           {/* Header */}
           <div className="flex flex-wrap items-center gap-4 mb-8">
@@ -102,6 +105,11 @@ export default function SubjectDetailPage() {
               <h1 className="text-2xl font-heading font-bold text-maroon-dark dark:text-white">{subject.name}</h1>
               <p className="text-sm text-zinc-500 dark:text-zinc-400">{subject.code}</p>
             </div>
+            {user.role === 'teacher' && !subject.archivedAt && (
+              <div className="ml-auto">
+                <ArchiveSubjectButton subject={subject} onArchived={() => setReloadKey((key) => key + 1)} />
+              </div>
+            )}
           </div>
 
           {/* Subject Info */}
@@ -218,6 +226,13 @@ export default function SubjectDetailPage() {
           )}
         </div>
       </main>
+      <ArchivedSubjectDialog
+        subject={subject.archivedAt ? subject : null}
+        canManage={user.role === 'teacher'}
+        onClose={() => router.push('/faculty/subjects?view=archived')}
+        onRestored={() => setReloadKey((key) => key + 1)}
+        onDeleted={() => router.replace('/faculty/subjects')}
+      />
     </div>
   )
 }

@@ -234,7 +234,14 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
                     ).textTheme.bodySmall?.copyWith(color: tokens.muted),
                   ),
                   const SizedBox(height: 12),
+                  switch (_step) {
+                    _ImportStep.input => _inputStep(context),
+                    _ImportStep.map => _mapStep(context),
+                    _ImportStep.review => _reviewStep(context),
+                    _ImportStep.report => _reportStep(context),
+                  },
                   if (_error != null) ...[
+                    const SizedBox(height: 12),
                     CampusCard(
                       borderColor: tokens.gold,
                       child: Text(
@@ -242,14 +249,7 @@ class _SectionImportSheetState extends ConsumerState<SectionImportSheet> {
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
-                    const SizedBox(height: 12),
                   ],
-                  switch (_step) {
-                    _ImportStep.input => _inputStep(context),
-                    _ImportStep.map => _mapStep(context),
-                    _ImportStep.review => _reviewStep(context),
-                    _ImportStep.report => _reportStep(context),
-                  },
                 ],
               ),
             ),

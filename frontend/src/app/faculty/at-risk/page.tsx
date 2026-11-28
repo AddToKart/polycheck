@@ -12,6 +12,9 @@ import { api, requestUserLogout } from '@/lib/api-client'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
 import { PaginationBar } from '@/components/ui/pagination-bar'
+import { FilterBar } from '@/components/FilterBar'
+import { SearchAndSort } from '@/components/ListControls'
+import { matchesQuery } from '@/lib/list-search'
 import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/lib/hooks'
 import { useNotifications } from '@/lib/notifications'
@@ -26,6 +29,12 @@ import {
 } from '@/components/ui/dialog'
 
 const AT_RISK_PAGE_SIZE = 10
+
+const SORT_OPTIONS = [
+  { value: '', label: 'Student (A to Z)' },
+  { value: 'rate', label: 'Lowest attendance first' },
+  { value: 'section', label: 'Subject and section' },
+]
 
 const STATUS_LABELS: Record<StudentAtRisk['status'], string> = {
   below_threshold: 'Below threshold',
@@ -80,6 +89,8 @@ export default function AtRiskStudentsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [page, setPage] = useState(1)
+  const [query, setQuery] = useState('')
+  const [sortOrder, setSortOrder] = useState('')
   const [view, setView] = useState<AtRiskView>('list')
 
   // F5: the "Issue CHED notice" confirmation dialog state.
@@ -135,15 +146,28 @@ export default function AtRiskStudentsPage() {
 
   const threshold = rows[0]?.thresholdPercent
 
-  const sorted = useMemo(
-    () =>
-      [...rows].sort(
-        (left, right) =>
-          left.studentName.localeCompare(right.studentName) ||
-          left.sectionName.localeCompare(right.sectionName),
-      ),
-    [rows],
-  )
+  const sorted = useMemo(() => {
+    const byStudent = (left: StudentAtRisk, right: StudentAtRisk) =>
+      left.studentName.localeCompare(right.studentName) || left.sectionName.localeCompare(right.sectionName)
+    return rows
+      .filter((row) =>
+        matchesQuery(query, [row.studentName, row.studentNumber, row.subjectName, row.sectionName, row.professorName]),
+      )
+      .sort((left, right) => {
+        if (sortOrder === 'rate') return (left.attendanceRate ?? 101) - (right.attendanceRate ?? 101) || byStudent(left, right)
+        if (sortOrder === 'section') {
+          return (
+            left.subjectName.localeCompare(right.subjectName) ||
+            left.sectionName.localeCompare(right.sectionName) ||
+            byStudent(left, right)
+          )
+        }
+        return byStudent(left, right)
+      })
+  }, [rows, query, sortOrder])
+  useEffect(() => {
+    setPage(1)
+  }, [query, sortOrder])
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / AT_RISK_PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
@@ -288,6 +312,28 @@ export default function AtRiskStudentsPage() {
             </p>
           ) : null}
 
+          {view === 'list' && rows.length > 0 ? (
+            <FilterBar
+              className="mb-4"
+              label="At-risk filters"
+              activeCount={[query, sortOrder].filter(Boolean).length}
+              onClear={() => {
+                setQuery('')
+                setSortOrder('')
+              }}
+            >
+              <SearchAndSort
+                idPrefix="at-risk"
+                query={query}
+                onQueryChange={setQuery}
+                placeholder="Student, ID, subject or section"
+                sort={sortOrder}
+                onSortChange={setSortOrder}
+                sortOptions={SORT_OPTIONS}
+              />
+            </FilterBar>
+          ) : null}
+
           {view === 'referrals' ? (
             <ReferralQueue user={user} refreshKey={referralKey} />
           ) : (
@@ -298,6 +344,10 @@ export default function AtRiskStudentsPage() {
                     <LoadingSpinner />
                     Loading oversight data…
                   </div>
+                ) : rows.length > 0 && sorted.length === 0 ? (
+                  <p className="py-16 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                    No student matches this search.
+                  </p>
                 ) : sorted.length === 0 ? (
                   <div className="py-16 text-center">
                     <p className="font-heading text-lg font-bold text-maroon dark:text-golden">

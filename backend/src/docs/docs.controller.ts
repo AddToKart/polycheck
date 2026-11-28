@@ -4,6 +4,7 @@ import { Roles } from '../common/decorators/roles.decorator'
 import { RequireDesignation } from '../common/decorators/require-designation.decorator'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
 import { DocsService } from './docs.service'
+import { EvidenceDocsService } from './evidence-docs.service'
 
 const MAX_IDENTIFIER_LENGTH = 128
 const MASTER_LIST_FORMATS = ['pdf', 'docx'] as const
@@ -14,7 +15,51 @@ const AT_RISK_NOTICE_FORMATS = ['pdf', 'docx'] as const
 
 @Controller('docs')
 export class DocsController {
-  constructor(private readonly docs: DocsService) {}
+  constructor(
+    private readonly docs: DocsService,
+    private readonly evidence: EvidenceDocsService,
+  ) {}
+
+  /** Class photos with their time stamps as one PDF: professor, administrator or the section QAC. */
+  @Get('proof-photos')
+  @Roles('teacher', 'super_admin', 'student')
+  async proofPhotos(
+    @Request() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) response: Response,
+    @Query('sessionId') sessionId?: string,
+    @Query('sectionId') sectionId?: string,
+    @Query('subjectId') subjectId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ): Promise<StreamableFile> {
+    for (const [value, label] of [
+      [sessionId, 'sessionId'],
+      [sectionId, 'sectionId'],
+      [subjectId, 'subjectId'],
+    ] as const) {
+      if (value !== undefined) assertIdentifier(value, label)
+    }
+    const document = await this.evidence.proofPhotos(req.user, {
+      sessionId,
+      sectionId,
+      subjectId,
+      from: parseDateQuery(from, 'from'),
+      to: parseDateQuery(to, 'to'),
+    })
+    return sendAttachment(response, document)
+  }
+
+  /** Every attendance record of a subject, kept before it is deleted for good. */
+  @Get('subject-attendance/:subjectId')
+  @Roles('teacher', 'super_admin')
+  async subjectAttendance(
+    @Request() req: AuthenticatedRequest,
+    @Param('subjectId') subjectId: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    assertIdentifier(subjectId, 'subjectId')
+    return sendAttachment(response, await this.evidence.subjectAttendance(req.user, subjectId))
+  }
 
   @Get('master-list/:sectionId')
   @Roles('teacher', 'super_admin')
@@ -120,6 +165,14 @@ function parseFormat<T extends string>(value: string | undefined, allowed: reado
     throw new BadRequestException(`format must be one of: ${allowed.join(', ')}`)
   }
   return normalized as T
+}
+
+function parseDateQuery(value: string | undefined, label: string): string | undefined {
+  if (value === undefined || value.trim() === '') return undefined
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    throw new BadRequestException(`${label} must be an ISO calendar date formatted as YYYY-MM-DD`)
+  }
+  return value.trim()
 }
 
 /** Week-1 anchor override; absent or empty keeps the earliest-session anchor. */

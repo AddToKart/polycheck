@@ -135,6 +135,55 @@ describe('MapPicker', () => {
     expect(circleProps).toEqual({ latitude: 14.87, longitude: 121.0, radiusMeters: 40 })
   })
 
+  describe('full screen', () => {
+    let fullscreenElement: Element | null = null
+
+    beforeEach(() => {
+      fullscreenElement = null
+      Object.defineProperty(document, 'fullscreenElement', {
+        configurable: true,
+        get: () => fullscreenElement,
+      })
+    })
+
+    const frame = () => document.querySelector('[data-testid="map"]')!.parentElement as HTMLElement
+    const browserChanges = (element: Element | null) =>
+      act(() => {
+        fullscreenElement = element
+        document.dispatchEvent(new Event('fullscreenchange'))
+      })
+
+    it('returns to the form size when the browser leaves full screen by itself (Esc)', () => {
+      render(<MapPicker />)
+      const container = frame()
+      container.requestFullscreen = vi.fn().mockResolvedValue(undefined)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Fullscreen' }))
+      browserChanges(container)
+      expect(container.className).toContain('h-full')
+      expect(screen.getByRole('button', { name: /exit fullscreen/i })).toBeTruthy()
+
+      browserChanges(null)
+      expect(container.className).toContain('h-[350px]')
+      expect(container.className).not.toContain('w-screen')
+      expect(screen.queryByRole('button', { name: /exit fullscreen/i })).toBeNull()
+    })
+
+    it('covers the page, and closes with Esc, where the browser has no full screen', () => {
+      render(<MapPicker />)
+      const container = frame()
+      Object.defineProperty(container, 'requestFullscreen', { configurable: true, value: undefined })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Fullscreen' }))
+      expect(container.className).toContain('fixed')
+      expect(container.className).not.toContain('relative')
+
+      fireEvent.keyDown(window, { key: 'Escape' })
+      expect(container.className).toContain('h-[350px]')
+      expect(document.body.style.overflow).toBe('')
+    })
+  })
+
   it('alerts when geolocation fails', () => {
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {})
     stubGeolocationFailure()

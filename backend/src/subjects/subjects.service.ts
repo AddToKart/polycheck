@@ -10,10 +10,12 @@ import { adminSectionWhere, adminSubjectWhere } from '../common/admin-scope'
 export class SubjectsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(user: RequestUser) {
+  async findAll(user: RequestUser, archived = false) {
+    // Archived subjects are only listed for the staff who can restore or export them.
+    if (archived && user.role === 'student') return []
     return this.prisma.subject.findMany({
-      where: this.subjectScope(user),
-      orderBy: { code: 'asc' },
+      where: this.archiveScope(this.subjectScope(user), archived),
+      orderBy: archived ? { archivedAt: 'desc' } : { code: 'asc' },
     })
   }
 
@@ -31,7 +33,9 @@ export class SubjectsService {
         },
       },
     })
-    if (!subject) throw new NotFoundException('Subject not found')
+    if (!subject || (user.role === 'student' && subject.archivedAt)) {
+      throw new NotFoundException('Subject not found')
+    }
     if (user.role === 'student') {
       return {
         ...subject,
@@ -87,6 +91,11 @@ export class SubjectsService {
       throw error
     }
     return { message: 'Subject deleted' }
+  }
+
+  private archiveScope(scope: Prisma.SubjectWhereInput | undefined, archived: boolean): Prisma.SubjectWhereInput {
+    const state: Prisma.SubjectWhereInput = { archivedAt: archived ? { not: null } : null }
+    return scope ? { AND: [scope, state] } : state
   }
 
   private subjectScope(user: RequestUser) {

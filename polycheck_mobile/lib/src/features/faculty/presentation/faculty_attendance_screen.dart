@@ -97,6 +97,16 @@ class _FacultyAttendanceScreenState
     await _load();
   }
 
+  String _query = '';
+  String _sort = '';
+  int _page = 1;
+
+  /// Any change to what is listed starts again from the first page.
+  void _change(VoidCallback change) => setState(() {
+    change();
+    _page = 1;
+  });
+
   Future<void> _exportCsv() async {
     if (_exporting) return;
     setState(() => _exporting = true);
@@ -138,6 +148,36 @@ class _FacultyAttendanceScreenState
             absent: totals.absent,
             incomplete: totals.incomplete,
           );
+
+    final summaries = (report?.summaries ?? const <AttendanceReportSummary>[])
+        .where((summary) {
+          final section = sectionsById[summary.sectionId];
+          return matchesQuery(_query, [
+            summary.subjectName,
+            if (section != null)
+              formatSectionHeading(
+                section: section.section,
+                course: section.course,
+              ),
+          ]);
+        })
+        .toList();
+    double share(AttendanceReportSummary summary) =>
+        attendanceRatePercent(
+          present: summary.present,
+          late: summary.late,
+          absent: summary.absent,
+          incomplete: summary.incomplete,
+        )?.toDouble() ??
+        101;
+    if (_sort == 'rate') {
+      summaries.sort((a, b) => share(a).compareTo(share(b)));
+    } else if (_sort == 'absences') {
+      summaries.sort((a, b) => b.absent.compareTo(a.absent));
+    } else if (_sort == 'subject') {
+      summaries.sort((a, b) => a.subjectName.compareTo(b.subjectName));
+    }
+    final sectionPage = ListPage<AttendanceReportSummary>(summaries, _page);
 
     return FacultyScaffold(
       title: 'Attendance',
@@ -338,8 +378,26 @@ class _FacultyAttendanceScreenState
                           'Change the date range or filters, or run a session '
                           'to start collecting records.',
                     )
-                  else
-                    for (final summary in report!.summaries)
+                  else ...[
+                    ListControls(
+                      query: _query,
+                      searchHint: 'Subject or section',
+                      onQueryChanged: (value) => _change(() => _query = value),
+                      sort: _sort,
+                      sortOptions: const [
+                        ListOption('', 'Report order'),
+                        ListOption('rate', 'Lowest attendance first'),
+                        ListOption('absences', 'Most absences first'),
+                        ListOption('subject', 'Subject (A to Z)'),
+                      ],
+                      onSortChanged: (value) => _change(() => _sort = value),
+                      onClear: () => _change(() {
+                        _query = '';
+                        _sort = '';
+                      }),
+                    ),
+                    const SizedBox(height: 10),
+                    for (final summary in sectionPage.items)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 6),
                         child: _SectionReportRow(
@@ -350,6 +408,19 @@ class _FacultyAttendanceScreenState
                           ),
                         ),
                       ),
+                    if (sectionPage.total == 0)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Text(
+                          'No section matches this search.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ListPager(
+                      page: sectionPage,
+                      onChanged: (value) => setState(() => _page = value),
+                    ),
+                  ],
                 ],
               ),
             ),

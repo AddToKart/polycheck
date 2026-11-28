@@ -600,44 +600,97 @@ void main() {
   });
 
   group('A-f already-saved guard (web parity)', () {
-    test(
-      'in-person: any cached record for the student short-circuits',
-      () async {
-        final api = _RecordingAttendanceApi();
-        final fixture = await _signToken(now);
-        await database.upsertAttendance(studentUser.id, <AttendanceRecord>[
+    Future<void> cacheRecord(AttendanceStatus status) =>
+        database.upsertAttendance(studentUser.id, <AttendanceRecord>[
           AttendanceRecord(
             id: 'rec-cached-1',
             sessionId: 'sess-1',
             sectionId: 'sec-1',
             studentId: studentUser.id,
             timestamp: DateTime.utc(2026, 11, 10, 7).toIso8601String(),
-            status: AttendanceStatus.pending,
+            status: status,
           ),
         ]);
-        final service = buildService(
-          attendanceApi: api,
-          session: _inPersonSession(teacherPublicKey: fixture.key.publicKey),
-          locationReader: _FakeLocationReader(
-            location: _location(deviceNow: now),
-          ),
-        );
 
-        final outcome = await service.submitToken(
-          rawToken: fixture.token,
-          student: studentUser,
-          channel: ScanInputChannel.camera,
-        );
+    Future<StudentScanOutcome> scan(
+      AttendanceApi api,
+      ({TeacherSigningKey key, String token}) fixture,
+    ) {
+      final service = buildService(
+        attendanceApi: api,
+        session: _inPersonSession(teacherPublicKey: fixture.key.publicKey),
+        locationReader: _FakeLocationReader(
+          location: _location(deviceNow: now),
+        ),
+      );
+      return service.submitToken(
+        rawToken: fixture.token,
+        student: studentUser,
+        channel: ScanInputChannel.camera,
+      );
+    }
 
-        expect(outcome.kind, ScanOutcomeKind.rejected);
-        expect(
-          outcome.message,
-          'Attendance for this session was already saved on this device.',
-        );
-        expect(api.calls, 0);
-        expect(await database.pendingAttendanceQueue(studentUser.id), isEmpty);
+    // Starting a class creates a pending row for every student, and the phone
+    // caches it. It used to reject the first scan of a freshly started class.
+    test('the pending row of a started class does not block a scan', () async {
+      await cacheRecord(AttendanceStatus.pending);
+      final api = _RecordingAttendanceApi();
+
+      final outcome = await scan(api, await _signToken(now));
+
+      expect(outcome.kind, ScanOutcomeKind.success);
+      expect(api.calls, 1);
+    });
+
+    test('offline, the pending row still lets the check-in be saved', () async {
+      await cacheRecord(AttendanceStatus.pending);
+
+      final outcome = await scan(
+        _FailingAttendanceApi(),
+        await _signToken(now),
+      );
+
+      expect(outcome.kind, ScanOutcomeKind.offlineQueued);
+    });
+
+    test(
+      'online, the server decides even when the cache says present',
+      () async {
+        await cacheRecord(AttendanceStatus.present);
+        final api = _RecordingAttendanceApi();
+
+        await scan(api, await _signToken(now));
+
+        expect(api.calls, 1);
       },
     );
+
+    test('offline, a confirmed check-in is not queued twice', () async {
+      await cacheRecord(AttendanceStatus.present);
+
+      final outcome = await scan(
+        _FailingAttendanceApi(),
+        await _signToken(now),
+      );
+
+      expect(outcome.kind, ScanOutcomeKind.rejected);
+      expect(outcome.message, alreadySavedOnDeviceMessage);
+      expect(await database.pendingAttendanceQueue(studentUser.id), isEmpty);
+    });
+
+    test('offline, a second scan while one waits to sync is refused', () async {
+      final fixture = await _signToken(now);
+      final first = await scan(_FailingAttendanceApi(), fixture);
+
+      final second = await scan(_FailingAttendanceApi(), fixture);
+
+      expect(first.kind, ScanOutcomeKind.offlineQueued);
+      expect(second.message, alreadySavedOnDeviceMessage);
+      expect(
+        await database.pendingAttendanceQueue(studentUser.id),
+        hasLength(1),
+      );
+    });
 
     test(
       'online start checkpoint: only an existing check-in blocks it',

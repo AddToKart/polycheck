@@ -15,7 +15,7 @@ const apiMock = vi.hoisted(() => ({
 vi.mock('@/lib/api-client', () => ({ api: apiMock }))
 vi.mock('@/lib/notifications', () => ({ useNotifications: () => ({ addNotification: vi.fn() }) }))
 
-import { BulkImportDialog } from './BulkImportDialog'
+import { BulkImportDialog, importIdempotencyKey } from './BulkImportDialog'
 import { buildXlsx, xlsxFile } from '@/lib/import/xlsx-fixture'
 
 const CSV = [
@@ -126,6 +126,44 @@ describe('BulkImportDialog email delivery', () => {
     expect(screen.getByRole('status')).toHaveTextContent('1 activation email queued')
     expect(screen.getByRole('status')).toHaveTextContent('1 student without an email got a temporary password')
     expect(screen.getByText('PCK-TEMP0001-xy!')).toBeInTheDocument()
+  })
+})
+
+describe('BulkImportDialog one-time request keys', () => {
+  const requests = () => apiMock.importStudents.mock.calls.map(([request]) => request)
+
+  // "Check rows" used to send the same key every time, so re-validating with another choice was
+  // refused with "Idempotency-Key was already used with a different request payload".
+  it('sends no key when checking rows, however often the choices change', async () => {
+    setup()
+    await uploadAndValidate()
+    fireEvent.click(await screen.findByLabelText(/Email an activation link/))
+    fireEvent.click(screen.getByRole('button', { name: 'Re-validate' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled())
+
+    expect(requests()).toHaveLength(2)
+    for (const request of requests()) expect(request).not.toHaveProperty('idempotencyKey')
+  })
+
+  it('ties the import key to its content, so a retry of the same request reuses it', () => {
+    const content = { rows: [1], deliveryMode: 'activation_email' }
+    const key = importIdempotencyKey('run-12345678', 0, content)
+    expect(importIdempotencyKey('run-12345678', 0, { ...content })).toBe(key)
+    expect(importIdempotencyKey('run-12345678', 0, { rows: [1] })).not.toBe(key)
+    expect(importIdempotencyKey('run-12345678', 1, content)).not.toBe(key)
+    expect(key).toMatch(/^[A-Za-z0-9._:-]{8,128}$/)
+  })
+
+  it('keeps the earlier results on screen when a re-check fails', async () => {
+    setup()
+    await uploadAndValidate()
+    apiMock.importStudents.mockRejectedValueOnce(new Error('The server is busy.'))
+    fireEvent.click(await screen.findByLabelText(/Email an activation link/))
+    fireEvent.click(screen.getByRole('button', { name: 'Re-validate' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The server is busy.')
+    // It used to fall back to zero new accounts beside "No issues found".
+    expect(screen.getByText('New accounts').parentElement).toHaveTextContent('2')
   })
 })
 

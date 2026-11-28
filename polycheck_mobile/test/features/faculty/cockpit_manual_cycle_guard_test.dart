@@ -204,12 +204,39 @@ void main() {
     expect(api.addWrites, 0);
   });
 
-  testWidgets('a tap on a present row still cycles normally (control)', (
+  // A single tap used to move the status to the next one straight away.
+  testWidgets('a tap asks first, and cancelling writes nothing', (
     tester,
   ) async {
     final api = await _pumpCockpit(tester);
 
     await tester.tap(find.text('Bautista, Ben'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Change status?'), findsOneWidget);
+    expect(find.text('Present (now)'), findsOneWidget);
+    expect(api.statusWrites, 0);
+
+    await tester.tap(find.byKey(const ValueKey('status-choice-late')));
+    await tester.pumpAndSettle();
+    expect(find.text('Present will change to Late.'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(api.statusWrites, 0);
+    expect(api.addWrites, 0);
+  });
+
+  testWidgets('confirming writes the chosen status once', (tester) async {
+    final api = await _pumpCockpit(tester);
+
+    await tester.tap(find.text('Bautista, Ben'));
+    await tester.pumpAndSettle();
+    final confirm = find.byKey(const ValueKey('confirm-status-change'));
+    expect(tester.widget<TextButton>(confirm).onPressed, isNull);
+    await tester.tap(find.byKey(const ValueKey('status-choice-absent')));
+    await tester.pumpAndSettle();
+    await tester.tap(confirm);
     await tester.pump();
     await tester.pump();
 

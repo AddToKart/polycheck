@@ -288,7 +288,9 @@ as String?,
 /// @nodoc
 mixin _$Subject {
 
- String get id; String get name; String get code; String? get description; String get createdAt; String get updatedAt;
+ String get id; String get name; String get code; String? get description; String get createdAt; String get updatedAt;/// Set while the subject is archived (hidden at the end of a semester).
+ String? get archivedAt;/// When an archived subject's evidence was erased.
+ String? get evidencePurgedAt;
 /// Create a copy of Subject
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -301,16 +303,16 @@ $SubjectCopyWith<Subject> get copyWith => _$SubjectCopyWithImpl<Subject>(this as
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is Subject&&(identical(other.id, id) || other.id == id)&&(identical(other.name, name) || other.name == name)&&(identical(other.code, code) || other.code == code)&&(identical(other.description, description) || other.description == description)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Subject&&(identical(other.id, id) || other.id == id)&&(identical(other.name, name) || other.name == name)&&(identical(other.code, code) || other.code == code)&&(identical(other.description, description) || other.description == description)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt)&&(identical(other.archivedAt, archivedAt) || other.archivedAt == archivedAt)&&(identical(other.evidencePurgedAt, evidencePurgedAt) || other.evidencePurgedAt == evidencePurgedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,name,code,description,createdAt,updatedAt);
+int get hashCode => Object.hash(runtimeType,id,name,code,description,createdAt,updatedAt,archivedAt,evidencePurgedAt);
 
 @override
 String toString() {
-  return 'Subject(id: $id, name: $name, code: $code, description: $description, createdAt: $createdAt, updatedAt: $updatedAt)';
+  return 'Subject(id: $id, name: $name, code: $code, description: $description, createdAt: $createdAt, updatedAt: $updatedAt, archivedAt: $archivedAt, evidencePurgedAt: $evidencePurgedAt)';
 }
 
 
@@ -321,7 +323,7 @@ abstract mixin class $SubjectCopyWith<$Res>  {
   factory $SubjectCopyWith(Subject value, $Res Function(Subject) _then) = _$SubjectCopyWithImpl;
 @useResult
 $Res call({
- String id, String name, String code, String? description, String createdAt, String updatedAt
+ String id, String name, String code, String? description, String createdAt, String updatedAt, String? archivedAt, String? evidencePurgedAt
 });
 
 
@@ -338,7 +340,7 @@ class _$SubjectCopyWithImpl<$Res>
 
 /// Create a copy of Subject
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? name = null,Object? code = null,Object? description = freezed,Object? createdAt = null,Object? updatedAt = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? name = null,Object? code = null,Object? description = freezed,Object? createdAt = null,Object? updatedAt = null,Object? archivedAt = freezed,Object? evidencePurgedAt = freezed,}) {
   return _then(Subject(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
@@ -346,7 +348,9 @@ as String,code: null == code ? _self.code : code // ignore: cast_nullable_to_non
 as String,description: freezed == description ? _self.description : description // ignore: cast_nullable_to_non_nullable
 as String?,createdAt: null == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as String,updatedAt: null == updatedAt ? _self.updatedAt : updatedAt // ignore: cast_nullable_to_non_nullable
-as String,
+as String,archivedAt: freezed == archivedAt ? _self.archivedAt : archivedAt // ignore: cast_nullable_to_non_nullable
+as String?,evidencePurgedAt: freezed == evidencePurgedAt ? _self.evidencePurgedAt : evidencePurgedAt // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 
@@ -431,10 +435,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String name,  String code,  String? description,  String createdAt,  String updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String name,  String code,  String? description,  String createdAt,  String updatedAt,  String? archivedAt,  String? evidencePurgedAt)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _Subject() when $default != null:
-return $default(_that.id,_that.name,_that.code,_that.description,_that.createdAt,_that.updatedAt);case _:
+return $default(_that.id,_that.name,_that.code,_that.description,_that.createdAt,_that.updatedAt,_that.archivedAt,_that.evidencePurgedAt);case _:
   return orElse();
 
 }
@@ -452,10 +456,10 @@ return $default(_that.id,_that.name,_that.code,_that.description,_that.createdAt
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String name,  String code,  String? description,  String createdAt,  String updatedAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String name,  String code,  String? description,  String createdAt,  String updatedAt,  String? archivedAt,  String? evidencePurgedAt)  $default,) {final _that = this;
 switch (_that) {
 case _Subject():
-return $default(_that.id,_that.name,_that.code,_that.description,_that.createdAt,_that.updatedAt);case _:
+return $default(_that.id,_that.name,_that.code,_that.description,_that.createdAt,_that.updatedAt,_that.archivedAt,_that.evidencePurgedAt);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -472,10 +476,10 @@ return $default(_that.id,_that.name,_that.code,_that.description,_that.createdAt
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String name,  String code,  String? description,  String createdAt,  String updatedAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String name,  String code,  String? description,  String createdAt,  String updatedAt,  String? archivedAt,  String? evidencePurgedAt)?  $default,) {final _that = this;
 switch (_that) {
 case _Subject() when $default != null:
-return $default(_that.id,_that.name,_that.code,_that.description,_that.createdAt,_that.updatedAt);case _:
+return $default(_that.id,_that.name,_that.code,_that.description,_that.createdAt,_that.updatedAt,_that.archivedAt,_that.evidencePurgedAt);case _:
   return null;
 
 }
@@ -487,7 +491,7 @@ return $default(_that.id,_that.name,_that.code,_that.description,_that.createdAt
 
 @JsonSerializable(fieldRename: FieldRename.none, explicitToJson: true)
 class _Subject implements Subject {
-  const _Subject({required this.id, required this.name, required this.code, this.description, this.createdAt = '', this.updatedAt = ''});
+  const _Subject({required this.id, required this.name, required this.code, this.description, this.createdAt = '', this.updatedAt = '', this.archivedAt, this.evidencePurgedAt});
   factory _Subject.fromJson(Map<String, dynamic> json) => _$SubjectFromJson(json);
 
 @override final  String id;
@@ -496,6 +500,10 @@ class _Subject implements Subject {
 @override final  String? description;
 @override@JsonKey() final  String createdAt;
 @override@JsonKey() final  String updatedAt;
+/// Set while the subject is archived (hidden at the end of a semester).
+@override final  String? archivedAt;
+/// When an archived subject's evidence was erased.
+@override final  String? evidencePurgedAt;
 
 /// Create a copy of Subject
 /// with the given fields replaced by the non-null parameter values.
@@ -510,16 +518,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _Subject&&(identical(other.id, id) || other.id == id)&&(identical(other.name, name) || other.name == name)&&(identical(other.code, code) || other.code == code)&&(identical(other.description, description) || other.description == description)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _Subject&&(identical(other.id, id) || other.id == id)&&(identical(other.name, name) || other.name == name)&&(identical(other.code, code) || other.code == code)&&(identical(other.description, description) || other.description == description)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt)&&(identical(other.archivedAt, archivedAt) || other.archivedAt == archivedAt)&&(identical(other.evidencePurgedAt, evidencePurgedAt) || other.evidencePurgedAt == evidencePurgedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,name,code,description,createdAt,updatedAt);
+int get hashCode => Object.hash(runtimeType,id,name,code,description,createdAt,updatedAt,archivedAt,evidencePurgedAt);
 
 @override
 String toString() {
-  return 'Subject(id: $id, name: $name, code: $code, description: $description, createdAt: $createdAt, updatedAt: $updatedAt)';
+  return 'Subject(id: $id, name: $name, code: $code, description: $description, createdAt: $createdAt, updatedAt: $updatedAt, archivedAt: $archivedAt, evidencePurgedAt: $evidencePurgedAt)';
 }
 
 
@@ -530,7 +538,7 @@ abstract mixin class _$SubjectCopyWith<$Res> implements $SubjectCopyWith<$Res> {
   factory _$SubjectCopyWith(_Subject value, $Res Function(_Subject) _then) = __$SubjectCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String name, String code, String? description, String createdAt, String updatedAt
+ String id, String name, String code, String? description, String createdAt, String updatedAt, String? archivedAt, String? evidencePurgedAt
 });
 
 
@@ -547,7 +555,7 @@ class __$SubjectCopyWithImpl<$Res>
 
 /// Create a copy of Subject
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? name = null,Object? code = null,Object? description = freezed,Object? createdAt = null,Object? updatedAt = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? name = null,Object? code = null,Object? description = freezed,Object? createdAt = null,Object? updatedAt = null,Object? archivedAt = freezed,Object? evidencePurgedAt = freezed,}) {
   return _then(_Subject(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
@@ -555,7 +563,9 @@ as String,code: null == code ? _self.code : code // ignore: cast_nullable_to_non
 as String,description: freezed == description ? _self.description : description // ignore: cast_nullable_to_non_nullable
 as String?,createdAt: null == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as String,updatedAt: null == updatedAt ? _self.updatedAt : updatedAt // ignore: cast_nullable_to_non_nullable
-as String,
+as String,archivedAt: freezed == archivedAt ? _self.archivedAt : archivedAt // ignore: cast_nullable_to_non_nullable
+as String?,evidencePurgedAt: freezed == evidencePurgedAt ? _self.evidencePurgedAt : evidencePurgedAt // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 
@@ -566,7 +576,8 @@ as String,
 /// @nodoc
 mixin _$Section {
 
- String get id; String get subjectId; String get section; String? get course; String get room; List<ScheduleDay> get schedule; String get semester; String get teacherId; String get teacherName; String? get enrollmentCode; String? get enrollmentCodeExpiry; int get studentCount; String get createdAt; String get updatedAt;
+ String get id; String get subjectId;/// Present when the section belongs to an archived subject.
+ String? get subjectArchivedAt; String get section; String? get course; String get room; List<ScheduleDay> get schedule; String get semester; String get teacherId; String get teacherName; String? get enrollmentCode; String? get enrollmentCodeExpiry; int get studentCount; String get createdAt; String get updatedAt;
 /// Create a copy of Section
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -579,16 +590,16 @@ $SectionCopyWith<Section> get copyWith => _$SectionCopyWithImpl<Section>(this as
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is Section&&(identical(other.id, id) || other.id == id)&&(identical(other.subjectId, subjectId) || other.subjectId == subjectId)&&(identical(other.section, section) || other.section == section)&&(identical(other.course, course) || other.course == course)&&(identical(other.room, room) || other.room == room)&&const DeepCollectionEquality().equals(other.schedule, schedule)&&(identical(other.semester, semester) || other.semester == semester)&&(identical(other.teacherId, teacherId) || other.teacherId == teacherId)&&(identical(other.teacherName, teacherName) || other.teacherName == teacherName)&&(identical(other.enrollmentCode, enrollmentCode) || other.enrollmentCode == enrollmentCode)&&(identical(other.enrollmentCodeExpiry, enrollmentCodeExpiry) || other.enrollmentCodeExpiry == enrollmentCodeExpiry)&&(identical(other.studentCount, studentCount) || other.studentCount == studentCount)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Section&&(identical(other.id, id) || other.id == id)&&(identical(other.subjectId, subjectId) || other.subjectId == subjectId)&&(identical(other.subjectArchivedAt, subjectArchivedAt) || other.subjectArchivedAt == subjectArchivedAt)&&(identical(other.section, section) || other.section == section)&&(identical(other.course, course) || other.course == course)&&(identical(other.room, room) || other.room == room)&&const DeepCollectionEquality().equals(other.schedule, schedule)&&(identical(other.semester, semester) || other.semester == semester)&&(identical(other.teacherId, teacherId) || other.teacherId == teacherId)&&(identical(other.teacherName, teacherName) || other.teacherName == teacherName)&&(identical(other.enrollmentCode, enrollmentCode) || other.enrollmentCode == enrollmentCode)&&(identical(other.enrollmentCodeExpiry, enrollmentCodeExpiry) || other.enrollmentCodeExpiry == enrollmentCodeExpiry)&&(identical(other.studentCount, studentCount) || other.studentCount == studentCount)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,subjectId,section,course,room,const DeepCollectionEquality().hash(schedule),semester,teacherId,teacherName,enrollmentCode,enrollmentCodeExpiry,studentCount,createdAt,updatedAt);
+int get hashCode => Object.hash(runtimeType,id,subjectId,subjectArchivedAt,section,course,room,const DeepCollectionEquality().hash(schedule),semester,teacherId,teacherName,enrollmentCode,enrollmentCodeExpiry,studentCount,createdAt,updatedAt);
 
 @override
 String toString() {
-  return 'Section(id: $id, subjectId: $subjectId, section: $section, course: $course, room: $room, schedule: $schedule, semester: $semester, teacherId: $teacherId, teacherName: $teacherName, enrollmentCode: $enrollmentCode, enrollmentCodeExpiry: $enrollmentCodeExpiry, studentCount: $studentCount, createdAt: $createdAt, updatedAt: $updatedAt)';
+  return 'Section(id: $id, subjectId: $subjectId, subjectArchivedAt: $subjectArchivedAt, section: $section, course: $course, room: $room, schedule: $schedule, semester: $semester, teacherId: $teacherId, teacherName: $teacherName, enrollmentCode: $enrollmentCode, enrollmentCodeExpiry: $enrollmentCodeExpiry, studentCount: $studentCount, createdAt: $createdAt, updatedAt: $updatedAt)';
 }
 
 
@@ -599,7 +610,7 @@ abstract mixin class $SectionCopyWith<$Res>  {
   factory $SectionCopyWith(Section value, $Res Function(Section) _then) = _$SectionCopyWithImpl;
 @useResult
 $Res call({
- String id, String subjectId, String section, String? course, String room, List<ScheduleDay> schedule, String semester, String teacherId, String teacherName, String? enrollmentCode, String? enrollmentCodeExpiry, int studentCount, String createdAt, String updatedAt
+ String id, String subjectId, String? subjectArchivedAt, String section, String? course, String room, List<ScheduleDay> schedule, String semester, String teacherId, String teacherName, String? enrollmentCode, String? enrollmentCodeExpiry, int studentCount, String createdAt, String updatedAt
 });
 
 
@@ -616,11 +627,12 @@ class _$SectionCopyWithImpl<$Res>
 
 /// Create a copy of Section
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? subjectId = null,Object? section = null,Object? course = freezed,Object? room = null,Object? schedule = null,Object? semester = null,Object? teacherId = null,Object? teacherName = null,Object? enrollmentCode = freezed,Object? enrollmentCodeExpiry = freezed,Object? studentCount = null,Object? createdAt = null,Object? updatedAt = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? subjectId = null,Object? subjectArchivedAt = freezed,Object? section = null,Object? course = freezed,Object? room = null,Object? schedule = null,Object? semester = null,Object? teacherId = null,Object? teacherName = null,Object? enrollmentCode = freezed,Object? enrollmentCodeExpiry = freezed,Object? studentCount = null,Object? createdAt = null,Object? updatedAt = null,}) {
   return _then(Section(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,subjectId: null == subjectId ? _self.subjectId : subjectId // ignore: cast_nullable_to_non_nullable
-as String,section: null == section ? _self.section : section // ignore: cast_nullable_to_non_nullable
+as String,subjectArchivedAt: freezed == subjectArchivedAt ? _self.subjectArchivedAt : subjectArchivedAt // ignore: cast_nullable_to_non_nullable
+as String?,section: null == section ? _self.section : section // ignore: cast_nullable_to_non_nullable
 as String,course: freezed == course ? _self.course : course // ignore: cast_nullable_to_non_nullable
 as String?,room: null == room ? _self.room : room // ignore: cast_nullable_to_non_nullable
 as String,schedule: null == schedule ? _self.schedule : schedule // ignore: cast_nullable_to_non_nullable
@@ -717,10 +729,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String subjectId,  String section,  String? course,  String room,  List<ScheduleDay> schedule,  String semester,  String teacherId,  String teacherName,  String? enrollmentCode,  String? enrollmentCodeExpiry,  int studentCount,  String createdAt,  String updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String subjectId,  String? subjectArchivedAt,  String section,  String? course,  String room,  List<ScheduleDay> schedule,  String semester,  String teacherId,  String teacherName,  String? enrollmentCode,  String? enrollmentCodeExpiry,  int studentCount,  String createdAt,  String updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _Section() when $default != null:
-return $default(_that.id,_that.subjectId,_that.section,_that.course,_that.room,_that.schedule,_that.semester,_that.teacherId,_that.teacherName,_that.enrollmentCode,_that.enrollmentCodeExpiry,_that.studentCount,_that.createdAt,_that.updatedAt);case _:
+return $default(_that.id,_that.subjectId,_that.subjectArchivedAt,_that.section,_that.course,_that.room,_that.schedule,_that.semester,_that.teacherId,_that.teacherName,_that.enrollmentCode,_that.enrollmentCodeExpiry,_that.studentCount,_that.createdAt,_that.updatedAt);case _:
   return orElse();
 
 }
@@ -738,10 +750,10 @@ return $default(_that.id,_that.subjectId,_that.section,_that.course,_that.room,_
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String subjectId,  String section,  String? course,  String room,  List<ScheduleDay> schedule,  String semester,  String teacherId,  String teacherName,  String? enrollmentCode,  String? enrollmentCodeExpiry,  int studentCount,  String createdAt,  String updatedAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String subjectId,  String? subjectArchivedAt,  String section,  String? course,  String room,  List<ScheduleDay> schedule,  String semester,  String teacherId,  String teacherName,  String? enrollmentCode,  String? enrollmentCodeExpiry,  int studentCount,  String createdAt,  String updatedAt)  $default,) {final _that = this;
 switch (_that) {
 case _Section():
-return $default(_that.id,_that.subjectId,_that.section,_that.course,_that.room,_that.schedule,_that.semester,_that.teacherId,_that.teacherName,_that.enrollmentCode,_that.enrollmentCodeExpiry,_that.studentCount,_that.createdAt,_that.updatedAt);case _:
+return $default(_that.id,_that.subjectId,_that.subjectArchivedAt,_that.section,_that.course,_that.room,_that.schedule,_that.semester,_that.teacherId,_that.teacherName,_that.enrollmentCode,_that.enrollmentCodeExpiry,_that.studentCount,_that.createdAt,_that.updatedAt);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -758,10 +770,10 @@ return $default(_that.id,_that.subjectId,_that.section,_that.course,_that.room,_
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String subjectId,  String section,  String? course,  String room,  List<ScheduleDay> schedule,  String semester,  String teacherId,  String teacherName,  String? enrollmentCode,  String? enrollmentCodeExpiry,  int studentCount,  String createdAt,  String updatedAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String subjectId,  String? subjectArchivedAt,  String section,  String? course,  String room,  List<ScheduleDay> schedule,  String semester,  String teacherId,  String teacherName,  String? enrollmentCode,  String? enrollmentCodeExpiry,  int studentCount,  String createdAt,  String updatedAt)?  $default,) {final _that = this;
 switch (_that) {
 case _Section() when $default != null:
-return $default(_that.id,_that.subjectId,_that.section,_that.course,_that.room,_that.schedule,_that.semester,_that.teacherId,_that.teacherName,_that.enrollmentCode,_that.enrollmentCodeExpiry,_that.studentCount,_that.createdAt,_that.updatedAt);case _:
+return $default(_that.id,_that.subjectId,_that.subjectArchivedAt,_that.section,_that.course,_that.room,_that.schedule,_that.semester,_that.teacherId,_that.teacherName,_that.enrollmentCode,_that.enrollmentCodeExpiry,_that.studentCount,_that.createdAt,_that.updatedAt);case _:
   return null;
 
 }
@@ -773,11 +785,13 @@ return $default(_that.id,_that.subjectId,_that.section,_that.course,_that.room,_
 
 @JsonSerializable(fieldRename: FieldRename.none, explicitToJson: true, converters: [DayOfWeekConverter()])
 class _Section implements Section {
-  const _Section({required this.id, required this.subjectId, required this.section, this.course, this.room = '',  List<ScheduleDay> schedule = const <ScheduleDay>[], this.semester = '', required this.teacherId, this.teacherName = '', this.enrollmentCode, this.enrollmentCodeExpiry, this.studentCount = 0, this.createdAt = '', this.updatedAt = ''}): _schedule = schedule;
+  const _Section({required this.id, required this.subjectId, this.subjectArchivedAt, required this.section, this.course, this.room = '',  List<ScheduleDay> schedule = const <ScheduleDay>[], this.semester = '', required this.teacherId, this.teacherName = '', this.enrollmentCode, this.enrollmentCodeExpiry, this.studentCount = 0, this.createdAt = '', this.updatedAt = ''}): _schedule = schedule;
   factory _Section.fromJson(Map<String, dynamic> json) => _$SectionFromJson(json);
 
 @override final  String id;
 @override final  String subjectId;
+/// Present when the section belongs to an archived subject.
+@override final  String? subjectArchivedAt;
 @override final  String section;
 @override final  String? course;
 @override@JsonKey() final  String room;
@@ -810,16 +824,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _Section&&(identical(other.id, id) || other.id == id)&&(identical(other.subjectId, subjectId) || other.subjectId == subjectId)&&(identical(other.section, section) || other.section == section)&&(identical(other.course, course) || other.course == course)&&(identical(other.room, room) || other.room == room)&&const DeepCollectionEquality().equals(other._schedule, _schedule)&&(identical(other.semester, semester) || other.semester == semester)&&(identical(other.teacherId, teacherId) || other.teacherId == teacherId)&&(identical(other.teacherName, teacherName) || other.teacherName == teacherName)&&(identical(other.enrollmentCode, enrollmentCode) || other.enrollmentCode == enrollmentCode)&&(identical(other.enrollmentCodeExpiry, enrollmentCodeExpiry) || other.enrollmentCodeExpiry == enrollmentCodeExpiry)&&(identical(other.studentCount, studentCount) || other.studentCount == studentCount)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _Section&&(identical(other.id, id) || other.id == id)&&(identical(other.subjectId, subjectId) || other.subjectId == subjectId)&&(identical(other.subjectArchivedAt, subjectArchivedAt) || other.subjectArchivedAt == subjectArchivedAt)&&(identical(other.section, section) || other.section == section)&&(identical(other.course, course) || other.course == course)&&(identical(other.room, room) || other.room == room)&&const DeepCollectionEquality().equals(other._schedule, _schedule)&&(identical(other.semester, semester) || other.semester == semester)&&(identical(other.teacherId, teacherId) || other.teacherId == teacherId)&&(identical(other.teacherName, teacherName) || other.teacherName == teacherName)&&(identical(other.enrollmentCode, enrollmentCode) || other.enrollmentCode == enrollmentCode)&&(identical(other.enrollmentCodeExpiry, enrollmentCodeExpiry) || other.enrollmentCodeExpiry == enrollmentCodeExpiry)&&(identical(other.studentCount, studentCount) || other.studentCount == studentCount)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,subjectId,section,course,room,const DeepCollectionEquality().hash(_schedule),semester,teacherId,teacherName,enrollmentCode,enrollmentCodeExpiry,studentCount,createdAt,updatedAt);
+int get hashCode => Object.hash(runtimeType,id,subjectId,subjectArchivedAt,section,course,room,const DeepCollectionEquality().hash(_schedule),semester,teacherId,teacherName,enrollmentCode,enrollmentCodeExpiry,studentCount,createdAt,updatedAt);
 
 @override
 String toString() {
-  return 'Section(id: $id, subjectId: $subjectId, section: $section, course: $course, room: $room, schedule: $schedule, semester: $semester, teacherId: $teacherId, teacherName: $teacherName, enrollmentCode: $enrollmentCode, enrollmentCodeExpiry: $enrollmentCodeExpiry, studentCount: $studentCount, createdAt: $createdAt, updatedAt: $updatedAt)';
+  return 'Section(id: $id, subjectId: $subjectId, subjectArchivedAt: $subjectArchivedAt, section: $section, course: $course, room: $room, schedule: $schedule, semester: $semester, teacherId: $teacherId, teacherName: $teacherName, enrollmentCode: $enrollmentCode, enrollmentCodeExpiry: $enrollmentCodeExpiry, studentCount: $studentCount, createdAt: $createdAt, updatedAt: $updatedAt)';
 }
 
 
@@ -830,7 +844,7 @@ abstract mixin class _$SectionCopyWith<$Res> implements $SectionCopyWith<$Res> {
   factory _$SectionCopyWith(_Section value, $Res Function(_Section) _then) = __$SectionCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String subjectId, String section, String? course, String room, List<ScheduleDay> schedule, String semester, String teacherId, String teacherName, String? enrollmentCode, String? enrollmentCodeExpiry, int studentCount, String createdAt, String updatedAt
+ String id, String subjectId, String? subjectArchivedAt, String section, String? course, String room, List<ScheduleDay> schedule, String semester, String teacherId, String teacherName, String? enrollmentCode, String? enrollmentCodeExpiry, int studentCount, String createdAt, String updatedAt
 });
 
 
@@ -847,11 +861,12 @@ class __$SectionCopyWithImpl<$Res>
 
 /// Create a copy of Section
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? subjectId = null,Object? section = null,Object? course = freezed,Object? room = null,Object? schedule = null,Object? semester = null,Object? teacherId = null,Object? teacherName = null,Object? enrollmentCode = freezed,Object? enrollmentCodeExpiry = freezed,Object? studentCount = null,Object? createdAt = null,Object? updatedAt = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? subjectId = null,Object? subjectArchivedAt = freezed,Object? section = null,Object? course = freezed,Object? room = null,Object? schedule = null,Object? semester = null,Object? teacherId = null,Object? teacherName = null,Object? enrollmentCode = freezed,Object? enrollmentCodeExpiry = freezed,Object? studentCount = null,Object? createdAt = null,Object? updatedAt = null,}) {
   return _then(_Section(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,subjectId: null == subjectId ? _self.subjectId : subjectId // ignore: cast_nullable_to_non_nullable
-as String,section: null == section ? _self.section : section // ignore: cast_nullable_to_non_nullable
+as String,subjectArchivedAt: freezed == subjectArchivedAt ? _self.subjectArchivedAt : subjectArchivedAt // ignore: cast_nullable_to_non_nullable
+as String?,section: null == section ? _self.section : section // ignore: cast_nullable_to_non_nullable
 as String,course: freezed == course ? _self.course : course // ignore: cast_nullable_to_non_nullable
 as String?,room: null == room ? _self.room : room // ignore: cast_nullable_to_non_nullable
 as String,schedule: null == schedule ? _self._schedule : schedule // ignore: cast_nullable_to_non_nullable

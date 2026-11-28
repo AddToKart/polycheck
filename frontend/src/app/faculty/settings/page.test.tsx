@@ -171,7 +171,7 @@ describe('Institution Settings tabs', () => {
 
     render(<InstitutionSettingsPage />)
 
-    expect(await screen.findByLabelText('Default geofence radius (meters)')).toHaveValue(40)
+    expect(await screen.findByLabelText('Default geofence radius (meters)')).toHaveValue('40')
     expect(screen.getByRole('tab', { name: 'Sessions & attendance' })).toHaveAttribute(
       'aria-selected',
       'true',

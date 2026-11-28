@@ -28,7 +28,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('renders GFM tables with the token table renderer', (
+  testWidgets('shows a table as a readable list, not as squeezed columns', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -44,7 +44,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(Table), findsOneWidget);
+    expect(find.byType(Table), findsNothing);
+    expect(find.textContaining('Maria', findRichText: true), findsOneWidget);
+    expect(find.textContaining('Present', findRichText: true), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

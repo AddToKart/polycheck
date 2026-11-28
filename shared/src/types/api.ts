@@ -1,3 +1,4 @@
+import type { SubjectLifecycle } from "./subject-lifecycle";
 import type {
   User,
   Student,
@@ -473,6 +474,13 @@ export interface ApiClient {
   getCurrentUser(): User | null;
 
   getSubjects(): Promise<Subject[]>;
+  getArchivedSubjects(): Promise<Subject[]>;
+  getSubjectLifecycle(id: string): Promise<SubjectLifecycle>;
+  archiveSubject(id: string): Promise<SubjectLifecycle>;
+  /** Cancels the pending erasure and brings the subject back. */
+  restoreSubject(id: string): Promise<SubjectLifecycle>;
+  /** Permanently deletes an archived subject and all its records. `confirmCode` is the subject code. */
+  deleteArchivedSubject(id: string, confirmCode: string): Promise<void>;
   getSubject(id: string): Promise<Subject>;
   createSubject(data: CreateSubjectInput): Promise<Subject>;
 
@@ -513,6 +521,8 @@ export interface ApiClient {
   ): Promise<Session>;
   generateCheckpointQrCode(input: GenerateCheckpointQrInput): Promise<Session>;
   endSession(sessionId: string): Promise<Session>;
+  /** Moves a class that has not started yet; it is then labelled Rescheduled. */
+  rescheduleSession(sessionId: string, data: RescheduleSessionInput): Promise<Session>;
 
   getAttendanceRecords(sessionId?: string): Promise<AttendanceRecord[]>;
   getAttendanceSummaries(teacherId?: string): Promise<AttendanceSummary[]>;
@@ -763,4 +773,11 @@ export interface ApiClient {
 
   // ── RA 10173 privacy center (F6, IT-suite) ──
   getPrivacyCenter(): Promise<PrivacyCenterSnapshot>;
+}
+
+export interface RescheduleSessionInput {
+  date: string;
+  startTime: string;
+  endTime: string;
+  room?: string;
 }

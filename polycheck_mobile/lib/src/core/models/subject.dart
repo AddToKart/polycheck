@@ -68,6 +68,12 @@ abstract class Subject with _$Subject {
     String? description,
     @Default('') String createdAt,
     @Default('') String updatedAt,
+
+    /// Set while the subject is archived (hidden at the end of a semester).
+    String? archivedAt,
+
+    /// When an archived subject's evidence was erased.
+    String? evidencePurgedAt,
   }) = _Subject;
 
   factory Subject.fromJson(Map<String, dynamic> json) =>
@@ -85,6 +91,9 @@ abstract class Section with _$Section {
   const factory Section({
     required String id,
     required String subjectId,
+
+    /// Present when the section belongs to an archived subject.
+    String? subjectArchivedAt,
     required String section,
     String? course,
     @Default('') String room,

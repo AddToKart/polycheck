@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common'
+import { IN_ACTIVE_SUBJECT } from '../common/active-subject'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { AttendanceListQueryDto, AttendanceReportQueryDto } from './dto/attendance.dto'
@@ -58,6 +59,7 @@ export class AttendanceScopeService {
         { session: sessionWhere },
         ...(query.sessionId ? [{ sessionId: query.sessionId }] : []),
         ...(query.sectionId ? [{ sectionId: query.sectionId }] : []),
+        ...(query.sessionId || query.sectionId ? [] : [{ section: IN_ACTIVE_SUBJECT }]),
       ],
     } satisfies Prisma.AttendanceRecordWhereInput
   }
@@ -92,6 +94,7 @@ export class AttendanceScopeService {
           : []),
         ...(user.role !== 'super_admin' && oversight ? [{ section: oversight }] : []),
         ...(course ? [{ section: { course: { equals: course, mode: 'insensitive' as const } } }] : []),
+        ...(user.role === 'teacher' && !query.sectionId && !query.sessionId ? [{ section: IN_ACTIVE_SUBJECT }] : []),
       ],
     }
   }

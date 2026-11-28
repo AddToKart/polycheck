@@ -41,8 +41,9 @@ test.describe('V2 — concurrent-session conflict', () => {
     // discarded rather than adopting one side on another day.
     const slotBase = 3 + (Math.floor(Date.now() / 60_000) % 17)
     const pad = (value: number) => String(value).padStart(2, '0')
-    const slotA = { startTime: `01:${pad(slotBase)}`, endTime: `01:${pad(slotBase + 10)}` }
-    const slotB = { startTime: `01:${pad(slotBase + 5)}`, endTime: `01:${pad(slotBase + 15)}` }
+    // Classes must be at least 15 minutes long.
+    const slotA = { startTime: `01:${pad(slotBase)}`, endTime: `01:${pad(slotBase + 20)}` }
+    const slotB = { startTime: `01:${pad(slotBase + 5)}`, endTime: `01:${pad(slotBase + 25)}` }
     let sessionIdA: string | null = null
     let sessionIdB: string | null = null
     for (let offset = 20; offset < 90 && !sessionIdA; offset++) {

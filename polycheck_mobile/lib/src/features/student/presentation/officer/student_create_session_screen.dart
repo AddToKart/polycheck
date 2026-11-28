@@ -318,11 +318,10 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
     final end = _endController.text.trim();
     // FLF-06: the backend rejects a bad clock with its TIME_OF_DAY regex
     // `([01]\d|2[0-3]):[0-5]\d`; `99:99` used to pass this check and 400.
-    if (!isValidCampusTime(start) || !isValidCampusTime(end)) {
-      return 'Enter start and end times in 24-hour HH:mm form.';
-    }
-    if (end.compareTo(start) <= 0) {
-      return 'End time must be after the start time.';
+    final timeIssue = sessionTimeIssue(start, end);
+    if (timeIssue != null) return timeIssue;
+    if (date.compareTo(formatCampusDate()) < 0) {
+      return 'The date cannot be in the past.';
     }
     final validity = int.tryParse(_validityController.text.trim());
     if (validity == null || validity < 1 || validity > 15) {
@@ -489,6 +488,7 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
                       hint: 'HH:MM',
                       controller: _startController,
                       keyboardType: TextInputType.datetime,
+                      inputFormatters: timeInputFormatters,
                       suffix: IconButton(
                         tooltip: 'Pick start time',
                         onPressed: () => _pickTime(_startController),
@@ -503,6 +503,7 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
                       hint: 'HH:MM',
                       controller: _endController,
                       keyboardType: TextInputType.datetime,
+                      inputFormatters: timeInputFormatters,
                       suffix: IconButton(
                         tooltip: 'Pick end time',
                         onPressed: () => _pickTime(_endController),
@@ -517,6 +518,7 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
                 label: 'Room',
                 hint: 'Optional room',
                 controller: _roomController,
+                maxLength: sessionRoomMaxLength,
                 prefixIcon: Icons.meeting_room_outlined,
               ),
               const SizedBox(height: 10),
@@ -528,6 +530,7 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
                       hint: '1–15',
                       controller: _validityController,
                       keyboardType: TextInputType.number,
+                      inputFormatters: wholeNumberFormatters(2),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -537,6 +540,7 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
                       hint: '0–60',
                       controller: _graceController,
                       keyboardType: TextInputType.number,
+                      inputFormatters: wholeNumberFormatters(2),
                     ),
                   ),
                 ],
@@ -597,20 +601,7 @@ class _CreateSessionFormState extends ConsumerState<_CreateSessionForm> {
         ),
         if (_error != null) ...<Widget>[
           const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: tokens.gold.withValues(alpha: 0.12),
-              border: Border.all(color: tokens.gold),
-            ),
-            child: Text(
-              _error!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: tokens.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          FormProblems(problems: <String>[_error!]),
         ],
         const SizedBox(height: 16),
         CampusButton(

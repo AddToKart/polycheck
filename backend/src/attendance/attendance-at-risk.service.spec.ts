@@ -123,14 +123,14 @@ describe('AttendanceAtRiskService', () => {
 
     await expect(service.list(teacher, { sectionId: 'sec-foreign' })).rejects.toThrow(ForbiddenException)
     expect(prisma.section.findFirst).toHaveBeenCalledWith({
-      where: { teacherId: 'teacher-1', id: 'sec-foreign' },
+      where: { teacherId: 'teacher-1', id: 'sec-foreign', subject: { archivedAt: null } },
       select: { id: true },
     })
 
     prisma.section.findFirst.mockResolvedValue({ id: 'sec-1' })
     await service.list(teacher, { sectionId: 'sec-1' })
     expect(prisma.section.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { teacherId: 'teacher-1', id: 'sec-1' } }),
+      expect.objectContaining({ where: { teacherId: 'teacher-1', id: 'sec-1', subject: { archivedAt: null } } }),
     )
   })
 
@@ -141,7 +141,7 @@ describe('AttendanceAtRiskService', () => {
 
     expect(prisma.section.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { teacher: { department: { equals: 'CCIS', mode: 'insensitive' } } },
+        where: { teacher: { department: { equals: 'CCIS', mode: 'insensitive' } }, subject: { archivedAt: null } },
       }),
     )
   })
@@ -151,7 +151,9 @@ describe('AttendanceAtRiskService', () => {
 
     await service.list(admin)
 
-    expect(prisma.section.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }))
+    expect(prisma.section.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { subject: { archivedAt: null } } }),
+    )
   })
 
   it('forbids students', async () => {
@@ -250,17 +252,23 @@ describe('AttendanceAtRiskService — course scope (COURSE_SCOPE_MODE=course)', 
     const { service, prisma } = makeService()
     await service.list(bsitHead)
     expect(prisma.section.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { OR: [{ course: { equals: 'BSIT', mode: 'insensitive' } }] } }),
+      expect.objectContaining({
+        where: { OR: [{ course: { equals: 'BSIT', mode: 'insensitive' } }], subject: { archivedAt: null } },
+      }),
     )
   })
 
   it('lets the Head of Academic Programs see every course and narrow with the course filter', async () => {
     const { service, prisma } = makeService()
     await service.list(programsHead)
-    expect(prisma.section.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }))
+    expect(prisma.section.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { subject: { archivedAt: null } } }),
+    )
     await service.list(programsHead, { course: 'BSHM' })
     expect(prisma.section.findMany).toHaveBeenLastCalledWith(
-      expect.objectContaining({ where: { course: { equals: 'BSHM', mode: 'insensitive' } } }),
+      expect.objectContaining({
+        where: { course: { equals: 'BSHM', mode: 'insensitive' }, subject: { archivedAt: null } },
+      }),
     )
   })
 
@@ -272,6 +280,7 @@ describe('AttendanceAtRiskService — course scope (COURSE_SCOPE_MODE=course)', 
         where: {
           OR: [{ course: { equals: 'BSIT', mode: 'insensitive' } }],
           course: { equals: 'BSHM', mode: 'insensitive' },
+          subject: { archivedAt: null },
         },
       }),
     )
@@ -280,6 +289,8 @@ describe('AttendanceAtRiskService — course scope (COURSE_SCOPE_MODE=course)', 
   it('treats a head with no courses as a plain teacher (own sections only)', async () => {
     const { service, prisma } = makeService()
     await service.list(emptyHead)
-    expect(prisma.section.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { teacherId: 'head-none' } }))
+    expect(prisma.section.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { teacherId: 'head-none', subject: { archivedAt: null } } }),
+    )
   })
 })

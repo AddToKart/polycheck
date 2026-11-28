@@ -85,10 +85,6 @@ class _FacultyLoginScreenState extends ConsumerState<FacultyLoginScreen> {
             ),
             const SizedBox(height: 14),
           ],
-          if (_error != null) ...[
-            AuthErrorBanner(message: _error!),
-            const SizedBox(height: 14),
-          ],
           CampusTextField(
             controller: _emailController,
             label: 'Institutional email',
@@ -117,6 +113,10 @@ class _FacultyLoginScreenState extends ConsumerState<FacultyLoginScreen> {
             onSubmitted: (_) => _submit(),
           ),
           const SizedBox(height: 20),
+          if (_error != null) ...[
+            AuthErrorBanner(message: _error!),
+            const SizedBox(height: 14),
+          ],
           CampusButton(
             label: _submitting ? 'Verifying...' : 'Sign in',
             loading: _submitting,

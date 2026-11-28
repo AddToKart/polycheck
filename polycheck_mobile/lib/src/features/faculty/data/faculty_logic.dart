@@ -25,24 +25,18 @@ const Set<AttendanceStatus> editableAttendanceStatuses = <AttendanceStatus>{
   AttendanceStatus.incomplete,
 };
 
-/// Web parity cycle. `incomplete` stays in the cycle because half-attended
-/// online sessions resolve to it; `pending` does not, because the backend
-/// rejects it (FLF-02). A `pending` row starts at `present`.
-const List<AttendanceStatus> attendanceStatusCycle = <AttendanceStatus>[
+/// The statuses a professor can set by hand, as on the website. `incomplete` is
+/// offered because half-attended online sessions resolve to it; `pending` is
+/// not, because the backend rejects it (FLF-02).
+const List<AttendanceStatus> manualStatusChoices = <AttendanceStatus>[
   AttendanceStatus.present,
   AttendanceStatus.late,
   AttendanceStatus.incomplete,
   AttendanceStatus.absent,
 ];
 
-AttendanceStatus nextAttendanceStatus(AttendanceStatus current) {
-  final index = attendanceStatusCycle.indexOf(current);
-  if (index < 0) return attendanceStatusCycle.first;
-  return attendanceStatusCycle[(index + 1) % attendanceStatusCycle.length];
-}
-
-/// Statuses the teacher taps through on the roster (disputed/excused rows are
-/// resolved through their own queues, not the cycle).
+/// Whether a row may be changed by hand. Disputed and excused rows are resolved
+/// through their own queues.
 bool isManualCycleStatus(AttendanceStatus status) {
   return status != AttendanceStatus.disputed &&
       status != AttendanceStatus.excused;

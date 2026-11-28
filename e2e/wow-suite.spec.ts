@@ -301,6 +301,8 @@ test.describe('Wow-factor suite (F1–F9)', () => {
         .getByRole('dialog')
         .getByRole('button', { name: 'present', exact: true })
         .click()
+      // A status change asks for confirmation first.
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm change' }).click()
       await expect(page.getByTestId('outage-receipt')).toContainText(/Receipt #\d+ · [0-9a-f]{8}/, {
         timeout: 20_000,
       })

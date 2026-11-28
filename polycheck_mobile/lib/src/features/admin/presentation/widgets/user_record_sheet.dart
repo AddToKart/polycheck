@@ -370,23 +370,6 @@ class _UserRecordSheetState extends ConsumerState<UserRecordSheet> {
               AdminStatusChip(label: designation.label, active: true),
           ],
         ),
-        if (_error != null) ...<Widget>[
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: tokens.maroon,
-              border: Border.all(color: tokens.maroon),
-            ),
-            child: Text(
-              _error!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
         if (!manageable) ...<Widget>[
           const SizedBox(height: 12),
           CampusCard(
@@ -585,6 +568,23 @@ class _UserRecordSheetState extends ConsumerState<UserRecordSheet> {
             ),
           ],
           const SizedBox(height: 14),
+          if (_error != null) ...<Widget>[
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: tokens.maroon,
+                border: Border.all(color: tokens.maroon),
+              ),
+              child: Text(
+                _error!,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           CampusButton(
             label: _busy ? 'Saving…' : 'Save changes',
             loading: _busy,

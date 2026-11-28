@@ -110,6 +110,12 @@ export const PRIVACY_DATA_INVENTORY: readonly PrivacyDataInventoryRow[] = [
     lifetime: 'Teacher-managed deletion for proofs; screenshot attachments follow the report lifecycle',
   },
   {
+    data: 'Evidence of an archived subject (class photos, excuse photos, check-in coordinates and scan-attempt logs)',
+    purpose: 'Close out a finished semester without keeping evidence that is no longer needed',
+    lawfulBasis: 'RA 10173 §11(e) — kept only as long as necessary',
+    lifetime: 'Erased 90 days after the subject is archived; attendance results are kept. The teacher may delete the whole archived subject sooner',
+  },
+  {
     data: 'Audit trail (who did what, from where, when — including institution settings changes)',
     purpose: 'Tamper-evident accountability log with daily external anchors',
     lawfulBasis: 'RA 10173 §13 — legitimate educational interests',

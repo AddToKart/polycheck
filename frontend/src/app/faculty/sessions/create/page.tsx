@@ -11,6 +11,8 @@ import { ErrorDisplay } from '@/lib/hooks'
 import {
   formatCampusDate,
   sectionCourseLabel,
+  sessionTimeIssue,
+  SESSION_ROOM_MAX_LENGTH,
   type User,
   type Subject,
   type Section,
@@ -131,8 +133,16 @@ export default function CreateSessionPage() {
           api.getSettings(),
         ])
         if (!active) return
+        const ownSections = allSections.filter((s) => s.teacherId === cu.id)
         setSubjects(subjectList)
-        setSections(allSections.filter((s) => s.teacherId === cu.id))
+        setSections(ownSections)
+        // "Create Session" on a section or its dashboard card passes the class along.
+        const requested = new URLSearchParams(window.location.search).get('sectionId')
+        const preselected = ownSections.find((item) => item.id === requested)
+        if (preselected) {
+          setSubjectId(preselected.subjectId)
+          setSectionId(preselected.id)
+        }
         const settingValues = new Map(settings.map((setting) => [setting.key, Number(setting.value)]))
         const configuredRadius = settingValues.get('default_geofence_radius_meters')
         const configuredValidity = settingValues.get('default_qr_validity_minutes')
@@ -151,10 +161,6 @@ export default function CreateSessionPage() {
       active = false
     }
   }, [router, initRetry])
-
-  useEffect(() => {
-    setSectionId('')
-  }, [subjectId])
 
   const selectedSection = sections.find((s) => s.id === sectionId)
   const selectedSubject = subjects.find((s) => s.id === subjectId)
@@ -300,22 +306,38 @@ export default function CreateSessionPage() {
   // hidden and validation runs per selected row instead.
   const showGlobalTimeRange = !bulkMode || !hasScheduleSlots
   const invalidBulkRow = bulkMode && hasScheduleSlots ? firstInvalidSlotRow(bulkRows) : null
-  const timeRangeInvalid = showGlobalTimeRange ? endTime <= startTime : invalidBulkRow !== null
+  const globalTimeIssue = showGlobalTimeRange ? sessionTimeIssue(startTime, endTime) : null
+  const rowTimeIssue =
+    bulkMode && hasScheduleSlots
+      ? (bulkRows
+          .filter((row) => row.selected)
+          .map((row) => ({ day: row.day, issue: sessionTimeIssue(row.startTime, row.endTime) }))
+          .find((row) => row.issue) ?? null)
+      : null
+  const today = formatCampusDate()
+
+  // Everything that stops the form, listed next to the button so the reason is never off screen.
+  const problems: string[] = []
+  if (globalTimeIssue) problems.push(globalTimeIssue)
+  if (rowTimeIssue) problems.push(`${rowTimeIssue.day}: ${rowTimeIssue.issue}`)
+  if (bulkMode) {
+    if (!bulkStartDate || !bulkEndDate) problems.push('Choose a start date and an end date.')
+    else if (bulkEndDate < bulkStartDate) problems.push('The end date must be on or after the start date.')
+    else if (Date.parse(bulkEndDate) - Date.parse(bulkStartDate) > 366 * 86_400_000) {
+      problems.push('Recurring sessions are limited to one year.')
+    } else if (bulkCount === 0) problems.push('No class day in this range matches the selected meetings.')
+    if (bulkStartDate && bulkStartDate < today) problems.push('The start date cannot be in the past.')
+  } else if (!date) problems.push('Choose a date.')
+  else if (date < today) problems.push('The class date cannot be in the past.')
+  if (room.trim().length > SESSION_ROOM_MAX_LENGTH) {
+    problems.push(`Room names are limited to ${SESSION_ROOM_MAX_LENGTH} characters.`)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedSection || !selectedSubject || !user || submitting) return
-    if (showGlobalTimeRange) {
-      if (endTime <= startTime) {
-        setFormError('End time must be after start time.')
-        return
-      }
-    } else if (invalidBulkRow) {
-      setFormError(`End time must be after start time for the ${invalidBulkRow.day} class meeting.`)
-      return
-    }
-    if (bulkMode && bulkCount === 0) {
-      setFormError('No matching sessions found for the selected date range and days.')
+    if (problems.length > 0) {
+      setFormError(problems[0])
       return
     }
     setSubmitting(true)
@@ -410,29 +432,6 @@ export default function CreateSessionPage() {
               </CardHeader>
               <CardContent className="space-y-5">
 
-                {/* Duplicate session warning */}
-                {duplicateCheckError ? (
-                  <div className="flex items-start gap-3 p-4 border-l-4 border-zinc-400 bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-600">
-                    <CalendarCheck className="w-4 h-4 text-zinc-500 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-xs font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-widest mb-0.5">Duplicate check unavailable</p>
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                        {duplicateCheckError} Verify the date manually before creating the session.
-                      </p>
-                    </div>
-                  </div>
-                ) : null}
-                {hasDuplicateConflict && (
-                  <div className="flex items-start gap-3 p-4 border-l-4 border-amber-400 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-500">
-                    <CalendarCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest mb-0.5">Session Conflict Detected</p>
-                      <p className="text-xs text-amber-600 dark:text-amber-300">
-                        A session already exists for this section on <strong>{date}</strong> (Session ID: {existingSessionOnDate?.id}). Creating another may cause duplicate attendance records. Use &quot;Reschedule&quot; instead, or change the date.
-                      </p>
-                    </div>
-                  </div>
-                )}
                 {/* Session mode */}
                 <div className="space-y-2">
                   <Label>Session mode</Label>
@@ -476,7 +475,10 @@ export default function CreateSessionPage() {
                   <select
                     id="subject"
                     value={subjectId}
-                    onChange={(e) => setSubjectId(e.target.value)}
+                    onChange={(e) => {
+                      setSubjectId(e.target.value)
+                      setSectionId('')
+                    }}
                     className="flex h-10 w-full rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon/30 focus-visible:border-maroon disabled:cursor-not-allowed disabled:opacity-50"
                     required
                   >
@@ -531,11 +533,11 @@ export default function CreateSessionPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="bulkStartDate">Start Date</Label>
-                        <Input id="bulkStartDate" type="date" value={bulkStartDate} onChange={(e) => setBulkStartDate(e.target.value)} required />
+                        <Input id="bulkStartDate" type="date" min={today} value={bulkStartDate} onChange={(e) => setBulkStartDate(e.target.value)} required />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="bulkEndDate">End Date</Label>
-                        <Input id="bulkEndDate" type="date" value={bulkEndDate} onChange={(e) => setBulkEndDate(e.target.value)} required />
+                        <Input id="bulkEndDate" type="date" min={bulkStartDate || today} value={bulkEndDate} onChange={(e) => setBulkEndDate(e.target.value)} required />
                       </div>
                     </div>
                     {hasScheduleSlots ? (
@@ -653,7 +655,7 @@ export default function CreateSessionPage() {
 
                     <div className="space-y-2">
                       <Label htmlFor="date">Date</Label>
-                      <Input id="date" type="date" value={date} onChange={(e) => handleDateChange(e.target.value)} required />
+                      <Input id="date" type="date" min={today} value={date} onChange={(e) => handleDateChange(e.target.value)} required />
                     </div>
 
                     {selectedSection && selectedSection.schedule.length > 0 && (
@@ -720,17 +722,15 @@ export default function CreateSessionPage() {
                         <Input id="endTime" type="time" value={endTime} onChange={(e) => handleEndTimeChange(e.target.value)} required />
                       </div>
                     </div>
-                    {endTime <= startTime && (
-                      <p className="text-xs text-red-600 dark:text-red-400 font-medium">
-                        End time must be after start time.
-                      </p>
+                    {globalTimeIssue && (
+                      <p className="text-xs text-red-600 dark:text-red-400 font-medium">{globalTimeIssue}</p>
                     )}
                   </>
                 )}
 
                 <div className="space-y-2">
                   <Label htmlFor="room">Room</Label>
-                  <Input id="room" value={room} onChange={(e) => setRoom(e.target.value)} placeholder="e.g. CCIS Lab 3" />
+                  <Input id="room" value={room} maxLength={SESSION_ROOM_MAX_LENGTH} onChange={(e) => setRoom(e.target.value)} placeholder="e.g. CCIS Lab 3" />
                 </div>
               </CardContent>
             </Card>
@@ -777,6 +777,44 @@ export default function CreateSessionPage() {
               </Card>
             )}
 
+            {/* Duplicate session warning */}
+            {duplicateCheckError ? (
+              <div className="flex items-start gap-3 p-4 border-l-4 border-zinc-400 bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-600">
+                <CalendarCheck className="w-4 h-4 text-zinc-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-widest mb-0.5">Duplicate check unavailable</p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    {duplicateCheckError} Verify the date manually before creating the session.
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            {hasDuplicateConflict && (
+              <div className="flex items-start gap-3 p-4 border-l-4 border-amber-400 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-500">
+                <CalendarCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest mb-0.5">Session Conflict Detected</p>
+                  <p className="text-xs text-amber-600 dark:text-amber-300">
+                    A session already exists for this section on <strong>{date}</strong> (Session ID: {existingSessionOnDate?.id}). Creating another may cause duplicate attendance records. Use &quot;Reschedule&quot; instead, or change the date.
+                  </p>
+                </div>
+              </div>
+            )}
+            {selectedSection && problems.length > 0 && (
+              <div
+                id="session-form-problems"
+                role="alert"
+                className="border-l-4 border-red-600 bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300"
+              >
+                <p className="font-semibold">Fix this before creating</p>
+                <ul className="mt-1 list-disc pl-4 text-xs">
+                  {problems.map((problem) => (
+                    <li key={problem}>{problem}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {formError && (
               <div className="p-4 border-l-4 border-red-500 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 text-sm">
                 <p className="font-semibold">Error creating session</p>
@@ -785,7 +823,7 @@ export default function CreateSessionPage() {
             )}
 
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="submit" disabled={!selectedSection || !selectedSubject || (bulkMode && bulkCount === 0) || hasDuplicateConflict || timeRangeInvalid || submitting}>
+              <Button type="submit" disabled={!selectedSection || !selectedSubject || hasDuplicateConflict || problems.length > 0 || submitting}>
                 {submitting ? 'Creating...' : bulkMode ? `Create ${bulkCount} Sessions` : 'Create Session'}
               </Button>
               <Button variant="ghost" asChild>

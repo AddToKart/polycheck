@@ -69,10 +69,6 @@ class _ForcePasswordChangeScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_error != null) ...[
-            AuthErrorBanner(message: _error!),
-            const SizedBox(height: 14),
-          ],
           CampusTextField(
             controller: _currentController,
             label: 'Current password',
@@ -121,6 +117,10 @@ class _ForcePasswordChangeScreenState
             },
           ),
           const SizedBox(height: 20),
+          if (_error != null) ...[
+            AuthErrorBanner(message: _error!),
+            const SizedBox(height: 14),
+          ],
           CampusButton(
             label: _submitting ? 'Saving...' : 'Change password',
             loading: _submitting,

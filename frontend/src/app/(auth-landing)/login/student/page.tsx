@@ -160,12 +160,6 @@ export default function StudentLoginPage() {
           />
         ) : (
           <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
-              <div className="p-4 rounded-none bg-red-50 dark:bg-red-900/20 border-l-4 border-red-600 text-red-700 dark:text-red-400 text-sm font-medium">
-                {error}
-              </div>
-            )}
-
             <div className="space-y-3">
               <Label
                 htmlFor="studentId"
@@ -231,6 +225,12 @@ export default function StudentLoginPage() {
                 Forgot password?
               </Link>
             </div>
+
+            {error && (
+              <div className="p-4 rounded-none bg-red-50 dark:bg-red-900/20 border-l-4 border-red-600 text-red-700 dark:text-red-400 text-sm font-medium">
+                {error}
+              </div>
+            )}
 
             <div className="pt-2">
               <Button

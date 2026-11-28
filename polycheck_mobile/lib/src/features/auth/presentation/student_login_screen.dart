@@ -116,10 +116,6 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_error != null) ...[
-          AuthErrorBanner(message: _error!),
-          const SizedBox(height: 14),
-        ],
         CampusTextField(
           controller: _studentIdController,
           label: 'Student number',
@@ -161,6 +157,10 @@ class _StudentLoginScreenState extends ConsumerState<StudentLoginScreen> {
           ),
         ),
         const SizedBox(height: 8),
+        if (_error != null) ...[
+          AuthErrorBanner(message: _error!),
+          const SizedBox(height: 14),
+        ],
         CampusButton(
           label: _submitting ? 'Verifying...' : 'Sign in',
           loading: _submitting,

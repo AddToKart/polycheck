@@ -83,18 +83,6 @@ class _SubjectCreateScreenState extends ConsumerState<SubjectCreateScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (_error != null) ...[
-              CampusCard(
-                borderColor: tokens.gold,
-                child: Text(
-                  _error!,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: tokens.onSurface),
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
             CampusTextField(
               controller: _name,
               label: 'Subject name',
@@ -126,6 +114,7 @@ class _SubjectCreateScreenState extends ConsumerState<SubjectCreateScreen> {
               textCapitalization: TextCapitalization.sentences,
             ),
             const SizedBox(height: 20),
+            FormProblems(problems: [?_error]),
             CampusButton(
               label: 'Create subject',
               icon: Icons.add,

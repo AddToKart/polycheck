@@ -423,6 +423,13 @@ export default function UsersPage() {
   }
 
   const toggleStatus = (target: User) => {
+    // Disabling signs the person out everywhere, so it is not a one-click action.
+    if (
+      target.isActive &&
+      !window.confirm(`Disable ${target.fullName}'s account? They are signed out and cannot sign in until you enable it again.`)
+    ) {
+      return
+    }
     void handleSetStatus(target)
   }
 

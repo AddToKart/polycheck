@@ -3,6 +3,7 @@ import type { AttendanceStandingStatus, StudentAtRisk } from '@polycheck/shared'
 import { oversightSectionWhere } from '../common/course-scope'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { Prisma } from '../prisma/client'
+import { IN_ACTIVE_SUBJECT } from '../common/active-subject'
 import { PrismaService } from '../prisma/prisma.service'
 import { StandingService } from '../standing/standing.service'
 import { adminSectionWhere } from '../common/admin-scope'
@@ -103,6 +104,7 @@ export class AttendanceAtRiskService {
     const sectionWhere: Prisma.SectionWhereInput = {
       ...(user.role === 'teacher' ? (oversight ?? { teacherId: user.id }) : adminSectionWhere(user)),
       ...(query.sectionId ? { id: query.sectionId } : {}),
+      ...IN_ACTIVE_SUBJECT,
       // Optional course filter: narrows within the actor's scope, never widens it.
       ...(course ? { course: { equals: course, mode: 'insensitive' as const } } : {}),
     }

@@ -48,6 +48,16 @@ export function brandingMonogram(shortName: string): string {
   return (letters || 'IN').slice(0, 4)
 }
 
+/**
+ * The campus as printed under the institution name: "Santa Maria" reads "Santa Maria Campus", and a
+ * value that already says campus is left alone.
+ */
+export function campusHeading(campus: string | null | undefined): string {
+  const name = campus?.trim() ?? ''
+  if (!name) return ''
+  return /\bcampus\b/i.test(name) ? name : `${name} Campus`
+}
+
 /** Fills any missing field from the defaults and derives the short name from the name when absent. */
 export function resolveBranding(partial: Partial<InstitutionBranding> | null | undefined): InstitutionBranding {
   const name = partial?.name?.trim() || DEFAULT_BRANDING.name

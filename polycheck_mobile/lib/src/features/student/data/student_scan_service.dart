@@ -169,27 +169,34 @@ DateTime trustedLocationCapturedAt({
   );
 }
 
-/// Web already-saved guard (`frontend/src/lib/api-client.ts:1353-1368`
-/// parity): online scans count per checkpoint leg, in-person scans count any
-/// record for the student in the session.
+/// Statuses that mean a check-in (or a decision about it) already exists.
+const Set<AttendanceStatus> _checkedInStatuses = <AttendanceStatus>{
+  AttendanceStatus.present,
+  AttendanceStatus.late,
+  AttendanceStatus.incomplete,
+  AttendanceStatus.excused,
+  AttendanceStatus.disputed,
+};
+
+/// Whether a saved record shows this student already checked in. Mirrors
+/// `shared/src/utils/check-in.ts`.
+///
+/// Starting a class creates a `pending` row for every enrolled student before
+/// anyone has scanned, so the existence of a row proves nothing.
 bool attendanceAlreadySavedOnDevice({
   required List<AttendanceRecord> cachedRecords,
   required String studentId,
   required bool online,
   String? checkpoint,
 }) {
-  if (online) {
-    return cachedRecords.any(
-      (record) =>
-          record.studentId == studentId &&
-          (checkpoint == 'end'
-              ? (record.checkOutTime ?? '').isNotEmpty ||
-                    record.checkOutStatus != null
-              : (record.checkInTime ?? '').isNotEmpty ||
-                    record.checkInStatus != null),
-    );
-  }
-  return cachedRecords.any((record) => record.studentId == studentId);
+  return cachedRecords.any((record) {
+    if (record.studentId != studentId) return false;
+    if (!online) return _checkedInStatuses.contains(record.status);
+    final end = checkpoint == 'end';
+    final time = end ? record.checkOutTime : record.checkInTime;
+    final status = end ? record.checkOutStatus : record.checkInStatus;
+    return (time ?? '').isNotEmpty || _checkedInStatuses.contains(status);
+  });
 }
 
 /// Web/RN already-saved short-circuit copy.
@@ -247,7 +254,7 @@ String sanitizeScannedToken(String raw) {
 /// The full student scan pipeline: decode -> trusted-clock window -> mode ->
 /// PIN -> geolocation/geofence -> device-security evidence -> POST ->
 /// encrypted offline queue on transport failure (with local Ed25519
-/// verification, the web already-saved guard, and the queue-side
+/// verification, the already-saved guard, and the queue-side
 /// accuracy/staleness assertions). UI-free so it can be unit-tested without
 /// a camera.
 class StudentScanService {
@@ -398,26 +405,6 @@ class StudentScanService {
       );
     }
 
-    // Web already-saved guard (A-f): a second survey of the device cache
-    // deflects a check-in that would only become a server duplicate.
-    try {
-      final cachedRecords = await readCachedAttendanceForSession(
-        database,
-        student.id,
-        payload.sessionId,
-      );
-      if (attendanceAlreadySavedOnDevice(
-        cachedRecords: cachedRecords,
-        studentId: student.id,
-        online: online,
-        checkpoint: payload.checkpoint?.wire,
-      )) {
-        return _rejected(alreadySavedOnDeviceMessage);
-      }
-    } on Object {
-      // A cache read failure must never block a live submission.
-    }
-
     final scannedAt = DateTime.fromMillisecondsSinceEpoch(
       trustedNowMs,
       isUtc: true,
@@ -512,6 +499,15 @@ class StudentScanService {
           return _rejected(staleLocationMessage());
         }
 
+        if (await _alreadySavedHere(
+          student.id,
+          payload.sessionId,
+          online: online,
+          checkpoint: payload.checkpoint?.wire,
+        )) {
+          return _rejected(alreadySavedOnDeviceMessage);
+        }
+
         try {
           await database.enqueueAttendanceScan(
             clientReceiptId: clientAttemptId,
@@ -568,6 +564,39 @@ class StudentScanService {
         title: 'CHECK-IN FAILED',
         message: 'Something went wrong while submitting your check-in.',
       );
+    }
+  }
+
+  /// A check-in this phone already holds: one waiting to sync, or one the
+  /// server confirmed earlier.
+  Future<bool> _alreadySavedHere(
+    String userId,
+    String sessionId, {
+    required bool online,
+    String? checkpoint,
+  }) async {
+    try {
+      final waiting = await database.pendingAttendanceQueue(userId);
+      if (waiting.any(
+        (row) =>
+            row.sessionId == sessionId &&
+            (!online || row.checkpoint == checkpoint),
+      )) {
+        return true;
+      }
+      return attendanceAlreadySavedOnDevice(
+        cachedRecords: await readCachedAttendanceForSession(
+          database,
+          userId,
+          sessionId,
+        ),
+        studentId: userId,
+        online: online,
+        checkpoint: checkpoint,
+      );
+    } on Object {
+      // A cache read failure must never lose a check-in.
+      return false;
     }
   }
 

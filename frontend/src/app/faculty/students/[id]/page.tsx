@@ -14,8 +14,9 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { StudentGovernanceActions } from '@/components/faculty/StudentGovernanceActions'
 import { HologramOverlay } from '@/components/student/HologramOverlay'
 import { InstitutionHeaderLines } from '@/components/branding/InstitutionHeaderLines'
-
-const STATUS_CYCLE: EditableAttendanceStatus[] = ['present', 'late', 'incomplete', 'absent']
+import { StatusChangeDialog } from '@/components/faculty/StatusChangeDialog'
+import { useNotifications } from '@/lib/notifications'
+import { reviewQueueFor } from '@/lib/manual-status'
 
 const statusConfig: Record<AttendanceStatus, { label: string; bg: string; text: string }> = {
   present: { label: 'Present', bg: 'bg-amber-50 dark:bg-amber-950', text: 'text-amber-600' },
@@ -49,6 +50,9 @@ export default function StudentDetailPage() {
   const [sessionPage, setSessionPage] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const { run, isPending } = useRunMutation()
+  const { addNotification } = useNotifications()
+  // The meeting whose status is being changed; nothing is saved until it is confirmed.
+  const [editing, setEditing] = useState<{ session: Session; record?: AttendanceRecord } | null>(null)
 
   useEffect(() => {
     const cu = api.getCurrentUser()
@@ -135,9 +139,7 @@ export default function StudentDetailPage() {
     )
   }
 
-  const handleCycleStatus = async (record: AttendanceRecord) => {
-    const currentIdx = STATUS_CYCLE.findIndex((status) => status === record.status)
-    const nextStatus = STATUS_CYCLE[(currentIdx + 1) % STATUS_CYCLE.length]
+  const changeStatus = async (record: AttendanceRecord, nextStatus: EditableAttendanceStatus) => {
     await run(
       `status:${record.id}`,
       async () => {
@@ -150,11 +152,11 @@ export default function StudentDetailPage() {
     )
   }
 
-  const handleAddAbsent = async (session: Session) => {
+  const addRecord = async (session: Session, status: EditableAttendanceStatus) => {
     const existing = records.find((r) => r.sessionId === session.id)
     if (existing) return
     await run(
-      `absent:${session.id}`,
+      `add:${session.id}`,
       async () => {
         const newRecord: Omit<AttendanceRecord, 'status'> & { status: EditableAttendanceStatus } = {
           id: crypto.randomUUID(),
@@ -164,7 +166,7 @@ export default function StudentDetailPage() {
           studentName: student?.fullName ?? '',
           studentProgram: student?.program,
           timestamp: new Date().toISOString(),
-          status: 'absent',
+          status,
           coordinates: { latitude: null, longitude: null },
           isSynced: false,
           notes: 'Manually marked by teacher',
@@ -172,8 +174,21 @@ export default function StudentDetailPage() {
         await api.addAttendanceRecord(newRecord)
         setRecords((prev) => [...prev, newRecord])
       },
-      { errorTitle: 'Could not add the absent record' },
+      { errorTitle: 'Could not add the attendance record' },
     )
+  }
+
+  const askToChange = (session: Session, record: AttendanceRecord | undefined) => {
+    const queue = record ? reviewQueueFor(record.status) : null
+    if (queue) {
+      addNotification(
+        'info',
+        'Resolve it in its queue',
+        `This record is ${record!.status}. Change it from the ${queue} page.`,
+      )
+      return
+    }
+    setEditing({ session, record })
   }
 
   const getRecordForSession = (sessionId: string) =>
@@ -370,7 +385,7 @@ export default function StudentDetailPage() {
                       <div>
                         {record ? (
                           <button
-                            onClick={() => { if (isTeacher) handleCycleStatus(record) }}
+                            onClick={() => { if (isTeacher) askToChange(session, record) }}
                             disabled={!isTeacher || isPending(`status:${record.id}`)}
                             className={`inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none md:min-h-0 ${isTeacher ? 'cursor-pointer transition-opacity hover:opacity-80' : 'cursor-default'} ${config.bg} ${config.text}`}
                           >
@@ -379,8 +394,8 @@ export default function StudentDetailPage() {
                           </button>
                         ) : (
                           <button
-                            onClick={() => { if (isTeacher) handleAddAbsent(session) }}
-                            disabled={!isTeacher || isPending(`absent:${session.id}`)}
+                            onClick={() => { if (isTeacher) askToChange(session, undefined) }}
+                            disabled={!isTeacher || isPending(`add:${session.id}`)}
                             className={`inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 md:min-h-0 ${isTeacher ? 'cursor-pointer hover:opacity-80 transition-opacity' : 'cursor-default'}`}
                           >
                             No Record {isTeacher && <span className="text-lg leading-none">+</span>}
@@ -428,6 +443,19 @@ export default function StudentDetailPage() {
           )}
         </div>
       </main>
+      {editing ? (
+        <StatusChangeDialog
+          studentName={student?.fullName ?? 'This student'}
+          context={`the class on ${editing.session.date}, ${editing.session.startTime}`}
+          current={editing.record?.status ?? 'pending'}
+          onClose={() => setEditing(null)}
+          onConfirm={(status) => {
+            const { session, record } = editing
+            setEditing(null)
+            void (record ? changeStatus(record, status) : addRecord(session, status))
+          }}
+        />
+      ) : null}
     </div>
   )
 }

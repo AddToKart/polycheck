@@ -227,7 +227,10 @@ class _PrivacyPanelState extends ConsumerState<PrivacyPanel> {
                   'Geolocation coordinates, accuracy, and risk signals are '
                   'shredded after the institution retention window (7-90 '
                   'days, default 30). Unlinked denied scan attempts are '
-                  'deleted after 90 days.',
+                  'deleted after 90 days. 90 days after a subject is '
+                  'archived, its class photos, excuse photos, location data '
+                  'and scan logs are erased; a teacher may also delete an '
+                  'archived subject completely.',
             ),
             _NoticeSection(
               title: 'Your rights',

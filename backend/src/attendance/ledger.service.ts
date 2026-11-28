@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import type { Prisma } from '../prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
+import { LEDGER_RECORDS_REMOVED_ACTION } from '../common/constants/ledger'
 import { computeRecordHash, generateLedgerSalt, ledgerDateOf, type LedgerVerifyResult } from '@polycheck/shared/ledger'
 
 export interface LedgerAppendRecord {
@@ -14,6 +15,15 @@ export type LedgerDb = Pick<Prisma.TransactionClient, 'attendanceRecord' | 'audi
 
 const VERIFY_SESSION_PAGE_SIZE = 50
 const MAX_ANCHOR_ROWS = 30
+
+interface RemovedBucket {
+  count: number
+  hashes: Set<string>
+}
+
+interface RemovalMetadata {
+  dates?: Record<string, { count: number; anchoredHashes?: string[] }>
+}
 
 interface AnchorMetadata {
   date?: string
@@ -197,7 +207,27 @@ export class LedgerService {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: MAX_ANCHOR_ROWS,
     })
-    return this.checkAnchors(buckets, anchors, recordsChecked, sessionsChecked, unhashedRecords)
+    const removed = await this.removedByDate(db)
+    return this.checkAnchors(buckets, anchors, removed, recordsChecked, sessionsChecked, unhashedRecords)
+  }
+
+  /** Rows a teacher deleted on purpose (a permanently deleted subject), as recorded at the time. */
+  private async removedByDate(db: LedgerDb): Promise<Map<string, RemovedBucket>> {
+    const removals = await db.auditLog.findMany({
+      where: { action: LEDGER_RECORDS_REMOVED_ACTION },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    })
+    const byDate = new Map<string, RemovedBucket>()
+    for (const removal of removals ?? []) {
+      const dates = (removal.metadata as RemovalMetadata | null)?.dates ?? {}
+      for (const [date, day] of Object.entries(dates)) {
+        const bucket = byDate.get(date) ?? { count: 0, hashes: new Set<string>() }
+        bucket.count += Number(day.count) || 0
+        for (const hash of day.anchoredHashes ?? []) bucket.hashes.add(hash)
+        byDate.set(date, bucket)
+      }
+    }
+    return byDate
   }
 
   private collectBucket(
@@ -226,6 +256,7 @@ export class LedgerService {
   private checkAnchors(
     buckets: Map<string, DateBucket>,
     anchors: { id: string; metadata: Prisma.JsonValue | null }[],
+    removed: Map<string, RemovedBucket>,
     recordsChecked: number,
     sessionsChecked: number,
     unhashedRecords: number,
@@ -241,7 +272,8 @@ export class LedgerService {
       if (expected <= 0) continue
       checkedDates.push(date)
       const bucket = buckets.get(date)
-      if (!bucket) {
+      const gone = removed.get(date)
+      if (!bucket && !gone) {
         return this.broken(
           meta?.sessionId ?? '',
           meta?.recordId ?? anchor.id,
@@ -251,10 +283,13 @@ export class LedgerService {
           unhashedRecords,
         )
       }
-      if (bucket.count < expected || (meta?.lastRecordHash && !bucket.hashes.has(meta.lastRecordHash))) {
+      const present = (bucket?.count ?? 0) + (gone?.count ?? 0)
+      const headMissing =
+        meta?.lastRecordHash && !bucket?.hashes.has(meta.lastRecordHash) && !gone?.hashes.has(meta.lastRecordHash)
+      if (present < expected || headMissing) {
         return this.broken(
-          bucket.sessionId ?? meta?.sessionId ?? '',
-          meta?.recordId ?? bucket.headRowId ?? anchor.id,
+          bucket?.sessionId ?? meta?.sessionId ?? '',
+          meta?.recordId ?? bucket?.headRowId ?? anchor.id,
           'anchor_mismatch',
           recordsChecked,
           sessionsChecked,

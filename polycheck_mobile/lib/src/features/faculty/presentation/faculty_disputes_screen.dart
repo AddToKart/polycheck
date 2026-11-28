@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/polycheck_core.dart';
 import '../data/faculty_logic.dart';
+import '../data/record_list.dart';
 import 'widgets/faculty_shell.dart';
 
 /// Statuses the override row may send, mirroring the backend
@@ -75,6 +76,16 @@ class _FacultyDisputesScreenState extends ConsumerState<FacultyDisputesScreen> {
     }
   }
 
+  String _query = '';
+  String _sort = '';
+  int _page = 1;
+
+  /// Any change to what is listed starts again from the first page.
+  void _change(VoidCallback change) => setState(() {
+    change();
+    _page = 1;
+  });
+
   String _sessionLabel(String sessionId) {
     for (final session in _sessions) {
       if (session.id != sessionId) continue;
@@ -102,14 +113,24 @@ class _FacultyDisputesScreenState extends ConsumerState<FacultyDisputesScreen> {
         .where((record) => record.disputeResolved)
         .toList(growable: false);
     final tabRows = _resolvedTab ? resolved : pending;
-    final scoped = _sectionFilter.isEmpty
-        ? tabRows
-        : tabRows
-              .where((record) => record.sectionId == _sectionFilter)
-              .toList(growable: false);
     final sectionsById = <String, Section>{
       for (final section in _sections) section.id: section,
     };
+    final matched = sortRecords(
+      tabRows.where(
+        (record) =>
+            (_sectionFilter.isEmpty || record.sectionId == _sectionFilter) &&
+            recordMatches(
+              _query,
+              record,
+              sectionsById[record.sectionId],
+              _sessionLabel(record.sessionId),
+            ),
+      ),
+      _sort,
+    );
+    final page = ListPage<AttendanceRecord>(matched, _page);
+    final scoped = page.items;
     final sessionLabels = <String, String>{
       for (final record in scoped)
         record.sessionId: _sessionLabel(record.sessionId),
@@ -139,25 +160,35 @@ class _FacultyDisputesScreenState extends ConsumerState<FacultyDisputesScreen> {
                     ],
                     selectedIndex: _resolvedTab ? 1 : 0,
                     onSelected: (index) =>
-                        setState(() => _resolvedTab = index == 1),
+                        _change(() => _resolvedTab = index == 1),
                   ),
                   const SizedBox(height: 10),
-                  FacultyDropdown<String>(
-                    label: 'Section',
-                    hint: 'All sections',
-                    value: _sectionFilter.isEmpty ? null : _sectionFilter,
-                    items: [
-                      for (final section in _sections)
-                        DropdownMenuItem<String>(
-                          value: section.id,
-                          child: Text(
-                            '${formatSectionHeading(section: section.section, course: section.course)} · ${section.room}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                  ListControls(
+                    query: _query,
+                    searchHint: 'Student, subject or section',
+                    onQueryChanged: (value) => _change(() => _query = value),
+                    filters: () => [
+                      ListFilter(
+                        id: 'section',
+                        label: 'Section',
+                        allLabel: 'All sections',
+                        value: _sectionFilter,
+                        options: sectionOptions(
+                          _records.map((record) => record.sectionId),
+                          sectionsById,
                         ),
+                        onChanged: (value) =>
+                            _change(() => _sectionFilter = value),
+                      ),
                     ],
-                    onChanged: (value) =>
-                        setState(() => _sectionFilter = value ?? ''),
+                    sort: _sort,
+                    sortOptions: recordSortOptions,
+                    onSortChanged: (value) => _change(() => _sort = value),
+                    onClear: () => _change(() {
+                      _query = '';
+                      _sectionFilter = '';
+                      _sort = '';
+                    }),
                   ),
                   const SizedBox(height: 10),
                   if (groups.isEmpty)
@@ -221,6 +252,10 @@ class _FacultyDisputesScreenState extends ConsumerState<FacultyDisputesScreen> {
                         ),
                       ],
                     ],
+                  ListPager(
+                    page: page,
+                    onChanged: (value) => setState(() => _page = value),
+                  ),
                 ],
               ),
             ),

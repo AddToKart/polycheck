@@ -19,6 +19,7 @@ import { useNotifications } from '@/lib/notifications'
 import { describeMutationError, useRunMutation } from '@/lib/run-mutation'
 import { createSessionHref, sessionsListHref } from '@/lib/section-context'
 import { PaginationBar } from '@/components/ui/pagination-bar'
+import { PhotoReportButton } from '@/components/proofs/PhotoReportButton'
 
 const PAGE_SIZE = 10
 const SESSIONS_PAGE_SIZE = 6
@@ -143,6 +144,10 @@ export default function SectionDetailPage() {
       try {
         const sec = await api.getSection(id)
         if (!sec) { router.push('/faculty/subjects'); return }
+        if (sec.subjectArchivedAt) {
+          router.replace(`/faculty/subjects/${sec.subjectId}`)
+          return
+        }
         if (cu && cu.role === 'teacher' && sec.teacherId !== cu.id) {
           router.push('/faculty')
           return
@@ -246,8 +251,12 @@ export default function SectionDetailPage() {
     )
   }
 
+  const officerName = (studentId: string) =>
+    students.find((item) => item.id === studentId)?.fullName ?? 'this student'
+
   const handleResetCode = async () => {
     if (!id) return
+    if (!window.confirm('Reset the enrollment code? The current code stops working immediately. Students already enrolled stay enrolled.')) return
     await run(
       'code:reset',
       async () => {
@@ -299,6 +308,7 @@ export default function SectionDetailPage() {
 
   const handleRevokePermission = async (studentId: string) => {
     if (!id) return
+    if (!window.confirm(`Revoke ${officerName(studentId)}'s permission? They can no longer create sessions, or start the ones they created.`)) return
     await run(
       'president:revoke',
       async () => {
@@ -324,6 +334,7 @@ export default function SectionDetailPage() {
 
   const handleRemovePresident = async (studentId: string) => {
     if (!id) return
+    if (!window.confirm(`Remove ${officerName(studentId)} as class president? Their session permission ends too.`)) return
     await run(
       'president:remove',
       async () => {
@@ -349,6 +360,7 @@ export default function SectionDetailPage() {
 
   const handleRemoveQac = async (studentId: string) => {
     if (!id) return
+    if (!window.confirm(`Remove ${officerName(studentId)} as QAC? They can no longer add or compile class photos.`)) return
     await run(
       `qac:remove:${studentId}`,
       async () => {
@@ -772,6 +784,12 @@ export default function SectionDetailPage() {
                   )}
                   Class record
                 </Button>
+                <PhotoReportButton
+                  scope={{ sectionId: id }}
+                  label={section.section}
+                  text="Class photos"
+                  chooseDates
+                />
                 <Button variant="outline" size="sm" asChild>
                   <Link href={sessionsListHref(id)}>All sessions</Link>
                 </Button>

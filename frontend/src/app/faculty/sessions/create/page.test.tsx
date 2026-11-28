@@ -176,8 +176,8 @@ describe('faculty create-session slot selector', () => {
     await selectSection()
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Create recurring sessions for the semester' }))
-    fireEvent.change(screen.getByLabelText('Start Date'), { target: { value: '2026-11-01' } })
-    fireEvent.change(screen.getByLabelText('End Date'), { target: { value: '2026-11-30' } })
+    fireEvent.change(screen.getByLabelText('Start Date'), { target: { value: '2099-11-01' } })
+    fireEvent.change(screen.getByLabelText('End Date'), { target: { value: '2099-11-30' } })
 
     // November 2026 has five Mondays and four Wednesdays.
     expect(screen.getByText('9 sessions will be created')).toBeInTheDocument()
@@ -197,8 +197,8 @@ describe('faculty create-session slot selector', () => {
     expect(payload).not.toHaveProperty('daysOfWeek')
     expect(payload).not.toHaveProperty('startTime')
     expect(payload).not.toHaveProperty('endTime')
-    expect(payload.startDate).toBe('2026-11-01')
-    expect(payload.endDate).toBe('2026-11-30')
+    expect(payload.startDate).toBe('2099-11-01')
+    expect(payload.endDate).toBe('2099-11-30')
     expect(payload.room).toBe(section.room)
     expect(routerMock.push).toHaveBeenCalledWith('/faculty/sessions')
   })
@@ -207,8 +207,8 @@ describe('faculty create-session slot selector', () => {
     await selectSection()
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Create recurring sessions for the semester' }))
-    fireEvent.change(screen.getByLabelText('Start Date'), { target: { value: '2026-11-01' } })
-    fireEvent.change(screen.getByLabelText('End Date'), { target: { value: '2026-11-30' } })
+    fireEvent.change(screen.getByLabelText('Start Date'), { target: { value: '2099-11-01' } })
+    fireEvent.change(screen.getByLabelText('End Date'), { target: { value: '2099-11-30' } })
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Mon' }))
     expect(screen.getByText('4 sessions will be created')).toBeInTheDocument()
@@ -255,5 +255,38 @@ describe('faculty create-session slot selector', () => {
       expect(screen.queryByText('Session Conflict Detected')).not.toBeInTheDocument(),
     )
     expect(screen.getByRole('button', { name: 'Create Session' })).toBeEnabled()
+  })
+
+  it('starts with the subject and section the professor came from', async () => {
+    window.history.replaceState(null, '', `/faculty/sessions/create?sectionId=${section.id}`)
+    render(<CreateSessionPage />)
+
+    await screen.findByLabelText('Class meeting')
+    expect(screen.getByLabelText('Subject')).toHaveValue(subject.id)
+    expect(screen.getByLabelText('Section')).toHaveValue(section.id)
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('ignores a section id that is not one of the professor’s', async () => {
+    window.history.replaceState(null, '', '/faculty/sessions/create?sectionId=someone-elses')
+    render(<CreateSessionPage />)
+
+    expect(await screen.findByLabelText('Subject')).toHaveValue('')
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('lists what is wrong beside the button and blocks submit', async () => {
+    await selectSection()
+    fireEvent.change(getDateInput(), { target: { value: '2020-01-06' } })
+    fireEvent.change(getStartInput(), { target: { value: '09:00' } })
+    fireEvent.change(getEndInput(), { target: { value: '09:05' } })
+
+    const button = screen.getByRole('button', { name: 'Create Session' })
+    expect(button).toBeDisabled()
+    const problems = document.getElementById('session-form-problems') as HTMLElement
+    expect(problems).toHaveTextContent('at least 15 minutes')
+    expect(problems).toHaveTextContent('cannot be in the past')
+    // The explanation sits next to the button, not at the top of the form.
+    expect(problems.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })

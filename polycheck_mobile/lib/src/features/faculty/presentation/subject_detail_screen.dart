@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/polycheck_core.dart';
 import '../data/session_wizard.dart';
+import 'widgets/archived_subject_dialog.dart';
 import 'widgets/faculty_shell.dart';
 
 /// Parent subject detail: its sections grid + "Add section" + sessions link.
@@ -22,6 +23,75 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen> {
   String? _error;
   Subject? _subject;
   List<Section> _sections = const <Section>[];
+  bool _archiveOpen = false;
+  bool _archiving = false;
+
+  /// An archived subject opens straight onto its countdown and ways out.
+  Future<void> _showArchive() async {
+    final subject = _subject;
+    if (subject == null || _archiveOpen || !mounted) return;
+    _archiveOpen = true;
+    final outcome = await showArchivedSubjectDialog(context, subject: subject);
+    _archiveOpen = false;
+    if (!mounted) return;
+    switch (outcome) {
+      case ArchiveOutcome.restored:
+        CampusToast.showIn(
+          context,
+          '${subject.code} restored.',
+          tone: CampusToastTone.success,
+        );
+        await _load();
+      case ArchiveOutcome.deleted:
+        CampusToast.showIn(
+          context,
+          '${subject.code} deleted.',
+          tone: CampusToastTone.success,
+        );
+        _leave();
+      case ArchiveOutcome.closed:
+        _leave();
+    }
+  }
+
+  void _leave() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/faculty/subjects');
+    }
+  }
+
+  Future<void> _archive(Subject subject) async {
+    if (_archiving) return;
+    final confirmed = await showFacultyConfirm(
+      context,
+      title: 'Archive ${subject.code}?',
+      message:
+          'It disappears from your lists and your students\' lists and cannot '
+          'be changed. After $archiveEvidenceRetentionDays days its class '
+          'photos, excuse photos, location data and scan logs are permanently '
+          'erased. Attendance results are kept. You can restore it later.',
+      confirmLabel: 'Archive',
+    );
+    if (!confirmed || !mounted) return;
+    setState(() => _archiving = true);
+    try {
+      await ref.read(subjectsApiProvider).archive(subject.id);
+      if (!mounted) return;
+      CampusToast.showIn(
+        context,
+        '${subject.code} archived.',
+        tone: CampusToastTone.success,
+      );
+      _leave();
+    } on ApiRequestError catch (error) {
+      if (!mounted) return;
+      CampusToast.showIn(context, error.message, tone: CampusToastTone.error);
+    } finally {
+      if (mounted) setState(() => _archiving = false);
+    }
+  }
 
   @override
   void initState() {
@@ -45,6 +115,9 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen> {
         _sections = results[1] as List<Section>;
         _loading = false;
       });
+      if (_subject?.archivedAt != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _showArchive());
+      }
     } on ApiRequestError catch (error) {
       if (!mounted) return;
       setState(() {
@@ -64,14 +137,33 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen> {
   Widget build(BuildContext context) {
     final tokens = BrandTheme.of(context);
     final subject = _subject;
+    final archived = subject?.archivedAt != null;
+    final isTeacher = ref.watch(sessionProvider).user?.role == UserRole.teacher;
     return FacultyScaffold(
       title: subject == null ? 'Subject' : subject.name,
       subtitle: subject?.code,
       showDefaultActions: false,
+      actions: [
+        if (subject != null && !archived && isTeacher)
+          IconButton(
+            key: const ValueKey<String>('archive-subject'),
+            tooltip: 'Archive subject',
+            onPressed: _archiving ? null : () => _archive(subject),
+            icon: const Icon(Icons.inventory_2_outlined),
+          ),
+      ],
       body: _loading
           ? const FacultyLoading(label: 'Loading subject.')
           : _error != null && subject == null
           ? FacultyError(message: _error!, onRetry: _load)
+          : archived
+          ? FacultyEmptyState(
+              icon: Icons.inventory_2_outlined,
+              title: 'This subject is archived',
+              message: 'It is read-only until you restore it.',
+              actionLabel: 'Archive options',
+              onAction: _showArchive,
+            )
           : FacultyPageBody(
               refresh: _load,
               child: Column(

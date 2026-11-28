@@ -213,10 +213,7 @@ void main() {
       await tester.tap(find.text('Create session'));
       await tester.pumpAndSettle();
 
-      expect(
-        find.text('Enter start and end times in 24-hour HH:mm form.'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Enter both times as HH:mm'), findsOneWidget);
     });
   });
 }

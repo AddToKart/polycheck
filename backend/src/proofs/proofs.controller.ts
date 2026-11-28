@@ -4,6 +4,7 @@ import { IsOptional, IsString, MaxLength } from 'class-validator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { ProofsService } from './proofs.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
+import { BlocksArchivedSubject } from '../common/guards/archived-subject.guard'
 
 class UploadProofDto {
   @IsString() sectionId!: string
@@ -36,12 +37,14 @@ export class ProofsController {
   }
 
   @Post()
+  @BlocksArchivedSubject('session', 'body.sessionId')
   @Roles('teacher', 'student')
   upload(@Request() req: AuthenticatedRequest, @Body() dto: UploadProofDto) {
     return this.proofs.upload(req.user, dto)
   }
 
   @Delete(':id')
+  @BlocksArchivedSubject('proof', 'params.id')
   @Roles('teacher')
   remove(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.proofs.remove(req.user, id)

@@ -40,7 +40,9 @@ describe('SubjectsService', () => {
 
     await service.findAll({ id: 'admin-1', role: 'super_admin', scope: 'department', department: 'CCIS' })
 
-    expect(prisma.subject.findMany.mock.calls[0][0].where.OR).toEqual(expect.any(Array))
+    const where = prisma.subject.findMany.mock.calls[0][0].where
+    expect(where.AND[0].OR).toEqual(expect.any(Array))
+    expect(where.AND[1]).toEqual({ archivedAt: null })
   })
 
   describe('subject detail section scope (BE-13)', () => {
@@ -55,7 +57,9 @@ describe('SubjectsService', () => {
     function subjectWithSections() {
       return {
         id: 'subject-1',
-        sections: [{ id: 'section-ccis', section: 'A', teacher: { id: 't-1', fullName: 'T', email: 't1@example.edu.ph' } }],
+        sections: [
+          { id: 'section-ccis', section: 'A', teacher: { id: 't-1', fullName: 'T', email: 't1@example.edu.ph' } },
+        ],
       }
     }
 
@@ -108,10 +112,10 @@ describe('SubjectsService', () => {
   })
 
   it('maps a duplicate subject code to a conflict instead of a 500', async () => {
-    const prismaError = new Prisma.PrismaClientKnownRequestError(
-      'Unique constraint failed on the fields: (`code`)',
-      { code: 'P2002', clientVersion: 'test' },
-    )
+    const prismaError = new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`code`)', {
+      code: 'P2002',
+      clientVersion: 'test',
+    })
     const prisma = {
       subject: { create: jest.fn().mockRejectedValue(prismaError) },
     }

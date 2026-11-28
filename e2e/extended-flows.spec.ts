@@ -13,8 +13,7 @@ import {
 installSessionCleanup()
 
 const API = 'http://localhost:4000/api'
-// Mirrors STATUS_CYCLE in faculty/students/[id]/page.tsx (DD-W23 added
-// `incomplete` so the student-detail cycle matches the cockpit cycle).
+// The statuses a professor can set by hand.
 const CYCLE_LABELS = ['Present', 'Late', 'Incomplete', 'Absent']
 
 function uniqueStudentId() {
@@ -103,7 +102,7 @@ test.describe('Faculty Student Detail', () => {
     await loginFaculty(page)
   })
 
-  test('flips the ID card and cycles attendance statuses back to the original', async ({ page }) => {    const errors = trackErrors(page)
+  test('flips the ID card and changes an attendance status only after confirming', async ({ page }) => {    const errors = trackErrors(page)
     await page.goto('/faculty/students/s-001?sectionId=sec-001')
     // level: 1 — the ID card also renders the student name as an h2.
     await expect(page.getByRole('heading', { level: 1, name: 'Alexandra Marie Reyes' })).toBeVisible({
@@ -151,12 +150,22 @@ test.describe('Faculty Student Detail', () => {
     await expect(cycleButton!).toBeVisible()
 
     const original = (await cycleButton.innerText()).trim()
-    const expectedNext = CYCLE_LABELS[(CYCLE_LABELS.indexOf(original) + 1) % CYCLE_LABELS.length]
+    const other = CYCLE_LABELS[(CYCLE_LABELS.indexOf(original) + 1) % CYCLE_LABELS.length]
+    const dialog = page.getByRole('alertdialog')
+
+    // Opening the choice and cancelling changes nothing.
     await cycleButton.click()
-    await expect(cycleButton).toContainText(expectedNext, { timeout: 10_000 })
-    // Remaining clicks complete the full cycle back to the original status.
-    for (let i = 0; i < CYCLE_LABELS.length - 1; i++) await cycleButton.click()
-    await expect(cycleButton).toContainText(original, { timeout: 10_000 })
+    await dialog.getByRole('radio', { name: other, exact: true }).click()
+    await dialog.getByRole('button', { name: 'Cancel' }).click()
+    await expect(cycleButton).toContainText(original)
+
+    // Confirmed changes are saved; the second one puts the record back.
+    for (const target of [other, original]) {
+      await cycleButton.click()
+      await dialog.getByRole('radio', { name: target, exact: true }).click()
+      await dialog.getByRole('button', { name: 'Confirm change' }).click()
+      await expect(cycleButton).toContainText(target, { timeout: 10_000 })
+    }
     assertNoErrors(errors)
   })
 })

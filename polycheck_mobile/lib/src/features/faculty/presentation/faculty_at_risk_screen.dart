@@ -20,6 +20,15 @@ class _FacultyAtRiskScreenState extends ConsumerState<FacultyAtRiskScreen> {
   String? _error;
   bool _referralsTab = false;
   String _search = '';
+  String _sectionFilter = '';
+  String _sort = '';
+  int _page = 1;
+
+  /// Any change to what is listed starts again from the first page.
+  void _change(VoidCallback change) => setState(() {
+    change();
+    _page = 1;
+  });
   List<StudentAtRisk> _rows = const <StudentAtRisk>[];
   List<AtRiskReferral> _referrals = const <AtRiskReferral>[];
 
@@ -72,18 +81,29 @@ class _FacultyAtRiskScreenState extends ConsumerState<FacultyAtRiskScreen> {
   @override
   Widget build(BuildContext context) {
     final tokens = BrandTheme.of(context);
-    final query = _search.trim().toLowerCase();
-    final searched = query.isEmpty
-        ? _rows
-        : _rows
-              .where(
-                (row) =>
-                    row.studentName.toLowerCase().contains(query) ||
-                    (row.studentNumber ?? '').toLowerCase().contains(query) ||
-                    row.sectionName.toLowerCase().contains(query),
-              )
-              .toList(growable: false);
-    final groups = groupAtRiskBySection(searched);
+    final searched =
+        _rows
+            .where(
+              (row) =>
+                  (_sectionFilter.isEmpty || row.sectionId == _sectionFilter) &&
+                  matchesQuery(_search, [
+                    row.studentName,
+                    row.studentNumber,
+                    row.sectionName,
+                    row.subjectName,
+                  ]),
+            )
+            .toList()
+          ..sort((a, b) {
+            if (_sort == 'rate') {
+              return (a.attendanceRate ?? 101).compareTo(
+                b.attendanceRate ?? 101,
+              );
+            }
+            return a.studentName.compareTo(b.studentName);
+          });
+    final page = ListPage<StudentAtRisk>(searched, _page);
+    final groups = groupAtRiskBySection(page.items);
     final belowCount = _rows
         .where((row) => row.status == AttendanceStandingStatus.belowThreshold)
         .length;
@@ -113,10 +133,43 @@ class _FacultyAtRiskScreenState extends ConsumerState<FacultyAtRiskScreen> {
                   ),
                   const SizedBox(height: 10),
                   if (!_referralsTab) ...[
-                    CampusTextField(
-                      hint: 'Search student, number, or section',
-                      prefixIcon: Icons.search,
-                      onChanged: (value) => setState(() => _search = value),
+                    ListControls(
+                      query: _search,
+                      searchHint: 'Student, subject or section',
+                      onQueryChanged: (value) => _change(() => _search = value),
+                      filters: () => [
+                        ListFilter(
+                          id: 'section',
+                          label: 'Section',
+                          allLabel: 'All sections',
+                          value: _sectionFilter,
+                          options:
+                              {
+                                    for (final row in _rows)
+                                      row.sectionId:
+                                          'Sec ${row.sectionName} · '
+                                          '${row.subjectName}',
+                                  }.entries
+                                  .map(
+                                    (entry) =>
+                                        ListOption(entry.key, entry.value),
+                                  )
+                                  .toList(),
+                          onChanged: (value) =>
+                              _change(() => _sectionFilter = value),
+                        ),
+                      ],
+                      sort: _sort,
+                      sortOptions: const [
+                        ListOption('', 'Student (A to Z)'),
+                        ListOption('rate', 'Lowest attendance first'),
+                      ],
+                      onSortChanged: (value) => _change(() => _sort = value),
+                      onClear: () => _change(() {
+                        _search = '';
+                        _sectionFilter = '';
+                        _sort = '';
+                      }),
                     ),
                     const SizedBox(height: 10),
                     CampusCard(
@@ -131,7 +184,15 @@ class _FacultyAtRiskScreenState extends ConsumerState<FacultyAtRiskScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    if (groups.isEmpty)
+                    if (groups.isEmpty && _rows.isNotEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Text(
+                          'No student matches these filters.',
+                          textAlign: TextAlign.center,
+                        ),
+                      )
+                    else if (groups.isEmpty)
                       FacultyEmptyState(
                         icon: Icons.verified_outlined,
                         title: 'Everyone is on track',
@@ -168,6 +229,10 @@ class _FacultyAtRiskScreenState extends ConsumerState<FacultyAtRiskScreen> {
                             ),
                           ),
                       ],
+                    ListPager(
+                      page: page,
+                      onChanged: (value) => setState(() => _page = value),
+                    ),
                   ] else
                     _referralsTabView(context, tokens),
                 ],

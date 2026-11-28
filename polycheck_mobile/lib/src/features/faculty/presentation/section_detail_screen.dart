@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/polycheck_core.dart';
 import '../data/faculty_logic.dart';
 import '../data/session_wizard.dart';
+import '../../../core/widgets/photo_report_button.dart';
 import 'widgets/faculty_shell.dart';
 import 'widgets/section_import_sheet.dart';
 import 'widgets/president_permission_tile.dart';
@@ -54,6 +55,13 @@ class _SectionDetailScreenState extends ConsumerState<SectionDetailScreen> {
       final section = await ref
           .read(sectionsApiProvider)
           .getSection(widget.sectionId);
+      // An archived subject opens on its archive screen; nothing here can change.
+      if (section.subjectArchivedAt != null) {
+        if (mounted) {
+          context.pushReplacement('/faculty/subjects/${section.subjectId}');
+        }
+        return;
+      }
       final results = await Future.wait<Object?>(<Future<Object?>>[
         ref.read(subjectsApiProvider).getSubject(section.subjectId),
         ref.read(sectionsApiProvider).getSectionStudents(section.id),
@@ -325,6 +333,16 @@ class _SectionDetailScreenState extends ConsumerState<SectionDetailScreen> {
   }
 
   Future<void> _revokePermission(SectionRole role) async {
+    final confirmed = await showFacultyConfirm(
+      context,
+      title: 'Revoke the permission?',
+      message:
+          '${role.studentName} can no longer create sessions, or start the '
+          'ones they created.',
+      confirmLabel: 'Revoke',
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
     try {
       await ref
           .read(sectionsApiProvider)
@@ -343,6 +361,18 @@ class _SectionDetailScreenState extends ConsumerState<SectionDetailScreen> {
   }
 
   Future<void> _removeRole(SectionRole role) async {
+    final president = role.role == SectionRoleType.president;
+    final confirmed = await showFacultyConfirm(
+      context,
+      title: president ? 'Remove the president?' : 'Remove this QAC?',
+      message: president
+          ? '${role.studentName} stops being class president, and their '
+                'session permission ends too.'
+          : '${role.studentName} can no longer add or compile class photos.',
+      confirmLabel: 'Remove',
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
     try {
       await ref
           .read(sectionsApiProvider)
@@ -489,6 +519,20 @@ class _SectionDetailScreenState extends ConsumerState<SectionDetailScreen> {
                           runSpacing: 8,
                           children: [
                             OutlinedButton.icon(
+                              key: const ValueKey<String>(
+                                'section-create-session',
+                              ),
+                              onPressed: () => context.push(
+                                '/faculty/sessions/create?sectionId='
+                                '${Uri.encodeComponent(section.id)}',
+                              ),
+                              icon: const Icon(Icons.add, size: 16),
+                              label: const Text('New session'),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size(0, 44),
+                              ),
+                            ),
+                            OutlinedButton.icon(
                               onPressed: () => context.push(
                                 '/faculty/sessions?sectionId='
                                 '${Uri.encodeComponent(section.id)}',
@@ -538,6 +582,12 @@ class _SectionDetailScreenState extends ConsumerState<SectionDetailScreen> {
                               ),
                             ),
                           ],
+                        ),
+                        const SizedBox(height: 8),
+                        PhotoReportButton(
+                          sectionId: section.id,
+                          label: 'Class photos PDF',
+                          chooseDates: true,
                         ),
                       ],
                     ),

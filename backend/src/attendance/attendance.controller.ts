@@ -20,6 +20,7 @@ import { AttendanceAtRiskService } from './attendance-at-risk.service'
 import { AttendanceForensicsService } from './attendance-forensics.service'
 import { AttendanceReferralService } from './attendance-referral.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
+import { BlocksArchivedSubject } from '../common/guards/archived-subject.guard'
 import { RequiresPrivacyConsent } from '../common/decorators/privacy-consent.decorator'
 
 @Controller('attendance')
@@ -81,6 +82,7 @@ export class AttendanceController {
    * in the service (the generating teacher is read-only).
    */
   @Post('at-risk/referrals')
+  @BlocksArchivedSubject('section', 'body.sectionId')
   @Roles('teacher', 'super_admin')
   generateAtRiskReferral(@Request() req: AuthenticatedRequest, @Body() dto: GenerateAtRiskReferralDto) {
     return this.referrals.generateReferral(req.user, dto)
@@ -93,6 +95,7 @@ export class AttendanceController {
   }
 
   @Patch('at-risk/referrals/:id')
+  @BlocksArchivedSubject('referral', 'params.id')
   @Roles('teacher', 'super_admin')
   updateAtRiskReferral(
     @Request() req: AuthenticatedRequest,
@@ -109,6 +112,7 @@ export class AttendanceController {
   }
 
   @Post('records/:id/excuse')
+  @BlocksArchivedSubject('record', 'params.id')
   @Roles('student')
   @RequiresPrivacyConsent()
   requestExcuse(@Request() req: AuthenticatedRequest, @Param('id') id: string, @Body() dto: RequestExcuseDto) {
@@ -116,6 +120,7 @@ export class AttendanceController {
   }
 
   @Post('records/:id/excuse/decision')
+  @BlocksArchivedSubject('record', 'params.id')
   @Roles('teacher')
   decideExcuse(@Request() req: AuthenticatedRequest, @Param('id') id: string, @Body() dto: DecideExcuseDto) {
     return this.attendance.decideExcuse(req.user, id, dto)
@@ -152,12 +157,14 @@ export class AttendanceController {
   }
 
   @Post()
+  @BlocksArchivedSubject('session', 'body.sessionId')
   @Roles('teacher')
   createManual(@Request() req: AuthenticatedRequest, @Body() dto: CreateManualAttendanceDto) {
     return this.attendance.createManual(req.user, dto)
   }
 
   @Patch(':id/status')
+  @BlocksArchivedSubject('record', 'params.id')
   @Roles('teacher')
   updateStatus(@Request() req: AuthenticatedRequest, @Param('id') id: string, @Body() dto: UpdateAttendanceStatusDto) {
     return this.attendance.updateStatus(req.user, id, dto.status)

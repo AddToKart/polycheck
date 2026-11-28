@@ -283,7 +283,7 @@ describe('StandingService', () => {
     ])
     expect(prisma.section.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { enrollments: { some: { studentId: 'student-1' } } },
+        where: { enrollments: { some: { studentId: 'student-1' } }, subject: { archivedAt: null } },
         orderBy: [{ subject: { name: 'asc' } }, { section: 'asc' }],
       }),
     )

@@ -8,6 +8,8 @@ import type { RequestUser } from '../auth/authenticated-principal'
 import type { ActivateSessionDto, CreateBulkSessionsDto, CreateSessionDto } from './dto/create-session.dto'
 
 jest.mock('@polycheck/shared', () => ({
+  formatCampusDate: jest.requireActual('@polycheck/shared').formatCampusDate,
+  sessionTimeIssue: jest.requireActual('@polycheck/shared').sessionTimeIssue,
   createSigningKeyPair: jest.requireActual('@polycheck/shared').createSigningKeyPair,
   decodePinHashRecord: jest.fn(),
   haversineDistance: jest.fn(),
@@ -139,12 +141,15 @@ describe('SessionsService', () => {
   })
 
   describe('findAll', () => {
+    /** Lists never include the classes of an archived subject. */
+    const notArchived = { section: { subject: { archivedAt: null } } }
+
     it('super_admin sees all sessions (no scope filter, no teacherId filter)', async () => {
       prisma.session.findMany.mockResolvedValue([makeSession()])
       prisma.user.findMany.mockResolvedValue([{ id: 'teacher-1', teacherPublicKey: 'pk' }])
       const result = await service.findAll(adminUser)
       const where = prisma.session.findMany.mock.calls[0][0]?.where
-      expect(where).toEqual({})
+      expect(where).toEqual({ AND: [{}, notArchived] })
       expect(result[0].teacherPublicKey).toBe('pk')
       expect(result[0].geofence).toEqual({ latitude: 14.6, longitude: 121.0, radiusMeters: 50 })
     })
@@ -154,7 +159,7 @@ describe('SessionsService', () => {
       prisma.user.findMany.mockResolvedValue([])
       await service.findAll(teacherUser)
       const where = prisma.session.findMany.mock.calls[0][0]?.where
-      expect(where.teacherId).toBe('teacher-1')
+      expect(where.AND).toEqual([{ teacherId: 'teacher-1' }, notArchived])
     })
 
     it('student filters by enrolled sections', async () => {
@@ -163,7 +168,7 @@ describe('SessionsService', () => {
       prisma.user.findMany.mockResolvedValue([])
       await service.findAll(studentUser)
       const where = prisma.session.findMany.mock.calls[0][0]?.where
-      expect(where.sectionId).toEqual({ in: ['sec-1', 'sec-2'] })
+      expect(where.AND).toEqual([{ sectionId: { in: ['sec-1', 'sec-2'] } }, notArchived])
     })
 
     it('does not let an explicit section filter escape a student enrollment scope', async () => {
@@ -174,7 +179,7 @@ describe('SessionsService', () => {
       await service.findAll(studentUser, 'sec-other')
 
       expect(prisma.session.findMany.mock.calls[0][0]?.where).toEqual({
-        AND: [{ sectionId: { in: ['sec-1'] } }, { sectionId: 'sec-other' }],
+        AND: [{ AND: [{ sectionId: { in: ['sec-1'] } }, { sectionId: 'sec-other' }] }, notArchived],
       })
     })
 
@@ -183,7 +188,7 @@ describe('SessionsService', () => {
       prisma.user.findMany.mockResolvedValue([])
       await service.findAll(teacherUser, 'sec-9')
       const where = prisma.session.findMany.mock.calls[0][0]?.where
-      expect(where.sectionId).toBe('sec-9')
+      expect(where.AND).toEqual([{ teacherId: 'teacher-1', sectionId: 'sec-9' }, notArchived])
     })
 
     it('offers pagination through the dedicated page method without changing the array contract', async () => {
@@ -196,6 +201,104 @@ describe('SessionsService', () => {
       expect(prisma.session.findMany.mock.calls[0][0]).toEqual(expect.objectContaining({ take: 1, skip: 1 }))
       expect(result.data).toHaveLength(1)
       expect(result).toEqual(expect.objectContaining({ total: 3, limit: 1, offset: 1, hasMore: true }))
+    })
+  })
+
+  describe('reschedule', () => {
+    const upcoming = (overrides: any = {}) => ({
+      ...makeSession({ date: '2099-03-02', startTime: '09:00', endTime: '10:30', room: 'R-1', ...overrides }),
+      _count: { attendanceRecords: 0 },
+    })
+    const move = { date: '2099-03-05', startTime: '13:00', endTime: '14:30' }
+
+    beforeEach(() => {
+      prisma.session.updateMany.mockResolvedValue({ count: 1 })
+      prisma.session.findUniqueOrThrow.mockResolvedValue(makeSession({ isRescheduled: true }))
+      prisma.user.findUnique.mockResolvedValue({ teacherPublicKey: 'pk' })
+    })
+
+    it('moves a class that has not started and keeps where it came from', async () => {
+      prisma.session.findUnique.mockResolvedValue(upcoming())
+      await service.reschedule('sess-1', move, teacherUser)
+      expect(prisma.session.updateMany.mock.calls[0][0].data).toEqual({
+        ...move,
+        room: 'R-1',
+        isRescheduled: true,
+        rescheduledFromDate: '2099-03-02',
+        originalScheduleTime: '09:00 - 10:30',
+        originalRoom: 'R-1',
+      })
+      expect(realtime.emitSessionState).toHaveBeenCalledWith(expect.anything(), 'rescheduled')
+    })
+
+    it('remembers the first schedule when a class is moved twice', async () => {
+      prisma.session.findUnique.mockResolvedValue(
+        upcoming({
+          date: '2099-03-05',
+          isRescheduled: true,
+          rescheduledFromDate: '2099-03-02',
+          originalScheduleTime: '09:00 - 10:30',
+          originalRoom: 'R-1',
+        }),
+      )
+      await service.reschedule('sess-1', { ...move, date: '2099-03-09' }, teacherUser)
+      expect(prisma.session.updateMany.mock.calls[0][0].data).toEqual(
+        expect.objectContaining({ rescheduledFromDate: '2099-03-02', originalScheduleTime: '09:00 - 10:30' }),
+      )
+    })
+
+    it('drops the label when the class goes back to its first schedule', async () => {
+      prisma.session.findUnique.mockResolvedValue(
+        upcoming({
+          date: '2099-03-05',
+          startTime: '13:00',
+          endTime: '14:30',
+          isRescheduled: true,
+          rescheduledFromDate: '2099-03-02',
+          originalScheduleTime: '09:00 - 10:30',
+          originalRoom: 'R-1',
+        }),
+      )
+      await service.reschedule('sess-1', { date: '2099-03-02', startTime: '09:00', endTime: '10:30' }, teacherUser)
+      expect(prisma.session.updateMany.mock.calls[0][0].data).toEqual(
+        expect.objectContaining({ isRescheduled: false, rescheduledFromDate: null, originalScheduleTime: null }),
+      )
+    })
+
+    it.each([
+      ['is running', { isActive: true }],
+      ['has ended', { endedAt: new Date() }],
+      ['already has a QR code', { qrToken: 'token' }],
+    ])('refuses to move a class that %s', async (_label, overrides) => {
+      prisma.session.findUnique.mockResolvedValue(upcoming(overrides))
+      await expect(service.reschedule('sess-1', move, teacherUser)).rejects.toThrow(ConflictException)
+      expect(prisma.session.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('refuses to move a class that already has attendance', async () => {
+      prisma.session.findUnique.mockResolvedValue({ ...upcoming(), _count: { attendanceRecords: 3 } })
+      await expect(service.reschedule('sess-1', move, teacherUser)).rejects.toThrow(ConflictException)
+    })
+
+    it('only lets the class professor move it', async () => {
+      prisma.session.findUnique.mockResolvedValue(upcoming({ teacherId: 'someone-else' }))
+      await expect(service.reschedule('sess-1', move, teacherUser)).rejects.toThrow(ForbiddenException)
+    })
+
+    it.each([
+      ['a past date', { ...move, date: '2020-01-06' }, /past date/],
+      ['an end before the start', { ...move, endTime: '12:00' }, /after start/],
+      ['a class of five minutes', { ...move, endTime: '13:05' }, /at least 15 minutes/],
+      ['no change at all', { date: '2099-03-02', startTime: '09:00', endTime: '10:30' }, /Change the date/],
+    ])('refuses %s', async (_label, input, message) => {
+      prisma.session.findUnique.mockResolvedValue(upcoming())
+      await expect(service.reschedule('sess-1', input, teacherUser)).rejects.toThrow(message)
+    })
+
+    it('reports a class that started while it was being moved', async () => {
+      prisma.session.findUnique.mockResolvedValue(upcoming())
+      prisma.session.updateMany.mockResolvedValue({ count: 0 })
+      await expect(service.reschedule('sess-1', move, teacherUser)).rejects.toThrow(/just started/)
     })
   })
 
@@ -1769,7 +1872,7 @@ describe('SessionsService', () => {
             },
             teacherUser,
           ),
-        ).rejects.toThrow('endTime must be after startTime')
+        ).rejects.toThrow('End time must be after start time')
         expect(prisma.section.findUnique).not.toHaveBeenCalled()
       })
 

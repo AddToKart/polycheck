@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common'
+import { IN_ACTIVE_SUBJECT } from '../common/active-subject'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { CreateSectionDto } from './dto/create-section.dto'
@@ -20,7 +21,7 @@ const DEFAULT_ENROLLMENT_CODE_EXPIRY_DAYS = 14
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
 const sectionInclude = {
-  subject: { select: { id: true, name: true, code: true } },
+  subject: { select: { id: true, name: true, code: true, archivedAt: true } },
   teacher: { select: { id: true, fullName: true, department: true } },
   schedule: true,
 } as const
@@ -40,6 +41,7 @@ export class SectionsService {
         where: {
           ...(subjectId ? { subjectId } : {}),
           ...adminSectionWhere(user),
+          ...IN_ACTIVE_SUBJECT,
         },
         include: sectionInclude,
         orderBy: [{ semester: 'desc' }, { section: 'asc' }],
@@ -49,7 +51,7 @@ export class SectionsService {
 
     if (user.role === 'teacher') {
       const sections = await this.prisma.section.findMany({
-        where: { teacherId: user.id, ...(subjectId ? { subjectId } : {}) },
+        where: { teacherId: user.id, ...(subjectId ? { subjectId } : {}), ...IN_ACTIVE_SUBJECT },
         include: sectionInclude,
         orderBy: [{ semester: 'desc' }, { section: 'asc' }],
       })
@@ -64,7 +66,7 @@ export class SectionsService {
     const sectionIds = enrollments.map((e) => e.sectionId)
 
     const sections = await this.prisma.section.findMany({
-      where: { id: { in: sectionIds }, ...(subjectId ? { subjectId } : {}) },
+      where: { id: { in: sectionIds }, ...(subjectId ? { subjectId } : {}), ...IN_ACTIVE_SUBJECT },
       include: sectionInclude,
       orderBy: [{ semester: 'desc' }, { section: 'asc' }],
     })
@@ -92,6 +94,8 @@ export class SectionsService {
       })
       if (!enrollment) throw new ForbiddenException('You are not enrolled in this section')
     }
+
+    if (user.role === 'student' && section.subject.archivedAt) throw new NotFoundException('Section not found')
 
     return this.presentSection(section, user.role === 'teacher')
   }
@@ -313,8 +317,13 @@ export class SectionsService {
 
   async enrollByCode(studentId: string, enrollmentCode: string) {
     const normalizedCode = enrollmentCode.trim().toUpperCase()
-    const section = await this.prisma.section.findUnique({ where: { enrollmentCode: normalizedCode } })
-    if (!section || !section.enrollmentCode) throw new BadRequestException('Invalid enrollment code')
+    const section = await this.prisma.section.findUnique({
+      where: { enrollmentCode: normalizedCode },
+      include: { subject: { select: { archivedAt: true } } },
+    })
+    if (!section || !section.enrollmentCode || section.subject?.archivedAt) {
+      throw new BadRequestException('Invalid enrollment code')
+    }
     if (section.enrollmentCodeExpiry && section.enrollmentCodeExpiry < new Date()) {
       throw new BadRequestException('Enrollment code has expired')
     }
@@ -498,6 +507,7 @@ export class SectionsService {
     return {
       id: section.id,
       subjectId: section.subjectId,
+      ...(section.subject?.archivedAt ? { subjectArchivedAt: section.subject.archivedAt } : {}),
       section: section.section,
       course: section.course ?? undefined,
       room: section.room,

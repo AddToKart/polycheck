@@ -75,7 +75,8 @@ test.describe('Super Admin Flows', () => {
     await expect(page.getByRole('heading', { name: 'Temporary credentials' })).toBeVisible()
     await page.getByRole('button', { name: 'Done' }).click()
 
-    // Disable then re-enable the account
+    // Disable then re-enable the account; disabling asks first.
+    page.once('dialog', (dialog) => void dialog.accept())
     await row.getByRole('button', { name: 'Disable' }).click()
     await expect(row.getByText('Inactive')).toBeVisible()
     await row.getByRole('button', { name: 'Enable' }).click()

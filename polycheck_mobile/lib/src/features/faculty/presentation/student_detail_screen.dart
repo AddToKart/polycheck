@@ -7,6 +7,7 @@ import '../../../core/polycheck_core.dart';
 import '../data/faculty_logic.dart';
 import 'widgets/faculty_id_card.dart';
 import 'widgets/faculty_shell.dart';
+import 'widgets/status_change_dialog.dart';
 
 const int _sessionPageSize = 5;
 
@@ -121,7 +122,7 @@ class _FacultyStudentDetailScreenState
     return null;
   }
 
-  Future<void> _cycle(Session session) async {
+  Future<void> _changeStatus(Session session) async {
     final student = _student;
     final section = _section;
     if (student == null || section == null || _busy != null) return;
@@ -141,9 +142,13 @@ class _FacultyStudentDetailScreenState
       );
       return;
     }
-    final next = nextAttendanceStatus(
-      record?.status ?? AttendanceStatus.pending,
+    final next = await showStatusChangeDialog(
+      context,
+      studentName: student.fullName,
+      subject: 'the class on ${session.date}',
+      current: record?.status ?? AttendanceStatus.pending,
     );
+    if (next == null || !mounted || _busy != null) return;
     setState(() => _busy = session.id);
     try {
       if (record != null) {
@@ -478,7 +483,7 @@ class _FacultyStudentDetailScreenState
                             session: session,
                             record: _recordFor(session.id),
                             busy: _busy == session.id,
-                            onCycle: () => _cycle(session),
+                            onChange: () => _changeStatus(session),
                           ),
                         ),
                     if (totalPages > 1)
@@ -582,13 +587,13 @@ class _SessionAttendanceRow extends StatelessWidget {
     required this.session,
     required this.record,
     required this.busy,
-    required this.onCycle,
+    required this.onChange,
   });
 
   final Session session;
   final AttendanceRecord? record;
   final bool busy;
-  final VoidCallback onCycle;
+  final VoidCallback onChange;
 
   @override
   Widget build(BuildContext context) {
@@ -623,8 +628,8 @@ class _SessionAttendanceRow extends StatelessWidget {
           CampusStatusBadge(status: status, dense: true),
           const SizedBox(width: 4),
           IconButton(
-            tooltip: 'Cycle attendance status',
-            onPressed: busy ? null : onCycle,
+            tooltip: 'Change attendance status',
+            onPressed: busy ? null : onChange,
             icon: busy
                 ? const SizedBox(
                     width: 16,

@@ -54,6 +54,37 @@ class DocsApi extends ApiBase {
     );
   }
 
+  /// Class photos with their time stamps as one PDF, for a session, a section
+  /// or a whole subject.
+  Future<DocumentDownload> proofPhotos({
+    String? sessionId,
+    String? sectionId,
+    String? subjectId,
+    String? from,
+    String? to,
+  }) {
+    return _download(
+      '/docs/proof-photos',
+      query: <String, dynamic>{
+        'sessionId': sessionId,
+        'sectionId': sectionId,
+        'subjectId': subjectId,
+        'from': from,
+        'to': to,
+      },
+      fallbackName: 'class-photos.pdf',
+    );
+  }
+
+  /// Every attendance record of a subject, as a spreadsheet.
+  Future<DocumentDownload> subjectAttendance(String subjectId) {
+    return _download(
+      '/docs/subject-attendance/${Uri.encodeComponent(subjectId)}',
+      query: const <String, dynamic>{},
+      fallbackName: 'attendance-$subjectId-all-records.csv',
+    );
+  }
+
   Future<DocumentDownload> dpoSummary({String format = 'pdf'}) {
     return _download(
       '/docs/dpo-summary',

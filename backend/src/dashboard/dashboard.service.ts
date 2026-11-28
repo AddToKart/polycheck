@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Optional } from '@nestjs/common'
 import type { AdminOverview, AdminOverviewHealth, AuditLogEntry, DashboardOverview } from '@polycheck/shared'
+import { IN_ACTIVE_SUBJECT } from '../common/active-subject'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { parseIsoDate } from '../common/utils/iso-date'
@@ -419,7 +420,7 @@ export class DashboardService {
 
   private async overviewCounts(user: RequestUser) {
     if (user.role === 'teacher') {
-      const sectionWhere: Prisma.SectionWhereInput = { teacherId: user.id }
+      const sectionWhere: Prisma.SectionWhereInput = { teacherId: user.id, ...IN_ACTIVE_SUBJECT }
       const [sections, subjects, students] = await Promise.all([
         this.prisma.section.count({ where: sectionWhere }),
         this.prisma.section.groupBy({ by: ['subjectId'], where: sectionWhere }),
@@ -515,6 +516,14 @@ export class DashboardService {
   }
 
   private sectionScope(user: RequestUser): Prisma.SectionWhereInput {
+    return { AND: [this.ownSections(user), IN_ACTIVE_SUBJECT] }
+  }
+
+  private sessionScope(user: RequestUser): Prisma.SessionWhereInput {
+    return { AND: [this.ownSessions(user), { section: IN_ACTIVE_SUBJECT }] }
+  }
+
+  private ownSections(user: RequestUser): Prisma.SectionWhereInput {
     if (user.role === 'super_admin') {
       return adminSectionWhere(user)
     }
@@ -522,7 +531,7 @@ export class DashboardService {
     return { enrollments: { some: { studentId: user.id } } }
   }
 
-  private sessionScope(user: RequestUser): Prisma.SessionWhereInput {
+  private ownSessions(user: RequestUser): Prisma.SessionWhereInput {
     if (user.role === 'super_admin') {
       return adminSessionWhere(user)
     }
@@ -531,6 +540,10 @@ export class DashboardService {
   }
 
   private async recordScope(user: RequestUser): Promise<Prisma.AttendanceRecordWhereInput> {
+    return { AND: [this.ownRecords(user), { section: IN_ACTIVE_SUBJECT }] }
+  }
+
+  private ownRecords(user: RequestUser): Prisma.AttendanceRecordWhereInput {
     if (user.role === 'super_admin') {
       return adminRecordWhere(user)
     }
@@ -551,7 +564,7 @@ export class DashboardService {
     user: RequestUser,
     filter: Prisma.AttendanceRecordWhereInput,
   ): Prisma.AttendanceRecordWhereInput {
-    return { AND: [adminRecordWhere(user), filter] }
+    return { AND: [adminRecordWhere(user), filter, { section: IN_ACTIVE_SUBJECT }] }
   }
 
   private async adminHealth(): Promise<AdminOverviewHealth> {

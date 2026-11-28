@@ -13,6 +13,7 @@ import type { AiCapabilities, PrivacyCenterSnapshot, User } from '@polycheck/sha
 import { canAccessItOperations, PRIVACY_DATA_INVENTORY, consentCoveragePercent } from '@polycheck/shared'
 import { KeyRound, Loader2, RefreshCw, Save, Settings, ShieldCheck, Sparkles, Trash2 } from 'lucide-react'
 import { BRANDING_CHANGED_EVENT } from '@/components/branding/BrandingProvider'
+import { numberRangeIssue } from '@/components/NumberField'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -69,6 +70,12 @@ function settingByKey(key: string) {
   return SETTING_SWITCHES.find((item) => item.key === key)
 }
 
+/** What is wrong with a number setting, shown under it before anything is saved. */
+function settingIssue(field: SettingFieldDefinition, value: string): string | null {
+  if (field.type !== 'number' || (field.optional && !value.trim())) return null
+  return numberRangeIssue(value, field.min ?? 0, field.max ?? Number.MAX_SAFE_INTEGER)
+}
+
 function SettingFieldRow({
   field,
   value,
@@ -82,6 +89,7 @@ function SettingFieldRow({
 }) {
   const sharedClasses =
     'w-full border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-maroon focus:outline-none focus:ring-2 focus:ring-maroon/30 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100'
+  const issue = settingIssue(field, value)
   return (
     <div className="space-y-2">
       <Label htmlFor={field.key}>{field.label}</Label>
@@ -96,19 +104,26 @@ function SettingFieldRow({
           className={sharedClasses}
         />
       ) : (
+        // Numbers use a text box: a number box accepts "e" and then reports itself empty.
         <Input
           id={field.key}
-          type={field.type}
+          type={field.type === 'number' ? 'text' : field.type}
           inputMode={field.type === 'number' ? 'numeric' : undefined}
-          min={field.min}
-          max={field.max}
-          step={field.type === 'number' ? 1 : undefined}
           placeholder={field.placeholder}
           disabled={disabled}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) =>
+            onChange(field.type === 'number' ? event.target.value.replace(/\D/g, '') : event.target.value)
+          }
+          aria-invalid={issue ? true : undefined}
+          aria-describedby={issue ? `${field.key}-issue` : undefined}
         />
       )}
+      {issue ? (
+        <p id={`${field.key}-issue`} role="alert" className="text-xs font-semibold text-red-600 dark:text-red-300">
+          {issue}
+        </p>
+      ) : null}
       <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">{field.caption}</p>
     </div>
   )
@@ -510,6 +525,17 @@ function InstitutionSettingsPageInner() {
       delete next[tab]
       return next
     })
+
+    const invalid = keys.flatMap((key) => {
+      const field = SETTING_FIELDS.find((item) => item.key === key)
+      const issue = field ? settingIssue(field, values[key] ?? '') : null
+      return field && issue ? [`${field.label}: ${issue}`] : []
+    })
+    if (invalid.length > 0) {
+      setFeedback((current) => ({ ...current, [tab]: { tone: 'error', message: `Nothing was saved. ${invalid.join(' ')}` } }))
+      setSavingTab(null)
+      return
+    }
 
     try {
       const results = await Promise.allSettled(

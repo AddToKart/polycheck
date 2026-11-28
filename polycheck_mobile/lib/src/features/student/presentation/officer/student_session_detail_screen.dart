@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:polycheck_mobile/src/core/polycheck_core.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -9,6 +10,7 @@ import '../../data/student_models.dart';
 import '../../../../core/utils/proof_window.dart';
 import '../../../../core/widgets/proof_photo_grid.dart';
 import '../../data/student_providers.dart';
+import '../../student_paths.dart';
 import 'host_session_panel.dart';
 import 'proof_uploader.dart';
 
@@ -300,6 +302,55 @@ class _SessionBody extends ConsumerWidget {
               ],
             ),
           )
+        else if (detail.isLive)
+          CampusCard(
+            borderColor: tokens.gold,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Icon(
+                      Icons.sensors,
+                      size: 22,
+                      color: tokens.isDark ? tokens.gold : tokens.maroon,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            'Attendance is open',
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(
+                                  color: tokens.onSurface,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Your instructor has started this class. Scan the '
+                            'QR code they are showing to check in.',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: tokens.muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                CampusButton(
+                  key: const ValueKey('open-scanner'),
+                  label: 'Open the scanner',
+                  icon: Icons.qr_code_scanner,
+                  onPressed: () => context.go(StudentPaths.scan),
+                ),
+              ],
+            ),
+          )
         else if ((session.endedAt?.isNotEmpty ?? false))
           CampusCard(
             child: Row(
@@ -333,7 +384,7 @@ class _SessionBody extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text(
-                        'Awaiting instructor activation',
+                        'Not started yet',
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           color: tokens.onSurface,
                           fontWeight: FontWeight.w700,
@@ -341,7 +392,7 @@ class _SessionBody extends ConsumerWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        'Your instructor activates this session from their own device — the QR token must be signed with their key. Once active, the class token appears here for the whole class.',
+                        'Your instructor starts this class from their own device. When it starts, scan the QR code they show. Pull down to check again.',
                         style: Theme.of(
                           context,
                         ).textTheme.bodySmall?.copyWith(color: tokens.muted),

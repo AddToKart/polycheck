@@ -243,16 +243,24 @@ model InstitutionSetting {
 model Subject {
   id          String   @id @default(cuid())
   name        String
-  code        String   @unique
+  // Unique among active subjects only (partial index in the subject_archive migration).
+  code        String
   description String?
   createdById String?
   createdBy   User?    @relation("SubjectCreator", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  archivedAt       DateTime?
+  archivedById     String?
+  // When the archived subject's evidence was erased (90 days after archiving).
+  evidencePurgedAt DateTime?
+
   sections Section[]
 
   @@index([createdById])
+  @@index([archivedAt])
+  @@index([code])
 }
 
 model Section {

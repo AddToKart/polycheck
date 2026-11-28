@@ -20,6 +20,7 @@ import {
 import { ErrorCode } from '../common/constants/error-codes'
 import { lockStudentSection } from '../common/student-section-lock'
 import type { Prisma } from '../prisma/client'
+import { IN_ACTIVE_SUBJECT } from '../common/active-subject'
 import { PrismaService } from '../prisma/prisma.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { AttendanceAtRiskService, isReferralEligible } from './attendance-at-risk.service'
@@ -159,7 +160,7 @@ export class AttendanceReferralService {
       where: {
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.sectionId ? { sectionId: filters.sectionId } : {}),
-        section: sectionWhere,
+        section: filters.sectionId ? sectionWhere : { ...sectionWhere, ...IN_ACTIVE_SUBJECT },
       },
       orderBy: { updatedAt: 'desc' },
       take: REFERRAL_LIST_LIMIT,

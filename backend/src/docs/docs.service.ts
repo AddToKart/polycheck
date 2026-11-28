@@ -27,7 +27,7 @@ import {
   TextRun,
   WidthType,
 } from 'docx'
-import { clampRetentionDays, consentCoveragePercent, PRIVACY_DATA_INVENTORY } from '@polycheck/shared'
+import { campusHeading, clampRetentionDays, consentCoveragePercent, PRIVACY_DATA_INVENTORY } from '@polycheck/shared'
 import type { RequestUser } from '../auth/authenticated-principal'
 import { adminSectionInScope } from '../common/admin-scope'
 import { sectionInOversightScope } from '../common/course-scope'
@@ -62,7 +62,7 @@ const DPO_SUMMARY_TITLE = 'DATA PROTECTION OFFICER — COMPLIANCE SUMMARY (RA 10
 const DPO_SUMMARY_INFO_TITLE = 'DATA PROTECTION OFFICER - COMPLIANCE SUMMARY (RA 10173)'
 const CLASS_RECORD_TITLE = 'OFFICIAL CLASS RECORD'
 /** "Santa Maria" -> "Santa Maria Campus"; empty when the institution has a single site. */
-const campusLine = (campus: string) => (campus ? `${campus} Campus` : '')
+const campusLine = campusHeading
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 /** The official grading sheet covers an 18-week semester (WF-LD6 / F4). */
 export const CLASS_RECORD_WEEKS = 18

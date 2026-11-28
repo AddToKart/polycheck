@@ -25,6 +25,8 @@ import { useUrlFilters } from '@/lib/hooks/use-url-filters'
 import { useNotifications } from '@/lib/notifications'
 import { Download, ChevronRight, RefreshCw } from 'lucide-react'
 import { PaginationBar } from '@/components/ui/pagination-bar'
+import { SearchAndSort } from '@/components/ListControls'
+import { matchesQuery } from '@/lib/list-search'
 
 const ATTENDANCE_PAGE_SIZE = 10
 
@@ -35,7 +37,22 @@ const FILTER_SCHEMA = {
   sectionId: { defaultValue: '' },
   from: { defaultValue: defaultFromDate },
   to: { defaultValue: defaultToDate },
+  q: { defaultValue: '' },
+  sort: { defaultValue: '', allowed: ['rate', 'absences', 'subject'] },
 } as const
+
+const SORT_OPTIONS = [
+  { value: '', label: 'Report order' },
+  { value: 'rate', label: 'Lowest attendance first' },
+  { value: 'absences', label: 'Most absences first' },
+  { value: 'subject', label: 'Subject (A to Z)' },
+]
+
+/** Share of counted marks that were present or late; sections with none sort last. */
+function attendedShare(summary: { present: number; late: number; absent: number; incomplete: number }) {
+  const counted = summary.present + summary.late + summary.absent + summary.incomplete
+  return counted === 0 ? Number.POSITIVE_INFINITY : (summary.present + summary.late) / counted
+}
 
 const DATE_PRESETS = [
   { key: 'today', label: 'Today' },
@@ -141,7 +158,25 @@ function AttendanceOverviewContent() {
     [],
   )
 
-  const summaries = useMemo(() => report?.summaries ?? [], [report])
+  const { q, sort } = filters.values
+  const summaries = useMemo(() => {
+    const matched = (report?.summaries ?? []).filter((summary) => {
+      const section = sections.find((item) => item.id === summary.sectionId)
+      const subject = subjects.find((item) => item.id === section?.subjectId)
+      return matchesQuery(q, [
+        summary.subjectName,
+        subject?.code,
+        section ? `Section ${section.section} ${section.course ?? ''}` : undefined,
+      ])
+    })
+    if (sort === 'rate') return [...matched].sort((a, b) => attendedShare(a) - attendedShare(b))
+    if (sort === 'absences') return [...matched].sort((a, b) => b.absent - a.absent)
+    if (sort === 'subject') return [...matched].sort((a, b) => a.subjectName.localeCompare(b.subjectName))
+    return matched
+  }, [report, q, sort, sections, subjects])
+  useEffect(() => {
+    setPage(1)
+  }, [q, sort])
   const totalPages = Math.max(1, Math.ceil(summaries.length / ATTENDANCE_PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
   const pagedSummaries = useMemo(
@@ -288,6 +323,15 @@ function AttendanceOverviewContent() {
               to={toDate}
               onFromChange={(value) => filters.setFilter('from', value)}
               onToChange={(value) => filters.setFilter('to', value)}
+            />
+            <SearchAndSort
+              idPrefix="attendance"
+              query={q}
+              onQueryChange={(value) => filters.setFilter('q', value)}
+              placeholder="Subject or section"
+              sort={sort}
+              onSortChange={(value) => filters.setFilter('sort', value)}
+              sortOptions={SORT_OPTIONS}
             />
           </FilterBar>
 

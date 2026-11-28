@@ -11,6 +11,10 @@ import { randomMeetingPin } from '@polycheck/shared'
 import type { User, Session, AttendanceRecord, AttendanceStatus, EditableAttendanceStatus, Student, ProofOfClass } from '@polycheck/shared'
 import { Sidebar } from '@/components/layout/sidebar'
 import { ProofPhotoGrid } from '@/components/proofs/ProofPhotoGrid'
+import { PhotoReportButton } from '@/components/proofs/PhotoReportButton'
+import { NumberField, numberRangeIssue } from '@/components/NumberField'
+import { StatusChangeDialog } from '@/components/faculty/StatusChangeDialog'
+import { reviewQueueFor } from '@/lib/manual-status'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -91,6 +95,13 @@ export default function SessionDetailPage() {
   const [startPinPlain, setStartPinPlain] = useState<string | null>(null)
   const [endPinPlain, setEndPinPlain] = useState<string | null>(null)
   const [validityMinutes, setValidityMinutes] = useState('15')
+  // A status the professor pressed and has not confirmed yet.
+  const [pendingStatus, setPendingStatus] = useState<{
+    studentId: string
+    studentName: string
+    current: AttendanceStatus
+    next: EditableAttendanceStatus
+  } | null>(null)
   const [graceMinutes, setGraceMinutes] = useState('15')
   const [countdown, setCountdown] = useState('')
   const [lastUpdatedAt, setLastUpdatedAt] = useState(() => Date.now())
@@ -195,6 +206,12 @@ export default function SessionDetailPage() {
         }),
       ])
       const section = await api.getSection(nextSession.sectionId)
+      // An archived subject opens on its archive screen; nothing in it can be run.
+      if (section.subjectArchivedAt) {
+        setRedirecting(true)
+        router.replace(`/faculty/subjects/${section.subjectId}`)
+        return
+      }
       if (cu.role === 'teacher' && section.teacherId !== cu.id) {
         setRedirecting(true)
         router.replace('/faculty')
@@ -952,10 +969,15 @@ export default function SessionDetailPage() {
           {/* Proof of Class */}
           <Card className="dark:border-golden/15 dark:bg-surface-dark">
             <CardContent className="p-6">
-              <div className="flex items-center gap-2 mb-4">
+              <div className="flex flex-wrap items-center gap-2 mb-4">
                 <Camera className="w-5 h-5 text-maroon dark:text-golden" />
                 <h2 className="text-base font-bold dark:text-white">Proof of Class</h2>
                 <span className="text-xs text-zinc-500 dark:text-zinc-400">({proofsOfClass.length})</span>
+                {proofsOfClass.length > 0 ? (
+                  <div className="ml-auto">
+                    <PhotoReportButton scope={{ sessionId: session.id }} label={session.date} />
+                  </div>
+                ) : null}
               </div>
               {proofsOfClass.length === 0 ? (
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center py-4">No proof photos uploaded yet.</p>
@@ -1095,40 +1117,35 @@ export default function SessionDetailPage() {
             </DialogDescription>
           </DialogHeader>
             <div className="space-y-4 mb-6">
-              <div>
-                <label htmlFor="qr-validity" className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">QR Validity</label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="qr-validity"
-                    type="number"
-                    className="w-full text-center font-bold"
-                    value={validityMinutes}
-                    onChange={(e) => setValidityMinutes(e.target.value)}
-                    min={1}
-                    max={15}
-                  />
-                  <span className="text-sm text-zinc-500 dark:text-zinc-400">minutes</span>
-                </div>
-              </div>
-              <div>
-                <label htmlFor="grace-period" className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Grace Period</label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="grace-period"
-                    type="number"
-                    className="w-full text-center font-bold"
-                    value={graceMinutes}
-                    onChange={(e) => setGraceMinutes(e.target.value)}
-                    min={0}
-                    max={60}
-                  />
-                  <span className="text-sm text-zinc-500 dark:text-zinc-400">minutes</span>
-                </div>
-              </div>
+              <NumberField
+                id="qr-validity"
+                label="QR Validity"
+                unit="minutes"
+                value={validityMinutes}
+                onChange={setValidityMinutes}
+                min={1}
+                max={15}
+              />
+              <NumberField
+                id="grace-period"
+                label="Grace Period"
+                unit="minutes"
+                value={graceMinutes}
+                onChange={setGraceMinutes}
+                min={0}
+                max={60}
+              />
             </div>
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setShowValidityPrompt(false)}>Cancel</Button>
-              <Button className="flex-1 bg-maroon hover:bg-maroon-dark dark:bg-golden dark:hover:bg-golden-dark dark:text-maroon-dark" onClick={() => void handleGenerateQr(false)} disabled={generatingQr}>
+              <Button
+                className="flex-1 bg-maroon hover:bg-maroon-dark dark:bg-golden dark:hover:bg-golden-dark dark:text-maroon-dark"
+                onClick={() => void handleGenerateQr(false)}
+                disabled={
+                  generatingQr ||
+                  Boolean(numberRangeIssue(validityMinutes, 1, 15) || numberRangeIssue(graceMinutes, 0, 60))
+                }
+              >
                 {generatingQr ? 'Generating…' : 'Generate'}
               </Button>
             </div>
@@ -1257,41 +1274,25 @@ export default function SessionDetailPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mb-6">
-            <div>
-              <label htmlFor="checkpoint-validity" className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">
-                Validity (seconds)
-              </label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="checkpoint-validity"
-                  type="number"
-                  className="w-full text-center font-bold"
-                  value={checkpointValiditySeconds}
-                  onChange={(e) => setCheckpointValiditySeconds(e.target.value)}
-                  min={60}
-                  max={300}
-                />
-                <span className="text-sm text-zinc-500 dark:text-zinc-400">sec</span>
-              </div>
-            </div>
+            <NumberField
+              id="checkpoint-validity"
+              label="Validity (seconds)"
+              unit="sec"
+              value={checkpointValiditySeconds}
+              onChange={setCheckpointValiditySeconds}
+              min={60}
+              max={300}
+            />
             {checkpointTab === 'start' ? (
-              <div>
-                <label htmlFor="checkpoint-grace" className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">
-                  Grace period (minutes)
-                </label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="checkpoint-grace"
-                    type="number"
-                    className="w-full text-center font-bold"
-                    value={checkpointGraceMinutes}
-                    onChange={(e) => setCheckpointGraceMinutes(e.target.value)}
-                    min={0}
-                    max={60}
-                  />
-                  <span className="text-sm text-zinc-500 dark:text-zinc-400">min</span>
-                </div>
-              </div>
+              <NumberField
+                id="checkpoint-grace"
+                label="Grace period (minutes)"
+                unit="min"
+                value={checkpointGraceMinutes}
+                onChange={setCheckpointGraceMinutes}
+                min={0}
+                max={60}
+              />
             ) : null}
             <div className="border border-zinc-200 p-3 dark:border-zinc-700">
               <label className="flex items-center gap-2 cursor-pointer text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300">
@@ -1348,13 +1349,33 @@ export default function SessionDetailPage() {
             <Button
               className="flex-1 bg-maroon hover:bg-maroon-dark dark:bg-golden dark:hover:bg-golden-dark dark:text-maroon-dark"
               onClick={() => void handleGenerateCheckpointQr()}
-              disabled={generatingQr}
+              disabled={
+                generatingQr ||
+                Boolean(
+                  numberRangeIssue(checkpointValiditySeconds, 60, 300) ||
+                    (checkpointTab === 'start' && numberRangeIssue(checkpointGraceMinutes, 0, 60)),
+                )
+              }
             >
               {generatingQr ? 'Generating…' : regeneratingCheckpoint ? 'Regenerate' : 'Generate'}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      {pendingStatus ? (
+        <StatusChangeDialog
+          studentName={pendingStatus.studentName}
+          context="this class meeting"
+          current={pendingStatus.current}
+          initial={pendingStatus.next}
+          onClose={() => setPendingStatus(null)}
+          onConfirm={(status) => {
+            setPendingStatus(null)
+            void handleSetStudentStatus(pendingStatus.studentId, status)
+          }}
+        />
+      ) : null}
 
       {/* Student detail & attendance management modal */}
       <Dialog
@@ -1540,7 +1561,25 @@ export default function SessionDetailPage() {
                             size="sm"
                             variant={isCurrent ? 'default' : 'outline'}
                             disabled={isBusy}
-                            onClick={() => void handleSetStudentStatus(selectedStudent.id, statusOption)}
+                            aria-pressed={isCurrent}
+                            onClick={() => {
+                              if (isCurrent) return
+                              const queue = reviewQueueFor(curStatus)
+                              if (queue) {
+                                addNotification(
+                                  'info',
+                                  'Resolve it in its queue',
+                                  `This record is ${curStatus}. Change it from the ${queue} page.`,
+                                )
+                                return
+                              }
+                              setPendingStatus({
+                                studentId: selectedStudent.id,
+                                studentName: selectedStudent.fullName,
+                                current: curStatus,
+                                next: statusOption,
+                              })
+                            }}
                             className={`h-9 capitalize font-bold text-xs transition-all ${
                               isCurrent
                                 ? statusOption === 'present'

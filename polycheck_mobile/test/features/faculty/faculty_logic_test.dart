@@ -28,70 +28,25 @@ StudentAtRisk _risk({
 }
 
 void main() {
-  group('attendance status cycle', () {
-    // Re-pinned for FLF-02: the cycle used to include `pending`, which is a
-    // system pre-resolution state the backend rejects with a 400
-    // (`UpdateAttendanceStatusDto` allowlist). Absent now wraps to present.
-    test('cycles through the backend starter set without pending', () {
-      expect(attendanceStatusCycle, <AttendanceStatus>[
+  group('manual attendance statuses', () {
+    // `pending` is a system state the backend rejects with a 400 (FLF-02).
+    test('offer only what the backend accepts from a teacher', () {
+      expect(manualStatusChoices, <AttendanceStatus>[
         AttendanceStatus.present,
         AttendanceStatus.late,
         AttendanceStatus.incomplete,
         AttendanceStatus.absent,
       ]);
-      expect(
-        nextAttendanceStatus(AttendanceStatus.present),
-        AttendanceStatus.late,
-      );
-      expect(
-        nextAttendanceStatus(AttendanceStatus.late),
-        AttendanceStatus.incomplete,
-      );
-      expect(
-        nextAttendanceStatus(AttendanceStatus.incomplete),
-        AttendanceStatus.absent,
-      );
-      expect(
-        nextAttendanceStatus(AttendanceStatus.absent),
-        AttendanceStatus.present,
-      );
-      expect(
-        nextAttendanceStatus(AttendanceStatus.pending),
-        AttendanceStatus.present,
-      );
-    });
-
-    test('the cycle is a subset of the backend DTO allowlist', () {
-      // `UpdateAttendanceStatusDto` / `CreateManualAttendanceDto`
-      // (`backend/src/attendance/dto/attendance.dto.ts`):
-      // `@IsIn(['present','late','absent','disputed','incomplete'])`.
-      // `pending` and `excused` are not teacher decisions.
-      expect(editableAttendanceStatuses, <AttendanceStatus>{
-        AttendanceStatus.present,
-        AttendanceStatus.late,
-        AttendanceStatus.absent,
-        AttendanceStatus.disputed,
-        AttendanceStatus.incomplete,
-      });
-      for (final status in attendanceStatusCycle) {
+      for (final status in manualStatusChoices) {
         expect(
           editableAttendanceStatuses,
           contains(status),
           reason: '${status.wire} would 400 against the backend allowlist',
         );
       }
-      expect(attendanceStatusCycle, isNot(contains(AttendanceStatus.pending)));
     });
 
-    test('unknown/disputed rows restart at present', () {
-      expect(
-        nextAttendanceStatus(AttendanceStatus.disputed),
-        AttendanceStatus.present,
-      );
-      expect(
-        nextAttendanceStatus(AttendanceStatus.excused),
-        AttendanceStatus.present,
-      );
+    test('disputed and excused rows are left to their queues', () {
       expect(isManualCycleStatus(AttendanceStatus.disputed), isFalse);
       expect(isManualCycleStatus(AttendanceStatus.excused), isFalse);
       expect(isManualCycleStatus(AttendanceStatus.present), isTrue);

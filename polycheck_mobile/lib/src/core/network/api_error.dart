@@ -32,7 +32,9 @@ class ApiRequestError implements Exception {
   factory ApiRequestError.fromDio(DioException error) {
     final response = error.response;
     final status = response?.statusCode ?? 0;
-    final data = response?.data;
+    var data = response?.data;
+    // A failed download is requested as bytes; the server still answers in JSON.
+    if (data is List<int>) data = utf8.decode(data, allowMalformed: true);
     Map<String, dynamic>? body;
     if (data is Map<String, dynamic>) {
       body = data;

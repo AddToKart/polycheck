@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { IN_ACTIVE_SUBJECT } from '../common/active-subject'
 import { PrismaService } from '../prisma/prisma.service'
 import type { RequestUser } from '../auth/authenticated-principal'
 import type { SectionRoleType } from '../prisma/client'
@@ -23,7 +24,7 @@ export class SectionRolesService {
 
   async getForStudent(user: RequestUser, studentId: string) {
     if (user.role === 'student' && user.id !== studentId) throw new ForbiddenException()
-    const roles = await this.prisma.sectionRole.findMany({ where: { studentId } })
+    const roles = await this.prisma.sectionRole.findMany({ where: { studentId, section: IN_ACTIVE_SUBJECT } })
     if (user.role === 'teacher') {
       const ids = await this.ownedSectionIds(user.id)
       return roles.filter((role) => ids.includes(role.sectionId))

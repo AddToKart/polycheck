@@ -5,6 +5,10 @@ export interface Subject {
   description?: string
   createdAt: string
   updatedAt: string
+  /** Set while the subject is archived (hidden at the end of a semester). */
+  archivedAt?: string | null
+  /** When an archived subject's evidence was erased. */
+  evidencePurgedAt?: string | null
 }
 
 export interface ScheduleDay {
@@ -19,6 +23,8 @@ export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun'
 export interface Section {
   id: string
   subjectId: string
+  /** Present when the section belongs to an archived subject. */
+  subjectArchivedAt?: string
   section: string
   /**
    * Campus program/course short code (e.g. 'BSIT'). Two sections can

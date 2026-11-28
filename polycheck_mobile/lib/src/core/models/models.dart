@@ -18,5 +18,6 @@ export 'section_role.dart';
 export 'session.dart';
 export 'standing.dart';
 export 'subject.dart';
+export 'subject_lifecycle.dart';
 export 'system_report.dart';
 export 'user.dart';

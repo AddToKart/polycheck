@@ -77,6 +77,7 @@ final List<RouteBase> facultyRoutes = <RouteBase>[
         path: '/faculty/sessions/create',
         builder: (context, state) => SessionCreateScreen(
           initialSectionId: state.uri.queryParameters['sectionId'],
+          initialSubjectId: state.uri.queryParameters['subjectId'],
         ),
       ),
       GoRoute(

@@ -3,6 +3,7 @@ import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validato
 import { Roles } from '../common/decorators/roles.decorator'
 import { DisputesService } from './disputes.service'
 import type { AuthenticatedRequest } from '../common/types/authenticated-request'
+import { BlocksArchivedSubject } from '../common/guards/archived-subject.guard'
 import type { AttendanceStatus } from '../prisma/client'
 
 class SubmitDisputeDto {
@@ -41,12 +42,14 @@ export class DisputesController {
   }
 
   @Post()
+  @BlocksArchivedSubject('record', 'body.recordId')
   @Roles('student')
   submit(@Request() req: AuthenticatedRequest, @Body() dto: SubmitDisputeDto) {
     return this.disputes.submit(req.user, dto)
   }
 
   @Post(':id/resolve')
+  @BlocksArchivedSubject('record', 'params.id')
   @Roles('teacher')
   resolve(@Request() req: AuthenticatedRequest, @Param('id') id: string, @Body() dto: ResolveDisputeDto) {
     return this.disputes.resolve(req.user, id, dto.resolution, dto.newStatus)

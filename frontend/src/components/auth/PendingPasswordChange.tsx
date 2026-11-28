@@ -75,12 +75,6 @@ export function PendingPasswordChange({
       </div>
 
       <form onSubmit={(event) => void submit(event)} className="space-y-5">
-        {error ? (
-          <div role="alert" className="border-l-4 border-red-600 bg-red-50 p-4 text-sm font-medium text-red-700 dark:bg-red-900/20 dark:text-red-400">
-            {error}
-          </div>
-        ) : null}
-
         <div className="space-y-2">
           <Label htmlFor="new-password" className="uppercase tracking-widest text-xs text-zinc-500">
             New password
@@ -127,6 +121,12 @@ export function PendingPasswordChange({
             minLength={12}
           />
         </div>
+
+        {error ? (
+          <div role="alert" className="border-l-4 border-red-600 bg-red-50 p-4 text-sm font-medium text-red-700 dark:bg-red-900/20 dark:text-red-400">
+            {error}
+          </div>
+        ) : null}
 
         <div className="flex flex-col gap-3 pt-2 sm:flex-row">
           <Button

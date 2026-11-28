@@ -223,6 +223,7 @@ describe('AttendanceReferralService — F5 (WF-LD7)', () => {
       const where = prisma.atRiskReferral.findMany.mock.calls[0][0].where
       expect(where.section).toEqual({
         OR: [{ teacherId: 'head-1' }, { teacher: { department: { equals: 'CCIS', mode: 'insensitive' } } }],
+        subject: { archivedAt: null },
       })
     })
 
@@ -232,6 +233,7 @@ describe('AttendanceReferralService — F5 (WF-LD7)', () => {
       const where = prisma.atRiskReferral.findMany.mock.calls[0][0].where
       expect(where.section).toEqual({
         teacher: { department: { equals: 'COE', mode: 'insensitive' } },
+        subject: { archivedAt: null },
       })
     })
   })
@@ -441,6 +443,7 @@ describe('AttendanceReferralService — course scope (COURSE_SCOPE_MODE=course)'
     await service.listReferrals(bsitHead)
     expect(prisma.atRiskReferral.findMany.mock.calls[0][0].where.section).toEqual({
       OR: [{ teacherId: 'head-bsit' }, { OR: [{ course: { equals: 'BSIT', mode: 'insensitive' } }] }],
+      subject: { archivedAt: null },
     })
   })
 })

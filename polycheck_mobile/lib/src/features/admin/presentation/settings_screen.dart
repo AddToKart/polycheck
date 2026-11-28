@@ -357,14 +357,6 @@ class _AdminSettingsScreenState extends ConsumerState<AdminSettingsScreen> {
                   ),
                   const SizedBox(height: 12),
                 ],
-                if (_error != null) ...<Widget>[
-                  AdminInfoBanner(
-                    icon: Icons.error_outline,
-                    message: _error!,
-                    tone: AdminInfoTone.error,
-                  ),
-                  const SizedBox(height: 12),
-                ],
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -381,6 +373,14 @@ class _AdminSettingsScreenState extends ConsumerState<AdminSettingsScreen> {
                 ),
                 const SizedBox(height: 16),
                 _buildTab(context, activeTab, access),
+                if (_error != null) ...<Widget>[
+                  const SizedBox(height: 12),
+                  AdminInfoBanner(
+                    icon: Icons.error_outline,
+                    message: _error!,
+                    tone: AdminInfoTone.error,
+                  ),
+                ],
               ],
             ),
     );

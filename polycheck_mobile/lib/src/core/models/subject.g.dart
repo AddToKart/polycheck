@@ -28,6 +28,8 @@ _Subject _$SubjectFromJson(Map<String, dynamic> json) => _Subject(
   description: json['description'] as String?,
   createdAt: json['createdAt'] as String? ?? '',
   updatedAt: json['updatedAt'] as String? ?? '',
+  archivedAt: json['archivedAt'] as String?,
+  evidencePurgedAt: json['evidencePurgedAt'] as String?,
 );
 
 Map<String, dynamic> _$SubjectToJson(_Subject instance) => <String, dynamic>{
@@ -37,11 +39,14 @@ Map<String, dynamic> _$SubjectToJson(_Subject instance) => <String, dynamic>{
   'description': instance.description,
   'createdAt': instance.createdAt,
   'updatedAt': instance.updatedAt,
+  'archivedAt': instance.archivedAt,
+  'evidencePurgedAt': instance.evidencePurgedAt,
 };
 
 _Section _$SectionFromJson(Map<String, dynamic> json) => _Section(
   id: json['id'] as String,
   subjectId: json['subjectId'] as String,
+  subjectArchivedAt: json['subjectArchivedAt'] as String?,
   section: json['section'] as String,
   course: json['course'] as String?,
   room: json['room'] as String? ?? '',
@@ -63,6 +68,7 @@ _Section _$SectionFromJson(Map<String, dynamic> json) => _Section(
 Map<String, dynamic> _$SectionToJson(_Section instance) => <String, dynamic>{
   'id': instance.id,
   'subjectId': instance.subjectId,
+  'subjectArchivedAt': instance.subjectArchivedAt,
   'section': instance.section,
   'course': instance.course,
   'room': instance.room,
